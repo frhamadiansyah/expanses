@@ -1,5 +1,10 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
 import { AccountsPage } from '../features/accounts/AccountsPage';
+import { BackupPage } from '../features/backup/BackupPage';
+import { ImportPage } from '../features/import/ImportPage';
+import { CardDetailPage } from '../features/cards/CardDetailPage';
+import { CardsPage } from '../features/cards/CardsPage';
+import { RecommendPage } from '../features/cards/RecommendPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { SpendingPage } from '../features/spending/SpendingPage';
@@ -27,6 +32,11 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/spending', component: SpendingPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId', component: CardDetailPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
 ]);
 
 export const router = createRouter({ routeTree });

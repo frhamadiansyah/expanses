@@ -166,7 +166,19 @@ export function AccountsPage() {
   const all = balances.data ?? {};
   return (
     <div className="space-y-4">
-      <PageHeader title="Accounts" />
+      <PageHeader
+        title="Accounts"
+        action={
+          <div className="flex gap-3 text-sm">
+            <Link to="/import" className="underline">
+              Import CSV
+            </Link>
+            <Link to="/backup" className="underline">
+              Backup
+            </Link>
+          </div>
+        }
+      />
       <AddAccountForm />
       {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add a bank account or credit card above.</Empty>}
       <AccountList title="Money" accounts={money.filter((a) => a.kind === 'asset')} balances={all} />

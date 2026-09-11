@@ -149,3 +149,13 @@ apps/web/
 | 21 | PWA, persistent storage, install hint | 5 |
 
 ---
+
+## Execution status (2026-09-11)
+
+Executed on the fast track at the owner's request instead of task-by-task with a per-task review gate. Implementation went directly from the file map above, with tests required for money, ledger, FX, points, CSV, and backup logic.
+
+Delivered: all 21 task deliverables across two drops.
+
+Verification at completion: core 39, db 21, web 4 unit tests passing; typecheck clean in all packages; two Playwright tests passing against a production build (card purchase vs statement payment critical path; points cap cascade and recommender).
+
+Outstanding before Stage 2: an independent code review of the v0 codebase, which the fast track skipped.

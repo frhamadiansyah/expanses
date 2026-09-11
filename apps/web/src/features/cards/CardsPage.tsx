@@ -1,0 +1,80 @@
+import { isoDate } from '@expanses/core';
+import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+import { useApp } from '../../app/context';
+import { useAccounts } from '../../lib/queries';
+import { Card, Empty, Money, PageHeader } from '../../ui';
+import { formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
+
+export function CardsPage() {
+  const { database, ws } = useApp();
+  const accounts = useAccounts();
+  const all = accounts.data ?? [];
+  const cards = all.filter((a) => a.subtype === 'credit_card' && a.archivedAt === null);
+  const today = isoDate();
+  const data = useQuery({
+    queryKey: ['card-points', ws.workspaceId, today, cards.map((c) => c.id).join(',')],
+    enabled: accounts.isSuccess,
+    queryFn: () => Promise.all(cards.map((card) => loadCardPoints(database, ws, card, all, today))),
+  });
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Cards & points"
+        action={
+          <Link to="/recommend" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
+            Which card?
+          </Link>
+        }
+      />
+      {accounts.isSuccess && cards.length === 0 && (
+        <Empty>
+          Add a credit card on the{' '}
+          <Link to="/accounts" className="underline">
+            Accounts
+          </Link>{' '}
+          page first.
+        </Empty>
+      )}
+      {(data.data ?? []).map((cp) => {
+        const points = cp.current?.earn.totalPoints ?? 0;
+        const value = pointsValue(points, cp.best);
+        return (
+          <Card key={cp.card.id}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <Link to="/cards/$cardId" params={{ cardId: cp.card.id }} className="font-medium hover:underline">
+                  {cp.card.name}
+                </Link>
+                <div className="text-xs text-slate-500">
+                  {cp.current
+                    ? `This cycle ${shortDate(cp.current.cycle.start)} – ${shortDate(cp.current.cycle.end)}`
+                    : cp.program
+                      ? 'Set the statement day to track cycles'
+                      : 'Rewards not set up'}
+                </div>
+              </div>
+              {cp.current ? (
+                <div className="text-right">
+                  <div className="tabular font-semibold">
+                    {formatPoints(points)} {cp.program!.unit}
+                  </div>
+                  {value !== null && cp.best && (
+                    <div className="text-xs text-slate-500">
+                      ≈ <Money minor={value} currency={cp.best.currency} />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Link to="/cards/$cardId" params={{ cardId: cp.card.id }} className="text-sm font-medium underline">
+                  Set up
+                </Link>
+              )}
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}

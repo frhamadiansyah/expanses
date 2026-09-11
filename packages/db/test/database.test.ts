@@ -17,7 +17,7 @@ describe('database', () => {
   it('migrates once and is idempotent', async () => {
     executor = createNodeExecutor();
     const database = createDatabase(executor);
-    expect(await migrate(database)).toEqual([1, 2]);
+    expect(await migrate(database)).toEqual([1, 2, 3]);
     expect(await migrate(database)).toEqual([]);
   });
 

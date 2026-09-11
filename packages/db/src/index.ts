@@ -9,3 +9,6 @@ export * from './repos/accounts';
 export * from './repos/ledger';
 export * from './repos/fx';
 export * from './repos/reports';
+export * as pointsSchema from './schema-points';
+export * from './repos/points';
+export * from './repos/imports';

@@ -2,7 +2,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { bootstrap } from './db/bootstrap';
+import { registerServiceWorker } from './lib/pwa';
 import './styles.css';
+
+registerServiceWorker();
 
 const root = createRoot(document.getElementById('root')!);
 
