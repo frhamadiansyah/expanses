@@ -15,13 +15,28 @@ const optionalInt = (value: string) => {
 };
 const selected = (select: HTMLSelectElement) => Array.from(select.selectedOptions, (o) => o.value).filter(Boolean);
 
-export function RuleForm({ programId, currency, accounts, initial, onDone }: { programId: string; currency: string; accounts: AccountRow[]; initial?: EarnRule; onDone: () => void }) {
+/** suggestBase pre-fills a typical base earn rate for a card's first rule. */
+export function RuleForm({
+  programId,
+  currency,
+  accounts,
+  initial,
+  suggestBase = false,
+  onDone,
+}: {
+  programId: string;
+  currency: string;
+  accounts: AccountRow[];
+  initial?: EarnRule;
+  suggestBase?: boolean;
+  onDone: () => void;
+}) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const major = (minor: number | null | undefined) => (minor == null ? '' : minorToMajorString(minor, currency));
-  const [name, setName] = useState(initial?.name ?? '');
+  const [name, setName] = useState(initial?.name ?? (suggestBase ? 'Base' : ''));
   const [points, setPoints] = useState(String(initial?.rateNum ?? 1));
-  const [per, setPer] = useState(major(initial?.rateDen ?? null));
+  const [per, setPer] = useState(initial ? major(initial.rateDen) : suggestBase ? (currency === 'IDR' ? '2500' : '1') : '');
   const [categoryIds, setCategoryIds] = useState<string[]>(initial?.match.categoryIds ?? []);
   const [excludeIds, setExcludeIds] = useState<string[]>(initial?.match.excludeCategoryIds ?? []);
   const [merchants, setMerchants] = useState((initial?.match.merchantPatterns ?? []).join(', '));

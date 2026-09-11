@@ -36,11 +36,14 @@ function useAction() {
   return { error, run };
 }
 
-function Section({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+function Section({ title, step, children, action }: { title: string; step?: string; children: ReactNode; action?: ReactNode }) {
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-600">{title}</h2>
+        <div>
+          {step && <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{step}</div>}
+          <h2 className="text-sm font-semibold text-slate-600">{title}</h2>
+        </div>
         {action}
       </div>
       {children}
@@ -173,13 +176,21 @@ export function CardDetailPage() {
 
   const owed = displayAmount('liability', balances.data?.[card.id] ?? 0);
   const optionalMinor = (v: string) => (v.trim() ? parseMajor(v, currency) : null);
+  // Setup is ordered: the statement day defines cycles, a program holds rules, and rules produce points.
+  const hasTerms = !!cp.terms;
+  const step = !hasTerms ? 1 : !cp.program ? 2 : cp.rules.length === 0 ? 3 : null;
 
   return (
     <div className="space-y-4">
       <PageHeader title={card.name} action={<Link to="/cards" className="text-sm underline">All cards</Link>} />
       <ErrorBox error={error} />
 
-      <Section title="Card terms">
+      <Section title="Card terms" step={step === 1 ? 'Step 1 of 3' : undefined}>
+        {step === 1 && (
+          <p className="mb-3 text-sm text-slate-600">
+            Start with your statement day. It decides which purchases count toward each points cycle and when bonus caps reset.
+          </p>
+        )}
         <form
           className="grid gap-3 md:grid-cols-4"
           onSubmit={(e) => {
@@ -209,8 +220,8 @@ export function CardDetailPage() {
         </form>
       </Section>
 
-      {!cp.program ? (
-        <Section title="Rewards program">
+      {hasTerms && !cp.program && (
+        <Section title="Rewards program" step="Step 2 of 3">
           <form
             className="grid gap-3 md:grid-cols-3"
             onSubmit={(e) => {
@@ -239,20 +250,26 @@ export function CardDetailPage() {
             </div>
           </form>
         </Section>
-      ) : (
-        <>
-          {cp.current ? (
-            <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} unit={cp.program.unit} currency={currency} best={cp.best} />
-          ) : (
-            <Card>
-              <p className="text-sm text-amber-700">Save the statement day above to track cycles.</p>
-            </Card>
-          )}
-          {cp.previous && <ActualForm program={cp.program} result={cp.previous} unit={cp.program.unit} />}
+      )}
 
-          <Section title="Earn rules" action={editingRule === null && <Button variant="secondary" onClick={() => setEditingRule('new')}>Add rule</Button>}>
-            {editingRule === 'new' && <RuleForm programId={cp.program.id} currency={currency} accounts={all} onDone={() => setEditingRule(null)} />}
-            {cp.rules.length === 0 && editingRule === null && <Empty>Add a base rule first, e.g. 1 point per Rp 2.500, then bonus rules with higher priority.</Empty>}
+      {hasTerms && cp.program && (
+        <>
+          {cp.current && cp.rules.length > 0 && (
+            <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} unit={cp.program.unit} currency={currency} best={cp.best} />
+          )}
+          {cp.previous && cp.rules.length > 0 && <ActualForm program={cp.program} result={cp.previous} unit={cp.program.unit} />}
+
+          <Section
+            title="Earn rules"
+            step={step === 3 ? 'Step 3 of 3' : undefined}
+            action={editingRule === null && <Button variant="secondary" onClick={() => setEditingRule('new')}>Add rule</Button>}
+          >
+            {editingRule === 'new' && (
+              <RuleForm programId={cp.program.id} currency={currency} accounts={all} suggestBase={cp.rules.length === 0} onDone={() => setEditingRule(null)} />
+            )}
+            {cp.rules.length === 0 && editingRule === null && (
+              <Empty>Add your card's base earn rate first. The form starts with a typical rate — change it to match your card. Then add bonus rules with a higher priority.</Empty>
+            )}
             <ul className="divide-y divide-slate-100">
               {[...cp.rules].sort((a, b) => b.priority - a.priority).map((rule) =>
                 editingRule !== 'new' && editingRule?.id === rule.id ? (
@@ -284,56 +301,58 @@ export function CardDetailPage() {
             </ul>
           </Section>
 
-          <Section title="What points are worth">
-            <ul className="mb-3 divide-y divide-slate-100">
-              {cp.redemptions.map((r) => (
-                <li key={r.id} className="flex items-center justify-between py-2 text-sm">
-                  <span>
-                    {r.name}: {formatPoints(r.perPoints)} {cp.program!.unit} = {formatMinor(r.valueMinor, r.currency)}
-                  </span>
-                  <Button variant="ghost" onClick={() => void run(() => deleteRedemptionOption(database, ws, r.id))}>
-                    Remove
+          {cp.rules.length > 0 && (
+            <Section title="What points are worth">
+              <ul className="mb-3 divide-y divide-slate-100">
+                {cp.redemptions.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between py-2 text-sm">
+                    <span>
+                      {r.name}: {formatPoints(r.perPoints)} {cp.program!.unit} = {formatMinor(r.valueMinor, r.currency)}
+                    </span>
+                    <Button variant="ghost" onClick={() => void run(() => deleteRedemptionOption(database, ws, r.id))}>
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <form
+                className="grid gap-3 md:grid-cols-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(async () => {
+                    await saveRedemptionOption(database, ws, { programId: cp.program!.id, name: redeemName, type: 'cashback', perPoints: Number(redeemPoints), valueMinor: parseMajor(redeemValue, redeemCurrency), currency: redeemCurrency });
+                    setRedeemName('');
+                    setRedeemPoints('');
+                    setRedeemValue('');
+                  });
+                }}
+              >
+                <Field label="Redemption">
+                  <Input value={redeemName} onChange={(e) => setRedeemName(e.target.value)} placeholder="Statement credit" />
+                </Field>
+                <Field label={cp.program.unit === 'miles' ? 'Miles redeemed' : 'Points redeemed'}>
+                  <Input value={redeemPoints} onChange={(e) => setRedeemPoints(e.target.value)} inputMode="numeric" placeholder="1000" required />
+                </Field>
+                <Field label="Worth">
+                  <Input value={redeemValue} onChange={(e) => setRedeemValue(e.target.value)} inputMode="decimal" placeholder="2500" required />
+                </Field>
+                <Field label="Currency">
+                  <Select value={redeemCurrency} onChange={(e) => setRedeemCurrency(e.target.value)}>
+                    {CURRENCIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.code}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <div className="md:col-span-4">
+                  <Button type="submit" variant="secondary">
+                    Add value
                   </Button>
-                </li>
-              ))}
-            </ul>
-            <form
-              className="grid gap-3 md:grid-cols-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void run(async () => {
-                  await saveRedemptionOption(database, ws, { programId: cp.program!.id, name: redeemName, type: 'cashback', perPoints: Number(redeemPoints), valueMinor: parseMajor(redeemValue, redeemCurrency), currency: redeemCurrency });
-                  setRedeemName('');
-                  setRedeemPoints('');
-                  setRedeemValue('');
-                });
-              }}
-            >
-              <Field label="Redemption">
-                <Input value={redeemName} onChange={(e) => setRedeemName(e.target.value)} placeholder="Statement credit" />
-              </Field>
-              <Field label={cp.program.unit === 'miles' ? 'Miles redeemed' : 'Points redeemed'}>
-                <Input value={redeemPoints} onChange={(e) => setRedeemPoints(e.target.value)} inputMode="numeric" placeholder="1000" required />
-              </Field>
-              <Field label="Worth">
-                <Input value={redeemValue} onChange={(e) => setRedeemValue(e.target.value)} inputMode="decimal" placeholder="2500" required />
-              </Field>
-              <Field label="Currency">
-                <Select value={redeemCurrency} onChange={(e) => setRedeemCurrency(e.target.value)}>
-                  {CURRENCIES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <div className="md:col-span-4">
-                <Button type="submit" variant="secondary">
-                  Add value
-                </Button>
-              </div>
-            </form>
-          </Section>
+                </div>
+              </form>
+            </Section>
+          )}
         </>
       )}
     </div>

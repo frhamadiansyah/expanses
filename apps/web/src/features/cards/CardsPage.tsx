@@ -49,11 +49,7 @@ export function CardsPage() {
                   {cp.card.name}
                 </Link>
                 <div className="text-xs text-slate-500">
-                  {cp.current
-                    ? `This cycle ${shortDate(cp.current.cycle.start)} – ${shortDate(cp.current.cycle.end)}`
-                    : cp.program
-                      ? 'Set the statement day to track cycles'
-                      : 'Rewards not set up'}
+                  {!cp.terms ? 'Add statement day to see points' : cp.current ? `This cycle ${shortDate(cp.current.cycle.start)} – ${shortDate(cp.current.cycle.end)}` : 'Rewards not set up'}
                 </div>
               </div>
               {cp.current ? (

@@ -151,6 +151,11 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
                 {SUBTYPE_LABELS[account.subtype]} · {account.currency}
               </div>
             </div>
+            {account.subtype === 'credit_card' && (
+              <Link to="/cards/$cardId" params={{ cardId: account.id }} className="text-sm font-medium text-emerald-700 underline">
+                Set up points
+              </Link>
+            )}
             <Money minor={displayAmount(account.kind, balances[account.id] ?? 0)} currency={account.currency!} className="font-medium" />
             <Button variant="ghost" onClick={() => void rename(account)} aria-label={`Rename ${account.name}`}>
               Rename
