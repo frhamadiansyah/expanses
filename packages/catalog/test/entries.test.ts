@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { CATALOG, feeOn, findEntry, isStale, termsOn, validateEntry } from '../src/index';
 
 describe('bundled catalogue', () => {
-  it('bundles six entries with unique ids, all valid', () => {
-    expect(CATALOG).toHaveLength(6);
-    expect(new Set(CATALOG.map((e) => e.id)).size).toBe(6);
+  it('bundles entries with unique ids, all valid', () => {
+    expect(CATALOG.length).toBeGreaterThanOrEqual(6);
+    expect(new Set(CATALOG.map((e) => e.id)).size).toBe(CATALOG.length);
     for (const entry of CATALOG) expect(validateEntry(entry, DEFAULT_CATEGORY_KEYS), entry.id).toEqual([]);
   });
 

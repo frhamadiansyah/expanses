@@ -44,7 +44,7 @@ const byValidFrom = <T extends { validFrom: string | null }>(rows: T[]) => [...r
 /** Signature version 2: BCA raises the spend per mile to Rp 15.000 from 2026-10-01. */
 function signatureV2(): CatalogEntry {
   const next = entry('bca-sq-krisflyer-visa-signature');
-  next.entryVersion = 2;
+  next.entryVersion += 1;
   const current = next.terms[1]!;
   current.effectiveTo = '2026-09-30';
   const raised = { ...structuredClone(current), effectiveFrom: '2026-10-01', effectiveTo: null };
@@ -60,7 +60,7 @@ describe('applyCatalogEntry', () => {
     const { programId, unmappedKeys } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry: signature, today: TODAY, replaceManual: false });
     expect(unmappedKeys).toEqual([]);
     expect(await listPrograms(database, ws)).toMatchObject([
-      { id: programId, cardAccountId: card.id, name: 'KrisFlyer', unit: 'miles', cycleAnchor: 'statement', catalogEntryId: signature.id, catalogEntryVersion: 1, catalogStatus: 'linked' },
+      { id: programId, cardAccountId: card.id, name: 'KrisFlyer', unit: 'miles', cycleAnchor: 'statement', catalogEntryId: signature.id, catalogEntryVersion: signature.entryVersion, catalogStatus: 'linked' },
     ]);
     const rules = byValidFrom(await listEarnRules(database, ws, programId));
     expect(rules.map((r) => [r.validFrom, r.validTo, r.rateNum, r.rateDen])).toEqual([
@@ -73,7 +73,7 @@ describe('applyCatalogEntry', () => {
       ['2024-08-12', '2025-09-22', [{ minSpendMinor: 20_000_000, bonus: 1000 }]],
       ['2025-09-23', null, [{ minSpendMinor: 20_000_000, bonus: 1000 }]],
     ]);
-    expect(await getCatalogState(database, ws, programId)).toEqual({ entryId: signature.id, entryVersion: 1, status: 'linked', dismissedVersion: null, snapshot: signature });
+    expect(await getCatalogState(database, ws, programId)).toEqual({ entryId: signature.id, entryVersion: signature.entryVersion, status: 'linked', dismissedVersion: null, snapshot: signature });
   });
 
   it('applies UnionPay partners and cash value onto the card’s existing empty program', async () => {
@@ -130,7 +130,7 @@ describe('catalogue updates', () => {
     const customised = await applyCatalogEntry(database, ws, { cardAccountId: infiniteCard.id, entry: entry('bca-sq-krisflyer-visa-infinite'), today: TODAY, replaceManual: false });
     await saveEarnRule(database, ws, customised.programId, MANUAL);
 
-    const catalog = [signatureV2(), { ...entry('bca-sq-krisflyer-visa-infinite'), entryVersion: 2 }];
+    const catalog = [signatureV2(), { ...entry('bca-sq-krisflyer-visa-infinite'), entryVersion: entry('bca-sq-krisflyer-visa-infinite').entryVersion + 1 }];
     expect(await syncLinkedPrograms(database, ws, catalog, '2026-09-12')).toEqual([linked.programId]);
     expect(await syncLinkedPrograms(database, ws, catalog, '2026-09-12')).toEqual([]);
     expect(byValidFrom(await listEarnRules(database, ws, linked.programId)).map((r) => [r.validFrom, r.validTo, r.rateDen])).toEqual([
@@ -138,8 +138,8 @@ describe('catalogue updates', () => {
       ['2025-09-23', '2026-09-30', 13_500],
       ['2026-10-01', null, 15_000],
     ]);
-    expect(await getCatalogState(database, ws, linked.programId)).toMatchObject({ entryVersion: 2, status: 'linked', snapshot: signatureV2() });
-    expect(await getCatalogState(database, ws, customised.programId)).toMatchObject({ entryVersion: 1, status: 'customised' });
+    expect(await getCatalogState(database, ws, linked.programId)).toMatchObject({ entryVersion: signatureV2().entryVersion, status: 'linked', snapshot: signatureV2() });
+    expect(await getCatalogState(database, ws, customised.programId)).toMatchObject({ entryVersion: entry('bca-sq-krisflyer-visa-infinite').entryVersion, status: 'customised' });
   });
 
   it('keeps past-cycle points after a sync that changes the rate from a later date', async () => {
@@ -171,7 +171,7 @@ describe('catalogue updates', () => {
     await saveEarnRule(database, ws, programId, MANUAL);
     await applyCatalogUpdate(database, ws, programId, signatureV2(), '2026-09-12');
     expect((await listEarnRules(database, ws, programId)).map((r) => r.name).sort()).toEqual(['Base', 'Base', 'Base', 'Dining promo']);
-    expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: 2, status: 'customised', snapshot: signatureV2() });
+    expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: signatureV2().entryVersion, status: 'customised', snapshot: signatureV2() });
     await expect(applyCatalogUpdate(database, ws, programId, entry('bca-unionpay'), TODAY)).rejects.toThrow(CatalogError);
   });
 
@@ -183,7 +183,7 @@ describe('catalogue updates', () => {
     expect(await getCatalogState(database, ws, programId)).toMatchObject({ status: 'customised', dismissedVersion: 2 });
     await resetToCatalog(database, ws, programId, signatureV2(), '2026-09-12');
     expect((await listEarnRules(database, ws, programId)).map((r) => r.name)).toEqual(['Base', 'Base', 'Base']);
-    expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: 2, status: 'linked', dismissedVersion: null });
+    expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: signatureV2().entryVersion, status: 'linked', dismissedVersion: null });
   });
 });
 
@@ -196,10 +196,10 @@ describe('catalogue crediting', () => {
     const crediting = async () => (await listPrograms(database, ws)).find((p) => p.id === programId)!.crediting;
     expect(await crediting()).toBe('per_transaction');
     await database.execScript(`UPDATE reward_programs SET crediting = 'per_statement' WHERE id = '${programId}'`);
-    await syncLinkedPrograms(database, ws, [{ ...prioritas, entryVersion: 2 }], TODAY);
-    expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: 2, status: 'linked' });
+    await syncLinkedPrograms(database, ws, [{ ...prioritas, entryVersion: prioritas.entryVersion + 1 }], TODAY);
+    expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: prioritas.entryVersion + 1, status: 'linked' });
     expect(await crediting()).toBe('per_statement');
-    await resetToCatalog(database, ws, programId, { ...prioritas, entryVersion: 2 }, TODAY);
+    await resetToCatalog(database, ws, programId, { ...prioritas, entryVersion: prioritas.entryVersion + 1 }, TODAY);
     expect(await crediting()).toBe('per_transaction');
   });
 });

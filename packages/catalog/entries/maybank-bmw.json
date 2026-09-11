@@ -1,0 +1,297 @@
+{
+  "id": "maybank-bmw",
+  "entryVersion": 1,
+  "bank": "Maybank",
+  "name": "BMW Maybank Kartu Kredit",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "Maybank TREATS Points",
+    "cycleAnchor": "statement",
+    "crediting": "per_transaction"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 1500000,
+      "supplementaryFeeMinor": 750000,
+      "condition": "first year free; later years free after at least one BMW transaction in the previous year"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "utilities-over-10m",
+          "name": "Utility bills above Rp 10.000.000",
+          "rateNum": 0,
+          "rateDen": 10000,
+          "rounding": "per_increment",
+          "priority": 100,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "xbill",
+              "x-bill",
+              "xcash",
+              "balance conversion",
+              "qris",
+              "qr"
+            ],
+            "excludeMccs": [
+              "5814",
+              "9211",
+              "9222",
+              "9311",
+              "9399"
+            ],
+            "mccs": [
+              "4900"
+            ]
+          },
+          "minTransactionMinor": 10000001
+        },
+        {
+          "key": "dealer",
+          "name": "At BMW dealers",
+          "rateNum": 1,
+          "rateDen": 3333,
+          "rounding": "per_increment",
+          "priority": 30,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "xbill",
+              "x-bill",
+              "xcash",
+              "balance conversion",
+              "qris",
+              "qr"
+            ],
+            "excludeMccs": [
+              "5814",
+              "9211",
+              "9222",
+              "9311",
+              "9399"
+            ],
+            "merchantPatterns": [
+              "bmw",
+              "bestindo",
+              "tunas",
+              "asset",
+              "trans eurokars",
+              "astra auto",
+              "tmp",
+              "tomang",
+              "performance moto"
+            ],
+            "currencies": [
+              "IDR"
+            ]
+          },
+          "capPoints": 7500
+        },
+        {
+          "key": "dining-travel",
+          "name": "Restaurants, hotels, airlines, and travel",
+          "rateNum": 1,
+          "rateDen": 7500,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "xbill",
+              "x-bill",
+              "xcash",
+              "balance conversion",
+              "qris",
+              "qr"
+            ],
+            "excludeMccs": [
+              "5814",
+              "9211",
+              "9222",
+              "9311",
+              "9399"
+            ],
+            "mccs": [
+              "0101",
+              "0401",
+              "0411",
+              "1301",
+              "3000-3299",
+              "3301-3302",
+              "3501-3791",
+              "3793",
+              "3795",
+              "3802",
+              "3811",
+              "3812",
+              "3813",
+              "3816",
+              "3819",
+              "3824",
+              "3825",
+              "3826",
+              "3828",
+              "3829",
+              "3830",
+              "3831",
+              "3837",
+              "3838",
+              "4111",
+              "4511",
+              "4722",
+              "4723",
+              "5462",
+              "5499",
+              "5812",
+              "5813",
+              "5814",
+              "7011",
+              "7999"
+            ]
+          },
+          "capPoints": 3500
+        },
+        {
+          "key": "foreign",
+          "name": "Overseas",
+          "rateNum": 1,
+          "rateDen": 7500,
+          "rounding": "per_increment",
+          "priority": 15,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "xbill",
+              "x-bill",
+              "xcash",
+              "balance conversion",
+              "qris",
+              "qr"
+            ],
+            "excludeMccs": [
+              "5814",
+              "9211",
+              "9222",
+              "9311",
+              "9399"
+            ],
+            "origin": "foreign"
+          },
+          "capPoints": 7500
+        },
+        {
+          "key": "base",
+          "name": "Other purchases",
+          "rateNum": 1,
+          "rateDen": 8888,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "xbill",
+              "x-bill",
+              "xcash",
+              "balance conversion",
+              "qris",
+              "qr"
+            ],
+            "excludeMccs": [
+              "5814",
+              "9211",
+              "9222",
+              "9311",
+              "9399"
+            ]
+          }
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 20000,
+      "partnerUnits": 20000,
+      "incrementPoints": 20000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 20000,
+      "partnerUnits": 20000,
+      "incrementPoints": 20000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 20000,
+      "partnerUnits": 20000,
+      "incrementPoints": 20000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "airasia",
+      "program": "AirAsia points",
+      "points": 5000,
+      "partnerUnits": 5000,
+      "incrementPoints": 5000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": {
+    "valueMinor": 100000,
+    "perPoints": 1500,
+    "currency": "IDR"
+  },
+  "welcomeBonus": "10.000 TREATS Points after Rp 30.000.000 spent within 3 months of approval, plus a Rp 1.000.000 BMW service voucher. New primary cards only.",
+  "notes": [
+    "Dealer purchases match the statement names Maybank publishes and count only in rupiah; broad names such as tunas, asset, and tmp can also match other merchants.",
+    "Overseas purchases are defined by a non-rupiah currency and a merchant outside Indonesia; estimates use the currency only.",
+    "Spend beyond a category cap is estimated at the next matching rate; the terms do not say.",
+    "TREATS Points are credited as purchases post, with category extras credited separately, so the app checks this card per purchase.",
+    "From 10 September 2026 no TREATS on Maybank XBill, XCash, balance conversion, QR payments, taxes and government services (MCC 9211, 9222, 9311, 9399), fast food (MCC 5814), or utility payments (MCC 4900) above Rp 10.000.000. The terms set that limit per card; estimates apply it per purchase. The exclusion list before that date was not retrieved.",
+    "Transfers to KrisFlyer, GarudaMiles, and Asia Miles are 20.000 TREATS for 20.000 miles, and to AirAsia points 5.000 for 5.000, until 200.000 TREATS are converted in 12 months; after that 20.000 give 6.666 (AirAsia 5.000 give 1.666). Each mileage conversion costs Rp 20.000.",
+    "TREATS Points expire one year after they are earned."
+  ],
+  "sources": [
+    {
+      "title": "BMW Maybank Kartu Kredit",
+      "url": "https://www.maybank.co.id/id/creditcard/bmw-maybank-credit-card"
+    },
+    {
+      "title": "RIPLAY BMW",
+      "url": "https://www.maybank.co.id/-/media/Downloaded-Content/RIPLAY/Credit-Card/RIPLAY-UMUM-Visa-Infinite-BMW.pdf"
+    },
+    {
+      "title": "Bonus TREATS MCC list, BMW and MINI",
+      "url": "https://www.maybank.co.id/-/media/Downloaded-Content/Credit%20Card/SnK-Bonus-Maybank-TREATS-MCC-BMW-MINI-241217-v2.pdf"
+    },
+    {
+      "title": "Maybank TREATS",
+      "url": "https://www.maybank.co.id/id/creditcard/treatspoint-jan-2026"
+    },
+    {
+      "title": "TREATS update effective 10 September 2026",
+      "url": "https://www.maybank.co.id/NewsAndAnnouncement/NewsAndAnnouncements/2026/07/29/06/43/Pembaruan-Informasi-Perolehan-Maybank-TREATS-pada-Maybank-Kartu-Kredit"
+    }
+  ],
+  "verifiedOn": "2026-09-11"
+}

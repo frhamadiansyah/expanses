@@ -1,0 +1,158 @@
+{
+  "id": "maybank-visa-infinite",
+  "entryVersion": 1,
+  "bank": "Maybank",
+  "name": "Maybank Kartu Kredit Visa Infinite",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "Maybank TREATS Points",
+    "cycleAnchor": "statement",
+    "crediting": "per_transaction"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 1500000,
+      "supplementaryFeeMinor": 750000,
+      "condition": "first year free, or as offered when applying"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "utilities-over-10m",
+          "name": "Utility bills above Rp 10.000.000",
+          "rateNum": 0,
+          "rateDen": 10000,
+          "rounding": "per_increment",
+          "priority": 100,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "xbill",
+              "x-bill",
+              "xcash",
+              "balance conversion",
+              "qris",
+              "qr"
+            ],
+            "excludeMccs": [
+              "5814",
+              "9211",
+              "9222",
+              "9311",
+              "9399"
+            ],
+            "mccs": [
+              "4900"
+            ]
+          },
+          "minTransactionMinor": 10000001
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 8888,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "xbill",
+              "x-bill",
+              "xcash",
+              "balance conversion",
+              "qris",
+              "qr"
+            ],
+            "excludeMccs": [
+              "5814",
+              "9211",
+              "9222",
+              "9311",
+              "9399"
+            ]
+          }
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 20000,
+      "partnerUnits": 20000,
+      "incrementPoints": 20000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 20000,
+      "partnerUnits": 20000,
+      "incrementPoints": 20000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 20000,
+      "partnerUnits": 20000,
+      "incrementPoints": 20000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "airasia",
+      "program": "AirAsia points",
+      "points": 5000,
+      "partnerUnits": 5000,
+      "incrementPoints": 5000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": {
+    "valueMinor": 100000,
+    "perPoints": 1500,
+    "currency": "IDR"
+  },
+  "welcomeBonus": "10.000 TREATS Points after Rp 30.000.000 spent within 3 months of approval. New primary cards only.",
+  "notes": [
+    "1 TREATS Point per full Rp 8.888 everywhere.",
+    "TREATS Points are credited as purchases post, with category extras credited separately, so the app checks this card per purchase.",
+    "From 10 September 2026 no TREATS on Maybank XBill, XCash, balance conversion, QR payments, taxes and government services (MCC 9211, 9222, 9311, 9399), fast food (MCC 5814), or utility payments (MCC 4900) above Rp 10.000.000. The terms set that limit per card; estimates apply it per purchase. The exclusion list before that date was not retrieved.",
+    "Transfers to KrisFlyer, GarudaMiles, and Asia Miles are 20.000 TREATS for 20.000 miles, and to AirAsia points 5.000 for 5.000, until 200.000 TREATS are converted in 12 months; after that 20.000 give 6.666 (AirAsia 5.000 give 1.666). Each mileage conversion costs Rp 20.000.",
+    "TREATS Points expire one year after they are earned."
+  ],
+  "sources": [
+    {
+      "title": "Maybank Visa Infinite",
+      "url": "https://www.maybank.co.id/id/creditcard/maybank-visa-infinite-credit-card"
+    },
+    {
+      "title": "RIPLAY Visa Infinite",
+      "url": "https://www.maybank.co.id/-/media/Downloaded-Content/RIPLAY/Credit-Card/RIPLAY-UMUM---Visa-Infinite---New.pdf"
+    },
+    {
+      "title": "Maybank TREATS",
+      "url": "https://www.maybank.co.id/id/creditcard/treatspoint-jan-2026"
+    },
+    {
+      "title": "TREATS update effective 10 September 2026",
+      "url": "https://www.maybank.co.id/NewsAndAnnouncement/NewsAndAnnouncements/2026/07/29/06/43/Pembaruan-Informasi-Perolehan-Maybank-TREATS-pada-Maybank-Kartu-Kredit"
+    }
+  ],
+  "verifiedOn": "2026-09-11"
+}

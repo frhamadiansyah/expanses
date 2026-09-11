@@ -4,6 +4,11 @@ import unionpay from '../entries/bca-unionpay.json';
 import cimbAccor from '../entries/cimb-niaga-world-all-accor.json';
 import marriott from '../entries/mandiri-marriott-bonvoy.json';
 import prioritas from '../entries/mandiri-world-prioritas.json';
+import maybankBmw from '../entries/maybank-bmw.json';
+import maybankInfinite from '../entries/maybank-visa-infinite.json';
+import maybankManchesterUnited from '../entries/maybank-manchester-united.json';
+import maybankMini from '../entries/maybank-mini.json';
+import maybankPlatinum from '../entries/maybank-visa-platinum.json';
 import type { CatalogEntry } from './types';
 
 export * from './types';
@@ -15,7 +20,19 @@ export { describeEntry } from './describe';
 export { type BundledMerchant, MERCHANTS, type MerchantList, validateMerchants } from './merchants';
 
 /** Bundled entries, validated in tests. JSON imports are widened to CatalogEntry after that validation. */
-export const CATALOG: readonly CatalogEntry[] = [signature, infinite, unionpay, cimbAccor, prioritas, marriott] as unknown as CatalogEntry[];
+export const CATALOG: readonly CatalogEntry[] = [
+  signature,
+  infinite,
+  unionpay,
+  cimbAccor,
+  prioritas,
+  marriott,
+  maybankPlatinum,
+  maybankInfinite,
+  maybankBmw,
+  maybankMini,
+  maybankManchesterUnited,
+] as unknown as CatalogEntry[];
 
 export function findEntry(id: string): CatalogEntry | undefined {
   return CATALOG.find((entry) => entry.id === id);

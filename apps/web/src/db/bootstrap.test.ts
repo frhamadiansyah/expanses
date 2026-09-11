@@ -21,7 +21,7 @@ describe('openAppDb', () => {
       const app = await openAppDb(database);
       expect(app.ws).toEqual(ws);
       expect((await listAccounts(database, ws)).find((a) => a.name === 'Groceries')?.systemKey).toBe('food.groceries');
-      expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: 1, status: 'linked' });
+      expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: findEntry('bca-sq-krisflyer-visa-signature')!.entryVersion, status: 'linked' });
       for (const rule of await listEarnRules(database, ws, programId)) expect(rule.match.excludeCategoryIds).toHaveLength(6);
     } finally {
       executor.close();

@@ -1,6 +1,6 @@
 {
   "id": "mandiri-world-prioritas",
-  "entryVersion": 1,
+  "entryVersion": 2,
   "bank": "Mandiri",
   "name": "Mandiri World Prioritas",
   "network": "mastercard",
@@ -8,7 +8,8 @@
   "program": {
     "unit": "points",
     "name": "Livin'poin",
-    "cycleAnchor": "statement"
+    "cycleAnchor": "statement",
+    "crediting": "per_transaction"
   },
   "fees": [
     {
@@ -191,7 +192,8 @@
     "Power Bills payments at PLN earn nothing, while Power Bills insurance earns the reduced rate.",
     "Converting a purchase to Power Installment or Power Buy deducts its points; add \"cicilan\" to the description to reflect it.",
     "QRIS, installments, and virtual account payments are recognised only when the description contains those words.",
-    "Airline conversion is advertised as '1:1 Mileage Redemption'; ratios are not published in page text."
+    "Airline conversion is advertised as '1:1 Mileage Redemption'; ratios are not published in page text.",
+    "Livin'poin are credited per purchase, so the app checks this card per purchase."
   ],
   "sources": [
     {

@@ -1,6 +1,6 @@
 {
   "id": "bca-sq-krisflyer-visa-infinite",
-  "entryVersion": 1,
+  "entryVersion": 2,
   "bank": "BCA",
   "name": "BCA Singapore Airlines KrisFlyer Visa Infinite",
   "network": "visa",
@@ -45,6 +45,18 @@
               "government",
               "gifts_donations.donations",
               "fees"
+            ],
+            "excludeMccs": [
+              "4900",
+              "8398",
+              "8661",
+              "9211",
+              "9222",
+              "9223",
+              "9311",
+              "9399",
+              "9402",
+              "9405"
             ]
           }
         }
@@ -71,6 +83,18 @@
               "government",
               "gifts_donations.donations",
               "fees"
+            ],
+            "excludeMccs": [
+              "4900",
+              "8398",
+              "8661",
+              "9211",
+              "9222",
+              "9223",
+              "9311",
+              "9399",
+              "9402",
+              "9405"
             ]
           }
         }
@@ -99,6 +123,18 @@
             ],
             "excludeMerchantPatterns": [
               "prudential"
+            ],
+            "excludeMccs": [
+              "4900",
+              "8398",
+              "8661",
+              "9211",
+              "9222",
+              "9223",
+              "9311",
+              "9399",
+              "9402",
+              "9405"
             ]
           }
         }
@@ -128,6 +164,18 @@
             ],
             "excludeMerchantPatterns": [
               "prudential"
+            ],
+            "excludeMccs": [
+              "4900",
+              "8398",
+              "8661",
+              "9211",
+              "9222",
+              "9223",
+              "9311",
+              "9399",
+              "9402",
+              "9405"
             ]
           }
         }
@@ -144,7 +192,8 @@
     "Foreign-currency purchases earn on the rupiah amount after BCA's conversion (terms art. 9.1).",
     "Supplementary card miles are credited to the main cardholder's KrisFlyer account (terms art. 9.2).",
     "QRIS payments using a BCA credit card in myBCA earn no miles.",
-    "Cancelled or corrected transactions may have their miles reversed."
+    "Cancelled or corrected transactions may have their miles reversed.",
+    "Reward BCA also excludes MCC 4900, 8398, 8661, 9211, 9222, 9223, 9311, 9399, 9402, and 9405, matched against each purchase’s MCC."
   ],
   "sources": [
     {

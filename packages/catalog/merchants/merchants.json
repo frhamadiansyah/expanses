@@ -1,16 +1,840 @@
 {
-  "version": 1,
+  "version": 2,
   "verifiedOn": "2026-09-11",
   "merchants": [
-    { "pattern": "mcdonald", "mcc": "5814", "name": "McDonald's", "basis": "Typical for fast food restaurants; acquirers can assign another code" },
-    { "pattern": "kfc", "mcc": "5814", "name": "KFC", "basis": "Typical for fast food restaurants; acquirers can assign another code" },
-    { "pattern": "burger king", "mcc": "5814", "name": "Burger King", "basis": "Typical for fast food restaurants; acquirers can assign another code" },
-    { "pattern": "pertamina", "mcc": "5541", "name": "Pertamina", "basis": "Typical for service stations; self-service pumps can use 5542" },
-    { "pattern": "shell", "mcc": "5541", "name": "Shell", "basis": "Typical for service stations; self-service pumps can use 5542" },
-    { "pattern": "indomaret", "mcc": "5411", "name": "Indomaret", "basis": "Typical for minimarkets; some acquirers use 5499" },
-    { "pattern": "alfamart", "mcc": "5411", "name": "Alfamart", "basis": "Typical for minimarkets; some acquirers use 5499" },
-    { "pattern": "grab", "mcc": "4121", "name": "Grab", "basis": "Typical for ride hailing; food orders can use 5814" },
-    { "pattern": "gojek", "mcc": "4121", "name": "Gojek", "basis": "Typical for ride hailing; food orders can use 5814" },
-    { "pattern": "decathlon", "mcc": "5941", "name": "Decathlon", "basis": "Typical for sporting goods stores" }
+    {
+      "pattern": "mcdonald",
+      "mcc": "5814",
+      "name": "McDonald's",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "kfc",
+      "mcc": "5814",
+      "name": "KFC",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "burger king",
+      "mcc": "5814",
+      "name": "Burger King",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "a&w",
+      "mcc": "5814",
+      "name": "A&W",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "hokben",
+      "mcc": "5814",
+      "name": "HokBen",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "richeese",
+      "mcc": "5814",
+      "name": "Richeese Factory",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "wendy's",
+      "mcc": "5814",
+      "name": "Wendy's",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "subway",
+      "mcc": "5814",
+      "name": "Subway",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "domino's",
+      "mcc": "5814",
+      "name": "Domino's Pizza",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "yoshinoya",
+      "mcc": "5814",
+      "name": "Yoshinoya",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "jollibee",
+      "mcc": "5814",
+      "name": "Jollibee",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "popeyes",
+      "mcc": "5814",
+      "name": "Popeyes",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "starbucks",
+      "mcc": "5814",
+      "name": "Starbucks",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "kopi kenangan",
+      "mcc": "5814",
+      "name": "Kopi Kenangan",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "janji jiwa",
+      "mcc": "5814",
+      "name": "Kopi Janji Jiwa",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "fore coffee",
+      "mcc": "5814",
+      "name": "Fore Coffee",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "tomoro",
+      "mcc": "5814",
+      "name": "Tomoro Coffee",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "chatime",
+      "mcc": "5814",
+      "name": "Chatime",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "dunkin",
+      "mcc": "5814",
+      "name": "Dunkin'",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "j.co",
+      "mcc": "5814",
+      "name": "J.CO Donuts & Coffee",
+      "basis": "Typical for fast food and coffee chains; acquirers can assign 5812"
+    },
+    {
+      "pattern": "pizza hut",
+      "mcc": "5812",
+      "name": "Pizza Hut",
+      "basis": "Typical for restaurants"
+    },
+    {
+      "pattern": "solaria",
+      "mcc": "5812",
+      "name": "Solaria",
+      "basis": "Typical for restaurants"
+    },
+    {
+      "pattern": "sushi tei",
+      "mcc": "5812",
+      "name": "Sushi Tei",
+      "basis": "Typical for restaurants"
+    },
+    {
+      "pattern": "bakmi gm",
+      "mcc": "5812",
+      "name": "Bakmi GM",
+      "basis": "Typical for restaurants"
+    },
+    {
+      "pattern": "din tai fung",
+      "mcc": "5812",
+      "name": "Din Tai Fung",
+      "basis": "Typical for restaurants"
+    },
+    {
+      "pattern": "marugame",
+      "mcc": "5812",
+      "name": "Marugame Udon",
+      "basis": "Typical for restaurants"
+    },
+    {
+      "pattern": "breadtalk",
+      "mcc": "5462",
+      "name": "BreadTalk",
+      "basis": "Typical for bakeries"
+    },
+    {
+      "pattern": "holland bakery",
+      "mcc": "5462",
+      "name": "Holland Bakery",
+      "basis": "Typical for bakeries"
+    },
+    {
+      "pattern": "indomaret",
+      "mcc": "5411",
+      "name": "Indomaret",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "alfamart",
+      "mcc": "5411",
+      "name": "Alfamart",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "alfamidi",
+      "mcc": "5411",
+      "name": "Alfamidi",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "superindo",
+      "mcc": "5411",
+      "name": "Superindo",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "hypermart",
+      "mcc": "5411",
+      "name": "Hypermart",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "transmart",
+      "mcc": "5411",
+      "name": "Transmart",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "lotte mart",
+      "mcc": "5411",
+      "name": "Lotte Mart",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "ranch market",
+      "mcc": "5411",
+      "name": "Ranch Market",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "farmers market",
+      "mcc": "5411",
+      "name": "Farmers Market",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "grand lucky",
+      "mcc": "5411",
+      "name": "Grand Lucky",
+      "basis": "Typical for supermarkets and minimarkets; some acquirers use 5499"
+    },
+    {
+      "pattern": "lawson",
+      "mcc": "5499",
+      "name": "Lawson",
+      "basis": "Typical for convenience stores; some acquirers use 5411"
+    },
+    {
+      "pattern": "family mart",
+      "mcc": "5499",
+      "name": "FamilyMart",
+      "basis": "Typical for convenience stores; some acquirers use 5411"
+    },
+    {
+      "pattern": "circle k",
+      "mcc": "5499",
+      "name": "Circle K",
+      "basis": "Typical for convenience stores; some acquirers use 5411"
+    },
+    {
+      "pattern": "lotte grosir",
+      "mcc": "5300",
+      "name": "Lotte Grosir",
+      "basis": "Typical for wholesale clubs"
+    },
+    {
+      "pattern": "pertamina",
+      "mcc": "5541",
+      "name": "Pertamina",
+      "basis": "Typical for service stations; self-service pumps can use 5542"
+    },
+    {
+      "pattern": "shell",
+      "mcc": "5541",
+      "name": "Shell",
+      "basis": "Typical for service stations; self-service pumps can use 5542"
+    },
+    {
+      "pattern": "bp akr",
+      "mcc": "5541",
+      "name": "BP-AKR",
+      "basis": "Typical for service stations; self-service pumps can use 5542"
+    },
+    {
+      "pattern": "spbu",
+      "mcc": "5541",
+      "name": "SPBU",
+      "basis": "Typical for service stations; self-service pumps can use 5542"
+    },
+    {
+      "pattern": "grab",
+      "mcc": "4121",
+      "name": "Grab",
+      "basis": "Typical for ride hailing and taxis; food orders can use 5814"
+    },
+    {
+      "pattern": "gojek",
+      "mcc": "4121",
+      "name": "Gojek",
+      "basis": "Typical for ride hailing and taxis; food orders can use 5814"
+    },
+    {
+      "pattern": "maxim",
+      "mcc": "4121",
+      "name": "Maxim",
+      "basis": "Typical for ride hailing and taxis; food orders can use 5814"
+    },
+    {
+      "pattern": "blue bird",
+      "mcc": "4121",
+      "name": "Blue Bird",
+      "basis": "Typical for ride hailing and taxis; food orders can use 5814"
+    },
+    {
+      "pattern": "tokopedia",
+      "mcc": "5399",
+      "name": "Tokopedia",
+      "basis": "Typical for online marketplaces; sellers or acquirers can use other codes"
+    },
+    {
+      "pattern": "shopee",
+      "mcc": "5399",
+      "name": "Shopee",
+      "basis": "Typical for online marketplaces; sellers or acquirers can use other codes"
+    },
+    {
+      "pattern": "lazada",
+      "mcc": "5399",
+      "name": "Lazada",
+      "basis": "Typical for online marketplaces; sellers or acquirers can use other codes"
+    },
+    {
+      "pattern": "blibli",
+      "mcc": "5399",
+      "name": "Blibli",
+      "basis": "Typical for online marketplaces; sellers or acquirers can use other codes"
+    },
+    {
+      "pattern": "bukalapak",
+      "mcc": "5399",
+      "name": "Bukalapak",
+      "basis": "Typical for online marketplaces; sellers or acquirers can use other codes"
+    },
+    {
+      "pattern": "tiktok shop",
+      "mcc": "5399",
+      "name": "TikTok Shop",
+      "basis": "Typical for online marketplaces; sellers or acquirers can use other codes"
+    },
+    {
+      "pattern": "traveloka",
+      "mcc": "4722",
+      "name": "Traveloka",
+      "basis": "Typical for online travel agencies; hotel bookings can use 7011"
+    },
+    {
+      "pattern": "tiket.com",
+      "mcc": "4722",
+      "name": "tiket.com",
+      "basis": "Typical for online travel agencies; hotel bookings can use 7011"
+    },
+    {
+      "pattern": "agoda",
+      "mcc": "4722",
+      "name": "Agoda",
+      "basis": "Typical for online travel agencies; hotel bookings can use 7011"
+    },
+    {
+      "pattern": "booking.com",
+      "mcc": "4722",
+      "name": "Booking.com",
+      "basis": "Typical for online travel agencies; hotel bookings can use 7011"
+    },
+    {
+      "pattern": "pegipegi",
+      "mcc": "4722",
+      "name": "Pegipegi",
+      "basis": "Typical for online travel agencies; hotel bookings can use 7011"
+    },
+    {
+      "pattern": "garuda",
+      "mcc": "3103",
+      "name": "Garuda Indonesia",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "singapore airlines",
+      "mcc": "3075",
+      "name": "Singapore Airlines",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "cathay pacific",
+      "mcc": "3099",
+      "name": "Cathay Pacific",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "malaysia airlines",
+      "mcc": "3100",
+      "name": "Malaysia Airlines",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "thai airways",
+      "mcc": "3077",
+      "name": "Thai Airways",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "japan airlines",
+      "mcc": "3006",
+      "name": "Japan Airlines",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "all nippon",
+      "mcc": "3161",
+      "name": "All Nippon Airways",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "korean air",
+      "mcc": "3082",
+      "name": "Korean Air",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "eva air",
+      "mcc": "3084",
+      "name": "EVA Air",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "klm",
+      "mcc": "3010",
+      "name": "KLM",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "qantas",
+      "mcc": "3012",
+      "name": "Qantas",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "lion air",
+      "mcc": "4511",
+      "name": "Lion Air",
+      "basis": "Typical for airlines without a network chain code"
+    },
+    {
+      "pattern": "citilink",
+      "mcc": "4511",
+      "name": "Citilink",
+      "basis": "Typical for airlines without a network chain code"
+    },
+    {
+      "pattern": "batik air",
+      "mcc": "4511",
+      "name": "Batik Air",
+      "basis": "Typical for airlines without a network chain code"
+    },
+    {
+      "pattern": "airasia",
+      "mcc": "4511",
+      "name": "AirAsia",
+      "basis": "Typical for airlines without a network chain code"
+    },
+    {
+      "pattern": "emirates",
+      "mcc": "4511",
+      "name": "Emirates",
+      "basis": "Typical for airlines without a network chain code"
+    },
+    {
+      "pattern": "qatar airways",
+      "mcc": "4511",
+      "name": "Qatar Airways",
+      "basis": "Typical for airlines without a network chain code"
+    },
+    {
+      "pattern": "marriott",
+      "mcc": "3509",
+      "name": "Marriott",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "sheraton",
+      "mcc": "3503",
+      "name": "Sheraton",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "westin",
+      "mcc": "3513",
+      "name": "Westin",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "ritz carlton",
+      "mcc": "3710",
+      "name": "The Ritz-Carlton",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "courtyard",
+      "mcc": "3690",
+      "name": "Courtyard by Marriott",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "hilton",
+      "mcc": "3504",
+      "name": "Hilton",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "holiday inn",
+      "mcc": "3501",
+      "name": "Holiday Inn",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "crowne plaza",
+      "mcc": "3750",
+      "name": "Crowne Plaza",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "hyatt",
+      "mcc": "3640",
+      "name": "Hyatt",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "shangri-la",
+      "mcc": "3545",
+      "name": "Shangri-La",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "four seasons",
+      "mcc": "3543",
+      "name": "Four Seasons",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "pullman",
+      "mcc": "3519",
+      "name": "Pullman",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "novotel",
+      "mcc": "3642",
+      "name": "Novotel",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "ibis",
+      "mcc": "3533",
+      "name": "ibis",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "mercure",
+      "mcc": "3579",
+      "name": "Mercure",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "sofitel",
+      "mcc": "3641",
+      "name": "Sofitel",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "swissotel",
+      "mcc": "3634",
+      "name": "Swissôtel",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "radisson",
+      "mcc": "3649",
+      "name": "Radisson",
+      "basis": "Network chain code for this airline or hotel group; some acquirers use the generic code"
+    },
+    {
+      "pattern": "aston",
+      "mcc": "7011",
+      "name": "Aston Hotels",
+      "basis": "Typical for hotels without a network chain code"
+    },
+    {
+      "pattern": "santika",
+      "mcc": "7011",
+      "name": "Santika Hotels",
+      "basis": "Typical for hotels without a network chain code"
+    },
+    {
+      "pattern": "swiss-belhotel",
+      "mcc": "7011",
+      "name": "Swiss-Belhotel",
+      "basis": "Typical for hotels without a network chain code"
+    },
+    {
+      "pattern": "cinema xxi",
+      "mcc": "7832",
+      "name": "Cinema XXI",
+      "basis": "Typical for cinemas"
+    },
+    {
+      "pattern": "cgv",
+      "mcc": "7832",
+      "name": "CGV",
+      "basis": "Typical for cinemas"
+    },
+    {
+      "pattern": "cinepolis",
+      "mcc": "7832",
+      "name": "Cinépolis",
+      "basis": "Typical for cinemas"
+    },
+    {
+      "pattern": "decathlon",
+      "mcc": "5941",
+      "name": "Decathlon",
+      "basis": "Typical for sporting goods stores"
+    },
+    {
+      "pattern": "planet sports",
+      "mcc": "5655",
+      "name": "Planet Sports",
+      "basis": "Typical for sports apparel stores; shoe counters can use 5661"
+    },
+    {
+      "pattern": "sports station",
+      "mcc": "5655",
+      "name": "Sports Station",
+      "basis": "Typical for sports apparel stores; shoe counters can use 5661"
+    },
+    {
+      "pattern": "adidas",
+      "mcc": "5655",
+      "name": "adidas",
+      "basis": "Typical for sports apparel stores; shoe counters can use 5661"
+    },
+    {
+      "pattern": "nike",
+      "mcc": "5655",
+      "name": "Nike",
+      "basis": "Typical for sports apparel stores; shoe counters can use 5661"
+    },
+    {
+      "pattern": "skechers",
+      "mcc": "5661",
+      "name": "Skechers",
+      "basis": "Typical for shoe stores"
+    },
+    {
+      "pattern": "uniqlo",
+      "mcc": "5651",
+      "name": "UNIQLO",
+      "basis": "Typical for clothing stores"
+    },
+    {
+      "pattern": "h&m",
+      "mcc": "5651",
+      "name": "H&M",
+      "basis": "Typical for clothing stores"
+    },
+    {
+      "pattern": "zara",
+      "mcc": "5651",
+      "name": "Zara",
+      "basis": "Typical for clothing stores"
+    },
+    {
+      "pattern": "matahari",
+      "mcc": "5311",
+      "name": "Matahari",
+      "basis": "Typical for department stores"
+    },
+    {
+      "pattern": "sogo",
+      "mcc": "5311",
+      "name": "SOGO",
+      "basis": "Typical for department stores"
+    },
+    {
+      "pattern": "aeon",
+      "mcc": "5311",
+      "name": "AEON",
+      "basis": "Typical for department stores"
+    },
+    {
+      "pattern": "erafone",
+      "mcc": "5732",
+      "name": "Erafone",
+      "basis": "Typical for electronics stores"
+    },
+    {
+      "pattern": "ibox",
+      "mcc": "5732",
+      "name": "iBox",
+      "basis": "Typical for electronics stores"
+    },
+    {
+      "pattern": "electronic city",
+      "mcc": "5732",
+      "name": "Electronic City",
+      "basis": "Typical for electronics stores"
+    },
+    {
+      "pattern": "ikea",
+      "mcc": "5712",
+      "name": "IKEA",
+      "basis": "Typical for furniture and home stores"
+    },
+    {
+      "pattern": "informa",
+      "mcc": "5712",
+      "name": "Informa",
+      "basis": "Typical for furniture and home stores"
+    },
+    {
+      "pattern": "kimia farma",
+      "mcc": "5912",
+      "name": "Kimia Farma",
+      "basis": "Typical for pharmacies and drug stores"
+    },
+    {
+      "pattern": "guardian",
+      "mcc": "5912",
+      "name": "Guardian",
+      "basis": "Typical for pharmacies and drug stores"
+    },
+    {
+      "pattern": "watsons",
+      "mcc": "5912",
+      "name": "Watsons",
+      "basis": "Typical for pharmacies and drug stores"
+    },
+    {
+      "pattern": "siloam",
+      "mcc": "8062",
+      "name": "Siloam Hospitals",
+      "basis": "Typical for hospitals"
+    },
+    {
+      "pattern": "mayapada",
+      "mcc": "8062",
+      "name": "Mayapada Hospital",
+      "basis": "Typical for hospitals"
+    },
+    {
+      "pattern": "telkomsel",
+      "mcc": "4814",
+      "name": "Telkomsel",
+      "basis": "Typical for telecommunication services"
+    },
+    {
+      "pattern": "indosat",
+      "mcc": "4814",
+      "name": "Indosat Ooredoo",
+      "basis": "Typical for telecommunication services"
+    },
+    {
+      "pattern": "xl axiata",
+      "mcc": "4814",
+      "name": "XL Axiata",
+      "basis": "Typical for telecommunication services"
+    },
+    {
+      "pattern": "indihome",
+      "mcc": "4814",
+      "name": "IndiHome",
+      "basis": "Typical for telecommunication services"
+    },
+    {
+      "pattern": "netflix",
+      "mcc": "4899",
+      "name": "Netflix",
+      "basis": "Typical for subscription television and streaming"
+    },
+    {
+      "pattern": "pln",
+      "mcc": "4900",
+      "name": "PLN",
+      "basis": "Typical for utilities"
+    },
+    {
+      "pattern": "pdam",
+      "mcc": "4900",
+      "name": "PDAM",
+      "basis": "Typical for utilities"
+    },
+    {
+      "pattern": "prudential",
+      "mcc": "6300",
+      "name": "Prudential",
+      "basis": "Typical for insurance premiums"
+    },
+    {
+      "pattern": "axa",
+      "mcc": "6300",
+      "name": "AXA",
+      "basis": "Typical for insurance premiums"
+    },
+    {
+      "pattern": "allianz",
+      "mcc": "6300",
+      "name": "Allianz",
+      "basis": "Typical for insurance premiums"
+    },
+    {
+      "pattern": "manulife",
+      "mcc": "6300",
+      "name": "Manulife",
+      "basis": "Typical for insurance premiums"
+    },
+    {
+      "pattern": "djp",
+      "mcc": "9311",
+      "name": "Direktorat Jenderal Pajak",
+      "basis": "Typical for tax payments"
+    },
+    {
+      "pattern": "bpjs",
+      "mcc": "9399",
+      "name": "BPJS",
+      "basis": "Typical for government services"
+    },
+    {
+      "pattern": "samsat",
+      "mcc": "9399",
+      "name": "Samsat",
+      "basis": "Typical for government services"
+    },
+    {
+      "pattern": "ruangguru",
+      "mcc": "8299",
+      "name": "Ruangguru",
+      "basis": "Typical for education services"
+    }
   ]
 }
