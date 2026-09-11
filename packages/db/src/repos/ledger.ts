@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
+import { transactionPointActuals } from '../schema-points';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
 
@@ -151,7 +152,7 @@ export function replaceTransaction(
       .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
     await voidTransactionTx(tx, ws, id);
     // Keep import identity so re-importing the same statement still recognises the row.
-    return postTransactionTx(tx, ws, {
+    const replacement = await postTransactionTx(tx, ws, {
       ...input,
       source: input.source ?? original?.source,
       externalRef: input.externalRef !== undefined ? input.externalRef : (original?.externalRef ?? null),
@@ -162,6 +163,12 @@ export function replaceTransaction(
         : {}),
       ...(input.mcc === undefined ? { mcc: original?.mcc ?? null } : {}),
     });
+    // Points already checked against the bank follow the edited purchase, flagged so the user can check the edit.
+    await tx
+      .update(transactionPointActuals)
+      .set({ transactionId: replacement, editedAfterCheck: 1 })
+      .where(and(eq(transactionPointActuals.transactionId, id), eq(transactionPointActuals.workspaceId, ws.workspaceId)));
+    return replacement;
   });
 }
 

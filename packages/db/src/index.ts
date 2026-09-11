@@ -8,6 +8,7 @@ export * from './repos/workspaces';
 export * from './repos/accounts';
 export * from './repos/categories';
 export * from './repos/mcc';
+export * from './repos/point-actuals';
 export * from './repos/ledger';
 export * from './repos/fx';
 export * from './repos/reports';
