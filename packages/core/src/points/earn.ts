@@ -153,13 +153,16 @@ export function nextBonusTier(bonus: CycleBonus, eligibleSpendMinor: number): Bo
  * by the spend that reaches its points cap — so the rest falls through to lower rules.
  * Rounding happens over the whole purchase (per_transaction_floor) or the whole cycle (per_cycle_sum), so split
  * purchases round like the issuer does. Cycle bonuses pay the highest tier reached by eligible spend, once, when the
- * bonus is valid at the end of the cycle. Recomputing the cycle makes voids, edits, and backdating correct.
+ * bonus is valid at the end of the cycle. Refunds deduct afterwards, floored at zero per rule and per bonus.
+ * Recomputing the cycle makes voids, edits, and backdating correct.
  */
 export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestors: Record<string, string[]>, options: EarnOptions = {}): CycleEarn {
   const billingCurrency = options.billingCurrency ?? 'IDR';
-  const sorted = lines
-    .filter((l) => l.amountMinor > 0)
-    .sort((a, b) => a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId) || a.entryId.localeCompare(b.entryId));
+  const ordered = [...lines].sort(
+    (a, b) => a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId) || a.entryId.localeCompare(b.entryId),
+  );
+  const sorted = ordered.filter((l) => l.amountMinor > 0);
+  const refunds = ordered.filter((l) => l.amountMinor < 0);
   const purchaseTotals = new Map<string, number>();
   for (const l of sorted) purchaseTotals.set(l.transactionId, (purchaseTotals.get(l.transactionId) ?? 0) + l.amountMinor);
 
@@ -224,13 +227,36 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
     }
   }
 
+  // Refunds reverse the points their amount would earn. They run after every purchase in the cycle so the order of
+  // purchase and refund does not matter, and they never take a rule below zero.
+  for (const refund of refunds) {
+    const amount = -refund.amountMinor;
+    const deduct = (rule: EarnRule, wanted: number): number => {
+      const spend = Math.min(wanted, spendByRule[rule.id]!);
+      if (spend <= 0) return 0;
+      const tenths = Math.min(tenthsByRule[rule.id]!, tenthsAt(rule, spend));
+      spendByRule[rule.id] = spendByRule[rule.id]! - spend;
+      tenthsByRule[rule.id] = tenthsByRule[rule.id]! - tenths;
+      allocations.push({ transactionId: refund.transactionId, entryId: refund.entryId, ruleId: rule.id, spendMinor: -spend, points: -tenths / TENTHS });
+      return spend;
+    };
+    let remaining = amount;
+    for (const rule of primary) {
+      if (remaining === 0) break;
+      if (ruleMatches(rule, refund, ancestors, amount, billingCurrency)) remaining -= deduct(rule, remaining);
+    }
+    for (const rule of stackable) {
+      if (ruleMatches(rule, refund, ancestors, amount, billingCurrency)) deduct(rule, amount);
+    }
+  }
   const bonusById: Record<string, number> = {};
   const eligibleSpendByBonus: Record<string, number> = {};
-  const cycleEnd = options.cycleEnd ?? sorted.at(-1)?.occurredOn ?? null;
+  const cycleEnd = options.cycleEnd ?? ordered.at(-1)?.occurredOn ?? null;
   for (const bonus of options.bonuses ?? []) {
-    const eligible = sorted
-      .filter((l) => withinWindow(l.occurredOn, bonus.validFrom, bonus.validTo) && matchesSpend(bonus.match, l, ancestors, billingCurrency))
-      .reduce((s, l) => s + l.amountMinor, 0);
+    const counts = (l: SpendLine) => withinWindow(l.occurredOn, bonus.validFrom, bonus.validTo) && matchesSpend(bonus.match, l, ancestors, billingCurrency);
+    const purchased = sorted.filter(counts).reduce((s, l) => s + l.amountMinor, 0);
+    const refunded = refunds.filter(counts).reduce((s, l) => s - l.amountMinor, 0);
+    const eligible = Math.max(0, purchased - refunded);
     eligibleSpendByBonus[bonus.id] = eligible;
     const active = cycleEnd !== null && withinWindow(cycleEnd, bonus.validFrom, bonus.validTo);
     const reached = [...bonus.tiers].sort((a, b) => a.minSpendMinor - b.minSpendMinor).filter((t) => t.minSpendMinor <= eligible).at(-1);
