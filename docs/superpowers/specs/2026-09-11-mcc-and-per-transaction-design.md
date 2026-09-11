@@ -201,3 +201,12 @@ Then an independent code review of the branch and finishing the branch.
 - Maybank "per card" thresholds are modelled per purchase; merchant country is approximated by currency.
 - Birthday and match-day multipliers, tiered annual transfer ratios, and conversion fees are notes only.
 - Hints suggest; they never change data without the user choosing a fix.
+
+## 12. Card fees never earn (approved 2026-09-11)
+
+Issuer charges never earn points or count toward cycle bonuses on any card, whatever its rules:
+
+- Purchases in Fees & Charges or any category under it.
+- Purchases whose description contains a card fee phrase (`CARD_FEE_PHRASES` in core): biaya notifikasi, notification fee, biaya materai, bea materai, biaya meterai, bea meterai, stamp duty, biaya administrasi, biaya admin, administration fee, admin fee, biaya cetak tagihan, biaya lembar tagihan, statement fee, iuran tahunan, annual fee, biaya keterlambatan, late fee, late charge, late payment fee, biaya tarik tunai, cash advance fee, biaya overlimit, biaya over limit, overlimit fee, biaya bunga, interest charge, finance charge. Phrases only: a single word such as "bunga" would match a florist.
+- Fees & Charges gains Notification Fee, Statement Fee, Stamp Duty, and Administration Fee (`fees.notification`, `fees.statement`, `fees.stamp_duty`, `fees.administration`), created in existing workspaces.
+- `cardSpendLines` sets `SpendLine.cardFee`; `CycleEarn.cardFeeSpendMinor` reports fee spend, which no longer counts as spend no rule matched. The card page says "Rp X in card fees and charges earns no points" and marks fee rows.

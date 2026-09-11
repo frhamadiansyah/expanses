@@ -75,6 +75,7 @@ apps/web/e2e/mcc.spec.ts
 | 25 | Web: Merchants page and category MCCs | F |
 | 26 | Web: card purchase list, actuals, hints, crediting | F |
 | 27 | Web: transaction list estimates and recommender MCC | F |
+| 27a | Card fees never earn (spec §12) | F |
 | 28 | Catalog data: merchants, BCA and Mandiri v2, Maybank entries | G |
 | 29 | E2E, preview, execution status | G |
 
@@ -253,6 +254,15 @@ export function cyclesCovering(dates: string[], anchor: 'statement' | 'calendar'
 
 - [ ] Tests: `cyclesCovering returns each distinct cycle once for dates across two statement cycles`.
 - [ ] Implement estimates under card purchase amounts and the recommender's MCC line; run web tests, typecheck, all e2e; commit `feat(web): purchase estimates and MCC in recommendations`.
+
+### Task 27a: Card fees never earn (spec §12, approved 2026-09-11)
+
+**Files:** Create `packages/core/src/points/card-fees.ts`, `packages/core/test/card-fees.test.ts`, `packages/db/test/card-fees.test.ts`; modify `packages/core/src/points/earn.ts`, `packages/core/src/categories/defaults.ts`, `packages/core/src/index.ts`, `packages/db/src/repos/points.ts`, `packages/db/src/repos/categories.ts`, `packages/db/test/categories.test.ts`, `apps/web/src/features/cards/CardDetailPage.tsx`, `hint-text.ts`, `PurchaseList.tsx`.
+
+**Interfaces — Produces:** `CARD_FEE_PHRASES: readonly string[]`; `cardFeeCategoryIds(categories): Set<string>`; `isCardFee(description, categoryId, feeCategoryIds): boolean`; `SpendLine.cardFee?: boolean`; `CycleEarn.cardFeeSpendMinor: number`.
+
+- [ ] Tests: `finds the fees category and everything under it`; `recognises fee categories and issuer charge phrases, but not ordinary merchants`; `never earns or counts toward bonuses, and is reported apart from unmatched spend`; db `marks fee categories and issuer charge descriptions as card fees`; `ensureCategoryKeys creates the four fee sub-categories`.
+- [ ] Implement; run all unit tests, typecheck, all e2e; commit `feat: card fees never earn points`.
 
 ### Task 28: Catalog data — merchants, BCA and Mandiri v2, Maybank entries
 
