@@ -1,10 +1,11 @@
-import { CURRENCIES, displayAmount, isoDate, parseMajor } from '@expanses/core';
+import { CURRENCIES, displayAmount, isoDate, parseMajor, parseRate } from '@expanses/core';
 import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, renameAccount, upsertRate } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, SUBTYPE_LABELS, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { checkManualRate, ratePreview } from '../../lib/rates';
+import { Button, Card, Empty, ErrorBox, errorMessage, Field, Input, Money, PageHeader, Select } from '../../ui';
 
 const TYPES: { subtype: AccountSubtype; kind: 'asset' | 'liability' }[] = [
   { subtype: 'bank', kind: 'asset' },
@@ -44,7 +45,8 @@ function AddAccountForm() {
       let openingRateToBase: number | undefined;
       if (foreign && openingBalanceMinor !== 0) {
         if (manualRate.trim()) {
-          openingRateToBase = Number(manualRate);
+          openingRateToBase = parseRate(manualRate);
+          await checkManualRate(database, currency, ws.baseCurrency, openedOn, openingRateToBase);
           await upsertRate(database, { fromCurrency: currency, toCurrency: ws.baseCurrency, onDate: openedOn, rate: openingRateToBase, source: 'manual', sourceDate: openedOn });
         } else {
           const resolved = await resolveRates([currency], openedOn);
@@ -95,7 +97,7 @@ function AddAccountForm() {
           <Input type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
         </Field>
         {foreign && (
-          <Field label={`Rate: ${ws.baseCurrency} per 1 ${currency}`} hint="Leave empty to fetch the daily rate.">
+          <Field label={`Rate: ${ws.baseCurrency} per 1 ${currency}`} hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}>
             <Input value={manualRate} onChange={(e) => setManualRate(e.target.value)} inputMode="decimal" />
           </Field>
         )}
@@ -126,8 +128,12 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
   }
   async function archive(account: AccountRow) {
     if (window.confirm(`Archive ${account.name}? Its history stays in reports.`)) {
-      await archiveAccount(database, ws, account.id);
-      await invalidate();
+      try {
+        await archiveAccount(database, ws, account.id);
+        await invalidate();
+      } catch (e) {
+        window.alert(errorMessage(e));
+      }
     }
   }
 

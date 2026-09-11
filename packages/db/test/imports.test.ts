@@ -33,3 +33,24 @@ describe('importRows', () => {
     expect(balances[coffee]).toBe(20_000);
   });
 });
+
+describe('review fixes: re-import after recategorize', () => {
+  it('does not import a row again after it was recategorized', async () => {
+    const { listTransactions, replaceTransaction } = await import('../src/index');
+    const { expenseLines } = await import('@expanses/core');
+    const { database, ws } = await setupDb();
+    const card = await createAccount(database, ws, { name: 'Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const all = await listAccounts(database, ws);
+    const other = all.find((a) => a.name === 'Other Expense')!.id;
+    const dining = all.find((a) => a.name === 'Dining Out')!.id;
+    const rows = [{ occurredOn: '2026-09-11', description: 'Sushi Tei', amountMinor: 400_000, externalRef: `csv:${card.id}|2026-09-11|400000|sushi tei|0`, categoryAccountId: other }];
+    await importRows(database, ws, { accountId: card.id, currency: 'IDR', rows });
+    const [tx] = await listTransactions(database, ws, { accountId: card.id });
+    await replaceTransaction(database, ws, tx!.id, {
+      occurredOn: '2026-09-11', description: 'Sushi Tei',
+      lines: expenseLines({ categoryAccountId: dining, paymentAccountId: card.id, amountMinor: 400_000, currency: 'IDR' }),
+    });
+    expect(await importRows(database, ws, { accountId: card.id, currency: 'IDR', rows })).toEqual({ imported: 0, skipped: 1 });
+    expect((await nativeBalances(database, ws))[card.id]).toBe(-400_000);
+  });
+});

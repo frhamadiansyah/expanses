@@ -1,7 +1,17 @@
 import type { AccountRow } from '@expanses/db';
 
 /** Category <option>s grouped by top-level parent. Parents are selectable as "(general)". */
-export function CategoryOptions({ accounts, kind, placeholder = 'Choose…' }: { accounts: AccountRow[]; kind: 'expense' | 'income'; placeholder?: string | null }) {
+export function CategoryOptions({
+  accounts,
+  kind,
+  placeholder = 'Choose…',
+  parentSuffix = '(all)',
+}: {
+  accounts: AccountRow[];
+  kind: 'expense' | 'income';
+  placeholder?: string | null;
+  parentSuffix?: string;
+}) {
   const categories = accounts.filter((a) => a.kind === kind && a.archivedAt === null);
   const roots = categories.filter((c) => c.parentId === null);
   return (
@@ -18,7 +28,7 @@ export function CategoryOptions({ accounts, kind, placeholder = 'Choose…' }: {
         }
         return (
           <optgroup key={root.id} label={root.name}>
-            <option value={root.id}>{`${root.name} (all)`}</option>
+            <option value={root.id}>{`${root.name} ${parentSuffix}`}</option>
             {children.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}

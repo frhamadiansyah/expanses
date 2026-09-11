@@ -42,11 +42,23 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       const bytes = await state.pool.exportFile(FILE);
       reply({ id: req.id, result: bytes }, [bytes.buffer]);
     } else if (req.op === 'import') {
+      // Keep the current database so a failed or foreign file restores the previous state instead of an empty one.
+      const previous = await state.pool.exportFile(FILE);
       state.db.close();
       try {
         await state.pool.importDb(FILE, req.bytes);
-      } finally {
         state.db = state.open();
+        const hasSchema = state.db.selectValue("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'");
+        if (!hasSchema) throw new Error('That file is not an Expanses backup.');
+      } catch (error) {
+        try {
+          state.db.close();
+        } catch {
+          // already closed
+        }
+        await state.pool.importDb(FILE, previous);
+        state.db = state.open();
+        throw error;
       }
       reply({ id: req.id, result: null });
     }

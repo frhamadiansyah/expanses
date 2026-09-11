@@ -1,8 +1,8 @@
 import { type AccountKind, currencyInfo, openingBalanceLines, uuidv7 } from '@expanses/core';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
-import { accounts, auditLog } from '../schema';
+import { accounts, auditLog, entries, transactions } from '../schema';
 import type { SystemAccountKey } from '../seed';
 import { postTransactionTx } from './ledger';
 
@@ -141,10 +141,24 @@ export async function renameAccount(database: Database, ws: WorkspaceContext, id
 
 export async function archiveAccount(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
   await database.transaction(async (tx) => {
-    await tx
-      .update(accounts)
-      .set({ archivedAt: new Date().toISOString() })
-      .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId), isNull(accounts.systemKey)));
+    const [account] = await tx
+      .select()
+      .from(accounts)
+      .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+    if (!account) throw new AccountError('Account not found');
+    if (account.systemKey) throw new AccountError('System accounts cannot be archived');
+    if (account.kind === 'asset' || account.kind === 'liability') {
+      // Archived money accounts leave net worth, so they must be empty first.
+      const [row] = await tx
+        .select({ total: sql<number>`coalesce(sum(${entries.amountMinor}), 0)` })
+        .from(entries)
+        .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+        .where(and(eq(entries.accountId, id), eq(transactions.status, 'posted')));
+      if (Number(row?.total ?? 0) !== 0) {
+        throw new AccountError(`${account.name} still has a balance. Bring it to zero before archiving so net worth stays correct.`);
+      }
+    }
+    await tx.update(accounts).set({ archivedAt: new Date().toISOString() }).where(eq(accounts.id, id));
     await writeAudit(tx, ws, 'archive', id, {});
   });
 }

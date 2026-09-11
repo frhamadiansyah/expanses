@@ -11,7 +11,8 @@ function findColumn(headers: string[], words: string[]): number {
   return headers.findIndex((h) => words.some((w) => h.toLowerCase().includes(w)));
 }
 
-function guessMapping(table: string[][]): CsvMapping {
+/** Card exports list charges as positive amounts; bank exports list money out as negative. */
+function guessMapping(table: string[][], isCard: boolean): CsvMapping {
   const first = table[0] ?? [];
   const hasHeader = !first.some((c) => /\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/.test(c));
   const sample = (hasHeader ? table[1] : table[0]) ?? [];
@@ -29,7 +30,7 @@ function guessMapping(table: string[][]): CsvMapping {
     dateFormat,
     descriptionColumn: description >= 0 ? description : 1,
     amountColumn: twoColumns ? null : amount >= 0 ? amount : 2,
-    negativeIsOutflow: true,
+    negativeIsOutflow: !isCard,
     outflowColumn: twoColumns ? debit : null,
     inflowColumn: twoColumns ? credit : null,
   };
@@ -53,7 +54,7 @@ export function ImportPage() {
 
   const account = all.find((a) => a.id === accountId);
   const currency = account?.currency ?? ws.baseCurrency;
-  const mapped = useMemo(() => (mapping ? mapCsvRows(table, mapping, currency) : { rows: [], errors: [] }), [table, mapping, currency]);
+  const mapped = useMemo(() => (mapping ? mapCsvRows(table, mapping, currency, accountId) : { rows: [], errors: [] }), [table, mapping, currency, accountId]);
   const otherExpense = all.find((a) => a.kind === 'expense' && a.name === 'Other Expense')?.id ?? '';
   const otherIncome = all.find((a) => a.kind === 'income' && a.name === 'Other Income')?.id ?? '';
   const categoryFor = (row: CsvRow) => overrides[row.externalRef] ?? (row.amountMinor > 0 ? otherExpense : account?.subtype === 'credit_card' ? '' : otherIncome);
@@ -78,7 +79,7 @@ export function ImportPage() {
     const parsed = parseCsv(text, detectDelimiter(text));
     setFileName(file.name);
     setTable(parsed);
-    setMapping(guessMapping(parsed));
+    setMapping(guessMapping(parsed, account?.subtype === 'credit_card'));
     setOverrides({});
   }
 
@@ -138,7 +139,15 @@ export function ImportPage() {
       <PageHeader title="Import CSV" />
       <Card className="grid gap-3 md:grid-cols-2">
         <Field label="Into account">
-          <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <Select
+            value={accountId}
+            onChange={(e) => {
+              const next = all.find((a) => a.id === e.target.value);
+              setAccountId(e.target.value);
+              setMapping((m) => (m ? { ...m, negativeIsOutflow: next?.subtype !== 'credit_card' } : m));
+              setOverrides({});
+            }}
+          >
             <option value="">Choose…</option>
             {money.map((a) => (
               <option key={a.id} value={a.id}>{`${a.name} (${a.currency})`}</option>

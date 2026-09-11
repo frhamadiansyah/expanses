@@ -89,3 +89,27 @@ describe('uuidv7', () => {
     expect(a < b).toBe(true);
   });
 });
+
+describe('review fixes: amounts and rates', () => {
+  it('accepts zero cents on exponent-0 currencies in both separator styles', () => {
+    expect(parseMajor('1,250,000.00', 'IDR')).toBe(1_250_000);
+    expect(parseMajor('1.250.000,00', 'IDR')).toBe(1_250_000);
+    expect(parseMajor('75000.0', 'IDR')).toBe(75_000);
+  });
+
+  it('rejects non-zero decimals the currency cannot hold', () => {
+    expect(() => parseMajor('12.50', 'IDR')).toThrow(MoneyError);
+  });
+
+  it('parses FX rates with either decimal separator and thousands grouping', async () => {
+    const { parseRate } = await import('../src/index');
+    expect(parseRate('536.49')).toBe(536.49);
+    expect(parseRate('536,49')).toBe(536.49);
+    expect(parseRate('16.500,00')).toBe(16500);
+    expect(parseRate('16,500.25')).toBe(16500.25);
+    expect(parseRate('1.234.567')).toBe(1234567);
+    expect(parseRate('0.0000571')).toBe(0.0000571);
+    expect(() => parseRate('abc')).toThrow(MoneyError);
+    expect(() => parseRate('0')).toThrow(MoneyError);
+  });
+});

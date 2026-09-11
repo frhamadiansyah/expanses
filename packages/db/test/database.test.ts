@@ -65,3 +65,13 @@ describe('database', () => {
     expect(await database.db.select().from(schema.settings)).toEqual([{ key: 'kept', value: 'yes' }]);
   });
 });
+
+describe('review fixes: rollback failure', () => {
+  it('rethrows the original error when ROLLBACK itself fails', async () => {
+    const inner = createNodeExecutor();
+    executor = inner;
+    const flaky = { ...inner, execScript: async (sql: string) => { if (sql === 'ROLLBACK') throw new Error('rollback failed'); return inner.execScript(sql); } };
+    const database = createDatabase(flaky);
+    await expect(database.transaction(async () => { throw new Error('original'); })).rejects.toThrow('original');
+  });
+});

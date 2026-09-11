@@ -64,9 +64,22 @@ describe('createAccount', () => {
     const wallet = await createAccount(database, ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
     const equity = (await listAccounts(database, ws)).find((a) => a.systemKey === 'opening_balance')!;
     await archiveAccount(database, ws, wallet.id);
-    await archiveAccount(database, ws, equity.id);
+    await expect(archiveAccount(database, ws, equity.id)).rejects.toThrow(AccountError);
     const visible = await listAccounts(database, ws);
     expect(visible.some((a) => a.id === wallet.id)).toBe(false);
     expect(visible.some((a) => a.id === equity.id)).toBe(true);
+  });
+});
+
+describe('review fixes: archiving with a balance', () => {
+  it('refuses to archive a money account that still has a balance, but allows categories with history', async () => {
+    const { database, ws } = await setupDb();
+    const card = await createAccount(database, ws, { name: 'Old card', kind: 'liability', subtype: 'credit_card', currency: 'IDR', openingBalanceMinor: 2_000_000 });
+    await expect(archiveAccount(database, ws, card.id)).rejects.toThrow(AccountError);
+    expect((await listAccounts(database, ws)).some((a) => a.id === card.id)).toBe(true);
+    const equity = (await listAccounts(database, ws)).find((a) => a.systemKey === 'opening_balance')!;
+    expect((await nativeBalances(database, ws))[equity.id]).toBe(2_000_000);
+    const other = (await listAccounts(database, ws)).find((a) => a.name === 'Other Expense')!;
+    await archiveAccount(database, ws, other.id);
   });
 });

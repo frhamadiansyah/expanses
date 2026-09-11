@@ -103,8 +103,9 @@ export function parseCsvDate(value: string, format: CsvDateFormat): string {
 export function parseCsvAmount(value: string, currency: string): number | null {
   const v = value.trim();
   if (v === '' || v === '-') return null;
-  const negative = /^\(.*\)$/.test(v) || /-/.test(v) || /\bCR\b/i.test(v);
-  const cleaned = v.replace(/[^0-9.,]/g, '');
+  // Negative: parentheses, a leading minus, a trailing minus after a digit, or a CR marker. "50.000,-" is Indonesian for no decimals.
+  const negative = /^\(.*\)$/.test(v) || /^[^0-9]*-/.test(v) || /\d\s*-$/.test(v) || /\bCR\b/i.test(v);
+  const cleaned = v.replace(/[^0-9.,]/g, '').replace(/[.,]+$/, '');
   if (!/[0-9]/.test(cleaned)) throw new Error(`"${value}" is not an amount`);
   const minor = parseMajor(cleaned, currency);
   return negative ? -minor : minor;
@@ -115,7 +116,8 @@ function normalizeDescription(s: string): string {
 }
 
 /** Maps parsed CSV rows to signed amounts with deterministic external refs for re-import dedupe. */
-export function mapCsvRows(rows: string[][], mapping: CsvMapping, currency: string): { rows: CsvRow[]; errors: CsvRowError[] } {
+/** refScope (the target account id) keeps identical rows in different accounts distinct. */
+export function mapCsvRows(rows: string[][], mapping: CsvMapping, currency: string, refScope: string): { rows: CsvRow[]; errors: CsvRowError[] } {
   const out: CsvRow[] = [];
   const errors: CsvRowError[] = [];
   const seen = new Map<string, number>();
@@ -141,7 +143,7 @@ export function mapCsvRows(rows: string[][], mapping: CsvMapping, currency: stri
       const key = `${occurredOn}|${amountMinor}|${description.toLowerCase()}`;
       const occurrence = seen.get(key) ?? 0;
       seen.set(key, occurrence + 1);
-      out.push({ rowNumber, occurredOn, description, amountMinor, externalRef: `csv:${key}|${occurrence}` });
+      out.push({ rowNumber, occurredOn, description, amountMinor, externalRef: `csv:${refScope}|${key}|${occurrence}` });
     } catch (error) {
       errors.push({ rowNumber, message: error instanceof Error ? error.message : String(error) });
     }

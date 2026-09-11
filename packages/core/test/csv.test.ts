@@ -31,18 +31,37 @@ describe('dates and amounts', () => {
 describe('mapCsvRows', () => {
   it('maps a card export with positive charges and dedupes identical rows by occurrence', () => {
     const rows = parseCsv('Date,Merchant,Amount\n2026-09-01,Kopi Kenangan,25000\n2026-09-01,Kopi  Kenangan,25000\n2026-09-03,Payment,-1000000\nbad,Row,1\n');
-    const result = mapCsvRows(rows, { hasHeader: true, dateColumn: 0, dateFormat: 'YYYY-MM-DD', descriptionColumn: 1, amountColumn: 2, negativeIsOutflow: false, outflowColumn: null, inflowColumn: null }, 'IDR');
+    const result = mapCsvRows(rows, { hasHeader: true, dateColumn: 0, dateFormat: 'YYYY-MM-DD', descriptionColumn: 1, amountColumn: 2, negativeIsOutflow: false, outflowColumn: null, inflowColumn: null }, 'IDR', 'card');
     expect(result.rows.map((r) => [r.occurredOn, r.description, r.amountMinor, r.externalRef])).toEqual([
-      ['2026-09-01', 'Kopi Kenangan', 25000, 'csv:2026-09-01|25000|kopi kenangan|0'],
-      ['2026-09-01', 'Kopi Kenangan', 25000, 'csv:2026-09-01|25000|kopi kenangan|1'],
-      ['2026-09-03', 'Payment', -1_000_000, 'csv:2026-09-03|-1000000|payment|0'],
+      ['2026-09-01', 'Kopi Kenangan', 25000, 'csv:card|2026-09-01|25000|kopi kenangan|0'],
+      ['2026-09-01', 'Kopi Kenangan', 25000, 'csv:card|2026-09-01|25000|kopi kenangan|1'],
+      ['2026-09-03', 'Payment', -1_000_000, 'csv:card|2026-09-03|-1000000|payment|0'],
     ]);
     expect(result.errors).toEqual([{ rowNumber: 5, message: '"bad" is not YYYY-MM-DD' }]);
   });
 
   it('maps a bank export with separate debit and credit columns', () => {
     const rows = parseCsv('01/09/2026;Transfer in;;5.000.000\n02/09/2026;ATM;500.000;\n', ';');
-    const result = mapCsvRows(rows, { hasHeader: false, dateColumn: 0, dateFormat: 'DD/MM/YYYY', descriptionColumn: 1, amountColumn: null, negativeIsOutflow: true, outflowColumn: 2, inflowColumn: 3 }, 'IDR');
+    const result = mapCsvRows(rows, { hasHeader: false, dateColumn: 0, dateFormat: 'DD/MM/YYYY', descriptionColumn: 1, amountColumn: null, negativeIsOutflow: true, outflowColumn: 2, inflowColumn: 3 }, 'IDR', 'bank');
     expect(result.rows.map((r) => r.amountMinor)).toEqual([-5_000_000, 500_000]);
+  });
+});
+
+describe('review fixes: CSV amounts and refs', () => {
+  it('parses IDR bank amounts with cents and Indonesian dash notation', () => {
+    expect(parseCsvAmount('1,250,000.00', 'IDR')).toBe(1_250_000);
+    expect(parseCsvAmount('Rp 1.250.000,00', 'IDR')).toBe(1_250_000);
+    expect(parseCsvAmount('50.000,-', 'IDR')).toBe(50_000);
+    expect(parseCsvAmount('-50.000', 'IDR')).toBe(-50_000);
+    expect(parseCsvAmount('50.000-', 'IDR')).toBe(-50_000);
+  });
+
+  it('scopes external refs to the target account', () => {
+    const rows = parseCsv('2026-09-30,BIAYA ADM,-10000\n');
+    const mapping = { hasHeader: false, dateColumn: 0, dateFormat: 'YYYY-MM-DD' as const, descriptionColumn: 1, amountColumn: 2, negativeIsOutflow: true, outflowColumn: null, inflowColumn: null };
+    const a = mapCsvRows(rows, mapping, 'IDR', 'acct-a').rows[0]!.externalRef;
+    const b = mapCsvRows(rows, mapping, 'IDR', 'acct-b').rows[0]!.externalRef;
+    expect(a).toBe('csv:acct-a|2026-09-30|10000|biaya adm|0');
+    expect(b).not.toBe(a);
   });
 });

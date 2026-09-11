@@ -7,6 +7,7 @@ export {
   minorToMajorString,
   MoneyError,
   parseMajor,
+  parseRate,
   roundHalfAwayFromZero,
 } from './money/money';
 export {

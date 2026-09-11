@@ -159,3 +159,31 @@ Delivered: all 21 task deliverables across two drops.
 Verification at completion: core 39, db 21, web 4 unit tests passing; typecheck clean in all packages; two Playwright tests passing against a production build (card purchase vs statement payment critical path; points cap cascade and recommender).
 
 Outstanding before Stage 2: an independent code review of the v0 codebase, which the fast track skipped.
+
+## Independent review (2026-09-11)
+
+Reviewed range `575fe1c..e508eea`. Verdict: ready with fixes. Ledger core, workspace scoping, migrations, and points structure judged sound; manual entry safe.
+
+Fixed, each with a regression test written to fail first:
+
+- C1 — IDR amounts with zero cents (`1,250,000.00`, `1.250.000,00`) parsed 100× too large. `parseMajor` now reads up to two trailing decimals on exponent-0 currencies and rejects non-zero ones. CSV amounts also accept `50.000,-` and trailing minus.
+- C2 — replacing an imported transaction dropped `external_ref`, so re-imports duplicated it. `replaceTransaction` now carries `source` and `external_ref` forward.
+- I1 — card CSV mapping defaulted to bank sign convention. Card accounts now default to positive-is-charge.
+- I2 — CSV external refs were not scoped to the account. Refs are now `csv:<accountId>|…`.
+- I3 — editing or starting a split without a top-level amount always failed. Form logic extracted to `apps/web/src/features/transactions/draft.ts` with round-trip tests for expense, split, income, transfer, and exchange.
+- I4 — manual FX rates parsed with `Number()`. Now `parseRate` plus a visible reading preview and a guard rejecting rates more than 10× from the nearest known rate. Manual rates for future dates are stored under the date they are resolved on.
+- I5 — opening balances offered an Edit that turned them into transfers. Edit is hidden for opening balances and voided rows.
+- I6 — archiving a money account with a balance silently removed it from net worth. `archiveAccount` refuses non-zero asset/liability accounts and system accounts.
+- I7 — a points cap consumed spend without earning. Rules now take only the spend that can still earn under both caps; the remainder cascades.
+- I8 — minimum spend and per-transaction rounding applied per split line. Both now apply to the whole purchase.
+- I9 — restore could reload before the safety copy saved, and a failed import left an empty database. Restore is now two-step with explicit confirmation, and the worker restores the previous database when an import fails or the file lacks the Expanses schema.
+- Minor, fixed while in the same code — ROLLBACK failure no longer masks the original error.
+
+Deviations the reviewer found unrecorded, confirmed intentional:
+
+- Hand-written service worker instead of vite-plugin-pwa, to avoid a plugin install mid-build; it caches hashed assets and falls back to the cached shell offline.
+- Hand-written RFC 4180 CSV parser instead of papaparse, to avoid a dependency.
+- No `import_batches` table; duplicate protection uses account-scoped `external_ref`. Batch undo is deferred to Stage 2.
+- File names differ from the file map: `lib/queries.ts` and `lib/rates.ts` instead of `repos/settings.ts` and `providers.tsx`; card pages are `CardsPage`, `CardDetailPage`, `RuleForm`, `RecommendPage`.
+
+Deferred minor findings for Stage 2: worker executor has no timeout after a worker crash; service worker caches non-OK navigation responses; recommender ranks across redemption currencies; balances include future-dated transactions; parent-category drilldown excludes subcategories; realized FX gain/loss is not posted; audit log does not cover card terms, rules, redemptions, actuals, or manual rates; refunds cannot be edited; changing statement day orphans recorded actuals; `saveEarnRule` does not verify the rule belongs to the program; integrity check does not run on app open; `import_batches` with batch undo.

@@ -138,3 +138,23 @@ describe('ledger', () => {
     expect(tx!.entries.find((e) => e.accountId === groceries.id)).toMatchObject({ amountMinor: 45_000, currency: 'THB', amountBaseMinor: 241_421 });
   });
 });
+
+describe('review fixes: replace keeps import identity', () => {
+  it('keeps source and external_ref when a transaction is replaced', async () => {
+    const t = await setupDb();
+    const visa = await createAccount(t.database, t.ws, { name: 'Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const all = await listAccounts(t.database, t.ws);
+    const other = all.find((a) => a.name === 'Other Expense')!;
+    const dining = all.find((a) => a.name === 'Dining Out')!;
+    const id = await postTransaction(t.database, t.ws, {
+      occurredOn: '2026-09-11', description: 'Sushi Tei', source: 'csv', externalRef: 'csv:visa|x|0',
+      lines: expenseLines({ categoryAccountId: other.id, paymentAccountId: visa.id, amountMinor: 400_000, currency: 'IDR' }),
+    });
+    await replaceTransaction(t.database, t.ws, id, {
+      occurredOn: '2026-09-11', description: 'Sushi Tei',
+      lines: expenseLines({ categoryAccountId: dining.id, paymentAccountId: visa.id, amountMinor: 400_000, currency: 'IDR' }),
+    });
+    const [tx] = await listTransactions(t.database, t.ws, { accountId: visa.id });
+    expect(tx).toMatchObject({ source: 'csv', externalRef: 'csv:visa|x|0', description: 'Sushi Tei' });
+  });
+});

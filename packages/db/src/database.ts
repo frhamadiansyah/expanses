@@ -41,7 +41,11 @@ export function createDatabase(executor: SqlExecutor): Database {
           await executor.execScript('COMMIT');
           return result;
         } catch (error) {
-          await executor.execScript('ROLLBACK');
+          try {
+            await executor.execScript('ROLLBACK');
+          } catch {
+            // SQLite may have rolled back already; surface the error that caused the failure.
+          }
           throw error;
         }
       }),

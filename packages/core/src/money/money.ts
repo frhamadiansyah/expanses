@@ -36,12 +36,17 @@ export function parseMajor(input: string, currency: string): number {
   }
   let intPart = s;
   let fracPart = '';
-  if (exponent > 0) {
-    const m = /^(.*)[.,](\d+)$/.exec(s);
-    if (m && m[2]!.length <= exponent) {
-      intPart = m[1]!;
-      fracPart = m[2]!;
+  // A trailing group of up to max(exponent, 2) digits is decimals; a 3-digit group on a 0-2 exponent currency is thousands.
+  const m = /^(.*)[.,](\d+)$/.exec(s);
+  if (m && m[2]!.length <= Math.max(exponent, 2)) {
+    intPart = m[1]!;
+    fracPart = m[2]!;
+  }
+  if (fracPart.length > exponent) {
+    if (/[^0]/.test(fracPart.slice(exponent))) {
+      throw new MoneyError(`${currency} allows ${exponent} decimal places: "${input}"`);
     }
+    fracPart = fracPart.slice(0, exponent);
   }
   intPart = intPart.replace(/[.,]/g, '') || '0';
   const minor = Number(intPart) * 10 ** exponent + Number(fracPart.padEnd(exponent, '0') || '0');
@@ -82,4 +87,27 @@ export function convertMinor(amountMinor: number, from: string, to: string, rate
   const result = roundHalfAwayFromZero(raw);
   assertMinor(result, 'converted amount');
   return result;
+}
+
+/**
+ * Parses a user-typed FX rate. With both "." and "," present, the last one is the decimal separator.
+ * A separator that repeats is thousands grouping. A single separator is a decimal point,
+ * so "16.500" reads as 16.5 — callers must show a preview and sanity-check against known rates.
+ */
+export function parseRate(input: string): number {
+  const s = input.trim().replace(/[\s_]/g, '');
+  if (!/^[0-9.,]+$/.test(s) || !/[0-9]/.test(s)) throw new MoneyError(`Invalid rate: "${input}"`);
+  const lastDot = s.lastIndexOf('.');
+  const lastComma = s.lastIndexOf(',');
+  let normalized = s;
+  if (lastDot >= 0 && lastComma >= 0) {
+    const decimal = lastDot > lastComma ? '.' : ',';
+    normalized = s.split(decimal === '.' ? ',' : '.').join('').replace(decimal, '.');
+  } else if (lastDot >= 0 || lastComma >= 0) {
+    const sep = lastDot >= 0 ? '.' : ',';
+    normalized = s.split(sep).length > 2 ? s.split(sep).join('') : s.replace(sep, '.');
+  }
+  const rate = Number(normalized);
+  if (!Number.isFinite(rate) || rate <= 0) throw new MoneyError(`Rate must be a positive number: "${input}"`);
+  return rate;
 }

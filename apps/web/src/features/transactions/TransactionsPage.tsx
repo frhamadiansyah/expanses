@@ -8,6 +8,7 @@ import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
 import { classify } from './classify';
+import { isEditable } from './draft';
 import { TransactionForm } from './TransactionForm';
 
 const route = getRouteApi('/transactions');
@@ -96,15 +97,15 @@ export function TransactionsPage() {
                     {sign < 0 ? '−' : sign > 0 ? '+' : ''}
                     {formatMinor(c.amountMinor, c.currency)}
                   </span>
+                  {isEditable(tx) && (
+                    <Button variant="ghost" onClick={() => setEditingId(tx.id)}>
+                      Edit
+                    </Button>
+                  )}
                   {tx.status === 'posted' && (
-                    <>
-                      <Button variant="ghost" onClick={() => setEditingId(tx.id)}>
-                        Edit
-                      </Button>
-                      <Button variant="ghost" onClick={() => void onVoid(tx)}>
-                        Delete
-                      </Button>
-                    </>
+                    <Button variant="ghost" onClick={() => void onVoid(tx)}>
+                      Delete
+                    </Button>
                   )}
                 </li>
               );

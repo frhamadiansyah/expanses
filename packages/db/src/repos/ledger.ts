@@ -118,8 +118,18 @@ export function replaceTransaction(
   input: PostTransactionInput,
 ): Promise<string> {
   return database.transaction(async (tx) => {
+    const [original] = await tx
+      .select({ source: transactions.source, externalRef: transactions.externalRef })
+      .from(transactions)
+      .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
     await voidTransactionTx(tx, ws, id);
-    return postTransactionTx(tx, ws, { ...input, replacesTransactionId: id });
+    // Keep import identity so re-importing the same statement still recognises the row.
+    return postTransactionTx(tx, ws, {
+      ...input,
+      source: input.source ?? original?.source,
+      externalRef: input.externalRef !== undefined ? input.externalRef : (original?.externalRef ?? null),
+      replacesTransactionId: id,
+    });
   });
 }
 

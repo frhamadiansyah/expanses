@@ -133,3 +133,23 @@ describe('recommendCards', () => {
     expect(recs[0]!.capHeadroom).toEqual([{ ruleId: 'cimb-dining', ruleName: '5x dining', remainingMinor: 500_000 }]);
   });
 });
+
+describe('review fixes: points caps and whole transactions', () => {
+  const base = rule({ id: 'base' });
+
+  it('passes spend beyond a points cap down to the next rule', () => {
+    const bonus = rule({ id: 'bonus', priority: 10, match: { categoryIds: ['food'] }, rateNum: 10, capPoints: 100 });
+    const result = computeCycleEarn([line('dining', 250_000)], [base, bonus], ancestors);
+    expect(result.pointsByRule).toEqual({ base: 90, bonus: 100 });
+    expect(result.spendByRule).toEqual({ base: 225_000, bonus: 25_000 });
+  });
+
+  it('rounds and applies minimum spend per transaction, not per split line', () => {
+    const split = (amounts: number[]): SpendLine[] =>
+      amounts.map((amountMinor, i) => ({ transactionId: 'split1', entryId: `s${i}`, occurredOn: '2026-09-05', categoryId: i ? 'fuel' : 'groceries', description: 'Superindo', amountMinor, currency: 'IDR' }));
+    const perTx = computeCycleEarn(split([2000, 2000]), [base], ancestors);
+    expect(perTx.totalPoints).toBe(1);
+    expect(perTx.allocations.reduce((s, a) => s + a.points, 0)).toBe(1);
+    expect(computeCycleEarn(split([400_000, 200_000]), [rule({ id: 'min', rateDen: 1000, minTransactionMinor: 500_000 })], ancestors).totalPoints).toBe(600);
+  });
+});
