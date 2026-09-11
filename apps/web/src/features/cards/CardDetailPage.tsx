@@ -1,5 +1,7 @@
 import { CURRENCIES, displayAmount, type EarnRule, formatMinor, isoDate, minorToMajorString, parseMajor, type Redemption } from '@expanses/core';
+import type { CatalogEntry } from '@expanses/catalog';
 import {
+  applyCatalogEntry,
   archiveEarnRule,
   createProgram,
   deleteRedemptionOption,
@@ -14,6 +16,7 @@ import { type FormEvent, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { CatalogPicker } from './CatalogPicker';
 import { RuleForm } from './RuleForm';
 import { type CycleResult, formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
 
@@ -146,6 +149,8 @@ export function CardDetailPage() {
   });
   const { error, run } = useAction();
   const [editingRule, setEditingRule] = useState<EarnRule | 'new' | null>(null);
+  const [catalogId, setCatalogId] = useState<string | null>(null);
+  const [browsingCatalog, setBrowsingCatalog] = useState(false);
 
   const [statementDay, setStatementDay] = useState('');
   const [dueDay, setDueDay] = useState('');
@@ -179,6 +184,20 @@ export function CardDetailPage() {
   // Setup is ordered: the statement day defines cycles, a program holds rules, and rules produce points.
   const hasTerms = !!cp.terms;
   const step = !hasTerms ? 1 : !cp.program ? 2 : cp.rules.length === 0 ? 3 : null;
+  const canUseCatalog = !cp.program || cp.catalog.status === null;
+  const chooseEntry = (entry: CatalogEntry) => {
+    setCatalogId(entry.id);
+    // Some issuers close every cardholder's statement on the same day.
+    if (!hasTerms && entry.program.fixedStatementDay && !statementDay) setStatementDay(String(entry.program.fixedStatementDay));
+  };
+  const applyEntry = (entry: CatalogEntry) => {
+    const manual = cp.rules.length;
+    if (manual > 0 && !window.confirm(`Replace your ${manual} earn rule${manual === 1 ? '' : 's'} with the catalogue terms for ${entry.name}?`)) return;
+    void run(async () => {
+      await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today, replaceManual: manual > 0 });
+      setBrowsingCatalog(false);
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -220,8 +239,17 @@ export function CardDetailPage() {
         </form>
       </Section>
 
+      {step === 1 && (
+        <Section title="Is your card in the catalogue?">
+          <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} applyHint="Save the card terms above, then use these terms in the next step." />
+        </Section>
+      )}
+
       {hasTerms && !cp.program && (
         <Section title="Rewards program" step="Step 2 of 3">
+          <h3 className="mb-2 text-sm font-medium">Choose from catalogue</h3>
+          <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} onApply={applyEntry} />
+          <h3 className="mb-2 mt-6 text-sm font-medium">Or set up manually</h3>
           <form
             className="grid gap-3 md:grid-cols-3"
             onSubmit={(e) => {
@@ -262,8 +290,26 @@ export function CardDetailPage() {
           <Section
             title="Earn rules"
             step={step === 3 ? 'Step 3 of 3' : undefined}
-            action={editingRule === null && <Button variant="secondary" onClick={() => setEditingRule('new')}>Add rule</Button>}
+            action={
+              editingRule === null && (
+                <div className="flex gap-2">
+                  {canUseCatalog && (
+                    <Button variant="ghost" onClick={() => setBrowsingCatalog(!browsingCatalog)}>
+                      {browsingCatalog ? 'Close catalogue' : 'Choose from catalogue'}
+                    </Button>
+                  )}
+                  <Button variant="secondary" onClick={() => setEditingRule('new')}>
+                    Add rule
+                  </Button>
+                </div>
+              )
+            }
           >
+            {browsingCatalog && canUseCatalog && (
+              <div className="mb-4 rounded border border-slate-200 p-3">
+                <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} onApply={applyEntry} />
+              </div>
+            )}
             {editingRule === 'new' && (
               <RuleForm programId={cp.program.id} currency={currency} accounts={all} suggestBase={cp.rules.length === 0} onDone={() => setEditingRule(null)} />
             )}
