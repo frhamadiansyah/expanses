@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { categoryIdsByKey, createWorkspace, ensureCategoryKeys, listAccounts } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
-const NEW_DEFAULTS = ['business', 'gifts_donations.donations', 'gifts_donations.gifts', 'government', 'housing.real_estate', 'utilities.gas'];
+const NEW_DEFAULTS = ['business', 'entertainment.sports', 'gifts_donations.donations', 'gifts_donations.gifts', 'government', 'housing.real_estate', 'utilities.gas'];
 const ALL_KEYS = [...DEFAULT_CATEGORY_KEYS].sort();
 const ARCHIVED = "'2026-09-11T00:00:00.000Z'";
 
@@ -30,7 +30,7 @@ describe('ensureCategoryKeys', () => {
     expect(Object.keys(await categoryIdsByKey(database, ws)).sort()).toEqual(ALL_KEYS);
   });
 
-  it('creates Gas, Real Estate, Gifts, Donations, Government & Taxes, and Business & Invoices', async () => {
+  it('creates Gas, Real Estate, Gifts, Donations, Government & Taxes, Business & Invoices, and Sports & Fitness', async () => {
     const { database, ws } = await v0Workspace();
     expect([...(await ensureCategoryKeys(database, ws)).created].sort()).toEqual(NEW_DEFAULTS);
     const all = await listAccounts(database, ws);
@@ -41,6 +41,7 @@ describe('ensureCategoryKeys', () => {
     expect(named('Donations').parentId).toBe(named('Gifts & Donations').id);
     expect(named('Government & Taxes')).toMatchObject({ kind: 'expense', parentId: null, systemKey: 'government' });
     expect(named('Business & Invoices')).toMatchObject({ kind: 'expense', parentId: null, systemKey: 'business' });
+    expect(named('Sports & Fitness')).toMatchObject({ systemKey: 'entertainment.sports', parentId: named('Entertainment').id });
   });
 
   it('skips a renamed default and does not recreate it', async () => {

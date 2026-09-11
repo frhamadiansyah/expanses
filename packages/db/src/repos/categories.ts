@@ -7,7 +7,7 @@ import { accounts } from '../schema';
 type AccountRow = typeof accounts.$inferSelect;
 
 /** Defaults added with the card catalogue. Any other default missing from a workspace was renamed or deleted by the user. */
-const ADDED_WITH_CATALOGUE = new Set(['utilities.gas', 'housing.real_estate', 'gifts_donations.gifts', 'gifts_donations.donations', 'government', 'business']);
+const ADDED_WITH_CATALOGUE = new Set(['entertainment.sports', 'utilities.gas', 'housing.real_estate', 'gifts_donations.gifts', 'gifts_donations.donations', 'government', 'business']);
 
 /**
  * Gives default categories their stable keys in workspaces created before keys existed, and creates the defaults added

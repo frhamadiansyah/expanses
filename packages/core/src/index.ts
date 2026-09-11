@@ -1,5 +1,7 @@
 export { uuidv7 } from './ids';
-export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, type DefaultCategory, type DefaultCategoryChild } from './categories/defaults';
+export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild } from './categories/defaults';
+export { MCC_NAMES, mccName } from './mcc/codes';
+export { categoryDefaultMcc, isMcc, isMccSpec, type MccSource, type MccSources, mccInRange, type MerchantMcc, resolveMcc } from './mcc/resolve';
 export { CURRENCIES, currencyInfo, isSupportedCurrency, UnknownCurrencyError, type CurrencyInfo } from './money/currencies';
 export {
   assertMinor,

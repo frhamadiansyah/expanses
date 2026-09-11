@@ -44,3 +44,10 @@ describe('addendum categories', () => {
     expect(DEFAULT_CATEGORIES.find((c) => c.key === 'business')?.name).toBe('Business & Invoices');
   });
 });
+
+describe('MCC addendum categories', () => {
+  it('adds Sports & Fitness under Entertainment', () => {
+    const entertainment = DEFAULT_CATEGORIES.find((c) => c.key === 'entertainment');
+    expect(entertainment?.children?.find((c) => c.key === 'entertainment.sports')?.name).toBe('Sports & Fitness');
+  });
+});
