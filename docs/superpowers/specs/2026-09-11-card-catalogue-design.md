@@ -283,3 +283,91 @@ Researched and verified but not bundled in the first release, at the owner's req
 - Welcome: 4.000 KF miles after activation and first transaction; +13.500 after Rp 10.000.000 within 2 months
 - Note: only for Singapore Airlines PPS Club members; BCA may replace the card with a KrisFlyer card if PPS membership ends (terms art. 2.6)
 - Sources: https://www.bca.co.id/en/Individu/produk/Kartu-Kredit/Singapore-Airlines-PPS-Club-Visa-Infinite-Card ; BCA Singapore Airlines Visa terms (as 9.1) ; Reward BCA (as 9.1)
+
+## 13. Addendum — CIMB Niaga and Mandiri cards (2026-09-11, approved)
+
+Three more cards revealed earning mechanics the design above could not express. The owner approved these changes, with payment methods detected by keywords only.
+
+### 13.1 Earning per spend multiple
+
+- New rounding mode `per_increment`: points for a purchase = `floor(billed rupiah for the rule / rateDen) × rateNum`. Mandiri World Prioritas at 3 per Rp 20.000: Rp 25.000 counts as Rp 20.000 and earns 3. CIMB at 7,5 per Rp 50.000: Rp 60.000 earns 7,5.
+- `per_transaction_floor` with `rateNum: 1` is numerically identical, so the BCA entries are unchanged.
+- The multiple applies to the rupiah amount billed, including foreign purchases after conversion.
+
+### 13.2 Half points
+
+- `rateNum` may carry one decimal place. The engine computes in integer tenths of a point and reports points with at most one decimal.
+- How issuers credit fractions is not published (CIMB). Estimates keep the fraction; cycle statement checks reveal the issuer's treatment.
+- `capPoints` and cycle bonus amounts remain whole points.
+
+### 13.3 Domestic and foreign
+
+- `RuleMatch.origin?: 'domestic' | 'foreign'`. Foreign means `originalCurrency ?? currency` differs from the card's billing currency (IDR). Domestic means it equals it.
+- Mandiri defines overseas bonuses by currency (Livin'poin page, Fengshui and Precious footnotes). Mandiri's Marriott Bonvoy terms define "Transaksi Internasional" by merchant country; the owner chose the currency reading for that card too. A foreign merchant billing in rupiah is treated as domestic.
+
+### 13.4 Keywords and precedence
+
+- `merchantPatterns` and `excludeMerchantPatterns` match whole words or phrases, case-insensitive, at non-alphanumeric boundaries (`grab` matches `GRAB*FOOD`, `va` does not match `Java`).
+- Payment methods are detected only from description keywords: `qris`, `qr`, `cicilan`, `installment`, `power buy`, `power installment`, `va`, `virtual account`. There is no payment-method field; manually typed transactions without these words earn as card payments.
+- Precedence uses existing rule priority. Every rule and bonus carries the card's exclusions. Reduced-rate rules sit above foreign and domestic rules, so a taxi paid in CNY on Mandiri World Prioritas earns the transport rate (1 per Rp 100.000), not the overseas rate. A rule's conditions are AND-ed; alternatives (category OR keyword) are separate rules at the same priority.
+
+### 13.5 Categories, statement day, fees, bonuses
+
+- New default categories: `housing.real_estate` ("Real Estate") and `business` ("Business & Invoices").
+- `program.fixedStatementDay?: number`. When present (CIMB: 22), the catalogue preview shows it and card setup pre-fills the statement day.
+- Fee periods gain optional `condition` text; `fees` may be empty when unpublished.
+- Tiers remain "at least". Terms that say "exceeds" (melebihi) encode `minSpendMinor` as the threshold plus Rp 1.
+
+### 13.6 Additional initial entries
+
+All verified 2026-09-11.
+
+#### `cimb-niaga-world-all-accor`
+
+- Program: points, "ALL - Accor Live Limitless", statement cycle, `fixedStatementDay: 22` (posting date 23rd of the previous month to the 22nd)
+- Rules, `per_increment` per Rp 50.000:
+  - `accor` priority 10, 7,5, merchant keywords: accor, sofitel, pullman, novotel, mercure, grand mercure, ibis, swissotel, swissôtel, fairmont, raffles, movenpick, mövenpick, mgallery, mantra, peppers, adagio, rixos, banyan tree
+  - `foreign` priority 10, 7,5, `origin: foreign`
+  - `domestic` priority 0, 2,5, `origin: domestic`
+- Terms `null → 2025-12-31` exclusions: keywords qris, qr, cicilan, installment, cash plus, octo; categories `fees`, `health.insurance`
+- Terms `2026-01-01 → current` exclusions: keywords qris, qr, cicilan, installment, cash plus, octo, balance transfer, forex; categories `fees` (insurance premiums no longer excluded)
+- Fees: none published (product page and product summary checked)
+- Welcome: 4.000 ALL points for each primary card active within 3 months of approval
+- Notes: points credited within 7 working days after the cycle; conversion to installment or cancellation after the statement deducts points in the next period; transactions above twice the permanent limit and high-risk transactions are excluded but not detectable; fractional crediting unconfirmed; Accor Plus membership requires Rp 10.000.000 in the first 3 months and Rp 150.000.000 per year to renew
+- Sources: https://www.cimbniaga.co.id/id/personal/kartu-kredit/world-all-accor-live-limitless ; product summary https://www.cimbniaga.co.id/content/dam/cimb/kartu-kredit/MC%20WORLD%20ACCOR%20REV.pdf
+
+#### `mandiri-world-prioritas`
+
+- Program: points, "Livin'poin", statement cycle
+- Exclusions on every rule: categories `gifts_donations.donations`, `utilities`, `government`, `business`, `fees`; keywords cicilan, installment, power installment, power buy, power cash, pln, va, virtual account
+- Rules, `per_increment`:
+  - `reduced-categories` priority 20, 1 per Rp 100.000, categories `transport` (includes fuel), `housing.real_estate`, `education`
+  - `reduced-qris` priority 20, 1 per Rp 100.000, keywords qris
+  - `reduced-insurance` priority 20, 1 per Rp 100.000, keywords axa, power bill
+  - `foreign` priority 10, 4 per Rp 20.000, `origin: foreign`
+  - `domestic` priority 0, 3 per Rp 20.000, `origin: domestic`
+- Fees: Rp 0 primary and supplementary, condition "while a Bank Mandiri Prioritas customer"
+- Welcome: cashback worth Rp 3.000.000 after activation and first transaction
+- Notes: Power Bills at PLN earn nothing while Power Bills insurance earns the reduced rate; converting a purchase to Power Installment or Power Buy deducts its points (add "cicilan" to the description); airline conversion is advertised as "1:1 Mileage Redemption" but ratios are not published in page text
+- Sources: https://www.mandirikartukredit.com/produk/prioritas ; https://www.mandirikartukredit.com/livinpoin
+
+#### `mandiri-marriott-bonvoy`
+
+- Program: points, "Marriott Bonvoy", statement cycle
+- Exclusions on every rule and the bonus: categories `transport`, `housing.real_estate`, `education`, `health.insurance`, `utilities`, `government`, `gifts_donations.donations`, `business`, `fees`; keywords qris, va, virtual account, cicilan, installment, power installment, power buy, power cash, power bill, pln, balance transfer
+- Rules, `per_increment` per Rp 20.000:
+  - `marriott` priority 10, 5, keywords marriott, ritz-carlton, ritz carlton, st. regis, st regis, luxury collection, w hotel, bulgari hotel, sheraton, westin, le meridien, le méridien, renaissance, autograph collection, tribute portfolio, gaylord, courtyard, four points, springhill, protea, fairfield, ac hotel, aloft, moxy, residence inn, towneplace, delta hotels, bonvoy
+  - `airfare` priority 10, 5, keywords garuda indonesia, garuda, singapore airlines, airasia, air asia, lion air, citilink, batik air, super air jet, pelita air, cathay pacific, qatar airways, emirates, etihad, klm, turkish airlines, qantas, japan airlines, all nippon, korean air, thai airways, malaysia airlines, eva air, china airlines, scoot, jetstar, vietnam airlines, philippine airlines
+  - `international` priority 10, 5, `origin: foreign`
+  - `base` priority 0, 3
+- Cycle bonus: 2.500 when eligible spend exceeds Rp 30.000.000 (`minSpendMinor: 30000001`), same exclusions
+- Fees: Rp 750.000 primary, Rp 375.000 supplementary
+- Welcome: 5.000 Marriott Bonvoy points after the first transaction within 3 months of approval; one free night worth up to 20.000 points after Rp 20.000.000 within 3 months (primary card only)
+- Notes: terms define "Transaksi Internasional" by merchant country, applied here by currency; airfare means purchases directly from airlines, not travel agents; supplementary card spend does not count toward the milestone but the estimate cannot tell them apart; cancelled transactions and chargebacks reverse points; automatic Silver Elite, Gold Elite at Rp 150.000.000 within a year
+- Sources: https://www.mandirikartukredit.com/produk/mandiri-marriott-bonvoy-card ; https://www.mandirikartukredit.com/artikel/syarat-dan-ketentuan-marriott-bonvoy-mandiri-kartu-kredit
+
+### 13.7 Additional known limitations
+
+- Payment methods rely on description keywords.
+- Merchant-country definitions are approximated by currency.
+- Brand and airline keyword lists need maintenance and can miss merchants whose statement names differ.

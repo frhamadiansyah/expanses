@@ -359,3 +359,56 @@ export function reportMailto(email: string, entry: CatalogEntry): string; // sub
 
 - Spec coverage: §3 format and validation → Tasks 6–7; §4 keys → Tasks 1, 8; §5.1–5.2 → Task 2; §5.3 → Task 3; §5.4 → Task 4; §5.5–5.6 → Task 5, 15; §6 → Task 8–9; §7 → Tasks 7, 10, 11; §8 screens → Tasks 12–15; §9 entries → Task 6; §10 tests → each task and Task 16; §11 limitations need no code; §12 parked entry excluded.
 - Golden numbers checked: Rp 21.000.000 / 13.500 = 1.555,5 → 1.555 miles; Rp 540.000 / 10.000 = 54 base + 54 double = 108; 1.240 UnionPay → 620 KrisFlyer and 820 GarudaMiles.
+
+## Addendum tasks (spec §13, approved 2026-09-11)
+
+Inserted before Task 4. Task 6 gains three entries; Tasks 12 and 16 gain cases.
+
+### Task 3a: Core — Real Estate and Business categories
+
+**Files:** modify `packages/core/src/categories/defaults.ts`, `packages/core/test/categories.test.ts`.
+- [ ] Tests: `keys include housing.real_estate and business`.
+- [ ] Implement; run core and db tests; commit `feat(core): real estate and business default categories`.
+
+### Task 3b: Core — whole-word keywords and origin matching
+
+**Files:** modify `packages/core/src/points/earn.ts`; test `packages/core/test/points-catalogue.test.ts`.
+
+**Interfaces — Produces:**
+```ts
+export interface RuleMatch { /* existing */ origin?: 'domestic' | 'foreign' }
+export function containsKeyword(description: string, keyword: string): boolean; // whole word or phrase, case-insensitive
+export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Record<string, string[]>, billingCurrency?: string): boolean;
+```
+`computeCycleEarn` options gain `billingCurrency` (default `'IDR'`); `ruleMatches` passes it through.
+
+- [ ] Tests: `va does not match Java but matches VA BCA`; `grab matches GRAB*FOOD`; `st. regis matches THE ST. REGIS JAKARTA`; `origin foreign matches CNY original currency on an IDR card`; `origin domestic matches IDR and no original currency`.
+- [ ] Implement; run core tests; commit `feat(core): whole-word merchant keywords and domestic or foreign origin`.
+
+### Task 3c: Core — per-increment rounding and half points
+
+**Files:** modify `packages/core/src/points/earn.ts`; test `packages/core/test/points-increment.test.ts`.
+
+**Behaviour:** `Rounding` adds `'per_increment'`. Internally points are integer tenths: `pointsTenths = floor(purchaseSpendForRule / rateDen) × round(rateNum × 10)`. `pointsByRule`, allocation points, `totalPoints`, and recommendation points are reported as tenths ÷ 10. Existing modes compute in tenths too (`floor(spend × rateNum / rateDen) × 10`) so whole-point results are unchanged.
+
+- [ ] Tests: `Mandiri domestic Rp 25.000 earns 3`; `Mandiri foreign CNY Rp 40.000 earns 8`; `CIMB domestic Rp 60.000 earns 2,5 and foreign earns 7,5`; `taxi in CNY on Mandiri earns the reduced rate 1 per Rp 100.000 through priority`; `split purchase applies the multiple to the purchase total per rule`; `half points sum exactly across many purchases (0,5 × 7)`; existing golden tests unchanged.
+- [ ] Implement; run core tests; commit `feat(core): per-increment earning with half points`.
+
+### Task 6 additions
+
+- [ ] Entries `cimb-niaga-world-all-accor`, `mandiri-world-prioritas`, `mandiri-marriott-bonvoy` exactly as spec §13.6.
+- [ ] `CatalogEntry` gains `program.fixedStatementDay?: number`; `CatalogFeePeriod` gains `condition?: string`; `fees` may be empty; `CatalogRule.rounding` accepts `per_increment`; `CatalogMatch` gains `origin`.
+- [ ] Validation accepts `rateNum` with at most one decimal and rejects more; rejects `fixedStatementDay` outside 1–31.
+- [ ] Tests: `CIMB insurance is excluded on 2025-12-31 and earns on 2026-01-01`; `Marriott bonus pays nothing at exactly Rp 30.000.000 and 2.500 at Rp 30.000.001`.
+
+### Task 9 addition
+
+- [ ] `saveEarnRule` accepts `rateNum` with one decimal; the rule form's Points field accepts one decimal; tests cover `7.5` round-tripping.
+
+### Task 12 addition
+
+- [ ] When the chosen entry has `fixedStatementDay` and the card has no terms, the preview states it and step 1 pre-fills it.
+
+### Task 16 additions
+
+- [ ] `apply Mandiri World Prioritas, post Rp 25.000 domestic, see 3 Livin'poin`; `CNY taxi earns 1 per Rp 100.000 equivalent`; `apply CIMB, post Rp 60.000 domestic, see 2,5 ALL points`.
