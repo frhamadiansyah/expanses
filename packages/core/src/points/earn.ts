@@ -238,10 +238,41 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
     }
   }
 
-  // Refunds reverse the points their amount would earn. They run after every purchase in the cycle so the order of
-  // purchase and refund does not matter, and they never take a rule below zero.
+  // A refund reverses the points of the purchase it refunds: the latest earlier purchase in the same category with the
+  // same MCC whose description the refund repeats, in proportion to the amount. That keeps a refund of a purchase made
+  // after a cap was reached from taking back points the purchase never earned. Unmatched refunds deduct what their
+  // amount would earn from each matching rule. Both run after every purchase and never take a rule below zero.
+  const purchaseAllocations = [...allocations];
+  const firstLines = new Map<string, SpendLine>();
+  for (const l of sorted) if (!firstLines.has(l.transactionId)) firstLines.set(l.transactionId, l);
+  const refundedByPurchase = new Map<string, number>();
+  const normalise = (description: string) => description.trim().toLowerCase().replace(/\s+/g, ' ');
+  const originalOf = (refund: SpendLine, amount: number): string | null => {
+    const refundText = normalise(refund.description);
+    const candidates = [...firstLines.values()].filter((purchase) => {
+      if (purchase.occurredOn > refund.occurredOn || purchase.categoryId !== refund.categoryId || purchase.mcc !== refund.mcc) return false;
+      const purchaseText = normalise(purchase.description);
+      if (!purchaseText || (purchaseText !== refundText && !containsKeyword(refundText, purchaseText))) return false;
+      return purchaseTotals.get(purchase.transactionId)! - (refundedByPurchase.get(purchase.transactionId) ?? 0) >= amount;
+    });
+    return candidates.at(-1)?.transactionId ?? null;
+  };
   for (const refund of refunds) {
     const amount = -refund.amountMinor;
+    const original = originalOf(refund, amount);
+    if (original) {
+      const total = purchaseTotals.get(original)!;
+      refundedByPurchase.set(original, (refundedByPurchase.get(original) ?? 0) + amount);
+      for (const earned of purchaseAllocations.filter((a) => a.transactionId === original)) {
+        const spend = Math.min(spendByRule[earned.ruleId]!, Math.floor((earned.spendMinor * amount) / total));
+        const tenths = Math.min(tenthsByRule[earned.ruleId]!, Math.floor((Math.round(earned.points * TENTHS) * amount) / total));
+        if (spend <= 0 && tenths <= 0) continue;
+        spendByRule[earned.ruleId] = spendByRule[earned.ruleId]! - spend;
+        tenthsByRule[earned.ruleId] = tenthsByRule[earned.ruleId]! - tenths;
+        allocations.push({ transactionId: refund.transactionId, entryId: refund.entryId, ruleId: earned.ruleId, spendMinor: -spend, points: -tenths / TENTHS });
+      }
+      continue;
+    }
     const deduct = (rule: EarnRule, wanted: number): number => {
       const spend = Math.min(wanted, spendByRule[rule.id]!);
       if (spend <= 0) return 0;
@@ -263,15 +294,25 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
   const bonusById: Record<string, number> = {};
   const eligibleSpendByBonus: Record<string, number> = {};
   const cycleEnd = options.cycleEnd ?? ordered.at(-1)?.occurredOn ?? null;
-  for (const bonus of options.bonuses ?? []) {
-    const counts = (l: SpendLine) => withinWindow(l.occurredOn, bonus.validFrom, bonus.validTo) && matchesSpend(bonus.match, l, ancestors, billingCurrency);
+  // Rows sharing a key are one bonus whose terms changed: each line counts under the row valid on its date, the spend
+  // adds up across the change, and the row valid at the end of the cycle pays.
+  const bonusGroups = new Map<string, CycleBonus[]>();
+  for (const bonus of options.bonuses ?? []) bonusGroups.set(bonus.key, [...(bonusGroups.get(bonus.key) ?? []), bonus]);
+  for (const group of bonusGroups.values()) {
+    const rowOn = (date: string) => group.find((bonus) => withinWindow(date, bonus.validFrom, bonus.validTo));
+    const counts = (l: SpendLine) => {
+      const row = rowOn(l.occurredOn);
+      return row !== undefined && matchesSpend(row.match, l, ancestors, billingCurrency);
+    };
     const purchased = sorted.filter(counts).reduce((s, l) => s + l.amountMinor, 0);
     const refunded = refunds.filter(counts).reduce((s, l) => s - l.amountMinor, 0);
     const eligible = Math.max(0, purchased - refunded);
-    eligibleSpendByBonus[bonus.id] = eligible;
-    const active = cycleEnd !== null && withinWindow(cycleEnd, bonus.validFrom, bonus.validTo);
-    const reached = [...bonus.tiers].sort((a, b) => a.minSpendMinor - b.minSpendMinor).filter((t) => t.minSpendMinor <= eligible).at(-1);
-    bonusById[bonus.id] = active && reached ? reached.bonus : 0;
+    const paying = cycleEnd === null ? undefined : rowOn(cycleEnd);
+    for (const bonus of group) {
+      eligibleSpendByBonus[bonus.id] = eligible;
+      const reached = bonus === paying ? [...bonus.tiers].sort((a, b) => a.minSpendMinor - b.minSpendMinor).filter((t) => t.minSpendMinor <= eligible).at(-1) : undefined;
+      bonusById[bonus.id] = reached ? reached.bonus : 0;
+    }
   }
 
   const pointsByRule = Object.fromEntries(Object.entries(tenthsByRule).map(([id, t]) => [id, t / TENTHS]));

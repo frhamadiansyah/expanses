@@ -1,4 +1,4 @@
-import { computeCycleEarn, type CycleBonus, type EarnOptions, type EarnRule, matchesSpend, type SpendLine } from './earn';
+import { computeCycleEarn, type CycleBonus, type EarnOptions, type EarnRule, matchesSpend, ruleMatches, type SpendLine } from './earn';
 
 export interface CycleContext {
   lines: SpendLine[];
@@ -20,6 +20,35 @@ const earnFor = (context: CycleContext, lines: SpendLine[] = context.lines) => c
 const withMcc = (lines: SpendLine[], transactionId: string, mcc: string): SpendLine[] =>
   lines.map((line) => (line.transactionId === transactionId ? { ...line, mcc, mccSource: 'typed' } : line));
 
+/**
+ * Which rules and bonuses a purchase's lines match. Candidate MCCs with the same signature earn identically, so each
+ * distinct signature is computed once.
+ */
+function signature(context: CycleContext, lines: readonly SpendLine[]): string {
+  const billingCurrency = context.options.billingCurrency ?? 'IDR';
+  const bonuses = context.options.bonuses ?? [];
+  return lines
+    .map((line) =>
+      [...context.rules.map((rule) => ruleMatches(rule, line, context.ancestors, line.amountMinor, billingCurrency)), ...bonuses.map((bonus) => matchesSpend(bonus.match, line, context.ancestors, billingCurrency))]
+        .map((matches) => (matches ? '1' : '0'))
+        .join(''),
+    )
+    .join('|');
+}
+
+/** Candidate MCCs grouped by the signature they give the purchase, leaving out those that change nothing. */
+function candidatesBySignature(context: CycleContext, transactionId: string, lines: readonly SpendLine[]): Map<string, string[]> {
+  const current = signature(context, lines);
+  const groups = new Map<string, string[]>();
+  for (const mcc of candidateMccs(context.rules, context.options.bonuses)) {
+    if (lines.every((line) => line.mcc === mcc)) continue;
+    const key = signature(context, lines.map((line) => ({ ...line, mcc, mccSource: 'typed' as const })));
+    if (key === current) continue;
+    groups.set(key, [...(groups.get(key) ?? []), mcc]);
+  }
+  return groups;
+}
+
 /** Every code this card's rules and bonuses name, with ranges represented by their first code. */
 export function candidateMccs(rules: readonly EarnRule[], bonuses: readonly CycleBonus[] = []): string[] {
   const specs = [...rules, ...bonuses].flatMap(({ match }) => [...(match.mccs ?? []), ...(match.excludeMccs ?? [])]);
@@ -33,14 +62,12 @@ export function explainTransaction(context: CycleContext, transactionId: string,
   const estimate = earnFor(context).pointsByTransaction[transactionId] ?? 0;
   if (tenths(estimate) === tenths(actualPoints)) return [];
   const suggestions: Suggestion[] = [];
-  for (const mcc of candidateMccs(context.rules, context.options.bonuses)) {
-    if (purchase.every((line) => line.mcc === mcc)) continue;
-    const pointsWith = earnFor(context, withMcc(context.lines, transactionId, mcc)).pointsByTransaction[transactionId] ?? 0;
-    if (tenths(pointsWith) === tenths(actualPoints)) {
-      suggestions.push({ kind: 'mcc', transactionId, mcc, pointsWith, moves: (tenths(pointsWith) - tenths(estimate)) / 10 });
-    }
+  for (const mccs of candidatesBySignature(context, transactionId, purchase).values()) {
+    const pointsWith = earnFor(context, withMcc(context.lines, transactionId, mccs[0]!)).pointsByTransaction[transactionId] ?? 0;
+    if (tenths(pointsWith) !== tenths(actualPoints)) continue;
+    for (const mcc of mccs) suggestions.push({ kind: 'mcc', transactionId, mcc, pointsWith, moves: (tenths(pointsWith) - tenths(estimate)) / 10 });
   }
-  return suggestions;
+  return suggestions.sort((a, b) => (a.kind === 'mcc' && b.kind === 'mcc' ? a.mcc.localeCompare(b.mcc) : 0));
 }
 
 /**
@@ -53,7 +80,6 @@ export function explainCycle(context: CycleContext, actualPoints: number, limit 
   const base = earnFor(context);
   const gap = tenths(actualPoints) - tenths(base.totalPoints);
   if (gap === 0) return [];
-  const candidates = candidateMccs(context.rules, context.options.bonuses);
   const purchases = [...new Set(context.lines.filter((line) => line.amountMinor > 0).map((line) => line.transactionId))];
 
   const ranked: { suggestion: Suggestion; closer: number; amount: number }[] = [];
@@ -62,8 +88,8 @@ export function explainCycle(context: CycleContext, actualPoints: number, limit 
     if (!lines.every(guessed)) continue;
     const amount = lines.reduce((sum, line) => sum + line.amountMinor, 0);
     let best: { suggestion: Suggestion; closer: number; amount: number } | null = null;
-    for (const mcc of candidates) {
-      if (lines.every((line) => line.mcc === mcc)) continue;
+    for (const [mcc] of [...candidatesBySignature(context, transactionId, lines).values()].sort((a, b) => a[0]!.localeCompare(b[0]!))) {
+      if (!mcc) continue;
       const earn = earnFor(context, withMcc(context.lines, transactionId, mcc));
       const closer = Math.abs(gap) - Math.abs(tenths(actualPoints) - tenths(earn.totalPoints));
       if (closer > 0 && (!best || closer > best.closer)) {
