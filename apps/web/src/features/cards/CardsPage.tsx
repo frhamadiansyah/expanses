@@ -13,7 +13,8 @@ export function CardsPage() {
   const cards = all.filter((a) => a.subtype === 'credit_card' && a.archivedAt === null);
   const today = isoDate();
   const data = useQuery({
-    queryKey: ['card-points', ws.workspaceId, today, cards.map((c) => c.id).join(',')],
+    // Distinct from the card page's key: this query caches an array, that one a single CardPoints.
+    queryKey: ['card-points-list', ws.workspaceId, today, cards.map((c) => c.id).join(',')],
     enabled: accounts.isSuccess,
     queryFn: () => Promise.all(cards.map((card) => loadCardPoints(database, ws, card, all, today))),
   });

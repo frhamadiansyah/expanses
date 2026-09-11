@@ -137,7 +137,7 @@ export function CardDetailPage() {
   const card = all.find((a) => a.id === cardId);
   const today = isoDate();
   const data = useQuery({
-    queryKey: ['card-points', ws.workspaceId, today, cardId],
+    queryKey: ['card-points-detail', ws.workspaceId, today, cardId],
     enabled: !!card,
     queryFn: () => loadCardPoints(database, ws, card!, all, today),
   });
