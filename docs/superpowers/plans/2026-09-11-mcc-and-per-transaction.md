@@ -306,4 +306,12 @@ Deviations from this plan, recorded:
 
 Outstanding:
 
-- Independent code review of the branch, then finishing it.
+- Finishing the branch.
+
+## Independent review (2026-09-11)
+
+Reviewed range `536b0bf..927027b` (card catalogue and this plan). Verdict: ready with fixes; no critical issues.
+
+Fixed (spec §13): refunds on capped rules over-deducted; cycle bonuses failed to pay across a change of terms; hints recomputed the cycle for every candidate MCC on every render (explainCycle, 200 purchases, Manchester United rules: 1519 ms, 5 suggestions). Minor fixes: negative refund points in the transaction list, billing currency on the card page and list, catalogue sync errors blocking app start, one-scan merchant counts, GrabFood and GoFood as fast food, half-point statement totals, and the Change category fix.
+
+Deferred for owner decision or a later pass: posting a purchase and saving merchant memory are separate transactions; applying a catalogue update replaces catalogue rows the user edited without saying so; applying an entry asks only about manual earn rules, not manual bonuses or partners; the card's annual fee refreshes only on apply or sync; card fee phrases "admin fee" and "biaya admin" may exclude some merchant purchases, and a fee phrase marks every line of a split purchase; card loading repeats category queries per cycle; no test migrates a populated version 3 database or freezes closed catalogue periods.
