@@ -1,4 +1,5 @@
-import { type CompareTarget, CURRENCIES, formatMinor, isoDate, parseMajor, type Recommendation, recommendCards } from '@expanses/core';
+import { type CompareTarget, CURRENCIES, formatMinor, isoDate, mccName, parseMajor, type Recommendation, recommendCards, resolveMcc } from '@expanses/core';
+import { mccSourcesFor } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -31,6 +32,13 @@ export function RecommendPage() {
     queryFn: async () => compareTargets((await loadAll(isoDate())).map((cp) => ({ programName: cp.program?.name ?? null, transferPartners: cp.transferPartners }))),
   });
 
+  const mccSources = useQuery({ queryKey: ['mcc-sources', ws.workspaceId], queryFn: () => mccSourcesFor(database.db, ws) });
+  const resolved = mccSources.data && categoryId ? resolveMcc(merchant, categoryId, { typed: null, ...mccSources.data }) : null;
+  const resolvedFrom = resolved?.source === 'memory' ? 'you taught this merchant' : resolved?.source === 'bundled' ? 'typical for this merchant' : 'from the category';
+  const merchantHint = resolved?.mcc
+    ? `Compared as MCC ${resolved.mcc}${mccName(resolved.mcc) ? ` ${mccName(resolved.mcc)}` : ''} (${resolvedFrom}).`
+    : 'Optional. Matches merchant keywords and merchant categories in your rules.';
+
   async function compare(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -52,7 +60,7 @@ export function RecommendPage() {
         bestRedemption: cp.best,
       }));
       const target: CompareTarget = compareIn === VALUE ? { kind: 'value' } : { kind: 'program', program: compareIn };
-      const query = { amountMinor, currency: ws.baseCurrency, originalCurrency: spentIn || null, mcc: null, categoryId, description: merchant, occurredOn: date };
+      const query = { amountMinor, currency: ws.baseCurrency, originalCurrency: spentIn || null, mcc: resolved?.mcc ?? null, categoryId, description: merchant, occurredOn: date };
       setResults({ target, list: recommendCards(query, candidates, expenseAncestors(all), target) });
     } catch (e) {
       setError(e);
@@ -84,7 +92,7 @@ export function RecommendPage() {
               <CategoryOptions accounts={all} kind="expense" />
             </Select>
           </Field>
-          <Field label="Merchant" hint="Optional. Matches merchant keywords in your rules.">
+          <Field label="Merchant" hint={merchantHint}>
             <Input value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder="Sushi Tei" />
           </Field>
           <Field label="Date">

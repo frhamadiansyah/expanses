@@ -5,7 +5,9 @@ import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import type { TransactionsSearch } from '../../app/router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { loadPurchasePoints } from '../../lib/purchase-points';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { formatPoints } from '../cards/useCardPoints';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
 import { classify } from './classify';
 import { isEditable } from './draft';
@@ -29,6 +31,11 @@ export function TransactionsPage() {
   const list = useQuery({
     queryKey: ['transactions', ws.workspaceId, search.account ?? 'all', month, includeVoid],
     queryFn: () => listTransactions(database, ws, { accountId: search.account, from, to, includeVoid }),
+  });
+  const purchasePoints = useQuery({
+    queryKey: ['purchase-points', ws.workspaceId, (list.data ?? []).map((tx) => tx.id).join(',')],
+    enabled: list.isSuccess && accounts.length > 0,
+    queryFn: () => loadPurchasePoints(database, ws, list.data ?? [], accounts),
   });
 
   async function onVoid(tx: TransactionView) {
@@ -98,6 +105,12 @@ export function TransactionsPage() {
                       {sign < 0 ? '−' : sign > 0 ? '+' : ''}
                       {formatMinor(c.amountMinor, c.currency)}
                     </div>
+                    {purchasePoints.data?.[tx.id] && (
+                      <div className="tabular whitespace-nowrap text-xs text-emerald-700">
+                        {purchasePoints.data[tx.id]!.approximate ? '≈ ' : '+'}
+                        {formatPoints(purchasePoints.data[tx.id]!.points)} {purchasePoints.data[tx.id]!.unit}
+                      </div>
+                    )}
                     {tx.originalCurrency && tx.originalAmountMinor !== null && (
                       <div className="tabular whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</div>
                     )}
