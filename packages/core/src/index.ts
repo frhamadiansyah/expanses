@@ -40,12 +40,16 @@ export {
 } from './reports/spending';
 export { calendarCycleFor, type Cycle, type CycleAnchor, cycleFor, previousCycle, statementCycleFor } from './points/cycles';
 export {
+  type BonusTier,
   computeCycleEarn,
+  type CycleBonus,
   type CycleEarn,
   type EarnAllocation,
   type EarnRule,
   type Rounding,
   type RuleMatch,
+  matchesSpend,
+  nextBonusTier,
   ruleMatches,
   type SpendLine,
 } from './points/earn';
