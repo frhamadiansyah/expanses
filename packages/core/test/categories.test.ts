@@ -34,3 +34,13 @@ describe('currencies', () => {
     expect(currencyInfo('TWD').exponent).toBe(2);
   });
 });
+
+describe('addendum categories', () => {
+  it('includes Real Estate under Housing and a Business & Invoices category', () => {
+    expect(DEFAULT_CATEGORY_KEYS.has('housing.real_estate')).toBe(true);
+    expect(DEFAULT_CATEGORY_KEYS.has('business')).toBe(true);
+    const housing = DEFAULT_CATEGORIES.find((c) => c.key === 'housing');
+    expect(housing?.children?.find((c) => c.key === 'housing.real_estate')?.name).toBe('Real Estate');
+    expect(DEFAULT_CATEGORIES.find((c) => c.key === 'business')?.name).toBe('Business & Invoices');
+  });
+});
