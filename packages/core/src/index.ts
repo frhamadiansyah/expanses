@@ -44,7 +44,6 @@ export { calendarCycleFor, type Cycle, type CycleAnchor, cycleFor, previousCycle
 export {
   type BonusTier,
   computeCycleEarn,
-  containsKeyword,
   type EarnOptions,
   type CycleBonus,
   type CycleEarn,
@@ -66,6 +65,7 @@ export {
   recommendCards,
   type Redemption,
 } from './points/recommend';
+export { containsKeyword } from './text/keywords';
 export { convertPoints, estimatePartnerUnits, partnerFor, type TransferPartner } from './points/transfer';
 export {
   type CsvDateFormat,

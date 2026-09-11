@@ -20,7 +20,7 @@ const rule = (over: Partial<EarnRule> & Pick<EarnRule, 'id'>): EarnRule => ({
 let seq = 0;
 const buy = (amountMinor: number, over: Partial<SpendLine> = {}): SpendLine => {
   seq += 1;
-  return { transactionId: `p${seq}`, entryId: `e${seq}`, occurredOn: '2026-09-05', categoryId: 'dining', description: 'Merchant', amountMinor, currency: 'IDR', originalCurrency: null, ...over };
+  return { transactionId: `p${seq}`, entryId: `e${seq}`, occurredOn: '2026-09-05', categoryId: 'dining', description: 'Merchant', amountMinor, currency: 'IDR', originalCurrency: null, mcc: null, mccSource: null, ...over };
 };
 
 const ancestors = { dining: ['food'], food: [], taxi: ['transport'], transport: [] };

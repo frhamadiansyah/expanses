@@ -11,7 +11,7 @@ const bonus: CycleBonus = { id: 'bonus', key: 'monthly', name: 'Monthly', tiers:
 let seq = 0;
 const line = (amountMinor: number, day = 5): SpendLine => {
   seq += 1;
-  return { transactionId: `r${seq}`, entryId: `e${seq}`, occurredOn: `2026-09-${String(day).padStart(2, '0')}`, categoryId: 'dining', description: 'Merchant', amountMinor, currency: 'IDR', originalCurrency: null };
+  return { transactionId: `r${seq}`, entryId: `e${seq}`, occurredOn: `2026-09-${String(day).padStart(2, '0')}`, categoryId: 'dining', description: 'Merchant', amountMinor, currency: 'IDR', originalCurrency: null, mcc: null, mccSource: null };
 };
 const ancestors = { dining: [] };
 

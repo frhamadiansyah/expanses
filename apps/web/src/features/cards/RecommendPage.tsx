@@ -52,7 +52,7 @@ export function RecommendPage() {
         bestRedemption: cp.best,
       }));
       const target: CompareTarget = compareIn === VALUE ? { kind: 'value' } : { kind: 'program', program: compareIn };
-      const query = { amountMinor, currency: ws.baseCurrency, originalCurrency: spentIn || null, categoryId, description: merchant, occurredOn: date };
+      const query = { amountMinor, currency: ws.baseCurrency, originalCurrency: spentIn || null, mcc: null, categoryId, description: merchant, occurredOn: date };
       setResults({ target, list: recommendCards(query, candidates, expenseAncestors(all), target) });
     } catch (e) {
       setError(e);

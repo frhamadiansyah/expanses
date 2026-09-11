@@ -458,5 +458,8 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     amountMinor: Number(amountMinor),
     currency,
     originalCurrency,
+    // Resolved from merchant memory, the bundled list, and category defaults once MCC storage exists.
+    mcc: null,
+    mccSource: null,
   }));
 }

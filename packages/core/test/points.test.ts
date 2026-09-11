@@ -24,7 +24,7 @@ let seq = 0;
 const line = (categoryId: string, amountMinor: number, occurredOn = '2026-09-01', description = 'shop'): SpendLine => {
   seq += 1;
   const id = `t${String(seq).padStart(4, '0')}`;
-  return { transactionId: id, entryId: `${id}e`, occurredOn, categoryId, description, amountMinor, currency: 'IDR', originalCurrency: null };
+  return { transactionId: id, entryId: `${id}e`, occurredOn, categoryId, description, amountMinor, currency: 'IDR', originalCurrency: null, mcc: null, mccSource: null };
 };
 
 const ancestors = { groceries: ['food'], dining: ['food'], food: [], fuel: ['transport'], transport: [], fees: [] };
@@ -99,7 +99,7 @@ describe('computeCycleEarn', () => {
       fc.property(
         fc.array(fc.record({ cat: fc.constantFrom('groceries', 'dining', 'fuel', 'fees'), amount: fc.integer({ min: -10_000, max: 5_000_000 }), day: fc.integer({ min: 1, max: 28 }) }), { maxLength: 20 }),
         (specs) => {
-          const lines = specs.map((s, i) => ({ transactionId: `t${i}`, entryId: `e${i}`, occurredOn: `2026-09-${String(s.day).padStart(2, '0')}`, categoryId: s.cat, description: 'x', amountMinor: s.amount, currency: 'IDR', originalCurrency: null }));
+          const lines = specs.map((s, i) => ({ transactionId: `t${i}`, entryId: `e${i}`, occurredOn: `2026-09-${String(s.day).padStart(2, '0')}`, categoryId: s.cat, description: 'x', amountMinor: s.amount, currency: 'IDR', originalCurrency: null, mcc: null, mccSource: null }));
           const rules = [dining, base, rule({ id: 'promo', stackable: true, rateDen: 7, capPoints: 900 })];
           const a = computeCycleEarn(lines, rules, ancestors);
           const b = computeCycleEarn([...lines].reverse(), rules, ancestors);
@@ -117,7 +117,7 @@ describe('recommendCards', () => {
     const cimbDining = rule({ id: 'cimb-dining', name: '5x dining', priority: 10, match: { categoryIds: ['food'] }, rateNum: 5, capSpendMinor: 3_000_000 });
     const cimbBase = rule({ id: 'cimb-base', name: 'Base' });
     const recs = recommendCards(
-      { amountMinor: 1_000_000, currency: 'IDR', originalCurrency: null, categoryId: 'dining', description: 'Sushi Tei', occurredOn: '2026-09-11' },
+      { amountMinor: 1_000_000, currency: 'IDR', originalCurrency: null, mcc: null, categoryId: 'dining', description: 'Sushi Tei', occurredOn: '2026-09-11' },
       [
         { cardAccountId: 'bca', cardName: 'BCA Visa', currency: 'IDR', programName: null, bonuses: [], transferPartners: [], rules: [rule({ id: 'bca-base' })], cycleLines: [], bestRedemption: { valueMinor: 10, perPoints: 1, currency: 'IDR' } },
         { cardAccountId: 'cimb', cardName: 'CIMB Octo', currency: 'IDR', programName: null, bonuses: [], transferPartners: [], rules: [cimbDining, cimbBase], cycleLines: [line('dining', 2_500_000, '2026-09-02')], bestRedemption: { valueMinor: 25, perPoints: 1, currency: 'IDR' } },
@@ -146,7 +146,7 @@ describe('review fixes: points caps and whole transactions', () => {
 
   it('rounds and applies minimum spend per transaction, not per split line', () => {
     const split = (amounts: number[]): SpendLine[] =>
-      amounts.map((amountMinor, i) => ({ transactionId: 'split1', entryId: `s${i}`, occurredOn: '2026-09-05', categoryId: i ? 'fuel' : 'groceries', description: 'Superindo', amountMinor, currency: 'IDR', originalCurrency: null }));
+      amounts.map((amountMinor, i) => ({ transactionId: 'split1', entryId: `s${i}`, occurredOn: '2026-09-05', categoryId: i ? 'fuel' : 'groceries', description: 'Superindo', amountMinor, currency: 'IDR', originalCurrency: null, mcc: null, mccSource: null }));
     const perTx = computeCycleEarn(split([2000, 2000]), [base], ancestors);
     expect(perTx.totalPoints).toBe(1);
     expect(perTx.allocations.reduce((s, a) => s + a.points, 0)).toBe(1);

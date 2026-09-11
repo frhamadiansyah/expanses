@@ -1,3 +1,5 @@
+import { mccInRange, type MccSource } from '../mcc/resolve';
+import { containsKeyword } from '../text/keywords';
 /**
  * per_transaction_floor: floor(spend × rate) per purchase. per_cycle_sum: floor over the cycle total.
  * per_increment: floor(purchase spend ÷ rateDen) × rateNum — earning per whole spend multiple, rateNum may be fractional.
@@ -16,6 +18,10 @@ export interface RuleMatch {
   currencies?: string[];
   /** Foreign: spent in a currency other than the card's billing currency. Domestic: spent in the billing currency. */
   origin?: 'domestic' | 'foreign';
+  /** Merchant category codes or ranges such as 3000-3299. A purchase without an MCC never matches. */
+  mccs?: string[];
+  /** Merchant category codes or ranges that never earn under this rule. A purchase without an MCC is not excluded. */
+  excludeMccs?: string[];
 }
 
 export interface EarnRule {
@@ -49,6 +55,9 @@ export interface SpendLine {
   currency: string;
   /** Currency the purchase was made in when it differs from the billed currency, e.g. SGD billed as IDR. */
   originalCurrency: string | null;
+  /** Effective merchant category code and where it came from; null when no source gives one. */
+  mcc: string | null;
+  mccSource: MccSource | null;
 }
 
 export interface EarnAllocation {
@@ -99,21 +108,6 @@ const ceilDiv = (a: number, b: number) => floorDiv(a + b - 1, b);
 const withinWindow = (date: string, from: string | null, to: string | null) => (!from || date >= from) && (!to || date <= to);
 const TENTHS = 10;
 const rateTenths = (rule: EarnRule) => Math.round(rule.rateNum * TENTHS);
-const isWordChar = (ch: string | undefined) => ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
-
-/** Case-insensitive keyword or phrase match that must not touch letters or digits on either side. */
-export function containsKeyword(description: string, keyword: string): boolean {
-  const needle = keyword.trim().toLowerCase();
-  if (!needle) return false;
-  const haystack = description.toLowerCase();
-  let from = 0;
-  let i: number;
-  while ((i = haystack.indexOf(needle, from)) >= 0) {
-    if (!isWordChar(haystack[i - 1]) && !isWordChar(haystack[i + needle.length])) return true;
-    from = i + 1;
-  }
-  return false;
-}
 
 /** Category, merchant, currency, and origin conditions shared by earn rules and cycle bonuses. */
 export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Record<string, string[]>, billingCurrency = 'IDR'): boolean {
@@ -123,6 +117,9 @@ export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Recor
   const include = (match.merchantPatterns ?? []).filter((p) => p.trim());
   if (include.length && !include.some((p) => containsKeyword(line.description, p))) return false;
   if ((match.excludeMerchantPatterns ?? []).some((p) => containsKeyword(line.description, p))) return false;
+  const mcc = line.mcc;
+  if (match.mccs?.length && !(mcc && match.mccs.some((spec) => mccInRange(mcc, spec)))) return false;
+  if (mcc && match.excludeMccs?.some((spec) => mccInRange(mcc, spec))) return false;
   const spentIn = line.originalCurrency ?? line.currency;
   if (match.currencies?.length && !match.currencies.includes(spentIn)) return false;
   if (match.origin === 'foreign' && spentIn === billingCurrency) return false;

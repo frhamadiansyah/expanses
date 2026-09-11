@@ -46,7 +46,7 @@ const marriott: CardCandidate = {
   cardAccountId: 'marriott', cardName: 'Marriott Bonvoy', currency: 'IDR', programName: 'Marriott Bonvoy',
   rules: [rule({ id: 'mb-base', rounding: 'per_increment', rateNum: 3, rateDen: 20_000 })], bonuses: [], transferPartners: [], cycleLines: [], bestRedemption: null,
 };
-const query = { amountMinor: 1_080_000, currency: 'IDR', originalCurrency: null, categoryId: 'dining', description: 'Restaurant', occurredOn: '2026-09-11' };
+const query = { amountMinor: 1_080_000, currency: 'IDR', originalCurrency: null, mcc: null, categoryId: 'dining', description: 'Restaurant', occurredOn: '2026-09-11' };
 
 describe('compare in a miles program', () => {
   it('ranks direct KrisFlyer miles against converted UnionPay points for a rupiah purchase', () => {
@@ -72,7 +72,7 @@ describe('compare in a miles program', () => {
       cardAccountId: 'signature',
       rules: [rule({ id: 'sig-base', rateDen: 13_500 })],
       bonuses: [{ id: 'sig-bonus', key: 'monthly-spend', name: 'Monthly spend bonus', tiers: [{ minSpendMinor: 20_000_000, bonus: 1000 }], match: {}, validFrom: null, validTo: null }],
-      cycleLines: [{ transactionId: 'earlier', entryId: 'earlier-e', occurredOn: '2026-09-02', categoryId: 'dining', description: 'Earlier', amountMinor: 19_500_000, currency: 'IDR', originalCurrency: null }],
+      cycleLines: [{ transactionId: 'earlier', entryId: 'earlier-e', occurredOn: '2026-09-02', categoryId: 'dining', description: 'Earlier', amountMinor: 19_500_000, currency: 'IDR', originalCurrency: null, mcc: null, mccSource: null }],
     };
     const [rec] = recommendCards({ ...query, amountMinor: 1_000_000 }, [signature], {}, { kind: 'program', program: 'KrisFlyer' });
     expect(rec!.points).toBe(74 + 1000);

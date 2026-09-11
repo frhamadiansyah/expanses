@@ -26,6 +26,8 @@ const line = (over: Partial<SpendLine> = {}): SpendLine => ({
   amountMinor: 540_000,
   currency: 'IDR',
   originalCurrency: null,
+  mcc: null,
+  mccSource: null,
   ...over,
 });
 
@@ -58,7 +60,7 @@ describe('merchant exclusions', () => {
 
 describe('whole-word keywords', () => {
   it('matches words and phrases only at non-alphanumeric boundaries', async () => {
-    const { containsKeyword } = await import('../src/points/earn');
+    const { containsKeyword } = await import('../src/text/keywords');
     expect(containsKeyword('VA BCA 8808123', 'va')).toBe(true);
     expect(containsKeyword('Kopi Java Bali', 'va')).toBe(false);
     expect(containsKeyword('GRAB*FOOD JKT', 'grab')).toBe(true);

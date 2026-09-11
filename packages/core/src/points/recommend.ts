@@ -28,6 +28,8 @@ export interface PurchaseQuery {
   amountMinor: number;
   currency: string;
   originalCurrency: string | null;
+  /** Effective merchant category code of the purchase, when known. */
+  mcc: string | null;
   categoryId: string;
   description: string;
   occurredOn: string;
@@ -57,7 +59,7 @@ export function recommendCards(
   target: CompareTarget = { kind: 'value' },
 ): Recommendation[] {
   // Sorts after any real purchase on the same date.
-  const hypothetical: SpendLine = { ...query, transactionId: '￿', entryId: '￿' };
+  const hypothetical: SpendLine = { ...query, transactionId: '￿', entryId: '￿', mccSource: query.mcc ? 'typed' : null };
   const results = candidates.map((card): Recommendation => {
     if (card.currency !== query.currency || query.amountMinor <= 0) {
       return { cardAccountId: card.cardAccountId, cardName: card.cardName, eligible: false, points: 0, valueMinor: null, valueCurrency: null, effectiveRateBps: null, comparable: false, compareUnits: null, capHeadroom: [] };

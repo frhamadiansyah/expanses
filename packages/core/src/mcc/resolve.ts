@@ -1,5 +1,5 @@
 import { DEFAULT_CATEGORY_MCCS } from '../categories/defaults';
-import { containsKeyword } from '../points/earn';
+import { containsKeyword } from '../text/keywords';
 
 export type MccSource = 'typed' | 'memory' | 'bundled' | 'category';
 
