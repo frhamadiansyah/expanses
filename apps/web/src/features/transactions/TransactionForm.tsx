@@ -1,12 +1,15 @@
-import { CURRENCIES, isoDate, minorToMajorString, parseMajor, parseRate } from '@expanses/core';
-import { type AccountRow, postTransaction, replaceTransaction, type TransactionView, upsertRate } from '@expanses/db';
+import { CURRENCIES, isoDate, mccName, minorToMajorString, parseMajor, parseRate, resolveMcc } from '@expanses/core';
+import { type AccountRow, mccSourcesFor, postTransaction, replaceTransaction, saveMerchantMcc, type TransactionView, upsertRate } from '@expanses/db';
+import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
 import { CategoryOptions } from '../cards/options';
-import { type Draft, draftFromTransaction, draftToExtras, draftToLines, emptyDraft } from './draft';
+import { MccPicker } from '../merchants/MccPicker';
+import { suggestPattern } from '../merchants/mcc-search';
+import { type Draft, draftFromTransaction, draftToExtras, draftToLines, draftToMemory, emptyDraft } from './draft';
 
 function MoneyAccountOptions({ accounts }: { accounts: AccountRow[] }) {
   const money = accounts.filter(isMoneyAccount);
@@ -37,7 +40,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const [showOriginal, setShowOriginal] = useState(() => !!initial?.originalCurrency);
+  const [showCardDetails, setShowCardDetails] = useState(() => !!initial?.originalCurrency || !!initial?.mcc);
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
 
   const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
@@ -46,6 +49,13 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
   const currency = moneyAccount?.currency ?? ws.baseCurrency;
   const crossCurrency = draft.mode === 'transfer' && !!moneyAccount && !!toAccount && moneyAccount.currency !== toAccount.currency;
   const onCard = draft.mode === 'expense' && moneyAccount?.subtype === 'credit_card';
+  const mccSources = useQuery({ queryKey: ['mcc-sources', ws.workspaceId], queryFn: () => mccSourcesFor(database.db, ws), enabled: onCard });
+  const guessCategory = draft.splits[0]?.categoryId || draft.categoryId;
+  const guess = mccSources.data && guessCategory ? resolveMcc(draft.description, guessCategory, { typed: null, ...mccSources.data }) : null;
+  const guessName = guess?.mcc ? mccName(guess.mcc) : null;
+  const guessFrom =
+    guess?.source === 'memory' ? 'you taught this merchant' : guess?.source === 'bundled' ? 'typical for this merchant' : `from ${byId.get(guessCategory)?.name ?? 'the category'}`;
+  const guessHint = guess?.mcc ? `Empty uses ${guess.mcc}${guessName ? ` ${guessName}` : ''} (${guessFrom}).` : 'Empty: no MCC is known for this merchant or category yet.';
   const splitTotal = draft.splits.reduce((s, r) => {
     try {
       return s + (r.amount.trim() ? parseMajor(r.amount, currency) : 0);
@@ -61,6 +71,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
     try {
       const lines = draftToLines(draft, accounts);
       const extras = draftToExtras(draft, accounts);
+      const memory = draftToMemory(draft, accounts);
       const today = isoDate();
       // Rates are resolved no later than today, so a manual rate must be stored under the same date.
       const rateDate = draft.occurredOn > today ? today : draft.occurredOn;
@@ -78,6 +89,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
       const input = { occurredOn: draft.occurredOn, description: draft.description || (draft.mode === 'transfer' ? 'Transfer' : ''), lines, ratesToBase: resolved.rates, ...extras };
       if (initial) await replaceTransaction(database, ws, initial.id, input);
       else await postTransaction(database, ws, input);
+      if (memory) await saveMerchantMcc(database, ws, memory);
       await invalidate();
       onDone();
     } catch (e) {
@@ -137,9 +149,9 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
         </div>
 
         {onCard && (
-          <details open={showOriginal} onToggle={(e) => setShowOriginal(e.currentTarget.open)} className="rounded-lg border border-slate-200 px-3 py-2">
-            <summary className="cursor-pointer text-sm text-slate-600">Spent in another currency?</summary>
-            {showOriginal && (
+          <details open={showCardDetails} onToggle={(e) => setShowCardDetails(e.currentTarget.open)} className="rounded-lg border border-slate-200 px-3 py-2">
+            <summary className="cursor-pointer text-sm text-slate-600">Card purchase details</summary>
+            {showCardDetails && (
               <div className="mt-2 grid gap-3 md:grid-cols-2">
                 <Field label="Original currency" hint="The currency the merchant charged. Some cards earn more in certain currencies.">
                   <Select value={draft.originalCurrency} onChange={(e) => set({ originalCurrency: e.target.value })}>
@@ -154,6 +166,22 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
                 <Field label={`Original amount${draft.originalCurrency ? ` (${draft.originalCurrency})` : ''}`}>
                   <Input value={draft.originalAmount} onChange={(e) => set({ originalAmount: e.target.value })} inputMode="decimal" />
                 </Field>
+                <MccPicker label="MCC" value={draft.mcc} onChange={(mcc) => set({ mcc })} hint={guessHint} />
+                <div className="space-y-2 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!draft.rememberPattern}
+                      onChange={(e) => set({ rememberPattern: e.target.checked ? suggestPattern(draft.description) || draft.description.trim().toLowerCase() : '' })}
+                    />
+                    Remember this MCC for every purchase containing the merchant text
+                  </label>
+                  {draft.rememberPattern && (
+                    <Field label="Merchant text" hint="Matched as whole words in descriptions, on every card, including past purchases.">
+                      <Input value={draft.rememberPattern} onChange={(e) => set({ rememberPattern: e.target.value })} />
+                    </Field>
+                  )}
+                </div>
               </div>
             )}
           </details>

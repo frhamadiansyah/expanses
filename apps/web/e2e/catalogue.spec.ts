@@ -40,7 +40,7 @@ async function buy(page: Page, p: { card: string; description: string; category:
   await page.getByLabel('Category').selectOption({ label: p.category });
   await page.getByLabel('Amount', { exact: true }).fill(p.amount);
   if (p.original) {
-    await page.getByText('Spent in another currency?').click();
+    await page.getByText('Card purchase details').click();
     await page.getByLabel('Original currency').selectOption(p.original[0]);
     await page.getByLabel(/^Original amount/).fill(p.original[1]);
   }

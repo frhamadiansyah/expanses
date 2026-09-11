@@ -1,7 +1,7 @@
 import type { PostingLine } from '@expanses/core';
 import type { AccountRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { type Draft, draftFromTransaction, draftToExtras, draftToLines, emptyDraft, isEditable } from './draft';
+import { type Draft, draftFromTransaction, draftToExtras, draftToLines, draftToMemory, emptyDraft, isEditable } from './draft';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency, valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -81,11 +81,11 @@ describe('transaction drafts', () => {
 
 describe('original currency on card purchases', () => {
   const base = { ...emptyDraft('2026-09-11'), description: 'Cold Storage', moneyId: 'visa', categoryId: 'groceries', amount: '540.000' };
-  const none = { originalCurrency: null, originalAmountMinor: null };
+  const none = { originalCurrency: null, originalAmountMinor: null, mcc: null };
 
   it('round-trips an SGD 45,20 purchase billed to an IDR card', () => {
     const extras = draftToExtras({ ...base, originalCurrency: 'SGD', originalAmount: '45,20' }, accounts);
-    expect(extras).toEqual({ originalCurrency: 'SGD', originalAmountMinor: 4520 });
+    expect(extras).toEqual({ originalCurrency: 'SGD', originalAmountMinor: 4520, mcc: null });
     const restored = draftFromTransaction(view(draftToLines(base, accounts), 'posted', extras));
     expect(restored).toMatchObject({ originalCurrency: 'SGD', originalAmount: '45.20' });
     expect(draftToExtras(restored, accounts)).toEqual(extras);
@@ -107,5 +107,34 @@ describe('original currency on card purchases', () => {
   it('starts empty for new drafts and for transactions without an original currency', () => {
     expect(emptyDraft('2026-09-11')).toMatchObject({ originalCurrency: '', originalAmount: '' });
     expect(draftFromTransaction(view(draftToLines(base, accounts)))).toMatchObject({ originalCurrency: '', originalAmount: '' });
+  });
+});
+
+describe('MCC on card purchases', () => {
+  const base = { ...emptyDraft('2026-09-11'), description: "MCDONALD'S SENAYAN", moneyId: 'visa', categoryId: 'groceries', amount: '60.000' };
+
+  it('round-trips a typed MCC on a card expense', () => {
+    expect(draftToExtras({ ...base, mcc: '5814' }, accounts).mcc).toBe('5814');
+    const restored = draftFromTransaction({ ...view(draftToLines(base, accounts)), mcc: '5814' });
+    expect(restored).toMatchObject({ mcc: '5814', rememberPattern: '' });
+    expect(draftToExtras(restored, accounts).mcc).toBe('5814');
+  });
+
+  it('rejects an MCC that is not four digits, and a remembered merchant without an MCC', () => {
+    expect(() => draftToExtras({ ...base, mcc: '581' }, accounts)).toThrow('four digits');
+    expect(() => draftToMemory({ ...base, rememberPattern: 'mcdonald' }, accounts)).toThrow('MCC');
+  });
+
+  it('remembers the merchant instead of typing the MCC on the purchase', () => {
+    const draft = { ...base, mcc: '5814', rememberPattern: " McDonald's  Senayan " };
+    expect(draftToMemory(draft, accounts)).toEqual({ pattern: "mcdonald's senayan", mcc: '5814' });
+    expect(draftToExtras(draft, accounts).mcc).toBeNull();
+  });
+
+  it('carries no MCC or merchant memory for other payments', () => {
+    const draft = { ...base, moneyId: 'checking', mcc: '5814', rememberPattern: 'mcdonald' };
+    expect(draftToExtras(draft, accounts).mcc).toBeNull();
+    expect(draftToMemory(draft, accounts)).toBeNull();
+    expect(emptyDraft('2026-09-11')).toMatchObject({ mcc: '', rememberPattern: '' });
   });
 });

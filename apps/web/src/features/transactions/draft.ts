@@ -34,10 +34,14 @@ export interface Draft {
   /** Currency the merchant charged before a card converted it; '' when unused. */
   originalCurrency: string;
   originalAmount: string;
+  /** Typed merchant category code; '' when unused. */
+  mcc: string;
+  /** When set, the MCC is remembered for purchases containing this text instead of typed on the purchase. */
+  rememberPattern: string;
 }
 
 export function emptyDraft(today: string = isoDate()): Draft {
-  return { mode: 'expense', occurredOn: today, description: '', moneyId: '', toId: '', categoryId: '', amount: '', toAmount: '', splits: [], originalCurrency: '', originalAmount: '' };
+  return { mode: 'expense', occurredOn: today, description: '', moneyId: '', toId: '', categoryId: '', amount: '', toAmount: '', splits: [], originalCurrency: '', originalAmount: '', mcc: '', rememberPattern: '' };
 }
 
 /** Opening balances post against system equity and have no form that can represent them. */
@@ -53,7 +57,7 @@ const originalFields = (tx: TransactionView) =>
 export function draftFromTransaction(tx: TransactionView): Draft {
   const c = classify(tx);
   const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
-  const base = { ...emptyDraft(tx.occurredOn), description: tx.description, ...originalFields(tx) };
+  const base = { ...emptyDraft(tx.occurredOn), description: tx.description, ...originalFields(tx), mcc: tx.mcc ?? '' };
   if (c.type === 'expense') {
     const expenses = tx.entries.filter((e) => e.accountKind === 'expense');
     const payment = money[0]!;
@@ -130,18 +134,40 @@ export function draftToLines(draft: Draft, accounts: AccountRow[]): PostingLine[
   });
 }
 
+const isCardExpense = (draft: Draft, accounts: AccountRow[]) =>
+  draft.mode === 'expense' && accounts.find((a) => a.id === draft.moneyId)?.subtype === 'credit_card';
+
+function typedMcc(draft: Draft): string | null {
+  const mcc = draft.mcc.trim();
+  if (!mcc) return null;
+  if (!/^\d{4}$/.test(mcc)) throw new Error('An MCC is four digits, like 5814');
+  // A remembered merchant supplies the MCC, so the purchase itself stays untyped.
+  return draft.rememberPattern.trim() ? null : mcc;
+}
+
 /**
- * The original currency and amount of a card expense charged in another currency. Anything else, including a currency
- * equal to the card's, carries none, so editing a purchase onto a bank account clears them.
+ * Original currency, original amount, and typed MCC of a card expense. Anything else carries none, so editing a
+ * purchase onto a bank account clears them; a currency equal to the card's is not an original currency.
  */
-export function draftToExtras(draft: Draft, accounts: AccountRow[]): { originalCurrency: string | null; originalAmountMinor: number | null } {
-  const payment = accounts.find((a) => a.id === draft.moneyId);
+export function draftToExtras(draft: Draft, accounts: AccountRow[]): { originalCurrency: string | null; originalAmountMinor: number | null; mcc: string | null } {
+  if (!isCardExpense(draft, accounts)) return { originalCurrency: null, originalAmountMinor: null, mcc: null };
+  const payment = accounts.find((a) => a.id === draft.moneyId)!;
+  const mcc = typedMcc(draft);
   const currency = draft.originalCurrency.trim();
   const amount = draft.originalAmount.trim();
-  if (draft.mode !== 'expense' || payment?.subtype !== 'credit_card' || (!currency && !amount) || currency === payment.currency) {
-    return { originalCurrency: null, originalAmountMinor: null };
-  }
+  if ((!currency && !amount) || currency === payment.currency) return { originalCurrency: null, originalAmountMinor: null, mcc };
   if (!currency) throw new Error('Choose the currency the merchant charged');
   if (!amount) throw new Error(`Enter the amount charged in ${currency}`);
-  return { originalCurrency: currency, originalAmountMinor: positive(amount, currency, 'Original amount') };
+  return { originalCurrency: currency, originalAmountMinor: positive(amount, currency, 'Original amount'), mcc };
+}
+
+/** The merchant memory entry to save with a card expense, when the user chose to remember its MCC. */
+export function draftToMemory(draft: Draft, accounts: AccountRow[]): { pattern: string; mcc: string } | null {
+  if (!isCardExpense(draft, accounts)) return null;
+  const pattern = draft.rememberPattern.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!pattern) return null;
+  const mcc = draft.mcc.trim();
+  if (!mcc) throw new Error('Choose the MCC to remember for this merchant');
+  if (!/^\d{4}$/.test(mcc)) throw new Error('An MCC is four digits, like 5814');
+  return { pattern, mcc };
 }
