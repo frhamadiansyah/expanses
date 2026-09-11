@@ -412,3 +412,31 @@ export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Recor
 ### Task 16 additions
 
 - [ ] `apply Mandiri World Prioritas, post Rp 25.000 domestic, see 3 Livin'poin`; `CNY taxi earns 1 per Rp 100.000 equivalent`; `apply CIMB, post Rp 60.000 domestic, see 2,5 ALL points`.
+
+## Execution status (2026-09-11)
+
+Executed inline on the fast track in three drops on `feat/card-catalogue`, each task written test-first and committed only with core, db, catalog, and web unit tests and typecheck green. Addendum tasks 3a–3c ran before Task 4.
+
+Delivered: Tasks 1–16 with the addendum additions. Six entries are bundled: BCA Singapore Airlines KrisFlyer Visa Signature and Visa Infinite, BCA UnionPay, CIMB Niaga World ALL Accor Live Limitless, Mandiri World Prioritas, and Marriott Bonvoy Mandiri. `bca-sq-pps-club-visa-infinite` stays parked.
+
+Verification at completion: catalog 36, core 83, db 54, web 27 unit tests passing; typecheck clean in all packages; 11 Playwright tests passing against a production build (5 existing, 6 in `e2e/catalogue.spec.ts`). Preview rebuilt into `apps/web/dist-preview` and served on port 4174 with entry `assets/index-BG87MKoq.js`.
+
+Deviations from this plan, recorded:
+
+- The catalogue migration is `0005_catalog`; `0004_increment_rounding` was taken by Task 3c.
+- `database.transaction` is not re-entrant, so points writers have transaction-scoped variants (`saveEarnRuleTx`, `saveCycleBonusTx`, `saveTransferPartnerTx`, `saveRedemptionOptionTx`, and the archive and delete variants), and categories gained `categoryIdsByKeyTx`. The catalogue repository applies an entry in one transaction through them.
+- `planCatalogApply` leaves out a rule or bonus whose category keys all fail to map, because an empty category list would match every category. The keys are still reported as unmapped.
+- `packages/catalog` gained `src/lookup.ts` (terms, fees, staleness) and `src/format.ts` (shared wording for diff and describe).
+- The rule form now keeps match conditions it cannot edit (origin, currencies, excluded keywords), offers per-multiple rounding, and parses one-decimal rates via `features/cards/rule-values.ts`.
+- The catalogue picker also appears in step 1, as a preview that pre-fills a fixed statement day, and on manually set-up cards, where applying asks before replacing their rules.
+- Pure helpers with unit tests were split out of components: `catalog-picker.ts`, `catalog-panel.ts`, `recommend-targets.ts`; transfer estimates live in `TransferEstimates.tsx`; `db/bootstrap.test.ts` checks keys are ensured before linked programs sync.
+- `draftToExtras` takes the accounts list, since only card expenses carry an original currency.
+- Existing e2e specs select the transaction amount with `getByLabel('Amount', { exact: true })` because the form now also has "Original amount".
+- Commit `eb94259` accidentally reformatted `TransactionForm.tsx`; `126d253` restores its layout.
+
+Outstanding:
+
+- Independent code review of the catalogue branch before merging.
+- Owner decisions raised during execution: an MCC layer for rules whose issuer terms split one sub-category by MCC (options A, B, C), and per-transaction estimates and actuals for issuers that credit per purchase (proposal D).
+- Maybank Visa Platinum, Visa Infinite, BMW, MINI, and Manchester United entries are researched but not written. Decided: marketplace keywords for online spend, a new Sports & Fitness category, and Maybank's own dealer keyword lists. Waiting on the MCC decision for fast food (MCC 5814) and sports MCCs.
+- `CATALOG_REPORT_EMAIL` is still null, so Report a change stays hidden.
