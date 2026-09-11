@@ -94,6 +94,10 @@ export interface CycleEarn {
   totalPoints: number;
   /** Spend no primary rule earned on (no match, or every matching rule's cap exhausted). */
   unearnedSpendMinor: number;
+  /** Rule points per purchase (bonuses excluded); refunds are negative. Purchases that earned nothing are absent. */
+  pointsByTransaction: Record<string, number>;
+  /** Purchases whose points come from a share of a cycle-rounded rule rather than the issuer's own figure. */
+  approximateTransactionIds: string[];
 }
 
 export interface EarnOptions {
@@ -263,5 +267,43 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
   const pointsByRule = Object.fromEntries(Object.entries(tenthsByRule).map(([id, t]) => [id, t / TENTHS]));
   const totalTenths = Object.values(tenthsByRule).reduce((s, t) => s + t, 0) + Object.values(bonusById).reduce((s, b) => s + b * TENTHS, 0);
   const totalPoints = totalTenths / TENTHS;
-  return { allocations, pointsByRule, spendByRule, bonusById, eligibleSpendByBonus, totalPoints, unearnedSpendMinor };
+  const { pointsByTransaction, approximateTransactionIds } = pointsPerPurchase(allocations, rules);
+  return { allocations, pointsByRule, spendByRule, bonusById, eligibleSpendByBonus, totalPoints, unearnedSpendMinor, pointsByTransaction, approximateTransactionIds };
+}
+
+/**
+ * Sums allocations per purchase in tenths. A cycle-rounded rule's purchase points are shared in proportion to spend,
+ * using the largest remainder so the shares add up to the rule's points; its refund deductions stay on the refunds.
+ */
+function pointsPerPurchase(allocations: EarnAllocation[], rules: EarnRule[]) {
+  const tenthsByTransaction = new Map<string, number>();
+  const add = (transactionId: string, tenths: number) => tenthsByTransaction.set(transactionId, (tenthsByTransaction.get(transactionId) ?? 0) + tenths);
+  const cycleRounded = new Set(rules.filter((rule) => rule.rounding === 'per_cycle_sum').map((rule) => rule.id));
+  const shared = new Map<string, { transactionId: string; spend: number; tenths: number }[]>();
+  const approximate = new Set<string>();
+  for (const allocation of allocations) {
+    const tenths = Math.round(allocation.points * TENTHS);
+    if (cycleRounded.has(allocation.ruleId) && allocation.spendMinor > 0) {
+      shared.set(allocation.ruleId, [...(shared.get(allocation.ruleId) ?? []), { transactionId: allocation.transactionId, spend: allocation.spendMinor, tenths }]);
+      approximate.add(allocation.transactionId);
+    } else {
+      add(allocation.transactionId, tenths);
+    }
+  }
+  for (const parts of shared.values()) {
+    const totalTenths = parts.reduce((sum, part) => sum + part.tenths, 0);
+    const totalSpend = parts.reduce((sum, part) => sum + part.spend, 0);
+    const shares = parts.map((part) => ({ ...part, share: Math.floor((totalTenths * part.spend) / totalSpend), rest: (totalTenths * part.spend) % totalSpend }));
+    let left = totalTenths - shares.reduce((sum, part) => sum + part.share, 0);
+    for (const part of [...shares].sort((a, b) => b.rest - a.rest)) {
+      if (left <= 0) break;
+      part.share += 1;
+      left -= 1;
+    }
+    for (const part of shares) add(part.transactionId, part.share);
+  }
+  return {
+    pointsByTransaction: Object.fromEntries([...tenthsByTransaction].map(([transactionId, tenths]) => [transactionId, tenths / TENTHS])),
+    approximateTransactionIds: [...approximate],
+  };
 }
