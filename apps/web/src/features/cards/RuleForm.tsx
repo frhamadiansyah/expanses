@@ -23,6 +23,7 @@ export function RuleForm({
   accounts,
   initial,
   suggestBase = false,
+  beforeSave,
   onDone,
 }: {
   programId: string;
@@ -30,6 +31,8 @@ export function RuleForm({
   accounts: AccountRow[];
   initial?: EarnRule;
   suggestBase?: boolean;
+  /** Return false to cancel saving, e.g. when the user declines customising a catalogue card. */
+  beforeSave?: () => boolean;
   onDone: () => void;
 }) {
   const { database, ws } = useApp();
@@ -65,6 +68,7 @@ export function RuleForm({
       delete kept.categoryIds;
       delete kept.excludeCategoryIds;
       delete kept.merchantPatterns;
+      if (beforeSave && !beforeSave()) return;
       await saveEarnRule(database, ws, programId, {
         id: initial?.id,
         name,

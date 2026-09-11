@@ -1,4 +1,4 @@
-import { CURRENCIES, displayAmount, type EarnRule, formatMinor, isoDate, minorToMajorString, parseMajor, type Redemption } from '@expanses/core';
+import { CURRENCIES, type CycleBonus, displayAmount, type EarnRule, formatMinor, isoDate, minorToMajorString, parseMajor, type Redemption, type TransferPartner } from '@expanses/core';
 import type { CatalogEntry } from '@expanses/catalog';
 import {
   applyCatalogEntry,
@@ -16,8 +16,12 @@ import { type FormEvent, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { BonusProgress } from './BonusProgress';
+import { CatalogPanel } from './CatalogPanel';
 import { CatalogPicker } from './CatalogPicker';
+import { activeDuring } from './catalog-panel';
 import { RuleForm } from './RuleForm';
+import { TransferEstimates } from './TransferEstimates';
 import { type CycleResult, formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
 
 const route = getRouteApi('/cards/$cardId');
@@ -54,7 +58,29 @@ function Section({ title, step, children, action }: { title: string; step?: stri
   );
 }
 
-function CycleSummary({ result, rules, unit, currency, best, title }: { result: CycleResult; rules: EarnRule[]; unit: string; currency: string; best: Redemption | null; title: string }) {
+function CycleSummary({
+  result,
+  rules,
+  bonuses,
+  partners,
+  unit,
+  currency,
+  best,
+  title,
+  today,
+}: {
+  result: CycleResult;
+  rules: EarnRule[];
+  bonuses: CycleBonus[];
+  partners: TransferPartner[];
+  unit: string;
+  currency: string;
+  best: Redemption | null;
+  title: string;
+  today: string;
+}) {
+  // Catalogue cards keep earlier terms as dated rules; only those in force during the cycle are relevant here.
+  const activeRules = rules.filter((rule) => activeDuring(rule, result.cycle.start, result.cycle.end));
   const spend = result.lines.reduce((s, l) => s + Math.max(0, l.amountMinor), 0);
   const value = pointsValue(result.earn.totalPoints, best);
   return (
@@ -76,7 +102,7 @@ function CycleSummary({ result, rules, unit, currency, best, title }: { result: 
         )}
       </div>
       <ul className="mt-3 space-y-2">
-        {rules.map((rule) => {
+        {activeRules.map((rule) => {
           const used = result.earn.spendByRule[rule.id] ?? 0;
           const pct = rule.capSpendMinor ? Math.min(100, Math.round((used / rule.capSpendMinor) * 100)) : null;
           return (
@@ -101,6 +127,8 @@ function CycleSummary({ result, rules, unit, currency, best, title }: { result: 
           );
         })}
       </ul>
+      <BonusProgress bonuses={bonuses} result={result} unit={unit} currency={currency} />
+      <TransferEstimates partners={partners} points={result.earn.totalPoints} unit={unit} today={today} />
       {result.earn.unearnedSpendMinor > 0 && (
         <p className="mt-2 text-xs text-amber-700">{formatMinor(result.earn.unearnedSpendMinor, currency)} earned nothing — no rule matched. Add a base rule?</p>
       )}
@@ -185,6 +213,9 @@ export function CardDetailPage() {
   const hasTerms = !!cp.terms;
   const step = !hasTerms ? 1 : !cp.program ? 2 : cp.rules.length === 0 ? 3 : null;
   const canUseCatalog = !cp.program || cp.catalog.status === null;
+  const confirmCustomise = () =>
+    cp.catalog.status !== 'linked' ||
+    window.confirm(`${card.name} follows the catalogue. Changing it makes it customised: catalogue updates stop applying automatically and wait for your review. Continue?`);
   const chooseEntry = (entry: CatalogEntry) => {
     setCatalogId(entry.id);
     // Some issuers close every cardholder's statement on the same day.
@@ -203,6 +234,7 @@ export function CardDetailPage() {
     <div className="space-y-4">
       <PageHeader title={card.name} action={<Link to="/cards" className="text-sm underline">All cards</Link>} />
       <ErrorBox error={error} />
+      {cp.catalog.entryId && <CatalogPanel cp={cp} today={today} run={run} />}
 
       <Section title="Card terms" step={step === 1 ? 'Step 1 of 3' : undefined}>
         {step === 1 && (
@@ -283,7 +315,7 @@ export function CardDetailPage() {
       {hasTerms && cp.program && (
         <>
           {cp.current && cp.rules.length > 0 && (
-            <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} unit={cp.program.unit} currency={currency} best={cp.best} />
+            <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} bonuses={cp.bonuses} partners={cp.transferPartners} unit={cp.program.unit} currency={currency} best={cp.best} today={today} />
           )}
           {cp.previous && cp.rules.length > 0 && <ActualForm program={cp.program} result={cp.previous} unit={cp.program.unit} />}
 
@@ -311,7 +343,7 @@ export function CardDetailPage() {
               </div>
             )}
             {editingRule === 'new' && (
-              <RuleForm programId={cp.program.id} currency={currency} accounts={all} suggestBase={cp.rules.length === 0} onDone={() => setEditingRule(null)} />
+              <RuleForm programId={cp.program.id} currency={currency} accounts={all} suggestBase={cp.rules.length === 0} beforeSave={confirmCustomise} onDone={() => setEditingRule(null)} />
             )}
             {cp.rules.length === 0 && editingRule === null && (
               <Empty>Add your card's base earn rate first. The form starts with a typical rate — change it to match your card. Then add bonus rules with a higher priority.</Empty>
@@ -320,7 +352,7 @@ export function CardDetailPage() {
               {[...cp.rules].sort((a, b) => b.priority - a.priority).map((rule) =>
                 editingRule !== 'new' && editingRule?.id === rule.id ? (
                   <li key={rule.id} className="py-2">
-                    <RuleForm programId={cp.program!.id} currency={currency} accounts={all} initial={rule} onDone={() => setEditingRule(null)} />
+                    <RuleForm programId={cp.program!.id} currency={currency} accounts={all} initial={rule} beforeSave={confirmCustomise} onDone={() => setEditingRule(null)} />
                   </li>
                 ) : (
                   <li key={rule.id} className="flex items-center gap-3 py-2 text-sm">
@@ -329,7 +361,9 @@ export function CardDetailPage() {
                         {rule.name} {rule.stackable && <span className="text-xs text-slate-500">(stacks)</span>}
                       </div>
                       <div className="text-xs text-slate-500">
-                        {rule.rateNum} per {formatMinor(rule.rateDen, currency)} · priority {rule.priority}
+                        {formatPoints(rule.rateNum)} per {formatMinor(rule.rateDen, currency)} · priority {rule.priority}
+                        {rule.validFrom && ` · from ${rule.validFrom}`}
+                        {rule.validTo && ` · until ${rule.validTo}`}
                         {rule.capSpendMinor !== null && ` · cap ${formatMinor(rule.capSpendMinor, currency)}/cycle`}
                         {rule.match.categoryIds?.length ? ` · ${rule.match.categoryIds.map((id) => all.find((a) => a.id === id)?.name ?? '?').join(', ')}` : ' · all categories'}
                         {rule.match.merchantPatterns?.length ? ` · merchants: ${rule.match.merchantPatterns.join(', ')}` : ''}
@@ -338,7 +372,7 @@ export function CardDetailPage() {
                     <Button variant="ghost" onClick={() => setEditingRule(rule)}>
                       Edit
                     </Button>
-                    <Button variant="ghost" onClick={() => window.confirm(`Remove rule ${rule.name}?`) && void run(() => archiveEarnRule(database, ws, rule.id))}>
+                    <Button variant="ghost" onClick={() => window.confirm(`Remove rule ${rule.name}?`) && confirmCustomise() && void run(() => archiveEarnRule(database, ws, rule.id))}>
                       Remove
                     </Button>
                   </li>
@@ -355,7 +389,7 @@ export function CardDetailPage() {
                     <span>
                       {r.name}: {formatPoints(r.perPoints)} {cp.program!.unit} = {formatMinor(r.valueMinor, r.currency)}
                     </span>
-                    <Button variant="ghost" onClick={() => void run(() => deleteRedemptionOption(database, ws, r.id))}>
+                    <Button variant="ghost" onClick={() => confirmCustomise() && void run(() => deleteRedemptionOption(database, ws, r.id))}>
                       Remove
                     </Button>
                   </li>
@@ -365,6 +399,7 @@ export function CardDetailPage() {
                 className="grid gap-3 md:grid-cols-4"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!confirmCustomise()) return;
                   void run(async () => {
                     await saveRedemptionOption(database, ws, { programId: cp.program!.id, name: redeemName, type: 'cashback', perPoints: Number(redeemPoints), valueMinor: parseMajor(redeemValue, redeemCurrency), currency: redeemCurrency });
                     setRedeemName('');
