@@ -36,7 +36,10 @@ test('menu navigation between a card page and the cards list keeps working', asy
   await expect(page.getByRole('button', { name: 'Add rule' })).toBeVisible();
   await menu(page, 'Cards');
   await expect(page.getByRole('heading', { name: 'Cards & points' })).toBeVisible();
-  await expect(page.getByText(/points$/).first()).toBeVisible();
+  // Scope to the card's own row: the page heading "Cards & points" would also match a bare /points$/.
+  const row = page.locator('section', { has: page.getByRole('link', { name: 'Only Card' }) });
+  await expect(row).toContainText(/\d+ points/);
+  await expect(row).not.toContainText('Rewards not set up');
 
   expect(crashes).toEqual([]);
 });
