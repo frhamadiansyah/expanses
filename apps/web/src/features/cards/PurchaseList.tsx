@@ -1,6 +1,7 @@
-import { explainTransaction, formatMinor, type Suggestion } from '@expanses/core';
+import { explainTransaction, formatMinor, monthOf, type Suggestion } from '@expanses/core';
 import { clearTransactionPointActual, recordTransactionPointActual, saveMerchantMcc, setProgramCrediting, setTransactionMcc } from '@expanses/db';
-import { type FormEvent, useState } from 'react';
+import { Link } from '@tanstack/react-router';
+import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Button, Card, cx, Field, Input, Select } from '../../ui';
 import { suggestPattern } from '../merchants/mcc-search';
@@ -13,7 +14,7 @@ const SOURCE_LABELS = { typed: 'typed', memory: 'yours', bundled: 'typical', cat
 const sameTenths = (a: number, b: number) => Math.round(a * 10) === Math.round(b * 10);
 
 /** Fixes for an MCC suggestion: remember the merchant for every purchase, or set the MCC on this purchase only. */
-export function SuggestionFixes({ suggestion, description, run }: { suggestion: Suggestion; description: string; run: Run }) {
+export function SuggestionFixes({ suggestion, description, occurredOn, run }: { suggestion: Suggestion; description: string; occurredOn?: string; run: Run }) {
   const { database, ws } = useApp();
   if (suggestion.kind !== 'mcc') return null;
   const pattern = suggestPattern(description);
@@ -27,6 +28,11 @@ export function SuggestionFixes({ suggestion, description, run }: { suggestion: 
       <Button variant="ghost" onClick={() => void run(() => setTransactionMcc(database, ws, suggestion.transactionId, suggestion.mcc))}>
         This purchase only
       </Button>
+      {occurredOn && (
+        <Link to="/transactions" search={{ month: monthOf(occurredOn) }} className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 underline hover:bg-slate-100">
+          Change category
+        </Link>
+      )}
     </div>
   );
 }
@@ -57,6 +63,17 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
   const [lastCycle, setLastCycle] = useState(false);
   const result = lastCycle ? cp.previous : cp.current;
   const program = cp.program;
+  // Explaining a purchase recomputes the cycle, so do it once per saved result rather than on every render.
+  const hintsById = useMemo(() => {
+    const hints = new Map<string, Suggestion[]>();
+    if (!result || cp.crediting !== 'per_transaction') return hints;
+    for (const actual of cp.transactionActuals) {
+      if (!result.lines.some((line) => line.transactionId === actual.transactionId)) continue;
+      if (sameTenths(actual.actualPoints, result.earn.pointsByTransaction[actual.transactionId] ?? 0)) continue;
+      hints.set(actual.transactionId, explainTransaction(result.context, actual.transactionId, actual.actualPoints));
+    }
+    return hints;
+  }, [result, cp.crediting, cp.transactionActuals]);
   if (!result || !program) return null;
   const unit = program.unit;
   const perPurchase = cp.crediting === 'per_transaction';
@@ -96,7 +113,7 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
           const estimate = result.earn.pointsByTransaction[purchase.transactionId] ?? 0;
           const actual = actuals.get(purchase.transactionId);
           const differs = perPurchase && actual !== undefined && !sameTenths(actual.actualPoints, estimate);
-          const hints = differs ? explainTransaction(result.context, purchase.transactionId, actual.actualPoints) : [];
+          const hints = differs ? (hintsById.get(purchase.transactionId) ?? []) : [];
           return (
             <li key={purchase.transactionId} className="py-2 text-sm">
               <div className="flex flex-wrap items-center gap-3">
@@ -141,7 +158,7 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
               {hints.map((hint, i) => (
                 <div key={i} className="mt-1 rounded bg-amber-50 p-2 text-xs">
                   <p>{describeSuggestion(hint, unit, currency, { [purchase.transactionId]: purchase.description })}</p>
-                  <SuggestionFixes suggestion={hint} description={purchase.description} run={run} />
+                  <SuggestionFixes suggestion={hint} description={purchase.description} occurredOn={purchase.occurredOn} run={run} />
                 </div>
               ))}
               {differs && hints.length === 0 && <p className="mt-1 text-xs text-slate-500">No MCC in this card's rules explains the difference. Check the purchase's category or the card's rules.</p>}

@@ -113,15 +113,23 @@ export async function mccSourcesFor(db: Db, ws: WorkspaceContext): Promise<Omit<
   };
 }
 
-/** How many posted purchases a merchant pattern would cover, for confirming a memory change. */
-export async function countMatchingPurchases(database: Database, ws: WorkspaceContext, pattern: string): Promise<number> {
-  const normalised = normalisePattern(pattern);
-  if (!normalised) return 0;
+/** How many posted purchases each pattern covers, from one scan of purchase descriptions. */
+export async function countPurchasesByPattern(database: Database, ws: WorkspaceContext, patterns: readonly string[]): Promise<Record<string, number>> {
   const rows = await database.db
     .selectDistinct({ id: transactions.id, description: transactions.description })
     .from(transactions)
     .innerJoin(entries, eq(entries.transactionId, transactions.id))
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
     .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), eq(accounts.kind, 'expense')));
-  return rows.filter((row) => containsKeyword(row.description, normalised)).length;
+  return Object.fromEntries(
+    patterns.map((pattern) => {
+      const normalised = normalisePattern(pattern);
+      return [pattern, normalised ? rows.filter((row) => containsKeyword(row.description, normalised)).length : 0];
+    }),
+  );
+}
+
+/** How many posted purchases a merchant pattern would cover, for confirming a memory change. */
+export async function countMatchingPurchases(database: Database, ws: WorkspaceContext, pattern: string): Promise<number> {
+  return (await countPurchasesByPattern(database, ws, [pattern]))[pattern] ?? 0;
 }

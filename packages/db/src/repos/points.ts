@@ -416,15 +416,17 @@ export async function recordCycleActual(
   ws: WorkspaceContext,
   input: { programId: string; cycleStart: string; actualPoints: number },
 ): Promise<void> {
-  if (!Number.isInteger(input.actualPoints) || input.actualPoints < 0) throw new PointsError('Actual points must be a whole number ≥ 0');
+  const tenths = input.actualPoints * 10;
+  if (!Number.isFinite(tenths) || tenths < 0 || Math.abs(tenths - Math.round(tenths)) > 1e-9) throw new PointsError('Actual points must be ≥ 0 with at most one decimal');
+  const actualPoints = Math.round(tenths) / 10;
   await database.transaction(async (tx) => {
     await requireProgram(tx, ws, input.programId);
     await tx
       .insert(cycleActuals)
-      .values({ workspaceId: ws.workspaceId, programId: input.programId, cycleStart: input.cycleStart, actualPoints: input.actualPoints, recordedAt: new Date().toISOString() })
+      .values({ workspaceId: ws.workspaceId, programId: input.programId, cycleStart: input.cycleStart, actualPoints, recordedAt: new Date().toISOString() })
       .onConflictDoUpdate({
         target: [cycleActuals.programId, cycleActuals.cycleStart],
-        set: { actualPoints: input.actualPoints, recordedAt: new Date().toISOString() },
+        set: { actualPoints, recordedAt: new Date().toISOString() },
       });
   });
 }

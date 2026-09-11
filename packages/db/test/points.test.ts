@@ -80,3 +80,14 @@ describe('per-increment rules in storage', () => {
     expect(rule).toMatchObject({ rounding: 'per_increment', rateNum: 3, rateDen: 20_000, match: { origin: 'domestic' } });
   });
 });
+
+describe('statement totals', () => {
+  it('records a statement total with half points and rejects finer ones', async () => {
+    const { database, ws } = await setupDb();
+    const card = await createAccount(database, ws, { name: 'CIMB Accor', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const program = await createProgram(database, ws, { cardAccountId: card.id, name: 'ALL', unit: 'points', cycleAnchor: 'statement' });
+    await recordCycleActual(database, ws, { programId: program.id, cycleStart: '2026-08-23', actualPoints: 12.5 });
+    expect((await listCycleActuals(database, ws, program.id)).map((a) => a.actualPoints)).toEqual([12.5]);
+    await expect(recordCycleActual(database, ws, { programId: program.id, cycleStart: '2026-08-23', actualPoints: 12.25 })).rejects.toThrow(PointsError);
+  });
+});

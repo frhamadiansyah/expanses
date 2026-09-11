@@ -106,9 +106,9 @@ export function TransactionsPage() {
                       {formatMinor(c.amountMinor, c.currency)}
                     </div>
                     {purchasePoints.data?.[tx.id] && (
-                      <div className="tabular whitespace-nowrap text-xs text-emerald-700">
-                        {purchasePoints.data[tx.id]!.approximate ? '≈ ' : '+'}
-                        {formatPoints(purchasePoints.data[tx.id]!.points)} {purchasePoints.data[tx.id]!.unit}
+                      <div className={cx('tabular whitespace-nowrap text-xs', purchasePoints.data[tx.id]!.points < 0 ? 'text-red-700' : 'text-emerald-700')}>
+                        {purchasePoints.data[tx.id]!.points < 0 ? '−' : purchasePoints.data[tx.id]!.approximate ? '≈ ' : '+'}
+                        {formatPoints(Math.abs(purchasePoints.data[tx.id]!.points))} {purchasePoints.data[tx.id]!.unit}
                       </div>
                     )}
                     {tx.originalCurrency && tx.originalAmountMinor !== null && (

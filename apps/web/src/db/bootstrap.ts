@@ -29,7 +29,12 @@ export async function openAppDb(database: Database): Promise<AppDb> {
   const ws = contextOf(workspace!);
   // Keys first, so catalogue exclusions map to categories when linked programs re-apply.
   await ensureCategoryKeys(database, ws);
-  await syncLinkedPrograms(database, ws, CATALOG, isoDate());
+  try {
+    await syncLinkedPrograms(database, ws, CATALOG, isoDate());
+  } catch (error) {
+    // A bad bundled entry must not stop the app opening; linked cards keep their current terms until the next open.
+    console.warn('Catalogue sync failed', error);
+  }
   return { database, ws, workspaceName: workspace!.name };
 }
 

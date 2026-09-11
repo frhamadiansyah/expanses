@@ -37,10 +37,12 @@ export async function loadPurchasePoints(database: Database, ws: WorkspaceContex
     const terms = await getCardTerms(database, ws, cardId);
     if (program.cycleAnchor === 'statement' && !terms) continue;
     const rules = await listEarnRules(database, ws, program.id);
+    if (rules.length === 0) continue;
+    const billingCurrency = accounts.find((a) => a.id === cardId)?.currency ?? 'IDR';
     const bonuses = await listCycleBonuses(database, ws, program.id);
     for (const cycle of cyclesCovering(dates, program.cycleAnchor, terms?.statementDay ?? 1)) {
       const lines = await cardSpendLines(database, ws, cardId, cycle.start, cycle.end);
-      const earn = computeCycleEarn(lines, rules, ancestors, { bonuses, cycleEnd: cycle.end });
+      const earn = computeCycleEarn(lines, rules, ancestors, { bonuses, cycleEnd: cycle.end, billingCurrency });
       const approximate = new Set(earn.approximateTransactionIds);
       for (const line of lines) {
         points[line.transactionId] = { points: earn.pointsByTransaction[line.transactionId] ?? 0, unit: program.unit, approximate: approximate.has(line.transactionId) };

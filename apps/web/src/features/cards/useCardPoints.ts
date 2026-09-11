@@ -102,7 +102,7 @@ export async function loadCardPoints(
   const statementDay = terms?.statementDay ?? 1;
   const load = async (cycle: Cycle): Promise<CycleResult> => {
     const lines = await cardSpendLines(database, ws, card.id, cycle.start, cycle.end);
-    const options = { bonuses, cycleEnd: cycle.end };
+    const options = { bonuses, cycleEnd: cycle.end, billingCurrency: card.currency ?? 'IDR' };
     return {
       cycle,
       lines,

@@ -5,6 +5,7 @@ import {
   cardSpendLines,
   clearCategoryMcc,
   countMatchingPurchases,
+  countPurchasesByPattern,
   createAccount,
   listAccounts,
   listMerchantMccs,
@@ -91,5 +92,15 @@ describe('card spend lines with MCC', () => {
     await buy('KFC PIM', 'food.dining', '2026-09-02', { payment: checking.id });
     await buy('KFCX ONLINE', 'food.dining', '2026-09-03');
     expect(await countMatchingPurchases(database, ws, 'KFC')).toBe(2);
+  });
+});
+
+describe('merchant counts', () => {
+  it('counts several patterns from one scan', async () => {
+    const { database, ws, buy } = await cardSetup();
+    await buy('KFC KEMANG', 'food.dining', '2026-09-01');
+    await buy('GRAB FOOD KFC', 'food.dining', '2026-09-02');
+    await buy('GRAB CAR', 'transport.ride_hailing', '2026-09-03');
+    expect(await countPurchasesByPattern(database, ws, ['kfc', 'grab', 'mcdonald'])).toEqual({ kfc: 2, grab: 2, mcdonald: 0 });
   });
 });

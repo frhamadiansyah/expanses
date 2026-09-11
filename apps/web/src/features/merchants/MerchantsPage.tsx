@@ -1,6 +1,6 @@
 import { MERCHANTS } from '@expanses/catalog';
 import { mccName } from '@expanses/core';
-import { archiveMerchantMcc, countMatchingPurchases, listMerchantMccs, type MerchantMccRow, saveMerchantMcc } from '@expanses/db';
+import { archiveMerchantMcc, countMatchingPurchases, countPurchasesByPattern, listMerchantMccs, type MerchantMccRow, saveMerchantMcc } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
@@ -28,7 +28,8 @@ export function MerchantsPage() {
     queryKey: ['merchant-mccs', ws.workspaceId],
     queryFn: async () => {
       const rows = await listMerchantMccs(database, ws);
-      return Promise.all(rows.map(async (row) => ({ ...row, matches: await countMatchingPurchases(database, ws, row.pattern) })));
+      const counts = await countPurchasesByPattern(database, ws, rows.map((row) => row.pattern));
+      return rows.map((row) => ({ ...row, matches: counts[row.pattern] ?? 0 }));
     },
   });
 

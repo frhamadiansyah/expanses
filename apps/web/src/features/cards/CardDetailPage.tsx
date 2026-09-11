@@ -12,7 +12,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link } from '@tanstack/react-router';
-import { type FormEvent, type ReactNode, useState } from 'react';
+import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
@@ -147,13 +147,15 @@ function ActualForm({ program, result, unit, currency, crediting }: { program: R
   const [value, setValue] = useState(result.actual === null ? '' : String(result.actual));
   const perPurchase = crediting === 'per_transaction';
   const diff = result.actual === null ? null : result.actual - result.earn.totalPoints;
-  const hints = !perPurchase && result.actual !== null && diff !== 0 ? explainCycle(result.context, result.actual) : [];
+  // Recomputes the cycle per purchase, so only when the saved statement total or the cycle changes, not per keystroke.
+  const hints = useMemo(() => (!perPurchase && result.actual !== null && result.actual !== result.earn.totalPoints ? explainCycle(result.context, result.actual) : []), [perPurchase, result]);
+  const dates = Object.fromEntries(result.lines.map((line) => [line.transactionId, line.occurredOn]));
   const descriptions = Object.fromEntries(result.lines.map((line) => [line.transactionId, line.description]));
   const estimatedBonus = Object.values(result.earn.bonusById).reduce((sum, points) => sum + points, 0);
   const range = `${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`;
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    void run(() => recordCycleActual(database, ws, { programId: program.id, cycleStart: result.cycle.start, actualPoints: Number(value) }));
+    void run(() => recordCycleActual(database, ws, { programId: program.id, cycleStart: result.cycle.start, actualPoints: Number(value.trim().replace(',', '.')) }));
   };
   return (
     <Section title={perPurchase ? `Bonus points credited: ${range}` : `Check against statement: ${range}`}>
@@ -173,7 +175,7 @@ function ActualForm({ program, result, unit, currency, crediting }: { program: R
           {hints.map((hint, i) => (
             <div key={i} className="rounded bg-amber-50 p-2 text-xs">
               <p>{describeSuggestion(hint, unit, currency, descriptions)}</p>
-              <SuggestionFixes suggestion={hint} description={hint.kind === 'mcc' ? (descriptions[hint.transactionId] ?? '') : ''} run={run} />
+              <SuggestionFixes suggestion={hint} description={hint.kind === 'mcc' ? (descriptions[hint.transactionId] ?? '') : ''} occurredOn={hint.kind === 'mcc' ? dates[hint.transactionId] : undefined} run={run} />
             </div>
           ))}
         </div>
@@ -183,7 +185,7 @@ function ActualForm({ program, result, unit, currency, crediting }: { program: R
       )}
       <form onSubmit={submit} className="mt-2 flex items-end gap-2">
         <Field label={perPurchase ? 'Bonus points credited' : `Actual ${unit} on statement`}>
-          <Input value={value} onChange={(e) => setValue(e.target.value)} inputMode="numeric" required />
+          <Input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" required />
         </Field>
         <Button type="submit">Save</Button>
       </form>

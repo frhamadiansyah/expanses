@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "verifiedOn": "2026-09-11",
   "merchants": [
     {
@@ -283,6 +283,24 @@
       "mcc": "4121",
       "name": "Grab",
       "basis": "Typical for ride hailing and taxis; food orders can use 5814"
+    },
+    {
+      "pattern": "grabfood",
+      "mcc": "5814",
+      "name": "GrabFood",
+      "basis": "Typical for food delivery orders; acquirers can assign 5812"
+    },
+    {
+      "pattern": "grab food",
+      "mcc": "5814",
+      "name": "GrabFood",
+      "basis": "Typical for food delivery orders; acquirers can assign 5812"
+    },
+    {
+      "pattern": "gofood",
+      "mcc": "5814",
+      "name": "GoFood",
+      "basis": "Typical for food delivery orders; acquirers can assign 5812"
     },
     {
       "pattern": "gojek",
