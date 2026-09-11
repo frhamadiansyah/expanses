@@ -1,0 +1,152 @@
+import { addMonths, displayAmount, isoDate, lastNMonths, monthOf, monthRange, netWorth } from '@expanses/core';
+import { categoryTotalsBetween, nativeBalances } from '@expanses/db';
+import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+import { useApp } from '../../app/context';
+import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
+import { Card, cx, Empty, Money, PageHeader } from '../../ui';
+
+const sum = (rows: { amountBaseMinor: number }[]) => rows.reduce((s, r) => s + r.amountBaseMinor, 0);
+
+export function DashboardPage() {
+  const { database, ws } = useApp();
+  const resolveRates = useResolveRates();
+  const accounts = useAccounts();
+  const money = (accounts.data ?? []).filter(isMoneyAccount);
+  const today = isoDate();
+  const thisMonth = monthOf(today);
+
+  const current = useQuery({
+    queryKey: ['net-worth', ws.workspaceId, today, money.length],
+    enabled: accounts.isSuccess,
+    queryFn: async () => {
+      const balances = await nativeBalances(database, ws);
+      const rates = await resolveRates(money.map((a) => a.currency!), today);
+      return { balances, rates, result: netWorth({ baseCurrency: ws.baseCurrency, accounts: money, nativeBalances: balances, ratesToBase: rates.rates }) };
+    },
+  });
+
+  const months = lastNMonths(thisMonth, 6);
+  const trend = useQuery({
+    queryKey: ['net-worth-trend', ws.workspaceId, thisMonth, money.length],
+    enabled: accounts.isSuccess,
+    queryFn: () =>
+      Promise.all(
+        months.map(async (month) => {
+          const asOf = month === thisMonth ? today : monthRange(month).to;
+          const balances = await nativeBalances(database, ws, asOf);
+          const rates = await resolveRates(money.map((a) => a.currency!), asOf);
+          return { month, value: netWorth({ baseCurrency: ws.baseCurrency, accounts: money, nativeBalances: balances, ratesToBase: rates.rates }).netWorthBaseMinor };
+        }),
+      ),
+  });
+
+  const flows = useQuery({
+    queryKey: ['flows', ws.workspaceId, thisMonth],
+    queryFn: async () => {
+      const cur = monthRange(thisMonth);
+      const prev = monthRange(addMonths(thisMonth, -1));
+      return {
+        spending: sum(await categoryTotalsBetween(database, ws, 'expense', cur.from, cur.to)),
+        income: sum(await categoryTotalsBetween(database, ws, 'income', cur.from, cur.to)),
+        lastSpending: sum(await categoryTotalsBetween(database, ws, 'expense', prev.from, prev.to)),
+      };
+    },
+  });
+
+  if (accounts.isSuccess && money.length === 0) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Dashboard" />
+        <Card>
+          <Empty>
+            Start by adding your bank accounts and credit cards on the{' '}
+            <Link to="/accounts" className="font-medium underline">
+              Accounts
+            </Link>{' '}
+            page.
+          </Empty>
+        </Card>
+      </div>
+    );
+  }
+
+  const nw = current.data?.result;
+  const warnings = [...(current.data?.rates.stale ?? []).map((c) => `${c} rate is out of date`), ...(nw?.missingRates ?? []).map((c) => `No ${c} rate — ${c} accounts excluded`)];
+  const maxAbs = Math.max(1, ...(trend.data ?? []).map((p) => Math.abs(p.value)));
+  const cards = money.filter((a) => a.subtype === 'credit_card');
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Dashboard" />
+      <Card>
+        <div className="text-xs text-slate-500">Net worth</div>
+        <div data-testid="net-worth" className="text-3xl font-semibold">
+          {nw ? <Money minor={nw.netWorthBaseMinor} currency={ws.baseCurrency} /> : '…'}
+        </div>
+        {nw && (
+          <div className="mt-2 flex gap-6 text-sm text-slate-600">
+            <span>
+              Assets <Money minor={nw.assetsBaseMinor} currency={ws.baseCurrency} />
+            </span>
+            <span>
+              Debts <Money minor={nw.liabilitiesBaseMinor} currency={ws.baseCurrency} />
+            </span>
+          </div>
+        )}
+        {warnings.map((w) => (
+          <p key={w} className="mt-2 text-xs text-amber-700">
+            {w}
+          </p>
+        ))}
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <div className="text-xs text-slate-500">Spent this month</div>
+          <div className="text-xl font-semibold">{flows.data ? <Money minor={flows.data.spending} currency={ws.baseCurrency} /> : '…'}</div>
+          {flows.data && (
+            <div className="text-xs text-slate-500">
+              Last month <Money minor={flows.data.lastSpending} currency={ws.baseCurrency} />
+            </div>
+          )}
+        </Card>
+        <Card>
+          <div className="text-xs text-slate-500">Income this month</div>
+          <div className="text-xl font-semibold">{flows.data ? <Money minor={flows.data.income} currency={ws.baseCurrency} /> : '…'}</div>
+        </Card>
+      </div>
+
+      <Card>
+        <h2 className="mb-2 text-sm font-semibold text-slate-600">Net worth, last 6 months</h2>
+        <ul className="space-y-1">
+          {(trend.data ?? []).map((point) => (
+            <li key={point.month} className="grid grid-cols-[4.5rem_1fr_9rem] items-center gap-3 text-sm">
+              <span className="text-slate-500">{new Date(`${point.month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })}</span>
+              <div className="h-2 rounded bg-slate-100">
+                <div className={cx('h-2 rounded', point.value < 0 ? 'bg-red-500' : 'bg-slate-800')} style={{ width: `${Math.round((Math.abs(point.value) / maxAbs) * 100)}%` }} />
+              </div>
+              <Money minor={point.value} currency={ws.baseCurrency} className="text-right" />
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      {cards.length > 0 && (
+        <Card>
+          <h2 className="mb-2 text-sm font-semibold text-slate-600">Credit cards owed</h2>
+          <ul className="divide-y divide-slate-100">
+            {cards.map((card) => (
+              <li key={card.id} className="flex justify-between py-2 text-sm">
+                <Link to="/transactions" search={{ account: card.id }} className="hover:underline">
+                  {card.name}
+                </Link>
+                <Money minor={displayAmount('liability', current.data?.balances[card.id] ?? 0)} currency={card.currency!} />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </div>
+  );
+}

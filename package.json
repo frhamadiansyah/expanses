@@ -1,0 +1,22 @@
+{
+  "name": "expanses",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev": "npm run dev -w @expanses/web",
+    "build": "npm run build -w @expanses/web",
+    "e2e": "npm run e2e -w @expanses/web"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "fast-check": "^4.9.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}
