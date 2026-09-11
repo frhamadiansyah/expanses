@@ -16,6 +16,12 @@ export const rewardPrograms = sqliteTable('reward_programs', {
   name: text('name').notNull(),
   unit: text('unit', { enum: ['points', 'miles', 'cashback'] }).notNull(),
   cycleAnchor: text('cycle_anchor', { enum: ['statement', 'calendar'] }).notNull(),
+  catalogEntryId: text('catalog_entry_id'),
+  catalogEntryVersion: integer('catalog_entry_version'),
+  catalogStatus: text('catalog_status', { enum: ['linked', 'customised'] }),
+  catalogDismissedVersion: integer('catalog_dismissed_version'),
+  /** JSON of the catalogue entry as applied. */
+  catalogSnapshotJson: text('catalog_snapshot_json'),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
 });
@@ -36,6 +42,7 @@ export const earnRules = sqliteTable('earn_rules', {
   minTransactionMinor: integer('min_transaction_minor'),
   validFrom: text('valid_from'),
   validTo: text('valid_to'),
+  catalogKey: text('catalog_key'),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
 });
@@ -49,6 +56,7 @@ export const redemptionOptions = sqliteTable('redemption_options', {
   valueMinor: integer('value_minor').notNull(),
   perPoints: integer('per_points').notNull(),
   currency: text('currency').notNull(),
+  catalogKey: text('catalog_key'),
 });
 
 export const cycleActuals = sqliteTable('cycle_actuals', {
@@ -57,4 +65,35 @@ export const cycleActuals = sqliteTable('cycle_actuals', {
   cycleStart: text('cycle_start').notNull(),
   actualPoints: integer('actual_points').notNull(),
   recordedAt: text('recorded_at').notNull(),
+});
+
+export const cycleBonuses = sqliteTable('cycle_bonuses', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  programId: text('program_id').notNull(),
+  key: text('key').notNull(),
+  name: text('name').notNull(),
+  tiersJson: text('tiers_json').notNull(),
+  matchJson: text('match_json').notNull(),
+  validFrom: text('valid_from'),
+  validTo: text('valid_to'),
+  catalogKey: text('catalog_key'),
+  archivedAt: text('archived_at'),
+  createdAt: text('created_at').notNull(),
+});
+
+export const transferPartners = sqliteTable('transfer_partners', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  programId: text('program_id').notNull(),
+  key: text('key').notNull(),
+  programName: text('program_name').notNull(),
+  points: integer('points').notNull(),
+  partnerUnits: integer('partner_units').notNull(),
+  incrementPoints: integer('increment_points').notNull(),
+  validFrom: text('valid_from'),
+  validTo: text('valid_to'),
+  catalogKey: text('catalog_key'),
+  archivedAt: text('archived_at'),
+  createdAt: text('created_at').notNull(),
 });

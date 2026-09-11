@@ -91,7 +91,7 @@ export async function createProgram(
 ): Promise<RewardProgramRow> {
   const name = input.name.trim();
   if (!name) throw new PointsError('Program name is required');
-  const row: RewardProgramRow = { id: uuidv7(), workspaceId: ws.workspaceId, cardAccountId: input.cardAccountId, name, unit: input.unit, cycleAnchor: input.cycleAnchor, archivedAt: null, createdAt: new Date().toISOString() };
+  const row: RewardProgramRow = { id: uuidv7(), workspaceId: ws.workspaceId, cardAccountId: input.cardAccountId, name, unit: input.unit, cycleAnchor: input.cycleAnchor, catalogEntryId: null, catalogEntryVersion: null, catalogStatus: null, catalogDismissedVersion: null, catalogSnapshotJson: null, archivedAt: null, createdAt: new Date().toISOString() };
   await database.transaction(async (tx) => {
     await requireCard(tx, ws, input.cardAccountId);
     await tx.insert(rewardPrograms).values(row);

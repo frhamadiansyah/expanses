@@ -17,8 +17,23 @@ describe('database', () => {
   it('migrates once and is idempotent', async () => {
     executor = createNodeExecutor();
     const database = createDatabase(executor);
-    expect(await migrate(database)).toEqual([1, 2, 3, 4]);
+    expect(await migrate(database)).toEqual([1, 2, 3, 4, 5]);
     expect(await migrate(database)).toEqual([]);
+  });
+
+  it('adds catalogue columns and tables', async () => {
+    const database = await fresh();
+    const columns = async (table: string) => (await database.db.values<unknown[]>(sql.raw(`PRAGMA table_info(${table})`))).map((row) => String(row[1]));
+    expect(await columns('transactions')).toEqual(expect.arrayContaining(['original_currency', 'original_amount_minor']));
+    expect(await columns('reward_programs')).toEqual(
+      expect.arrayContaining(['catalog_entry_id', 'catalog_entry_version', 'catalog_status', 'catalog_dismissed_version', 'catalog_snapshot_json']),
+    );
+    expect(await columns('earn_rules')).toContain('catalog_key');
+    expect(await columns('redemption_options')).toContain('catalog_key');
+    expect(await columns('cycle_bonuses')).toEqual(['id', 'workspace_id', 'program_id', 'key', 'name', 'tiers_json', 'match_json', 'valid_from', 'valid_to', 'catalog_key', 'archived_at', 'created_at']);
+    expect(await columns('transfer_partners')).toEqual([
+      'id', 'workspace_id', 'program_id', 'key', 'program_name', 'points', 'partner_units', 'increment_points', 'valid_from', 'valid_to', 'catalog_key', 'archived_at', 'created_at',
+    ]);
   });
 
   it('maps get, all, and values through the proxy', async () => {

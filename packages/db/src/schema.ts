@@ -48,6 +48,9 @@ export const transactions = sqliteTable('transactions', {
   eventId: text('event_id'),
   status: text('status', { enum: ['posted', 'void'] }).notNull(),
   replacesTransactionId: text('replaces_transaction_id'),
+  /** Currency and amount of a card purchase before the issuer converted it, when it differs from the card currency. */
+  originalCurrency: text('original_currency'),
+  originalAmountMinor: integer('original_amount_minor'),
   createdAt: text('created_at').notNull(),
 });
 

@@ -6,6 +6,7 @@ export type { WorkspaceContext } from './context';
 export { DEFAULT_CATEGORIES, SYSTEM_ACCOUNTS, type SystemAccountKey } from './seed';
 export * from './repos/workspaces';
 export * from './repos/accounts';
+export * from './repos/categories';
 export * from './repos/ledger';
 export * from './repos/fx';
 export * from './repos/reports';
