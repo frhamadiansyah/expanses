@@ -282,3 +282,28 @@ export function cyclesCovering(dates: string[], anchor: 'statement' | 'calendar'
 
 - Spec coverage: §3 → Tasks 17, 20; §3.1–3.3 → 17; §4 → 20, 23; §5 → 18, 19, 20; §5.1 → 19, 28; §6 → 21, 22; §7 → 24–27; §8 → 28; §9 → every task and 29; §10 → drops; §11 needs no code.
 - Golden numbers: Platinum Rp 60.000 at 5812 → 3 base + 6 extra = 9; BMW Rp 33.330 / 3.333 → 10; MU Rp 20.000 at 5661 → 1 + 2 = 3.
+
+## Execution status (2026-09-11)
+
+Executed inline on the fast track on `feat/card-catalogue`, each task written test-first and committed with catalog, core, db, and web unit tests and typecheck green; web tasks also ran every end-to-end test.
+
+Delivered: Tasks 17–29 and Task 27a (card fees never earn, approved during execution). Eleven catalogue entries are bundled: the six from the catalogue plan (BCA KrisFlyer Signature and Infinite now version 2 with Reward BCA MCC exclusions, Mandiri World Prioritas version 2 credited per purchase) and five Maybank TREATS cards (Visa Platinum, Visa Infinite, BMW, MINI, Manchester United). The bundled merchant list has 139 merchants.
+
+Verification at completion: catalog 52, core 113, db 69, web 42 unit tests passing; typecheck clean in all packages; 16 Playwright tests passing against a production build (11 earlier, 5 in `e2e/mcc.spec.ts`). Preview rebuilt into `apps/web/dist-preview` and served on port 4174 with entry `assets/index-BoeS_1rE.js`.
+
+Deviations from this plan, recorded:
+
+- MCC names come from the greggles/mcc-codes dataset, released under The Unlicense; its source and licence are in `packages/core/src/mcc/codes.ts`.
+- `containsKeyword` moved to `packages/core/src/text/keywords.ts` so MCC resolution and the engine share it without importing each other.
+- Task 23 ran before Tasks 21 and 22; it did not depend on them.
+- `draftToMemory` takes the accounts list, like `draftToExtras`, to know whether the payment is a card.
+- `CardPoints` did not gain `mccSources`: hints use the resolved spend lines. `CycleResult` gained `context` (the computation inputs) instead of `checked`; `checkedTotals` computes the running total.
+- The "this purchase only" fix needed `setTransactionMcc` in `packages/db/src/repos/ledger.ts`, which edits a purchase's MCC in place with an audit entry.
+- The bonus threshold hint allows a distance of 1% of the threshold or the cycle's matching refunds, whichever is larger.
+- Merchant and category helpers with unit tests: `features/merchants/merchant-rows.ts`, `features/categories/category-mcc.ts`, `lib/purchase-points.ts`.
+- The Maybank bonus MCC list for Visa Platinum mixed unrelated codes, so the entry uses standard restaurant and supermarket codes, as the spec records.
+- Card fees (spec §12) added `SpendLine.cardFee`, `CycleEarn.cardFeeSpendMinor`, and four Fees & Charges sub-categories.
+
+Outstanding:
+
+- Independent code review of the branch, then finishing it.
