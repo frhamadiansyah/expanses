@@ -158,3 +158,29 @@ describe('review fixes: replace keeps import identity', () => {
     expect(tx).toMatchObject({ source: 'csv', externalRef: 'csv:visa|x|0', description: 'Sushi Tei' });
   });
 });
+
+describe('original currency', () => {
+  it('round-trips through post, replace, and list', async () => {
+    const { database, ws, visa, groceries } = await cardSetup();
+    const lines = expenseLines({ categoryAccountId: groceries.id, paymentAccountId: visa.id, amountMinor: 150_000, currency: 'IDR' });
+    const id = await postTransaction(database, ws, { occurredOn: '2026-09-11', description: 'Cold Storage', lines, originalCurrency: 'SGD', originalAmountMinor: 1250 });
+    expect((await listTransactions(database, ws))[0]).toMatchObject({ id, originalCurrency: 'SGD', originalAmountMinor: 1250 });
+
+    const kept = await replaceTransaction(database, ws, id, { occurredOn: '2026-09-11', description: 'Cold Storage Orchard', lines });
+    expect((await listTransactions(database, ws))[0]).toMatchObject({ id: kept, originalCurrency: 'SGD', originalAmountMinor: 1250 });
+
+    const cleared = await replaceTransaction(database, ws, kept, { occurredOn: '2026-09-11', description: 'Superindo', lines, originalCurrency: null, originalAmountMinor: null });
+    expect((await listTransactions(database, ws))[0]).toMatchObject({ id: cleared, originalCurrency: null, originalAmountMinor: null });
+  });
+
+  it('rejects a currency without an amount, an unknown currency, and a non-positive amount', async () => {
+    const { database, ws, visa, groceries } = await cardSetup();
+    const lines = expenseLines({ categoryAccountId: groceries.id, paymentAccountId: visa.id, amountMinor: 150_000, currency: 'IDR' });
+    const post = (original: { originalCurrency?: string | null; originalAmountMinor?: number | null }) =>
+      postTransaction(database, ws, { occurredOn: '2026-09-11', description: 'Cold Storage', lines, ...original });
+    await expect(post({ originalCurrency: 'SGD' })).rejects.toMatchObject({ code: 'INVALID_ORIGINAL' });
+    await expect(post({ originalCurrency: 'XYZ', originalAmountMinor: 100 })).rejects.toMatchObject({ code: 'INVALID_ORIGINAL' });
+    await expect(post({ originalCurrency: 'SGD', originalAmountMinor: 0 })).rejects.toMatchObject({ code: 'INVALID_ORIGINAL' });
+    expect((await listTransactions(database, ws)).filter((t) => t.description === 'Cold Storage')).toEqual([]);
+  });
+});

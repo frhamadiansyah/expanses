@@ -1,4 +1,4 @@
-import { planPosting, type PostingLine, uuidv7 } from '@expanses/core';
+import { isSupportedCurrency, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
 import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -6,7 +6,7 @@ import { accounts, auditLog, entries, transactions } from '../schema';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -26,6 +26,9 @@ export interface PostTransactionInput {
   source?: TransactionSource;
   externalRef?: string | null;
   replacesTransactionId?: string | null;
+  /** Currency and amount of a card purchase before the issuer converted it. Both or neither. */
+  originalCurrency?: string | null;
+  originalAmountMinor?: number | null;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -46,6 +49,17 @@ async function audit(tx: Db, ws: WorkspaceContext, action: string, entityId: str
 export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
   if (!DATE.test(input.occurredOn)) {
     throw new LedgerError('INVALID_DATE', `occurredOn must be YYYY-MM-DD, got "${input.occurredOn}"`);
+  }
+  const originalCurrency = input.originalCurrency ?? null;
+  const originalAmountMinor = input.originalAmountMinor ?? null;
+  if ((originalCurrency === null) !== (originalAmountMinor === null)) {
+    throw new LedgerError('INVALID_ORIGINAL', 'Original currency and original amount must be given together');
+  }
+  if (originalCurrency !== null && !isSupportedCurrency(originalCurrency)) {
+    throw new LedgerError('INVALID_ORIGINAL', `Unsupported original currency "${originalCurrency}"`);
+  }
+  if (originalAmountMinor !== null && (!Number.isSafeInteger(originalAmountMinor) || originalAmountMinor <= 0)) {
+    throw new LedgerError('INVALID_ORIGINAL', 'Original amount must be a positive whole number of minor units');
   }
   const ids = [...new Set(input.lines.map((l) => l.accountId))];
   const found = ids.length
@@ -72,6 +86,8 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     eventId: null,
     status: 'posted',
     replacesTransactionId: input.replacesTransactionId ?? null,
+    originalCurrency,
+    originalAmountMinor,
     createdAt: new Date().toISOString(),
   });
   await tx.insert(entries).values(
@@ -119,7 +135,12 @@ export function replaceTransaction(
 ): Promise<string> {
   return database.transaction(async (tx) => {
     const [original] = await tx
-      .select({ source: transactions.source, externalRef: transactions.externalRef })
+      .select({
+        source: transactions.source,
+        externalRef: transactions.externalRef,
+        originalCurrency: transactions.originalCurrency,
+        originalAmountMinor: transactions.originalAmountMinor,
+      })
       .from(transactions)
       .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
     await voidTransactionTx(tx, ws, id);
@@ -129,6 +150,10 @@ export function replaceTransaction(
       source: input.source ?? original?.source,
       externalRef: input.externalRef !== undefined ? input.externalRef : (original?.externalRef ?? null),
       replacesTransactionId: id,
+      // Omitting both original fields keeps the original purchase currency; null clears it.
+      ...(input.originalCurrency === undefined && input.originalAmountMinor === undefined
+        ? { originalCurrency: original?.originalCurrency ?? null, originalAmountMinor: original?.originalAmountMinor ?? null }
+        : {}),
     });
   });
 }
@@ -152,6 +177,8 @@ export interface TransactionView {
   source: TransactionSource;
   status: 'posted' | 'void';
   externalRef: string | null;
+  originalCurrency: string | null;
+  originalAmountMinor: number | null;
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -206,6 +233,8 @@ export async function listTransactions(
     source: t.source,
     status: t.status,
     externalRef: t.externalRef,
+    originalCurrency: t.originalCurrency,
+    originalAmountMinor: t.originalAmountMinor,
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));

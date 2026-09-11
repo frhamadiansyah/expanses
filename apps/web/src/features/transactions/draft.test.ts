@@ -22,7 +22,7 @@ const accounts = [
 function view(lines: PostingLine[], status: TransactionView['status'] = 'posted'): TransactionView {
   const byId = new Map(accounts.map((a) => [a.id, a]));
   return {
-    id: 'tx1', occurredOn: '2026-09-11', description: 'Test', source: 'manual', status, externalRef: null, createdAt: '2026-09-11T00:00:00Z',
+    id: 'tx1', occurredOn: '2026-09-11', description: 'Test', source: 'manual', status, externalRef: null, originalCurrency: null, originalAmountMinor: null, createdAt: '2026-09-11T00:00:00Z',
     entries: lines.map((l, i) => ({
       id: `e${i}`, accountId: l.accountId, accountName: l.accountId, accountKind: byId.get(l.accountId)!.kind,
       amountMinor: l.amountMinor, currency: l.currency, fxRateToBase: 1, amountBaseMinor: l.amountMinor, memo: null,

@@ -1,10 +1,11 @@
-import { type EarnRule, minorToMajorString, parseMajor } from '@expanses/core';
+import { type EarnRule, minorToMajorString, parseMajor, type RuleMatch } from '@expanses/core';
 import { type AccountRow, saveEarnRule } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
 import { CategoryOptions } from './options';
+import { parseRulePoints } from './rule-values';
 
 const optionalMinor = (value: string, currency: string) => (value.trim() ? parseMajor(value, currency) : null);
 const optionalInt = (value: string) => {
@@ -54,17 +55,23 @@ export function RuleForm({
     event.preventDefault();
     setError(null);
     try {
-      const rateNum = optionalInt(points);
+      const rateNum = parseRulePoints(points);
       const rateDen = optionalMinor(per, currency);
       if (rateNum === null) throw new Error('Enter how many points are earned');
       if (rateDen === null || rateDen <= 0) throw new Error('Enter the spend amount that earns those points');
       const patterns = merchants.split(',').map((s) => s.trim()).filter(Boolean);
+      // Keep conditions this form does not edit, such as origin, currencies, and excluded keywords from the catalogue.
+      const kept: RuleMatch = { ...initial?.match };
+      delete kept.categoryIds;
+      delete kept.excludeCategoryIds;
+      delete kept.merchantPatterns;
       await saveEarnRule(database, ws, programId, {
         id: initial?.id,
         name,
         priority: Number(priority) || 0,
         stackable,
         match: {
+          ...kept,
           ...(categoryIds.length ? { categoryIds } : {}),
           ...(excludeIds.length ? { excludeCategoryIds: excludeIds } : {}),
           ...(patterns.length ? { merchantPatterns: patterns } : {}),
@@ -93,7 +100,7 @@ export function RuleForm({
         </Field>
         <div className="grid grid-cols-2 gap-2">
           <Field label="Points">
-            <Input value={points} onChange={(e) => setPoints(e.target.value)} inputMode="numeric" required />
+            <Input value={points} onChange={(e) => setPoints(e.target.value)} inputMode="decimal" required />
           </Field>
           <Field label={`Per spend (${currency})`}>
             <Input value={per} onChange={(e) => setPer(e.target.value)} inputMode="decimal" placeholder="2500" required />
@@ -128,6 +135,7 @@ export function RuleForm({
           <Select value={rounding} onChange={(e) => setRounding(e.target.value as EarnRule['rounding'])}>
             <option value="per_transaction_floor">Round down each transaction</option>
             <option value="per_cycle_sum">Sum the cycle, then round down</option>
+            <option value="per_increment">Count only full multiples of the spend</option>
           </Select>
         </Field>
         <Field label="Valid from">

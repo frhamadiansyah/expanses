@@ -1,9 +1,19 @@
-import { currencyInfo, type EarnRule, type Redemption, type RuleMatch, type SpendLine, uuidv7 } from '@expanses/core';
+import {
+  type BonusTier,
+  currencyInfo,
+  type CycleBonus,
+  type EarnRule,
+  type Redemption,
+  type RuleMatch,
+  type SpendLine,
+  type TransferPartner,
+  uuidv7,
+} from '@expanses/core';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
-import { cardTerms, cycleActuals, earnRules, redemptionOptions, rewardPrograms } from '../schema-points';
+import { cardTerms, cycleActuals, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 
 export class PointsError extends Error {
   constructor(message: string) {
@@ -15,6 +25,11 @@ export class PointsError extends Error {
 export type CardTermsRow = typeof cardTerms.$inferSelect;
 export type RewardProgramRow = typeof rewardPrograms.$inferSelect;
 export type RedemptionOptionRow = typeof redemptionOptions.$inferSelect;
+
+/** Catalogue-internal writes pass fromCatalog so a linked program stays linked. */
+export interface PointsWriteOptions {
+  fromCatalog?: boolean;
+}
 
 async function requireCard(db: Db, ws: WorkspaceContext, accountId: string) {
   const [card] = await db
@@ -33,6 +48,17 @@ async function requireProgram(db: Db, ws: WorkspaceContext, programId: string): 
   if (!program) throw new PointsError('Reward program not found');
   return program;
 }
+
+/** A user change to a linked program's rules, bonuses, partners, or redemption options makes it customised. */
+async function markCustomised(tx: Db, ws: WorkspaceContext, programId: string, options: PointsWriteOptions) {
+  if (options.fromCatalog) return;
+  await tx
+    .update(rewardPrograms)
+    .set({ catalogStatus: 'customised' })
+    .where(and(eq(rewardPrograms.id, programId), eq(rewardPrograms.workspaceId, ws.workspaceId), eq(rewardPrograms.catalogStatus, 'linked')));
+}
+
+const now = () => new Date().toISOString();
 
 const day = (n: number, label: string) => {
   if (!Number.isInteger(n) || n < 1 || n > 31) throw new PointsError(`${label} must be a day 1-31`);
@@ -122,19 +148,22 @@ export async function listEarnRules(database: Database, ws: WorkspaceContext, pr
   }));
 }
 
-export type EarnRuleInput = Omit<EarnRule, 'id'> & { id?: string };
+export type EarnRuleInput = Omit<EarnRule, 'id'> & { id?: string; catalogKey?: string | null };
+
+/** Issuers publish rates such as 7,5 points per spend multiple, so one decimal place is allowed. */
+const hasAtMostOneDecimal = (n: number) => Number.isFinite(n) && Math.abs(n * 10 - Math.round(n * 10)) < 1e-9;
 
 /** Rules are configuration, not ledger history: saving an existing id updates it in place. */
-export async function saveEarnRule(database: Database, ws: WorkspaceContext, programId: string, rule: EarnRuleInput): Promise<string> {
+export async function saveEarnRuleTx(tx: Db, ws: WorkspaceContext, programId: string, rule: EarnRuleInput, options: PointsWriteOptions = {}): Promise<string> {
   if (!rule.name.trim()) throw new PointsError('Rule name is required');
-  if (!Number.isInteger(rule.rateNum) || rule.rateNum < 0) throw new PointsError('Points must be a whole number ≥ 0');
+  if (rule.rateNum < 0 || !hasAtMostOneDecimal(rule.rateNum)) throw new PointsError('Points must be ≥ 0 with at most one decimal');
   if (!Number.isInteger(rule.rateDen) || rule.rateDen <= 0) throw new PointsError('Spend per points must be a whole number > 0');
   const values = {
     name: rule.name.trim(),
     priority: rule.priority,
     stackable: rule.stackable ? 1 : 0,
     matchJson: JSON.stringify(rule.match ?? {}),
-    rateNum: rule.rateNum,
+    rateNum: Math.round(rule.rateNum * 10) / 10,
     rateDen: rule.rateDen,
     rounding: rule.rounding,
     capSpendMinor: rule.capSpendMinor,
@@ -142,24 +171,179 @@ export async function saveEarnRule(database: Database, ws: WorkspaceContext, pro
     minTransactionMinor: rule.minTransactionMinor,
     validFrom: rule.validFrom,
     validTo: rule.validTo,
+    ...(rule.catalogKey === undefined ? {} : { catalogKey: rule.catalogKey }),
   };
-  return database.transaction(async (tx) => {
-    await requireProgram(tx, ws, programId);
-    if (rule.id) {
-      await tx.update(earnRules).set(values).where(and(eq(earnRules.id, rule.id), eq(earnRules.workspaceId, ws.workspaceId)));
-      return rule.id;
-    }
-    const id = uuidv7();
-    await tx.insert(earnRules).values({ ...values, id, workspaceId: ws.workspaceId, programId, archivedAt: null, createdAt: new Date().toISOString() });
-    return id;
-  });
+  await requireProgram(tx, ws, programId);
+  await markCustomised(tx, ws, programId, options);
+  if (rule.id) {
+    await tx.update(earnRules).set(values).where(and(eq(earnRules.id, rule.id), eq(earnRules.workspaceId, ws.workspaceId)));
+    return rule.id;
+  }
+  const id = uuidv7();
+  await tx.insert(earnRules).values({ catalogKey: null, ...values, id, workspaceId: ws.workspaceId, programId, archivedAt: null, createdAt: now() });
+  return id;
 }
 
-export async function archiveEarnRule(database: Database, ws: WorkspaceContext, ruleId: string): Promise<void> {
-  await database.db
-    .update(earnRules)
-    .set({ archivedAt: new Date().toISOString() })
+export function saveEarnRule(database: Database, ws: WorkspaceContext, programId: string, rule: EarnRuleInput, options: PointsWriteOptions = {}): Promise<string> {
+  return database.transaction((tx) => saveEarnRuleTx(tx, ws, programId, rule, options));
+}
+
+export async function archiveEarnRuleTx(tx: Db, ws: WorkspaceContext, ruleId: string, options: PointsWriteOptions = {}): Promise<void> {
+  const [rule] = await tx
+    .select({ programId: earnRules.programId })
+    .from(earnRules)
     .where(and(eq(earnRules.id, ruleId), eq(earnRules.workspaceId, ws.workspaceId)));
+  if (!rule) return;
+  await tx.update(earnRules).set({ archivedAt: now() }).where(eq(earnRules.id, ruleId));
+  await markCustomised(tx, ws, rule.programId, options);
+}
+
+export function archiveEarnRule(database: Database, ws: WorkspaceContext, ruleId: string, options: PointsWriteOptions = {}): Promise<void> {
+  return database.transaction((tx) => archiveEarnRuleTx(tx, ws, ruleId, options));
+}
+
+export type CycleBonusInput = Omit<CycleBonus, 'id'> & { id?: string; catalogKey?: string | null };
+
+export async function listCycleBonuses(database: Database, ws: WorkspaceContext, programId: string): Promise<CycleBonus[]> {
+  const rows = await database.db
+    .select()
+    .from(cycleBonuses)
+    .where(and(eq(cycleBonuses.programId, programId), eq(cycleBonuses.workspaceId, ws.workspaceId), isNull(cycleBonuses.archivedAt)))
+    .orderBy(asc(cycleBonuses.validFrom), asc(cycleBonuses.createdAt));
+  return rows.map((r) => ({
+    id: r.id,
+    key: r.key,
+    name: r.name,
+    tiers: JSON.parse(r.tiersJson) as BonusTier[],
+    match: JSON.parse(r.matchJson) as RuleMatch,
+    validFrom: r.validFrom,
+    validTo: r.validTo,
+  }));
+}
+
+export async function saveCycleBonusTx(tx: Db, ws: WorkspaceContext, programId: string, bonus: CycleBonusInput, options: PointsWriteOptions = {}): Promise<string> {
+  if (!bonus.name.trim()) throw new PointsError('Bonus name is required');
+  if (!bonus.key.trim()) throw new PointsError('Bonus key is required');
+  if (bonus.tiers.length === 0) throw new PointsError('A bonus needs at least one tier');
+  bonus.tiers.forEach((tier, i) => {
+    if (!Number.isSafeInteger(tier.minSpendMinor) || tier.minSpendMinor <= 0) throw new PointsError('Tier spend must be a positive amount');
+    if (!Number.isInteger(tier.bonus) || tier.bonus <= 0) throw new PointsError('Tier bonus must be a whole number > 0');
+    const previous = bonus.tiers[i - 1];
+    if (previous && tier.minSpendMinor <= previous.minSpendMinor) throw new PointsError('Tiers must be in ascending order of spend');
+  });
+  const values = {
+    key: bonus.key.trim(),
+    name: bonus.name.trim(),
+    tiersJson: JSON.stringify(bonus.tiers.map((tier) => ({ minSpendMinor: tier.minSpendMinor, bonus: tier.bonus }))),
+    matchJson: JSON.stringify(bonus.match ?? {}),
+    validFrom: bonus.validFrom,
+    validTo: bonus.validTo,
+    ...(bonus.catalogKey === undefined ? {} : { catalogKey: bonus.catalogKey }),
+  };
+  await requireProgram(tx, ws, programId);
+  await markCustomised(tx, ws, programId, options);
+  if (bonus.id) {
+    await tx.update(cycleBonuses).set(values).where(and(eq(cycleBonuses.id, bonus.id), eq(cycleBonuses.workspaceId, ws.workspaceId)));
+    return bonus.id;
+  }
+  const id = uuidv7();
+  await tx.insert(cycleBonuses).values({ catalogKey: null, ...values, id, workspaceId: ws.workspaceId, programId, archivedAt: null, createdAt: now() });
+  return id;
+}
+
+export function saveCycleBonus(database: Database, ws: WorkspaceContext, programId: string, bonus: CycleBonusInput, options: PointsWriteOptions = {}): Promise<string> {
+  return database.transaction((tx) => saveCycleBonusTx(tx, ws, programId, bonus, options));
+}
+
+export async function archiveCycleBonusTx(tx: Db, ws: WorkspaceContext, bonusId: string, options: PointsWriteOptions = {}): Promise<void> {
+  const [bonus] = await tx
+    .select({ programId: cycleBonuses.programId })
+    .from(cycleBonuses)
+    .where(and(eq(cycleBonuses.id, bonusId), eq(cycleBonuses.workspaceId, ws.workspaceId)));
+  if (!bonus) return;
+  await tx.update(cycleBonuses).set({ archivedAt: now() }).where(eq(cycleBonuses.id, bonusId));
+  await markCustomised(tx, ws, bonus.programId, options);
+}
+
+export function archiveCycleBonus(database: Database, ws: WorkspaceContext, bonusId: string, options: PointsWriteOptions = {}): Promise<void> {
+  return database.transaction((tx) => archiveCycleBonusTx(tx, ws, bonusId, options));
+}
+
+export type TransferPartnerInput = Omit<TransferPartner, 'id'> & { id?: string; catalogKey?: string | null };
+
+export async function listTransferPartners(database: Database, ws: WorkspaceContext, programId: string): Promise<TransferPartner[]> {
+  const rows = await database.db
+    .select()
+    .from(transferPartners)
+    .where(and(eq(transferPartners.programId, programId), eq(transferPartners.workspaceId, ws.workspaceId), isNull(transferPartners.archivedAt)))
+    .orderBy(asc(transferPartners.createdAt));
+  return rows.map((r) => ({
+    id: r.id,
+    key: r.key,
+    program: r.programName,
+    points: r.points,
+    partnerUnits: r.partnerUnits,
+    incrementPoints: r.incrementPoints,
+    validFrom: r.validFrom,
+    validTo: r.validTo,
+  }));
+}
+
+export async function saveTransferPartnerTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  programId: string,
+  partner: TransferPartnerInput,
+  options: PointsWriteOptions = {},
+): Promise<string> {
+  if (!partner.program.trim()) throw new PointsError('Partner program is required');
+  if (!partner.key.trim()) throw new PointsError('Partner key is required');
+  for (const value of [partner.points, partner.partnerUnits, partner.incrementPoints]) {
+    if (!Number.isInteger(value) || value <= 0) throw new PointsError('Transfer ratio and step must be whole numbers > 0');
+  }
+  const values = {
+    key: partner.key.trim(),
+    programName: partner.program.trim(),
+    points: partner.points,
+    partnerUnits: partner.partnerUnits,
+    incrementPoints: partner.incrementPoints,
+    validFrom: partner.validFrom,
+    validTo: partner.validTo,
+    ...(partner.catalogKey === undefined ? {} : { catalogKey: partner.catalogKey }),
+  };
+  await requireProgram(tx, ws, programId);
+  await markCustomised(tx, ws, programId, options);
+  if (partner.id) {
+    await tx.update(transferPartners).set(values).where(and(eq(transferPartners.id, partner.id), eq(transferPartners.workspaceId, ws.workspaceId)));
+    return partner.id;
+  }
+  const id = uuidv7();
+  await tx.insert(transferPartners).values({ catalogKey: null, ...values, id, workspaceId: ws.workspaceId, programId, archivedAt: null, createdAt: now() });
+  return id;
+}
+
+export function saveTransferPartner(
+  database: Database,
+  ws: WorkspaceContext,
+  programId: string,
+  partner: TransferPartnerInput,
+  options: PointsWriteOptions = {},
+): Promise<string> {
+  return database.transaction((tx) => saveTransferPartnerTx(tx, ws, programId, partner, options));
+}
+
+export async function archiveTransferPartnerTx(tx: Db, ws: WorkspaceContext, partnerId: string, options: PointsWriteOptions = {}): Promise<void> {
+  const [partner] = await tx
+    .select({ programId: transferPartners.programId })
+    .from(transferPartners)
+    .where(and(eq(transferPartners.id, partnerId), eq(transferPartners.workspaceId, ws.workspaceId)));
+  if (!partner) return;
+  await tx.update(transferPartners).set({ archivedAt: now() }).where(eq(transferPartners.id, partnerId));
+  await markCustomised(tx, ws, partner.programId, options);
+}
+
+export function archiveTransferPartner(database: Database, ws: WorkspaceContext, partnerId: string, options: PointsWriteOptions = {}): Promise<void> {
+  return database.transaction((tx) => archiveTransferPartnerTx(tx, ws, partnerId, options));
 }
 
 export async function listRedemptionOptions(database: Database, ws: WorkspaceContext, programId: string): Promise<RedemptionOptionRow[]> {
@@ -169,29 +353,56 @@ export async function listRedemptionOptions(database: Database, ws: WorkspaceCon
     .where(and(eq(redemptionOptions.programId, programId), eq(redemptionOptions.workspaceId, ws.workspaceId)));
 }
 
-export async function saveRedemptionOption(
-  database: Database,
-  ws: WorkspaceContext,
-  input: { id?: string; programId: string; name: string; type: RedemptionOptionRow['type']; valueMinor: number; perPoints: number; currency: string },
-): Promise<string> {
+export interface RedemptionOptionInput {
+  id?: string;
+  programId: string;
+  name: string;
+  type: RedemptionOptionRow['type'];
+  valueMinor: number;
+  perPoints: number;
+  currency: string;
+  catalogKey?: string | null;
+}
+
+export async function saveRedemptionOptionTx(tx: Db, ws: WorkspaceContext, input: RedemptionOptionInput, options: PointsWriteOptions = {}): Promise<string> {
   currencyInfo(input.currency);
   if (!Number.isSafeInteger(input.valueMinor) || input.valueMinor <= 0) throw new PointsError('Value must be a positive amount');
   if (!Number.isInteger(input.perPoints) || input.perPoints <= 0) throw new PointsError('Points must be a whole number > 0');
-  const values = { name: input.name.trim() || 'Redemption', type: input.type, valueMinor: input.valueMinor, perPoints: input.perPoints, currency: input.currency };
-  return database.transaction(async (tx) => {
-    await requireProgram(tx, ws, input.programId);
-    if (input.id) {
-      await tx.update(redemptionOptions).set(values).where(and(eq(redemptionOptions.id, input.id), eq(redemptionOptions.workspaceId, ws.workspaceId)));
-      return input.id;
-    }
-    const id = uuidv7();
-    await tx.insert(redemptionOptions).values({ ...values, id, workspaceId: ws.workspaceId, programId: input.programId });
-    return id;
-  });
+  const values = {
+    name: input.name.trim() || 'Redemption',
+    type: input.type,
+    valueMinor: input.valueMinor,
+    perPoints: input.perPoints,
+    currency: input.currency,
+    ...(input.catalogKey === undefined ? {} : { catalogKey: input.catalogKey }),
+  };
+  await requireProgram(tx, ws, input.programId);
+  await markCustomised(tx, ws, input.programId, options);
+  if (input.id) {
+    await tx.update(redemptionOptions).set(values).where(and(eq(redemptionOptions.id, input.id), eq(redemptionOptions.workspaceId, ws.workspaceId)));
+    return input.id;
+  }
+  const id = uuidv7();
+  await tx.insert(redemptionOptions).values({ catalogKey: null, ...values, id, workspaceId: ws.workspaceId, programId: input.programId });
+  return id;
 }
 
-export async function deleteRedemptionOption(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  await database.db.delete(redemptionOptions).where(and(eq(redemptionOptions.id, id), eq(redemptionOptions.workspaceId, ws.workspaceId)));
+export function saveRedemptionOption(database: Database, ws: WorkspaceContext, input: RedemptionOptionInput, options: PointsWriteOptions = {}): Promise<string> {
+  return database.transaction((tx) => saveRedemptionOptionTx(tx, ws, input, options));
+}
+
+export async function deleteRedemptionOptionTx(tx: Db, ws: WorkspaceContext, id: string, options: PointsWriteOptions = {}): Promise<void> {
+  const [option] = await tx
+    .select({ programId: redemptionOptions.programId })
+    .from(redemptionOptions)
+    .where(and(eq(redemptionOptions.id, id), eq(redemptionOptions.workspaceId, ws.workspaceId)));
+  if (!option) return;
+  await tx.delete(redemptionOptions).where(eq(redemptionOptions.id, id));
+  await markCustomised(tx, ws, option.programId, options);
+}
+
+export function deleteRedemptionOption(database: Database, ws: WorkspaceContext, id: string, options: PointsWriteOptions = {}): Promise<void> {
+  return database.transaction((tx) => deleteRedemptionOptionTx(tx, ws, id, options));
 }
 
 export const toRedemption = (row: RedemptionOptionRow): Redemption => ({ valueMinor: row.valueMinor, perPoints: row.perPoints, currency: row.currency });
@@ -221,10 +432,13 @@ export async function listCycleActuals(database: Database, ws: WorkspaceContext,
     .where(and(eq(cycleActuals.programId, programId), eq(cycleActuals.workspaceId, ws.workspaceId)));
 }
 
-/** Expense entries of posted transactions charged to the card within [from, to]. Statement payments have no expense entries and never appear. */
+/**
+ * Expense entries of posted transactions charged to or refunded onto the card within [from, to]. A refund is a negative
+ * line. Statement payments have no expense entries and never appear.
+ */
 export async function cardSpendLines(database: Database, ws: WorkspaceContext, cardAccountId: string, from: string, to: string): Promise<SpendLine[]> {
-  const rows = await database.db.values<[string, string, string, string, string, number, string]>(sql`
-    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency
+  const rows = await database.db.values<[string, string, string, string, string, number, string, string | null]>(sql`
+    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
     JOIN accounts a ON a.id = e.account_id
@@ -232,10 +446,10 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
       AND t.status = 'posted'
       AND a.kind = 'expense'
       AND t.occurred_on BETWEEN ${from} AND ${to}
-      AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId} AND c.amount_minor < 0)
+      AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
     ORDER BY t.occurred_on, t.id, e.id
   `);
-  return rows.map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency]) => ({
+  return rows.map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency]) => ({
     transactionId,
     entryId,
     occurredOn,
@@ -243,6 +457,6 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     description,
     amountMinor: Number(amountMinor),
     currency,
-    originalCurrency: null,
+    originalCurrency,
   }));
 }
