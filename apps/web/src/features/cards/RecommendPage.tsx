@@ -32,10 +32,13 @@ export function RecommendPage() {
         cardName: cp.card.name,
         currency: cp.card.currency!,
         rules: cp.rules,
+        programName: cp.program?.name ?? null,
+        bonuses: [],
+        transferPartners: [],
         cycleLines: cp.current?.lines ?? [],
         bestRedemption: cp.best,
       }));
-      setResults(recommendCards({ amountMinor, currency: ws.baseCurrency, categoryId, description: merchant, occurredOn: date }, candidates, expenseAncestors(all)));
+      setResults(recommendCards({ amountMinor, currency: ws.baseCurrency, originalCurrency: null, categoryId, description: merchant, occurredOn: date }, candidates, expenseAncestors(all)));
     } catch (e) {
       setError(e);
     } finally {

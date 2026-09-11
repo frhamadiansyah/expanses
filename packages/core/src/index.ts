@@ -58,11 +58,13 @@ export {
 export {
   bestRedemption,
   type CardCandidate,
+  type CompareTarget,
   type PurchaseQuery,
   type Recommendation,
   recommendCards,
   type Redemption,
 } from './points/recommend';
+export { convertPoints, estimatePartnerUnits, partnerFor, type TransferPartner } from './points/transfer';
 export {
   type CsvDateFormat,
   type CsvMapping,

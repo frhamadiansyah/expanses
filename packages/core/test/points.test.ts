@@ -117,11 +117,11 @@ describe('recommendCards', () => {
     const cimbDining = rule({ id: 'cimb-dining', name: '5x dining', priority: 10, match: { categoryIds: ['food'] }, rateNum: 5, capSpendMinor: 3_000_000 });
     const cimbBase = rule({ id: 'cimb-base', name: 'Base' });
     const recs = recommendCards(
-      { amountMinor: 1_000_000, currency: 'IDR', categoryId: 'dining', description: 'Sushi Tei', occurredOn: '2026-09-11' },
+      { amountMinor: 1_000_000, currency: 'IDR', originalCurrency: null, categoryId: 'dining', description: 'Sushi Tei', occurredOn: '2026-09-11' },
       [
-        { cardAccountId: 'bca', cardName: 'BCA Visa', currency: 'IDR', rules: [rule({ id: 'bca-base' })], cycleLines: [], bestRedemption: { valueMinor: 10, perPoints: 1, currency: 'IDR' } },
-        { cardAccountId: 'cimb', cardName: 'CIMB Octo', currency: 'IDR', rules: [cimbDining, cimbBase], cycleLines: [line('dining', 2_500_000, '2026-09-02')], bestRedemption: { valueMinor: 25, perPoints: 1, currency: 'IDR' } },
-        { cardAccountId: 'usd', cardName: 'USD Card', currency: 'USD', rules: [rule({ id: 'usd' })], cycleLines: [], bestRedemption: null },
+        { cardAccountId: 'bca', cardName: 'BCA Visa', currency: 'IDR', programName: null, bonuses: [], transferPartners: [], rules: [rule({ id: 'bca-base' })], cycleLines: [], bestRedemption: { valueMinor: 10, perPoints: 1, currency: 'IDR' } },
+        { cardAccountId: 'cimb', cardName: 'CIMB Octo', currency: 'IDR', programName: null, bonuses: [], transferPartners: [], rules: [cimbDining, cimbBase], cycleLines: [line('dining', 2_500_000, '2026-09-02')], bestRedemption: { valueMinor: 25, perPoints: 1, currency: 'IDR' } },
+        { cardAccountId: 'usd', cardName: 'USD Card', currency: 'USD', programName: null, bonuses: [], transferPartners: [], rules: [rule({ id: 'usd' })], cycleLines: [], bestRedemption: null },
       ],
       ancestors,
     );

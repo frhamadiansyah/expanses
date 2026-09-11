@@ -1,0 +1,81 @@
+import { describe, expect, it } from 'vitest';
+import type { EarnRule } from '../src/points/earn';
+import { type CardCandidate, recommendCards } from '../src/points/recommend';
+
+const kf = { id: 'kf', key: 'krisflyer', program: 'KrisFlyer', points: 200, partnerUnits: 100, incrementPoints: 20, validFrom: null, validTo: null };
+const garuda = { id: 'ga', key: 'garudamiles', program: 'GarudaMiles', points: 150, partnerUnits: 100, incrementPoints: 15, validFrom: '2025-11-01', validTo: null };
+
+describe('transfer conversion', () => {
+  it('converts balances in whole increments', async () => {
+    const { convertPoints } = await import('../src/points/transfer');
+    expect(convertPoints(1240, kf)).toBe(620);
+    expect(convertPoints(1240, garuda)).toBe(820);
+    expect(convertPoints(1245.5, kf)).toBe(620);
+    expect(convertPoints(19, kf)).toBe(0);
+  });
+
+  it('estimates single purchases without increment rounding', async () => {
+    const { estimatePartnerUnits } = await import('../src/points/transfer');
+    expect(estimatePartnerUnits(54, kf)).toBe(27);
+    expect(estimatePartnerUnits(55, kf)).toBe(27);
+  });
+
+  it('finds partners by program and validity date', async () => {
+    const { partnerFor } = await import('../src/points/transfer');
+    expect(partnerFor([kf, garuda], 'GarudaMiles', '2025-10-31')).toBeNull();
+    expect(partnerFor([kf, garuda], 'GarudaMiles', '2025-11-01')?.id).toBe('ga');
+    expect(partnerFor([kf, garuda], 'Asia Miles', '2026-09-11')).toBeNull();
+  });
+});
+
+const rule = (over: Partial<EarnRule> & Pick<EarnRule, 'id'>): EarnRule => ({
+  name: over.id, priority: 0, stackable: false, match: {}, rateNum: 1, rateDen: 10_000, rounding: 'per_transaction_floor',
+  capSpendMinor: null, capPoints: null, minTransactionMinor: null, validFrom: null, validTo: null, ...over,
+});
+
+const infinite: CardCandidate = {
+  cardAccountId: 'infinite', cardName: 'KrisFlyer Visa Infinite', currency: 'IDR', programName: 'KrisFlyer',
+  rules: [rule({ id: 'inf-base', rateDen: 10_800 })], bonuses: [], transferPartners: [], cycleLines: [], bestRedemption: null,
+};
+const unionpay: CardCandidate = {
+  cardAccountId: 'unionpay', cardName: 'BCA UnionPay', currency: 'IDR', programName: 'UnionPay Points',
+  rules: [rule({ id: 'up-base' }), rule({ id: 'up-double', stackable: true, match: { currencies: ['SGD', 'HKD', 'CNY', 'TWD'] } })],
+  bonuses: [], transferPartners: [kf], cycleLines: [], bestRedemption: { valueMinor: 20, perPoints: 1, currency: 'IDR' },
+};
+const marriott: CardCandidate = {
+  cardAccountId: 'marriott', cardName: 'Marriott Bonvoy', currency: 'IDR', programName: 'Marriott Bonvoy',
+  rules: [rule({ id: 'mb-base', rounding: 'per_increment', rateNum: 3, rateDen: 20_000 })], bonuses: [], transferPartners: [], cycleLines: [], bestRedemption: null,
+};
+const query = { amountMinor: 1_080_000, currency: 'IDR', originalCurrency: null, categoryId: 'dining', description: 'Restaurant', occurredOn: '2026-09-11' };
+
+describe('compare in a miles program', () => {
+  it('ranks direct KrisFlyer miles against converted UnionPay points for a rupiah purchase', () => {
+    const recs = recommendCards(query, [unionpay, marriott, infinite], {}, { kind: 'program', program: 'KrisFlyer' });
+    expect(recs.map((r) => [r.cardAccountId, r.points, r.compareUnits, r.comparable])).toEqual([
+      ['infinite', 100, 100, true],
+      ['unionpay', 108, 54, true],
+      ['marriott', 162, null, false],
+    ]);
+  });
+
+  it('lets UnionPay double points win an SGD purchase', () => {
+    const recs = recommendCards({ ...query, originalCurrency: 'SGD' }, [infinite, unionpay], {}, { kind: 'program', program: 'KrisFlyer' });
+    expect(recs.map((r) => [r.cardAccountId, r.points, r.compareUnits])).toEqual([
+      ['unionpay', 216, 108],
+      ['infinite', 100, 100],
+    ]);
+  });
+
+  it('adds a cycle bonus tier crossed by the purchase to marginal points', () => {
+    const signature: CardCandidate = {
+      ...infinite,
+      cardAccountId: 'signature',
+      rules: [rule({ id: 'sig-base', rateDen: 13_500 })],
+      bonuses: [{ id: 'sig-bonus', key: 'monthly-spend', name: 'Monthly spend bonus', tiers: [{ minSpendMinor: 20_000_000, bonus: 1000 }], match: {}, validFrom: null, validTo: null }],
+      cycleLines: [{ transactionId: 'earlier', entryId: 'earlier-e', occurredOn: '2026-09-02', categoryId: 'dining', description: 'Earlier', amountMinor: 19_500_000, currency: 'IDR', originalCurrency: null }],
+    };
+    const [rec] = recommendCards({ ...query, amountMinor: 1_000_000 }, [signature], {}, { kind: 'program', program: 'KrisFlyer' });
+    expect(rec!.points).toBe(74 + 1000);
+    expect(rec!.compareUnits).toBe(1074);
+  });
+});
