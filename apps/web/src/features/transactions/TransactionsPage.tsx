@@ -93,10 +93,15 @@ export function TransactionsPage() {
                       {label} · {c.moneyAccountNames.join(' → ')}
                     </div>
                   </div>
-                  <span className={cx('tabular whitespace-nowrap font-medium', sign < 0 && 'text-red-700', sign > 0 && 'text-emerald-700')}>
-                    {sign < 0 ? '−' : sign > 0 ? '+' : ''}
-                    {formatMinor(c.amountMinor, c.currency)}
-                  </span>
+                  <div className="text-right">
+                    <div className={cx('tabular whitespace-nowrap font-medium', sign < 0 && 'text-red-700', sign > 0 && 'text-emerald-700')}>
+                      {sign < 0 ? '−' : sign > 0 ? '+' : ''}
+                      {formatMinor(c.amountMinor, c.currency)}
+                    </div>
+                    {tx.originalCurrency && tx.originalAmountMinor !== null && (
+                      <div className="tabular whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</div>
+                    )}
+                  </div>
                   {isEditable(tx) && (
                     <Button variant="ghost" onClick={() => setEditingId(tx.id)}>
                       Edit

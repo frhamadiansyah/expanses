@@ -46,7 +46,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await page.getByLabel('Description').fill('Wedding dinner');
   await page.getByLabel('Paid with').selectOption({ label: 'CIMB Octo (IDR)' });
   await page.getByLabel('Category').selectOption({ label: 'Dining Out' });
-  await page.getByLabel('Amount').fill('3500000');
+  await page.getByLabel('Amount', { exact: true }).fill('3500000');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Wedding dinner')).toBeVisible();
 

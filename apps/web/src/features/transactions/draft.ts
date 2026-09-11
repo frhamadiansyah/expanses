@@ -31,10 +31,13 @@ export interface Draft {
   amount: string;
   toAmount: string;
   splits: SplitRow[];
+  /** Currency the merchant charged before a card converted it; '' when unused. */
+  originalCurrency: string;
+  originalAmount: string;
 }
 
 export function emptyDraft(today: string = isoDate()): Draft {
-  return { mode: 'expense', occurredOn: today, description: '', moneyId: '', toId: '', categoryId: '', amount: '', toAmount: '', splits: [] };
+  return { mode: 'expense', occurredOn: today, description: '', moneyId: '', toId: '', categoryId: '', amount: '', toAmount: '', splits: [], originalCurrency: '', originalAmount: '' };
 }
 
 /** Opening balances post against system equity and have no form that can represent them. */
@@ -42,10 +45,15 @@ export function isEditable(tx: TransactionView): boolean {
   return tx.status === 'posted' && classify(tx).type !== 'opening';
 }
 
+const originalFields = (tx: TransactionView) =>
+  tx.originalCurrency && tx.originalAmountMinor !== null
+    ? { originalCurrency: tx.originalCurrency, originalAmount: minorToMajorString(tx.originalAmountMinor, tx.originalCurrency) }
+    : { originalCurrency: '', originalAmount: '' };
+
 export function draftFromTransaction(tx: TransactionView): Draft {
   const c = classify(tx);
   const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
-  const base = { ...emptyDraft(tx.occurredOn), description: tx.description };
+  const base = { ...emptyDraft(tx.occurredOn), description: tx.description, ...originalFields(tx) };
   if (c.type === 'expense') {
     const expenses = tx.entries.filter((e) => e.accountKind === 'expense');
     const payment = money[0]!;
@@ -120,4 +128,20 @@ export function draftToLines(draft: Draft, accounts: AccountRow[]): PostingLine[
     toCurrency: to.currency,
     exchangeAccountId: exchange.id,
   });
+}
+
+/**
+ * The original currency and amount of a card expense charged in another currency. Anything else, including a currency
+ * equal to the card's, carries none, so editing a purchase onto a bank account clears them.
+ */
+export function draftToExtras(draft: Draft, accounts: AccountRow[]): { originalCurrency: string | null; originalAmountMinor: number | null } {
+  const payment = accounts.find((a) => a.id === draft.moneyId);
+  const currency = draft.originalCurrency.trim();
+  const amount = draft.originalAmount.trim();
+  if (draft.mode !== 'expense' || payment?.subtype !== 'credit_card' || (!currency && !amount) || currency === payment.currency) {
+    return { originalCurrency: null, originalAmountMinor: null };
+  }
+  if (!currency) throw new Error('Choose the currency the merchant charged');
+  if (!amount) throw new Error(`Enter the amount charged in ${currency}`);
+  return { originalCurrency: currency, originalAmountMinor: positive(amount, currency, 'Original amount') };
 }

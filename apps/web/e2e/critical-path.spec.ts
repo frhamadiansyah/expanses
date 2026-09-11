@@ -19,7 +19,7 @@ test('card purchase counts once as spending; statement payment is a transfer', a
   await page.getByLabel('Description').fill('Superindo');
   await page.getByLabel('Paid with').selectOption({ label: 'BCA Visa (IDR)' });
   await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount').fill('500000');
+  await page.getByLabel('Amount', { exact: true }).fill('500000');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Superindo')).toBeVisible();
 
@@ -27,7 +27,7 @@ test('card purchase counts once as spending; statement payment is a transfer', a
   await page.getByRole('button', { name: 'Transfer', exact: true }).click();
   await page.getByLabel('From').selectOption({ label: 'BCA Checking (IDR)' });
   await page.getByLabel('To', { exact: true }).selectOption({ label: 'BCA Visa (IDR)' });
-  await page.getByLabel('Amount').fill('500000');
+  await page.getByLabel('Amount', { exact: true }).fill('500000');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Transfer', { exact: true }).first()).toBeVisible();
 
