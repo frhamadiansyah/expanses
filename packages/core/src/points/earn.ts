@@ -1,4 +1,8 @@
-export type Rounding = 'per_transaction_floor' | 'per_cycle_sum';
+/**
+ * per_transaction_floor: floor(spend × rate) per purchase. per_cycle_sum: floor over the cycle total.
+ * per_increment: floor(purchase spend ÷ rateDen) × rateNum — earning per whole spend multiple, rateNum may be fractional.
+ */
+export type Rounding = 'per_transaction_floor' | 'per_cycle_sum' | 'per_increment';
 
 export interface RuleMatch {
   /** Matches the category or any descendant. Empty = all categories. */
@@ -93,6 +97,8 @@ export interface EarnOptions {
 const floorDiv = (a: number, b: number) => (a - (a % b)) / b;
 const ceilDiv = (a: number, b: number) => floorDiv(a + b - 1, b);
 const withinWindow = (date: string, from: string | null, to: string | null) => (!from || date >= from) && (!to || date <= to);
+const TENTHS = 10;
+const rateTenths = (rule: EarnRule) => Math.round(rule.rateNum * TENTHS);
 const isWordChar = (ch: string | undefined) => ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
 
 /** Case-insensitive keyword or phrase match that must not touch letters or digits on either side. */
@@ -162,30 +168,41 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
   const stackable = rules.filter((r) => r.stackable).sort(byPriority);
 
   const spendByRule: Record<string, number> = Object.fromEntries(rules.map((r) => [r.id, 0]));
-  const pointsByRule: Record<string, number> = Object.fromEntries(rules.map((r) => [r.id, 0]));
+  // Points are tracked in integer tenths so half points (e.g. 7,5 per multiple) sum exactly.
+  const tenthsByRule: Record<string, number> = Object.fromEntries(rules.map((r) => [r.id, 0]));
   let purchaseSpendByRule: Record<string, number> = {};
   const allocations: EarnAllocation[] = [];
   let unearnedSpendMinor = 0;
 
-  const pointsAt = (rule: EarnRule, spend: number) => floorDiv(spend * rule.rateNum, rule.rateDen);
+  const tenthsAt = (rule: EarnRule, spend: number) =>
+    rule.rounding === 'per_increment'
+      ? floorDiv(spend, rule.rateDen) * rateTenths(rule)
+      : floorDiv(spend * rateTenths(rule), rule.rateDen * TENTHS) * TENTHS;
+
+  const spendToReachTenths = (rule: EarnRule, base: number, extraTenths: number): number => {
+    const rt = rateTenths(rule);
+    if (rule.rounding === 'per_increment') return (floorDiv(base, rule.rateDen) + ceilDiv(extraTenths, rt)) * rule.rateDen - base;
+    const wholePoints = floorDiv(tenthsAt(rule, base), TENTHS) + ceilDiv(extraTenths, TENTHS);
+    return ceilDiv(wholePoints * rule.rateDen * TENTHS, rt) - base;
+  };
 
   const allocate = (rule: EarnRule, line: SpendLine, wanted: number): number => {
     const cycleUsed = spendByRule[rule.id]!;
     const roundingBase = rule.rounding === 'per_cycle_sum' ? cycleUsed : (purchaseSpendByRule[rule.id] ?? 0);
     let headroom = rule.capSpendMinor === null ? wanted : Math.max(0, rule.capSpendMinor - cycleUsed);
-    if (rule.capPoints !== null && rule.rateNum > 0) {
-      const remaining = rule.capPoints - pointsByRule[rule.id]!;
-      const spendToCap = remaining <= 0 ? 0 : ceilDiv((pointsAt(rule, roundingBase) + remaining) * rule.rateDen, rule.rateNum) - roundingBase;
+    if (rule.capPoints !== null && rateTenths(rule) > 0) {
+      const remainingTenths = rule.capPoints * TENTHS - tenthsByRule[rule.id]!;
+      const spendToCap = remainingTenths <= 0 ? 0 : spendToReachTenths(rule, roundingBase, remainingTenths);
       headroom = Math.min(headroom, Math.max(0, spendToCap));
     }
     const spend = Math.min(wanted, headroom);
     if (spend <= 0) return 0;
     spendByRule[rule.id] = cycleUsed + spend;
     purchaseSpendByRule[rule.id] = (purchaseSpendByRule[rule.id] ?? 0) + spend;
-    let points = pointsAt(rule, roundingBase + spend) - pointsAt(rule, roundingBase);
-    if (rule.capPoints !== null) points = Math.max(0, Math.min(points, rule.capPoints - pointsByRule[rule.id]!));
-    pointsByRule[rule.id] = pointsByRule[rule.id]! + points;
-    allocations.push({ transactionId: line.transactionId, entryId: line.entryId, ruleId: rule.id, spendMinor: spend, points });
+    let tenths = tenthsAt(rule, roundingBase + spend) - tenthsAt(rule, roundingBase);
+    if (rule.capPoints !== null) tenths = Math.max(0, Math.min(tenths, rule.capPoints * TENTHS - tenthsByRule[rule.id]!));
+    tenthsByRule[rule.id] = tenthsByRule[rule.id]! + tenths;
+    allocations.push({ transactionId: line.transactionId, entryId: line.entryId, ruleId: rule.id, spendMinor: spend, points: tenths / TENTHS });
     return spend;
   };
 
@@ -220,7 +237,8 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
     bonusById[bonus.id] = active && reached ? reached.bonus : 0;
   }
 
-  const totalPoints =
-    Object.values(pointsByRule).reduce((s, p) => s + p, 0) + Object.values(bonusById).reduce((s, p) => s + p, 0);
+  const pointsByRule = Object.fromEntries(Object.entries(tenthsByRule).map(([id, t]) => [id, t / TENTHS]));
+  const totalTenths = Object.values(tenthsByRule).reduce((s, t) => s + t, 0) + Object.values(bonusById).reduce((s, b) => s + b * TENTHS, 0);
+  const totalPoints = totalTenths / TENTHS;
   return { allocations, pointsByRule, spendByRule, bonusById, eligibleSpendByBonus, totalPoints, unearnedSpendMinor };
 }

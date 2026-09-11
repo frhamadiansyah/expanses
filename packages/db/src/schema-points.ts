@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const cardTerms = sqliteTable('card_terms', {
   accountId: text('account_id').primaryKey(),
@@ -28,9 +28,9 @@ export const earnRules = sqliteTable('earn_rules', {
   priority: integer('priority').notNull(),
   stackable: integer('stackable').notNull(),
   matchJson: text('match_json').notNull(),
-  rateNum: integer('rate_num').notNull(),
+  rateNum: real('rate_num').notNull(),
   rateDen: integer('rate_den').notNull(),
-  rounding: text('rounding', { enum: ['per_transaction_floor', 'per_cycle_sum'] }).notNull(),
+  rounding: text('rounding', { enum: ['per_transaction_floor', 'per_cycle_sum', 'per_increment'] }).notNull(),
   capSpendMinor: integer('cap_spend_minor'),
   capPoints: integer('cap_points'),
   minTransactionMinor: integer('min_transaction_minor'),

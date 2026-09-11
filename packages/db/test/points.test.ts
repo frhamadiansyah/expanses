@@ -66,3 +66,17 @@ describe('points repository', () => {
     expect((await listCycleActuals(database, ws, program.id)).map((a) => a.actualPoints)).toEqual([7150]);
   });
 });
+
+describe('per-increment rules in storage', () => {
+  it('saves and reloads a per_increment rule after migration 0004', async () => {
+    const { database, ws } = await setupDb();
+    const card = await createAccount(database, ws, { name: 'Mandiri World Prioritas', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const program = await createProgram(database, ws, { cardAccountId: card.id, name: "Livin'poin", unit: 'points', cycleAnchor: 'statement' });
+    await saveEarnRule(database, ws, program.id, {
+      name: 'Domestic', priority: 0, stackable: false, match: { origin: 'domestic' }, rateNum: 3, rateDen: 20_000,
+      rounding: 'per_increment', capSpendMinor: null, capPoints: null, minTransactionMinor: null, validFrom: null, validTo: null,
+    });
+    const [rule] = await listEarnRules(database, ws, program.id);
+    expect(rule).toMatchObject({ rounding: 'per_increment', rateNum: 3, rateDen: 20_000, match: { origin: 'domestic' } });
+  });
+});
