@@ -1,25 +1,32 @@
+import { type CatalogEntry, findEntry } from '@expanses/catalog';
 import {
   bestRedemption,
   categoryAncestors,
   computeCycleEarn,
   type Cycle,
   type CycleEarn,
+  type CycleBonus,
   cycleFor,
   type EarnRule,
   previousCycle,
   type Redemption,
   type SpendLine,
+  type TransferPartner,
 } from '@expanses/core';
 import {
   type AccountRow,
+  type CatalogState,
   cardSpendLines,
   type CardTermsRow,
   type Database,
   getCardTerms,
+  getCatalogState,
   listCycleActuals,
+  listCycleBonuses,
   listEarnRules,
   listPrograms,
   listRedemptionOptions,
+  listTransferPartners,
   type RedemptionOptionRow,
   type RewardProgramRow,
   toRedemption,
@@ -40,10 +47,15 @@ export interface CardPoints {
   rules: EarnRule[];
   redemptions: RedemptionOptionRow[];
   best: Redemption | null;
+  bonuses: CycleBonus[];
+  transferPartners: TransferPartner[];
+  catalog: CatalogState & { entry: CatalogEntry | undefined };
   /** Null until the program exists and, for statement cycles, the statement day is set. */
   current: CycleResult | null;
   previous: CycleResult | null;
 }
+
+const NO_CATALOG: CardPoints['catalog'] = { entryId: null, entryVersion: null, status: null, dismissedVersion: null, snapshot: null, entry: undefined };
 
 export function expenseAncestors(accounts: AccountRow[]): Record<string, string[]> {
   return categoryAncestors(accounts.filter((a) => a.kind === 'expense'));
@@ -63,14 +75,18 @@ export async function loadCardPoints(
 ): Promise<CardPoints> {
   const terms = await getCardTerms(database, ws, card.id);
   const program = (await listPrograms(database, ws)).find((p) => p.cardAccountId === card.id);
-  const empty: CardPoints = { card, terms, program, rules: [], redemptions: [], best: null, current: null, previous: null };
+  const empty: CardPoints = { card, terms, program, rules: [], redemptions: [], best: null, bonuses: [], transferPartners: [], catalog: NO_CATALOG, current: null, previous: null };
   if (!program) return empty;
 
   const rules = await listEarnRules(database, ws, program.id);
   const redemptions = await listRedemptionOptions(database, ws, program.id);
   const actuals = await listCycleActuals(database, ws, program.id);
   const best = bestRedemption(redemptions.map(toRedemption));
-  if (program.cycleAnchor === 'statement' && !terms) return { ...empty, rules, redemptions, best };
+  const bonuses = await listCycleBonuses(database, ws, program.id);
+  const transferPartners = await listTransferPartners(database, ws, program.id);
+  const state = await getCatalogState(database, ws, program.id);
+  const catalog = { ...state, entry: state.entryId ? findEntry(state.entryId) : undefined };
+  if (program.cycleAnchor === 'statement' && !terms) return { ...empty, rules, redemptions, best, bonuses, transferPartners, catalog };
 
   const ancestors = expenseAncestors(accounts);
   const statementDay = terms?.statementDay ?? 1;
@@ -79,14 +95,14 @@ export async function loadCardPoints(
     return {
       cycle,
       lines,
-      earn: computeCycleEarn(lines, rules, ancestors),
+      earn: computeCycleEarn(lines, rules, ancestors, { bonuses, cycleEnd: cycle.end }),
       actual: actuals.find((a) => a.cycleStart === cycle.start)?.actualPoints ?? null,
     };
   };
   const currentCycle = cycleFor(onDate, program.cycleAnchor, statementDay);
   const current = await load(currentCycle);
   const previous = await load(previousCycle(currentCycle, program.cycleAnchor, statementDay));
-  return { card, terms, program, rules, redemptions, best, current, previous };
+  return { card, terms, program, rules, redemptions, best, bonuses, transferPartners, catalog, current, previous };
 }
 
 export const shortDate = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });

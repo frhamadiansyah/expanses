@@ -12,6 +12,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@expanses/catalog": "*",
     "@expanses/core": "*",
     "@expanses/db": "*",
     "@sqlite.org/sqlite-wasm": "^3.53.4-build1",

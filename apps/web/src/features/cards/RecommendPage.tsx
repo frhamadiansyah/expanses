@@ -33,8 +33,8 @@ export function RecommendPage() {
         currency: cp.card.currency!,
         rules: cp.rules,
         programName: cp.program?.name ?? null,
-        bonuses: [],
-        transferPartners: [],
+        bonuses: cp.bonuses,
+        transferPartners: cp.transferPartners,
         cycleLines: cp.current?.lines ?? [],
         bestRedemption: cp.best,
       }));

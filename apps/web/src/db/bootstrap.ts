@@ -1,10 +1,14 @@
+import { CATALOG } from '@expanses/catalog';
+import { isoDate } from '@expanses/core';
 import {
   contextOf,
   createDatabase,
   createWorkspace,
   type Database,
+  ensureCategoryKeys,
   listWorkspaces,
   migrate,
+  syncLinkedPrograms,
   type WorkspaceContext,
 } from '@expanses/db';
 import { createWorkerExecutor } from './worker-executor';
@@ -22,7 +26,11 @@ export async function openAppDb(database: Database): Promise<AppDb> {
     await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
     [workspace] = await listWorkspaces(database);
   }
-  return { database, ws: contextOf(workspace!), workspaceName: workspace!.name };
+  const ws = contextOf(workspace!);
+  // Keys first, so catalogue exclusions map to categories when linked programs re-apply.
+  await ensureCategoryKeys(database, ws);
+  await syncLinkedPrograms(database, ws, CATALOG, isoDate());
+  return { database, ws, workspaceName: workspace!.name };
 }
 
 export async function bootstrap(): Promise<AppDb> {
