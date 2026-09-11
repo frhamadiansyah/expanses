@@ -42,6 +42,8 @@ export { calendarCycleFor, type Cycle, type CycleAnchor, cycleFor, previousCycle
 export {
   type BonusTier,
   computeCycleEarn,
+  containsKeyword,
+  type EarnOptions,
   type CycleBonus,
   type CycleEarn,
   type EarnAllocation,

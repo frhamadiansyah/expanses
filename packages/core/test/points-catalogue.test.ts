@@ -55,3 +55,37 @@ describe('merchant exclusions', () => {
     expect(ruleMatches(base, line({ description: 'Sushi Tei' }), ancestors)).toBe(true);
   });
 });
+
+describe('whole-word keywords', () => {
+  it('matches words and phrases only at non-alphanumeric boundaries', async () => {
+    const { containsKeyword } = await import('../src/points/earn');
+    expect(containsKeyword('VA BCA 8808123', 'va')).toBe(true);
+    expect(containsKeyword('Kopi Java Bali', 'va')).toBe(false);
+    expect(containsKeyword('GRAB*FOOD JKT', 'grab')).toBe(true);
+    expect(containsKeyword('THE ST. REGIS JAKARTA', 'st. regis')).toBe(true);
+    expect(containsKeyword('Prudential Life Assurance', 'PRUDENTIAL')).toBe(true);
+    expect(containsKeyword('Taxation office', 'axa')).toBe(false);
+  });
+
+  it('applies whole-word matching to rule exclusions', () => {
+    const noVa = rule({ id: 'base', match: { excludeMerchantPatterns: ['va'] } });
+    expect(ruleMatches(noVa, line({ description: 'Java Coffee' }), ancestors)).toBe(true);
+    expect(ruleMatches(noVa, line({ description: 'Pembayaran VA Tokopedia' }), ancestors)).toBe(false);
+  });
+});
+
+describe('domestic and foreign origin', () => {
+  const foreign = rule({ id: 'foreign', match: { origin: 'foreign' } });
+  const domestic = rule({ id: 'domestic', match: { origin: 'domestic' } });
+
+  it('treats a non-rupiah original currency on an IDR card as foreign', () => {
+    expect(ruleMatches(foreign, line({ originalCurrency: 'CNY' }), ancestors)).toBe(true);
+    expect(ruleMatches(domestic, line({ originalCurrency: 'CNY' }), ancestors)).toBe(false);
+  });
+
+  it('treats rupiah purchases, with or without an original currency, as domestic', () => {
+    expect(ruleMatches(domestic, line(), ancestors)).toBe(true);
+    expect(ruleMatches(domestic, line({ originalCurrency: 'IDR' }), ancestors)).toBe(true);
+    expect(ruleMatches(foreign, line(), ancestors)).toBe(false);
+  });
+});

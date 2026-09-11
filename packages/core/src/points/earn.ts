@@ -4,12 +4,14 @@ export interface RuleMatch {
   /** Matches the category or any descendant. Empty = all categories. */
   categoryIds?: string[];
   excludeCategoryIds?: string[];
-  /** Case-insensitive substrings of the description. Empty = any merchant. */
+  /** Whole-word, case-insensitive keywords in the description. Empty = any merchant. */
   merchantPatterns?: string[];
-  /** Case-insensitive description substrings that never earn under this rule. */
+  /** Whole-word, case-insensitive description keywords that never earn under this rule. */
   excludeMerchantPatterns?: string[];
   /** Matches the currency the purchase was made in, falling back to the billed currency. */
   currencies?: string[];
+  /** Foreign: spent in a currency other than the card's billing currency. Domestic: spent in the billing currency. */
+  origin?: 'domestic' | 'foreign';
 }
 
 export interface EarnRule {
@@ -81,21 +83,44 @@ export interface CycleEarn {
   unearnedSpendMinor: number;
 }
 
+export interface EarnOptions {
+  bonuses?: CycleBonus[];
+  cycleEnd?: string;
+  /** The card's billing currency, used to decide domestic or foreign origin. Defaults to IDR. */
+  billingCurrency?: string;
+}
+
 const floorDiv = (a: number, b: number) => (a - (a % b)) / b;
 const ceilDiv = (a: number, b: number) => floorDiv(a + b - 1, b);
 const withinWindow = (date: string, from: string | null, to: string | null) => (!from || date >= from) && (!to || date <= to);
+const isWordChar = (ch: string | undefined) => ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
 
-/** Category, merchant, and currency conditions shared by earn rules and cycle bonuses. */
-export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Record<string, string[]>): boolean {
+/** Case-insensitive keyword or phrase match that must not touch letters or digits on either side. */
+export function containsKeyword(description: string, keyword: string): boolean {
+  const needle = keyword.trim().toLowerCase();
+  if (!needle) return false;
+  const haystack = description.toLowerCase();
+  let from = 0;
+  let i: number;
+  while ((i = haystack.indexOf(needle, from)) >= 0) {
+    if (!isWordChar(haystack[i - 1]) && !isWordChar(haystack[i + needle.length])) return true;
+    from = i + 1;
+  }
+  return false;
+}
+
+/** Category, merchant, currency, and origin conditions shared by earn rules and cycle bonuses. */
+export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Record<string, string[]>, billingCurrency = 'IDR'): boolean {
   const chain = [line.categoryId, ...(ancestors[line.categoryId] ?? [])];
   if (match.categoryIds?.length && !match.categoryIds.some((id) => chain.includes(id))) return false;
   if (match.excludeCategoryIds?.some((id) => chain.includes(id))) return false;
-  const description = line.description.toLowerCase();
-  const patterns = (match.merchantPatterns ?? []).map((p) => p.trim().toLowerCase()).filter(Boolean);
-  if (patterns.length && !patterns.some((p) => description.includes(p))) return false;
-  const excluded = (match.excludeMerchantPatterns ?? []).map((p) => p.trim().toLowerCase()).filter(Boolean);
-  if (excluded.some((p) => description.includes(p))) return false;
-  if (match.currencies?.length && !match.currencies.includes(line.originalCurrency ?? line.currency)) return false;
+  const include = (match.merchantPatterns ?? []).filter((p) => p.trim());
+  if (include.length && !include.some((p) => containsKeyword(line.description, p))) return false;
+  if ((match.excludeMerchantPatterns ?? []).some((p) => containsKeyword(line.description, p))) return false;
+  const spentIn = line.originalCurrency ?? line.currency;
+  if (match.currencies?.length && !match.currencies.includes(spentIn)) return false;
+  if (match.origin === 'foreign' && spentIn === billingCurrency) return false;
+  if (match.origin === 'domestic' && spentIn !== billingCurrency) return false;
   return true;
 }
 
@@ -104,10 +129,11 @@ export function ruleMatches(
   line: SpendLine,
   ancestors: Record<string, string[]>,
   transactionTotalMinor: number = line.amountMinor,
+  billingCurrency = 'IDR',
 ): boolean {
   if (!withinWindow(line.occurredOn, rule.validFrom, rule.validTo)) return false;
   if (rule.minTransactionMinor !== null && transactionTotalMinor < rule.minTransactionMinor) return false;
-  return matchesSpend(rule.match, line, ancestors);
+  return matchesSpend(rule.match, line, ancestors, billingCurrency);
 }
 
 /** The lowest tier not yet reached, or null when the top tier is reached. */
@@ -123,12 +149,8 @@ export function nextBonusTier(bonus: CycleBonus, eligibleSpendMinor: number): Bo
  * purchases round like the issuer does. Cycle bonuses pay the highest tier reached by eligible spend, once, when the
  * bonus is valid at the end of the cycle. Recomputing the cycle makes voids, edits, and backdating correct.
  */
-export function computeCycleEarn(
-  lines: SpendLine[],
-  rules: EarnRule[],
-  ancestors: Record<string, string[]>,
-  options: { bonuses?: CycleBonus[]; cycleEnd?: string } = {},
-): CycleEarn {
+export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestors: Record<string, string[]>, options: EarnOptions = {}): CycleEarn {
+  const billingCurrency = options.billingCurrency ?? 'IDR';
   const sorted = lines
     .filter((l) => l.amountMinor > 0)
     .sort((a, b) => a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId) || a.entryId.localeCompare(b.entryId));
@@ -177,11 +199,11 @@ export function computeCycleEarn(
     let remaining = line.amountMinor;
     for (const rule of primary) {
       if (remaining === 0) break;
-      if (ruleMatches(rule, line, ancestors, total)) remaining -= allocate(rule, line, remaining);
+      if (ruleMatches(rule, line, ancestors, total, billingCurrency)) remaining -= allocate(rule, line, remaining);
     }
     unearnedSpendMinor += remaining;
     for (const rule of stackable) {
-      if (ruleMatches(rule, line, ancestors, total)) allocate(rule, line, line.amountMinor);
+      if (ruleMatches(rule, line, ancestors, total, billingCurrency)) allocate(rule, line, line.amountMinor);
     }
   }
 
@@ -190,7 +212,7 @@ export function computeCycleEarn(
   const cycleEnd = options.cycleEnd ?? sorted.at(-1)?.occurredOn ?? null;
   for (const bonus of options.bonuses ?? []) {
     const eligible = sorted
-      .filter((l) => withinWindow(l.occurredOn, bonus.validFrom, bonus.validTo) && matchesSpend(bonus.match, l, ancestors))
+      .filter((l) => withinWindow(l.occurredOn, bonus.validFrom, bonus.validTo) && matchesSpend(bonus.match, l, ancestors, billingCurrency))
       .reduce((s, l) => s + l.amountMinor, 0);
     eligibleSpendByBonus[bonus.id] = eligible;
     const active = cycleEnd !== null && withinWindow(cycleEnd, bonus.validFrom, bonus.validTo);
