@@ -172,6 +172,20 @@ export function replaceTransaction(
   });
 }
 
+/** Sets or clears a purchase's typed MCC in place: merchant metadata, not amounts, so nothing is reposted. */
+export function setTransactionMcc(database: Database, ws: WorkspaceContext, transactionId: string, mcc: string | null): Promise<void> {
+  return database.transaction(async (tx) => {
+    if (mcc !== null && !isMcc(mcc)) throw new LedgerError('INVALID_MCC', `An MCC is four digits, got "${mcc}"`);
+    const [row] = await tx
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(and(eq(transactions.id, transactionId), eq(transactions.workspaceId, ws.workspaceId)));
+    if (!row) throw new LedgerError('NOT_FOUND', `Transaction ${transactionId} not found`);
+    await tx.update(transactions).set({ mcc }).where(eq(transactions.id, transactionId));
+    await audit(tx, ws, 'set_mcc', transactionId, { mcc });
+  });
+}
+
 export interface TransactionEntryView {
   id: string;
   accountId: string;

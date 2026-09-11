@@ -8,6 +8,7 @@ import {
   nativeBalances,
   postTransaction,
   replaceTransaction,
+  setTransactionMcc,
   voidTransaction,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -201,5 +202,22 @@ describe('typed MCC', () => {
     const { database, ws, visa, groceries } = await cardSetup();
     const lines = expenseLines({ categoryAccountId: groceries.id, paymentAccountId: visa.id, amountMinor: 150_000, currency: 'IDR' });
     await expect(postTransaction(database, ws, { occurredOn: '2026-09-11', description: 'Superindo', lines, mcc: '541' })).rejects.toMatchObject({ code: 'INVALID_MCC' });
+  });
+});
+
+describe('setTransactionMcc', () => {
+  it('sets and clears a purchase MCC in place without changing its entries', async () => {
+    const { database, ws, visa, groceries } = await cardSetup();
+    const lines = expenseLines({ categoryAccountId: groceries.id, paymentAccountId: visa.id, amountMinor: 60_000, currency: 'IDR' });
+    const id = await postTransaction(database, ws, { occurredOn: '2026-09-11', description: 'MCDONALD SENAYAN', lines });
+    const before = (await listTransactions(database, ws))[0]!;
+    await setTransactionMcc(database, ws, id, '5814');
+    const after = (await listTransactions(database, ws))[0]!;
+    expect(after).toMatchObject({ id, mcc: '5814', status: 'posted' });
+    expect(after.entries).toEqual(before.entries);
+    await setTransactionMcc(database, ws, id, null);
+    expect((await listTransactions(database, ws))[0]).toMatchObject({ id, mcc: null });
+    await expect(setTransactionMcc(database, ws, id, '58')).rejects.toMatchObject({ code: 'INVALID_MCC' });
+    await expect(setTransactionMcc(database, ws, 'missing', '5814')).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });

@@ -1,4 +1,4 @@
-import { CURRENCIES, type CycleBonus, displayAmount, type EarnRule, formatMinor, isoDate, minorToMajorString, parseMajor, type Redemption, type TransferPartner } from '@expanses/core';
+import { CURRENCIES, type CycleBonus, displayAmount, type EarnRule, explainCycle, formatMinor, isoDate, minorToMajorString, parseMajor, type Redemption, type TransferPartner } from '@expanses/core';
 import type { CatalogEntry } from '@expanses/catalog';
 import {
   applyCatalogEntry,
@@ -19,6 +19,8 @@ import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select 
 import { BonusProgress } from './BonusProgress';
 import { CatalogPanel } from './CatalogPanel';
 import { CatalogPicker } from './CatalogPicker';
+import { describeSuggestion } from './hint-text';
+import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { activeDuring } from './catalog-panel';
 import { RuleForm } from './RuleForm';
 import { TransferEstimates } from './TransferEstimates';
@@ -136,23 +138,48 @@ function CycleSummary({
   );
 }
 
-function ActualForm({ program, result, unit }: { program: RewardProgramRow; result: CycleResult; unit: string }) {
+function ActualForm({ program, result, unit, currency, crediting }: { program: RewardProgramRow; result: CycleResult; unit: string; currency: string; crediting: 'per_transaction' | 'per_statement' }) {
   const { database, ws } = useApp();
   const { error, run } = useAction();
   const [value, setValue] = useState(result.actual === null ? '' : String(result.actual));
+  const perPurchase = crediting === 'per_transaction';
   const diff = result.actual === null ? null : result.actual - result.earn.totalPoints;
+  const hints = !perPurchase && result.actual !== null && diff !== 0 ? explainCycle(result.context, result.actual) : [];
+  const descriptions = Object.fromEntries(result.lines.map((line) => [line.transactionId, line.description]));
+  const estimatedBonus = Object.values(result.earn.bonusById).reduce((sum, points) => sum + points, 0);
+  const range = `${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     void run(() => recordCycleActual(database, ws, { programId: program.id, cycleStart: result.cycle.start, actualPoints: Number(value) }));
   };
   return (
-    <Section title={`Check against statement: ${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`}>
-      <p className="text-sm text-slate-600">
-        Projected <span className="tabular font-medium">{formatPoints(result.earn.totalPoints)}</span> {unit}.
-        {diff !== null && (diff === 0 ? ' Statement matches exactly.' : ` Statement shows ${diff > 0 ? '+' : ''}${formatPoints(diff)} vs projection — a rule may need adjusting, or the bank credited differently.`)}
-      </p>
+    <Section title={perPurchase ? `Bonus points credited: ${range}` : `Check against statement: ${range}`}>
+      {perPurchase ? (
+        <p className="text-sm text-slate-600">
+          Points your bank credited outside individual purchases, such as cycle bonuses. Estimated <span className="tabular font-medium">{formatPoints(estimatedBonus)}</span> {unit}.
+        </p>
+      ) : (
+        <p className="text-sm text-slate-600">
+          Projected <span className="tabular font-medium">{formatPoints(result.earn.totalPoints)}</span> {unit}.
+          {diff !== null && (diff === 0 ? ' Statement matches exactly.' : ` Statement shows ${diff > 0 ? '+' : ''}${formatPoints(diff)} vs projection.`)}
+        </p>
+      )}
+      {hints.length > 0 && (
+        <div className="mt-2 space-y-2">
+          <div className="text-xs font-semibold text-slate-600">Likely causes</div>
+          {hints.map((hint, i) => (
+            <div key={i} className="rounded bg-amber-50 p-2 text-xs">
+              <p>{describeSuggestion(hint, unit, currency, descriptions)}</p>
+              <SuggestionFixes suggestion={hint} description={hint.kind === 'mcc' ? (descriptions[hint.transactionId] ?? '') : ''} run={run} />
+            </div>
+          ))}
+        </div>
+      )}
+      {!perPurchase && diff !== null && diff !== 0 && hints.length === 0 && (
+        <p className="mt-2 text-xs text-slate-500">No MCC, bonus, or rounding in this card's rules explains the difference. A rule may need adjusting.</p>
+      )}
       <form onSubmit={submit} className="mt-2 flex items-end gap-2">
-        <Field label={`Actual ${unit} on statement`}>
+        <Field label={perPurchase ? 'Bonus points credited' : `Actual ${unit} on statement`}>
           <Input value={value} onChange={(e) => setValue(e.target.value)} inputMode="numeric" required />
         </Field>
         <Button type="submit">Save</Button>
@@ -317,7 +344,8 @@ export function CardDetailPage() {
           {cp.current && cp.rules.length > 0 && (
             <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} bonuses={cp.bonuses} partners={cp.transferPartners} unit={cp.program.unit} currency={currency} best={cp.best} today={today} />
           )}
-          {cp.previous && cp.rules.length > 0 && <ActualForm program={cp.program} result={cp.previous} unit={cp.program.unit} />}
+          {cp.current && cp.rules.length > 0 && <PurchaseList cp={cp} run={run} currency={currency} />}
+          {cp.previous && cp.rules.length > 0 && <ActualForm program={cp.program} result={cp.previous} unit={cp.program.unit} currency={currency} crediting={cp.crediting} />}
 
           <Section
             title="Earn rules"
