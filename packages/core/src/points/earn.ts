@@ -6,6 +6,9 @@ export interface RuleMatch {
   excludeCategoryIds?: string[];
   /** Case-insensitive substrings of the description. Empty = any merchant. */
   merchantPatterns?: string[];
+  /** Case-insensitive description substrings that never earn under this rule. */
+  excludeMerchantPatterns?: string[];
+  /** Matches the currency the purchase was made in, falling back to the billed currency. */
   currencies?: string[];
 }
 
@@ -38,6 +41,8 @@ export interface SpendLine {
   description: string;
   amountMinor: number;
   currency: string;
+  /** Currency the purchase was made in when it differs from the billed currency, e.g. SGD billed as IDR. */
+  originalCurrency: string | null;
 }
 
 export interface EarnAllocation {
@@ -74,8 +79,11 @@ export function ruleMatches(
   if (m.categoryIds?.length && !m.categoryIds.some((id) => chain.includes(id))) return false;
   if (m.excludeCategoryIds?.some((id) => chain.includes(id))) return false;
   const patterns = (m.merchantPatterns ?? []).map((p) => p.trim().toLowerCase()).filter(Boolean);
-  if (patterns.length && !patterns.some((p) => line.description.toLowerCase().includes(p))) return false;
-  if (m.currencies?.length && !m.currencies.includes(line.currency)) return false;
+  const description = line.description.toLowerCase();
+  if (patterns.length && !patterns.some((p) => description.includes(p))) return false;
+  const excluded = (m.excludeMerchantPatterns ?? []).map((p) => p.trim().toLowerCase()).filter(Boolean);
+  if (excluded.some((p) => description.includes(p))) return false;
+  if (m.currencies?.length && !m.currencies.includes(line.originalCurrency ?? line.currency)) return false;
   return true;
 }
 

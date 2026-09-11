@@ -38,7 +38,7 @@ export interface Recommendation {
 
 /** Marginal points and value of adding the purchase to each card's current cycle, best first. */
 export function recommendCards(query: PurchaseQuery, candidates: CardCandidate[], ancestors: Record<string, string[]>): Recommendation[] {
-  const hypothetical: SpendLine = { ...query, transactionId: '￿', entryId: '￿' };
+  const hypothetical: SpendLine = { ...query, transactionId: '￿', entryId: '￿', originalCurrency: null };
   const results = candidates.map((card): Recommendation => {
     if (card.currency !== query.currency || query.amountMinor <= 0) {
       return { cardAccountId: card.cardAccountId, cardName: card.cardName, eligible: false, points: 0, valueMinor: null, valueCurrency: null, effectiveRateBps: null, capHeadroom: [] };

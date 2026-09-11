@@ -243,5 +243,6 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     description,
     amountMinor: Number(amountMinor),
     currency,
+    originalCurrency: null,
   }));
 }
