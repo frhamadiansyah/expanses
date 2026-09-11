@@ -13,3 +13,4 @@ export * from './repos/reports';
 export * as pointsSchema from './schema-points';
 export * from './repos/points';
 export * from './repos/imports';
+export * from './repos/catalog';

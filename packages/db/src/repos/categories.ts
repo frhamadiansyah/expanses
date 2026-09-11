@@ -1,7 +1,7 @@
 import { DEFAULT_CATEGORIES, uuidv7 } from '@expanses/core';
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 
 type AccountRow = typeof accounts.$inferSelect;
@@ -72,8 +72,12 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
 }
 
 /** Active categories that carry a default key, for mapping catalogue category keys to account ids. */
-export async function categoryIdsByKey(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
-  const rows = await database.db
+export function categoryIdsByKey(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
+  return categoryIdsByKeyTx(database.db, ws);
+}
+
+export async function categoryIdsByKeyTx(db: Db, ws: WorkspaceContext): Promise<Record<string, string>> {
+  const rows = await db
     .select({ id: accounts.id, key: accounts.systemKey })
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category'), isNotNull(accounts.systemKey), isNull(accounts.archivedAt)));

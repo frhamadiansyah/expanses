@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@expanses/catalog": "*",
     "@expanses/core": "*",
     "drizzle-orm": "^0.45.2"
   },
