@@ -1,8 +1,11 @@
-import { type AccountRow, archiveAccount, createAccount, renameAccount } from '@expanses/db';
+import { mccName } from '@expanses/core';
+import { type AccountRow, archiveAccount, clearCategoryMcc, createAccount, listCategoryMccs, renameAccount, saveCategoryMcc } from '@expanses/db';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { isCategoryOf, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, ErrorBox, PageHeader } from '../../ui';
+import { categoryMcc } from './category-mcc';
 
 export function CategoriesPage() {
   const { database, ws } = useApp();
@@ -12,6 +15,8 @@ export function CategoriesPage() {
   const [error, setError] = useState<unknown>(null);
 
   const categories = (accounts.data ?? []).filter(isCategoryOf(kind));
+  const overrides = useQuery({ queryKey: ['category-mccs', ws.workspaceId], queryFn: () => listCategoryMccs(database, ws) });
+  const allCategories = (accounts.data ?? []).filter((a) => a.subtype === 'category');
   const roots = categories.filter((c) => c.parentId === null);
   const childrenOf = (id: string) => categories.filter((c) => c.parentId === id);
 
@@ -32,6 +37,10 @@ export function CategoriesPage() {
     const name = window.prompt('Rename category', c.name);
     if (name?.trim() && name !== c.name) void run(() => renameAccount(database, ws, c.id, name));
   };
+  const changeMcc = (c: AccountRow, current: string | null) => {
+    const mcc = window.prompt(`Card MCC for ${c.name} (four digits). Purchases in this category use it when no merchant MCC is known.`, current ?? '');
+    if (mcc?.trim() && mcc.trim() !== current) void run(() => saveCategoryMcc(database, ws, c.id, mcc.trim()));
+  };
   const archive = (c: AccountRow) => {
     if (window.confirm(`Archive ${c.name}? Past transactions keep it.`)) void run(() => archiveAccount(database, ws, c.id));
   };
@@ -40,6 +49,24 @@ export function CategoriesPage() {
     <li>
       <div className={cx('flex items-center gap-2 py-1.5', depth > 0 && 'pl-6')}>
         <span className={cx('flex-1', depth === 0 && 'font-medium')}>{c.name}</span>
+        {kind === 'expense' && (() => {
+          const card = categoryMcc(c, allCategories, overrides.data ?? {});
+          return (
+            <>
+              <span className="tabular text-xs text-slate-500" title={card.mcc ? (mccName(card.mcc) ?? undefined) : undefined}>
+                {card.mcc ? `MCC ${card.mcc}${card.source === 'yours' ? ' (yours)' : card.source === 'parent' ? ' (from parent)' : ''}` : 'No card MCC'}
+              </span>
+              <Button variant="ghost" onClick={() => changeMcc(c, card.mcc)} aria-label={`Card MCC for ${c.name}`}>
+                MCC
+              </Button>
+              {card.source === 'yours' && (
+                <Button variant="ghost" onClick={() => void run(() => clearCategoryMcc(database, ws, c.id))} aria-label={`Reset card MCC for ${c.name}`}>
+                  Reset
+                </Button>
+              )}
+            </>
+          );
+        })()}
         {depth === 0 && (
           <Button variant="ghost" onClick={() => add(c)}>
             + Sub

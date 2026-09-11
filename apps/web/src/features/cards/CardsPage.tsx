@@ -24,9 +24,14 @@ export function CardsPage() {
       <PageHeader
         title="Cards & points"
         action={
-          <Link to="/recommend" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
-            Which card?
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/cards/merchants" className="text-sm underline">
+              Merchants & MCCs
+            </Link>
+            <Link to="/recommend" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">
+              Which card?
+            </Link>
+          </div>
         }
       />
       {accounts.isSuccess && cards.length === 0 && (

@@ -7,6 +7,7 @@ import { CardsPage } from '../features/cards/CardsPage';
 import { RecommendPage } from '../features/cards/RecommendPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { SpendingPage } from '../features/spending/SpendingPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { Layout } from './Layout';
@@ -33,6 +34,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId', component: CardDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
