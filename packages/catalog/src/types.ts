@@ -8,6 +8,9 @@ export interface CatalogMatch {
   excludeMerchantPatterns?: string[];
   currencies?: string[];
   origin?: 'domestic' | 'foreign';
+  /** Merchant category codes or ranges such as 3000-3299. */
+  mccs?: string[];
+  excludeMccs?: string[];
 }
 
 export interface CatalogRule {
@@ -63,6 +66,8 @@ export interface CatalogProgram {
   cycleAnchor: 'statement' | 'calendar';
   /** Set when the issuer uses the same statement day for every cardholder. */
   fixedStatementDay?: number;
+  /** How the issuer credits points; decides whether users check each purchase or the statement total. Defaults to per_statement. */
+  crediting?: 'per_transaction' | 'per_statement';
 }
 
 export interface CatalogEntry {

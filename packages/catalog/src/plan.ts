@@ -20,6 +20,7 @@ export interface CatalogPlan {
   bonuses: PlannedBonus[];
   transferPartners: PlannedPartner[];
   cashValue: CatalogEntry['cashValue'];
+  crediting: 'per_transaction' | 'per_statement';
   /** Fee in force today, or null when the entry publishes none. */
   annualFeeMinor: number | null;
   /** Category keys with no matching category in the workspace, sorted. */
@@ -52,6 +53,8 @@ export function planCatalogApply(entry: CatalogEntry, categoryIdsByKey: Record<s
     if (match.excludeMerchantPatterns) result.excludeMerchantPatterns = [...match.excludeMerchantPatterns];
     if (match.currencies) result.currencies = [...match.currencies];
     if (match.origin) result.origin = match.origin;
+    if (match.mccs) result.mccs = [...match.mccs];
+    if (match.excludeMccs) result.excludeMccs = [...match.excludeMccs];
     return result;
   };
 
@@ -108,6 +111,7 @@ export function planCatalogApply(entry: CatalogEntry, categoryIdsByKey: Record<s
       validTo: partner.effectiveTo,
     })),
     cashValue: entry.cashValue ? { ...entry.cashValue } : null,
+    crediting: entry.program.crediting ?? 'per_statement',
     annualFeeMinor: feeOn(entry, today)?.annualFeeMinor ?? null,
     unmappedKeys: [...unmapped].sort(),
   };

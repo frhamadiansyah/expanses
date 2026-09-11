@@ -2,9 +2,11 @@ import {
   amountOf,
   cashValueText,
   categoryNames,
+  creditingText,
   cycleText,
   feeText,
   limitText,
+  mccList,
   money,
   originText,
   periodLabel,
@@ -106,6 +108,9 @@ function programChanges(applied: CatalogEntry, current: CatalogEntry): string[] 
   if (before.name !== after.name) lines.push(`Program renamed: ${before.name} → ${after.name}.`);
   if (before.unit !== after.unit) lines.push(`Now earns ${after.unit} instead of ${before.unit}.`);
   if (before.cycleAnchor !== after.cycleAnchor) lines.push(`Now counted per ${cycleText(current)} instead of per ${cycleText(applied)}.`);
+  if (creditingText(before.crediting) !== creditingText(after.crediting)) {
+    lines.push(`Points now credited ${creditingText(after.crediting)} instead of ${creditingText(before.crediting)}.`);
+  }
   if (before.fixedStatementDay !== after.fixedStatementDay) {
     lines.push(`Statement cycle end day: ${before.fixedStatementDay ?? 'not fixed'} → ${after.fixedStatementDay ?? 'not fixed'}.`);
   }
@@ -186,8 +191,10 @@ function matchChanges(label: string, current: CatalogEntry, a: CatalogMatch, b: 
   include(a.categoryKeys, b.categoryKeys, categoryNames, 'every category');
   include(a.merchantPatterns, b.merchantPatterns, merchants, 'every merchant');
   include(a.currencies, b.currencies, (items) => `purchases in ${items.join(', ')}`, 'purchases in every currency');
+  include(a.mccs, b.mccs, mccList, 'every merchant category');
   exclude(a.excludeCategoryKeys, b.excludeCategoryKeys, categoryNames);
   exclude(a.excludeMerchantPatterns, b.excludeMerchantPatterns, merchants);
+  exclude(a.excludeMccs, b.excludeMccs, mccList);
   if (a.origin !== b.origin) say(b.origin ? `now applies only to purchases ${originText(current, b.origin)}` : 'now applies to purchases in every currency');
   return lines;
 }

@@ -1,4 +1,4 @@
-import { isSupportedCurrency } from '@expanses/core';
+import { isMccSpec, isSupportedCurrency } from '@expanses/core';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ROUNDINGS = new Set(['per_transaction_floor', 'per_cycle_sum', 'per_increment']);
@@ -37,6 +37,9 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
     if (program.fixedStatementDay !== undefined && !(Number.isInteger(program.fixedStatementDay) && (program.fixedStatementDay as number) >= 1 && (program.fixedStatementDay as number) <= 31)) {
       add('program.fixedStatementDay', 'must be a day from 1 to 31');
     }
+    if (program.crediting !== undefined && program.crediting !== 'per_transaction' && program.crediting !== 'per_statement') {
+      add('program.crediting', 'must be per_transaction or per_statement');
+    }
   }
 
   const checkPeriods = (path: string, periods: unknown[]) => {
@@ -73,6 +76,12 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
       add(`${path}.currencies`, 'must list supported currencies');
     }
     if (match.origin !== undefined && match.origin !== 'domestic' && match.origin !== 'foreign') add(`${path}.origin`, 'must be domestic or foreign');
+    for (const field of ['mccs', 'excludeMccs'] as const) {
+      const specs = match[field];
+      if (specs !== undefined && (!Array.isArray(specs) || specs.some((spec) => typeof spec !== 'string' || !isMccSpec(spec)))) {
+        add(`${path}.${field}`, 'must list four-digit MCCs or ranges like 3000-3299');
+      }
+    }
   };
 
   const uniqueKeys = (path: string, items: unknown[]) => {

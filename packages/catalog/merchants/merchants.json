@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "verifiedOn": "2026-09-11",
+  "merchants": [
+    { "pattern": "mcdonald", "mcc": "5814", "name": "McDonald's", "basis": "Typical for fast food restaurants; acquirers can assign another code" },
+    { "pattern": "kfc", "mcc": "5814", "name": "KFC", "basis": "Typical for fast food restaurants; acquirers can assign another code" },
+    { "pattern": "burger king", "mcc": "5814", "name": "Burger King", "basis": "Typical for fast food restaurants; acquirers can assign another code" },
+    { "pattern": "pertamina", "mcc": "5541", "name": "Pertamina", "basis": "Typical for service stations; self-service pumps can use 5542" },
+    { "pattern": "shell", "mcc": "5541", "name": "Shell", "basis": "Typical for service stations; self-service pumps can use 5542" },
+    { "pattern": "indomaret", "mcc": "5411", "name": "Indomaret", "basis": "Typical for minimarkets; some acquirers use 5499" },
+    { "pattern": "alfamart", "mcc": "5411", "name": "Alfamart", "basis": "Typical for minimarkets; some acquirers use 5499" },
+    { "pattern": "grab", "mcc": "4121", "name": "Grab", "basis": "Typical for ride hailing; food orders can use 5814" },
+    { "pattern": "gojek", "mcc": "4121", "name": "Gojek", "basis": "Typical for ride hailing; food orders can use 5814" },
+    { "pattern": "decathlon", "mcc": "5941", "name": "Decathlon", "basis": "Typical for sporting goods stores" }
+  ]
+}

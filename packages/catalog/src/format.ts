@@ -1,4 +1,4 @@
-import { type BonusTier, DEFAULT_CATEGORIES, formatMinor } from '@expanses/core';
+import { type BonusTier, DEFAULT_CATEGORIES, formatMinor, mccName } from '@expanses/core';
 import type { Period } from './lookup';
 import type { CatalogEntry, CatalogFeePeriod, CatalogMatch, CatalogRule, CatalogTransferPartner } from './types';
 
@@ -10,6 +10,19 @@ const CATEGORY_NAMES = new Map<string, string>(
 );
 
 export const categoryNames = (keys: readonly string[]) => keys.map((key) => CATEGORY_NAMES.get(key) ?? key).join(', ');
+
+/** "MCC 5814 Fast Food Restaurants" for codes, "MCC 3000–3299" for ranges. */
+export const mccList = (specs: readonly string[]) =>
+  specs
+    .map((spec) => {
+      const [start, end] = spec.split('-');
+      if (end) return `MCC ${start}–${end}`;
+      const name = mccName(spec);
+      return name ? `MCC ${spec} ${name}` : `MCC ${spec}`;
+    })
+    .join(', ');
+
+export const creditingText = (crediting: 'per_transaction' | 'per_statement' | undefined) => ((crediting ?? 'per_statement') === 'per_transaction' ? 'per purchase' : 'per statement');
 
 /** Plain spaces instead of Intl's no-break spaces, so copy reads the same everywhere. */
 export const money = (amountMinor: number, currency: string) => formatMinor(amountMinor, currency).replace(/\s/g, ' ');
@@ -46,6 +59,7 @@ export function conditionParts(entry: CatalogEntry, match: CatalogMatch): string
   const parts: string[] = [];
   if (match.categoryKeys?.length) parts.push(`in ${categoryNames(match.categoryKeys)}`);
   if (match.merchantPatterns?.length) parts.push(`at merchants matching ${match.merchantPatterns.join(', ')}`);
+  if (match.mccs?.length) parts.push(`at ${mccList(match.mccs)}`);
   if (match.currencies?.length) parts.push(`spent in ${match.currencies.join(', ')}`);
   if (match.origin) parts.push(originText(entry, match.origin));
   return parts;
@@ -55,6 +69,7 @@ export function exclusionText(match: CatalogMatch): string {
   const parts: string[] = [];
   if (match.excludeCategoryKeys?.length) parts.push(categoryNames(match.excludeCategoryKeys));
   if (match.excludeMerchantPatterns?.length) parts.push(`merchants matching ${match.excludeMerchantPatterns.join(', ')}`);
+  if (match.excludeMccs?.length) parts.push(mccList(match.excludeMccs));
   return parts.join('; ');
 }
 

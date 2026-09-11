@@ -3,6 +3,7 @@ import {
   cashValueText,
   conditionParts,
   count,
+  creditingText,
   cycleText,
   exclusionText,
   feeText,
@@ -21,6 +22,7 @@ export function describeEntry(entry: CatalogEntry, today: string): { heading: st
   if (entry.program.fixedStatementDay !== undefined) {
     lines.push(`The statement cycle ends on day ${entry.program.fixedStatementDay} of each month.`);
   }
+  if (entry.program.crediting === 'per_transaction') lines.push(`The bank shows points credited ${creditingText(entry.program.crediting)}, so each purchase can be checked.`);
 
   for (const period of entry.terms) {
     if (entry.terms.length > 1) lines.push(`Terms ${periodLabel(period)}${withinPeriod(today, period) ? ' (in force today)' : ''}:`);
