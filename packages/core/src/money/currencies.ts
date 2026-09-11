@@ -16,6 +16,7 @@ const LIST: CurrencyInfo[] = [
   { code: 'JPY', exponent: 0, symbol: '¥', name: 'Japanese Yen' },
   { code: 'KRW', exponent: 0, symbol: '₩', name: 'South Korean Won' },
   { code: 'HKD', exponent: 2, symbol: 'HK$', name: 'Hong Kong Dollar' },
+  { code: 'TWD', exponent: 2, symbol: 'NT$', name: 'New Taiwan Dollar' },
   { code: 'PHP', exponent: 2, symbol: '₱', name: 'Philippine Peso' },
   { code: 'AUD', exponent: 2, symbol: 'A$', name: 'Australian Dollar' },
   { code: 'EUR', exponent: 2, symbol: '€', name: 'Euro' },

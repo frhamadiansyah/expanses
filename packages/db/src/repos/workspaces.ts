@@ -29,9 +29,9 @@ export async function createWorkspace(
   }
   DEFAULT_CATEGORIES.forEach((category, i) => {
     const parentId = uuidv7();
-    rows.push({ ...base, id: parentId, parentId: null, kind: category.kind, subtype: 'category', name: category.name, currency: null, systemKey: null, sortOrder: i });
+    rows.push({ ...base, id: parentId, parentId: null, kind: category.kind, subtype: 'category', name: category.name, currency: null, systemKey: category.key, sortOrder: i });
     (category.children ?? []).forEach((child, j) => {
-      rows.push({ ...base, id: uuidv7(), parentId, kind: category.kind, subtype: 'category', name: child, currency: null, systemKey: null, sortOrder: j });
+      rows.push({ ...base, id: uuidv7(), parentId, kind: category.kind, subtype: 'category', name: child.name, currency: null, systemKey: child.key, sortOrder: j });
     });
   });
 

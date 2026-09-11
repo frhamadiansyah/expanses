@@ -1,4 +1,5 @@
 export { uuidv7 } from './ids';
+export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, type DefaultCategory, type DefaultCategoryChild } from './categories/defaults';
 export { CURRENCIES, currencyInfo, isSupportedCurrency, UnknownCurrencyError, type CurrencyInfo } from './money/currencies';
 export {
   assertMinor,

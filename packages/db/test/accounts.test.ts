@@ -6,7 +6,7 @@ describe('workspace seed', () => {
   it('creates system equity accounts and a two-level category tree', async () => {
     const { database, ws } = await setupDb();
     const all = await listAccounts(database, ws);
-    expect(all.filter((a) => a.systemKey).map((a) => a.systemKey).sort()).toEqual(['currency_exchange', 'opening_balance']);
+    expect(all.filter((a) => a.kind === 'equity').map((a) => a.systemKey).sort()).toEqual(['currency_exchange', 'opening_balance']);
     const food = all.find((a) => a.name === 'Food & Drink')!;
     const groceries = all.find((a) => a.name === 'Groceries')!;
     expect(food.kind).toBe('expense');
@@ -81,5 +81,17 @@ describe('review fixes: archiving with a balance', () => {
     expect((await nativeBalances(database, ws))[equity.id]).toBe(2_000_000);
     const other = (await listAccounts(database, ws)).find((a) => a.name === 'Other Expense')!;
     await archiveAccount(database, ws, other.id);
+  });
+});
+
+describe('category keys on new workspaces', () => {
+  it('sets system_key on every default category', async () => {
+    const { DEFAULT_CATEGORY_KEYS } = await import('@expanses/core');
+    const { database, ws } = await setupDb();
+    const categories = (await listAccounts(database, ws)).filter((a) => a.subtype === 'category');
+    expect(categories.every((c) => c.systemKey !== null)).toBe(true);
+    expect(new Set(categories.map((c) => c.systemKey))).toEqual(new Set(DEFAULT_CATEGORY_KEYS));
+    expect(categories.find((c) => c.systemKey === 'utilities.gas')?.name).toBe('Gas');
+    expect(categories.find((c) => c.systemKey === 'government')?.name).toBe('Government & Taxes');
   });
 });

@@ -3,7 +3,7 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
-import type { SystemAccountKey } from '../seed';
+import { SYSTEM_ACCOUNTS, type SystemAccountKey } from '../seed';
 import { postTransactionTx } from './ledger';
 
 export type AccountRow = typeof accounts.$inferSelect;
@@ -146,7 +146,8 @@ export async function archiveAccount(database: Database, ws: WorkspaceContext, i
       .from(accounts)
       .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
     if (!account) throw new AccountError('Account not found');
-    if (account.systemKey) throw new AccountError('System accounts cannot be archived');
+    // Default categories carry keys too; only the system equity accounts are protected.
+    if (SYSTEM_ACCOUNTS.some((s) => s.key === account.systemKey)) throw new AccountError('System accounts cannot be archived');
     if (account.kind === 'asset' || account.kind === 'liability') {
       // Archived money accounts leave net worth, so they must be empty first.
       const [row] = await tx
