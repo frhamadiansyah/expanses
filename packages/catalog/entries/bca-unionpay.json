@@ -1,0 +1,125 @@
+{
+  "id": "bca-unionpay",
+  "entryVersion": 1,
+  "bank": "BCA",
+  "name": "BCA UnionPay",
+  "network": "unionpay",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "UnionPay Points",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 125000,
+      "supplementaryFeeMinor": 100000
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "rounding": "per_transaction_floor",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "fees"
+            ]
+          }
+        },
+        {
+          "key": "double-sgd-hkd-cny-twd",
+          "name": "Double points in SGD, HKD, CNY, TWD",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "rounding": "per_transaction_floor",
+          "priority": 0,
+          "stackable": true,
+          "match": {
+            "excludeCategoryKeys": [
+              "fees"
+            ],
+            "currencies": [
+              "SGD",
+              "HKD",
+              "CNY",
+              "TWD"
+            ]
+          }
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 200,
+      "partnerUnits": 100,
+      "incrementPoints": 20,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 150,
+      "partnerUnits": 100,
+      "incrementPoints": 15,
+      "effectiveFrom": "2025-11-01",
+      "effectiveTo": null
+    },
+    {
+      "key": "jal",
+      "program": "JAL Miles",
+      "points": 200,
+      "partnerUnits": 100,
+      "incrementPoints": 20,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "airasia",
+      "program": "AirAsia points",
+      "points": 100,
+      "partnerUnits": 100,
+      "incrementPoints": 10,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": {
+    "valueMinor": 20,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
+  "welcomeBonus": "5.000 UnionPay Points for every accumulated Rp 5.000.000 spent within 3 months of card issuance. Primary card only.",
+  "notes": [
+    "BCA describes double points as 'transaksi retail di Singapura, Hongkong, China dan Taiwan'; applied here by the purchase's original currency.",
+    "Unlike BCA Visa and Mastercard cards, BCA UnionPay still earns on utilities, government services, and donations.",
+    "UnionPay Points can pay at partner merchants at Rp 20 per point; airline conversions are requested through Halo BCA.",
+    "Cancelled or corrected transactions may have their points reversed."
+  ],
+  "sources": [
+    {
+      "title": "BCA UnionPay",
+      "url": "https://www.bca.co.id/unionpay"
+    },
+    {
+      "title": "Reward BCA",
+      "url": "https://www.bca.co.id/id/Individu/produk/Reward-BCA"
+    }
+  ],
+  "verifiedOn": "2026-09-11"
+}

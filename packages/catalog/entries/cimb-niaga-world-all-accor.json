@@ -1,0 +1,241 @@
+{
+  "id": "cimb-niaga-world-all-accor",
+  "entryVersion": 1,
+  "bank": "CIMB Niaga",
+  "name": "CIMB Niaga World ALL Accor Live Limitless",
+  "network": "mastercard",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "ALL - Accor Live Limitless",
+    "cycleAnchor": "statement",
+    "fixedStatementDay": 22
+  },
+  "fees": [],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": "2025-12-31",
+      "rules": [
+        {
+          "key": "accor",
+          "name": "Accor properties",
+          "rateNum": 7.5,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "qris",
+              "qr",
+              "cicilan",
+              "installment",
+              "cash plus",
+              "octo"
+            ],
+            "excludeCategoryKeys": [
+              "fees",
+              "health.insurance"
+            ],
+            "merchantPatterns": [
+              "accor",
+              "sofitel",
+              "pullman",
+              "novotel",
+              "mercure",
+              "grand mercure",
+              "ibis",
+              "swissotel",
+              "swissôtel",
+              "fairmont",
+              "raffles",
+              "movenpick",
+              "mövenpick",
+              "mgallery",
+              "mantra",
+              "peppers",
+              "adagio",
+              "rixos",
+              "banyan tree"
+            ]
+          }
+        },
+        {
+          "key": "foreign",
+          "name": "Overseas transactions",
+          "rateNum": 7.5,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "qris",
+              "qr",
+              "cicilan",
+              "installment",
+              "cash plus",
+              "octo"
+            ],
+            "excludeCategoryKeys": [
+              "fees",
+              "health.insurance"
+            ],
+            "origin": "foreign"
+          }
+        },
+        {
+          "key": "domestic",
+          "name": "Other domestic transactions",
+          "rateNum": 2.5,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "qris",
+              "qr",
+              "cicilan",
+              "installment",
+              "cash plus",
+              "octo"
+            ],
+            "excludeCategoryKeys": [
+              "fees",
+              "health.insurance"
+            ],
+            "origin": "domestic"
+          }
+        }
+      ],
+      "cycleBonuses": []
+    },
+    {
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "accor",
+          "name": "Accor properties",
+          "rateNum": 7.5,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "qris",
+              "qr",
+              "cicilan",
+              "installment",
+              "cash plus",
+              "octo",
+              "balance transfer",
+              "forex"
+            ],
+            "excludeCategoryKeys": [
+              "fees"
+            ],
+            "merchantPatterns": [
+              "accor",
+              "sofitel",
+              "pullman",
+              "novotel",
+              "mercure",
+              "grand mercure",
+              "ibis",
+              "swissotel",
+              "swissôtel",
+              "fairmont",
+              "raffles",
+              "movenpick",
+              "mövenpick",
+              "mgallery",
+              "mantra",
+              "peppers",
+              "adagio",
+              "rixos",
+              "banyan tree"
+            ]
+          }
+        },
+        {
+          "key": "foreign",
+          "name": "Overseas transactions",
+          "rateNum": 7.5,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "qris",
+              "qr",
+              "cicilan",
+              "installment",
+              "cash plus",
+              "octo",
+              "balance transfer",
+              "forex"
+            ],
+            "excludeCategoryKeys": [
+              "fees"
+            ],
+            "origin": "foreign"
+          }
+        },
+        {
+          "key": "domestic",
+          "name": "Other domestic transactions",
+          "rateNum": 2.5,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "qris",
+              "qr",
+              "cicilan",
+              "installment",
+              "cash plus",
+              "octo",
+              "balance transfer",
+              "forex"
+            ],
+            "excludeCategoryKeys": [
+              "fees"
+            ],
+            "origin": "domestic"
+          }
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [],
+  "cashValue": null,
+  "welcomeBonus": "4.000 ALL points for each primary card active within 3 months of approval.",
+  "notes": [
+    "Points accumulate per billing cycle from posting date the 23rd of the previous month to the 22nd; credited within 7 working days after the cycle.",
+    "Earning is per whole Rp 50.000 multiple of each retail transaction; how half points are credited is not published.",
+    "Transactions converted to installments or cancelled after the statement have their points deducted in the next period.",
+    "From 1 January 2026 insurance premiums are no longer listed as excluded; balance transfer and forex trading are.",
+    "Transactions above twice the permanent limit and transactions categorised as high risk are excluded but cannot be detected here.",
+    "Accor Plus / ALL Accor+ Explorer membership requires Rp 10.000.000 spend in the first 3 months and Rp 150.000.000 per year to renew.",
+    "Annual fee is not published on the product page or its product summary (checked 2026-09-11)."
+  ],
+  "sources": [
+    {
+      "title": "CIMB Niaga World ALL Accor Live Limitless",
+      "url": "https://www.cimbniaga.co.id/id/personal/kartu-kredit/world-all-accor-live-limitless"
+    },
+    {
+      "title": "Product summary (RIPLAY)",
+      "url": "https://www.cimbniaga.co.id/content/dam/cimb/kartu-kredit/MC%20WORLD%20ACCOR%20REV.pdf"
+    }
+  ],
+  "verifiedOn": "2026-09-11"
+}

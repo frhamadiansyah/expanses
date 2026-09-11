@@ -1,0 +1,290 @@
+{
+  "id": "mandiri-marriott-bonvoy",
+  "entryVersion": 1,
+  "bank": "Mandiri",
+  "name": "Marriott Bonvoy Mandiri Kartu Kredit",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "Marriott Bonvoy",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 750000,
+      "supplementaryFeeMinor": 375000
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "marriott",
+          "name": "Marriott Bonvoy properties",
+          "rateNum": 5,
+          "rateDen": 20000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "transport",
+              "housing.real_estate",
+              "education",
+              "health.insurance",
+              "utilities",
+              "government",
+              "gifts_donations.donations",
+              "business",
+              "fees"
+            ],
+            "excludeMerchantPatterns": [
+              "qris",
+              "va",
+              "virtual account",
+              "cicilan",
+              "installment",
+              "power installment",
+              "power buy",
+              "power cash",
+              "power bill",
+              "pln",
+              "balance transfer"
+            ],
+            "merchantPatterns": [
+              "marriott",
+              "ritz-carlton",
+              "ritz carlton",
+              "st. regis",
+              "st regis",
+              "luxury collection",
+              "w hotel",
+              "bulgari hotel",
+              "sheraton",
+              "westin",
+              "le meridien",
+              "le méridien",
+              "renaissance",
+              "autograph collection",
+              "tribute portfolio",
+              "gaylord",
+              "courtyard",
+              "four points",
+              "springhill",
+              "protea",
+              "fairfield",
+              "ac hotel",
+              "aloft",
+              "moxy",
+              "residence inn",
+              "towneplace",
+              "delta hotels",
+              "bonvoy"
+            ]
+          }
+        },
+        {
+          "key": "airfare",
+          "name": "Airfare bought from airlines",
+          "rateNum": 5,
+          "rateDen": 20000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "transport",
+              "housing.real_estate",
+              "education",
+              "health.insurance",
+              "utilities",
+              "government",
+              "gifts_donations.donations",
+              "business",
+              "fees"
+            ],
+            "excludeMerchantPatterns": [
+              "qris",
+              "va",
+              "virtual account",
+              "cicilan",
+              "installment",
+              "power installment",
+              "power buy",
+              "power cash",
+              "power bill",
+              "pln",
+              "balance transfer"
+            ],
+            "merchantPatterns": [
+              "garuda indonesia",
+              "garuda",
+              "singapore airlines",
+              "airasia",
+              "air asia",
+              "lion air",
+              "citilink",
+              "batik air",
+              "super air jet",
+              "pelita air",
+              "cathay pacific",
+              "qatar airways",
+              "emirates",
+              "etihad",
+              "klm",
+              "turkish airlines",
+              "qantas",
+              "japan airlines",
+              "all nippon",
+              "korean air",
+              "thai airways",
+              "malaysia airlines",
+              "eva air",
+              "china airlines",
+              "scoot",
+              "jetstar",
+              "vietnam airlines",
+              "philippine airlines"
+            ]
+          }
+        },
+        {
+          "key": "international",
+          "name": "International transactions",
+          "rateNum": 5,
+          "rateDen": 20000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "transport",
+              "housing.real_estate",
+              "education",
+              "health.insurance",
+              "utilities",
+              "government",
+              "gifts_donations.donations",
+              "business",
+              "fees"
+            ],
+            "excludeMerchantPatterns": [
+              "qris",
+              "va",
+              "virtual account",
+              "cicilan",
+              "installment",
+              "power installment",
+              "power buy",
+              "power cash",
+              "power bill",
+              "pln",
+              "balance transfer"
+            ],
+            "origin": "foreign"
+          }
+        },
+        {
+          "key": "base",
+          "name": "Other merchants",
+          "rateNum": 3,
+          "rateDen": 20000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "transport",
+              "housing.real_estate",
+              "education",
+              "health.insurance",
+              "utilities",
+              "government",
+              "gifts_donations.donations",
+              "business",
+              "fees"
+            ],
+            "excludeMerchantPatterns": [
+              "qris",
+              "va",
+              "virtual account",
+              "cicilan",
+              "installment",
+              "power installment",
+              "power buy",
+              "power cash",
+              "power bill",
+              "pln",
+              "balance transfer"
+            ]
+          }
+        }
+      ],
+      "cycleBonuses": [
+        {
+          "key": "monthly-milestone",
+          "name": "Monthly milestone bonus",
+          "tiers": [
+            {
+              "minSpendMinor": 30000001,
+              "bonus": 2500
+            }
+          ],
+          "match": {
+            "excludeCategoryKeys": [
+              "transport",
+              "housing.real_estate",
+              "education",
+              "health.insurance",
+              "utilities",
+              "government",
+              "gifts_donations.donations",
+              "business",
+              "fees"
+            ],
+            "excludeMerchantPatterns": [
+              "qris",
+              "va",
+              "virtual account",
+              "cicilan",
+              "installment",
+              "power installment",
+              "power buy",
+              "power cash",
+              "power bill",
+              "pln",
+              "balance transfer"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "transferPartners": [],
+  "cashValue": null,
+  "welcomeBonus": "5.000 Marriott Bonvoy points after the first transaction within 3 months of approval; one free night worth up to 20.000 points after Rp 20.000.000 within 3 months (primary card only).",
+  "notes": [
+    "The milestone requires spend above ('melebihi') Rp 30.000.000 on the previous statement; supplementary card spend does not count, but the estimate cannot tell cards apart.",
+    "The terms define international transactions by merchant country; this entry applies them to purchases in a currency other than rupiah.",
+    "Airfare means tickets bought directly from airlines, not through travel agents.",
+    "Transport, real estate, education, fuel, insurance, QRIS, virtual account, installment, Power Cash, Power Bill, PLN, donations, utilities, tax, post, and business invoicing earn no points.",
+    "Cancelled transactions and chargebacks reverse their points.",
+    "Silver Elite status on approval; Gold Elite after Rp 150.000.000 within one year of approval."
+  ],
+  "sources": [
+    {
+      "title": "Marriott Bonvoy Mandiri Kartu Kredit",
+      "url": "https://www.mandirikartukredit.com/produk/mandiri-marriott-bonvoy-card"
+    },
+    {
+      "title": "Syarat dan ketentuan Marriott Bonvoy Mandiri Kartu Kredit",
+      "url": "https://www.mandirikartukredit.com/artikel/syarat-dan-ketentuan-marriott-bonvoy-mandiri-kartu-kredit"
+    }
+  ],
+  "verifiedOn": "2026-09-11"
+}
