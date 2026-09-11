@@ -22,6 +22,7 @@ export const rewardPrograms = sqliteTable('reward_programs', {
   catalogDismissedVersion: integer('catalog_dismissed_version'),
   /** JSON of the catalogue entry as applied. */
   catalogSnapshotJson: text('catalog_snapshot_json'),
+  crediting: text('crediting', { enum: ['per_transaction', 'per_statement'] }).notNull(),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
 });
@@ -96,4 +97,29 @@ export const transferPartners = sqliteTable('transfer_partners', {
   catalogKey: text('catalog_key'),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
+});
+
+export const merchantMccs = sqliteTable('merchant_mccs', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  pattern: text('pattern').notNull(),
+  /** Null ignores the bundled merchant with the same pattern. */
+  mcc: text('mcc'),
+  createdAt: text('created_at').notNull(),
+  archivedAt: text('archived_at'),
+});
+
+export const categoryMccs = sqliteTable('category_mccs', {
+  categoryId: text('category_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  mcc: text('mcc').notNull(),
+});
+
+export const transactionPointActuals = sqliteTable('transaction_point_actuals', {
+  workspaceId: text('workspace_id').notNull(),
+  programId: text('program_id').notNull(),
+  transactionId: text('transaction_id').notNull(),
+  actualPoints: real('actual_points').notNull(),
+  editedAfterCheck: integer('edited_after_check').notNull(),
+  recordedAt: text('recorded_at').notNull(),
 });

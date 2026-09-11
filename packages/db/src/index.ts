@@ -7,6 +7,7 @@ export { DEFAULT_CATEGORIES, SYSTEM_ACCOUNTS, type SystemAccountKey } from './se
 export * from './repos/workspaces';
 export * from './repos/accounts';
 export * from './repos/categories';
+export * from './repos/mcc';
 export * from './repos/ledger';
 export * from './repos/fx';
 export * from './repos/reports';

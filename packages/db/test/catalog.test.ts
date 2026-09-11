@@ -186,3 +186,20 @@ describe('catalogue updates', () => {
     expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: 2, status: 'linked', dismissedVersion: null });
   });
 });
+
+describe('catalogue crediting', () => {
+  it('sets crediting on apply and reset, and keeps a user-changed crediting through sync', async () => {
+    const { database, ws, card } = await withCard();
+    const base = entry('mandiri-world-prioritas');
+    const prioritas: CatalogEntry = { ...base, program: { ...base.program, crediting: 'per_transaction' } };
+    const { programId } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry: prioritas, today: TODAY, replaceManual: false });
+    const crediting = async () => (await listPrograms(database, ws)).find((p) => p.id === programId)!.crediting;
+    expect(await crediting()).toBe('per_transaction');
+    await database.execScript(`UPDATE reward_programs SET crediting = 'per_statement' WHERE id = '${programId}'`);
+    await syncLinkedPrograms(database, ws, [{ ...prioritas, entryVersion: 2 }], TODAY);
+    expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: 2, status: 'linked' });
+    expect(await crediting()).toBe('per_statement');
+    await resetToCatalog(database, ws, programId, { ...prioritas, entryVersion: 2 }, TODAY);
+    expect(await crediting()).toBe('per_transaction');
+  });
+});

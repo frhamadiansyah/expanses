@@ -51,6 +51,8 @@ export const transactions = sqliteTable('transactions', {
   /** Currency and amount of a card purchase before the issuer converted it, when it differs from the card currency. */
   originalCurrency: text('original_currency'),
   originalAmountMinor: integer('original_amount_minor'),
+  /** Merchant category code typed for a card purchase. */
+  mcc: text('mcc'),
   createdAt: text('created_at').notNull(),
 });
 

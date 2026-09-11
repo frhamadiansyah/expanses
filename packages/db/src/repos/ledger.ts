@@ -1,4 +1,4 @@
-import { isSupportedCurrency, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
+import { isMcc, isSupportedCurrency, planPosting, type PostingLine, uuidv7 } from '@expanses/core';
 import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -6,7 +6,7 @@ import { accounts, auditLog, entries, transactions } from '../schema';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -29,6 +29,8 @@ export interface PostTransactionInput {
   /** Currency and amount of a card purchase before the issuer converted it. Both or neither. */
   originalCurrency?: string | null;
   originalAmountMinor?: number | null;
+  /** Merchant category code typed for the purchase, when the user knows it. */
+  mcc?: string | null;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -61,6 +63,8 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   if (originalAmountMinor !== null && (!Number.isSafeInteger(originalAmountMinor) || originalAmountMinor <= 0)) {
     throw new LedgerError('INVALID_ORIGINAL', 'Original amount must be a positive whole number of minor units');
   }
+  const mcc = input.mcc ?? null;
+  if (mcc !== null && !isMcc(mcc)) throw new LedgerError('INVALID_MCC', `An MCC is four digits, got "${mcc}"`);
   const ids = [...new Set(input.lines.map((l) => l.accountId))];
   const found = ids.length
     ? await tx
@@ -88,6 +92,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     replacesTransactionId: input.replacesTransactionId ?? null,
     originalCurrency,
     originalAmountMinor,
+    mcc,
     createdAt: new Date().toISOString(),
   });
   await tx.insert(entries).values(
@@ -140,6 +145,7 @@ export function replaceTransaction(
         externalRef: transactions.externalRef,
         originalCurrency: transactions.originalCurrency,
         originalAmountMinor: transactions.originalAmountMinor,
+        mcc: transactions.mcc,
       })
       .from(transactions)
       .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
@@ -154,6 +160,7 @@ export function replaceTransaction(
       ...(input.originalCurrency === undefined && input.originalAmountMinor === undefined
         ? { originalCurrency: original?.originalCurrency ?? null, originalAmountMinor: original?.originalAmountMinor ?? null }
         : {}),
+      ...(input.mcc === undefined ? { mcc: original?.mcc ?? null } : {}),
     });
   });
 }
@@ -179,6 +186,7 @@ export interface TransactionView {
   externalRef: string | null;
   originalCurrency: string | null;
   originalAmountMinor: number | null;
+  mcc: string | null;
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -235,6 +243,7 @@ export async function listTransactions(
     externalRef: t.externalRef,
     originalCurrency: t.originalCurrency,
     originalAmountMinor: t.originalAmountMinor,
+    mcc: t.mcc,
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));

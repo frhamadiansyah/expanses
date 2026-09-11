@@ -4,6 +4,7 @@ import {
   type CycleBonus,
   type EarnRule,
   type Redemption,
+  resolveMcc,
   type RuleMatch,
   type SpendLine,
   type TransferPartner,
@@ -13,6 +14,7 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { mccSourcesFor } from './mcc';
 import { cardTerms, cycleActuals, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 
 export class PointsError extends Error {
@@ -117,7 +119,7 @@ export async function createProgram(
 ): Promise<RewardProgramRow> {
   const name = input.name.trim();
   if (!name) throw new PointsError('Program name is required');
-  const row: RewardProgramRow = { id: uuidv7(), workspaceId: ws.workspaceId, cardAccountId: input.cardAccountId, name, unit: input.unit, cycleAnchor: input.cycleAnchor, catalogEntryId: null, catalogEntryVersion: null, catalogStatus: null, catalogDismissedVersion: null, catalogSnapshotJson: null, archivedAt: null, createdAt: new Date().toISOString() };
+  const row: RewardProgramRow = { id: uuidv7(), workspaceId: ws.workspaceId, cardAccountId: input.cardAccountId, name, unit: input.unit, cycleAnchor: input.cycleAnchor, catalogEntryId: null, catalogEntryVersion: null, catalogStatus: null, catalogDismissedVersion: null, catalogSnapshotJson: null, crediting: 'per_statement', archivedAt: null, createdAt: new Date().toISOString() };
   await database.transaction(async (tx) => {
     await requireCard(tx, ws, input.cardAccountId);
     await tx.insert(rewardPrograms).values(row);
@@ -433,12 +435,12 @@ export async function listCycleActuals(database: Database, ws: WorkspaceContext,
 }
 
 /**
- * Expense entries of posted transactions charged to or refunded onto the card within [from, to]. A refund is a negative
- * line. Statement payments have no expense entries and never appear.
+ * Expense entries of posted transactions charged to or refunded onto the card within [from, to], each with its
+ * effective MCC. A refund is a negative line. Statement payments have no expense entries and never appear.
  */
 export async function cardSpendLines(database: Database, ws: WorkspaceContext, cardAccountId: string, from: string, to: string): Promise<SpendLine[]> {
-  const rows = await database.db.values<[string, string, string, string, string, number, string, string | null]>(sql`
-    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency
+  const rows = await database.db.values<[string, string, string, string, string, number, string, string | null, string | null]>(sql`
+    SELECT t.id, e.id, t.occurred_on, e.account_id, t.description, e.amount_minor, e.currency, t.original_currency, t.mcc
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
     JOIN accounts a ON a.id = e.account_id
@@ -449,17 +451,9 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
       AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
     ORDER BY t.occurred_on, t.id, e.id
   `);
-  return rows.map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency]) => ({
-    transactionId,
-    entryId,
-    occurredOn,
-    categoryId,
-    description,
-    amountMinor: Number(amountMinor),
-    currency,
-    originalCurrency,
-    // Resolved from merchant memory, the bundled list, and category defaults once MCC storage exists.
-    mcc: null,
-    mccSource: null,
-  }));
+  const sources = await mccSourcesFor(database.db, ws);
+  return rows.map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed]) => {
+    const { mcc, source } = resolveMcc(description, categoryId, { ...sources, typed });
+    return { transactionId, entryId, occurredOn, categoryId, description, amountMinor: Number(amountMinor), currency, originalCurrency, mcc, mccSource: source };
+  });
 }

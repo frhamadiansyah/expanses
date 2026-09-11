@@ -184,3 +184,22 @@ describe('original currency', () => {
     expect((await listTransactions(database, ws)).filter((t) => t.description === 'Cold Storage')).toEqual([]);
   });
 });
+
+describe('typed MCC', () => {
+  it('round-trips through post, stays on replace, and clears when set to null', async () => {
+    const { database, ws, visa, groceries } = await cardSetup();
+    const lines = expenseLines({ categoryAccountId: groceries.id, paymentAccountId: visa.id, amountMinor: 150_000, currency: 'IDR' });
+    const id = await postTransaction(database, ws, { occurredOn: '2026-09-11', description: 'Superindo', lines, mcc: '5411' });
+    expect((await listTransactions(database, ws))[0]).toMatchObject({ id, mcc: '5411' });
+    const kept = await replaceTransaction(database, ws, id, { occurredOn: '2026-09-11', description: 'Superindo Kemang', lines });
+    expect((await listTransactions(database, ws))[0]).toMatchObject({ id: kept, mcc: '5411' });
+    const cleared = await replaceTransaction(database, ws, kept, { occurredOn: '2026-09-11', description: 'Superindo', lines, mcc: null });
+    expect((await listTransactions(database, ws))[0]).toMatchObject({ id: cleared, mcc: null });
+  });
+
+  it('rejects an MCC that is not four digits', async () => {
+    const { database, ws, visa, groceries } = await cardSetup();
+    const lines = expenseLines({ categoryAccountId: groceries.id, paymentAccountId: visa.id, amountMinor: 150_000, currency: 'IDR' });
+    await expect(postTransaction(database, ws, { occurredOn: '2026-09-11', description: 'Superindo', lines, mcc: '541' })).rejects.toMatchObject({ code: 'INVALID_MCC' });
+  });
+});

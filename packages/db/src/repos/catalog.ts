@@ -64,7 +64,8 @@ async function clearRows(tx: Db, ws: WorkspaceContext, programId: string, manual
 }
 
 /** Writes the entry's planned rows and catalogue fields onto the program. Returns category keys that could not be mapped. */
-async function writePlan(tx: Db, ws: WorkspaceContext, program: RewardProgramRow, entry: CatalogEntry, today: string, status: 'linked' | 'customised') {
+/** `setCrediting` is true only when applying or resetting: crediting is the user's checking preference once linked. */
+async function writePlan(tx: Db, ws: WorkspaceContext, program: RewardProgramRow, entry: CatalogEntry, today: string, status: 'linked' | 'customised', setCrediting = false) {
   const plan = planCatalogApply(entry, await categoryIdsByKeyTx(tx, ws), today);
   for (const { catalogKey, ...rule } of plan.rules) await saveEarnRuleTx(tx, ws, program.id, { ...rule, catalogKey }, FROM_CATALOG);
   for (const { catalogKey, ...bonus } of plan.bonuses) await saveCycleBonusTx(tx, ws, program.id, { ...bonus, catalogKey }, FROM_CATALOG);
@@ -103,6 +104,7 @@ async function writePlan(tx: Db, ws: WorkspaceContext, program: RewardProgramRow
       catalogStatus: status,
       catalogDismissedVersion: null,
       catalogSnapshotJson: JSON.stringify(entry),
+      ...(setCrediting ? { crediting: plan.crediting } : {}),
     })
     .where(eq(rewardPrograms.id, program.id));
   return plan.unmappedKeys;
@@ -155,6 +157,7 @@ export function applyCatalogEntry(
         catalogStatus: null,
         catalogDismissedVersion: null,
         catalogSnapshotJson: null,
+        crediting: input.entry.program.crediting ?? 'per_statement',
         archivedAt: null,
         createdAt: now(),
       };
@@ -169,7 +172,7 @@ export function applyCatalogEntry(
     }
 
     await clearRows(tx, ws, program.id, input.replaceManual);
-    const unmappedKeys = await writePlan(tx, ws, program, input.entry, input.today, 'linked');
+    const unmappedKeys = await writePlan(tx, ws, program, input.entry, input.today, 'linked', true);
     return { programId: program.id, unmappedKeys };
   });
 }
@@ -218,6 +221,6 @@ export function resetToCatalog(database: Database, ws: WorkspaceContext, program
     const program = await programById(tx, ws, programId);
     if (program.catalogEntryId !== entry.id) throw new CatalogError('This program is not linked to that catalogue entry');
     await clearRows(tx, ws, program.id, true);
-    await writePlan(tx, ws, program, entry, today, 'linked');
+    await writePlan(tx, ws, program, entry, today, 'linked', true);
   });
 }

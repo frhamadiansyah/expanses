@@ -17,7 +17,7 @@ describe('database', () => {
   it('migrates once and is idempotent', async () => {
     executor = createNodeExecutor();
     const database = createDatabase(executor);
-    expect(await migrate(database)).toEqual([1, 2, 3, 4, 5]);
+    expect(await migrate(database)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(await migrate(database)).toEqual([]);
   });
 
@@ -34,6 +34,16 @@ describe('database', () => {
     expect(await columns('transfer_partners')).toEqual([
       'id', 'workspace_id', 'program_id', 'key', 'program_name', 'points', 'partner_units', 'increment_points', 'valid_from', 'valid_to', 'catalog_key', 'archived_at', 'created_at',
     ]);
+  });
+
+  it('adds MCC and per-purchase points columns and tables', async () => {
+    const database = await fresh();
+    const columns = async (table: string) => (await database.db.values<unknown[]>(sql.raw(`PRAGMA table_info(${table})`))).map((row) => String(row[1]));
+    expect(await columns('transactions')).toContain('mcc');
+    expect(await columns('reward_programs')).toContain('crediting');
+    expect(await columns('merchant_mccs')).toEqual(['id', 'workspace_id', 'pattern', 'mcc', 'created_at', 'archived_at']);
+    expect(await columns('category_mccs')).toEqual(['category_id', 'workspace_id', 'mcc']);
+    expect(await columns('transaction_point_actuals')).toEqual(['workspace_id', 'program_id', 'transaction_id', 'actual_points', 'edited_after_check', 'recorded_at']);
   });
 
   it('maps get, all, and values through the proxy', async () => {
