@@ -9,6 +9,7 @@ export interface PurchaseRow {
   amountMinor: number;
   mcc: string | null;
   mccSource: MccSource | null;
+  cardFee: boolean;
 }
 
 /** One row per purchase, in cycle order; split lines add up and the first line's MCC represents the purchase. */
@@ -17,7 +18,7 @@ export function purchasesOf(lines: readonly SpendLine[]): PurchaseRow[] {
   for (const line of lines) {
     const row = rows.get(line.transactionId);
     if (row) row.amountMinor += line.amountMinor;
-    else rows.set(line.transactionId, { transactionId: line.transactionId, occurredOn: line.occurredOn, description: line.description, amountMinor: line.amountMinor, mcc: line.mcc, mccSource: line.mccSource });
+    else rows.set(line.transactionId, { transactionId: line.transactionId, occurredOn: line.occurredOn, description: line.description, amountMinor: line.amountMinor, mcc: line.mcc, mccSource: line.mccSource, cardFee: line.cardFee ?? false });
   }
   return [...rows.values()];
 }

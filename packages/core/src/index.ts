@@ -66,6 +66,7 @@ export {
   type Redemption,
 } from './points/recommend';
 export { containsKeyword } from './text/keywords';
+export { CARD_FEE_PHRASES, cardFeeCategoryIds, isCardFee } from './points/card-fees';
 export { candidateMccs, type CycleContext, explainCycle, explainTransaction, type Suggestion } from './points/explain';
 export { convertPoints, estimatePartnerUnits, partnerFor, type TransferPartner } from './points/transfer';
 export {

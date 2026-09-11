@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { categoryIdsByKey, createWorkspace, ensureCategoryKeys, listAccounts } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
-const NEW_DEFAULTS = ['business', 'entertainment.sports', 'gifts_donations.donations', 'gifts_donations.gifts', 'government', 'housing.real_estate', 'utilities.gas'];
+const NEW_DEFAULTS = ['business', 'entertainment.sports', 'fees.administration', 'fees.notification', 'fees.stamp_duty', 'fees.statement', 'gifts_donations.donations', 'gifts_donations.gifts', 'government', 'housing.real_estate', 'utilities.gas'];
 const ALL_KEYS = [...DEFAULT_CATEGORY_KEYS].sort();
 const ARCHIVED = "'2026-09-11T00:00:00.000Z'";
 
@@ -42,6 +42,7 @@ describe('ensureCategoryKeys', () => {
     expect(named('Government & Taxes')).toMatchObject({ kind: 'expense', parentId: null, systemKey: 'government' });
     expect(named('Business & Invoices')).toMatchObject({ kind: 'expense', parentId: null, systemKey: 'business' });
     expect(named('Sports & Fitness')).toMatchObject({ systemKey: 'entertainment.sports', parentId: named('Entertainment').id });
+    for (const name of ['Notification Fee', 'Statement Fee', 'Stamp Duty', 'Administration Fee']) expect(named(name).parentId, name).toBe(named('Fees & Charges').id);
   });
 
   it('skips a renamed default and does not recreate it', async () => {

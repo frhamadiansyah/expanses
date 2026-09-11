@@ -58,6 +58,8 @@ export interface SpendLine {
   /** Effective merchant category code and where it came from; null when no source gives one. */
   mcc: string | null;
   mccSource: MccSource | null;
+  /** An issuer charge such as a fee, stamp duty, or interest. It never earns points or counts toward bonuses. */
+  cardFee?: boolean;
 }
 
 export interface EarnAllocation {
@@ -94,6 +96,8 @@ export interface CycleEarn {
   totalPoints: number;
   /** Spend no primary rule earned on (no match, or every matching rule's cap exhausted). */
   unearnedSpendMinor: number;
+  /** Card fees and charges in the cycle; they never earn and are not counted as unmatched spend. */
+  cardFeeSpendMinor: number;
   /** Rule points per purchase (bonuses excluded); refunds are negative. Purchases that earned nothing are absent. */
   pointsByTransaction: Record<string, number>;
   /** Purchases whose points come from a share of a cycle-rounded rule rather than the issuer's own figure. */
@@ -115,6 +119,7 @@ const rateTenths = (rule: EarnRule) => Math.round(rule.rateNum * TENTHS);
 
 /** Category, merchant, currency, and origin conditions shared by earn rules and cycle bonuses. */
 export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Record<string, string[]>, billingCurrency = 'IDR'): boolean {
+  if (line.cardFee) return false;
   const chain = [line.categoryId, ...(ancestors[line.categoryId] ?? [])];
   if (match.categoryIds?.length && !match.categoryIds.some((id) => chain.includes(id))) return false;
   if (match.excludeCategoryIds?.some((id) => chain.includes(id))) return false;
@@ -177,6 +182,7 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
   let purchaseSpendByRule: Record<string, number> = {};
   const allocations: EarnAllocation[] = [];
   let unearnedSpendMinor = 0;
+  let cardFeeSpendMinor = 0;
 
   const tenthsAt = (rule: EarnRule, spend: number) =>
     rule.rounding === 'per_increment'
@@ -212,6 +218,10 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
 
   let currentPurchase: string | null = null;
   for (const line of sorted) {
+    if (line.cardFee) {
+      cardFeeSpendMinor += line.amountMinor;
+      continue;
+    }
     if (line.transactionId !== currentPurchase) {
       currentPurchase = line.transactionId;
       purchaseSpendByRule = {};
@@ -268,7 +278,7 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
   const totalTenths = Object.values(tenthsByRule).reduce((s, t) => s + t, 0) + Object.values(bonusById).reduce((s, b) => s + b * TENTHS, 0);
   const totalPoints = totalTenths / TENTHS;
   const { pointsByTransaction, approximateTransactionIds } = pointsPerPurchase(allocations, rules);
-  return { allocations, pointsByRule, spendByRule, bonusById, eligibleSpendByBonus, totalPoints, unearnedSpendMinor, pointsByTransaction, approximateTransactionIds };
+  return { allocations, pointsByRule, spendByRule, bonusById, eligibleSpendByBonus, totalPoints, unearnedSpendMinor, cardFeeSpendMinor, pointsByTransaction, approximateTransactionIds };
 }
 
 /**

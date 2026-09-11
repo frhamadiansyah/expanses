@@ -134,6 +134,9 @@ function CycleSummary({
       {result.earn.unearnedSpendMinor > 0 && (
         <p className="mt-2 text-xs text-amber-700">{formatMinor(result.earn.unearnedSpendMinor, currency)} earned nothing — no rule matched. Add a base rule?</p>
       )}
+      {result.earn.cardFeeSpendMinor > 0 && (
+        <p className="mt-2 text-xs text-slate-500">{formatMinor(result.earn.cardFeeSpendMinor, currency)} in card fees and charges earns no points.</p>
+      )}
     </Section>
   );
 }

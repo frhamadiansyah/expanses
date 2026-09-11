@@ -30,7 +30,7 @@ export const DEFAULT_CATEGORIES: readonly DefaultCategory[] = [
   { kind: 'expense', key: 'government', name: 'Government & Taxes' },
   // Business bills and invoicing payments — excluded from rewards by several card programs.
   { kind: 'expense', key: 'business', name: 'Business & Invoices' },
-  { kind: 'expense', key: 'fees', name: 'Fees & Charges', children: children('fees', [['bank', 'Bank Fees'], ['card_annual', 'Card Annual Fee'], ['interest', 'Interest']]) },
+  { kind: 'expense', key: 'fees', name: 'Fees & Charges', children: children('fees', [['bank', 'Bank Fees'], ['card_annual', 'Card Annual Fee'], ['interest', 'Interest'], ['notification', 'Notification Fee'], ['statement', 'Statement Fee'], ['stamp_duty', 'Stamp Duty'], ['administration', 'Administration Fee']]) },
   { kind: 'expense', key: 'other_expense', name: 'Other Expense' },
   { kind: 'income', key: 'income.salary', name: 'Salary' },
   { kind: 'income', key: 'income.bonus', name: 'Bonus' },

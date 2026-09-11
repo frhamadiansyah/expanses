@@ -105,7 +105,7 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
                   <div className="text-xs text-slate-500">
                     {shortDate(purchase.occurredOn)} · {formatMinor(purchase.amountMinor, currency)} ·{' '}
                     <span className={cx('rounded px-1 py-0.5', purchase.mccSource === 'category' || purchase.mccSource === null ? 'bg-slate-100' : 'bg-emerald-50 text-emerald-800')}>
-                      {purchase.mcc && purchase.mccSource ? `MCC ${purchase.mcc} · ${SOURCE_LABELS[purchase.mccSource]}` : 'No MCC'}
+                      {purchase.cardFee ? 'Card fee · never earns' : purchase.mcc && purchase.mccSource ? `MCC ${purchase.mcc} · ${SOURCE_LABELS[purchase.mccSource]}` : 'No MCC'}
                     </span>
                   </div>
                 </div>

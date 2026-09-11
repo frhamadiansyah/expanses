@@ -4,6 +4,8 @@ import {
   type CycleBonus,
   type EarnRule,
   type Redemption,
+  cardFeeCategoryIds,
+  isCardFee,
   resolveMcc,
   type RuleMatch,
   type SpendLine,
@@ -452,8 +454,13 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     ORDER BY t.occurred_on, t.id, e.id
   `);
   const sources = await mccSourcesFor(database.db, ws);
+  const categories = await database.db
+    .select({ id: accounts.id, parentId: accounts.parentId, systemKey: accounts.systemKey })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category')));
+  const feeCategories = cardFeeCategoryIds(categories);
   return rows.map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed]) => {
     const { mcc, source } = resolveMcc(description, categoryId, { ...sources, typed });
-    return { transactionId, entryId, occurredOn, categoryId, description, amountMinor: Number(amountMinor), currency, originalCurrency, mcc, mccSource: source };
+    return { transactionId, entryId, occurredOn, categoryId, description, amountMinor: Number(amountMinor), currency, originalCurrency, mcc, mccSource: source, cardFee: isCardFee(description, categoryId, feeCategories) };
   });
 }
