@@ -163,7 +163,7 @@ Core: net worth with mixed modes and USD; grouping; each ratio at thresholds; fe
 - `goal_earmarks`: `goal_id`, `account_id` (cash, bank, savings only), `amount_minor`.
 - `investment_trades.goal_id` and `trade_templates.goal_id` (nullable).
 
-Kind defaults (editable): hajj starts with stages "Setoran awal" (Rp 25.000.000 per person) and "Final payment"; growth 10% education, 5% hajj and umrah, 4% others; return 2% emergency, 4.5% for goals due within 3 years, 8–10% otherwise.
+Kind defaults (editable): every goal starts with one stage and you add as many as the scheme needs, because hajj reguler, hajj plus and furoda pay in different steps (setoran awal for a queue number, pelunasan, and whatever else the provider asks); growth 10% education, 5% hajj and umrah, 4% others; return 2% emergency, 4.5% for goals due within 3 years, 8–10% otherwise.
 
 ### 6.2 Rules (core, pure)
 
