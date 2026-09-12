@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ASSET_PRESETS, CORETAX_SECTIONS, type CoretaxSection, missingCoretaxFields, presetFor, validateCoretaxFields } from '../src/index';
 
 describe('asset presets', () => {
-  it('names a Coretax section that exists and a four-digit code', () => {
+  it('names a Coretax section that exists and a three-digit code', () => {
     for (const preset of ASSET_PRESETS) {
       expect(CORETAX_SECTIONS[preset.coretaxSection], preset.kind).toBeDefined();
-      expect(preset.coretaxCode, preset.kind).toMatch(/^\d{4}$/);
+      expect(preset.coretaxCode, preset.kind).toMatch(/^\d{3}$/);
     }
   });
 
@@ -21,7 +21,7 @@ describe('asset presets', () => {
   });
 
   it('counts shares in lots of 100', () => {
-    expect(presetFor('stock')).toMatchObject({ unitKind: 'shares', lotSize: 100, risk: 'high', coretaxSection: 'investasi', coretaxCode: '0302' });
+    expect(presetFor('stock')).toMatchObject({ unitKind: 'shares', lotSize: 100, risk: 'high', coretaxSection: 'investasi', coretaxCode: '032' });
   });
 
   it('values property and vehicles from your own estimate', () => {

@@ -55,9 +55,11 @@ describe('migration 0008', () => {
     await migrate(older, MIGRATIONS.filter((migration) => migration.version <= 7));
     const workspace = await createWorkspace(older, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
     const account = await createAccount(older, workspace, { name: 'Antam gold bars', kind: 'asset', subtype: 'investment', currency: 'IDR' });
-    await saveAssetProfile(older, workspace, { accountId: account.id, assetKind: 'gold' });
 
     const applied = await migrate(older);
+    // Written after the upgrade: a version 7 table still demands the four-digit code this project
+    // used before the real ones were checked, and every preset now carries a three-digit code.
+    await saveAssetProfile(older, workspace, { accountId: account.id, assetKind: 'gold' });
 
     expect(applied).toContain(8);
     await expect(listAssetProfiles(older, workspace)).resolves.toHaveLength(1);

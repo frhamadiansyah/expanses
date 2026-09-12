@@ -77,14 +77,14 @@ describe('debt profiles', () => {
     await saveDebtProfile(database, ws, { accountId: andi.id, personName: 'Andi' });
     await saveDebtProfile(database, ws, { accountId: budi.id, personName: 'Budi' });
 
-    await expect(getDebtProfile(database, ws, andi.id)).resolves.toMatchObject({ coretaxCode: '0201' });
-    await expect(getDebtProfile(database, ws, budi.id)).resolves.toMatchObject({ coretaxCode: '109' });
+    await expect(getDebtProfile(database, ws, andi.id)).resolves.toMatchObject({ coretaxCode: '021' });
+    await expect(getDebtProfile(database, ws, budi.id)).resolves.toMatchObject({ coretaxCode: '104' });
   });
 
   it('keeps a related-party code when one is given', async () => {
-    await saveDebtProfile(database, ws, { accountId: andi.id, personName: 'Andi', coretaxCode: '0202' });
+    await saveDebtProfile(database, ws, { accountId: andi.id, personName: 'Andi', coretaxCode: '022' });
 
-    await expect(getDebtProfile(database, ws, andi.id)).resolves.toMatchObject({ coretaxCode: '0202' });
+    await expect(getDebtProfile(database, ws, andi.id)).resolves.toMatchObject({ coretaxCode: '022' });
   });
 
   it('saves again in place instead of adding a second profile', async () => {

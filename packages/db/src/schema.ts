@@ -87,7 +87,7 @@ export const fxRates = sqliteTable('fx_rates', {
   toCurrency: text('to_currency').notNull(),
   onDate: text('on_date').notNull(),
   rate: real('rate').notNull(),
-  source: text('source', { enum: ['frankfurter', 'manual'] }).notNull(),
+  source: text('source', { enum: ['frankfurter', 'manual', 'kmk'] }).notNull(),
   sourceDate: text('source_date').notNull(),
   fetchedAt: text('fetched_at').notNull(),
 });
