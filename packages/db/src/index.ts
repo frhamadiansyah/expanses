@@ -19,3 +19,5 @@ export * from './repos/catalog';
 export * as assetsSchema from './schema-assets';
 export * from './repos/assets';
 export * from './repos/trades';
+export * from './repos/prices';
+export * from './repos/asset-values';
