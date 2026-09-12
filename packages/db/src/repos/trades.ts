@@ -18,6 +18,7 @@ import { accounts, entries } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goals } from '../schema-goals';
 import { AssetError, assertAccountInWorkspace } from './assets';
+import { adjustSetAsideTx } from './goal-transfers';
 import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
 import { postTransactionTx, voidTransactionTx } from './ledger';
@@ -223,6 +224,10 @@ async function writeTrade(tx: Db, ws: WorkspaceContext, input: RecordTradeInput,
     replacesTradeId,
     createdAt: new Date().toISOString(),
   });
+  // Money parked for this goal in the account that paid is now units, so it stops counting as cash.
+  if (input.kind === 'buy' && input.goalId && input.cashAccountId) {
+    await adjustSetAsideTx(tx, ws, input.goalId, input.cashAccountId, -(input.grossMinor + input.feeMinor + input.taxMinor));
+  }
   const recalculatedSells = await recalculateSells(tx, ws, input.accountId, input.occurredOn, input.ratesToBase);
   return { tradeId: id, transactionId, recalculatedSells };
 }
