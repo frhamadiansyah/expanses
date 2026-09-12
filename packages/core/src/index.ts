@@ -115,3 +115,13 @@ export {
   type ValuationRow,
   VALUATION_STALE_DAYS,
 } from './assets/value';
+export {
+  type CoretaxField,
+  type CoretaxFieldKind,
+  type CoretaxProblem,
+  type CoretaxSection,
+  CORETAX_SECTIONS,
+  missingCoretaxFields,
+  validateCoretaxFields,
+} from './assets/coretax-fields';
+export { type AssetKind, type AssetPreset, type AssetSubtype, ASSET_PRESETS, type PlanGroup, presetFor, type Risk, type UnitKind } from './assets/presets';
