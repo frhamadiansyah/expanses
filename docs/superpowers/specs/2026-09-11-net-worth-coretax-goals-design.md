@@ -268,17 +268,41 @@ Core: annuity, flat, zero schedules and rounding; rate periods; extra payment bo
 
 ## 9. Slice 6 — Coretax report
 
-### 9.0 Verified code lists
+### 9.0 Verified code lists, read from the DJP guide
 
-Researched against three independent sources for harta and two for utang, since the codes written elsewhere in this document were illustrative placeholders and were wrong in both shape and value. Every code is **three digits**.
+> Corrected twice. The codes first written into this project were invented. Slice 6 then "verified"
+> three-digit codes against consultancy articles — which describe the **old e-Form** lists, not
+> Coretax. These are read from DJP's own *Tata Cara Pembuatan XML SPT OP v20260310*, rendered from
+> the PDF DJP publishes. **Coretax codes are four digits.**
 
-**Kode harta** — `011` uang tunai · `012` tabungan · `013` giro · `014` deposito · `015` setara kas lainnya · `021` piutang · `022` piutang afiliasi · `029` piutang lainnya · `031` saham dibeli untuk dijual kembali · `032` saham · `033` obligasi perusahaan · `034` obligasi pemerintah (ORI, SBSN) · `035` surat utang lainnya · `036` reksadana · `037` instrumen derivatif · `038` penyertaan modal · `039` investasi lainnya · `041` sepeda · `042` sepeda motor · `043` mobil · `049` alat transportasi lain · `051` logam mulia · `052` batu mulia · `053` barang seni dan antik · `054` pesawat, kapal pesiar, peralatan olahraga khusus · `055` peralatan elektronik dan furnitur · `059` harta bergerak lainnya · `061` tanah atau bangunan tempat tinggal · `062` tanah atau bangunan usaha · `063` tanah atau lahan untuk usaha · `069` harta tidak bergerak lainnya.
+**Kas dan Setara Kas** — `0101` uang tunai/bank note/koin · `0102` tabungan (bank/lembaga keuangan) · `0103` giro · `0104` deposito · `0105` uang elektronik · `0106` cek · `0107` wesel · `0108` commercial paper · `0109` setara kas lainnya.
 
-**Kode utang** — `101` utang bank atau lembaga keuangan bukan bank (KPR, leasing kendaraan) · `102` kartu kredit · `103` utang afiliasi · `104` utang lainnya. Reported under L-1 Bagian B in Coretax.
+**Piutang** — `0201` piutang usaha · `0202` piutang afiliasi · `0209` piutang lainnya.
 
-**Open, to confirm against the official form:** two sources give `015` "setara kas lainnya"; one gives `019`. The build uses `015` and marks it, and the owner will confirm before the export ships.
+**Investasi/Sekuritas** — `0301` saham yang dibeli untuk dijual kembali · `0302` saham non bursa · `0303` saham bursa · `0304` obligasi perusahaan · `0305` obligasi pemerintah Indonesia (ORI, SBSN) · `0306` surat utang lainnya · `0307` kontrak investasi kolektif (KIK — reksadana) · `0308` instrumen derivatif · `0309` penyertaan modal bukan atas saham · `0310` asuransi · `0311` unit link di asuransi · `0399` investasi lainnya.
 
-**Still unverified, and why the export waits:** DJP publishes Excel-to-XML converters for Bupot, e-Faktur and SPT Badan, but none for Orang Pribadi harta or utang, and DJP's own Coretax pages for OP describe filling the form rather than importing it. The four DJP documents that would settle it are scans with no text layer. Until that is read, this slice builds every row, total and check, and exports CSV in our own documented column order — it does not claim to match a converter's columns.
+**Harta Bergerak** — `0401` sepeda · `0402` sepeda motor · `0403` mobil penumpang · `0404` bus · `0405` kendaraan angkutan jalan · `0406` kendaraan tujuan khusus · `0407` kereta · `0408` pesawat terbang · `0409` kapal · `0410` mesin · `0411` gerobak · `0412` kapal pesiar · `0499` harta bergerak lainnya.
+
+**Harta Tidak Bergerak** — `0501` tanah kosong · `0502` tanah dan/atau bangunan untuk tempat tinggal · `0503` apartemen · `0504` vessel · `0505` tanah atau lahan untuk usaha · `0506` tanah dan/atau bangunan untuk usaha · `0507` tanah dan/atau bangunan yang disewakan · `0509` harta tidak bergerak lainnya.
+
+**Harta Lainnya** — `0601` paten · `0602` royalti · `0603` merek dagang · `0699` harta tidak berwujud lainnya · `0701` emas batangan · `0702` emas perhiasan · `0703` batangan non emas · `0704` perhiasan non emas · `0705` permata · `0706` barang seni dan antik · `0707` peralatan olahraga khusus · `0708` peralatan elektronik · `0709` perabot rumah tangga · `0710` peralatan kantor · `0711` jet ski · `0712` persediaan usaha · `0799` harta lainnya.
+
+**Utang** — **not verified for Coretax.** The e-Form petunjuk gives `101` bank/lembaga keuangan bukan bank · `102` kartu kredit · `103` afiliasi · `104` lainnya, and the Coretax guide has **no Utang converter and no Utang code table**: Bagian B is typed into the form. The stored codes stay as they are and are marked unverified until the form itself is read.
+
+**Vocabularies the converter fixes:** *Kepemilikan* (harta bergerak) is `Taxpayer` or `Other`. *Sumber Kepemilikan* (tidak bergerak) is `Debt`, `Gift`, `Grant`, `Inheritance`, `Other sources` or `Own Income`. *Keterangan* is only ever `01` (Harta PPS) or `02` (Harta Investasi PPS), and otherwise empty. *Lokasi Harta* is an ISO alpha-3 country code from DJP's own Country Code reference.
+
+### 9.0.1 The import exists, one converter per table
+
+Lampiran 1 Bagian A has **six** Excel-to-XML converters, one per harta table. Each sheet carries `TIN` (16-digit NPWP) on row 1 and `TaxYear` on row 2, then a header row. Columns, in order, starred where DJP marks them mandatory:
+
+- **Kas:** Kode\*, Nomor Akun\*, Atas Nama\*, Nama Bank/Institusi\*, Lokasi Harta\*, Tahun Perolehan\*, Saldo\*, Keterangan.
+- **Piutang:** Kode Harta\*, Negara Lokasi\*, Nomor Identitas\*, Nama Penerima Piutang\*, Nilai Piutang\*, Tahun\*, Saldo Piutang\*, Keterangan.
+- **Investasi:** Kode\*, Lokasi Harta\*, Nomor Identitas\*, Nama Bank/Institusi/Penerima Investasi\*, Bukti Kepemilikan/Nomor Akun\*, Biaya Perolehan\*, Tahun Perolehan\*, Nilai Saat Ini\*, Keterangan.
+- **Bergerak:** Kode\*, Merk/Model\*, Nomor Polisi/Registrasi\*, Kepemilikan\*, NPWP Pemilik\*, Nama Pemilik\*, Tahun Perolehan\*, Biaya Perolehan\*, Nilai Saat Ini\*, Keterangan.
+- **Tidak Bergerak:** Kode Harta\*, Lokasi Harta\*, Ukuran Properti – Tanah\*, Ukuran Properti – Bangunan\*, Sumber Kepemilikan\*, Nomor Sertifikat\*, Tahun Perolehan\*, Biaya Perolehan\*, Nilai Saat Ini\*, Keterangan.
+- **Lainnya:** Kode\*, Tahun Perolehan\*, Bukti Kepemilikan/Nomor Akun\*, Informasi Tambahan\*, Biaya Perolehan\*, Nilai Saat Ini\*, Keterangan.
+
+Biaya Perolehan is the Pasal 10 cost and Nilai Saat Ini the value on 31 December, both positive whole rupiah with no separators — which is what the ledger already holds.
 
 ### 9.1 Storage (migration `0012_tax_reports`)
 
