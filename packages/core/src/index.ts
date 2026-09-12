@@ -102,3 +102,4 @@ export {
   type TradeRecord,
   type YearBucket,
 } from './assets/position';
+export { type TradeAccounts, type TradeInput, tradeDescription, tradePostings } from './assets/trades';

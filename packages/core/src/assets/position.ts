@@ -31,7 +31,7 @@ export interface Position {
   byYear: Record<string, YearBucket>;
 }
 
-export type TradeErrorCode = 'OVERSELL' | 'INVALID_UNITS' | 'INVALID_AMOUNT' | 'UNKNOWN_KIND';
+export type TradeErrorCode = 'OVERSELL' | 'INVALID_UNITS' | 'INVALID_AMOUNT' | 'UNKNOWN_KIND' | 'CURRENCY_MISMATCH';
 
 export class TradeError extends Error {
   readonly code: TradeErrorCode;
