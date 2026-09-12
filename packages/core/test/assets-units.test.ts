@@ -78,3 +78,31 @@ describe('priceMicroFrom', () => {
     expect(() => priceMicroFrom(1000, 0)).toThrow(UnitsError);
   });
 });
+
+import { formatLots, lotsOf, unitsFromLots } from '../src/index';
+
+describe('lots', () => {
+  it('turns shares into lots of a hundred', () => {
+    expect(lotsOf(1_200_000_000, 100)).toBe(12);
+    expect(lotsOf(150_000_000, 100)).toBe(1.5);
+  });
+
+  it('turns lots back into shares', () => {
+    expect(unitsFromLots(3, 100)).toBe(300_000_000);
+    expect(unitsFromLots(1, 1)).toBe(1_000_000);
+  });
+
+  it('counts a US stock in single shares', () => {
+    expect(lotsOf(12_000_000, 1)).toBe(12);
+    expect(formatLots(12_000_000, 1)).toBe('12 shares');
+  });
+
+  it('says both the lots and the shares', () => {
+    expect(formatLots(1_200_000_000, 100)).toBe('12 lot (1.200 shares)');
+    expect(formatLots(150_000_000, 100)).toBe('1,5 lot (150 shares)');
+  });
+
+  it('refuses a negative number of lots', () => {
+    expect(() => unitsFromLots(-1, 100)).toThrow(UnitsError);
+  });
+});
