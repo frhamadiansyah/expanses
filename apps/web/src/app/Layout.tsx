@@ -8,6 +8,7 @@ const NAV = [
   { to: '/transactions', label: 'Transactions' },
   { to: '/cards', label: 'Cards' },
   { to: '/spending', label: 'Spending' },
+  { to: '/budget', label: 'Budget' },
   { to: '/accounts', label: 'Accounts' },
   { to: '/categories', label: 'Categories' },
   { to: '/net-worth', label: 'Net worth' },
