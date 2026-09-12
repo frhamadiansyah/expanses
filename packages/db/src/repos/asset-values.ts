@@ -2,7 +2,11 @@ import {
   type AssetValue,
   assetValueAt,
   convertMinor,
+  isoDate,
   isStaleValue,
+  monthOf,
+  type SheetAsset,
+  type SheetLiability,
   type PlanGroup,
   type Position,
   positionAfter,
@@ -138,4 +142,80 @@ export async function monthEndValues(database: Database, ws: WorkspaceContext, a
     values.push(rows.find((row) => row.accountId === accountId)?.valueMinor ?? 0);
   }
   return values;
+}
+
+export interface NetWorthPoint {
+  month: string;
+  /** Date the point was measured: the last day of the month, or today for the month we are in. */
+  onDate: string;
+  assetsMinor: number;
+  liabilitiesMinor: number;
+  netWorthMinor: number;
+}
+
+/** Net worth at the end of each month given as YYYY-MM, oldest first. Computed, never stored. */
+export async function netWorthSeries(
+  database: Database,
+  ws: WorkspaceContext,
+  months: string[],
+  ratesToBase: Record<string, number>,
+  today: string = isoDate(),
+): Promise<NetWorthPoint[]> {
+  const currentMonth = monthOf(today);
+  const points: NetWorthPoint[] = [];
+  for (const month of months) {
+    const onDate = month === currentMonth ? today : lastDayOf(month);
+    const worth = await netWorthAt(database, ws, onDate, ratesToBase);
+    points.push({ month, onDate, ...worth });
+  }
+  return points;
+}
+
+export interface SheetInputs {
+  assets: SheetAsset[];
+  liabilities: SheetLiability[];
+}
+
+/**
+ * The rows the balance sheet needs on a date. Until the Loans slice knows each loan's schedule,
+ * cards and personal debts are due within a year and loans are long-term in full.
+ */
+export async function sheetInputsAt(
+  database: Database,
+  ws: WorkspaceContext,
+  date: string,
+  ratesToBase: Record<string, number> = {},
+): Promise<SheetInputs> {
+  const values = await assetValuesAt(database, ws, date);
+  const assets: SheetAsset[] = values.map((row) => ({
+    accountId: row.accountId,
+    name: row.name,
+    planGroup: row.planGroup,
+    valueMinor: toBase(row.valueMinor, row.currency, ws, ratesToBase),
+  }));
+
+  const liabilitySubtypes = BALANCE_SUBTYPES.liability as readonly string[];
+  const rows = await database.db
+    .select({ id: accounts.id, name: accounts.name, currency: accounts.currency, subtype: accounts.subtype })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'liability'), isNull(accounts.archivedAt)))
+    .orderBy(asc(accounts.sortOrder), asc(accounts.name));
+  const balances = await nativeBalances(database, ws, date);
+
+  const liabilities: SheetLiability[] = [];
+  for (const row of rows) {
+    if (!liabilitySubtypes.includes(row.subtype)) continue;
+    const balanceMinor = toBase(-(balances[row.id] ?? 0), row.currency ?? ws.baseCurrency, ws, ratesToBase);
+    if (balanceMinor <= 0) continue;
+    const subtype = row.subtype as SheetLiability['subtype'];
+    liabilities.push({
+      accountId: row.id,
+      name: row.name,
+      subtype,
+      balanceMinor,
+      dueWithinYearMinor: subtype === 'loan' ? 0 : balanceMinor,
+      note: null,
+    });
+  }
+  return { assets, liabilities };
 }
