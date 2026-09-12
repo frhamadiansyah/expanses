@@ -174,6 +174,14 @@ describe('periodFlows months', () => {
     expect(flows.months).toBe(12);
   });
 
+  it('does not count a month that only holds an opening balance', async () => {
+    // The accounts were opened on 2026-01-01; salary arrives in February only.
+    await salary('2026-02-28', 20_000_000);
+
+    const flows = await periodFlows(database, ws, YEAR);
+    expect(flows.months).toBe(1);
+  });
+
   it('gives one row per month of the range, oldest first, empty months included', async () => {
     await salary('2026-02-28', 20_000_000);
 

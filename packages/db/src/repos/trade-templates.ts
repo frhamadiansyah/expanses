@@ -15,6 +15,8 @@ export interface TradeTemplateRow {
   unitsMicro: number | null;
   dayOfMonth: number;
   active: boolean;
+  /** Goal each buy from this template starts with; a recorded buy can override it. */
+  goalId: string | null;
   createdAt: string;
 }
 
@@ -26,6 +28,7 @@ export interface SaveTradeTemplateInput {
   unitsMicro: number | null;
   dayOfMonth: number;
   active: boolean;
+  goalId?: string | null;
 }
 
 type TemplateDbRow = typeof tradeTemplates.$inferSelect;
@@ -39,6 +42,7 @@ const toRow = (row: TemplateDbRow): TradeTemplateRow => ({
   unitsMicro: row.unitsMicro,
   dayOfMonth: row.dayOfMonth,
   active: row.active === 1,
+  goalId: row.goalId,
   createdAt: row.createdAt,
 });
 
@@ -62,6 +66,7 @@ export async function saveTradeTemplate(database: Database, ws: WorkspaceContext
     unitsMicro: hasUnits ? input.unitsMicro : null,
     dayOfMonth: input.dayOfMonth,
     active: input.active ? 1 : 0,
+    goalId: input.goalId ?? null,
     createdAt: new Date().toISOString(),
   };
   await database.transaction(async (tx) => {

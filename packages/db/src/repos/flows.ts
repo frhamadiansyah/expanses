@@ -64,13 +64,11 @@ export async function periodFlows(
     );
 
   const byMonth = new Map(monthsBetween(range.from, range.to).map((month) => [month, { month, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0 }]));
-  const monthsWithData = new Set<string>();
   /** A loan payment is one transaction: principal off the loan, interest as an expense. */
   const perTransaction = new Map<string, { month: string; principalMinor: number; interestMinor: number; touchesHomeLoan: boolean }>();
 
   for (const row of rows) {
     const month = monthOf(row.occurredOn);
-    monthsWithData.add(month);
     const bucket = byMonth.get(month);
     if (row.kind === 'income' && row.accountId !== realizedGainsId) {
       if (bucket) bucket.incomeMinor += displayAmount('income', row.amountBaseMinor);
@@ -104,10 +102,13 @@ export async function periodFlows(
     { incomeMinor: 0, spendingMinor: 0 },
   );
 
+  // A month counts only when money actually moved in or out; an opening balance alone is not a month of cash flow.
+  const monthsWithFlows = [...byMonth.values()].filter((month) => month.incomeMinor !== 0 || month.spendingMinor !== 0 || month.debtPaymentsMinor !== 0).length;
+
   return {
     from: range.from,
     to: range.to,
-    months: Math.min(monthsWithData.size, MAX_MONTHS),
+    months: Math.min(monthsWithFlows, MAX_MONTHS),
     incomeMinor: totals.incomeMinor,
     spendingMinor: totals.spendingMinor,
     debtPaymentsMinor,
