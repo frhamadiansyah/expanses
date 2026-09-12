@@ -1,7 +1,7 @@
 import { categoryPath, formatMinor, monthOf, monthRange, isoDate } from '@expanses/core';
 import { listTransactions, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi, useNavigate } from '@tanstack/react-router';
+import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import type { TransactionsSearch } from '../../app/router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -11,6 +11,7 @@ import { formatPoints } from '../cards/useCardPoints';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
 import { classify } from './classify';
 import { isEditable } from './draft';
+import { useTrades } from '../networth/queries';
 import { TransactionForm } from './TransactionForm';
 
 const route = getRouteApi('/transactions');
@@ -25,6 +26,8 @@ export function TransactionsPage() {
   const [includeVoid, setIncludeVoid] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const trades = useTrades();
+  const tradeTransactions = new Set((trades.data ?? []).map((trade) => trade.transactionId).filter((id): id is string => id !== null));
   const [error, setError] = useState<unknown>(null);
 
   const { from, to } = monthRange(month);
@@ -115,15 +118,23 @@ export function TransactionsPage() {
                       <div className="tabular whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</div>
                     )}
                   </div>
-                  {isEditable(tx) && (
-                    <Button variant="ghost" onClick={() => setEditingId(tx.id)}>
-                      Edit
-                    </Button>
-                  )}
-                  {tx.status === 'posted' && (
-                    <Button variant="ghost" onClick={() => void onVoid(tx)}>
-                      Delete
-                    </Button>
+                  {tradeTransactions.has(tx.id) ? (
+                    <Link to="/net-worth/trades" className="text-sm font-medium text-slate-600 underline" title="Edit this on Buy & sell so units stay in step">
+                      Buy &amp; sell
+                    </Link>
+                  ) : (
+                    <>
+                      {isEditable(tx) && (
+                        <Button variant="ghost" onClick={() => setEditingId(tx.id)}>
+                          Edit
+                        </Button>
+                      )}
+                      {tx.status === 'posted' && (
+                        <Button variant="ghost" onClick={() => void onVoid(tx)}>
+                          Delete
+                        </Button>
+                      )}
+                    </>
                   )}
                 </li>
               );

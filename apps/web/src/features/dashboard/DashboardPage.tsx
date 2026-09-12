@@ -1,5 +1,5 @@
-import { addMonths, displayAmount, isoDate, lastNMonths, monthOf, monthRange, netWorth } from '@expanses/core';
-import { categoryTotalsBetween, nativeBalances } from '@expanses/db';
+import { addMonths, displayAmount, isoDate, lastNMonths, monthOf, monthRange } from '@expanses/core';
+import { categoryTotalsBetween, nativeBalances, netWorthAt } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
@@ -22,7 +22,13 @@ export function DashboardPage() {
     queryFn: async () => {
       const balances = await nativeBalances(database, ws);
       const rates = await resolveRates(money.map((a) => a.currency!), today);
-      return { balances, rates, result: netWorth({ baseCurrency: ws.baseCurrency, accounts: money, nativeBalances: balances, ratesToBase: rates.rates }) };
+      const worth = await netWorthAt(database, ws, today, rates.rates);
+      const missingRates = [...new Set(money.map((a) => a.currency!).filter((currency) => currency !== ws.baseCurrency && rates.rates[currency] === undefined))];
+      return {
+        balances,
+        rates,
+        result: { netWorthBaseMinor: worth.netWorthMinor, assetsBaseMinor: worth.assetsMinor, liabilitiesBaseMinor: worth.liabilitiesMinor, missingRates },
+      };
     },
   });
 
@@ -34,9 +40,8 @@ export function DashboardPage() {
       Promise.all(
         months.map(async (month) => {
           const asOf = month === thisMonth ? today : monthRange(month).to;
-          const balances = await nativeBalances(database, ws, asOf);
           const rates = await resolveRates(money.map((a) => a.currency!), asOf);
-          return { month, value: netWorth({ baseCurrency: ws.baseCurrency, accounts: money, nativeBalances: balances, ratesToBase: rates.rates }).netWorthBaseMinor };
+          return { month, value: (await netWorthAt(database, ws, asOf, rates.rates)).netWorthMinor };
         }),
       ),
   });
