@@ -117,8 +117,8 @@ export function loanSchedule(balanceMinor: number, terms: LoanTerms, periods: Ra
 export function annuityPaymentMinor(balanceMinor: number, rateBps: number, months: number): number;
 ```
 
-- [ ] Tests (fail first, `loans-schedule.test.ts`): `an annuity charges interest on what is left, and the balance falls faster each month`; `an annuity clears exactly at the end of its tenor`; `a flat loan charges the same interest every month, on the original`; `a zero-rate loan is principal only`; `the last row clears the remainder, so the balance ends at zero`; `a rate period starting mid-loan changes the payment from that month`; `a floating rate keeps the payment and changes the split when the bank says so`; `the schedule starts from the ledger balance, not the original amount`; `a balance of zero has no rows`; `every row balances: payment is principal plus interest`; `payments fall on the payment day, and February is not skipped`.
-- [ ] Implement, export from `packages/core/src/index.ts`; run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): amortisation schedules for annuity, flat and zero loans`.
+- [x] Tests (fail first, `loans-schedule.test.ts`): `an annuity charges interest on what is left, and the balance falls faster each month`; `an annuity clears exactly at the end of its tenor`; `a flat loan charges the same interest every month, on the original`; `a zero-rate loan is principal only`; `the last row clears the remainder, so the balance ends at zero`; `a rate period starting mid-loan changes the payment from that month`; `a floating rate keeps the payment and changes the split when the bank says so`; `the schedule starts from the ledger balance, not the original amount`; `a balance of zero has no rows`; `every row balances: payment is principal plus interest`; `payments fall on the payment day, and February is not skipped`.
+- [x] Implement, export from `packages/core/src/index.ts`; run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): amortisation schedules for annuity, flat and zero loans`.
 
 ---
 
@@ -168,8 +168,8 @@ export function payoffMismatchMonths(schedule: ScheduleRow[], terms: LoanTerms):
 export const PAYOFF_TOLERANCE_MONTHS = 2;
 ```
 
-- [ ] Tests (fail first, `loans-effects.test.ts`): `paying extra once shortens the loan and says how much interest it saves`; `paying extra every month shortens it further`; `keeping the tenor lowers the payment instead, and reports the new one`; `a penalty is reported apart from the interest saved`; `an extra payment larger than the balance clears it and saves the rest`; `an extra payment of nothing changes nothing`; `a flat 5% over 36 months is about 9,5% effective`; `flat and effective agree at a single month`; `a payoff two months past the tenor end is within tolerance, three is not`.
-- [ ] Implement, export; run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): extra payments, what-if and flat-to-effective rates`.
+- [x] Tests (fail first, `loans-effects.test.ts`): `paying extra once shortens the loan and says how much interest it saves`; `paying extra every month shortens it further`; `keeping the tenor lowers the payment instead, and reports the new one`; `a penalty is reported apart from the interest saved`; `an extra payment larger than the balance clears it and saves the rest`; `an extra payment of nothing changes nothing`; `a flat 5% over 36 months is about 9,5% effective`; `flat and effective agree at a single month`; `a payoff two months past the tenor end is within tolerance, three is not`.
+- [x] Implement, export; run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): extra payments, what-if and flat-to-effective rates`.
 
 ---
 
@@ -205,8 +205,8 @@ export interface InstallmentSplit {
 export function installmentSplit(installment: CardInstallment, onDate: string): InstallmentSplit;
 ```
 
-- [ ] Tests (fail first, `loans-installments.test.ts`): `nothing is billed before the first month`; `three months in, three instalments are billed and the rest are not`; `the last instalment leaves nothing unbilled`; `a 24-month plan puts everything past month twelve in the beyond-12 figure`; `a 6-month plan has nothing beyond twelve months`; `the monthly amounts add back to the total`; `the last month is named`; `months left never falls below zero`.
-- [ ] Implement, export; run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): card installments split into billed and unbilled`.
+- [x] Tests (fail first, `loans-installments.test.ts`): `nothing is billed before the first month`; `three months in, three instalments are billed and the rest are not`; `the last instalment leaves nothing unbilled`; `a 24-month plan puts everything past month twelve in the beyond-12 figure`; `a 6-month plan has nothing beyond twelve months`; `the monthly amounts add back to the total`; `the last month is named`; `months left never falls below zero`.
+- [x] Implement, export; run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): card installments split into billed and unbilled`.
 
 ---
 
@@ -303,8 +303,8 @@ CREATE INDEX card_installments_card ON card_installments (workspace_id, card_acc
 
 `isHomeLoan` is derived, not stored: true when `asset_account_id` names an account whose subtype is `property`. The idempotency test in `database.test.ts` expects `[1..11]`.
 
-- [ ] Tests (fail first, `loans.test.ts`): `the migration adds all three tables and a v10 database still opens`; `saving terms keeps the lender and the tenor`; `saving terms writes the first rate period`; `saving again updates in place and keeps the periods`; `terms refuse an account that is not a loan`; `terms refuse a tenor of zero or a payment day outside 1 to 28`; `a loan against a property is a home loan`; `a loan against a vehicle is not`; `homeLoanAccountIds lists only the property-backed ones`.
-- [ ] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): migration 0011, loan terms and rate periods`.
+- [x] Tests (fail first, `loans.test.ts`): `the migration adds all three tables and a v10 database still opens`; `saving terms keeps the lender and the tenor`; `saving terms writes the first rate period`; `saving again updates in place and keeps the periods`; `terms refuse an account that is not a loan`; `terms refuse a tenor of zero or a payment day outside 1 to 28`; `a loan against a property is a home loan`; `a loan against a vehicle is not`; `homeLoanAccountIds lists only the property-backed ones`.
+- [x] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): migration 0011, loan terms and rate periods`.
 
 ---
 
@@ -345,8 +345,8 @@ export async function nextPaymentDue(database: Database, ws: WorkspaceContext, a
 
 Rules the tests pin: a payment beyond the balance is refused, naming the loan and what is left; a payment that clears the balance writes `status = 'paid_off'` with its date; extra principal with `keep: 'tenor'` adds a rate period carrying the lower payment, and with `keep: 'payment'` adds none; a penalty is a fee, never principal.
 
-- [ ] Tests (fail first, `loans-payments.test.ts`): `a payment lowers the loan and charges interest to Interest`; `extras on the same payment reach their own categories`; `a payment that clears the loan marks it paid off with its date`; `a payment beyond what is left is refused and nothing is written`; `the schedule after a payment starts from the new balance`; `nextPaymentDue names the date, the payment and the split`; `a rate change writes a period and posts no transaction`; `a rate change from next month leaves this month's schedule alone`; `extra principal keeping the payment shortens the loan`; `extra principal keeping the tenor writes a period with the lower payment`; `a penalty is charged as a fee, not as principal`; `periodFlows counts the payment as a debt payment once`.
-- [ ] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): loan payments, rate changes and extra principal`.
+- [x] Tests (fail first, `loans-payments.test.ts`): `a payment lowers the loan and charges interest to Interest`; `extras on the same payment reach their own categories`; `a payment that clears the loan marks it paid off with its date`; `a payment beyond what is left is refused and nothing is written`; `the schedule after a payment starts from the new balance`; `nextPaymentDue names the date, the payment and the split`; `a rate change writes a period and posts no transaction`; `a rate change from next month leaves this month's schedule alone`; `extra principal keeping the payment shortens the loan`; `extra principal keeping the tenor writes a period with the lower payment`; `a penalty is charged as a fee, not as principal`; `periodFlows counts the payment as a debt payment once`.
+- [x] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): loan payments, rate changes and extra principal`.
 
 ---
 
@@ -377,9 +377,9 @@ Three changes to code already shipped, each pinned by a test:
 2. `periodFlows` reads `homeLoanAccountIds` from `loan_terms` when the caller passes none, so a mortgage stops counting as consumer debt, and adds the month's **billed** installment amounts to `debtPaymentsMinor`.
 3. `cardSpendLines` marks a purchase converted to an installment with `earns_points = 0` as `cardFee: true`, which is the flag `computeCycleEarn` already refuses to earn on.
 
-- [ ] Tests (fail first, `installments.test.ts`): `saving an installment works out the monthly amount`; `the monthly amounts add back to the total`; `a plan linked to its purchase keeps the link`; `totals per card split billed from unbilled`; `deleting a plan leaves the purchase alone`; `a purchase converted with no points stops earning them`; `a purchase that keeps its points still earns`.
-- [ ] Tests (fail first, `loans-sheet.test.ts`): `a loan puts only the next twelve months of principal under Due within a year`; `a loan with no terms yet falls back to the whole balance`; `instalments beyond twelve months sit under Long-term`; `a mortgage stays out of the non-mortgage debt ratio`; `a car loan stays in it`; `billed instalments count as debt payments`; `an unbilled instalment counts as nothing yet`.
-- [ ] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): card installments, and loans reaching the sheet and the ratios`.
+- [x] Tests (fail first, `installments.test.ts`): `saving an installment works out the monthly amount`; `the monthly amounts add back to the total`; `a plan linked to its purchase keeps the link`; `totals per card split billed from unbilled`; `deleting a plan leaves the purchase alone`; `a purchase converted with no points stops earning them`; `a purchase that keeps its points still earns`.
+- [x] Tests (fail first, `loans-sheet.test.ts`): `a loan puts only the next twelve months of principal under Due within a year`; `a loan with no terms yet falls back to the whole balance`; `instalments beyond twelve months sit under Long-term`; `a mortgage stays out of the non-mortgage debt ratio`; `a car loan stays in it`; `billed instalments count as debt payments`; `an unbilled instalment counts as nothing yet`.
+- [x] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): card installments, and loans reaching the sheet and the ratios`.
 
 ---
 
@@ -405,8 +405,8 @@ export function paymentDraftToInput(draft: PaymentDraft, accountId: string, curr
 
 Screens per §8.3: the Loans tab shows what the instalments come to each month and what is left in total, then each loan with its progress, rate and next payment. The detail page shows still owed, the payment, the next date, interest still to pay, the payoff month, months left, principal repaid, and the next twelve rows expandable — with Record payment, Rate change and Extra payment, the what-if shown before anything is written, and a note giving the effective rate whenever a flat rate is in use.
 
-- [ ] Tests (fail first, `loan-form.test.ts`): `reads amounts and a rate typed the Indonesian way`; `a flat loan keeps its quoted rate and notes the effective one`; `refuses a tenor of zero`; `refuses a payment day of 29`; `refuses a first payment in the future beyond the tenor`; `the payment form fills itself in from the next scheduled row`; `an empty schedule leaves the form blank rather than guessing`; `refuses a payment beyond what is left, naming the loan`; `extras with no category are dropped`.
-- [ ] Implement; run `npm test -w @expanses/web` and `npm run typecheck`; commit `feat(web): the Loans tab, payments, rate changes and what-if`.
+- [x] Tests (fail first, `loan-form.test.ts`): `reads amounts and a rate typed the Indonesian way`; `a flat loan keeps its quoted rate and notes the effective one`; `refuses a tenor of zero`; `refuses a payment day of 29`; `refuses a first payment in the future beyond the tenor`; `the payment form fills itself in from the next scheduled row`; `an empty schedule leaves the form blank rather than guessing`; `refuses a payment beyond what is left, naming the loan`; `extras with no category are dropped`.
+- [x] Implement; run `npm test -w @expanses/web` and `npm run typecheck`; commit `feat(web): the Loans tab, payments, rate changes and what-if`.
 
 ---
 
@@ -434,10 +434,10 @@ export interface LoanAttention {
 
 Installments appear under each card on the card detail page and under the loan detail page, each showing billed against unbilled and the month it ends. §8.3's equity line is shown on the house or car the loan bought: its value, what is still owed, and the difference.
 
-- [ ] Tests (fail first, `overview-rows.test.ts`): `a payment due in three days is listed with the lender and the amount`; `a payment due in three weeks says nothing`; `a fixed rate ending in 40 days is listed`; `a fixed rate ending in a year says nothing`; `an installment finishing this month is listed`; `a loan already paid off says nothing`.
-- [ ] E2E (`apps/web/e2e/loans.spec.ts`, fail first): `onboard an existing KPR by its outstanding balance and terms, and read the next twelve rows`; `record the payment the form filled in, and watch the balance fall`; `a rate change moves the payment without posting anything`; `an extra payment shows what it saves before it is written`; `the balance sheet splits the loan into this year and later`; `interest shows as spending and principal does not`; `convert a card purchase into instalments: billed and unbilled, and the points stop`.
-- [ ] Implement; run `npm test`, `npm run typecheck`, `npm run e2e`; commit `feat(web): card installments, loan warnings and equity`.
-- [ ] Record execution notes at the end of this plan; commit `docs: record slice 5 execution status`.
+- [x] Tests (fail first, `overview-rows.test.ts`): `a payment due in three days is listed with the lender and the amount`; `a payment due in three weeks says nothing`; `a fixed rate ending in 40 days is listed`; `a fixed rate ending in a year says nothing`; `an installment finishing this month is listed`; `a loan already paid off says nothing`.
+- [x] E2E (`apps/web/e2e/loans.spec.ts`, fail first): `onboard an existing KPR by its outstanding balance and terms, and read the next twelve rows`; `record the payment the form filled in, and watch the balance fall`; `a rate change moves the payment without posting anything`; `an extra payment shows what it saves before it is written`; `the balance sheet splits the loan into this year and later`; `interest shows as spending and principal does not`; `convert a card purchase into instalments: billed and unbilled, and the points stop`.
+- [x] Implement; run `npm test`, `npm run typecheck`, `npm run e2e`; commit `feat(web): card installments, loan warnings and equity`.
+- [x] Record execution notes at the end of this plan; commit `docs: record slice 5 execution status`.
 
 ---
 
@@ -448,3 +448,29 @@ Installments appear under each card on the card detail page and under the loan d
 **Deliberately left for later, as §8 allows:** a new loan that pays for an asset at the moment of purchase ("Paid with a loan" inside Add asset) is not built here — onboarding an existing loan covers the owner's actual case, and the asset link is stored either way, so it can be added without a migration.
 
 **Two things this slice finishes that earlier slices left half-wired:** `homeLoanAccountIds` finally has a production caller, and `dueWithinYearMinor` stops being hardcoded to zero for loans. Both are named in Task 6 with their own tests, because a reviewer would otherwise read them as unrelated changes.
+
+---
+
+## Execution notes
+
+All eight tasks are done on `feat/loans`. Gate on the finished tree: `npm test` green (catalog 52, core 340, db 328, web 166), `npm run typecheck` clean, `npm run e2e` 44 passed.
+
+**One real bug, caught end to end:** the payment form prefilled the next scheduled row's date, which is in the future, and `paymentDraftToInput` refuses a future-dated payment — so the form as built could never be saved without the owner editing the date by hand. The split still comes from the schedule; the date is now today, since that is when the money moves. A row already past keeps its own date, so a late payment records truthfully. Two unit cases pin both halves.
+
+**Three numbers earlier slices left half-wired, now finished** — each was named in Task 6 with its own test, because a reviewer would otherwise read them as unrelated changes:
+
+1. `dueWithinYearMinor` was hardcoded to `0` for loans, putting every mortgage wholly under Long-term. It now takes the next twelve months of principal from the schedule, and falls back to the whole balance for a loan with no terms yet. A slice 2 test expected the old placeholder and was rewritten to pin the fallback.
+2. `periodFlows` accepted `homeLoanAccountIds` but nothing in production passed it, so every loan counted as consumer debt. It now reads them from `loan_terms` when the caller names none, deciding by what the loan actually bought. A caller may still name them, and a test pins that too.
+3. A card purchase converted to a plan that earns nothing is marked with the `cardFee` flag `computeCycleEarn` already refuses to earn on, rather than inventing a second exclusion.
+
+**Deviations from the plan, and why:**
+
+- *`annuityPaymentMinor` was added to the schedule module.* The plan named it in Task 1's interface, and Task 2 and the extra-payment writer both needed it, so it is exported rather than kept private.
+- *The level payment wobbles by one rupiah.* An annuity recomputed against a rounded balance each month lands one minor unit apart in some months. Pinning a single exact figure would mean storing the payment and letting the final row absorb the drift; the test allows a one-unit spread instead, which is what "level" means here.
+- *Loan attention rows live in `features/loans/attention.ts`.* The Overview has no notion of schedules or plans, so the seven-day, sixty-day and last-instalment windows sit beside the loans they describe, and `attentionItems` only prints what it is handed.
+
+**Two things the schedule deliberately does not do:** it is never stored, and it never reconciles against the ledger. Recorded payments are the truth; a schedule is what the terms imply from today's balance, which is why onboarding a loan mid-life needs only the outstanding balance and the terms.
+
+**Left for slice 6:** `coretax_code` on `loan_terms` is stored and read by nothing yet; the utang table is built in the Coretax slice from the balances open on 31 December.
+
+**Not built, as §8 allows:** buying an asset with a new loan in one step ("Paid with a loan" inside Add asset). Onboarding an existing loan covers the owner's actual case, and the asset link is stored either way, so it can be added later without a migration.
