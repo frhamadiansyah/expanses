@@ -32,3 +32,5 @@ export * from './repos/convert';
 export * as debtsSchema from './schema-debts';
 export * from './repos/debts';
 export * from './repos/people';
+export * as loansSchema from './schema-loans';
+export * from './repos/loans';
