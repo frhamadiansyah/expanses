@@ -34,6 +34,38 @@ describe('asset presets', () => {
   });
 });
 
+describe('the fields each converter insists on', () => {
+  const keysOf = (section: CoretaxSection) => CORETAX_SECTIONS[section].fields.map((f) => f.key);
+  const requiredOf = (section: CoretaxSection) => CORETAX_SECTIONS[section].fields.filter((f) => f.required).map((f) => f.key);
+
+  it('asks piutang for the country and the borrower identity number', () => {
+    expect(keysOf('piutang')).toEqual(expect.arrayContaining(['loc', 'idno', 'name']));
+    expect(requiredOf('piutang')).toEqual(expect.arrayContaining(['loc', 'idno', 'name']));
+  });
+
+  it('asks harta bergerak who owns it, by name and NPWP', () => {
+    expect(keysOf('bergerak')).toEqual(expect.arrayContaining(['model', 'plate', 'own', 'ownerNpwp', 'ownerName']));
+    expect(requiredOf('bergerak')).toEqual(expect.arrayContaining(['ownerNpwp', 'ownerName']));
+  });
+
+  it('requires an account number for kas, which DJP stars', () => {
+    expect(requiredOf('kas')).toContain('acct');
+  });
+
+  it('requires the ownership proof and identity for a securities holding', () => {
+    expect(requiredOf('investasi')).toEqual(expect.arrayContaining(['npwp', 'sid']));
+  });
+
+  it('requires the ownership proof for harta lainnya too', () => {
+    expect(requiredOf('lainnya')).toContain('cert');
+  });
+
+  it('keeps every field a section already had', () => {
+    expect(keysOf('tidak_bergerak')).toEqual(['loc', 'land', 'bldg', 'source', 'cert']);
+    expect(keysOf('kas')).toEqual(['acct', 'owner', 'inst', 'loc']);
+  });
+});
+
 describe('Coretax sections', () => {
   it('gives every field a label and a kind', () => {
     for (const [section, definition] of Object.entries(CORETAX_SECTIONS)) {
@@ -94,7 +126,12 @@ describe('missingCoretaxFields', () => {
     expect(missingCoretaxFields('lainnya', { cert: 'Antam certificates', info: 'Emas batangan Antam' })).toEqual([]);
   });
 
-  it('ignores optional fields', () => {
-    expect(missingCoretaxFields('kas', { owner: 'Dimas Wijaya', inst: 'PT Bank Central Asia Tbk', loc: 'IDN' })).toEqual([]);
+  it('ignores a key the section never asked for', () => {
+    const filled = { acct: '1234567890', owner: 'Dimas Wijaya', inst: 'PT Bank Central Asia Tbk', loc: 'IDN', nickname: 'Gaji' };
+    expect(missingCoretaxFields('kas', filled)).toEqual([]);
+  });
+
+  it('reports the account number, which the converter stars', () => {
+    expect(missingCoretaxFields('kas', { owner: 'Dimas Wijaya', inst: 'PT Bank Central Asia Tbk', loc: 'IDN' })).toEqual(['acct']);
   });
 });

@@ -231,3 +231,15 @@ export {
   reconciliation,
 } from './coretax/review';
 export { csvColumns, toReportCsv } from './coretax/export';
+export {
+  type ConverterHeader,
+  ConverterError,
+  converterColumns,
+  converterProblems,
+  type Kepemilikan,
+  KEPEMILIKAN,
+  PPS_KETERANGAN,
+  type SumberKepemilikan,
+  SUMBER_KEPEMILIKAN,
+  toConverterTsv,
+} from './coretax/converter';
