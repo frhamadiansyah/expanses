@@ -1,17 +1,17 @@
-import type { AssetValueRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
+import type { AssetValueRow, GoalPlanRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
 
 export interface AttentionItem {
   key: string;
   tone: 'warn' | 'info';
   text: string;
   action: string;
-  to: '/net-worth/assets' | '/net-worth/trades';
+  to: '/net-worth/assets' | '/net-worth/trades' | '/net-worth/goals';
 }
 
 const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
 /** What the owner should deal with: prices that have gone stale and monthly buys waiting to be recorded. */
-export function attentionItems(values: AssetValueRow[], dueTemplates: TradeTemplateRow[]): AttentionItem[] {
+export function attentionItems(values: AssetValueRow[], dueTemplates: TradeTemplateRow[], goalPlans: GoalPlanRow[] = []): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const value of values) {
     if (!value.stale) continue;
@@ -23,6 +23,14 @@ export function attentionItems(values: AssetValueRow[], dueTemplates: TradeTempl
   for (const template of dueTemplates) {
     const name = values.find((value) => value.accountId === template.accountId)?.name ?? 'a holding';
     items.push({ key: `due-${template.id}`, tone: 'warn', text: `Monthly buy of ${name} is due`, action: 'Record', to: '/net-worth/trades' });
+  }
+  for (const plan of goalPlans) {
+    if (plan.status === 'behind') {
+      items.push({ key: `goal-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name} needs more each month than you have set up`, action: 'Review', to: '/net-worth/goals' });
+    }
+    if (plan.earmarkWarning) {
+      items.push({ key: `earmark-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name}: ${plan.earmarkWarning}`, action: 'Review', to: '/net-worth/goals' });
+    }
   }
   return items;
 }

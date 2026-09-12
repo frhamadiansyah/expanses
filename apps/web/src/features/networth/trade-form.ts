@@ -12,6 +12,8 @@ export interface TradeDraft {
   tax: string;
   /** Empty means Opening Balances: something owned before the app. */
   cashAccountId: string;
+  /** Goal this buy funds, or the goal a sell takes its units from. Empty means no goal. */
+  goalId: string;
 }
 
 export const emptyTradeDraft = (accountId: string, cashAccountId: string, today: string): TradeDraft => ({
@@ -23,6 +25,7 @@ export const emptyTradeDraft = (accountId: string, cashAccountId: string, today:
   fee: '0',
   tax: '0',
   cashAccountId,
+  goalId: '',
 });
 
 const amount = (text: string, currency: string, label: string): number => {
@@ -47,7 +50,7 @@ export function draftToInput(draft: TradeDraft, currency: string, today: string)
   if (draft.kind === 'income') {
     const gross = amount(draft.gross, currency, 'Amount');
     if (gross <= 0) throw new Error('Enter the amount before tax');
-    return { accountId: draft.accountId, kind: 'income', occurredOn: draft.occurredOn, unitsMicro: 0, grossMinor: gross, feeMinor: 0, taxMinor: tax, cashAccountId: draft.cashAccountId || null };
+    return { accountId: draft.accountId, kind: 'income', occurredOn: draft.occurredOn, unitsMicro: 0, grossMinor: gross, feeMinor: 0, taxMinor: tax, cashAccountId: draft.cashAccountId || null, goalId: null };
   }
 
   if (draft.units.trim() === '') throw new Error('Enter how many units, shares or grams');
@@ -60,7 +63,7 @@ export function draftToInput(draft: TradeDraft, currency: string, today: string)
   if (unitsMicro <= 0) throw new Error('Enter more than zero units');
 
   if (draft.kind === 'unit_change') {
-    return { accountId: draft.accountId, kind: 'unit_change', occurredOn: draft.occurredOn, unitsMicro, grossMinor: 0, feeMinor: 0, taxMinor: 0, cashAccountId: null };
+    return { accountId: draft.accountId, kind: 'unit_change', occurredOn: draft.occurredOn, unitsMicro, grossMinor: 0, feeMinor: 0, taxMinor: 0, cashAccountId: null, goalId: null };
   }
 
   const gross = amount(draft.gross, currency, draft.kind === 'buy' ? 'Cost' : 'Proceeds');
@@ -75,6 +78,7 @@ export function draftToInput(draft: TradeDraft, currency: string, today: string)
     feeMinor: fee,
     taxMinor: tax,
     cashAccountId: draft.cashAccountId || null,
+    goalId: draft.goalId || null,
   };
 }
 

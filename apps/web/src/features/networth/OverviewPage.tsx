@@ -7,6 +7,7 @@ import { periodRange, type RatioPeriod } from './health-cards';
 import { Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { NetWorthTabs } from './NetWorthTabs';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
+import { useGoalPlans } from '../goals/queries';
 import { useAssetValues, useDueTemplates, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
 import { ValueChart } from './ValueChart';
 
@@ -83,6 +84,7 @@ export function OverviewPage() {
   const sheetInputs = useSheet();
   const values = useAssetValues();
   const due = useDueTemplates();
+  const goalSummary = useGoalPlans(today);
 
   const [period, setPeriod] = useState<RatioPeriod>({ key: 'ttm' });
   const range = periodRange(period, today);
@@ -91,7 +93,7 @@ export function OverviewPage() {
 
   const points = series.data ?? [];
   const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
-  const attention = attentionItems(values.data ?? [], due.data ?? []);
+  const attention = attentionItems(values.data ?? [], due.data ?? [], goalSummary.data?.plans ?? []);
   const sinceLastMonth = deltaSince(points, 1);
   const januaryMonths = monthsSinceJanuary(points);
   const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);

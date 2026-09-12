@@ -9,10 +9,12 @@ export function TemplateList({
   templates,
   holdings,
   cashAccounts,
+  goals,
 }: {
   templates: TradeTemplateRow[];
   holdings: { accountId: string; name: string; currency: string }[];
   cashAccounts: AccountRow[];
+  goals: { id: string; name: string }[];
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -21,6 +23,7 @@ export function TemplateList({
   const [cashAccountId, setCashAccountId] = useState(cashAccounts[0]?.id ?? '');
   const [amount, setAmount] = useState('');
   const [day, setDay] = useState('5');
+  const [goalId, setGoalId] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -39,6 +42,7 @@ export function TemplateList({
         unitsMicro: null,
         dayOfMonth: Number(day),
         active: true,
+        goalId: goalId || null,
       });
       setAmount('');
       setAdding(false);
@@ -59,6 +63,7 @@ export function TemplateList({
       unitsMicro: template.unitsMicro,
       dayOfMonth: template.dayOfMonth,
       active: !template.active,
+      goalId: template.goalId,
     });
     await invalidate();
   }
@@ -89,6 +94,7 @@ export function TemplateList({
               <span className="text-slate-500">
                 {' · '}
                 {template.amountMinor === null ? `${(template.unitsMicro ?? 0) / 1_000_000} units` : formatMinor(template.amountMinor, currency)} on the {template.dayOfMonth}
+                {template.goalId && ` · for ${goals.find((goal) => goal.id === template.goalId)?.name ?? 'a goal'}`}
                 {!template.active && ' · paused'}
               </span>
             </span>
@@ -121,6 +127,16 @@ export function TemplateList({
             </Field>
             <Field label="Day of month" hint="1 to 28, so every month has it.">
               <Input value={day} onChange={(e) => setDay(e.target.value)} inputMode="numeric" />
+            </Field>
+            <Field label="For goal" hint="Each recorded buy can override it.">
+              <Select value={goalId} onChange={(e) => setGoalId(e.target.value)}>
+                <option value="">No goal</option>
+                {goals.map((goal) => (
+                  <option key={goal.id} value={goal.id}>
+                    {goal.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Paid from">
               <Select value={cashAccountId} onChange={(e) => setCashAccountId(e.target.value)}>

@@ -1,11 +1,12 @@
 import { averagePriceMicro, formatPriceMicro, formatUnits, isoDate, minorToMajorString, positionAfter, presetFor } from '@expanses/core';
-import { deleteTrade, type TradeRow } from '@expanses/db';
+import { deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { NetWorthTabs } from './NetWorthTabs';
 import { useAssetProfiles, useAssetValues, usePositions, useTradeTemplates, useTrades, useDueTemplates } from './queries';
+import { useGoals } from '../goals/queries';
 import { TemplateList } from './TemplateList';
 import { TradeForm } from './TradeForm';
 import type { TradeDraft } from './trade-form';
@@ -22,6 +23,8 @@ export function TradesPage() {
   const templates = useTradeTemplates();
   const due = useDueTemplates();
   const accounts = useAccounts();
+  const goals = useGoals();
+  const goalOptions = (goals.data ?? []).map((goal) => ({ id: goal.id, name: goal.name }));
   const [notice, setNotice] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [editing, setEditing] = useState<TradeRow | null>(null);
@@ -66,7 +69,18 @@ export function TradesPage() {
     }
   }
 
-  function recordFromTemplate(accountId: string, amountMinor: number | null, cashAccountId: string, id: string) {
+  async function retag(trade: TradeRow, goalId: string) {
+    setError(null);
+    try {
+      await retagTrade(database, ws, trade.id, goalId || null);
+      await invalidate();
+      setNotice(goalId ? `This purchase now funds ${goalOptions.find((goal) => goal.id === goalId)?.name ?? 'that goal'}.` : 'This purchase no longer funds a goal.');
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  function recordFromTemplate(accountId: string, amountMinor: number | null, cashAccountId: string, id: string, goalId: string | null) {
     setEditing(null);
     setTemplateId(id);
     setInitial({
@@ -74,6 +88,7 @@ export function TradesPage() {
       accountId,
       cashAccountId,
       gross: amountMinor === null ? '' : minorToMajorString(amountMinor, currencyOf(accountId)),
+      goalId: goalId ?? '',
       occurredOn: isoDate(),
     });
   }
@@ -152,7 +167,7 @@ export function TradesPage() {
                 )}
                 {` · due on the ${template.dayOfMonth}`}
               </span>
-              <Button variant="secondary" onClick={() => recordFromTemplate(template.accountId, template.amountMinor, template.cashAccountId, template.id)}>
+              <Button variant="secondary" onClick={() => recordFromTemplate(template.accountId, template.amountMinor, template.cashAccountId, template.id, template.goalId)}>
                 Record it
               </Button>
             </div>
@@ -167,6 +182,7 @@ export function TradesPage() {
           <TradeForm
             key={`${editing?.id ?? 'new'}-${initial?.accountId ?? ''}-${templateId ?? ''}`}
             holdings={holdings}
+            goals={goalOptions}
             cashAccounts={cashAccounts}
             positions={positions.data ?? {}}
             editing={editing}
@@ -206,6 +222,21 @@ export function TradesPage() {
                   {trade.cashAccountId === null && trade.kind === 'buy' && ' · opening position'}
                 </span>
                 <span className="flex items-center gap-2">
+                  {trade.kind === 'buy' && goalOptions.length > 0 && (
+                    <select
+                      aria-label="Goal for this buy"
+                      className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                      value={trade.goalId ?? ''}
+                      onChange={(e) => retag(trade, e.target.value)}
+                    >
+                      <option value="">No goal</option>
+                      {goalOptions.map((goal) => (
+                        <option key={goal.id} value={goal.id}>
+                          {goal.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <Money minor={trade.grossMinor} currency={currencyOf(trade.accountId)} />
                   <Button
                     variant="secondary"
@@ -221,6 +252,7 @@ export function TradesPage() {
                         fee: minorToMajorString(trade.feeMinor, currencyOf(trade.accountId)),
                         tax: minorToMajorString(trade.taxMinor, currencyOf(trade.accountId)),
                         cashAccountId: trade.cashAccountId ?? '',
+                        goalId: trade.goalId ?? '',
                       });
                     }}
                   >
@@ -236,7 +268,7 @@ export function TradesPage() {
         </Card>
       )}
 
-      {holdings.length > 0 && <TemplateList templates={templates.data ?? []} holdings={holdings} cashAccounts={cashAccounts} />}
+      {holdings.length > 0 && <TemplateList templates={templates.data ?? []} holdings={holdings} cashAccounts={cashAccounts} goals={goalOptions} />}
       <p className="text-xs text-slate-500">
         Presets in use: {(profiles.data ?? []).filter((profile) => presetFor(profile.assetKind).valuationMode === 'market').length} holdings measured in units.
       </p>
