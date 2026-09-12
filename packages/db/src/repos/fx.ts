@@ -2,7 +2,8 @@ import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import type { Database } from '../database';
 import { fxRates } from '../schema';
 
-export type FxSource = 'frankfurter' | 'manual';
+/** 'kmk' is the Kurs Menteri Keuangan, entered by hand for the tax report and never fetched. */
+export type FxSource = 'frankfurter' | 'manual' | 'kmk';
 
 export interface FoundRate {
   rate: number;

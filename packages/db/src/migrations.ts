@@ -10,6 +10,7 @@ import goals from '../migrations/0008_goals.sql?raw';
 import buyFlow from '../migrations/0009_buy_flow.sql?raw';
 import debts from '../migrations/0010_debts.sql?raw';
 import loans from '../migrations/0011_loans.sql?raw';
+import taxReports from '../migrations/0012_tax_reports.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -30,6 +31,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 9, name: 'buy_flow', sql: buyFlow },
   { version: 10, name: 'debts', sql: debts },
   { version: 11, name: 'loans', sql: loans },
+  { version: 12, name: 'tax_reports', sql: taxReports },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

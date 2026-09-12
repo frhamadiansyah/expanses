@@ -35,3 +35,5 @@ export * from './repos/people';
 export * as loansSchema from './schema-loans';
 export * from './repos/loans';
 export * from './repos/installments';
+export * as taxSchema from './schema-tax';
+export * from './repos/tax-reports';

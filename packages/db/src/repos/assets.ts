@@ -161,7 +161,7 @@ export async function setLotSize(database: Database, ws: WorkspaceContext, accou
 export async function saveAssetProfile(database: Database, ws: WorkspaceContext, input: SaveAssetProfileInput): Promise<void> {
   const defaults = profileDefaults(input.assetKind);
   const coretaxCode = input.coretaxCode === undefined ? defaults.coretaxCode : input.coretaxCode;
-  if (coretaxCode !== null && !/^\d{4}$/.test(coretaxCode)) throw new AssetError('A Coretax code is four digits');
+  if (coretaxCode !== null && !/^\d{3}$/.test(coretaxCode)) throw new AssetError('A Coretax code is three digits');
   const acquiredYear = input.acquiredYear ?? null;
   if (acquiredYear !== null && (!Number.isInteger(acquiredYear) || acquiredYear < 1900 || acquiredYear > 2999)) {
     throw new AssetError('Year acquired must be a four-digit year');

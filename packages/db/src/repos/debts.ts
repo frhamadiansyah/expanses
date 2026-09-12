@@ -31,7 +31,7 @@ export class DebtDbError extends Error {
 const DIRECTION_BY_SUBTYPE: Record<string, DebtDirection> = { receivable: 'lent', payable: 'borrowed' };
 
 /** What the Coretax tables call each side when no related-party code is chosen. */
-export const DEFAULT_CORETAX_CODE: Record<DebtDirection, string> = { lent: '0201', borrowed: '109' };
+export const DEFAULT_CORETAX_CODE: Record<DebtDirection, string> = { lent: '021', borrowed: '104' };
 
 export interface DebtProfileRow {
   accountId: string;

@@ -73,17 +73,18 @@ describe('asset profiles', () => {
       accountId: goldId,
       assetKind: 'gold',
       acquiredYear: 2022,
-      coretaxCode: '0702',
+      coretaxCode: '052',
       coretaxFields: { cert: 'Antam certificates', info: 'Emas batangan Antam' },
     });
 
     const profile = await getAssetProfile(database, ws, goldId);
-    expect(profile).toMatchObject({ acquiredYear: 2022, coretaxCode: '0702' });
+    expect(profile).toMatchObject({ acquiredYear: 2022, coretaxCode: '052' });
     expect(profile!.coretaxFields).toEqual({ cert: 'Antam certificates', info: 'Emas batangan Antam' });
   });
 
-  it('refuses a Coretax code that is not four digits', async () => {
-    await expect(saveAssetProfile(database, ws, { accountId: goldId, assetKind: 'gold', coretaxCode: '070' })).rejects.toThrow();
+  it('refuses a Coretax code that is not three digits', async () => {
+    // 0701 was the placeholder shape this project used before the codes were checked.
+    await expect(saveAssetProfile(database, ws, { accountId: goldId, assetKind: 'gold', coretaxCode: '0701' })).rejects.toThrow();
   });
 
   it('refuses an account from another workspace', async () => {
@@ -127,7 +128,6 @@ describe('migration 0009', () => {
     await migrate(older, MIGRATIONS.filter((migration) => migration.version <= 8));
     const workspace = await createWorkspace(older, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
     const account = await createAccount(older, workspace, { name: 'Antam gold bars', kind: 'asset', subtype: 'investment', currency: 'IDR' });
-    await saveAssetProfile(older, workspace, { accountId: account.id, assetKind: 'gold' });
     await saveGoal(older, workspace, {
       name: 'Hajj for two',
       kind: 'hajj',
@@ -137,6 +137,8 @@ describe('migration 0009', () => {
     });
 
     const applied = await migrate(older);
+    // Written after the upgrade: a version 8 table still demands a four-digit Coretax code.
+    await saveAssetProfile(older, workspace, { accountId: account.id, assetKind: 'gold' });
 
     expect(applied).toContain(9);
     await expect(listAssetProfiles(older, workspace)).resolves.toHaveLength(1);
@@ -160,7 +162,7 @@ describe('asset settings', () => {
     await setAssetGroup(database, ws, goldId, 'use');
 
     const profile = await getAssetProfile(database, ws, goldId);
-    expect(profile).toMatchObject({ planGroup: 'use', assetKind: 'gold', coretaxCode: '0701' });
+    expect(profile).toMatchObject({ planGroup: 'use', assetKind: 'gold', coretaxCode: '051' });
     expect(profile!.coretaxFields).toEqual({ info: 'Emas batangan Antam' });
   });
 
