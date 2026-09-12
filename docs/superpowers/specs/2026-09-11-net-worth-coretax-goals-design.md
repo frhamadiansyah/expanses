@@ -195,10 +195,12 @@ Core: goal units through buys, sells, retags, splits; annuity math against known
 
 ## 7. Slice 4 — Lend and borrow
 
-### 7.1 Storage (migration `0009_debts`)
+### 7.1 Storage (migration `0010_debts`)
+
+> Corrected during slice 3.5: `0009` is `buy_flow`, so this migration is `0010`.
 
 - `debt_profiles`: `account_id` (PK), `workspace_id`, `person_name`, `person_id_number` (NIK or NPWP, optional), `reason`, `due_on`, `status` (`open` | `settled` | `forgiven`), `status_on`, `coretax_code` (receivable `0201` default, `0202` related party; payable `109` default, `103` related party).
-- `entries.spend_category_id` (nullable): purchase category on a card line posted to a receivable, so card points still apply.
+- `entries.spend_category_id` shipped in `0010_buy_flow`'s predecessor `0009_buy_flow`, and `cardSpendLines` already reads any card line carrying it. Lending on a card needs no further storage or points work.
 
 ### 7.2 Postings (core, pure)
 
@@ -214,7 +216,7 @@ Core: goal units through buys, sells, retags, splits; annuity math against known
 
 - Repayments above the balance fail ("Andi owes Rp 9.000.000").
 - Balance 0 sets `settled` with the date.
-- `cardSpendLines` includes receivable lines carrying `spend_category_id`, so points count the full card purchase.
+- `cardSpendLines` already counts a card line carrying `spend_category_id` whatever the other side is, so a card-funded loan earns points with no change to the points engine. Slice 4 only has to write the column.
 - Account currency applies; existing rate handling.
 
 ### 7.3 Screens and effects

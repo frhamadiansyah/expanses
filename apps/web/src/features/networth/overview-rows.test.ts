@@ -1,5 +1,5 @@
 import { formatMinor } from '@expanses/core';
-import type { AssetValueRow, GoalPlanRow, GoalRow, IdleCashRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
+import type { AssetValueRow, GoalPlanRow, GoalRow, IdleCashRow, NetWorthPoint, PersonDebtRow, PersonLoanRow, TradeTemplateRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
 
@@ -151,6 +151,59 @@ describe('attentionItems with idle cash', () => {
 
   it('leaves an everyday bank account alone, since money there is meant to be spent', () => {
     expect(attentionItems([], [], [], [idle({ accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid', amountMinor: 50_000_000 })])).toEqual([]);
+  });
+});
+
+const loan = (partial: Partial<PersonLoanRow> = {}): PersonLoanRow => ({
+  accountId: 'andi',
+  reason: 'Motorcycle repair',
+  openedOn: '2026-08-05',
+  originalMinor: 10_000_000,
+  balanceMinor: 10_000_000,
+  repaidMinor: 0,
+  dueOn: '2026-09-18',
+  dueState: 'due_soon',
+  dueLabel: 'Due in 6 days',
+  status: 'open',
+  currency: 'IDR',
+  ...partial,
+});
+
+const debtor = (partial: Partial<PersonDebtRow> = {}): PersonDebtRow => ({
+  personName: 'Andi',
+  direction: 'lent',
+  currency: 'IDR',
+  totalMinor: 10_000_000,
+  loans: [loan()],
+  dueState: 'due_soon',
+  ...partial,
+});
+
+describe('attentionItems with debts', () => {
+  it('names who owes what, and when it is due', () => {
+    const items = attentionItems([], [], [], [], [debtor()]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ tone: 'warn', action: 'Chase', to: '/net-worth/debts' });
+    expect(items[0]!.text).toBe(`Andi owes you ${formatMinor(10_000_000, 'IDR')} · Due in 6 days`);
+  });
+
+  it('says how late an overdue loan is', () => {
+    const items = attentionItems([], [], [], [], [debtor({ dueState: 'overdue', loans: [loan({ dueState: 'overdue', dueLabel: '11 days overdue' })] })]);
+    expect(items[0]!.text).toContain('11 days overdue');
+  });
+
+  it('turns it around for money you owe', () => {
+    const items = attentionItems([], [], [], [], [debtor({ personName: 'Budi', direction: 'borrowed' })]);
+    expect(items[0]!.text).toContain('You owe Budi');
+    expect(items[0]).toMatchObject({ action: 'Pay' });
+  });
+
+  it('says nothing about a loan due in two months', () => {
+    expect(attentionItems([], [], [], [], [debtor({ dueState: 'none', loans: [loan({ dueState: 'none', dueLabel: 'Due 30 Nov 2026' })] })])).toEqual([]);
+  });
+
+  it('says nothing about a loan already settled', () => {
+    expect(attentionItems([], [], [], [], [debtor({ loans: [loan({ status: 'settled', dueState: 'none', dueLabel: '' })] })])).toEqual([]);
   });
 });
 

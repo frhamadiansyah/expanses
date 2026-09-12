@@ -1,5 +1,5 @@
 import { CURRENCIES, isoDate, mccName, minorToMajorString, parseMajor, parseRate, resolveMcc } from '@expanses/core';
-import { type AccountRow, mccSourcesFor, postTransaction, recordTaggedTransfer, replaceTransaction, saveMerchantMcc, type TransactionView, upsertRate } from '@expanses/db';
+import { type AccountRow, mccSourcesFor, postTransaction, recordTaggedTransfer, replaceTransaction, saveMerchantMcc, splitBill, type TransactionView, upsertRate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -48,6 +48,9 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
   const [buying, setBuying] = useState(false);
   const [purchase, setPurchase] = useState<PurchaseDraft>(() => emptyPurchaseDraft('', '', isoDate()));
   const [transferGoalId, setTransferGoalId] = useState('');
+  const [sharing, setSharing] = useState(false);
+  const [oweName, setOweName] = useState('');
+  const [oweAmount, setOweAmount] = useState('');
   const assetValues = useAssetValues();
   const assetProfiles = useAssetProfiles();
   const goals = useGoals();
@@ -87,6 +90,30 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
       if (buying) {
         // Units are recorded, so this saves as a purchase and never touches spending.
         await recordTrade(database, ws, purchaseDraftToInput(purchase, purchaseCurrency, isoDate()));
+        await invalidate();
+        onDone();
+        return;
+      }
+      if (draft.mode === 'expense' && sharing && !initial) {
+        const totalMinor = parseMajor(draft.amount, currency);
+        const shareMinor = parseMajor(oweAmount, currency);
+        if (!oweName.trim()) throw new Error('Say who owes you');
+        if (!(shareMinor > 0)) throw new Error('Enter what they owe you');
+        if (shareMinor > totalMinor) throw new Error('Their share cannot be more than the bill');
+        if (!draft.categoryId) throw new Error('Choose a category for your own share');
+        const shareRates = await resolveRates(currency === ws.baseCurrency ? [] : [currency], draft.occurredOn);
+        await splitBill(database, ws, {
+          occurredOn: draft.occurredOn,
+          description: draft.description || 'Split bill',
+          totalMinor,
+          moneyAccountId: draft.moneyId,
+          ownCategoryId: draft.categoryId,
+          ownShareMinor: totalMinor - shareMinor,
+          shares: [{ person: { name: oweName.trim(), currency }, amountMinor: shareMinor }],
+          spendCategoryId: onCard ? draft.categoryId : null,
+          mcc: onCard && draft.mcc.trim() !== '' ? draft.mcc.trim() : null,
+          ratesToBase: shareRates.rates,
+        });
         await invalidate();
         onDone();
         return;
@@ -292,6 +319,25 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
             </Field>
           )}
         </div>
+
+        {draft.mode === 'expense' && !initial && (
+          <div className="space-y-2 rounded-lg border border-slate-200 px-3 py-2" hidden={buying}>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={sharing} onChange={(e) => setSharing(e.target.checked)} />
+              Someone owes part of this
+            </label>
+            {sharing && (
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Who owes you" hint="They get their own account under Lend & borrow.">
+                  <Input value={oweName} onChange={(e) => setOweName(e.target.value)} placeholder="Andi" />
+                </Field>
+                <Field label={`Their share (${currency})`} hint="The rest stays as your own spending.">
+                  <Input value={oweAmount} inputMode="decimal" onChange={(e) => setOweAmount(e.target.value)} placeholder="600.000" />
+                </Field>
+              </div>
+            )}
+          </div>
+        )}
 
         {onCard && (
           <details open={showCardDetails} onToggle={(e) => setShowCardDetails(e.currentTarget.open)} className="rounded-lg border border-slate-200 px-3 py-2">

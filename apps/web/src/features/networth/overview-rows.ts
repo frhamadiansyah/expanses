@@ -1,12 +1,12 @@
 import { formatMinor } from '@expanses/core';
-import type { AssetValueRow, GoalPlanRow, IdleCashRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
+import type { AssetValueRow, GoalPlanRow, IdleCashRow, NetWorthPoint, PersonDebtRow, TradeTemplateRow } from '@expanses/db';
 
 export interface AttentionItem {
   key: string;
   tone: 'warn' | 'info';
   text: string;
   action: string;
-  to: '/net-worth/assets' | '/net-worth/trades' | '/net-worth/goals';
+  to: '/net-worth/assets' | '/net-worth/trades' | '/net-worth/goals' | '/net-worth/debts';
 }
 
 const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -17,6 +17,7 @@ export function attentionItems(
   dueTemplates: TradeTemplateRow[],
   goalPlans: GoalPlanRow[] = [],
   idleCash: IdleCashRow[] = [],
+  people: PersonDebtRow[] = [],
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const value of values) {
@@ -48,6 +49,20 @@ export function attentionItems(
       action: 'Buy',
       to: '/net-worth/trades',
     });
+  }
+  for (const person of people) {
+    for (const loan of person.loans) {
+      // Only a date the owner agreed to is worth a warning; a loan with no date waits quietly.
+      if (loan.dueState === 'none') continue;
+      const who = person.direction === 'lent' ? `${person.personName} owes you` : `You owe ${person.personName}`;
+      items.push({
+        key: `debt-${loan.accountId}`,
+        tone: 'warn',
+        text: `${who} ${formatMinor(loan.balanceMinor, loan.currency)} · ${loan.dueLabel}`,
+        action: person.direction === 'lent' ? 'Chase' : 'Pay',
+        to: '/net-worth/debts',
+      });
+    }
   }
   return items;
 }
