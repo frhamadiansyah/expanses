@@ -4,7 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
-import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, templateDueOn } from './goal-cards';
+import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, templateDueOn, templateFor } from './goal-cards';
 
 interface StageDraft {
   id?: string;
@@ -29,13 +29,13 @@ function draftFromTemplate(template: GoalTemplate, today: string): StageDraft {
   };
 }
 
-export function GoalForm({ goal, earmarks, onDone }: { goal?: GoalRow; earmarks: EarmarkRow[]; onDone: () => void }) {
+export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow; startKind?: GoalKind; earmarks: EarmarkRow[]; onDone: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts();
   const today = isoDate();
 
-  const starting = goal ? undefined : GOAL_TEMPLATES[0]!;
+  const starting = goal ? undefined : templateFor(startKind ?? GOAL_TEMPLATES[0]!.kind) ?? GOAL_TEMPLATES[0]!;
   const [kind, setKind] = useState<GoalKind>(goal?.kind ?? starting!.kind);
   const [name, setName] = useState(goal?.name ?? starting!.label);
   const [growth, setGrowth] = useState(String((goal?.growthBps ?? starting!.growthBps) / 100));

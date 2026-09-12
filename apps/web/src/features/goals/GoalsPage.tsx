@@ -1,4 +1,4 @@
-import { formatUnits, isoDate } from '@expanses/core';
+import { formatUnits, type GoalKind, isoDate } from '@expanses/core';
 import { archiveGoal, type GoalRow, reorderGoals, setStagePaid } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -22,7 +22,7 @@ export function GoalsPage() {
   const goals = useGoals();
   const earmarks = useEarmarks();
   const [editing, setEditing] = useState<GoalRow | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<GoalKind | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   const plans = summary.data?.plans ?? [];
@@ -59,7 +59,7 @@ export function GoalsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Goals"
-        action={!adding && !editing ? <Button onClick={() => setAdding(true)}>Add goal</Button> : undefined}
+        action={!adding && !editing ? <Button onClick={() => setAdding(GOAL_TEMPLATES[0]!.kind)}>Add goal</Button> : undefined}
       />
       <NetWorthTabs />
       <ErrorBox error={summary.error ?? error} />
@@ -67,9 +67,10 @@ export function GoalsPage() {
       {(adding || editing) && (
         <GoalForm
           goal={editing ?? undefined}
+          startKind={adding ?? undefined}
           earmarks={earmarks.data ?? []}
           onDone={() => {
-            setAdding(false);
+            setAdding(null);
             setEditing(null);
           }}
         />
@@ -115,7 +116,7 @@ export function GoalsPage() {
       {!adding && !editing && (
         <div className="flex flex-wrap gap-2">
           {GOAL_TEMPLATES.map((template) => (
-            <Button key={template.kind} variant="secondary" onClick={() => setAdding(true)}>
+            <Button key={template.kind} variant="secondary" onClick={() => setAdding(template.kind)}>
               + {template.label}
             </Button>
           ))}

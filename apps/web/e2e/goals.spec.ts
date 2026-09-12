@@ -116,3 +116,11 @@ test('refuses a sell the goal cannot cover', async ({ page }) => {
 
   await expect(page.getByText(/Hajj for two holds/)).toBeVisible();
 });
+
+test('a template button opens that template, not the first one', async ({ page }) => {
+  await page.goto('/net-worth/goals');
+  await page.getByRole('button', { name: 'Hajj or umrah' }).click();
+
+  await expect(page.getByLabel('What kind of goal')).toHaveValue('hajj');
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Hajj or umrah');
+});
