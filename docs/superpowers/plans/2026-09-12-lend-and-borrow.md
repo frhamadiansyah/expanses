@@ -112,8 +112,8 @@ export function debtDescription(action: 'lend' | 'repayment' | 'borrow' | 'repay
 
 Rules the tests pin: a repayment above `balanceMinor` throws `OVER_REPAYMENT` with the message `` `${personName} owes ${formatMinor(balanceMinor, currency)}` ``; every builder throws `AMOUNT_NOT_POSITIVE` on zero or less; interest is a separate line, never folded into principal; `splitBillPostings` throws `SPLIT_MISMATCH` unless `ownShareMinor + shares total === totalMinor`.
 
-- [ ] Tests (fail first, `debts-postings.test.ts`): `lending moves money from the bank to the person`; `a repayment clears principal and puts interest under Other Income`; `a repayment above the balance names the person and what they owe`; `borrowing raises the payable and the bank`; `repaying borrowed money charges interest to Interest, not to principal`; `forgiving what is left turns the balance into a gift`; `a split bill charges own share to the category and each friend to their own receivable`; `a split that does not add up to the total is refused`; `every builder balances to zero`; `zero or negative amounts are refused`.
-- [ ] Implement `postings.ts`, export from `packages/core/src/index.ts`; run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): postings for lending, borrowing and splitting a bill`.
+- [x] Tests (fail first, `debts-postings.test.ts`): `lending moves money from the bank to the person`; `a repayment clears principal and puts interest under Other Income`; `a repayment above the balance names the person and what they owe`; `borrowing raises the payable and the bank`; `repaying borrowed money charges interest to Interest, not to principal`; `forgiving what is left turns the balance into a gift`; `a split bill charges own share to the category and each friend to their own receivable`; `a split that does not add up to the total is refused`; `every builder balances to zero`; `zero or negative amounts are refused`.
+- [x] Implement `postings.ts`, export from `packages/core/src/index.ts`; run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): postings for lending, borrowing and splitting a bill`.
 
 ---
 
@@ -135,8 +135,8 @@ export function dueStateFor(dueOn: string | null, onDate: string, status: DebtSt
 export function dueLabel(dueOn: string | null, onDate: string, status: DebtStatus): string;
 ```
 
-- [ ] Tests (fail first, `debts-status.test.ts`): `a balance at zero is settled`; `a forgiven debt stays forgiven even with a balance`; `a debt due in 6 days is due soon`; `a debt due in 30 days is neither`; `a debt past its date is overdue`; `a settled debt is never due`; `no date means no due state`; `the label counts days both ways`.
-- [ ] Implement, export, run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): debt status and due dates`.
+- [x] Tests (fail first, `debts-status.test.ts`): `a balance at zero is settled`; `a forgiven debt stays forgiven even with a balance`; `a debt due in 6 days is due soon`; `a debt due in 30 days is neither`; `a debt past its date is overdue`; `a settled debt is never due`; `no date means no due state`; `the label counts days both ways`.
+- [x] Implement, export, run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): debt status and due dates`.
 
 ---
 
@@ -185,8 +185,8 @@ CREATE TABLE debt_profiles (
 CREATE INDEX debt_profiles_workspace ON debt_profiles (workspace_id, person_name);
 ```
 
-- [ ] Tests (fail first, `debts.test.ts`): `the migration adds the table and a v9 database still opens`; `saving a profile keeps the person and the reason`; `saving again updates in place`; `a profile refuses an account from another workspace`; `a profile refuses an account that is not a receivable or a payable`; `the default Coretax code follows the direction`.
-- [ ] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): migration 0010 and debt profiles`.
+- [x] Tests (fail first, `debts.test.ts`): `the migration adds the table and a v9 database still opens`; `saving a profile keeps the person and the reason`; `saving again updates in place`; `a profile refuses an account from another workspace`; `a profile refuses an account that is not a receivable or a payable`; `the default Coretax code follows the direction`.
+- [x] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): migration 0010 and debt profiles`.
 
 ---
 
@@ -227,9 +227,9 @@ export interface SplitBillInput {
 
 Rules the tests pin: `recordLoan` with `person` creates the account (subtype `receivable` for `lent`, `payable` for `borrowed`) and its profile in the same database transaction; a repayment that brings the balance to zero writes `status = 'settled'` with `status_on`; a later loan to a settled person reopens it; a repayment beyond the balance throws and writes nothing; a card-funded loan puts `spend_category_id` and the MCC on the card line and `cardSpendLines` returns it; a forgiven balance sets `status = 'forgiven'`.
 
-- [ ] Tests (fail first, `debts.test.ts`): `lending opens the person account and moves the money`; `lending to a person already known reuses their account`; `a repayment lowers what is owed`; `a repayment to zero settles the debt with its date`; `lending again reopens a settled person`; `a repayment above the balance is refused and nothing is written`; `interest received lands in Other Income, not in principal`; `borrowing raises the payable`; `repaying borrowed money charges Interest`; `forgiving the rest empties the balance and marks it forgiven`; `a split bill charges own share and opens a receivable for each friend`; `receivables do not fund goals`.
-- [ ] Tests (fail first, `debts-card.test.ts`): `a loan put on a credit card raises the card balance`; `the card line carries the category and MCC`; `cardSpendLines counts a card-funded loan as card spend`; `points are estimated for it`.
-- [ ] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): lending, borrowing, repayments and split bills`.
+- [x] Tests (fail first, `debts.test.ts`): `lending opens the person account and moves the money`; `lending to a person already known reuses their account`; `a repayment lowers what is owed`; `a repayment to zero settles the debt with its date`; `lending again reopens a settled person`; `a repayment above the balance is refused and nothing is written`; `interest received lands in Other Income, not in principal`; `borrowing raises the payable`; `repaying borrowed money charges Interest`; `forgiving the rest empties the balance and marks it forgiven`; `a split bill charges own share and opens a receivable for each friend`; `receivables do not fund goals`.
+- [x] Tests (fail first, `debts-card.test.ts`): `a loan put on a credit card raises the card balance`; `the card line carries the category and MCC`; `cardSpendLines counts a card-funded loan as card spend`; `points are estimated for it`.
+- [x] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): lending, borrowing, repayments and split bills`.
 
 ---
 
@@ -260,8 +260,8 @@ export async function debtHistory(database: Database, ws: WorkspaceContext, acco
 
 `originalMinor` is the sum of the lending entries; `repaidMinor` is `originalMinor − balanceMinor`. People are grouped by `person_name` so one friend with three loans is one card.
 
-- [ ] Tests (fail first, `people.test.ts`): `groups three loans to one person into one card`; `keeps money lent and money borrowed apart`; `reports what is left and what came back`; `a person with everything repaid moves to settled`; `the card carries the soonest due state`; `history lists the loan, its repayments and a forgiveness in date order`; `a voided repayment leaves the balance as it was`.
-- [ ] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): per-person debt totals and history`.
+- [x] Tests (fail first, `people.test.ts`): `groups three loans to one person into one card`; `keeps money lent and money borrowed apart`; `reports what is left and what came back`; `a person with everything repaid moves to settled`; `the card carries the soonest due state`; `history lists the loan, its repayments and a forgiveness in date order`; `a voided repayment leaves the balance as it was`.
+- [x] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): per-person debt totals and history`.
 
 ---
 
@@ -287,8 +287,8 @@ export function repaymentDraftToInput(draft: RepaymentDraft, debtAccountId: stri
 
 Screen: two columns, **Owed to you** and **You owe**, each a list of person cards showing the total, each loan with its reason and progress, a due pill, and Record repayment / Forgive rest / Edit. A **Settled** section underneath, collapsed. The add form asks direction, person (with suggestions), amount, date, account — and when a card is chosen, the category and MCC, with the note that the purchase still earns points.
 
-- [ ] Tests (fail first, `debts-form.test.ts`): `reads an amount typed the Indonesian way`; `a card loan keeps the category and MCC, a bank loan drops them`; `refuses a loan with no person`; `refuses a date after today`; `refuses a repayment above what is owed, naming the person`; `suggests names already used, ignoring case`; `interest is optional and defaults to zero`.
-- [ ] Implement the pure module and the screens; run `npm test -w @expanses/web` and `npm run typecheck`; commit `feat(web): the Lend & borrow tab`.
+- [x] Tests (fail first, `debts-form.test.ts`): `reads an amount typed the Indonesian way`; `a card loan keeps the category and MCC, a bank loan drops them`; `refuses a loan with no person`; `refuses a date after today`; `refuses a repayment above what is owed, naming the person`; `suggests names already used, ignoring case`; `interest is optional and defaults to zero`.
+- [x] Implement the pure module and the screens; run `npm test -w @expanses/web` and `npm run typecheck`; commit `feat(web): the Lend & borrow tab`.
 
 ---
 
@@ -307,10 +307,10 @@ export function attentionItems(
 
 The transaction form gains **"Someone owes part of this"** on an expense: a person and their share, which posts through `splitBill` instead of `postTransaction`. The Transactions page labels a lending transaction "Lent to Andi" and a repayment "Repayment from Andi" — the page already loads `accounts`, so it reads the subtype from there rather than widening `TransactionView`.
 
-- [ ] Tests (fail first, `overview-rows.test.ts`): `a loan due in 6 days is listed with the person and the date`; `an overdue loan says how late it is`; `a loan due in two months says nothing`; `a settled loan says nothing`.
-- [ ] E2E (`apps/web/e2e/lend-borrow.spec.ts`, fail first): `lend on a credit card: the card owes more, the points are estimated, and spending is unchanged`; `split a dinner bill: own share is spending, each friend owes their part`; `record a repayment and watch the balance fall`; `a repayment above the balance is refused by name`; `forgive the rest and the debt leaves the balance sheet`; `the balance sheet shows Owed to you and Due within a year`.
-- [ ] Implement; run `npm test`, `npm run typecheck`, `npm run e2e`; commit `feat(web): split bills, debt labels and due-date warnings`.
-- [ ] Record execution notes at the end of this plan; commit `docs: record slice 4 execution status`.
+- [x] Tests (fail first, `overview-rows.test.ts`): `a loan due in 6 days is listed with the person and the date`; `an overdue loan says how late it is`; `a loan due in two months says nothing`; `a settled loan says nothing`.
+- [x] E2E (`apps/web/e2e/lend-borrow.spec.ts`, fail first): `lend on a credit card: the card owes more, the points are estimated, and spending is unchanged`; `split a dinner bill: own share is spending, each friend owes their part`; `record a repayment and watch the balance fall`; `a repayment above the balance is refused by name`; `forgive the rest and the debt leaves the balance sheet`; `the balance sheet shows Owed to you and Due within a year`.
+- [x] Implement; run `npm test`, `npm run typecheck`, `npm run e2e`; commit `feat(web): split bills, debt labels and due-date warnings`.
+- [x] Record execution notes at the end of this plan; commit `docs: record slice 4 execution status`.
 
 ---
 
@@ -321,3 +321,30 @@ The transaction form gains **"Someone owes part of this"** on an expense: a pers
 **Carried into slice 6, not built here:** `coretax_code` is stored and never read; the piutang and utang tables are built in the Coretax slice from the open balances on 31 December.
 
 **Deliberately left out:** interest that accrues on its own — interest is typed on the repayment that carries it, which is how these debts work between people. Reminders and notifications: the attention list is the whole of it.
+
+---
+
+## Execution notes
+
+All seven tasks are done on `feat/lend-borrow`. Gate on the finished tree: `npm test` green (catalog 52, core 296, db 276, web 145), `npm run typecheck` clean, `npm run e2e` 38 passed.
+
+**Two real bugs the work uncovered, both fixed:**
+
+1. *A repayment could vanish into the debt it was paying.* A person's receivable is an asset, so it passed `isMoneyAccount` and appeared in the "Into" list on their own card — with accounts sorted by name, "Andi" came before "BCA Tahapan" and became the default. The repayment then posted both legs to the same account, netted to zero, closed the panel and reported nothing wrong. Both `PersonCard` and `DebtForm` now list only `bank`, `cash` and `savings` (plus cards, for lending).
+2. *The migration idempotency test pinned the version list.* Adding `0010` made `database.test.ts` fail on an exact `[1..9]`; it now expects `10` as well. Worth keeping as-is: the test is meant to notice a new migration.
+
+**Deviations from the plan, and why:**
+
+- *`createAccountTx` was extracted from `createAccount`.* `recordLoan` has to open a person's account and post the loan as one atomic step, and `createAccount` opened a transaction of its own. `createAccount` is now that function wrapped in a transaction, so every existing caller is unchanged.
+- *`dueLabel` moved into the read model.* The plan had the Overview phrase the warning, but `attentionItems` has no notion of today's date, so it could not say "11 days overdue". `peopleDebts` already knows the date it was asked about, so `PersonLoanRow` carries the words and the screen just prints them.
+- *`TransactionView` gained `goalId`.* Tagged transfers stamp `transactions.goal_id`, but the view dropped it, so a parked transfer could not say which goal it was for.
+- *One card per person per direction.* Money you lent Andi is never netted against money Andi lent you; they are separate debts and settle separately.
+
+**Two things the spec asked for that were already true, so no code was written:**
+
+- `cardSpendLines` already counts any card line carrying `spend_category_id`, whatever sits on the other side, so a card-funded loan earns its points with no change to the points engine.
+- `balanceSheet` already places a receivable under **Owed to you** and a payable under **Due within a year**. Both are pinned by tests now.
+
+**An end-to-end race, not a product bug:** the parked-money test navigated to Goals in the same tick as the save, and read the database before the write landed. It now asserts the goal tag on the transaction row first — the same fix slice 3.5 needed after "Save prices".
+
+**Carried into slice 6:** `coretax_code` is stored on every debt profile and read by nothing yet. The piutang and utang tables are built in the Coretax slice from the balances open on 31 December.
