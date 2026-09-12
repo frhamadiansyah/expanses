@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
-import { Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
+import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
+import { AddAssetForm } from './AddAssetForm';
 import { type AssetGroup, type AssetRow, groupAssets, liveGroups, soldRows, staleRows, totalOf } from './asset-rows';
 import { useAssetProfiles, useAssetValues } from './queries';
 
@@ -45,6 +46,7 @@ export function AssetsPage() {
   const values = useAssetValues();
   const profiles = useAssetProfiles();
   const [showSold, setShowSold] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const groups = values.data && profiles.data ? groupAssets(values.data, profiles.data) : [];
   const live = liveGroups(groups);
@@ -57,12 +59,16 @@ export function AssetsPage() {
       <PageHeader
         title="Assets"
         action={
-          <div className="text-right">
-            <div className="text-xs text-slate-500">Everything you own</div>
-            <Money minor={totalOf(groups)} currency={baseCurrency} className="text-lg font-semibold" />
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-xs text-slate-500">Everything you own</div>
+              <Money minor={totalOf(groups)} currency={baseCurrency} className="text-lg font-semibold" />
+            </div>
+            {!adding && <Button onClick={() => setAdding(true)}>Add asset</Button>}
           </div>
         }
       />
+      {adding && <AddAssetForm onDone={() => setAdding(false)} />}
       <ErrorBox error={values.error ?? profiles.error} />
 
       {stale.length > 0 && (
