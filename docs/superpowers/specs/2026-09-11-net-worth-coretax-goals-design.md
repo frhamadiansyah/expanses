@@ -310,3 +310,50 @@ Each slice is its own implementation plan and branch-sized drop, in the order of
 - Goal math uses constant growth and return; no Monte Carlo or inflation scenarios.
 - Hajj figures (setoran awal amount, queue years) are user-editable defaults and need checking against Kemenag each year.
 - BPJS JHT, DPLK, and insurance cash values are tracked only as manual other assets until a dedicated slice.
+
+## 13. Buying flow, ratio corrections, and goal tags on transfers (approved 2026-09-12)
+
+Agreed with the owner after trying a prototype of the buying flow. Slice 3.5, built before Lend & borrow.
+
+### 13.1 Ratios follow the published guide
+
+The savings ratio in §5.2 was a surplus, not the ratio the guide defines. Corrected set, with the benchmark from the CFP-aligned sources (DBS Singapore; Isaac Fang CFA ChFC CFP; Karen Tang):
+
+| Ratio | Formula | Benchmark |
+|---|---|---|
+| Basic liquidity (emergency fund) | cash & equivalents ÷ monthly expenses | 3–6 months, 12 with dependants |
+| Liquid assets to net worth | cash & equivalents ÷ net worth | ≥ 15% |
+| **Savings ratio** | **money actually put into savings and investments ÷ take-home income** | **≥ 10%, 20% strong** |
+| **Surplus** (companion, not a guide ratio) | (take-home income − spending) ÷ take-home income | shown beside the savings ratio; the gap is money that stayed idle |
+| Debt servicing | monthly debt payments ÷ monthly income | **≤ 35%** |
+| Non-mortgage debt servicing | non-mortgage payments ÷ monthly income | ≤ 15% |
+| Debt to assets | total debt ÷ total assets | < 50% |
+| Solvency | net worth ÷ total assets | ≥ 50% |
+| Investments to net worth | invested assets, home excluded ÷ net worth | ≥ 50% |
+
+- "Put away" counts: purchases of holdings, money moved into accounts grouped as investments or savings, and loan principal. Withdrawals back to a spending account subtract. Employer JHT and DPLK are not tracked, so the figure is understated; the card says so.
+- Status bands are derived from the one benchmark, not chosen per ratio: on track on the good side, watch out to 1,2× the benchmark, act beyond it.
+- The income denominator is take-home, because salary is recorded net; the card says so.
+- Emergency fund divides by monthly expenses (the guide). A setting adds debt payments to the denominator for a stricter reading, default off; the owner will choose later.
+- Debt servicing benchmark 35% (guide), with 30% available as a setting since OJK and Indonesian lenders quote that.
+
+### 13.2 Buying from the Transactions window
+
+- The transaction form gains an **Investments group** in its picker: choosing a holding turns the form into a purchase (units or lots, price, money side, goal), saved through the same path Buy & sell uses. Selling has its own group.
+- **Convert**: a transaction already recorded — or imported from a statement — offers "This was a purchase → record units", which voids the expense and writes the trade in one database transaction.
+- **Guard rail**: accounts valued by units never appear in the transfer picker, with a line pointing at the purchase flow. Property and vehicles stay, since their value falls back to cost.
+- **A credit card may be the money side of a purchase**: the holding rises, the card balance rises, nothing is spending. The card line carries `spend_category_id` and the MCC so the points engine counts it, the same mechanism Lend & borrow needs.
+
+### 13.3 Goals: tag what you accumulate, never what you spend
+
+- A goal tag belongs on **purchases** and on **transfers into a holding place** (RDN, a savings pot). It never belongs on an ordinary payment: paying the school or BPKH removes the money from net worth, so the goal has nothing left to hold.
+- A tagged transfer raises that goal's set-aside on the destination account straight away; buying from that account with the same goal lowers it as units appear, so value is never counted twice. A leftover stays set aside for the goal (Rp 1.000.000 parked, Rp 987.500 lot bought, Rp 12.500 keeps waiting). Buying more than was set aside floors it at zero and the surplus simply becomes tagged units.
+- A goal finishes by selling from the goal, then paying as an ordinary expense, then marking the stage paid. Net worth falls when the money leaves, as it should.
+- **Setoran awal BPKH counts as spending**, by the owner's decision, even though it is refundable on cancellation.
+
+### 13.4 Units, lots, and asset settings
+
+- A holding measured in shares carries a lot size: IDX stocks 100, US stocks 1. The form asks for lots when the lot size is above 1 and shows the share count beneath; holdings tables read "12 lot (1.200 shares)".
+- An asset's balance-sheet group becomes editable, so broker cash (RDN) sits under Investments instead of the emergency buffer.
+- Monthly templates gain a kind: **buy** (units confirmed later) or **move** (money to RDN or savings), both appearing as due on their day with nothing posted automatically.
+- The Overview names idle money: "Rp 1.011.019 has been waiting in RDN since October".
