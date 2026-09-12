@@ -9,6 +9,9 @@ type AccountRow = typeof accounts.$inferSelect;
 /** Defaults added with the card catalogue. Any other default missing from a workspace was renamed or deleted by the user. */
 const ADDED_WITH_CATALOGUE = new Set(['entertainment.sports', 'fees.notification', 'fees.statement', 'fees.stamp_duty', 'fees.administration', 'utilities.gas', 'housing.real_estate', 'gifts_donations.gifts', 'gifts_donations.donations', 'government', 'business']);
 
+/** Defaults added with the asset and trade work: investment gains and the final tax they are taxed under. */
+const ADDED_WITH_ASSETS = new Set(['income.realized_gains', 'government.final_tax']);
+
 /**
  * Gives default categories their stable keys in workspaces created before keys existed, and creates the defaults added
  * with the catalogue. Idempotent; runs on app open. A default is keyed only when its seed name sits under its keyed
@@ -36,7 +39,7 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
         keyed.push(key);
         return seeded;
       }
-      if (!canCreate || !ADDED_WITH_CATALOGUE.has(key)) return null;
+      if (!canCreate || !(ADDED_WITH_CATALOGUE.has(key) || ADDED_WITH_ASSETS.has(key))) return null;
       const siblings = rows.filter((row) => row.parentId === parentId);
       const row: AccountRow = {
         id: uuidv7(),

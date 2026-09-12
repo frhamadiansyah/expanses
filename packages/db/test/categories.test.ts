@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { categoryIdsByKey, createWorkspace, ensureCategoryKeys, listAccounts } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
-const NEW_DEFAULTS = ['business', 'entertainment.sports', 'fees.administration', 'fees.notification', 'fees.stamp_duty', 'fees.statement', 'gifts_donations.donations', 'gifts_donations.gifts', 'government', 'housing.real_estate', 'utilities.gas'];
+const NEW_DEFAULTS = ['business', 'entertainment.sports', 'fees.administration', 'fees.notification', 'fees.stamp_duty', 'fees.statement', 'gifts_donations.donations', 'gifts_donations.gifts', 'government', 'government.final_tax', 'housing.real_estate', 'income.realized_gains', 'utilities.gas'];
 const ALL_KEYS = [...DEFAULT_CATEGORY_KEYS].sort();
 const ARCHIVED = "'2026-09-11T00:00:00.000Z'";
 
@@ -17,7 +17,9 @@ afterEach(() => {
 async function v0Workspace(): Promise<TestDb> {
   current = await setupDb();
   const quoted = NEW_DEFAULTS.map((key) => `'${key}'`).join(', ');
-  await current.database.execScript(`DELETE FROM accounts WHERE system_key IN (${quoted})`);
+  // Children first: a parent cannot go while its child still points at it.
+  await current.database.execScript(`DELETE FROM accounts WHERE system_key IN (${quoted}) AND parent_id IS NOT NULL`);
+  await current.database.execScript(`DELETE FROM accounts WHERE system_key IN (${quoted}) AND parent_id IS NULL`);
   await current.database.execScript(`UPDATE accounts SET system_key = NULL WHERE subtype = 'category'`);
   return current;
 }

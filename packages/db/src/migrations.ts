@@ -5,6 +5,7 @@ import points from '../migrations/0003_points.sql?raw';
 import incrementRounding from '../migrations/0004_increment_rounding.sql?raw';
 import catalog from '../migrations/0005_catalog.sql?raw';
 import mccPoints from '../migrations/0006_mcc_points.sql?raw';
+import assets from '../migrations/0007_assets.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -20,6 +21,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 4, name: 'increment_rounding', sql: incrementRounding },
   { version: 5, name: 'catalog', sql: catalog },
   { version: 6, name: 'mcc_points', sql: mccPoints },
+  { version: 7, name: 'assets', sql: assets },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */
