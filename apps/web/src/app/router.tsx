@@ -8,6 +8,9 @@ import { RecommendPage } from '../features/cards/RecommendPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
+import { AssetDetailPage } from '../features/networth/AssetDetailPage';
+import { AssetsPage } from '../features/networth/AssetsPage';
+import { TradesPage } from '../features/networth/TradesPage';
 import { SpendingPage } from '../features/spending/SpendingPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { Layout } from './Layout';
@@ -36,6 +39,9 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId', component: CardDetailPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),

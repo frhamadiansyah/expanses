@@ -27,7 +27,7 @@ export const DEFAULT_CATEGORIES: readonly DefaultCategory[] = [
   { kind: 'expense', key: 'personal_care', name: 'Personal Care' },
   { kind: 'expense', key: 'gifts_donations', name: 'Gifts & Donations', children: children('gifts_donations', [['gifts', 'Gifts'], ['donations', 'Donations']]) },
   // Tax, customs, immigration, BPJS, and postal services — excluded from rewards by many card programs.
-  { kind: 'expense', key: 'government', name: 'Government & Taxes' },
+  { kind: 'expense', key: 'government', name: 'Government & Taxes', children: children('government', [['final_tax', 'Final Tax']]) },
   // Business bills and invoicing payments — excluded from rewards by several card programs.
   { kind: 'expense', key: 'business', name: 'Business & Invoices' },
   { kind: 'expense', key: 'fees', name: 'Fees & Charges', children: children('fees', [['bank', 'Bank Fees'], ['card_annual', 'Card Annual Fee'], ['interest', 'Interest'], ['notification', 'Notification Fee'], ['statement', 'Statement Fee'], ['stamp_duty', 'Stamp Duty'], ['administration', 'Administration Fee']]) },
@@ -35,6 +35,7 @@ export const DEFAULT_CATEGORIES: readonly DefaultCategory[] = [
   { kind: 'income', key: 'income.salary', name: 'Salary' },
   { kind: 'income', key: 'income.bonus', name: 'Bonus' },
   { kind: 'income', key: 'income.investment', name: 'Investment Income' },
+  { kind: 'income', key: 'income.realized_gains', name: 'Realized Gains' },
   { kind: 'income', key: 'income.cashback', name: 'Cashback & Rewards' },
   { kind: 'income', key: 'income.gifts', name: 'Gifts Received' },
   { kind: 'income', key: 'income.other', name: 'Other Income' },

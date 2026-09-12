@@ -1,0 +1,67 @@
+import { isoDate } from '@expanses/core';
+import {
+  assetValuesAt,
+  dueTemplates,
+  getAssetProfile,
+  listAssetProfiles,
+  listPrices,
+  listTradeTemplates,
+  listTrades,
+  listValuations,
+  monthEndValues,
+  positionsFor,
+} from '@expanses/db';
+import { useQuery } from '@tanstack/react-query';
+import { useApp } from '../../app/context';
+
+export function useAssetValues(date?: string) {
+  const { database, ws } = useApp();
+  const onDate = date ?? isoDate();
+  return useQuery({ queryKey: ['asset-values', ws.workspaceId, onDate], queryFn: () => assetValuesAt(database, ws, onDate) });
+}
+
+export function useAssetProfiles() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['asset-profiles', ws.workspaceId], queryFn: () => listAssetProfiles(database, ws) });
+}
+
+export function useAssetProfile(accountId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['asset-profile', ws.workspaceId, accountId], queryFn: () => getAssetProfile(database, ws, accountId) });
+}
+
+export function useTrades(accountId?: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['trades', ws.workspaceId, accountId ?? 'all'], queryFn: () => listTrades(database, ws, { accountId }) });
+}
+
+export function usePositions() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['positions', ws.workspaceId], queryFn: () => positionsFor(database, ws) });
+}
+
+export function usePrices(accountId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['prices', ws.workspaceId, accountId], queryFn: () => listPrices(database, ws, accountId) });
+}
+
+export function useValuations(accountId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['valuations', ws.workspaceId, accountId], queryFn: () => listValuations(database, ws, accountId) });
+}
+
+export function useMonthEndValues(accountId: string, months: string[]) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['month-end-values', ws.workspaceId, accountId, months.join(',')], queryFn: () => monthEndValues(database, ws, accountId, months) });
+}
+
+export function useTradeTemplates() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['trade-templates', ws.workspaceId], queryFn: () => listTradeTemplates(database, ws) });
+}
+
+export function useDueTemplates(date?: string) {
+  const { database, ws } = useApp();
+  const onDate = date ?? isoDate();
+  return useQuery({ queryKey: ['due-templates', ws.workspaceId, onDate], queryFn: () => dueTemplates(database, ws, onDate) });
+}

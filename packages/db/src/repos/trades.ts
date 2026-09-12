@@ -1,0 +1,273 @@
+import {
+  type Position,
+  positionAfter,
+  sellBasisMinor,
+  type TradeAccounts,
+  type TradeInput,
+  type TradeKind,
+  type TradeRecord,
+  tradeDescription,
+  tradePostings,
+  uuidv7,
+} from '@expanses/core';
+import { and, asc, eq, inArray } from 'drizzle-orm';
+import type { WorkspaceContext } from '../context';
+import type { Database, Db } from '../database';
+import { accounts, entries } from '../schema';
+import { investmentTrades } from '../schema-assets';
+import { AssetError, assertAccountInWorkspace } from './assets';
+import { categoryIdsByKeyTx } from './categories';
+import { systemAccountId } from './accounts';
+import { postTransactionTx, voidTransactionTx } from './ledger';
+
+export interface TradeRow extends TradeRecord {
+  workspaceId: string;
+  transactionId: string | null;
+  cashAccountId: string | null;
+  templateId: string | null;
+  status: 'active' | 'replaced' | 'deleted';
+  replacesTradeId: string | null;
+}
+
+export interface RecordTradeInput {
+  accountId: string;
+  kind: TradeKind;
+  occurredOn: string;
+  unitsMicro: number;
+  grossMinor: number;
+  feeMinor: number;
+  taxMinor: number;
+  /** Null pays from Opening Balances: a holding owned before the app. */
+  cashAccountId: string | null;
+  /** Money that left the cash account, when it is in another currency. */
+  cashMinor?: number;
+  templateId?: string | null;
+  ratesToBase?: Record<string, number>;
+}
+
+export interface RecalculatedSell {
+  tradeId: string;
+  oldBasisMinor: number;
+  newBasisMinor: number;
+}
+
+export interface TradeResult {
+  tradeId: string;
+  transactionId: string | null;
+  /** Later sells whose cost basis moved because of this change. */
+  recalculatedSells: RecalculatedSell[];
+}
+
+type TradeDbRow = typeof investmentTrades.$inferSelect;
+
+const toRow = (row: TradeDbRow): TradeRow => ({
+  id: row.id,
+  workspaceId: row.workspaceId,
+  accountId: row.accountId,
+  transactionId: row.transactionId,
+  kind: row.kind,
+  occurredOn: row.occurredOn,
+  createdAt: row.createdAt,
+  unitsMicro: row.unitsMicro,
+  grossMinor: row.grossMinor,
+  feeMinor: row.feeMinor,
+  taxMinor: row.taxMinor,
+  cashAccountId: row.cashAccountId,
+  templateId: row.templateId,
+  status: row.status,
+  replacesTradeId: row.replacesTradeId,
+});
+
+async function activeTrades(tx: Db, ws: WorkspaceContext, accountId?: string): Promise<TradeRow[]> {
+  const where = [eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')];
+  if (accountId) where.push(eq(investmentTrades.accountId, accountId));
+  const rows = await tx
+    .select()
+    .from(investmentTrades)
+    .where(and(...where))
+    .orderBy(asc(investmentTrades.occurredOn), asc(investmentTrades.createdAt));
+  return rows.map(toRow);
+}
+
+/** The accounts a trade posts to: the holding, the cash side, and the income and tax categories. */
+async function tradeAccountsFor(tx: Db, ws: WorkspaceContext, accountId: string, cashAccountId: string | null): Promise<{ accounts: TradeAccounts; holdingName: string }> {
+  const ids = cashAccountId ? [accountId, cashAccountId] : [accountId];
+  const rows = await tx
+    .select({ id: accounts.id, name: accounts.name, currency: accounts.currency, workspaceId: accounts.workspaceId })
+    .from(accounts)
+    .where(and(inArray(accounts.id, ids), eq(accounts.workspaceId, ws.workspaceId)));
+  const holding = rows.find((row) => row.id === accountId);
+  if (!holding) throw new AssetError('Asset not found in this workspace');
+  const cash = cashAccountId ? rows.find((row) => row.id === cashAccountId) : undefined;
+  if (cashAccountId && !cash) throw new AssetError('Cash account not found in this workspace');
+  const byKey = await categoryIdsByKeyTx(tx, ws);
+  const need = (key: string) => {
+    const id = byKey[key];
+    if (!id) throw new AssetError(`The "${key}" category is missing. Reopen the app so default categories are restored.`);
+    return id;
+  };
+  const holdingCurrency = holding.currency ?? ws.baseCurrency;
+  return {
+    holdingName: holding.name,
+    accounts: {
+      holdingAccountId: accountId,
+      holdingCurrency,
+      cashAccountId: cash?.id ?? (await systemAccountId(tx, ws, 'opening_balance')),
+      cashCurrency: cash?.currency ?? holdingCurrency,
+      realizedGainsCategoryId: need('income.realized_gains'),
+      investmentIncomeCategoryId: need('income.investment'),
+      finalTaxCategoryId: need('government.final_tax'),
+      currencyExchangeAccountId: await systemAccountId(tx, ws, 'currency_exchange'),
+    },
+  };
+}
+
+const toInput = (input: RecordTradeInput): TradeInput => ({
+  kind: input.kind,
+  occurredOn: input.occurredOn,
+  unitsMicro: input.unitsMicro,
+  grossMinor: input.grossMinor,
+  feeMinor: input.feeMinor,
+  taxMinor: input.taxMinor,
+  cashMinor: input.cashMinor,
+});
+
+const positionAt = (trades: TradeRecord[], onDate: string, exclude?: string): Position =>
+  positionAfter(trades.filter((trade) => trade.id !== exclude), onDate);
+
+/** What the ledger currently says a sell gave up, read back from its holding line. */
+async function postedBasis(tx: Db, transactionId: string, holdingAccountId: string): Promise<number> {
+  const rows = await tx
+    .select({ amountMinor: entries.amountMinor })
+    .from(entries)
+    .where(and(eq(entries.transactionId, transactionId), eq(entries.accountId, holdingAccountId)));
+  return -rows.reduce((total, row) => total + row.amountMinor, 0);
+}
+
+/**
+ * Reposts sells on or after `fromDate` whose average cost moved. The ledger stays immutable:
+ * each changed sell is voided and posted again in the same database transaction.
+ */
+async function recalculateSells(
+  tx: Db,
+  ws: WorkspaceContext,
+  accountId: string,
+  fromDate: string,
+  ratesToBase: Record<string, number> | undefined,
+): Promise<RecalculatedSell[]> {
+  const trades = await activeTrades(tx, ws, accountId);
+  const later = trades.filter((trade) => trade.kind === 'sell' && trade.occurredOn >= fromDate && trade.transactionId);
+  if (later.length === 0) return [];
+  const { accounts: tradeAccounts, holdingName } = await tradeAccountsFor(tx, ws, accountId, later[0]!.cashAccountId);
+  const changed: RecalculatedSell[] = [];
+  for (const sell of later) {
+    const position = positionAt(trades, sell.occurredOn, sell.id);
+    const newBasisMinor = sellBasisMinor(position, sell.unitsMicro);
+    const oldBasisMinor = await postedBasis(tx, sell.transactionId!, accountId);
+    if (oldBasisMinor === newBasisMinor) continue;
+    const withCash = sell.cashAccountId === later[0]!.cashAccountId ? tradeAccounts : (await tradeAccountsFor(tx, ws, accountId, sell.cashAccountId)).accounts;
+    const input = toInput({ ...sell, cashAccountId: sell.cashAccountId });
+    const lines = tradePostings(input, position, withCash);
+    await voidTransactionTx(tx, ws, sell.transactionId!);
+    const replacement = await postTransactionTx(tx, ws, {
+      occurredOn: sell.occurredOn,
+      description: tradeDescription(input, holdingName),
+      lines,
+      ratesToBase,
+      replacesTransactionId: sell.transactionId,
+    });
+    await tx.update(investmentTrades).set({ transactionId: replacement }).where(eq(investmentTrades.id, sell.id));
+    changed.push({ tradeId: sell.id, oldBasisMinor, newBasisMinor });
+  }
+  return changed;
+}
+
+async function writeTrade(tx: Db, ws: WorkspaceContext, input: RecordTradeInput, replacesTradeId: string | null): Promise<TradeResult> {
+  await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
+  if (input.cashAccountId) await assertAccountInWorkspace(tx, ws, input.cashAccountId, 'Cash account');
+  const { accounts: tradeAccounts, holdingName } = await tradeAccountsFor(tx, ws, input.accountId, input.cashAccountId);
+  const trades = await activeTrades(tx, ws, input.accountId);
+  const position = positionAt(trades, input.occurredOn);
+  const tradeInput = toInput(input);
+  const lines = tradePostings(tradeInput, position, tradeAccounts);
+  const transactionId = lines.length
+    ? await postTransactionTx(tx, ws, {
+        occurredOn: input.occurredOn,
+        description: tradeDescription(tradeInput, holdingName),
+        lines,
+        ratesToBase: input.ratesToBase,
+      })
+    : null;
+  const id = uuidv7();
+  await tx.insert(investmentTrades).values({
+    id,
+    workspaceId: ws.workspaceId,
+    accountId: input.accountId,
+    transactionId,
+    kind: input.kind,
+    occurredOn: input.occurredOn,
+    unitsMicro: input.unitsMicro,
+    grossMinor: input.grossMinor,
+    feeMinor: input.feeMinor,
+    taxMinor: input.taxMinor,
+    cashAccountId: input.cashAccountId,
+    templateId: input.templateId ?? null,
+    status: 'active',
+    replacesTradeId,
+    createdAt: new Date().toISOString(),
+  });
+  const recalculatedSells = await recalculateSells(tx, ws, input.accountId, input.occurredOn, input.ratesToBase);
+  return { tradeId: id, transactionId, recalculatedSells };
+}
+
+async function retire(tx: Db, ws: WorkspaceContext, tradeId: string, status: 'replaced' | 'deleted'): Promise<TradeRow> {
+  const [row] = await tx
+    .select()
+    .from(investmentTrades)
+    .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')));
+  if (!row) throw new AssetError('That trade was already changed or removed');
+  if (row.transactionId) await voidTransactionTx(tx, ws, row.transactionId);
+  await tx.update(investmentTrades).set({ status }).where(eq(investmentTrades.id, tradeId));
+  return toRow(row);
+}
+
+/** Records a buy, sell, income or unit change with its ledger transaction, in one database transaction. */
+export function recordTrade(database: Database, ws: WorkspaceContext, input: RecordTradeInput): Promise<TradeResult> {
+  return database.transaction((tx) => writeTrade(tx, ws, input, null));
+}
+
+/** Edits a trade: the old one and its transaction are retired and a fresh pair is written. */
+export function replaceTrade(database: Database, ws: WorkspaceContext, tradeId: string, input: RecordTradeInput): Promise<TradeResult> {
+  return database.transaction(async (tx) => {
+    const old = await retire(tx, ws, tradeId, 'replaced');
+    const result = await writeTrade(tx, ws, input, tradeId);
+    const from = old.occurredOn < input.occurredOn ? old.occurredOn : input.occurredOn;
+    const alreadyDone = new Set(result.recalculatedSells.map((sell) => sell.tradeId));
+    const more = (await recalculateSells(tx, ws, input.accountId, from, input.ratesToBase)).filter((sell) => !alreadyDone.has(sell.tradeId));
+    return { ...result, recalculatedSells: [...result.recalculatedSells, ...more] };
+  });
+}
+
+export function deleteTrade(database: Database, ws: WorkspaceContext, tradeId: string): Promise<TradeResult> {
+  return database.transaction(async (tx) => {
+    const old = await retire(tx, ws, tradeId, 'deleted');
+    const recalculatedSells = await recalculateSells(tx, ws, old.accountId, old.occurredOn, undefined);
+    return { tradeId, transactionId: null, recalculatedSells };
+  });
+}
+
+export async function listTrades(database: Database, ws: WorkspaceContext, opts: { accountId?: string } = {}): Promise<TradeRow[]> {
+  return activeTrades(database.db, ws, opts.accountId);
+}
+
+/** Units and cost held per asset account, on a date or today. */
+export async function positionsFor(database: Database, ws: WorkspaceContext, upTo?: string): Promise<Record<string, Position>> {
+  const trades = await activeTrades(database.db, ws);
+  const byAccount = new Map<string, TradeRow[]>();
+  for (const trade of trades) {
+    const list = byAccount.get(trade.accountId) ?? [];
+    list.push(trade);
+    byAccount.set(trade.accountId, list);
+  }
+  return Object.fromEntries([...byAccount].map(([accountId, list]) => [accountId, positionAfter(list, upTo)]));
+}

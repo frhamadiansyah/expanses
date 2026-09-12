@@ -117,7 +117,8 @@ export function postTransaction(database: Database, ws: WorkspaceContext, input:
   return database.transaction((tx) => postTransactionTx(tx, ws, input));
 }
 
-async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+/** Voids inside an open transaction, so a caller can void and repost several transactions atomically. */
+export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
   const [row] = await tx
     .select({ status: transactions.status })
     .from(transactions)

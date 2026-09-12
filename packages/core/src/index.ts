@@ -80,3 +80,48 @@ export {
   parseCsvAmount,
   parseCsvDate,
 } from './import/csv';
+export {
+  formatPriceMicro,
+  formatUnits,
+  parsePriceMicro,
+  parseUnits,
+  PRICE_SCALE,
+  priceMicroFrom,
+  UNITS_SCALE,
+  UnitsError,
+  unitsValueMinor,
+} from './assets/units';
+export {
+  averagePriceMicro,
+  type Position,
+  positionAfter,
+  sellBasisMinor,
+  type TradeErrorCode,
+  TradeError,
+  type TradeKind,
+  type TradeRecord,
+  type YearBucket,
+} from './assets/position';
+export { type TradeAccounts, type TradeInput, tradeDescription, tradePostings } from './assets/trades';
+export {
+  type AssetValue,
+  type AssetValueInput,
+  assetValueAt,
+  isStaleValue,
+  PRICE_STALE_DAYS,
+  type PriceRow,
+  type ValuationBasis,
+  type ValuationMode,
+  type ValuationRow,
+  VALUATION_STALE_DAYS,
+} from './assets/value';
+export {
+  type CoretaxField,
+  type CoretaxFieldKind,
+  type CoretaxProblem,
+  type CoretaxSection,
+  CORETAX_SECTIONS,
+  missingCoretaxFields,
+  validateCoretaxFields,
+} from './assets/coretax-fields';
+export { type AssetKind, type AssetPreset, type AssetSubtype, ASSET_PRESETS, type PlanGroup, presetFor, type Risk, type UnitKind } from './assets/presets';

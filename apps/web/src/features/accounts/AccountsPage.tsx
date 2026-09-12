@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, SUBTYPE_LABELS, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { useAssetValues } from '../networth/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { Button, Card, Empty, ErrorBox, errorMessage, Field, Input, Money, PageHeader, Select } from '../../ui';
 
@@ -117,6 +118,8 @@ function AddAccountForm() {
 function AccountList({ title, accounts, balances }: { title: string; accounts: AccountRow[]; balances: Record<string, number> }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const values = useAssetValues();
+  const valued = (id: string) => (values.data ?? []).find((row) => row.accountId === id && row.mode !== 'derived');
   if (accounts.length === 0) return null;
 
   async function rename(account: AccountRow) {
@@ -156,7 +159,16 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
                 Set up points
               </Link>
             )}
-            <Money minor={displayAmount(account.kind, balances[account.id] ?? 0)} currency={account.currency!} className="font-medium" />
+            {valued(account.id) ? (
+              <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="text-right">
+                <Money minor={valued(account.id)!.valueMinor} currency={account.currency!} className="block font-medium" />
+                <span className="text-xs text-slate-500">
+                  cost <Money minor={valued(account.id)!.costMinor} currency={account.currency!} />
+                </span>
+              </Link>
+            ) : (
+              <Money minor={displayAmount(account.kind, balances[account.id] ?? 0)} currency={account.currency!} className="font-medium" />
+            )}
             <Button variant="ghost" onClick={() => void rename(account)} aria-label={`Rename ${account.name}`}>
               Rename
             </Button>
