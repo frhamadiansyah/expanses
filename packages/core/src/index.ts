@@ -134,3 +134,4 @@ export {
   type SheetLiability,
   type SheetRow,
 } from './assets/balance-sheet';
+export { type HealthRatio, healthRatios, monthly, type PeriodFlows, type RatioKey, type RatioStatus, type SheetTotals } from './assets/health';

@@ -60,7 +60,7 @@ describe('healthRatios', () => {
     const ratio = by(healthRatios(flows(), totals()), 'savings_rate');
     expect(ratio.value).toBeCloseTo(((734_400_000 - 561_600_000) / 734_400_000) * 100, 2);
     expect(ratio.status).toBe('good');
-    expect(statusOf('savings_rate', { spendingMinor: 700_000_000 })).toBe('watch');
+    expect(statusOf('savings_rate', { spendingMinor: 680_000_000 })).toBe('watch');
     expect(statusOf('savings_rate', { spendingMinor: 730_000_000 })).toBe('act');
   });
 
