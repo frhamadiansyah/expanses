@@ -27,3 +27,4 @@ export * as goalsSchema from './schema-goals';
 export * from './repos/goals';
 export * from './repos/goal-funding';
 export * from './repos/goal-transfers';
+export * from './repos/convert';

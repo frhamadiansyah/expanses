@@ -5,6 +5,8 @@ export interface PostingLine {
   amountMinor: number;
   currency: string;
   memo?: string | null;
+  /** Category of a card purchase whose other side is an asset, so points still count. */
+  spendCategoryId?: string | null;
 }
 
 export interface PlannedEntry {
@@ -12,6 +14,7 @@ export interface PlannedEntry {
   amountMinor: number;
   currency: string;
   memo: string | null;
+  spendCategoryId: string | null;
   fxRateToBase: number;
   amountBaseMinor: number;
 }

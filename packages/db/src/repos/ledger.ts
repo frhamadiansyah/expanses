@@ -107,6 +107,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
       fxRateToBase: p.fxRateToBase,
       amountBaseMinor: p.amountBaseMinor,
       memo: p.memo,
+      spendCategoryId: p.spendCategoryId,
     })),
   );
   await audit(tx, ws, 'post', id, input);
@@ -197,6 +198,8 @@ export interface TransactionEntryView {
   fxRateToBase: number;
   amountBaseMinor: number;
   memo: string | null;
+  /** Category of a card purchase whose other side is an asset. */
+  spendCategoryId: string | null;
 }
 
 export interface TransactionView {
@@ -245,6 +248,7 @@ export async function listTransactions(
       fxRateToBase: entries.fxRateToBase,
       amountBaseMinor: entries.amountBaseMinor,
       memo: entries.memo,
+      spendCategoryId: entries.spendCategoryId,
     })
     .from(entries)
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
