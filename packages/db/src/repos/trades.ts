@@ -18,6 +18,7 @@ import { accounts, entries } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goals } from '../schema-goals';
 import { AssetError, assertAccountInWorkspace } from './assets';
+import { adjustSetAsideTx } from './goal-transfers';
 import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
 import { postTransactionTx, voidTransactionTx } from './ledger';
@@ -43,6 +44,10 @@ export interface RecordTradeInput {
   cashAccountId: string | null;
   /** Goal this buy funds, or the goal a sell takes its units from. */
   goalId?: string | null;
+  /** Category of the purchase when a credit card pays for it, so the points engine sees card spend. */
+  spendCategoryId?: string | null;
+  /** Merchant category code of that card purchase: gold and jewellery shops are 5944. */
+  mcc?: string | null;
   /** Money that left the cash account, when it is in another currency. */
   cashMinor?: number;
   templateId?: string | null;
@@ -187,21 +192,37 @@ async function recalculateSells(
   return changed;
 }
 
-async function writeTrade(tx: Db, ws: WorkspaceContext, input: RecordTradeInput, replacesTradeId: string | null): Promise<TradeResult> {
+/** Writes a trade and its ledger transaction inside an open database transaction. */
+export async function writeTradeTx(tx: Db, ws: WorkspaceContext, input: RecordTradeInput, replacesTradeId: string | null): Promise<TradeResult> {
   await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
   if (input.cashAccountId) await assertAccountInWorkspace(tx, ws, input.cashAccountId, 'Cash account');
   const { accounts: tradeAccounts, holdingName } = await tradeAccountsFor(tx, ws, input.accountId, input.cashAccountId);
   const trades = await activeTrades(tx, ws, input.accountId);
   const position = positionAt(trades, input.occurredOn);
-  if (input.kind === 'sell') await checkGoalUnits(tx, ws, trades, input);
+  if (input.kind === 'sell') {
+    await checkGoalUnits(tx, ws, trades, input);
+    if (input.cashAccountId) {
+      const [cash] = await tx
+        .select({ subtype: accounts.subtype })
+        .from(accounts)
+        .where(and(eq(accounts.id, input.cashAccountId), eq(accounts.workspaceId, ws.workspaceId)));
+      if (cash?.subtype === 'credit_card') throw new AssetError('Choose a bank or cash account for the proceeds');
+    }
+  }
   const tradeInput = toInput(input);
-  const lines = tradePostings(tradeInput, position, tradeAccounts);
+  const lines = tradePostings(tradeInput, position, tradeAccounts).map((line) =>
+    // The card line carries the purchase category, so points are computed without it being spending.
+    input.kind === 'buy' && input.spendCategoryId && input.cashAccountId && line.accountId === input.cashAccountId
+      ? { ...line, spendCategoryId: input.spendCategoryId }
+      : line,
+  );
   const transactionId = lines.length
     ? await postTransactionTx(tx, ws, {
         occurredOn: input.occurredOn,
         description: tradeDescription(tradeInput, holdingName),
         lines,
         ratesToBase: input.ratesToBase,
+        mcc: input.mcc ?? null,
       })
     : null;
   const id = uuidv7();
@@ -223,6 +244,10 @@ async function writeTrade(tx: Db, ws: WorkspaceContext, input: RecordTradeInput,
     replacesTradeId,
     createdAt: new Date().toISOString(),
   });
+  // Money parked for this goal in the account that paid is now units, so it stops counting as cash.
+  if (input.kind === 'buy' && input.goalId && input.cashAccountId) {
+    await adjustSetAsideTx(tx, ws, input.goalId, input.cashAccountId, -(input.grossMinor + input.feeMinor + input.taxMinor));
+  }
   const recalculatedSells = await recalculateSells(tx, ws, input.accountId, input.occurredOn, input.ratesToBase);
   return { tradeId: id, transactionId, recalculatedSells };
 }
@@ -253,14 +278,14 @@ async function retire(tx: Db, ws: WorkspaceContext, tradeId: string, status: 're
 
 /** Records a buy, sell, income or unit change with its ledger transaction, in one database transaction. */
 export function recordTrade(database: Database, ws: WorkspaceContext, input: RecordTradeInput): Promise<TradeResult> {
-  return database.transaction((tx) => writeTrade(tx, ws, input, null));
+  return database.transaction((tx) => writeTradeTx(tx, ws, input, null));
 }
 
 /** Edits a trade: the old one and its transaction are retired and a fresh pair is written. */
 export function replaceTrade(database: Database, ws: WorkspaceContext, tradeId: string, input: RecordTradeInput): Promise<TradeResult> {
   return database.transaction(async (tx) => {
     const old = await retire(tx, ws, tradeId, 'replaced');
-    const result = await writeTrade(tx, ws, input, tradeId);
+    const result = await writeTradeTx(tx, ws, input, tradeId);
     const from = old.occurredOn < input.occurredOn ? old.occurredOn : input.occurredOn;
     const alreadyDone = new Set(result.recalculatedSells.map((sell) => sell.tradeId));
     const more = (await recalculateSells(tx, ws, input.accountId, from, input.ratesToBase)).filter((sell) => !alreadyDone.has(sell.tradeId));

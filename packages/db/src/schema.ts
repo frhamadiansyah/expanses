@@ -53,6 +53,8 @@ export const transactions = sqliteTable('transactions', {
   originalAmountMinor: integer('original_amount_minor'),
   /** Merchant category code typed for a card purchase. */
   mcc: text('mcc'),
+  /** Goal a tagged transfer funds. Ordinary payments never carry one. */
+  goalId: text('goal_id'),
   createdAt: text('created_at').notNull(),
 });
 
@@ -66,6 +68,8 @@ export const entries = sqliteTable('entries', {
   fxRateToBase: real('fx_rate_to_base').notNull(),
   amountBaseMinor: integer('amount_base_minor').notNull(),
   memo: text('memo'),
+  /** Category of a card purchase whose other side is an asset, so points still count. */
+  spendCategoryId: text('spend_category_id'),
 });
 
 export const auditLog = sqliteTable('audit_log', {

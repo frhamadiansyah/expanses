@@ -17,6 +17,8 @@ export interface TradeTemplateRow {
   active: boolean;
   /** Goal each buy from this template starts with; a recorded buy can override it. */
   goalId: string | null;
+  /** 'buy' confirms units later; 'move' just parks money in a broker or savings account. */
+  kind: 'buy' | 'move';
   createdAt: string;
 }
 
@@ -29,6 +31,7 @@ export interface SaveTradeTemplateInput {
   dayOfMonth: number;
   active: boolean;
   goalId?: string | null;
+  kind?: 'buy' | 'move';
 }
 
 type TemplateDbRow = typeof tradeTemplates.$inferSelect;
@@ -43,11 +46,13 @@ const toRow = (row: TemplateDbRow): TradeTemplateRow => ({
   dayOfMonth: row.dayOfMonth,
   active: row.active === 1,
   goalId: row.goalId,
+  kind: row.kind,
   createdAt: row.createdAt,
 });
 
 /** Adds or updates a monthly buy. */
 export async function saveTradeTemplate(database: Database, ws: WorkspaceContext, input: SaveTradeTemplateInput): Promise<string> {
+  if (input.kind === 'move' && (input.unitsMicro ?? null) !== null) throw new AssetError('A monthly move carries an amount, not units');
   const hasAmount = input.amountMinor !== null && input.amountMinor !== undefined;
   const hasUnits = input.unitsMicro !== null && input.unitsMicro !== undefined;
   if (hasAmount === hasUnits) throw new AssetError('A monthly buy needs an amount or a number of units, not both');
@@ -67,6 +72,7 @@ export async function saveTradeTemplate(database: Database, ws: WorkspaceContext
     dayOfMonth: input.dayOfMonth,
     active: input.active ? 1 : 0,
     goalId: input.goalId ?? null,
+    kind: input.kind ?? 'buy',
     createdAt: new Date().toISOString(),
   };
   await database.transaction(async (tx) => {

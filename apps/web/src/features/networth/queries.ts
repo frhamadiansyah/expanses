@@ -6,6 +6,7 @@ import {
   sheetInputsAt,
   dueTemplates,
   getAssetProfile,
+  idleCash,
   listAssetProfiles,
   listPrices,
   listTradeTemplates,
@@ -22,6 +23,12 @@ export function useAssetValues(date?: string) {
   const { database, ws } = useApp();
   const onDate = date ?? isoDate();
   return useQuery({ queryKey: ['asset-values', ws.workspaceId, onDate], queryFn: () => assetValuesAt(database, ws, onDate) });
+}
+
+export function useIdleCash(date?: string) {
+  const { database, ws } = useApp();
+  const onDate = date ?? isoDate();
+  return useQuery({ queryKey: ['idle-cash', ws.workspaceId, onDate], queryFn: () => idleCash(database, ws, onDate) });
 }
 
 export function useAssetProfiles() {

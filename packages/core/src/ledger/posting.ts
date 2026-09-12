@@ -57,6 +57,7 @@ export function planPosting(input: PostingInput): PlannedEntry[] {
       amountMinor: line.amountMinor,
       currency: line.currency,
       memo: line.memo ?? null,
+      spendCategoryId: line.spendCategoryId ?? null,
       fxRateToBase: rate,
       amountBaseMinor: convertMinor(line.amountMinor, line.currency, baseCurrency, rate),
     };

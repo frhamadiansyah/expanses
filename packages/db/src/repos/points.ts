@@ -455,13 +455,26 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
       AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
     ORDER BY t.occurred_on, t.id, e.id
   `);
+  // A purchase of a holding paid by card: the card line itself names the category it would have had.
+  const assetRows = await database.db.values<[string, string, string, string, string, number, string, string | null, string | null]>(sql`
+    SELECT t.id, e.id, t.occurred_on, e.spend_category_id, t.description, -e.amount_minor, e.currency, t.original_currency, t.mcc
+    FROM entries e
+    JOIN transactions t ON t.id = e.transaction_id
+    WHERE e.workspace_id = ${ws.workspaceId}
+      AND t.status = 'posted'
+      AND e.account_id = ${cardAccountId}
+      AND e.spend_category_id IS NOT NULL
+      AND e.amount_minor < 0
+      AND t.occurred_on BETWEEN ${from} AND ${to}
+    ORDER BY t.occurred_on, t.id, e.id
+  `);
   const sources = await mccSourcesFor(database.db, ws);
   const categories = await database.db
     .select({ id: accounts.id, parentId: accounts.parentId, systemKey: accounts.systemKey })
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category')));
   const feeCategories = cardFeeCategoryIds(categories);
-  return rows.map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed]) => {
+  return [...rows, ...assetRows].map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed]) => {
     const { mcc, source } = resolveMcc(description, categoryId, { ...sources, typed });
     return { transactionId, entryId, occurredOn, categoryId, description, amountMinor: Number(amountMinor), currency, originalCurrency, mcc, mccSource: source, cardFee: isCardFee(description, categoryId, feeCategories) };
   });

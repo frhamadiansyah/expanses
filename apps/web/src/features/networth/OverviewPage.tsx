@@ -8,7 +8,7 @@ import { Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { NetWorthTabs } from './NetWorthTabs';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
 import { useGoalPlans } from '../goals/queries';
-import { useAssetValues, useDueTemplates, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
+import { useAssetValues, useDueTemplates, useIdleCash, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
 import { ValueChart } from './ValueChart';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
@@ -84,6 +84,7 @@ export function OverviewPage() {
   const sheetInputs = useSheet();
   const values = useAssetValues();
   const due = useDueTemplates();
+  const idle = useIdleCash();
   const goalSummary = useGoalPlans(today);
 
   const [period, setPeriod] = useState<RatioPeriod>({ key: 'ttm' });
@@ -93,7 +94,7 @@ export function OverviewPage() {
 
   const points = series.data ?? [];
   const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
-  const attention = attentionItems(values.data ?? [], due.data ?? [], goalSummary.data?.plans ?? []);
+  const attention = attentionItems(values.data ?? [], due.data ?? [], goalSummary.data?.plans ?? [], idle.data ?? []);
   const sinceLastMonth = deltaSince(points, 1);
   const januaryMonths = monthsSinceJanuary(points);
   const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);

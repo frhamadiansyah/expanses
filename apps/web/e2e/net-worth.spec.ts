@@ -41,9 +41,10 @@ test('says it does not know the cash-flow ratios until there are transactions', 
 
   await page.goto('/net-worth');
   await expect(page.getByText('Financial health')).toBeVisible();
-  await expect(page.getByText('Savings rate')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Savings ratio' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Surplus' })).toBeVisible();
   await expect(page.getByText('Not enough data').first()).toBeVisible();
-  await expect(page.getByText('Debt to assets')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Debt to assets' })).toBeVisible();
 });
 
 test('switches the ratios between the rolling year and a calendar year', async ({ page }) => {

@@ -107,6 +107,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
       fxRateToBase: p.fxRateToBase,
       amountBaseMinor: p.amountBaseMinor,
       memo: p.memo,
+      spendCategoryId: p.spendCategoryId,
     })),
   );
   await audit(tx, ws, 'post', id, input);
@@ -197,6 +198,8 @@ export interface TransactionEntryView {
   fxRateToBase: number;
   amountBaseMinor: number;
   memo: string | null;
+  /** Category of a card purchase whose other side is an asset. */
+  spendCategoryId: string | null;
 }
 
 export interface TransactionView {
@@ -209,6 +212,8 @@ export interface TransactionView {
   originalCurrency: string | null;
   originalAmountMinor: number | null;
   mcc: string | null;
+  /** Goal a tagged transfer funds. Ordinary payments never carry one. */
+  goalId: string | null;
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -245,6 +250,7 @@ export async function listTransactions(
       fxRateToBase: entries.fxRateToBase,
       amountBaseMinor: entries.amountBaseMinor,
       memo: entries.memo,
+      spendCategoryId: entries.spendCategoryId,
     })
     .from(entries)
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
@@ -266,6 +272,7 @@ export async function listTransactions(
     originalCurrency: t.originalCurrency,
     originalAmountMinor: t.originalAmountMinor,
     mcc: t.mcc,
+    goalId: t.goalId,
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));

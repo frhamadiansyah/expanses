@@ -104,3 +104,26 @@ export function priceMicroFrom(grossMinor: number, unitsMicro: number): number {
   if (!Number.isSafeInteger(priceMicro)) throw new UnitsError('Price is too large');
   return priceMicro;
 }
+
+/**
+ * IDX stocks trade in lots of 100 shares; US stocks trade in single shares.
+ * A lot size of 1 or less means the holding simply has no lots.
+ */
+export function lotsOf(unitsMicro: number, lotSize: number): number {
+  if (lotSize <= 1) return unitsMicro / UNITS_SCALE;
+  return unitsMicro / UNITS_SCALE / lotSize;
+}
+
+export function unitsFromLots(lots: number, lotSize: number): number {
+  if (!Number.isFinite(lots) || lots < 0) throw new UnitsError('Enter a number of lots greater than zero');
+  const size = lotSize <= 1 ? 1 : lotSize;
+  const unitsMicro = Math.round(lots * size * UNITS_SCALE);
+  if (!Number.isSafeInteger(unitsMicro)) throw new UnitsError('That is too many lots');
+  return unitsMicro;
+}
+
+/** "12 lot (1.200 shares)", or plain shares when the holding has no lots. */
+export function formatLots(unitsMicro: number, lotSize: number): string {
+  if (lotSize <= 1) return `${formatUnits(unitsMicro)} shares`;
+  return `${formatUnits(Math.round(lotsOf(unitsMicro, lotSize) * UNITS_SCALE))} lot (${formatUnits(unitsMicro)} shares)`;
+}

@@ -1,4 +1,5 @@
-import type { AssetValueRow, GoalPlanRow, GoalRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
+import { formatMinor } from '@expanses/core';
+import type { AssetValueRow, GoalPlanRow, GoalRow, IdleCashRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
 
@@ -24,6 +25,7 @@ const template = (id: string, accountId: string): TradeTemplateRow => ({
   dayOfMonth: 5,
   active: true,
   goalId: null,
+  kind: 'buy',
   createdAt: '2026-01-01T00:00:00Z',
 });
 
@@ -122,6 +124,33 @@ describe('attentionItems with goals', () => {
   it('passes on a set-aside amount above the balance', () => {
     const items = attentionItems([], [], [goalPlanRow({ status: 'funded', earmarkWarning: 'You set aside more than BCA Tahapan holds' })]);
     expect(items[0]!.text).toContain('BCA Tahapan');
+  });
+});
+
+const idle = (partial: Partial<IdleCashRow> = {}): IdleCashRow => ({
+  accountId: 'rdn',
+  name: 'RDN Stockbit',
+  currency: 'IDR',
+  planGroup: 'invest',
+  amountMinor: 1_011_019,
+  since: '2026-10-05',
+  ...partial,
+});
+
+describe('attentionItems with idle cash', () => {
+  it('lists cash waiting at the broker, with the date it arrived', () => {
+    const items = attentionItems([], [], [], [idle()]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ tone: 'info', action: 'Buy', to: '/net-worth/trades' });
+    expect(items[0]!.text).toBe(`${formatMinor(1_011_019, 'IDR')} has been waiting in RDN Stockbit since 5 Oct 2026`);
+  });
+
+  it('says nothing about a broker account that holds nothing', () => {
+    expect(attentionItems([], [], [], [idle({ amountMinor: 0 })])).toEqual([]);
+  });
+
+  it('leaves an everyday bank account alone, since money there is meant to be spent', () => {
+    expect(attentionItems([], [], [], [idle({ accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid', amountMinor: 50_000_000 })])).toEqual([]);
   });
 });
 

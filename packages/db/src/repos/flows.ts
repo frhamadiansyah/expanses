@@ -1,8 +1,9 @@
-import { addMonths, displayAmount, monthOf, type PeriodFlows } from '@expanses/core';
+import { addMonths, displayAmount, monthOf, type PeriodFlows, type PlanGroup } from '@expanses/core';
 import { and, eq, gte, lte } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
+import { assetProfiles, investmentTrades } from '../schema-assets';
 import { categoryIdsByKey } from './categories';
 
 export interface MonthFlow {
@@ -19,6 +20,9 @@ export interface PeriodFlowsResult extends PeriodFlows {
 }
 
 const MAX_MONTHS = 12;
+/** Money parked here is money put away, not spending money. */
+const SAVINGS_SUBTYPES = ['savings'];
+const SPENDING_SUBTYPES = ['cash', 'bank'];
 
 function monthsBetween(from: string, to: string): string[] {
   const months: string[] = [];
@@ -26,9 +30,21 @@ function monthsBetween(from: string, to: string): string[] {
   return months;
 }
 
+interface TransactionRoll {
+  month: string;
+  principalMinor: number;
+  interestMinor: number;
+  touchesHomeLoan: boolean;
+  /** Net change on accounts where money waits to grow: a savings pot, a deposit, or broker cash. */
+  intoSavingsMinor: number;
+  /** True when everyday money funded it, so a move between two savings pots counts nothing. */
+  fromSpendingMoney: boolean;
+}
+
 /**
- * Take-home income, spending and debt payments over a period, in base currency.
- * Transfers and opening balances never appear, because only income and expense categories are counted.
+ * Take-home income, spending, debt payments, and what actually went into savings and investments
+ * over a period, in base currency. Transfers and opening balances never reach income or spending,
+ * because only categories are counted there.
  */
 export async function periodFlows(
   database: Database,
@@ -63,9 +79,16 @@ export async function periodFlows(
       ),
     );
 
+  const profiles = await database.db
+    .select({ accountId: assetProfiles.accountId, planGroup: assetProfiles.planGroup })
+    .from(assetProfiles)
+    .where(eq(assetProfiles.workspaceId, ws.workspaceId));
+  const groupOf = new Map<string, PlanGroup>(profiles.map((profile) => [profile.accountId, profile.planGroup]));
+  const isSavingsDestination = (accountId: string, subtype: string) => groupOf.get(accountId) === 'invest' || SAVINGS_SUBTYPES.includes(subtype);
+  const isSpendingMoney = (accountId: string, subtype: string) => SPENDING_SUBTYPES.includes(subtype) && groupOf.get(accountId) !== 'invest';
+
   const byMonth = new Map(monthsBetween(range.from, range.to).map((month) => [month, { month, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0 }]));
-  /** A loan payment is one transaction: principal off the loan, interest as an expense. */
-  const perTransaction = new Map<string, { month: string; principalMinor: number; interestMinor: number; touchesHomeLoan: boolean }>();
+  const perTransaction = new Map<string, TransactionRoll>();
 
   for (const row of rows) {
     const month = monthOf(row.occurredOn);
@@ -75,33 +98,76 @@ export async function periodFlows(
     } else if (row.kind === 'expense' && row.accountId !== finalTaxId) {
       if (bucket) bucket.spendingMinor += displayAmount('expense', row.amountBaseMinor);
     }
-    const payment = perTransaction.get(row.transactionId) ?? { month, principalMinor: 0, interestMinor: 0, touchesHomeLoan: false };
-    if (row.subtype === 'loan' && row.amountBaseMinor > 0) payment.principalMinor += row.amountBaseMinor;
-    if (row.accountId === interestId) payment.interestMinor += displayAmount('expense', row.amountBaseMinor);
-    if (homeLoans.has(row.accountId)) payment.touchesHomeLoan = true;
-    perTransaction.set(row.transactionId, payment);
+    const roll: TransactionRoll =
+      perTransaction.get(row.transactionId) ??
+      { month, principalMinor: 0, interestMinor: 0, touchesHomeLoan: false, intoSavingsMinor: 0, fromSpendingMoney: false };
+    if (row.subtype === 'loan' && row.amountBaseMinor > 0) roll.principalMinor += row.amountBaseMinor;
+    if (row.accountId === interestId) roll.interestMinor += displayAmount('expense', row.amountBaseMinor);
+    if (homeLoans.has(row.accountId)) roll.touchesHomeLoan = true;
+    if (row.kind === 'asset' && isSavingsDestination(row.accountId, row.subtype)) roll.intoSavingsMinor += row.amountBaseMinor;
+    if (row.kind === 'asset' && isSpendingMoney(row.accountId, row.subtype) && row.amountBaseMinor < 0) roll.fromSpendingMoney = true;
+    perTransaction.set(row.transactionId, roll);
   }
+
+  // Purchases keep their own record, so their ledger transaction must not be counted a second time.
+  const tradeRows = await database.db
+    .select({
+      transactionId: investmentTrades.transactionId,
+      kind: investmentTrades.kind,
+      cashAccountId: investmentTrades.cashAccountId,
+      grossMinor: investmentTrades.grossMinor,
+      feeMinor: investmentTrades.feeMinor,
+      taxMinor: investmentTrades.taxMinor,
+    })
+    .from(investmentTrades)
+    .where(
+      and(
+        eq(investmentTrades.workspaceId, ws.workspaceId),
+        eq(investmentTrades.status, 'active'),
+        gte(investmentTrades.occurredOn, range.from),
+        lte(investmentTrades.occurredOn, range.to),
+      ),
+    );
+  const tradeTransactions = new Set(tradeRows.map((trade) => trade.transactionId).filter((id): id is string => id !== null));
 
   let debtPaymentsMinor = 0;
   let nonMortgageDebtPaymentsMinor = 0;
-  for (const payment of perTransaction.values()) {
-    // Interest only counts as a debt payment when the same transaction also pays down a loan.
-    if (payment.principalMinor <= 0) continue;
-    const total = payment.principalMinor + payment.interestMinor;
-    debtPaymentsMinor += total;
-    if (!payment.touchesHomeLoan) nonMortgageDebtPaymentsMinor += total;
-    const bucket = byMonth.get(payment.month);
-    if (bucket) bucket.debtPaymentsMinor += total;
+  let putAwayMinor = 0;
+
+  for (const [transactionId, roll] of perTransaction) {
+    if (roll.principalMinor > 0) {
+      // Interest only counts as a debt payment when the same transaction also pays down a loan.
+      const total = roll.principalMinor + roll.interestMinor;
+      debtPaymentsMinor += total;
+      if (!roll.touchesHomeLoan) nonMortgageDebtPaymentsMinor += total;
+      const bucket = byMonth.get(roll.month);
+      if (bucket) bucket.debtPaymentsMinor += total;
+      // Principal builds equity, so it is money put away; the interest is spending.
+      putAwayMinor += roll.principalMinor;
+    }
+    if (tradeTransactions.has(transactionId) || roll.intoSavingsMinor === 0) continue;
+    // Money moved from everyday accounts into a savings pot or broker cash, and money taken back out.
+    if (roll.intoSavingsMinor > 0) {
+      if (roll.fromSpendingMoney) putAwayMinor += roll.intoSavingsMinor;
+    } else {
+      putAwayMinor += roll.intoSavingsMinor;
+    }
+  }
+
+  // A purchase paid from everyday money, a credit card included, is money put to work. Money that
+  // already sat in a savings pot or at the broker was counted when it moved there, so it is not counted again.
+  const savingsAccounts = new Set<string>();
+  for (const row of rows) if (row.kind === 'asset' && isSavingsDestination(row.accountId, row.subtype)) savingsAccounts.add(row.accountId);
+  for (const trade of tradeRows) {
+    if (trade.kind !== 'buy' || trade.cashAccountId === null) continue;
+    if (savingsAccounts.has(trade.cashAccountId)) continue;
+    putAwayMinor += trade.grossMinor + trade.feeMinor + trade.taxMinor;
   }
 
   const totals = [...byMonth.values()].reduce(
-    (sum, month) => ({
-      incomeMinor: sum.incomeMinor + month.incomeMinor,
-      spendingMinor: sum.spendingMinor + month.spendingMinor,
-    }),
+    (sum, month) => ({ incomeMinor: sum.incomeMinor + month.incomeMinor, spendingMinor: sum.spendingMinor + month.spendingMinor }),
     { incomeMinor: 0, spendingMinor: 0 },
   );
-
   // A month counts only when money actually moved in or out; an opening balance alone is not a month of cash flow.
   const monthsWithFlows = [...byMonth.values()].filter((month) => month.incomeMinor !== 0 || month.spendingMinor !== 0 || month.debtPaymentsMinor !== 0).length;
 
@@ -113,6 +179,7 @@ export async function periodFlows(
     spendingMinor: totals.spendingMinor,
     debtPaymentsMinor,
     nonMortgageDebtPaymentsMinor,
+    putAwayMinor,
     byMonth: [...byMonth.values()],
   };
 }

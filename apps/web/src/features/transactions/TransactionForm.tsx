@@ -1,5 +1,5 @@
 import { CURRENCIES, isoDate, mccName, minorToMajorString, parseMajor, parseRate, resolveMcc } from '@expanses/core';
-import { type AccountRow, mccSourcesFor, postTransaction, replaceTransaction, saveMerchantMcc, type TransactionView, upsertRate } from '@expanses/db';
+import { type AccountRow, mccSourcesFor, postTransaction, recordTaggedTransfer, replaceTransaction, saveMerchantMcc, type TransactionView, upsertRate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -10,6 +10,10 @@ import { CategoryOptions } from '../cards/options';
 import { MccPicker } from '../merchants/MccPicker';
 import { suggestPattern } from '../merchants/mcc-search';
 import { type Draft, draftFromTransaction, draftToExtras, draftToLines, draftToMemory, emptyDraft } from './draft';
+import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, purchaseDraftToInput, transferTargets } from './buy-in-form';
+import { useAssetProfiles, useAssetValues } from '../networth/queries';
+import { useGoals } from '../goals/queries';
+import { recordTrade } from '@expanses/db';
 
 function MoneyAccountOptions({ accounts }: { accounts: AccountRow[] }) {
   const money = accounts.filter(isMoneyAccount);
@@ -41,9 +45,20 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [showCardDetails, setShowCardDetails] = useState(() => !!initial?.originalCurrency || !!initial?.mcc);
+  const [buying, setBuying] = useState(false);
+  const [purchase, setPurchase] = useState<PurchaseDraft>(() => emptyPurchaseDraft('', '', isoDate()));
+  const [transferGoalId, setTransferGoalId] = useState('');
+  const assetValues = useAssetValues();
+  const assetProfiles = useAssetProfiles();
+  const goals = useGoals();
+  const setPurchaseField = (patch: Partial<PurchaseDraft>) => setPurchase((current) => ({ ...current, ...patch }));
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
 
   const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
+  const choices = useMemo(() => buyChoices(assetValues.data ?? [], assetProfiles.data ?? []), [assetValues.data, assetProfiles.data]);
+  const chosen = [...choices.buys, ...choices.sells].find((option) => option.value === `${purchase.mode}:${purchase.accountId}`);
+  const purchaseMoney = byId.get(purchase.moneyId);
+  const purchaseCurrency = byId.get(purchase.accountId)?.currency ?? ws.baseCurrency;
   const moneyAccount = byId.get(draft.moneyId);
   const toAccount = byId.get(draft.toId);
   const currency = moneyAccount?.currency ?? ws.baseCurrency;
@@ -69,6 +84,13 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
     setError(null);
     setBusy(true);
     try {
+      if (buying) {
+        // Units are recorded, so this saves as a purchase and never touches spending.
+        await recordTrade(database, ws, purchaseDraftToInput(purchase, purchaseCurrency, isoDate()));
+        await invalidate();
+        onDone();
+        return;
+      }
       const lines = draftToLines(draft, accounts);
       const extras = draftToExtras(draft, accounts);
       const memory = draftToMemory(draft, accounts);
@@ -86,6 +108,21 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
         setNeedsRate(resolved.missing[0]!);
         throw new Error(`No ${resolved.missing[0]}→${ws.baseCurrency} rate for ${rateDate}. Enter it below.`);
       }
+      if (draft.mode === 'transfer' && transferGoalId && !initial) {
+        // Money parked for a goal is set aside where it lands, and a purchase from there spends it.
+        await recordTaggedTransfer(database, ws, {
+          occurredOn: draft.occurredOn,
+          description: draft.description || 'Transfer',
+          amountMinor: parseMajor(draft.amount, currency),
+          fromAccountId: draft.moneyId,
+          toAccountId: draft.toId,
+          goalId: transferGoalId,
+          ratesToBase: resolved.rates,
+        });
+        await invalidate();
+        onDone();
+        return;
+      }
       const input = { occurredOn: draft.occurredOn, description: draft.description || (draft.mode === 'transfer' ? 'Transfer' : ''), lines, ratesToBase: resolved.rates, ...extras };
       if (initial) await replaceTransaction(database, ws, initial.id, input);
       else await postTransaction(database, ws, input);
@@ -102,16 +139,112 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
   return (
     <Card>
       <form onSubmit={submit} className="space-y-3">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {(['expense', 'income', 'transfer'] as const).map((m) => (
-            <Button key={m} variant={draft.mode === m ? 'primary' : 'secondary'} aria-pressed={draft.mode === m} onClick={() => set({ mode: m, categoryId: '', splits: [] })}>
+            <Button
+              key={m}
+              variant={!buying && draft.mode === m ? 'primary' : 'secondary'}
+              aria-pressed={!buying && draft.mode === m}
+              onClick={() => {
+                setBuying(false);
+                set({ mode: m, categoryId: '', splits: [] });
+              }}
+            >
               {m === 'expense' ? 'Expense' : m === 'income' ? 'Income' : 'Transfer'}
             </Button>
           ))}
+          {choices.buys.length > 0 && (
+            <Button
+              variant={buying ? 'primary' : 'secondary'}
+              aria-pressed={buying}
+              onClick={() => {
+                setBuying(true);
+                const first = choices.buys[0]!;
+                setPurchase({ ...emptyPurchaseDraft(first.accountId, draft.moneyId, isoDate()), lotSize: first.lotSize, useLots: (first.lotSize ?? 1) > 1 });
+              }}
+            >
+              Buy or sell
+            </Button>
+          )}
         </div>
-        <div className="grid gap-3 md:grid-cols-2">
+
+        {buying && (
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="What you bought or sold" hint="Units are recorded, so this never counts as spending.">
+              <Select
+                value={`${purchase.mode}:${purchase.accountId}`}
+                onChange={(e) => {
+                  const option = [...choices.buys, ...choices.sells].find((row) => row.value === e.target.value)!;
+                  setPurchaseField({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1 });
+                }}
+              >
+                <optgroup label="Investments">
+                  {choices.buys.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </optgroup>
+                {choices.sells.length > 0 && (
+                  <optgroup label="Selling">
+                    {choices.sells.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+            </Field>
+            <Field label="Date">
+              <Input type="date" value={purchase.occurredOn} max={isoDate()} onChange={(e) => setPurchaseField({ occurredOn: e.target.value })} />
+            </Field>
+            {purchase.useLots ? (
+              <Field label="Lots" hint={`${purchase.lotSize ?? 1} shares a lot.`}>
+                <Input value={purchase.lots} inputMode="decimal" onChange={(e) => setPurchaseField({ lots: e.target.value })} placeholder="1" />
+              </Field>
+            ) : (
+              <Field label={chosen?.unitLabel ?? 'Units'}>
+                <Input value={purchase.units} inputMode="decimal" onChange={(e) => setPurchaseField({ units: e.target.value })} placeholder="2" />
+              </Field>
+            )}
+            <Field label={purchase.mode === 'buy' ? `What it cost, before fees (${purchaseCurrency})` : `Proceeds, before fees (${purchaseCurrency})`}>
+              <Input value={purchase.amount} inputMode="decimal" onChange={(e) => setPurchaseField({ amount: e.target.value })} placeholder="3.980.000" />
+            </Field>
+            <Field label={`Fee (${purchaseCurrency})`}>
+              <Input value={purchase.fee} inputMode="decimal" onChange={(e) => setPurchaseField({ fee: e.target.value })} />
+            </Field>
+            <Field label={purchase.mode === 'buy' ? 'Paid with' : 'Proceeds into'} hint={purchase.mode === 'buy' ? 'A credit card works: the card owes more, and the purchase still earns points.' : undefined}>
+              <Select
+                value={purchase.moneyId}
+                onChange={(e) => setPurchaseField({ moneyId: e.target.value, moneyIsCard: byId.get(e.target.value)?.subtype === 'credit_card' })}
+              >
+                <MoneyAccountOptions accounts={accounts} />
+              </Select>
+            </Field>
+            {purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card' && (
+              <>
+                <Field label="Category for points" hint="Not spending: it only tells the points engine what the card bought.">
+                  <Select value={purchase.spendCategoryId} onChange={(e) => setPurchaseField({ spendCategoryId: e.target.value })}>
+                    <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
+                  </Select>
+                </Field>
+                <Field label="MCC" hint="Gold and jewellery shops are 5944.">
+                  <Input value={purchase.mcc} inputMode="numeric" onChange={(e) => setPurchaseField({ mcc: e.target.value })} placeholder="5944" />
+                </Field>
+              </>
+            )}
+            {(goals.data ?? []).length > 0 && (
+              <Field label={purchase.mode === 'buy' ? 'For goal' : 'Sell from goal'}>
+                <Select value={purchase.goalId} onChange={(e) => setPurchaseField({ goalId: e.target.value })}>
+                  <option value="">No goal</option>
+                  {(goals.data ?? []).map((goal) => (
+                    <option key={goal.id} value={goal.id}>{goal.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+          </div>
+        )}
+        <div className="grid gap-3 md:grid-cols-2" hidden={buying}>
           <Field label="Date">
-            <Input type="date" value={draft.occurredOn} onChange={(e) => set({ occurredOn: e.target.value })} required />
+            <Input type="date" value={draft.occurredOn} onChange={(e) => set({ occurredOn: e.target.value })} required={!buying} />
           </Field>
           <Field label="Description">
             <Input value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder={draft.mode === 'transfer' ? 'Transfer' : 'Superindo'} />
@@ -122,11 +255,23 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
             </Select>
           </Field>
           {draft.mode === 'transfer' ? (
-            <Field label="To" hint="Paying a credit card bill? Choose the card here.">
-              <Select value={draft.toId} onChange={(e) => set({ toId: e.target.value })}>
-                <MoneyAccountOptions accounts={accounts} />
-              </Select>
-            </Field>
+            <>
+              <Field label="To" hint="Buying a fund, shares or gold? Use Buy or sell, so units are counted.">
+                <Select value={draft.toId} onChange={(e) => set({ toId: e.target.value })}>
+                  <MoneyAccountOptions accounts={transferTargets(accounts, assetValues.data ?? [])} />
+                </Select>
+              </Field>
+              {!initial && (goals.data ?? []).length > 0 && (
+                <Field label="For goal" hint="Money parked for a goal counts towards it while it waits.">
+                  <Select value={transferGoalId} onChange={(e) => setTransferGoalId(e.target.value)}>
+                    <option value="">No goal</option>
+                    {(goals.data ?? []).map((goal) => (
+                      <option key={goal.id} value={goal.id}>{goal.name}</option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
+            </>
           ) : (
             draft.splits.length === 0 && (
               <Field label="Category">
@@ -138,7 +283,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
           )}
           {draft.splits.length === 0 && (
             <Field label={`Amount (${currency})`}>
-              <Input aria-label="Amount" value={draft.amount} onChange={(e) => set({ amount: e.target.value })} inputMode="decimal" required />
+              <Input aria-label="Amount" value={draft.amount} onChange={(e) => set({ amount: e.target.value })} inputMode="decimal" required={!buying} />
             </Field>
           )}
           {crossCurrency && (

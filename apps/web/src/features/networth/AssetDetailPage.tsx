@@ -6,6 +6,7 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { useGoalLinks, useGoals } from '../goals/queries';
+import { AssetSettings } from './AssetSettings';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
@@ -179,6 +180,16 @@ export function AssetDetailPage() {
             ))}
           </div>
         </Card>
+      )}
+
+      {value && (
+        <AssetSettings
+          key={accountId}
+          accountId={accountId}
+          group={profile.data?.planGroup ?? value.planGroup}
+          lotSize={profile.data?.lotSize ?? null}
+          showLotSize={value.mode === 'market' && profile.data?.unitKind !== 'grams'}
+        />
       )}
 
       {profile.data?.coretaxSection && (
