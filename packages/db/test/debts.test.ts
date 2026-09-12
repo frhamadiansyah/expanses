@@ -77,9 +77,9 @@ describe('debt profiles', () => {
     await saveDebtProfile(database, ws, { accountId: andi.id, personName: 'Andi' });
     await saveDebtProfile(database, ws, { accountId: budi.id, personName: 'Budi' });
 
-    // A receivable carries a kode harta; a payable keeps the unverified e-Form code.
+    // A receivable carries a kode harta; a payable carries a kode utang.
     await expect(getDebtProfile(database, ws, andi.id)).resolves.toMatchObject({ coretaxCode: '0201' });
-    await expect(getDebtProfile(database, ws, budi.id)).resolves.toMatchObject({ coretaxCode: '104' });
+    await expect(getDebtProfile(database, ws, budi.id)).resolves.toMatchObject({ coretaxCode: '109' });
   });
 
   it('keeps a related-party code when one is given', async () => {

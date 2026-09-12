@@ -91,17 +91,17 @@ export const KODE_HARTA: readonly CoretaxCode[] = [
 ];
 
 /**
- * The Coretax guide lists no utang codes and publishes no utang converter: Bagian B is typed into
- * the form. These come from DJP's e-Form petunjuk and are kept only so a debt has something to
- * carry — they have never been checked against Coretax itself.
+ * Read from DJP's own *Petunjuk Pengisian Daftar Rincian Harta dan Utang*, which lists the kode
+ * utang as 101, 102, 103 and 109. There is no 104: slice 6 invented it from a secondary source.
+ * The Coretax guide still publishes no utang table and no converter, so Bagian B is typed by hand.
  */
-export const UTANG_CODES_UNVERIFIED = true;
+export const UTANG_CODES_UNVERIFIED = false;
 
 export const KODE_UTANG: readonly { code: string; label: string }[] = [
-  { code: '101', label: 'Utang bank atau lembaga keuangan bukan bank (KPR, leasing kendaraan)' },
+  { code: '101', label: 'Utang bank atau lembaga keuangan bukan bank (KPR, leasing kendaraan bermotor, dan sejenisnya)' },
   { code: '102', label: 'Kartu kredit' },
-  { code: '103', label: 'Utang afiliasi' },
-  { code: '104', label: 'Utang lainnya' },
+  { code: '103', label: 'Utang afiliasi (pinjaman dari pihak yang memiliki hubungan istimewa)' },
+  { code: '109', label: 'Utang lainnya' },
 ];
 
 /** Each family is its own table in Lampiran 1 Bagian A, one for one. */

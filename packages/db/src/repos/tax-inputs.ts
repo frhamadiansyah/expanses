@@ -14,7 +14,7 @@ import { positionsFor } from './trades';
 const endOf = (taxYear: number) => `${taxYear}-12-31`;
 
 /** Codes for debts the owner did not give one: a card is its own code, a bank loan another. */
-const DEBT_CODE_BY_SUBTYPE: Record<string, string> = { credit_card: '102', loan: '101', payable: '104' };
+const DEBT_CODE_BY_SUBTYPE: Record<string, string> = { credit_card: '102', loan: '101', payable: '109' };
 
 /**
  * Everything the harta and utang rows need, read from the ledger on 31 December of the tax year.

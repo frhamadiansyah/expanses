@@ -90,7 +90,7 @@ describe('migration 0013', () => {
     await expect(getAssetProfile(older, olderWs, fund.id)).resolves.toMatchObject({ coretaxCode: '0307' });
   });
 
-  it('converts a receivable and leaves a payable on its unverified code', async () => {
+  it('converts a receivable, and 0014 puts a payable back on 109', async () => {
     const { older, olderWs } = await atVersion12();
     const andi = await createAccount(older, olderWs, { name: 'Andi', kind: 'asset', subtype: 'receivable', currency: 'IDR' });
     const budi = await createAccount(older, olderWs, { name: 'Budi', kind: 'liability', subtype: 'payable', currency: 'IDR' });
@@ -100,7 +100,21 @@ describe('migration 0013', () => {
     await migrate(older);
 
     await expect(getDebtProfile(older, olderWs, andi.id)).resolves.toMatchObject({ coretaxCode: '0201' });
-    await expect(getDebtProfile(older, olderWs, budi.id)).resolves.toMatchObject({ coretaxCode: '104' });
+    await expect(getDebtProfile(older, olderWs, budi.id)).resolves.toMatchObject({ coretaxCode: '109' });
+  });
+
+  it('never touches a payable code already frozen into a report', async () => {
+    const { older, olderWs } = await atVersion12();
+    // 0012 moved payables to 104 on a secondary source; DJP lists 101, 102, 103 and 109 only.
+    await older.db.values(sql`INSERT INTO tax_year_reports (id, workspace_id, tax_year, status, property_basis, repeat_rows, created_at)
+      VALUES ('r2', ${olderWs.workspaceId}, 2025, 'frozen', 'cost', 'holding', '2026-01-02T00:00:00Z')`);
+    await older.db.values(sql`INSERT INTO tax_year_rows (id, report_id, workspace_id, section, code, row_key, name, sort, fields_json, cost_minor, value_minor, balance_minor, source, already_filed, created_at)
+      VALUES ('row2', 'r2', ${olderWs.workspaceId}, 'utang', '104', 'budi', 'Budi', 0, '{}', 0, 0, 5000000, 'auto', 0, '2026-01-02T00:00:00Z')`);
+
+    await migrate(older);
+
+    const rows = await older.db.values<[string]>(sql`SELECT code FROM tax_year_rows WHERE id = 'row2'`);
+    expect(rows).toEqual([['104']]);
   });
 
   it('converts a code once, and migrating again changes nothing', async () => {
