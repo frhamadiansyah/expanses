@@ -22,3 +22,4 @@ export * from './repos/trades';
 export * from './repos/prices';
 export * from './repos/asset-values';
 export * from './repos/trade-templates';
+export * from './repos/flows';
