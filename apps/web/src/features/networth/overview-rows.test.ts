@@ -1,7 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { AssetValueRow, GoalPlanRow, GoalRow, IdleCashRow, NetWorthPoint, PersonDebtRow, PersonLoanRow, TradeTemplateRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
+import { attentionItems, deltaSince, type LoanAttention, monthsSinceJanuary } from './overview-rows';
 
 const value = (partial: Partial<AssetValueRow> & Pick<AssetValueRow, 'accountId' | 'name' | 'mode'>): AssetValueRow => ({
   valueMinor: 1_000_000,
@@ -204,6 +204,53 @@ describe('attentionItems with debts', () => {
 
   it('says nothing about a loan already settled', () => {
     expect(attentionItems([], [], [], [], [debtor({ loans: [loan({ status: 'settled', dueState: 'none', dueLabel: '' })] })])).toEqual([]);
+  });
+});
+
+const loanRow = (partial: Partial<LoanAttention> = {}): LoanAttention => ({
+  accountId: 'kpr',
+  lenderName: 'Bank BTN',
+  currency: 'IDR',
+  paymentDueMinor: null,
+  paymentDueOn: null,
+  fixedRateEndsOn: null,
+  lastInstallmentOf: null,
+  ...partial,
+});
+
+describe('attentionItems with loans', () => {
+  it('names the lender and the amount when a payment is nearly due', () => {
+    const items = attentionItems([], [], [], [], [], [loanRow({ paymentDueMinor: 7_099_866, paymentDueOn: '2026-09-25' })]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ tone: 'warn', action: 'Record', to: '/net-worth/loans' });
+    expect(items[0]!.text).toBe(`Bank BTN wants ${formatMinor(7_099_866, 'IDR')} on 25 Sept 2026`);
+  });
+
+  it('says nothing about a loan with no payment coming', () => {
+    expect(attentionItems([], [], [], [], [], [loanRow()])).toEqual([]);
+  });
+
+  it('warns that a fixed rate is about to end', () => {
+    const items = attentionItems([], [], [], [], [], [loanRow({ fixedRateEndsOn: '2026-10-22' })]);
+
+    expect(items[0]!.text).toContain('the fixed rate ends 22 Oct 2026');
+    expect(items[0]).toMatchObject({ tone: 'info', to: '/net-worth/loans' });
+  });
+
+  it('says when a plan reaches its last instalment', () => {
+    const items = attentionItems([], [], [], [], [], [loanRow({ lastInstallmentOf: 'iBox Grand Indonesia' })]);
+
+    expect(items[0]!.text).toBe('iBox Grand Indonesia is on its last instalment this month');
+  });
+
+  it('lists each thing that needs doing, with its own key', () => {
+    const items = attentionItems([], [], [], [], [], [
+      loanRow({ paymentDueMinor: 7_099_866, paymentDueOn: '2026-09-25', fixedRateEndsOn: '2026-10-22', lastInstallmentOf: 'iBox' }),
+    ]);
+
+    expect(items).toHaveLength(3);
+    expect(new Set(items.map((item) => item.key)).size).toBe(3);
   });
 });
 

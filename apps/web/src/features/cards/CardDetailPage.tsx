@@ -16,6 +16,7 @@ import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { InstallmentList } from '../loans/InstallmentList';
 import { BonusProgress } from './BonusProgress';
 import { CatalogPanel } from './CatalogPanel';
 import { CatalogPicker } from './CatalogPicker';
@@ -469,6 +470,8 @@ export function CardDetailPage() {
           )}
         </>
       )}
+
+      <InstallmentList cardAccountId={card.id} currency={currency} />
     </div>
   );
 }

@@ -3,9 +3,10 @@ import { archiveAccount } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll } from '../../lib/queries';
+import { useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { useGoalLinks, useGoals } from '../goals/queries';
+import { useLoans } from '../loans/queries';
 import { AssetSettings } from './AssetSettings';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
@@ -33,6 +34,8 @@ export function AssetDetailPage() {
   const history = useMonthEndValues(accountId, months);
   const goalLinks = useGoalLinks();
   const goals = useGoals();
+  const loans = useLoans();
+  const balances = useBalances();
   const [error, setError] = useState<unknown>(null);
 
   const value = values.data?.find((row) => row.accountId === accountId);
@@ -43,6 +46,8 @@ export function AssetDetailPage() {
   const gain = value ? value.valueMinor - value.costMinor : 0;
   const canArchive = value ? value.valueMinor === 0 && (position?.unitsMicro ?? 0) === 0 : false;
   const forGoals = (goalLinks.data ?? []).filter((link) => link.accountId === accountId && link.kind === 'tagged');
+  // The loan that bought this, when one did: its balance against the value is the equity.
+  const boughtWith = (loans.data ?? []).find((loan) => loan.assetAccountId === accountId && loan.status === 'open');
 
   async function archive() {
     setError(null);
@@ -179,6 +184,22 @@ export function AssetDetailPage() {
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {value && boughtWith && (
+        <Card className="space-y-1">
+          <h2 className="text-sm font-semibold">What of it is yours</h2>
+          <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
+            <span className="text-slate-600">
+              Worth <Money minor={value.valueMinor} currency={value.currency} />, still owed{' '}
+              <Money minor={Math.abs(balances.data?.[boughtWith.accountId] ?? 0)} currency={value.currency} /> to {boughtWith.lenderName}
+            </span>
+            <Money minor={value.valueMinor - Math.abs(balances.data?.[boughtWith.accountId] ?? 0)} currency={value.currency} tone="auto" className="font-semibold" />
+          </div>
+          <Link to="/net-worth/loans/$accountId" params={{ accountId: boughtWith.accountId }} className="text-xs text-slate-600 underline">
+            See the loan
+          </Link>
         </Card>
       )}
 

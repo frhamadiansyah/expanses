@@ -5,6 +5,8 @@ import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { assetProfiles, investmentTrades } from '../schema-assets';
 import { categoryIdsByKey } from './categories';
+import { listInstallments } from './installments';
+import { homeLoanAccountIds } from './loans';
 
 export interface MonthFlow {
   month: string;
@@ -56,7 +58,8 @@ export async function periodFlows(
   const realizedGainsId = keys['income.realized_gains'];
   const finalTaxId = keys['government.final_tax'];
   const interestId = keys['fees.interest'];
-  const homeLoans = new Set(opts.homeLoanAccountIds ?? []);
+  // A caller may name the home loans; otherwise the loans say so themselves, by what they bought.
+  const homeLoans = new Set(opts.homeLoanAccountIds ?? (await homeLoanAccountIds(database, ws)));
 
   const rows = await database.db
     .select({
@@ -162,6 +165,19 @@ export async function periodFlows(
     if (trade.kind !== 'buy' || trade.cashAccountId === null) continue;
     if (savingsAccounts.has(trade.cashAccountId)) continue;
     putAwayMinor += trade.grossMinor + trade.feeMinor + trade.taxMinor;
+  }
+
+  // An instalment billed in the period is a debt payment, though the purchase was spending once,
+  // on the day it happened. The card balance carries the debt in between.
+  for (const plan of await listInstallments(database, ws)) {
+    for (let index = 0; index < plan.months; index += 1) {
+      const month = addMonths(plan.firstBilledMonth, index);
+      const bucket = byMonth.get(month);
+      if (!bucket) continue;
+      debtPaymentsMinor += plan.monthlyMinor;
+      nonMortgageDebtPaymentsMinor += plan.monthlyMinor;
+      bucket.debtPaymentsMinor += plan.monthlyMinor;
+    }
   }
 
   const totals = [...byMonth.values()].reduce(

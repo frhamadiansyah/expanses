@@ -21,7 +21,9 @@ import type { Database } from '../database';
 import { accounts } from '../schema';
 import { assetProfiles, prices, valuations } from '../schema-assets';
 import { BALANCE_SUBTYPES } from './accounts';
+import { installmentTotals } from './installments';
 import { nativeBalances } from './ledger';
+import { scheduleFor } from './loans';
 import { listTrades } from './trades';
 
 export interface AssetValueRow extends AssetValue {
@@ -202,6 +204,8 @@ export async function sheetInputsAt(
     .orderBy(asc(accounts.sortOrder), asc(accounts.name));
   const balances = await nativeBalances(database, ws, date);
 
+  const installments = await installmentTotals(database, ws, date);
+
   const liabilities: SheetLiability[] = [];
   for (const row of rows) {
     if (!liabilitySubtypes.includes(row.subtype)) continue;
@@ -213,9 +217,33 @@ export async function sheetInputsAt(
       name: row.name,
       subtype,
       balanceMinor,
-      dueWithinYearMinor: subtype === 'loan' ? 0 : balanceMinor,
+      dueWithinYearMinor: await dueWithinYear(database, ws, row.id, subtype, balanceMinor, date, installments),
       note: null,
     });
   }
   return { assets, liabilities };
+}
+
+/**
+ * What a debt actually asks for within twelve months. A loan owes the principal its schedule names,
+ * and a card owes everything except the instalments falling due beyond the year. A loan with no
+ * terms yet has no schedule to read, so all of it counts as due.
+ */
+async function dueWithinYear(
+  database: Database,
+  ws: WorkspaceContext,
+  accountId: string,
+  subtype: SheetLiability['subtype'],
+  balanceMinor: number,
+  date: string,
+  installments: Awaited<ReturnType<typeof installmentTotals>>,
+): Promise<number> {
+  if (subtype === 'loan') {
+    const rows = await scheduleFor(database, ws, accountId, date);
+    if (rows.length === 0) return balanceMinor;
+    const nextTwelve = rows.slice(0, 12).reduce((total, row) => total + row.principalMinor, 0);
+    return Math.min(nextTwelve, balanceMinor);
+  }
+  const beyond = installments[accountId]?.unbilledBeyond12Minor ?? 0;
+  return Math.max(0, balanceMinor - beyond);
 }
