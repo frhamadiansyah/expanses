@@ -28,6 +28,7 @@ export const investmentTrades = sqliteTable('investment_trades', {
   feeMinor: integer('fee_minor').notNull(),
   taxMinor: integer('tax_minor').notNull(),
   cashAccountId: text('cash_account_id'),
+  goalId: text('goal_id'),
   templateId: text('template_id'),
   status: text('status', { enum: ['active', 'replaced', 'deleted'] }).notNull(),
   replacesTradeId: text('replaces_trade_id'),
@@ -63,5 +64,6 @@ export const tradeTemplates = sqliteTable('trade_templates', {
   unitsMicro: integer('units_micro'),
   dayOfMonth: integer('day_of_month').notNull(),
   active: integer('active').notNull(),
+  goalId: text('goal_id'),
   createdAt: text('created_at').notNull(),
 });

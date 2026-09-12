@@ -1,4 +1,4 @@
-import type { AssetValueRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
+import type { AssetValueRow, GoalPlanRow, GoalRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
 
@@ -23,6 +23,7 @@ const template = (id: string, accountId: string): TradeTemplateRow => ({
   unitsMicro: null,
   dayOfMonth: 5,
   active: true,
+  goalId: null,
   createdAt: '2026-01-01T00:00:00Z',
 });
 
@@ -72,6 +73,55 @@ describe('attentionItems', () => {
       [template('t1', 'fund')],
     );
     expect(new Set(items.map((item) => item.key)).size).toBe(items.length);
+  });
+});
+
+const goalRow = (name: string): GoalRow => ({
+  id: 'hajj',
+  workspaceId: 'ws',
+  name,
+  kind: 'hajj',
+  rank: 0,
+  growthBps: 500,
+  returnBps: 600,
+  standingMonthlyMinor: 0,
+  standingNote: null,
+  status: 'active',
+  createdAt: '2026-01-01T00:00:00Z',
+  stages: [],
+});
+
+const goalPlanRow = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
+  goalId: 'hajj',
+  currentMinor: 1_000_000,
+  totalTargetMinor: 50_000_000,
+  stages: [],
+  requiredMonthlyMinor: 1_000_000,
+  plannedMonthlyMinor: 0,
+  status: 'behind',
+  shortfallMonthlyMinor: 1_000_000,
+  riskWarning: null,
+  goal: goalRow('Hajj for two'),
+  links: [],
+  earmarkWarning: null,
+  ...partial,
+});
+
+describe('attentionItems with goals', () => {
+  it('flags a goal that is behind', () => {
+    const items = attentionItems([], [], [goalPlanRow()]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ tone: 'warn', action: 'Review', to: '/net-worth/goals' });
+    expect(items[0]!.text).toContain('Hajj for two');
+  });
+
+  it('says nothing about a goal on track', () => {
+    expect(attentionItems([], [], [goalPlanRow({ status: 'on_track', shortfallMonthlyMinor: 0 })])).toEqual([]);
+  });
+
+  it('passes on a set-aside amount above the balance', () => {
+    const items = attentionItems([], [], [goalPlanRow({ status: 'funded', earmarkWarning: 'You set aside more than BCA Tahapan holds' })]);
+    expect(items[0]!.text).toContain('BCA Tahapan');
   });
 });
 

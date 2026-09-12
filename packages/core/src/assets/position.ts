@@ -15,6 +15,8 @@ export interface TradeRecord {
   grossMinor: number;
   feeMinor: number;
   taxMinor: number;
+  /** Goal this buy funds, or the goal a sell takes units from. Null or missing means no goal. */
+  goalId?: string | null;
 }
 
 export interface YearBucket {

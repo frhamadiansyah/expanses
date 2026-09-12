@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
+import { useGoalLinks, useGoals } from '../goals/queries';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
@@ -29,6 +30,8 @@ export function AssetDetailPage() {
   const valuations = useValuations(accountId);
   const trades = useTrades(accountId);
   const history = useMonthEndValues(accountId, months);
+  const goalLinks = useGoalLinks();
+  const goals = useGoals();
   const [error, setError] = useState<unknown>(null);
 
   const value = values.data?.find((row) => row.accountId === accountId);
@@ -38,6 +41,7 @@ export function AssetDetailPage() {
   const average = position ? averagePriceMicro(position) : null;
   const gain = value ? value.valueMinor - value.costMinor : 0;
   const canArchive = value ? value.valueMinor === 0 && (position?.unitsMicro ?? 0) === 0 : false;
+  const forGoals = (goalLinks.data ?? []).filter((link) => link.accountId === accountId && link.kind === 'tagged');
 
   async function archive() {
     setError(null);
@@ -112,6 +116,25 @@ export function AssetDetailPage() {
               .
             </p>
           )}
+        </Card>
+      )}
+
+      {value && forGoals.length > 0 && (
+        <Card>
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold">For goals</h2>
+            <Link to="/net-worth/trades" className="text-xs text-slate-600 underline">
+              Change on Buy &amp; sell
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {forGoals.map((link) => (
+              <span key={link.goalId} className="rounded bg-slate-100 px-2 py-1">
+                <b>{(goals.data ?? []).find((goal) => goal.id === link.goalId)?.name ?? 'A goal'}</b> {link.unitsMicro === null ? '' : `${formatUnits(link.unitsMicro)} ${unitLabel}`} ·{' '}
+                <Money minor={link.valueMinor} currency={value.currency} />
+              </span>
+            ))}
+          </div>
         </Card>
       )}
 

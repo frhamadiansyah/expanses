@@ -23,3 +23,6 @@ export * from './repos/prices';
 export * from './repos/asset-values';
 export * from './repos/trade-templates';
 export * from './repos/flows';
+export * as goalsSchema from './schema-goals';
+export * from './repos/goals';
+export * from './repos/goal-funding';

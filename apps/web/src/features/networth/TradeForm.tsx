@@ -15,6 +15,7 @@ const KINDS: { value: TradeKind; label: string }[] = [
 
 export interface TradeFormProps {
   holdings: { accountId: string; name: string; currency: string }[];
+  goals: { id: string; name: string }[];
   cashAccounts: AccountRow[];
   positions: Record<string, Position>;
   /** Set when editing an existing trade; saving replaces it. */
@@ -26,7 +27,7 @@ export interface TradeFormProps {
   onCancel?: () => void;
 }
 
-export function TradeForm({ holdings, cashAccounts, positions, editing, initial, templateId, onSaved, onCancel }: TradeFormProps) {
+export function TradeForm({ holdings, goals, cashAccounts, positions, editing, initial, templateId, onSaved, onCancel }: TradeFormProps) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const today = isoDate();
@@ -111,6 +112,21 @@ export function TradeForm({ holdings, cashAccounts, positions, editing, initial,
         {draft.kind !== 'unit_change' && draft.kind !== 'income' && (
           <Field label={`Fee (${currency})`}>
             <Input value={draft.fee} onChange={(e) => change({ fee: e.target.value })} inputMode="decimal" />
+          </Field>
+        )}
+        {(draft.kind === 'buy' || draft.kind === 'sell') && (
+          <Field
+            label={draft.kind === 'sell' ? 'Sell from goal' : 'For goal'}
+            hint={draft.kind === 'sell' ? 'Units come out of this goal only.' : 'Each purchase can fund a different goal.'}
+          >
+            <Select value={draft.goalId} onChange={(e) => change({ goalId: e.target.value })}>
+              <option value="">No goal</option>
+              {goals.map((goal) => (
+                <option key={goal.id} value={goal.id}>
+                  {goal.name}
+                </option>
+              ))}
+            </Select>
           </Field>
         )}
         {draft.kind !== 'unit_change' && (

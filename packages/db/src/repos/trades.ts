@@ -1,4 +1,5 @@
 import {
+  goalUnitsOf,
   type Position,
   positionAfter,
   sellBasisMinor,
@@ -15,6 +16,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries } from '../schema';
 import { investmentTrades } from '../schema-assets';
+import { goals } from '../schema-goals';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
@@ -39,6 +41,8 @@ export interface RecordTradeInput {
   taxMinor: number;
   /** Null pays from Opening Balances: a holding owned before the app. */
   cashAccountId: string | null;
+  /** Goal this buy funds, or the goal a sell takes its units from. */
+  goalId?: string | null;
   /** Money that left the cash account, when it is in another currency. */
   cashMinor?: number;
   templateId?: string | null;
@@ -73,6 +77,7 @@ const toRow = (row: TradeDbRow): TradeRow => ({
   feeMinor: row.feeMinor,
   taxMinor: row.taxMinor,
   cashAccountId: row.cashAccountId,
+  goalId: row.goalId,
   templateId: row.templateId,
   status: row.status,
   replacesTradeId: row.replacesTradeId,
@@ -188,6 +193,7 @@ async function writeTrade(tx: Db, ws: WorkspaceContext, input: RecordTradeInput,
   const { accounts: tradeAccounts, holdingName } = await tradeAccountsFor(tx, ws, input.accountId, input.cashAccountId);
   const trades = await activeTrades(tx, ws, input.accountId);
   const position = positionAt(trades, input.occurredOn);
+  if (input.kind === 'sell') await checkGoalUnits(tx, ws, trades, input);
   const tradeInput = toInput(input);
   const lines = tradePostings(tradeInput, position, tradeAccounts);
   const transactionId = lines.length
@@ -211,6 +217,7 @@ async function writeTrade(tx: Db, ws: WorkspaceContext, input: RecordTradeInput,
     feeMinor: input.feeMinor,
     taxMinor: input.taxMinor,
     cashAccountId: input.cashAccountId,
+    goalId: input.goalId ?? null,
     templateId: input.templateId ?? null,
     status: 'active',
     replacesTradeId,
@@ -218,6 +225,19 @@ async function writeTrade(tx: Db, ws: WorkspaceContext, input: RecordTradeInput,
   });
   const recalculatedSells = await recalculateSells(tx, ws, input.accountId, input.occurredOn, input.ratesToBase);
   return { tradeId: id, transactionId, recalculatedSells };
+}
+
+/** A sell can only take units the named goal holds, so goals never borrow from each other. */
+async function checkGoalUnits(tx: Db, ws: WorkspaceContext, trades: TradeRow[], input: RecordTradeInput): Promise<void> {
+  const key = input.goalId ?? '';
+  const held = goalUnitsOf(trades, input.occurredOn).byGoal[key] ?? 0;
+  if (input.unitsMicro <= held) return;
+  let whose = 'Units with no goal';
+  if (key) {
+    const [goal] = await tx.select({ name: goals.name }).from(goals).where(and(eq(goals.id, key), eq(goals.workspaceId, ws.workspaceId)));
+    whose = goal ? goal.name : 'That goal';
+  }
+  throw new AssetError(`${whose} holds ${held / 1_000_000}; enter up to that`);
 }
 
 async function retire(tx: Db, ws: WorkspaceContext, tradeId: string, status: 'replaced' | 'deleted'): Promise<TradeRow> {
