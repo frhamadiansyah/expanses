@@ -18,3 +18,4 @@ export * from './repos/imports';
 export * from './repos/catalog';
 export * as assetsSchema from './schema-assets';
 export * from './repos/assets';
+export * from './repos/trades';
