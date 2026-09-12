@@ -154,9 +154,13 @@ export async function periodFlows(
     }
   }
 
-  // A purchase paid from an account, a credit card included, is money put to work.
+  // A purchase paid from everyday money, a credit card included, is money put to work. Money that
+  // already sat in a savings pot or at the broker was counted when it moved there, so it is not counted again.
+  const savingsAccounts = new Set<string>();
+  for (const row of rows) if (row.kind === 'asset' && isSavingsDestination(row.accountId, row.subtype)) savingsAccounts.add(row.accountId);
   for (const trade of tradeRows) {
     if (trade.kind !== 'buy' || trade.cashAccountId === null) continue;
+    if (savingsAccounts.has(trade.cashAccountId)) continue;
     putAwayMinor += trade.grossMinor + trade.feeMinor + trade.taxMinor;
   }
 

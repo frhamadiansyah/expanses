@@ -151,6 +151,21 @@ describe('what actually went into savings and investments', () => {
     await expect(putAway()).resolves.toBe(18_600_000 + 1_000_000 + 2_000_000);
   });
 
+  it('counts money parked at the broker once, not again when it buys shares', async () => {
+    await transfer('2026-09-05', bca.id, rdn.id, 1_000_000);
+    await buyGold('2026-09-20', 1, 987_500, rdn.id);
+
+    // The Rp 1.000.000 was counted when it reached the broker; buying with it moves nothing new.
+    await expect(putAway()).resolves.toBe(1_000_000);
+  });
+
+  it('still counts a purchase made straight from the bank', async () => {
+    await transfer('2026-09-05', bca.id, rdn.id, 1_000_000);
+    await buyGold('2026-09-20', 1, 987_500, bca.id);
+
+    await expect(putAway()).resolves.toBe(1_987_500);
+  });
+
   it('is zero for a workspace with nothing recorded', async () => {
     await expect(putAway()).resolves.toBe(0);
   });
