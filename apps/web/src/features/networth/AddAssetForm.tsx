@@ -70,7 +70,7 @@ export function AddAssetForm({ onDone }: { onDone: () => void }) {
   return (
     <Card>
       <form onSubmit={submit} className="space-y-4">
-        <Field label="What is it?" hint="This sets how the value is worked out and which Coretax table it belongs to.">
+        <Field label="What is it?" hint="This sets how the value is worked out and which tax-report table it belongs to.">
           <Select value={draft.kind} onChange={(e) => pickKind(e.target.value as AssetKind)}>
             {ASSET_PRESETS.map((preset) => (
               <option key={preset.kind} value={preset.kind}>
@@ -162,7 +162,7 @@ export function AddAssetForm({ onDone }: { onDone: () => void }) {
         )}
 
         <div className="space-y-2">
-          <div className="text-sm font-medium">For Coretax: {CORETAX_SECTIONS[section].label}</div>
+          <div className="text-sm font-medium">For the tax report: {CORETAX_SECTIONS[section].label}</div>
           <p className="text-xs text-slate-500">Fill these in once and every yearly report reuses them. You can leave them for later.</p>
           <div className="grid gap-3 md:grid-cols-2">
             {CORETAX_SECTIONS[section].fields.map((field) => (

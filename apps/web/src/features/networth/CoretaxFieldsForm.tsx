@@ -47,7 +47,7 @@ export function CoretaxFieldsForm({ profile, section }: { profile: AssetProfileR
   return (
     <form onSubmit={submit} className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">For Coretax: {CORETAX_SECTIONS[section].label}</h2>
+        <h2 className="text-sm font-semibold">For the tax report: {CORETAX_SECTIONS[section].label}</h2>
         <span className="text-xs text-slate-500">{missing.length === 0 ? 'Nothing missing' : `${missing.length} still missing`}</span>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
@@ -64,7 +64,7 @@ export function CoretaxFieldsForm({ profile, section }: { profile: AssetProfileR
       <p className="text-xs text-slate-500">Filled in once, reused by every yearly report. Nothing here stops you saving.</p>
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={busy}>
-          Save Coretax details
+          Save tax-report details
         </Button>
         {saved && <span className="text-sm text-emerald-700">Saved</span>}
       </div>

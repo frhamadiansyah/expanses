@@ -53,7 +53,7 @@ export function CoretaxPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Coretax" />
+      <PageHeader title="Tax report" />
       <NetWorthTabs />
       <ErrorBox error={error ?? report.error ?? rows.error} />
 

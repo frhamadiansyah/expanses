@@ -7,7 +7,7 @@ const TABS = [
   { to: '/net-worth/goals', label: 'Goals' },
   { to: '/net-worth/debts', label: 'Lend & borrow' },
   { to: '/net-worth/loans', label: 'Loans' },
-  { to: '/net-worth/coretax', label: 'Coretax' },
+  { to: '/net-worth/coretax', label: 'Tax report' },
 ] as const;
 
 export function NetWorthTabs() {
