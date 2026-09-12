@@ -17,6 +17,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { mccSourcesFor } from './mcc';
+import { nonEarningInstallmentTransactionIds } from './installments';
 import { cardTerms, cycleActuals, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 
 export class PointsError extends Error {
@@ -474,8 +475,9 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category')));
   const feeCategories = cardFeeCategoryIds(categories);
+  const noPoints = await nonEarningInstallmentTransactionIds(database, ws);
   return [...rows, ...assetRows].map(([transactionId, entryId, occurredOn, categoryId, description, amountMinor, currency, originalCurrency, typed]) => {
     const { mcc, source } = resolveMcc(description, categoryId, { ...sources, typed });
-    return { transactionId, entryId, occurredOn, categoryId, description, amountMinor: Number(amountMinor), currency, originalCurrency, mcc, mccSource: source, cardFee: isCardFee(description, categoryId, feeCategories) };
+    return { transactionId, entryId, occurredOn, categoryId, description, amountMinor: Number(amountMinor), currency, originalCurrency, mcc, mccSource: source, cardFee: isCardFee(description, categoryId, feeCategories) || noPoints.has(transactionId) };
   });
 }

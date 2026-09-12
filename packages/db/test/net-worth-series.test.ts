@@ -101,10 +101,12 @@ describe('sheetInputsAt', () => {
     expect(sheet.liabilities.find((debt) => debt.accountId === kpr.id)).toMatchObject({ balanceMinor: 742_300_000, subtype: 'loan' });
   });
 
-  it('treats a card as due within a year and a loan as long-term until loan terms exist', async () => {
+  it('treats a card as due within a year, and a loan with no terms as wholly due', async () => {
     const sheet = await sheetInputsAt(database, ws, TODAY);
     expect(sheet.liabilities.find((debt) => debt.accountId === card.id)!.dueWithinYearMinor).toBe(14_820_000);
-    expect(sheet.liabilities.find((debt) => debt.accountId === kpr.id)!.dueWithinYearMinor).toBe(0);
+    // Without terms there is no schedule to read, so nothing can be called long-term yet.
+    // Once the loan has terms, only its next twelve months of principal fall within the year.
+    expect(sheet.liabilities.find((debt) => debt.accountId === kpr.id)!.dueWithinYearMinor).toBe(742_300_000);
   });
 
   it('leaves out debts that are paid off', async () => {
