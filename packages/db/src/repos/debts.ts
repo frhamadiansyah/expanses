@@ -32,7 +32,7 @@ const DIRECTION_BY_SUBTYPE: Record<string, DebtDirection> = { receivable: 'lent'
 
 /** What the Coretax tables call each side when no related-party code is chosen. */
 /** A receivable carries a kode harta; a payable's code is the unverified e-Form one. */
-export const DEFAULT_CORETAX_CODE: Record<DebtDirection, string> = { lent: '0201', borrowed: '104' };
+export const DEFAULT_CORETAX_CODE: Record<DebtDirection, string> = { lent: '0201', borrowed: '109' };
 
 export interface DebtProfileRow {
   accountId: string;

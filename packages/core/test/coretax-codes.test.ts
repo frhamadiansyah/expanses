@@ -55,20 +55,24 @@ describe('the harta codes', () => {
 });
 
 describe('the utang codes', () => {
-  it('are the four the e-Form petunjuk gives', () => {
-    expect(KODE_UTANG.map((entry) => entry.code)).toEqual(['101', '102', '103', '104']);
+  it('are the four the petunjuk lists, ending at 109 for the rest', () => {
+    expect(KODE_UTANG.map((entry) => entry.code)).toEqual(['101', '102', '103', '109']);
   });
 
-  it('are marked unverified, because the Coretax guide lists none', () => {
-    expect(UTANG_CODES_UNVERIFIED).toBe(true);
+  it('are no longer unverified: they come from DJP own petunjuk', () => {
+    expect(UTANG_CODES_UNVERIFIED).toBe(false);
   });
 
   it('give a credit card its own code', () => {
     expect(utangLabel('102')).toBe('Kartu kredit');
   });
 
-  it('say nothing for a code that does not exist', () => {
-    expect(utangLabel('109')).toBe('');
+  it('call 109 what the petunjuk calls it', () => {
+    expect(utangLabel('109')).toBe('Utang lainnya');
+  });
+
+  it('say nothing for 104, which DJP never lists', () => {
+    expect(utangLabel('104')).toBe('');
   });
 });
 

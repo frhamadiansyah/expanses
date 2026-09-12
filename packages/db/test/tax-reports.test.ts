@@ -153,7 +153,7 @@ describe('the corrected defaults', () => {
     const budi = await createAccount(database, ws, { name: 'Budi', kind: 'liability', subtype: 'payable', currency: 'IDR' });
     await saveDebtProfile(database, ws, { accountId: budi.id, personName: 'Budi' });
 
-    await expect(getDebtProfile(database, ws, budi.id)).resolves.toMatchObject({ coretaxCode: '104' });
+    await expect(getDebtProfile(database, ws, budi.id)).resolves.toMatchObject({ coretaxCode: '109' });
   });
 
   it('gives a new asset the code its preset carries', async () => {
