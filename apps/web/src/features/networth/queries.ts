@@ -1,6 +1,9 @@
 import { isoDate } from '@expanses/core';
 import {
   assetValuesAt,
+  netWorthSeries,
+  periodFlows,
+  sheetInputsAt,
   dueTemplates,
   getAssetProfile,
   listAssetProfiles,
@@ -13,6 +16,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
+import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
 
 export function useAssetValues(date?: string) {
   const { database, ws } = useApp();
@@ -64,4 +68,47 @@ export function useDueTemplates(date?: string) {
   const { database, ws } = useApp();
   const onDate = date ?? isoDate();
   return useQuery({ queryKey: ['due-templates', ws.workspaceId, onDate], queryFn: () => dueTemplates(database, ws, onDate) });
+}
+
+/** Rates for every currency the workspace holds money in, fetched or manual, as the dashboard does. */
+function useMoneyCurrencies(): string[] {
+  const { ws } = useApp();
+  const accounts = useAccounts();
+  return [...new Set((accounts.data ?? []).filter(isMoneyAccount).map((account) => account.currency ?? ws.baseCurrency))];
+}
+
+export function useNetWorthSeries(months: string[]) {
+  const { database, ws } = useApp();
+  const resolveRates = useResolveRates();
+  const currencies = useMoneyCurrencies();
+  const today = isoDate();
+  return useQuery({
+    queryKey: ['net-worth-series', ws.workspaceId, months.join(','), currencies.join(',')],
+    queryFn: async () => {
+      const rates = await resolveRates(currencies, today);
+      return netWorthSeries(database, ws, months, rates.rates, today);
+    },
+  });
+}
+
+export function useSheet(date?: string) {
+  const { database, ws } = useApp();
+  const resolveRates = useResolveRates();
+  const currencies = useMoneyCurrencies();
+  const onDate = date ?? isoDate();
+  return useQuery({
+    queryKey: ['sheet-inputs', ws.workspaceId, onDate, currencies.join(',')],
+    queryFn: async () => {
+      const rates = await resolveRates(currencies, onDate);
+      return sheetInputsAt(database, ws, onDate, rates.rates);
+    },
+  });
+}
+
+export function usePeriodFlows(range: { from: string; to: string }) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['period-flows', ws.workspaceId, range.from, range.to],
+    queryFn: () => periodFlows(database, ws, range),
+  });
 }
