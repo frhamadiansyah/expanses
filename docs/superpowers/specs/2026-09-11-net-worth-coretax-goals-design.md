@@ -229,7 +229,9 @@ Core: builders per action; over-repayment; split sums; card lending counted as p
 
 ## 8. Slice 5 — Loans and installments
 
-### 8.1 Storage (migration `0010_loans`)
+### 8.1 Storage (migration `0011_loans`)
+
+> Corrected during slice 4: `0010` is `debts`, so this migration is `0011`.
 
 - `loan_terms`: `account_id` (PK), `workspace_id`, `lender_name`, `lender_npwp`, `purpose`, `original_minor`, `first_payment_on`, `tenor_months`, `method` (`annuity` | `flat` | `zero`), `payment_day`, `asset_account_id` (nullable), `coretax_code` (`101` default), `status` (`open` | `paid_off`), `status_on`.
 - `loan_rate_periods`: `id`, `account_id`, `from_on`, `rate_bps`, `kind` (`fixed` | `floating`), `payment_minor`.
@@ -264,7 +266,9 @@ Core: annuity, flat, zero schedules and rounding; rate periods; extra payment bo
 
 ## 9. Slice 6 — Coretax report
 
-### 9.1 Storage (migration `0011_tax_reports`)
+### 9.1 Storage (migration `0012_tax_reports`)
+
+> Corrected during slice 4: the numbering moved on, so this migration is `0012`.
 
 - `tax_year_reports`: `id`, `workspace_id`, `tax_year`, `status` (`draft` | `frozen` | `filed`), `frozen_at`, `filed_on`, `npwp`, `taxpayer_name`, `property_basis` (`cost` | `estimate` | `njop` | `appraisal`), `repeat_rows` (`holding` | `year`).
 - `tax_year_rows`: `id`, `report_id`, `section`, `account_id` (nullable), `acquired_year`, `sort`, `fields_json`, `cost_minor`, `value_minor`, `balance_minor`, `source` (`auto` | `edited` | `manual`), `already_filed` (first-year marker).
