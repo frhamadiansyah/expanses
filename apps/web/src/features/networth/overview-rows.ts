@@ -1,12 +1,25 @@
 import { formatMinor } from '@expanses/core';
 import type { AssetValueRow, GoalPlanRow, IdleCashRow, NetWorthPoint, PersonDebtRow, TradeTemplateRow } from '@expanses/db';
 
+export interface LoanAttention {
+  accountId: string;
+  lenderName: string;
+  currency: string;
+  /** A payment due within seven days with nothing recorded for it yet. */
+  paymentDueMinor: number | null;
+  paymentDueOn: string | null;
+  /** A fixed rate ending within sixty days, so the payment is about to change. */
+  fixedRateEndsOn: string | null;
+  /** The plan whose last instalment is billed this month, named. */
+  lastInstallmentOf: string | null;
+}
+
 export interface AttentionItem {
   key: string;
   tone: 'warn' | 'info';
   text: string;
   action: string;
-  to: '/net-worth/assets' | '/net-worth/trades' | '/net-worth/goals' | '/net-worth/debts';
+  to: '/net-worth/assets' | '/net-worth/trades' | '/net-worth/goals' | '/net-worth/debts' | '/net-worth/loans';
 }
 
 const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -18,6 +31,7 @@ export function attentionItems(
   goalPlans: GoalPlanRow[] = [],
   idleCash: IdleCashRow[] = [],
   people: PersonDebtRow[] = [],
+  loans: LoanAttention[] = [],
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const value of values) {
@@ -61,6 +75,35 @@ export function attentionItems(
         text: `${who} ${formatMinor(loan.balanceMinor, loan.currency)} · ${loan.dueLabel}`,
         action: person.direction === 'lent' ? 'Chase' : 'Pay',
         to: '/net-worth/debts',
+      });
+    }
+  }
+  for (const loan of loans) {
+    if (loan.paymentDueMinor !== null && loan.paymentDueOn !== null) {
+      items.push({
+        key: `loan-due-${loan.accountId}`,
+        tone: 'warn',
+        text: `${loan.lenderName} wants ${formatMinor(loan.paymentDueMinor, loan.currency)} on ${shortDate(loan.paymentDueOn)}`,
+        action: 'Record',
+        to: '/net-worth/loans',
+      });
+    }
+    if (loan.fixedRateEndsOn !== null) {
+      items.push({
+        key: `loan-rate-${loan.accountId}`,
+        tone: 'info',
+        text: `${loan.lenderName}: the fixed rate ends ${shortDate(loan.fixedRateEndsOn)}, so the payment will change`,
+        action: 'Review',
+        to: '/net-worth/loans',
+      });
+    }
+    if (loan.lastInstallmentOf !== null) {
+      items.push({
+        key: `loan-last-${loan.accountId}`,
+        tone: 'info',
+        text: `${loan.lastInstallmentOf} is on its last instalment this month`,
+        action: 'Review',
+        to: '/net-worth/loans',
       });
     }
   }

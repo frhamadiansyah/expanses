@@ -1,4 +1,6 @@
-import { balanceSheet, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetTotals } from '@expanses/core';
+import { balanceSheet, isoDate, lastNMonths, monthOf, type ScheduleRow, type SheetGroup, type SheetTotals } from '@expanses/core';
+import { scheduleFor } from '@expanses/db';
+import { useQueries } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -9,6 +11,8 @@ import { NetWorthTabs } from './NetWorthTabs';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
 import { useGoalPlans } from '../goals/queries';
 import { usePeopleDebts } from '../debts/queries';
+import { loanAttention } from '../loans/attention';
+import { useInstallments, useLoans } from '../loans/queries';
 import { useAssetValues, useDueTemplates, useIdleCash, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
 import { ValueChart } from './ValueChart';
 
@@ -77,6 +81,22 @@ function SheetColumn({ title, groups, totalMinor, currency }: { title: string; g
   );
 }
 
+/** Each open loan's schedule, keyed by account, so the attention rows can read the next payment. */
+function useLoanSchedules(loans: { accountId: string }[], today: string): Record<string, ScheduleRow[]> {
+  const { database, ws } = useApp();
+  const results = useQueries({
+    queries: loans.map((loan) => ({
+      queryKey: ['loan-schedule', ws.workspaceId, loan.accountId, today],
+      queryFn: () => scheduleFor(database, ws, loan.accountId, today),
+    })),
+  });
+  const byAccount: Record<string, ScheduleRow[]> = {};
+  loans.forEach((loan, index) => {
+    byAccount[loan.accountId] = (results[index]?.data as ScheduleRow[] | undefined) ?? [];
+  });
+  return byAccount;
+}
+
 export function OverviewPage() {
   const { ws } = useApp();
   const today = isoDate();
@@ -87,6 +107,9 @@ export function OverviewPage() {
   const due = useDueTemplates();
   const idle = useIdleCash();
   const people = usePeopleDebts(today);
+  const loans = useLoans();
+  const installments = useInstallments();
+  const schedules = useLoanSchedules(loans.data ?? [], today);
   const goalSummary = useGoalPlans(today);
 
   const [period, setPeriod] = useState<RatioPeriod>({ key: 'ttm' });
@@ -96,10 +119,25 @@ export function OverviewPage() {
 
   const points = series.data ?? [];
   const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
-  const attention = attentionItems(values.data ?? [], due.data ?? [], goalSummary.data?.plans ?? [], idle.data ?? [], [
-    ...(people.data?.owedToYou ?? []),
-    ...(people.data?.youOwe ?? []),
-  ]);
+  const attention = attentionItems(
+    values.data ?? [],
+    due.data ?? [],
+    goalSummary.data?.plans ?? [],
+    idle.data ?? [],
+    [...(people.data?.owedToYou ?? []), ...(people.data?.youOwe ?? [])],
+    (loans.data ?? []).map((loan) =>
+      loanAttention(
+        {
+          loan,
+          name: loan.lenderName,
+          currency: ws.baseCurrency,
+          schedule: schedules[loan.accountId] ?? [],
+          installments: installments.data ?? [],
+        },
+        today,
+      ),
+    ),
+  );
   const sinceLastMonth = deltaSince(points, 1);
   const januaryMonths = monthsSinceJanuary(points);
   const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);

@@ -83,13 +83,20 @@ describe('loanTermsDraftToInput', () => {
 });
 
 describe('paymentDraftFrom', () => {
-  it('fills the form in from the row the schedule says is next', () => {
+  it('fills the form in from the row the schedule says is next, dated today', () => {
     const filled = paymentDraftFrom(row(), TODAY, 'bca', 'IDR');
 
-    expect(filled).toMatchObject({ occurredOn: '2026-10-25', moneyId: 'bca' });
+    // The row falls due later; the money moves now, so the date is today and the split is the row's.
+    expect(filled).toMatchObject({ occurredOn: TODAY, moneyId: 'bca' });
     // Plain figures: the box has to be readable back by parseMajor when it is saved.
     expect(filled.principal).toBe('1849866');
     expect(filled.interest).toBe('5250000');
+  });
+
+  it('keeps the date of a payment that was already due, so a late one records truthfully', () => {
+    const filled = paymentDraftFrom(row({ onDate: '2026-08-25' }), TODAY, 'bca', 'IDR');
+
+    expect(filled.occurredOn).toBe('2026-08-25');
   });
 
   it('leaves the form blank rather than guessing when nothing is scheduled', () => {

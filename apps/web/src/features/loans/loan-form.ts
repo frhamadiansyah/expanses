@@ -101,11 +101,15 @@ export interface PaymentDraft {
   extras: { categoryId: string; amount: string }[];
 }
 
-/** Fills the payment form in from the row the schedule says is next. Nothing is guessed. */
+/**
+ * Fills the payment form in from the row the schedule says is next. Nothing is guessed, and a row
+ * that falls due later is dated today: the split is what the schedule says, the date is when the
+ * money actually moves. A row already past keeps its own date, so a late payment records truthfully.
+ */
 export function paymentDraftFrom(row: ScheduleRow | undefined, today: string, moneyId: string, currency: string): PaymentDraft {
   if (!row) return { occurredOn: today, moneyId, principal: '', interest: '', extras: [] };
   return {
-    occurredOn: row.onDate,
+    occurredOn: row.onDate > today ? today : row.onDate,
     moneyId,
     principal: minorToMajorString(row.principalMinor, currency),
     interest: minorToMajorString(row.interestMinor, currency),
