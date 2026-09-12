@@ -195,10 +195,10 @@ The form's picker gains "Investments › <holding>" and "Sell › <holding>" gro
 
 Transactions rows show the goal on trades and offer "This was a purchase" on an expense paid from a money account. Ratio cards show the savings ratio first with surplus beside it, each with its benchmark text and the take-home note, plus the two settings. Asset detail gains a settings card for group and lot size. Templates choose buy or move, and a move carries a goal. The Overview's attention list gains idle cash: "Rp 1.011.019 has been waiting in RDN since 5 Oct".
 
-- [ ] Tests (fail first, `overview-rows.test.ts`): `idle cash in an investment-grouped account is listed with the date it arrived`; `no idle row when the account is empty`; `no idle row for an ordinary bank account`.
-- [ ] E2E (`apps/web/e2e/buy-flow.spec.ts`, fail first): `buy gold from the transaction window: spending unchanged, holding appears`; `pay with the credit card: card balance rises and points are estimated`; `a transfer cannot target a holding`; `convert a recorded expense into a purchase`; `park money in RDN tagged to a goal, then buy a lot and watch the leftover stay`.
-- [ ] Implement; run `npm test`, `npm run typecheck`, `npm run e2e`; commit `feat(web): buying flow, corrected ratio cards and asset settings`.
-- [ ] Record execution notes at the end of this plan; commit `docs: record slice 3.5 execution status`.
+- [x] Tests (fail first, `overview-rows.test.ts`): `idle cash in an investment-grouped account is listed with the date it arrived`; `no idle row when the account is empty`; `no idle row for an ordinary bank account`.
+- [x] E2E (`apps/web/e2e/buy-flow.spec.ts`, fail first): `buy gold from the transaction window: spending unchanged, holding appears`; `pay with the credit card: card balance rises and points are estimated`; `a transfer cannot target a holding`; `convert a recorded expense into a purchase`; `park money in RDN tagged to a goal, then buy a lot and watch the leftover stay`.
+- [x] Implement; run `npm test`, `npm run typecheck`, `npm run e2e`; commit `feat(web): buying flow, corrected ratio cards and asset settings`.
+- [x] Record execution notes at the end of this plan; commit `docs: record slice 3.5 execution status`.
 
 ---
 
@@ -207,3 +207,23 @@ Transactions rows show the goal on trades and offer "This was a purchase" on an 
 **Spec coverage (§13):** ratio corrections and settings (Task 1, 8); put-away figure (Task 2); migration and asset settings (Task 3); tagged transfers with auto set-aside and leftovers (Task 4); card as the money side with points (Task 5); convert an expense (Task 6); lots and the transaction-window purchase with the guard rail (Task 7); screens, idle cash, templates and end-to-end (Task 8). Setoran awal as spending needs no code: it is an ordinary expense.
 
 **Left for later slices, as designed:** lend and borrow, loan terms, and the Coretax report. The emergency-fund denominator setting ships defaulted to the guide's reading; the owner will choose the default later.
+
+---
+
+## Execution notes
+
+All eight tasks are done on `feat/buy-flow`. Gate on the finished tree: `npm test` green (catalog 52, core 262, db 231, web 126), `npm run typecheck` clean, `npm run e2e` 33 passed.
+
+**Two real bugs the work uncovered, both fixed with a test:**
+
+1. *Money parked at the broker counted twice.* A transfer into an `invest`-grouped account counted as money put away, and the purchase made from that account counted the same money again, inflating the savings ratio. `periodFlows` now skips a purchase whose cash side is itself a savings or broker account. (`packages/db/src/repos/flows.ts`, regression tests in `flows-putaway.test.ts`.)
+2. *A purchase could never be saved from the transaction window.* The ordinary grid is hidden while buying, but its Date and Amount inputs kept `required`, and the browser blocks a form with an invalid hidden control without showing anything. Both are now `required={!buying}`.
+
+**Deviations from the plan, and why:**
+
+- *Idle cash needed a repo, not just a screen.* The plan put idle cash in `overview-rows.ts` alone, but the web has no way to know when money arrived in an account. `idleCash` (`packages/db/src/repos/idle-cash.ts`) returns every ledger-balance money account with its balance and the date money last arrived; `attentionItems` still decides what to say, so the three planned unit tests kept their shape.
+- *`TransactionView` gained `goalId`.* Tagged transfers stamp `transactions.goal_id`, but the view dropped it, so the Transactions list could not say what parked money was for.
+- *Tagged transfers had no way in.* Task 4 built `recordTaggedTransfer` in the database and nothing called it. The transfer mode of `TransactionForm` now offers "For goal" and routes through it, which is what the RDN end-to-end test exercises.
+- *Asset settings work without a profile.* An account added on the Accounts page has no asset profile, so keying the settings card on the profile hid it exactly where it was needed — on broker cash. The card now takes the account's current group and creates the profile on save.
+
+**Left for the owner, as agreed:** the emergency-fund denominator default (the setting ships off, the guide's reading); Coretax codes and the converter's column order, to be checked against the live DJP converter before the report slice; hajj figures against Kemenag.
