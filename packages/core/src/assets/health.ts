@@ -27,7 +27,7 @@ export interface SheetTotals {
 }
 
 export interface RatioSettings {
-  /** Adds debt payments to the emergency fund denominator. Off by default, which is the guide's reading. */
+  /** Adds debt payments to the emergency fund denominator. On by default, because the emergency goal counts them too. */
   emergencyIncludesDebtPayments?: boolean;
   /** 3500 by the guide; 3000 is what OJK and Indonesian lenders quote. */
   debtServiceBenchmarkBps?: number;
@@ -88,7 +88,10 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
   const debtPayments = monthly(flows.debtPaymentsMinor, flows.months);
   const consumerDebtPayments = monthly(flows.nonMortgageDebtPaymentsMinor, flows.months);
   const putAway = monthly(flows.putAwayMinor, flows.months);
-  const emergencyOutgoing = spending + (settings.emergencyIncludesDebtPayments ? debtPayments : 0);
+  // On unless turned off. A loan payment is the least skippable outgoing when income stops, and the
+  // emergency goal already sizes itself on spending plus debt payments, so the card agrees with it.
+  const countsDebtPayments = settings.emergencyIncludesDebtPayments ?? true;
+  const emergencyOutgoing = spending + (countsDebtPayments ? debtPayments : 0);
   const debtBenchmark = (settings.debtServiceBenchmarkBps ?? DEFAULT_DEBT_SERVICE_BPS) / 100;
   const hasIncome = hasPeriod && income > 0;
   const hasNetWorth = totals.netWorthMinor > 0;
@@ -126,7 +129,7 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       9,
       false,
       '3–6 months',
-      settings.emergencyIncludesDebtPayments
+      countsDebtPayments
         ? 'Cash & equivalents ÷ monthly spending and debt payments. The guide asks 3–6 months, 12 with dependants.'
         : 'Cash & equivalents ÷ monthly spending. The guide asks 3–6 months, 12 with dependants.',
     ),

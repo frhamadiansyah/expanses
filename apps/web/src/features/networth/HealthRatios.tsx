@@ -35,7 +35,7 @@ export function HealthRatios({
   earliestYear: number;
   monthsNote: string;
 }) {
-  const [settings, setSettings] = useState<RatioSettings>({ emergencyIncludesDebtPayments: false, debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
+  const [settings, setSettings] = useState<RatioSettings>({ emergencyIncludesDebtPayments: true, debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
   const ratios = healthRatios(flows ?? EMPTY_FLOWS, totals, settings);
   const choices = periodChoices(today, earliestYear);
 
