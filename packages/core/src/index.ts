@@ -134,7 +134,18 @@ export {
   type SheetLiability,
   type SheetRow,
 } from './assets/balance-sheet';
-export { type HealthRatio, healthRatios, monthly, type PeriodFlows, type RatioKey, type RatioStatus, type SheetTotals } from './assets/health';
+export {
+  DEFAULT_DEBT_SERVICE_BPS,
+  type HealthRatio,
+  healthRatios,
+  monthly,
+  type PeriodFlows,
+  type RatioKey,
+  type RatioSettings,
+  type RatioStatus,
+  type SheetTotals,
+  WATCH_BAND,
+} from './assets/health';
 export { GoalError, type GoalUnits, goalUnitsFor, goalUnitsOf, UNTAGGED } from './goals/units';
 export {
   fitByRank,
