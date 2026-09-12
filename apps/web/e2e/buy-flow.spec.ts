@@ -146,6 +146,8 @@ test('parks money at the broker for a goal, then buys one lot and the leftover k
   await page.getByLabel('Amount').fill('2000000');
   await page.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
   await page.getByRole('button', { name: 'Save' }).click();
+  // The row carries the goal once the write has landed, so the next page cannot read a stale database.
+  await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
 
   // Parked money is set aside for the goal straight away.
   await page.goto('/net-worth/goals');

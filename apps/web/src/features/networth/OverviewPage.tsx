@@ -8,6 +8,7 @@ import { Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { NetWorthTabs } from './NetWorthTabs';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
 import { useGoalPlans } from '../goals/queries';
+import { usePeopleDebts } from '../debts/queries';
 import { useAssetValues, useDueTemplates, useIdleCash, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
 import { ValueChart } from './ValueChart';
 
@@ -85,6 +86,7 @@ export function OverviewPage() {
   const values = useAssetValues();
   const due = useDueTemplates();
   const idle = useIdleCash();
+  const people = usePeopleDebts(today);
   const goalSummary = useGoalPlans(today);
 
   const [period, setPeriod] = useState<RatioPeriod>({ key: 'ttm' });
@@ -94,7 +96,10 @@ export function OverviewPage() {
 
   const points = series.data ?? [];
   const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
-  const attention = attentionItems(values.data ?? [], due.data ?? [], goalSummary.data?.plans ?? [], idle.data ?? []);
+  const attention = attentionItems(values.data ?? [], due.data ?? [], goalSummary.data?.plans ?? [], idle.data ?? [], [
+    ...(people.data?.owedToYou ?? []),
+    ...(people.data?.youOwe ?? []),
+  ]);
   const sinceLastMonth = deltaSince(points, 1);
   const januaryMonths = monthsSinceJanuary(points);
   const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);

@@ -1,4 +1,4 @@
-import { type DebtDirection, type DebtStatus, type DueState, dueStateFor, statusFor } from '@expanses/core';
+import { type DebtDirection, type DebtStatus, type DueState, dueLabel, dueStateFor, statusFor } from '@expanses/core';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -15,6 +15,8 @@ export interface PersonLoanRow {
   repaidMinor: number;
   dueOn: string | null;
   dueState: DueState;
+  /** The due date in words: "Due in 6 days", "11 days overdue". Empty when there is no date. */
+  dueLabel: string;
   status: DebtStatus;
   currency: string;
 }
@@ -89,6 +91,7 @@ export async function peopleDebts(database: Database, ws: WorkspaceContext, onDa
       repaidMinor: originalMinor - Math.max(0, balanceMinor),
       dueOn: profile.dueOn,
       dueState: dueStateFor(profile.dueOn, onDate, status),
+      dueLabel: dueLabel(profile.dueOn, onDate, status),
       status,
       currency: account.currency ?? ws.baseCurrency,
     });

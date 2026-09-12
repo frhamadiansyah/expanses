@@ -112,6 +112,9 @@ export function TransactionsPage() {
   const holdings = (values.data ?? []).filter((row) => row.mode === 'market');
   const tradeByTransaction = new Map((trades.data ?? []).filter((trade) => trade.transactionId !== null).map((trade) => [trade.transactionId!, trade]));
   const goalName = (goalId: string | null) => (goalId ? ((goals.data ?? []).find((goal) => goal.id === goalId)?.name ?? 'a goal') : null);
+  const subtypeOf = new Map(accounts.map((account) => [account.id, account.subtype]));
+  /** A transaction touching a person's account is lending, not an ordinary transfer. */
+  const isDebt = (tx: TransactionView) => tx.entries.some((entry) => ['receivable', 'payable'].includes(subtypeOf.get(entry.accountId) ?? ''));
   const [converting, setConverting] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -178,7 +181,13 @@ export function TransactionsPage() {
                 );
               }
               const c = classify(tx);
-              const label = c.type === 'transfer' ? 'Transfer' : c.type === 'opening' ? 'Opening balance' : c.categoryIds.map((id) => categoryPath(accounts, id)).join(', ');
+              const label = isDebt(tx)
+                ? 'Lend & borrow'
+                : c.type === 'transfer'
+                  ? 'Transfer'
+                  : c.type === 'opening'
+                    ? 'Opening balance'
+                    : c.categoryIds.map((id) => categoryPath(accounts, id)).join(', ');
               const sign = c.type === 'expense' ? -1 : c.type === 'income' ? 1 : 0;
               if (converting === tx.id) {
                 return (
