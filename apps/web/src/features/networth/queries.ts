@@ -2,6 +2,7 @@ import { isoDate } from '@expanses/core';
 import {
   assetValuesAt,
   netWorthSeries,
+  periodFlows,
   sheetInputsAt,
   dueTemplates,
   getAssetProfile,
@@ -101,5 +102,13 @@ export function useSheet(date?: string) {
       const rates = await resolveRates(currencies, onDate);
       return sheetInputsAt(database, ws, onDate, rates.rates);
     },
+  });
+}
+
+export function usePeriodFlows(range: { from: string; to: string }) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['period-flows', ws.workspaceId, range.from, range.to],
+    queryFn: () => periodFlows(database, ws, range),
   });
 }

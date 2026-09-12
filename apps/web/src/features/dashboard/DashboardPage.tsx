@@ -85,7 +85,12 @@ export function DashboardPage() {
     <div className="space-y-4">
       <PageHeader title="Dashboard" />
       <Card>
-        <div className="text-xs text-slate-500">Net worth</div>
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-xs text-slate-500">Net worth</span>
+          <Link to="/net-worth" className="text-xs text-slate-600 underline">
+            See the full picture
+          </Link>
+        </div>
         <div data-testid="net-worth" className="text-3xl font-semibold">
           {nw ? <Money minor={nw.netWorthBaseMinor} currency={ws.baseCurrency} /> : '…'}
         </div>

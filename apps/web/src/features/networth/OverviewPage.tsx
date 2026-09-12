@@ -1,10 +1,13 @@
-import { balanceSheet, isoDate, lastNMonths, monthOf, type SheetGroup } from '@expanses/core';
+import { balanceSheet, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetTotals } from '@expanses/core';
 import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { HealthRatios } from './HealthRatios';
+import { periodRange, type RatioPeriod } from './health-cards';
 import { Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { NetWorthTabs } from './NetWorthTabs';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
-import { useAssetValues, useDueTemplates, useNetWorthSeries, useSheet } from './queries';
+import { useAssetValues, useDueTemplates, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
 import { ValueChart } from './ValueChart';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
@@ -81,12 +84,32 @@ export function OverviewPage() {
   const values = useAssetValues();
   const due = useDueTemplates();
 
+  const [period, setPeriod] = useState<RatioPeriod>({ key: 'ttm' });
+  const range = periodRange(period, today);
+  const flows = usePeriodFlows({ from: range.from, to: range.to });
+  const periodSheetInputs = useSheet(range.balanceDate);
+
   const points = series.data ?? [];
   const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
   const attention = attentionItems(values.data ?? [], due.data ?? []);
   const sinceLastMonth = deltaSince(points, 1);
   const januaryMonths = monthsSinceJanuary(points);
   const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);
+  const periodSheet = balanceSheet(periodSheetInputs.data?.assets ?? [], periodSheetInputs.data?.liabilities ?? []);
+  const groupTotal = (key: string) => periodSheet.assetGroups.find((group) => group.key === key)?.totalMinor ?? 0;
+  const totals: SheetTotals = {
+    liquidMinor: groupTotal('liquid'),
+    investMinor: groupTotal('invest'),
+    assetsMinor: periodSheet.assetsTotalMinor,
+    liabilitiesMinor: periodSheet.liabilitiesTotalMinor,
+    netWorthMinor: periodSheet.netWorthMinor,
+  };
+  const monthsWithData = flows.data?.months ?? 0;
+  const monthsNote =
+    monthsWithData === 0
+      ? 'No transactions in this period yet, so the ratios that need cash flow stay empty.'
+      : `${range.label}: ${monthsWithData === 1 ? '1 month' : `${monthsWithData} months`} of transactions, with balances as of ${range.balanceDate}.`;
+
   const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
 
   return (
@@ -174,6 +197,16 @@ export function OverviewPage() {
           <Money minor={sheet.netWorthMinor} currency={ws.baseCurrency} />
         </div>
       </Card>
+
+      <HealthRatios
+        flows={flows.data}
+        totals={totals}
+        period={period}
+        onPeriod={setPeriod}
+        today={today}
+        earliestYear={Number((points[0]?.month ?? today).slice(0, 4))}
+        monthsNote={monthsNote}
+      />
     </div>
   );
 }
