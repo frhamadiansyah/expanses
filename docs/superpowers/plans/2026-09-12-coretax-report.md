@@ -98,8 +98,8 @@ export const CASH_EQUIVALENT_CODE = '015';
 
 Preset codes change from the four-digit placeholders to: `cash` → `012`, `fund` → `036`, `stock` → `032`, `bond` → `034`, `gold` → `051`, `property` → `061`, `vehicle` → `043`, `other` → `059`. Sections are unchanged; only the codes were wrong.
 
-- [ ] Tests (fail first, `coretax-codes.test.ts`): `every code is three digits`; `no code appears twice`; `each family runs in its own hundred`; `a preset starts on the code its kind implies`; `gold is a movable asset, not an investment`; `a bank account is tabungan`; `the section of a code follows its family`; `a label is given in the form's own words`; `an unknown code has no label rather than a wrong one`.
-- [ ] Implement, export, run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): the verified three-digit Coretax codes`.
+- [x] Tests (fail first, `coretax-codes.test.ts`): `every code is three digits`; `no code appears twice`; `each family runs in its own hundred`; `a preset starts on the code its kind implies`; `gold is a movable asset, not an investment`; `a bank account is tabungan`; `the section of a code follows its family`; `a label is given in the form's own words`; `an unknown code has no label rather than a wrong one`.
+- [x] Implement, export, run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): the verified three-digit Coretax codes`.
 
 ---
 
@@ -156,8 +156,8 @@ export function utangRows(year: number, inputs: CoretaxInputs, settings: ReportS
 export function sectionTotals(rows: CoretaxRow[]): { section: CoretaxSection; costMinor: number; valueMinor: number }[];
 ```
 
-- [ ] Tests (fail first, `coretax-rows.test.ts`): `a bank account reports its balance on 31 December`; `a foreign account is converted at the KMK rate, not a market rate`; `a holding reports cost at what was paid and value at the 31 December price`; `splitting by year gives one row per year of purchase, and they add back to the whole`; `keeping one row per holding adds every year together`; `a sold holding reports nothing`; `property reports the basis chosen, and switching the basis changes only the value`; `a receivable reports its open balance`; `a debt reports what is still owed, and a card its balance`; `a debt paid off before 31 December reports nothing`; `every row carries the fields its section asks for`; `section totals add up to the rows they cover`.
-- [ ] Implement, export, run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): the harta and utang rows for a tax year`.
+- [x] Tests (fail first, `coretax-rows.test.ts`): `a bank account reports its balance on 31 December`; `a foreign account is converted at the KMK rate, not a market rate`; `a holding reports cost at what was paid and value at the 31 December price`; `splitting by year gives one row per year of purchase, and they add back to the whole`; `keeping one row per holding adds every year together`; `a sold holding reports nothing`; `property reports the basis chosen, and switching the basis changes only the value`; `a receivable reports its open balance`; `a debt reports what is still owed, and a card its balance`; `a debt paid off before 31 December reports nothing`; `every row carries the fields its section asks for`; `section totals add up to the rows they cover`.
+- [x] Implement, export, run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): the harta and utang rows for a tax year`.
 
 ---
 
@@ -191,8 +191,8 @@ export interface Reconciliation {
 export function reconciliation(rows: CoretaxRow[], utang: CoretaxRow[], netWorthMinor: number): Reconciliation;
 ```
 
-- [ ] Tests (fail first, `coretax-review.test.ts`): `the first year marks every row new`; `a row that is gone is marked removed`; `a row whose value moved is marked changed, with both figures`; `an untouched row is marked same`; `split rows match on account and year together`; `a missing required field is blocking`; `a malformed NPWP is blocking, a well-formed one passes`; `an acquired year after the tax year is blocking`; `a negative amount is blocking`; `a row with no acquired year is a warning, not a refusal`; `the reconciliation explains the gap between the report and net worth`; `a report matching net worth exactly has no reasons`.
-- [ ] Implement, export, run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): carry-over, readiness and the reconciliation against net worth`.
+- [x] Tests (fail first, `coretax-review.test.ts`): `the first year marks every row new`; `a row that is gone is marked removed`; `a row whose value moved is marked changed, with both figures`; `an untouched row is marked same`; `split rows match on account and year together`; `a missing required field is blocking`; `a malformed NPWP is blocking, a well-formed one passes`; `an acquired year after the tax year is blocking`; `a negative amount is blocking`; `a row with no acquired year is a warning, not a refusal`; `the reconciliation explains the gap between the report and net worth`; `a report matching net worth exactly has no reasons`.
+- [x] Implement, export, run `npm test -w @expanses/core` and `npm run typecheck`; commit `feat(core): carry-over, readiness and the reconciliation against net worth`.
 
 ---
 
@@ -289,8 +289,8 @@ export class TaxDbError extends Error {}
 
 The idempotency test in `database.test.ts` expects `[1..12]`.
 
-- [ ] Tests (fail first, `tax-reports.test.ts`): `the migration adds both tables and a v11 database still opens`; `it rewrites the placeholder asset codes`; `it rewrites the placeholder debt codes`; `it leaves a code the owner already corrected alone`; `a draft is created for a year`; `a second draft for the same year updates the first`; `the settings round-trip`; `a report for a year with nothing recorded is still a draft`; `kmk is allowed as a rate source`; `rates already stored survive the rebuild`; `a rate with an unknown source is still refused`.
-- [ ] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): migration 0012, tax reports and the corrected codes`.
+- [x] Tests (fail first, `tax-reports.test.ts`): `the migration adds both tables and a v11 database still opens`; `it rewrites the placeholder asset codes`; `it rewrites the placeholder debt codes`; `it leaves a code the owner already corrected alone`; `a draft is created for a year`; `a second draft for the same year updates the first`; `the settings round-trip`; `a report for a year with nothing recorded is still a draft`; `kmk is allowed as a rate source`; `rates already stored survive the rebuild`; `a rate with an unknown source is still refused`.
+- [x] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): migration 0012, tax reports and the corrected codes`.
 
 ---
 
@@ -318,9 +318,9 @@ export async function acceptLedgerValue(database: Database, ws: WorkspaceContext
 
 Rules the tests pin: a frozen report does not move when the ledger does; a filed report refuses every write; freezing twice is refused, naming the year; `acceptLedgerValue` marks the row `edited`.
 
-- [ ] Tests (fail first, `tax-inputs.test.ts`): `a bank balance is read on 31 December, not today`; `a holding carries its cost split by year of purchase`; `a holding sold during the year is left out`; `a card reports what it owed on 31 December`; `a loan reports its balance, not its schedule`; `a personal debt settled in November is left out`; `a receivable still open is included`; `a foreign account keeps its currency for the KMK rate to convert`.
-- [ ] Tests (fail first, `tax-freeze.test.ts`): `freezing copies the rows and stops following the ledger`; `a backdated trade shows as a difference, row by row`; `accepting a difference updates the row and marks it edited`; `freezing a year twice is refused, naming the year`; `a filed report refuses to be frozen again`; `a filed report refuses an accepted value`; `last year's filed rows are what carry-over reads`.
-- [ ] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): the tax year's figures, the freeze, and later differences`.
+- [x] Tests (fail first, `tax-inputs.test.ts`): `a bank balance is read on 31 December, not today`; `a holding carries its cost split by year of purchase`; `a holding sold during the year is left out`; `a card reports what it owed on 31 December`; `a loan reports its balance, not its schedule`; `a personal debt settled in November is left out`; `a receivable still open is included`; `a foreign account keeps its currency for the KMK rate to convert`.
+- [x] Tests (fail first, `tax-freeze.test.ts`): `freezing copies the rows and stops following the ledger`; `a backdated trade shows as a difference, row by row`; `accepting a difference updates the row and marks it edited`; `freezing a year twice is refused, naming the year`; `a filed report refuses to be frozen again`; `a filed report refuses an accepted value`; `last year's filed rows are what carry-over reads`.
+- [x] Implement; run `npm test -w @expanses/db` and `npm run typecheck`; commit `feat(db): the tax year's figures, the freeze, and later differences`.
 
 ---
 
@@ -340,8 +340,8 @@ export function carryPillLabel(status: CarryStatus): string;
 
 The tab shows the year and its status, the readiness list with links, what changed since last year's return, the two settings (value basis, one row per holding or per year), the Ikhtisar with totals per section and the totals for harta and utang, a tab per section with its rows and carry-over pills, and the reconciliation line explaining the gap against net worth.
 
-- [ ] Tests (fail first, `report-rows.test.ts`): `sections come in the order the form reads`; `an empty section is left out`; `totals per section match the rows shown`; `a blocking issue links to the asset that needs fixing`; `a warning links to the same place but is marked a warning`; `an issue about a debt links to Lend & borrow`; `an issue about a loan links to Loans`; `a manual row links to the report itself`; `carry-over pills read in plain words`.
-- [ ] Implement; run `npm test -w @expanses/web` and `npm run typecheck`; commit `feat(web): the Coretax tab, readiness and the Ikhtisar`.
+- [x] Tests (fail first, `report-rows.test.ts`): `sections come in the order the form reads`; `an empty section is left out`; `totals per section match the rows shown`; `a blocking issue links to the asset that needs fixing`; `a warning links to the same place but is marked a warning`; `an issue about a debt links to Lend & borrow`; `an issue about a loan links to Loans`; `a manual row links to the report itself`; `carry-over pills read in plain words`.
+- [x] Implement; run `npm test -w @expanses/web` and `npm run typecheck`; commit `feat(web): the Coretax tab, readiness and the Ikhtisar`.
 
 ---
 
@@ -362,10 +362,10 @@ export function csvColumns(section: CoretaxSection): string[];
 
 The freeze panel walks the owner through it: 31 December prices that are missing, the KMK rate per currency held, a review of the rows, then Freeze. Export offers Copy and Download CSV per section, with a line saying the file holds NPWP, NIK and account numbers and stays on this device.
 
-- [ ] Tests (fail first, `coretax-export.test.ts`): `the header names every column the section asks for`; `a row follows the header order`; `an amount is written in plain digits, with no thousands separator`; `a field holding a comma is quoted`; `a field holding a quote is escaped`; `an empty optional field is an empty column, not a gap`; `two sections have their own column sets`.
-- [ ] E2E (`apps/web/e2e/coretax.spec.ts`, fail first): `a year with a bank account, gold and a card lists rows in every section it should`; `readiness names what is missing and links to it`; `filling the missing field clears the issue`; `freezing keeps the figures when a later trade is backdated into the year`; `the difference is listed, and accepting it updates the row`; `the reconciliation line explains the gap against net worth`; `the CSV downloads and says it holds personal data`.
-- [ ] Implement; run `npm test`, `npm run typecheck`, `npm run e2e`; commit `feat(web): freezing a tax year, and the CSV export`.
-- [ ] Record execution notes at the end of this plan; commit `docs: record slice 6 execution status`.
+- [x] Tests (fail first, `coretax-export.test.ts`): `the header names every column the section asks for`; `a row follows the header order`; `an amount is written in plain digits, with no thousands separator`; `a field holding a comma is quoted`; `a field holding a quote is escaped`; `an empty optional field is an empty column, not a gap`; `two sections have their own column sets`.
+- [x] E2E (`apps/web/e2e/coretax.spec.ts`, fail first): `a year with a bank account, gold and a card lists rows in every section it should`; `readiness names what is missing and links to it`; `filling the missing field clears the issue`; `freezing keeps the figures when a later trade is backdated into the year`; `the difference is listed, and accepting it updates the row`; `the reconciliation line explains the gap against net worth`; `the CSV downloads and says it holds personal data`.
+- [x] Implement; run `npm test`, `npm run typecheck`, `npm run e2e`; commit `feat(web): freezing a tax year, and the CSV export`.
+- [x] Record execution notes at the end of this plan; commit `docs: record slice 6 execution status`.
 
 ---
 
@@ -376,3 +376,30 @@ The freeze panel walks the owner through it: 31 December prices that are missing
 **Deliberately not built, and why:** `toConverterTsv` and any claim to match a DJP converter's column order. The converter for Orang Pribadi harta and utang may not exist at all, and the documents that would settle it are scans. `toReportCsv` ships in our own documented column order, and `csvColumns` exists so a verified mapping can be checked against it later without touching the schema or the screens.
 
 **One code still open:** `015` against `019` for "setara kas lainnya". It lives in `CASH_EQUIVALENT_CODE`, in one place, so confirming it is a one-line change.
+
+---
+
+## Execution notes
+
+All seven tasks are done on `feat/coretax`. Gate on the finished tree: `npm test` green (catalog 52, core 413, db 368, web 180), `npm run typecheck` clean, `npm run e2e` 49 passed.
+
+**The codes were wrong, and that was the point of researching them first.** Every Coretax code written into slices 1 and 4 was a placeholder: four digits for harta, and `109` for other debts. The real kode harta are three digits (`011`–`069`) and the real kode utang are `101`–`104`. A credit card has its own code, `102`, which the design never modelled at all. Corroborated across three independent sources for harta and two for utang before a line was written.
+
+**What that cost, and why the migration is larger than it looks:** two tables had to be rebuilt, because SQLite cannot alter a CHECK constraint. `asset_profiles` constrained `coretax_code` to exactly four digits, and `fx_rates` constrained its source list, which now admits `kmk`. Stored codes are corrected on the way across, and a code the owner had already changed by hand is left alone. `DEFAULT_CORETAX_CODE` in the debts repo and the `/^\d{4}$/` guard in the assets repo were writing placeholders back, and both are corrected in the same commit.
+
+**Older tests that pinned the placeholder shape** — one asserting four digits on every preset, one the literal `0302`, two in the web add-asset planner, and the debt-code expectations from slice 4 — now pin the real thing. Three migration tests wrote asset profiles while their database was still at version 7 or 8, where the old CHECK still stands; they now write after the upgrade, which is what each was actually testing.
+
+**Deviations from the plan, and why:**
+
+- *`CoretaxRow.section` is `ReportSection`, not `CoretaxSection`.* Bagian B is a table of its own with no field definitions, so `'utang'` had to be a section the row type admits. One row type reads better than two nearly identical ones.
+- *`tax_year_rows` carries `row_key`.* The plan keyed rows by account, but a holding split by year of purchase needs the year in the key, which is what carry-over and `acceptLedgerValue` match on.
+- *The freeze panel holds the export.* The plan put the CSV somewhere unstated; it belongs next to the freeze, because that is where the owner is when they want the tables in front of them.
+
+**Two things the slice deliberately does not do:**
+
+1. **`toConverterTsv` is not built.** DJP publishes Excel-to-XML converters for Bupot, e-Faktur and SPT Badan — none for Orang Pribadi harta or utang — and DJP's own Coretax pages for OP describe filling those tables rather than importing them. The four DJP documents that would settle it are scans with no text layer, so nothing could be read from them. `toReportCsv` ships in our own column order, `csvColumns` states it, and the screen says so in as many words. When the question is settled, the seam is one pure function beside it.
+2. **`015` against `019` for "setara kas lainnya" is still open.** Two sources of three give `015`, which is what `CASH_EQUIVALENT_CODE` holds. The owner asked to be asked again before the export ships.
+
+**One flake worth recording, not fixing:** on a machine running the unit suite, a full e2e build and another test run at once, two database tests timed out at 58 s and the Coretax e2e took 32 minutes. Each passes alone in about 1.4 s, and the whole gate runs in about a minute on a quiet machine. Nothing was changed for it.
+
+**What is now stored and still read by nothing:** every debt, loan and asset carries a verified Coretax code, and the report reads them. That was the last thing the earlier slices were holding for this one.
