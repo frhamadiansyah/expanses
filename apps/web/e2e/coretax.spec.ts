@@ -16,7 +16,7 @@ async function addAccount(page: Page, name: string, type: string, balanceLabel: 
   await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
 }
 
-/** A bank account added as an asset, so it carries a Coretax section and its fields can be filled. */
+/** A bank account added as an asset, so it carries a tax-report section and its fields can be filled. */
 async function addBankAsset(page: Page) {
   await page.goto('/net-worth/assets');
   await page.getByRole('button', { name: 'Add asset' }).click();
@@ -70,13 +70,13 @@ test('says what is missing before it can be filed, and stops saying it once fixe
   await startReport(page);
   await expect(page.getByText(/needs Atas nama|needs Nama bank/).first()).toBeVisible();
 
-  // The Coretax details live on the asset, which is where the link sends you.
+  // The tax-report details live on the asset, which is where the link sends you.
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
   await page.getByLabel('Atas nama').fill('Fandrian');
   await page.getByLabel('Nama bank/institusi').fill('Bank Central Asia');
   await page.getByLabel('Lokasi harta').fill('IDN');
-  await page.getByRole('button', { name: 'Save Coretax details' }).click();
+  await page.getByRole('button', { name: 'Save tax-report details' }).click();
   await expect(page.getByText('Saved')).toBeVisible();
 
   await page.goto('/net-worth/coretax');

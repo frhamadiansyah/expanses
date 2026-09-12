@@ -241,7 +241,7 @@ export function GoalsPage() {
               )),
             )}
           </div>
-          <p className="mt-2 text-xs text-slate-500">Goals never change your net worth or the Coretax report; they only say what the money is for.</p>
+          <p className="mt-2 text-xs text-slate-500">Goals never change your net worth or the tax report; they only say what the money is for.</p>
         </Card>
       )}
     </div>
