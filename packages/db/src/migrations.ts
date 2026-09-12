@@ -7,6 +7,7 @@ import catalog from '../migrations/0005_catalog.sql?raw';
 import mccPoints from '../migrations/0006_mcc_points.sql?raw';
 import assets from '../migrations/0007_assets.sql?raw';
 import goals from '../migrations/0008_goals.sql?raw';
+import buyFlow from '../migrations/0009_buy_flow.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -24,6 +25,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 6, name: 'mcc_points', sql: mccPoints },
   { version: 7, name: 'assets', sql: assets },
   { version: 8, name: 'goals', sql: goals },
+  { version: 9, name: 'buy_flow', sql: buyFlow },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

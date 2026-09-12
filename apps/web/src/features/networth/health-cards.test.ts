@@ -13,6 +13,8 @@ const ratio = (partial: Partial<HealthRatio> = {}): HealthRatio => ({
   target: 6,
   max: 9,
   lowerBetter: false,
+  benchmarkText: '3–6 months',
+  companion: false,
   guide: 'Cash ÷ monthly outgoings.',
   ...partial,
 });
@@ -43,7 +45,7 @@ describe('ratioDisplay', () => {
   });
 
   it('shows percentages with one decimal', () => {
-    expect(ratioDisplay(ratio({ key: 'savings_rate', unit: 'percent', value: 23.529, target: 10, max: 40 })).value).toBe('23,5%');
+    expect(ratioDisplay(ratio({ key: 'savings_ratio', unit: 'percent', value: 23.529, target: 10, max: 40 })).value).toBe('23,5%');
   });
 
   it('names the status in plain words', () => {

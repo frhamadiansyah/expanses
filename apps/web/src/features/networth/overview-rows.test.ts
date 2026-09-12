@@ -24,6 +24,7 @@ const template = (id: string, accountId: string): TradeTemplateRow => ({
   dayOfMonth: 5,
   active: true,
   goalId: null,
+  kind: 'buy',
   createdAt: '2026-01-01T00:00:00Z',
 });
 

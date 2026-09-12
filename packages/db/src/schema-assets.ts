@@ -65,5 +65,6 @@ export const tradeTemplates = sqliteTable('trade_templates', {
   dayOfMonth: integer('day_of_month').notNull(),
   active: integer('active').notNull(),
   goalId: text('goal_id'),
+  kind: text('kind', { enum: ['buy', 'move'] }).notNull(),
   createdAt: text('created_at').notNull(),
 });

@@ -107,6 +107,56 @@ export async function assertAccountInWorkspace(tx: Db, ws: WorkspaceContext, acc
   if (!row) throw new AssetError(`${label} not found in this workspace`);
 }
 
+const PLAN_GROUPS: PlanGroup[] = ['liquid', 'invest', 'owed', 'use'];
+
+/**
+ * Moves an asset between balance-sheet groups, so broker cash can sit under investments
+ * instead of counting as the emergency buffer. Creates a plain profile when the asset has none.
+ */
+export async function setAssetGroup(database: Database, ws: WorkspaceContext, accountId: string, planGroup: PlanGroup): Promise<void> {
+  if (!PLAN_GROUPS.includes(planGroup)) throw new AssetError(`Unknown group "${planGroup}"`);
+  await database.transaction(async (tx) => {
+    await assertAccountInWorkspace(tx, ws, accountId, 'Asset');
+    const [existing] = await tx
+      .select()
+      .from(assetProfiles)
+      .where(and(eq(assetProfiles.accountId, accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
+    if (existing) {
+      await tx.update(assetProfiles).set({ planGroup, updatedAt: new Date().toISOString() }).where(eq(assetProfiles.accountId, accountId));
+      return;
+    }
+    const defaults = profileDefaults('cash');
+    await tx.insert(assetProfiles).values({
+      accountId,
+      workspaceId: ws.workspaceId,
+      assetKind: defaults.assetKind,
+      planGroup,
+      unitKind: defaults.unitKind,
+      lotSize: defaults.lotSize,
+      risk: defaults.risk,
+      coretaxSection: defaults.coretaxSection,
+      coretaxCode: defaults.coretaxCode,
+      coretaxFieldsJson: '{}',
+      acquiredYear: null,
+      updatedAt: new Date().toISOString(),
+    });
+  });
+}
+
+/** IDX stocks trade in lots of 100; US stocks trade in single shares. Null means the holding has no lots. */
+export async function setLotSize(database: Database, ws: WorkspaceContext, accountId: string, lotSize: number | null): Promise<void> {
+  if (lotSize !== null && (!Number.isInteger(lotSize) || lotSize < 1)) throw new AssetError('A lot is one share or more');
+  await database.transaction(async (tx) => {
+    await assertAccountInWorkspace(tx, ws, accountId, 'Asset');
+    const [existing] = await tx
+      .select({ accountId: assetProfiles.accountId })
+      .from(assetProfiles)
+      .where(and(eq(assetProfiles.accountId, accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
+    if (!existing) throw new AssetError('Add this asset first, then set its lot size');
+    await tx.update(assetProfiles).set({ lotSize, updatedAt: new Date().toISOString() }).where(eq(assetProfiles.accountId, accountId));
+  });
+}
+
 /** Writes the profile of an asset, filling in anything not given from the preset for its kind. */
 export async function saveAssetProfile(database: Database, ws: WorkspaceContext, input: SaveAssetProfileInput): Promise<void> {
   const defaults = profileDefaults(input.assetKind);
