@@ -210,3 +210,22 @@ export function usePeriodFlows(range: { from: string; to: string }): UseQueryRes
 **Spec coverage (§3.1, §5):** net worth at a date and the computed history (Task 4); balance sheet groups and the loan split (Task 1, 4); `periodFlows` with its exclusions and the months rule (Task 3); the eight ratios with thresholds, unknowns and the period switch (Task 2, 6); Overview screen with the card, chart, needs attention, sheet and ratio cards (Task 5, 6); dashboard link (Task 6).
 
 **Left for later slices, as designed:** goals, lend and borrow, loan terms with the real 12-month principal split and home-loan marking, and the Coretax report.
+
+---
+
+## Execution status (2026-09-12)
+
+All 6 tasks done on `feat/net-worth-overview`, one commit each, gate green at the end.
+
+**Changed from the plan during execution**
+
+- `periodFlows` counts interest as a debt payment only when the same transaction also pays down loan principal, so a credit-card interest charge stays spending and never inflates the debt-payment ratio. Money borrowed (a loan account credited) is ignored, since only payments in count.
+- `nonMortgageDebtPaymentsMinor` drops a whole transaction that touches a home loan, principal and interest together, because interest is one shared category and cannot be split per loan. `homeLoanAccountIds` stays empty until the Loans slice fills it.
+- `sheetInputsAt` gained an optional `ratesToBase`, so a foreign-currency account lands on the sheet in workspace currency instead of being dropped.
+- Two helpers beyond the plan: `monthsSinceJanuary` in `overview-rows.ts` (for the "since January" figure) and `periodChoices` in `health-cards.ts` (the years the period switch offers).
+- `OverviewPage` reads the balance sheet twice: today's for the card and the sheet, and the period's `balanceDate` for the ratios, so a calendar year uses balances on 31 Dec.
+- The end-to-end test that updates a price now waits for the new value on the Assets list before navigating; without that it raced the save and read the old value.
+
+**Counts at the end of the slice:** catalog 52, core 216, db 141, web 98, e2e 24.
+
+**Left for later slices, as designed:** goals, lend and borrow, loan terms (which will give the real 12-month principal split and mark home loans), and the Coretax report.
