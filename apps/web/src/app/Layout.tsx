@@ -10,7 +10,7 @@ const NAV = [
   { to: '/spending', label: 'Spending' },
   { to: '/accounts', label: 'Accounts' },
   { to: '/categories', label: 'Categories' },
-  { to: '/net-worth/assets', label: 'Net worth' },
+  { to: '/net-worth', label: 'Net worth' },
 ] as const;
 
 const MORE = [

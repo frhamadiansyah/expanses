@@ -10,6 +10,7 @@ import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
+import { OverviewPage } from '../features/networth/OverviewPage';
 import { TradesPage } from '../features/networth/TradesPage';
 import { SpendingPage } from '../features/spending/SpendingPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
@@ -39,6 +40,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId', component: CardDetailPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
