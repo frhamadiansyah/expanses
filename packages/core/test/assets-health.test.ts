@@ -88,22 +88,27 @@ describe('surplus', () => {
 });
 
 describe('emergency fund', () => {
-  it('divides cash by monthly spending, as the guide has it', () => {
+  it('divides cash by spending and debt payments, which is what the emergency goal counts too', () => {
     const ratio = by(healthRatios(flows(), totals()), 'emergency_fund');
-    expect(ratio.value).toBeCloseTo(200_000_000 / 46_800_000, 2);
+    expect(ratio.value).toBeCloseTo(200_000_000 / (46_800_000 + 14_973_000), 2);
     expect(ratio.status).toBe('good');
   });
 
-  it('adds debt payments to the denominator only when the setting is on', () => {
-    const stricter = by(healthRatios(flows(), totals(), { emergencyIncludesDebtPayments: true }), 'emergency_fund');
-    expect(stricter.value).toBeCloseTo(200_000_000 / (46_800_000 + 14_973_000), 2);
-    expect(stricter.value!).toBeLessThan(by(healthRatios(flows(), totals()), 'emergency_fund').value!);
+  it('drops debt payments from the denominator when the setting is turned off', () => {
+    const looser = by(healthRatios(flows(), totals(), { emergencyIncludesDebtPayments: false }), 'emergency_fund');
+    expect(looser.value).toBeCloseTo(200_000_000 / 46_800_000, 2);
+    expect(looser.value!).toBeGreaterThan(by(healthRatios(flows(), totals()), 'emergency_fund').value!);
+  });
+
+  it('says which denominator it used, so the card is not ambiguous', () => {
+    expect(by(healthRatios(flows(), totals()), 'emergency_fund').guide).toContain('spending and debt payments');
+    expect(by(healthRatios(flows(), totals(), { emergencyIncludesDebtPayments: false }), 'emergency_fund').guide).toContain('monthly spending.');
   });
 
   it('grades against three months, watching down to three divided by 1,2', () => {
-    expect(statusOf('emergency_fund', {}, { liquidMinor: 141_000_000 })).toBe('good');
-    expect(statusOf('emergency_fund', {}, { liquidMinor: 130_000_000 })).toBe('watch');
-    expect(statusOf('emergency_fund', {}, { liquidMinor: 100_000_000 })).toBe('act');
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 186_000_000 })).toBe('good');
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 170_000_000 })).toBe('watch');
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 140_000_000 })).toBe('act');
   });
 });
 
@@ -157,7 +162,8 @@ describe('the balance-sheet ratios', () => {
   it('is unknown when there is nothing to divide by', () => {
     expect(statusOf('liquidity', {}, { netWorthMinor: 0 })).toBe('unknown');
     expect(statusOf('debt_to_assets', {}, { assetsMinor: 0 })).toBe('unknown');
-    expect(statusOf('emergency_fund', { spendingMinor: 0 })).toBe('unknown');
+    // Both, now that debt payments are in the denominator: either one alone still leaves something to divide by.
+    expect(statusOf('emergency_fund', { spendingMinor: 0, debtPaymentsMinor: 0 })).toBe('unknown');
   });
 });
 
