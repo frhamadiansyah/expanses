@@ -183,3 +183,4 @@ export {
   type SplitShare,
   splitBillPostings,
 } from './debts/postings';
+export { type DebtStatus, DUE_SOON_DAYS, type DueState, dueLabel, dueStateFor, statusFor } from './debts/status';
