@@ -226,4 +226,8 @@ All eight tasks are done on `feat/buy-flow`. Gate on the finished tree: `npm tes
 - *Tagged transfers had no way in.* Task 4 built `recordTaggedTransfer` in the database and nothing called it. The transfer mode of `TransactionForm` now offers "For goal" and routes through it, which is what the RDN end-to-end test exercises.
 - *Asset settings work without a profile.* An account added on the Accounts page has no asset profile, so keying the settings card on the profile hid it exactly where it was needed — on broker cash. The card now takes the account's current group and creates the profile on save.
 
-**Left for the owner, as agreed:** the emergency-fund denominator default (the setting ships off, the guide's reading); Coretax codes and the converter's column order, to be checked against the live DJP converter before the report slice; hajj figures against Kemenag.
+**Left for the owner, as agreed — and since settled:**
+
+- *The emergency-fund denominator default.* Shipped off, the guide's spending-only reading. **Decided 2026-09-12:** it defaults on, so the ratio card and the emergency goal mean the same "6 months"; a loan payment is the least skippable outgoing when income stops. The toggle stays (`695338e`).
+- *Coretax codes and the converter's column order.* Codes settled in slice 7 from DJP's own guide — four digits, migration `0013` — and the utang codes in `0014` (`135d0f9`). The column order still wants one check against the live DJP converter; it was read off rendered scans, and Bagian B has no converter at all.
+- *Hajj figures against Kemenag.* **Decided 2026-09-12:** no figure ships. Every template opens with a blank required amount and the hajj hint says to use whatever the bank or Kemenag quotes today, because reguler, plus and furoda pay in different steps. A prefilled wrong figure looks decided; a blank one asks (`1fd95ff`).
