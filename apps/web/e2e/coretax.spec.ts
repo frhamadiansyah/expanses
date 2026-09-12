@@ -58,9 +58,9 @@ test('lists a row in every table the year actually has', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Kas dan Setara Kas' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Harta Lainnya' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Utang', exact: true })).toBeVisible();
-  // The codes are the real three-digit ones.
-  await expect(page.getByText('012').first()).toBeVisible();
-  await expect(page.getByText('051').first()).toBeVisible();
+  // The codes are Coretax's four-digit ones; utang keeps the e-Form code, which is all DJP publishes.
+  await expect(page.getByText('0102').first()).toBeVisible();
+  await expect(page.getByText('0701').first()).toBeVisible();
   await expect(page.getByText('102').first()).toBeVisible();
 });
 
@@ -73,6 +73,7 @@ test('says what is missing before it can be filed, and stops saying it once fixe
   // The tax-report details live on the asset, which is where the link sends you.
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
+  await page.getByLabel('Nomor akun').fill('1234567890');
   await page.getByLabel('Atas nama').fill('Fandrian');
   await page.getByLabel('Nama bank/institusi').fill('Bank Central Asia');
   await page.getByLabel('Lokasi harta').fill('IDN');
@@ -126,4 +127,62 @@ test('says the report stays on this device', async ({ page }) => {
   await startReport(page);
 
   await expect(page.getByText(/stays on this device|nothing is sent anywhere/)).toBeVisible();
+});
+
+test('offers a converter file per harta table, and explains why utang has none', async ({ page }) => {
+  await addBankAsset(page);
+  await startReport(page);
+
+  // Every harta table gets DJP's own sheet, and the CSV beside it for reading.
+  await expect(page.getByRole('button', { name: 'Converter file (.tsv)' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'CSV to read' }).first()).toBeVisible();
+});
+
+test('gives utang the CSV only, and says why', async ({ page }) => {
+  await addBankAsset(page);
+  await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '4000000');
+
+  await startReport(page);
+
+  // A debt reaches the report, and its row offers no converter because DJP publishes none.
+  await expect(page.getByText(/Coretax publishes no import for utang/)).toBeVisible();
+});
+
+test('will not build a converter file until the report carries an NPWP', async ({ page }) => {
+  await addBankAsset(page);
+  await startReport(page);
+
+  await expect(page.getByRole('button', { name: 'Converter file (.tsv)' }).first()).toBeDisabled();
+  await expect(page.getByText(/The converter sheet starts with your NPWP/)).toBeVisible();
+
+  await page.getByLabel('NPWP').fill('0011223344556677');
+  await page.getByRole('button', { name: 'Save taxpayer details' }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+
+  await expect(page.getByText(/The converter sheet starts with your NPWP/)).toHaveCount(0);
+});
+
+test('downloads the converter file once the sheet has everything it needs', async ({ page }) => {
+  await addBankAsset(page);
+  await startReport(page);
+  await page.getByLabel('NPWP').fill('0011223344556677');
+  await page.getByRole('button', { name: 'Save taxpayer details' }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+
+  // The kas sheet needs its account number, owner, institution and country before it can be built.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: /BCA Tahapan/ }).click();
+  await page.getByLabel('Nomor akun').fill('1234567890');
+  await page.getByLabel('Atas nama').fill('Fandrian');
+  await page.getByLabel('Nama bank/institusi').fill('Bank Central Asia');
+  await page.getByLabel('Lokasi harta').fill('IDN');
+  await page.getByRole('button', { name: 'Save tax-report details' }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+
+  await page.goto('/net-worth/coretax');
+  await page.getByLabel('Tax year').selectOption(String(YEAR));
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Converter file (.tsv)' }).first().click();
+  expect((await download).suggestedFilename()).toContain(`coretax-${YEAR}-kas`);
 });

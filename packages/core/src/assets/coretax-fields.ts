@@ -24,7 +24,7 @@ export const CORETAX_SECTIONS: Record<CoretaxSection, { label: string; fields: r
   kas: {
     label: 'Kas dan Setara Kas',
     fields: [
-      field('acct', 'Nomor akun', 'text'),
+      field('acct', 'Nomor akun', 'text', true),
       field('owner', 'Atas nama', 'text', true),
       field('inst', 'Nama bank/institusi', 'text', true),
       field('loc', 'Lokasi harta', 'country', true),
@@ -32,23 +32,29 @@ export const CORETAX_SECTIONS: Record<CoretaxSection, { label: string; fields: r
   },
   piutang: {
     label: 'Piutang',
-    fields: [field('name', 'Nama penerima pinjaman', 'text', true)],
+    fields: [
+      field('loc', 'Negara lokasi', 'country', true),
+      field('idno', 'Nomor identitas penerima', 'text', true),
+      field('name', 'Nama penerima pinjaman', 'text', true),
+    ],
   },
   investasi: {
     label: 'Investasi/Sekuritas',
     fields: [
       field('loc', 'Lokasi harta', 'country', true),
-      field('npwp', 'NPWP penerima investasi', 'npwp'),
+      field('npwp', 'Nomor identitas penerima investasi', 'npwp', true),
       field('inst', 'Nama institusi', 'text', true),
-      field('sid', 'SID / bukti kepemilikan', 'text'),
+      field('sid', 'Bukti kepemilikan / nomor akun', 'text', true),
     ],
   },
   bergerak: {
     label: 'Harta Bergerak',
     fields: [
       field('model', 'Merk/model', 'text', true),
-      field('plate', 'Nomor polisi', 'text', true),
+      field('plate', 'Nomor polisi/registrasi', 'text', true),
       field('own', 'Kepemilikan', 'text', true),
+      field('ownerNpwp', 'NPWP pemilik', 'npwp', true),
+      field('ownerName', 'Nama pemilik', 'text', true),
     ],
   },
   tidak_bergerak: {
@@ -63,7 +69,7 @@ export const CORETAX_SECTIONS: Record<CoretaxSection, { label: string; fields: r
   },
   lainnya: {
     label: 'Harta Lainnya',
-    fields: [field('cert', 'Bukti kepemilikan', 'text'), field('info', 'Informasi tambahan', 'text', true)],
+    fields: [field('cert', 'Bukti kepemilikan / nomor akun', 'text', true), field('info', 'Informasi tambahan', 'text', true)],
   },
 };
 

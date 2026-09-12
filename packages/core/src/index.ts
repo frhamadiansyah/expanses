@@ -195,7 +195,6 @@ export {
 } from './loans/effects';
 export { type CardInstallment, type InstallmentSplit, installmentSplit } from './loans/installments';
 export {
-  CASH_EQUIVALENT_CODE,
   type CoretaxCode,
   coretaxCodeFor,
   type HartaFamily,
@@ -203,6 +202,7 @@ export {
   KODE_HARTA,
   KODE_UTANG,
   sectionOfCode,
+  UTANG_CODES_UNVERIFIED,
   utangLabel,
 } from './coretax/codes';
 export {
@@ -231,3 +231,15 @@ export {
   reconciliation,
 } from './coretax/review';
 export { csvColumns, toReportCsv } from './coretax/export';
+export {
+  type ConverterHeader,
+  ConverterError,
+  converterColumns,
+  converterProblems,
+  type Kepemilikan,
+  KEPEMILIKAN,
+  PPS_KETERANGAN,
+  type SumberKepemilikan,
+  SUMBER_KEPEMILIKAN,
+  toConverterTsv,
+} from './coretax/converter';

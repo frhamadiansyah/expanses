@@ -73,7 +73,7 @@ describe('what the year holds', () => {
     });
 
     const inputs = await coretaxInputsFor(database, ws, YEAR);
-    expect(inputs.cash.find((row) => row.accountId === bca.id)).toMatchObject({ balanceMinor: 50_000_000, code: '012' });
+    expect(inputs.cash.find((row) => row.accountId === bca.id)).toMatchObject({ balanceMinor: 50_000_000, code: '0102' });
   });
 
   it('carries the fields the owner filled in for the section', async () => {
@@ -91,7 +91,7 @@ describe('what the year holds', () => {
     const holding = inputs.holdings.find((row) => row.accountId === gold.id)!;
     expect(Object.keys(holding.byYear).sort()).toEqual(['2024', '2026']);
     expect(holding.byYear['2024']).toMatchObject({ unitsMicro: 10_000_000, costMinor: 13_100_000 });
-    expect(holding.code).toBe('051');
+    expect(holding.code).toBe('0701');
   });
 
   it('prices a holding at the last price on or before 31 December', async () => {
@@ -114,7 +114,7 @@ describe('what the year holds', () => {
   it('reports a property at what it cost and what it is estimated at', async () => {
     const inputs = await coretaxInputsFor(database, ws, YEAR);
 
-    expect(inputs.estimated.find((row) => row.accountId === house.id)).toMatchObject({ code: '061', costMinor: 900_000_000 });
+    expect(inputs.estimated.find((row) => row.accountId === house.id)).toMatchObject({ code: '0502', costMinor: 900_000_000 });
   });
 
   it('reports what the card owed on 31 December', async () => {
@@ -167,7 +167,7 @@ describe('what the year holds', () => {
 
     const inputs = await coretaxInputsFor(database, ws, YEAR);
     expect(inputs.receivables.map((row) => row.accountId)).toEqual([lent.debtAccountId]);
-    expect(inputs.receivables[0]).toMatchObject({ code: '021', balanceMinor: 9_000_000 });
+    expect(inputs.receivables[0]).toMatchObject({ code: '0201', balanceMinor: 9_000_000 });
   });
 
   it('names the person on a receivable, which the form asks for', async () => {

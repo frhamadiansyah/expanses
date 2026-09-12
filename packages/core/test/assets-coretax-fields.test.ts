@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ASSET_PRESETS, CORETAX_SECTIONS, type CoretaxSection, missingCoretaxFields, presetFor, validateCoretaxFields } from '../src/index';
 
 describe('asset presets', () => {
-  it('names a Coretax section that exists and a three-digit code', () => {
+  it('names a Coretax section that exists and a four-digit code', () => {
     for (const preset of ASSET_PRESETS) {
       expect(CORETAX_SECTIONS[preset.coretaxSection], preset.kind).toBeDefined();
-      expect(preset.coretaxCode, preset.kind).toMatch(/^\d{3}$/);
+      expect(preset.coretaxCode, preset.kind).toMatch(/^\d{4}$/);
     }
   });
 
@@ -21,7 +21,7 @@ describe('asset presets', () => {
   });
 
   it('counts shares in lots of 100', () => {
-    expect(presetFor('stock')).toMatchObject({ unitKind: 'shares', lotSize: 100, risk: 'high', coretaxSection: 'investasi', coretaxCode: '032' });
+    expect(presetFor('stock')).toMatchObject({ unitKind: 'shares', lotSize: 100, risk: 'high', coretaxSection: 'investasi', coretaxCode: '0303' });
   });
 
   it('values property and vehicles from your own estimate', () => {
@@ -31,6 +31,38 @@ describe('asset presets', () => {
 
   it('keeps bank accounts on the ledger balance', () => {
     expect(presetFor('cash')).toMatchObject({ valuationMode: 'derived', planGroup: 'liquid', coretaxSection: 'kas', unitKind: null });
+  });
+});
+
+describe('the fields each converter insists on', () => {
+  const keysOf = (section: CoretaxSection) => CORETAX_SECTIONS[section].fields.map((f) => f.key);
+  const requiredOf = (section: CoretaxSection) => CORETAX_SECTIONS[section].fields.filter((f) => f.required).map((f) => f.key);
+
+  it('asks piutang for the country and the borrower identity number', () => {
+    expect(keysOf('piutang')).toEqual(expect.arrayContaining(['loc', 'idno', 'name']));
+    expect(requiredOf('piutang')).toEqual(expect.arrayContaining(['loc', 'idno', 'name']));
+  });
+
+  it('asks harta bergerak who owns it, by name and NPWP', () => {
+    expect(keysOf('bergerak')).toEqual(expect.arrayContaining(['model', 'plate', 'own', 'ownerNpwp', 'ownerName']));
+    expect(requiredOf('bergerak')).toEqual(expect.arrayContaining(['ownerNpwp', 'ownerName']));
+  });
+
+  it('requires an account number for kas, which DJP stars', () => {
+    expect(requiredOf('kas')).toContain('acct');
+  });
+
+  it('requires the ownership proof and identity for a securities holding', () => {
+    expect(requiredOf('investasi')).toEqual(expect.arrayContaining(['npwp', 'sid']));
+  });
+
+  it('requires the ownership proof for harta lainnya too', () => {
+    expect(requiredOf('lainnya')).toContain('cert');
+  });
+
+  it('keeps every field a section already had', () => {
+    expect(keysOf('tidak_bergerak')).toEqual(['loc', 'land', 'bldg', 'source', 'cert']);
+    expect(keysOf('kas')).toEqual(['acct', 'owner', 'inst', 'loc']);
   });
 });
 
@@ -94,7 +126,12 @@ describe('missingCoretaxFields', () => {
     expect(missingCoretaxFields('lainnya', { cert: 'Antam certificates', info: 'Emas batangan Antam' })).toEqual([]);
   });
 
-  it('ignores optional fields', () => {
-    expect(missingCoretaxFields('kas', { owner: 'Dimas Wijaya', inst: 'PT Bank Central Asia Tbk', loc: 'IDN' })).toEqual([]);
+  it('ignores a key the section never asked for', () => {
+    const filled = { acct: '1234567890', owner: 'Dimas Wijaya', inst: 'PT Bank Central Asia Tbk', loc: 'IDN', nickname: 'Gaji' };
+    expect(missingCoretaxFields('kas', filled)).toEqual([]);
+  });
+
+  it('reports the account number, which the converter stars', () => {
+    expect(missingCoretaxFields('kas', { owner: 'Dimas Wijaya', inst: 'PT Bank Central Asia Tbk', loc: 'IDN' })).toEqual(['acct']);
   });
 });

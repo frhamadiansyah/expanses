@@ -11,7 +11,7 @@ const row = (partial: Partial<CoretaxRow> & Pick<CoretaxRow, 'key'>): CoretaxRow
   costMinor: 50_000_000,
   valueMinor: 50_000_000,
   balanceMinor: 50_000_000,
-  fields: { owner: 'Fandrian', inst: 'Bank Central Asia', loc: 'IDN' },
+  fields: { acct: '1234567890', owner: 'Fandrian', inst: 'Bank Central Asia', loc: 'IDN' },
   source: 'auto',
   note: null,
   ...partial,
@@ -27,7 +27,7 @@ const gold = (partial: Partial<CoretaxRow> = {}): CoretaxRow =>
     costMinor: 22_400_000,
     valueMinor: 28_500_000,
     balanceMinor: 0,
-    fields: { info: 'Emas batangan Antam' },
+    fields: { cert: 'Sertifikat Antam 001', info: 'Emas batangan Antam' },
     ...partial,
   });
 
@@ -92,7 +92,7 @@ describe('readiness', () => {
 
   it('accepts a well-formed NPWP and refuses a malformed one', () => {
     const withNpwp = (npwp: string) =>
-      row({ key: 'bbri', section: 'investasi', code: '032', name: 'BBRI shares', acquiredYear: 2024, fields: { loc: 'IDN', inst: 'Stockbit', npwp } });
+      row({ key: 'bbri', section: 'investasi', code: '032', name: 'BBRI shares', acquiredYear: 2024, fields: { loc: 'IDN', inst: 'Stockbit', sid: 'SID-001', npwp } });
 
     expect(readiness([withNpwp('0011223344556677')], YEAR)).toEqual([]);
     expect(readiness([withNpwp('12345')], YEAR).some((issue) => issue.level === 'blocking')).toBe(true);

@@ -23,14 +23,14 @@ export interface AssetPreset {
 }
 
 export const ASSET_PRESETS: readonly AssetPreset[] = [
-  { kind: 'fund', label: 'Fund', subtype: 'investment', valuationMode: 'market', unitKind: 'units', lotSize: null, risk: 'high', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '036', priceLabel: 'NAV per unit' },
-  { kind: 'stock', label: 'Stock', subtype: 'investment', valuationMode: 'market', unitKind: 'shares', lotSize: 100, risk: 'high', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '032', priceLabel: 'Closing price' },
-  { kind: 'bond', label: 'Bond', subtype: 'investment', valuationMode: 'market', unitKind: 'face', lotSize: null, risk: 'low', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '034', priceLabel: 'Face value' },
-  { kind: 'gold', label: 'Gold', subtype: 'investment', valuationMode: 'market', unitKind: 'grams', lotSize: null, risk: 'medium', planGroup: 'invest', coretaxSection: 'lainnya', coretaxCode: '051', priceLabel: 'Buyback price per gram' },
-  { kind: 'property', label: 'Property', subtype: 'property', valuationMode: 'snapshot', unitKind: null, lotSize: null, risk: null, planGroup: 'use', coretaxSection: 'tidak_bergerak', coretaxCode: '061', priceLabel: null },
-  { kind: 'vehicle', label: 'Vehicle', subtype: 'vehicle', valuationMode: 'snapshot', unitKind: null, lotSize: null, risk: null, planGroup: 'use', coretaxSection: 'bergerak', coretaxCode: '043', priceLabel: null },
-  { kind: 'other', label: 'Other asset', subtype: 'investment', valuationMode: 'snapshot', unitKind: null, lotSize: null, risk: null, planGroup: 'use', coretaxSection: 'lainnya', coretaxCode: '059', priceLabel: null },
-  { kind: 'cash', label: 'Bank, cash or deposit', subtype: 'bank', valuationMode: 'derived', unitKind: null, lotSize: null, risk: null, planGroup: 'liquid', coretaxSection: 'kas', coretaxCode: '012', priceLabel: null },
+  { kind: 'fund', label: 'Fund', subtype: 'investment', valuationMode: 'market', unitKind: 'units', lotSize: null, risk: 'high', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '0307', priceLabel: 'NAV per unit' },
+  { kind: 'stock', label: 'Stock', subtype: 'investment', valuationMode: 'market', unitKind: 'shares', lotSize: 100, risk: 'high', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '0303', priceLabel: 'Closing price' },
+  { kind: 'bond', label: 'Bond', subtype: 'investment', valuationMode: 'market', unitKind: 'face', lotSize: null, risk: 'low', planGroup: 'invest', coretaxSection: 'investasi', coretaxCode: '0305', priceLabel: 'Face value' },
+  { kind: 'gold', label: 'Gold', subtype: 'investment', valuationMode: 'market', unitKind: 'grams', lotSize: null, risk: 'medium', planGroup: 'invest', coretaxSection: 'lainnya', coretaxCode: '0701', priceLabel: 'Buyback price per gram' },
+  { kind: 'property', label: 'Property', subtype: 'property', valuationMode: 'snapshot', unitKind: null, lotSize: null, risk: null, planGroup: 'use', coretaxSection: 'tidak_bergerak', coretaxCode: '0502', priceLabel: null },
+  { kind: 'vehicle', label: 'Vehicle', subtype: 'vehicle', valuationMode: 'snapshot', unitKind: null, lotSize: null, risk: null, planGroup: 'use', coretaxSection: 'bergerak', coretaxCode: '0403', priceLabel: null },
+  { kind: 'other', label: 'Other asset', subtype: 'investment', valuationMode: 'snapshot', unitKind: null, lotSize: null, risk: null, planGroup: 'use', coretaxSection: 'lainnya', coretaxCode: '0799', priceLabel: null },
+  { kind: 'cash', label: 'Bank, cash or deposit', subtype: 'bank', valuationMode: 'derived', unitKind: null, lotSize: null, risk: null, planGroup: 'liquid', coretaxSection: 'kas', coretaxCode: '0102', priceLabel: null },
 ];
 
 export function presetFor(kind: AssetKind): AssetPreset {

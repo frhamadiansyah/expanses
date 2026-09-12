@@ -2,28 +2,29 @@ import { describe, expect, it } from 'vitest';
 import {
   type AssetKind,
   ASSET_PRESETS,
-  CASH_EQUIVALENT_CODE,
   coretaxCodeFor,
   hartaLabel,
   KODE_HARTA,
   KODE_UTANG,
   sectionOfCode,
+  UTANG_CODES_UNVERIFIED,
   utangLabel,
 } from '../src/index';
 
-/** The hundred each family runs in, per the form. */
-const FAMILY_HUNDREDS: Record<string, string> = {
-  kas: '01',
-  piutang: '02',
-  investasi: '03',
-  transportasi: '04',
-  bergerak: '05',
-  tidak_bergerak: '06',
+/** The hundred each table runs in, per the DJP guide. */
+const FAMILY_HUNDREDS: Record<string, string[]> = {
+  kas: ['01'],
+  piutang: ['02'],
+  investasi: ['03'],
+  bergerak: ['04'],
+  tidak_bergerak: ['05'],
+  // Harta Lainnya covers the intangibles at 06 and the movable rest at 07.
+  lainnya: ['06', '07'],
 };
 
 describe('the harta codes', () => {
-  it('are three digits, every one', () => {
-    for (const entry of KODE_HARTA) expect(entry.code).toMatch(/^\d{3}$/);
+  it('are four digits, every one', () => {
+    for (const entry of KODE_HARTA) expect(entry.code).toMatch(/^\d{4}$/);
   });
 
   it('never repeat a code', () => {
@@ -31,81 +32,96 @@ describe('the harta codes', () => {
   });
 
   it('keep each family in its own hundred', () => {
-    for (const entry of KODE_HARTA) expect(entry.code.slice(0, 2)).toBe(FAMILY_HUNDREDS[entry.family]);
+    for (const entry of KODE_HARTA) expect(FAMILY_HUNDREDS[entry.family]).toContain(entry.code.slice(0, 2));
   });
 
-  it('cover the ones the owner actually holds', () => {
-    const codes = KODE_HARTA.map((entry) => entry.code);
-    expect(codes).toEqual(expect.arrayContaining(['012', '014', '021', '032', '034', '036', '043', '051', '061']));
+  it('cover every table the form asks for', () => {
+    expect(new Set(KODE_HARTA.map((entry) => entry.family)).size).toBe(6);
   });
 
   it('say what each one is, in the form own words', () => {
-    expect(hartaLabel('012')).toBe('Tabungan');
-    expect(hartaLabel('036')).toBe('Reksadana');
-    expect(hartaLabel('051')).toBe('Logam mulia');
-    expect(hartaLabel('061')).toBe('Tanah atau bangunan tempat tinggal');
+    expect(hartaLabel('0102')).toContain('Tabungan');
+    expect(hartaLabel('0307')).toContain('Kontrak investasi kolektif');
+    expect(hartaLabel('0701')).toBe('Emas batangan');
+    expect(hartaLabel('0502')).toBe('Tanah dan/atau bangunan untuk tempat tinggal');
   });
 
-  it('say nothing for a code that is not on the list, rather than guessing', () => {
-    expect(hartaLabel('999')).toBe('');
-    expect(hartaLabel('0302')).toBe('');
+  it('say nothing for a code that is not on the list', () => {
+    expect(hartaLabel('9999')).toBe('');
+    // The three-digit codes belong to e-Form, which Coretax does not use.
+    expect(hartaLabel('012')).toBe('');
+    expect(hartaLabel('051')).toBe('');
   });
 });
 
 describe('the utang codes', () => {
-  it('are the four the form allows', () => {
+  it('are the four the e-Form petunjuk gives', () => {
     expect(KODE_UTANG.map((entry) => entry.code)).toEqual(['101', '102', '103', '104']);
+  });
+
+  it('are marked unverified, because the Coretax guide lists none', () => {
+    expect(UTANG_CODES_UNVERIFIED).toBe(true);
   });
 
   it('give a credit card its own code', () => {
     expect(utangLabel('102')).toBe('Kartu kredit');
   });
 
-  it('name a bank loan as the form does', () => {
-    expect(utangLabel('101')).toContain('bank');
-  });
-
   it('say nothing for a code that does not exist', () => {
-    // 109 was a placeholder in the design and is not a real code.
     expect(utangLabel('109')).toBe('');
   });
 });
 
 describe('sectionOfCode', () => {
-  it('follows the family the code belongs to', () => {
-    expect(sectionOfCode('012')).toBe('kas');
-    expect(sectionOfCode('021')).toBe('piutang');
-    expect(sectionOfCode('032')).toBe('investasi');
-    expect(sectionOfCode('061')).toBe('tidak_bergerak');
-  });
-
-  it('puts a vehicle under Harta Bergerak, which asks for its plate', () => {
-    expect(sectionOfCode('043')).toBe('bergerak');
+  it('sends each code to its own table', () => {
+    expect(sectionOfCode('0102')).toBe('kas');
+    expect(sectionOfCode('0201')).toBe('piutang');
+    expect(sectionOfCode('0303')).toBe('investasi');
+    expect(sectionOfCode('0403')).toBe('bergerak');
+    expect(sectionOfCode('0502')).toBe('tidak_bergerak');
   });
 
   it('puts gold under Harta Lainnya, not investments', () => {
-    expect(sectionOfCode('051')).toBe('lainnya');
+    expect(sectionOfCode('0701')).toBe('lainnya');
+  });
+
+  it('puts a patent under Harta Lainnya too, which is where the intangibles live', () => {
+    expect(sectionOfCode('0601')).toBe('lainnya');
   });
 
   it('falls back to Harta Lainnya for a code it does not know', () => {
-    expect(sectionOfCode('999')).toBe('lainnya');
+    expect(sectionOfCode('9999')).toBe('lainnya');
   });
 });
 
 describe('coretaxCodeFor', () => {
   const cases: [AssetKind, string][] = [
-    ['cash', '012'],
-    ['fund', '036'],
-    ['stock', '032'],
-    ['bond', '034'],
-    ['gold', '051'],
-    ['property', '061'],
-    ['vehicle', '043'],
-    ['other', '059'],
+    ['cash', '0102'],
+    ['fund', '0307'],
+    ['stock', '0303'],
+    ['bond', '0305'],
+    ['gold', '0701'],
+    ['property', '0502'],
+    ['vehicle', '0403'],
+    ['other', '0799'],
   ];
 
   it('starts each kind on the code it implies', () => {
     for (const [kind, code] of cases) expect(coretaxCodeFor(kind)).toBe(code);
+  });
+
+  it('calls a fund a collective investment contract, not a bond', () => {
+    expect(coretaxCodeFor('fund')).toBe('0307');
+    expect(hartaLabel(coretaxCodeFor('fund'))).toContain('kolektif');
+  });
+
+  it('treats shares as listed, since that is what is held here', () => {
+    expect(coretaxCodeFor('stock')).toBe('0303');
+    expect(hartaLabel('0302')).toBe('Saham non bursa');
+  });
+
+  it('starts a bond on the government one, which is what ORI and SBSN are', () => {
+    expect(hartaLabel(coretaxCodeFor('bond'))).toContain('Obligasi pemerintah');
   });
 
   it('agrees with the preset the asset was created from', () => {
@@ -119,12 +135,5 @@ describe('coretaxCodeFor', () => {
 
   it('puts every preset in the section its code implies', () => {
     for (const preset of ASSET_PRESETS) expect(preset.coretaxSection).toBe(sectionOfCode(preset.coretaxCode));
-  });
-});
-
-describe('the code still to confirm', () => {
-  it('uses 015 for cash equivalents, which two sources of three give', () => {
-    expect(CASH_EQUIVALENT_CODE).toBe('015');
-    expect(hartaLabel(CASH_EQUIVALENT_CODE)).toBe('Setara kas lainnya');
   });
 });
