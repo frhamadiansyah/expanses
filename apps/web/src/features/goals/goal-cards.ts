@@ -108,15 +108,15 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
     label: 'Hajj or umrah',
     growthBps: 500,
     returnBps: 600,
-    stage: { name: 'Setoran awal', targetMinor: 25_000_000, targetMonths: null, monthsAway: 12 },
-    hint: 'Add a stage for each payment your scheme asks for; reguler, plus and furoda pay in different steps.',
+    stage: { name: 'Setoran awal', targetMinor: null, targetMonths: null, monthsAway: 12 },
+    hint: 'Put in the setoran awal your bank or Kemenag quotes today, then add a stage for each payment your scheme asks for; reguler, plus and furoda pay in different steps.',
   },
   {
     kind: 'education',
     label: 'Education',
     growthBps: 1000,
     returnBps: 1000,
-    stage: { name: 'First year', targetMinor: 100_000_000, targetMonths: null, monthsAway: 120 },
+    stage: { name: 'First year', targetMinor: null, targetMonths: null, monthsAway: 120 },
     hint: 'Education costs rise faster than everything else, so the growth starts at 10% a year.',
   },
   {
@@ -124,13 +124,13 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
     label: 'Retirement',
     growthBps: 400,
     returnBps: 900,
-    stage: { name: 'Retirement fund', targetMinor: 1_000_000_000, targetMonths: null, monthsAway: 240 },
+    stage: { name: 'Retirement fund', targetMinor: null, targetMonths: null, monthsAway: 240 },
     hint: 'BPJS JHT and DPLK are not counted yet; add them as other assets to include them.',
   },
-  { kind: 'home', label: 'Home down payment', growthBps: 700, returnBps: 500, stage: { name: 'Down payment', targetMinor: 200_000_000, targetMonths: null, monthsAway: 36 }, hint: 'Property prices move with the area, so check the growth yourself.' },
-  { kind: 'wedding', label: 'Wedding', growthBps: 500, returnBps: 500, stage: { name: 'Wedding', targetMinor: 150_000_000, targetMonths: null, monthsAway: 24 }, hint: 'Add stages for the venue deposit and the balance if you pay in steps.' },
-  { kind: 'vehicle', label: 'Vehicle', growthBps: 300, returnBps: 450, stage: { name: 'Vehicle', targetMinor: 250_000_000, targetMonths: null, monthsAway: 36 }, hint: 'A down payment and the loan go on Loans; this is for paying cash.' },
-  { kind: 'holiday', label: 'Holiday', growthBps: 300, returnBps: 450, stage: { name: 'Holiday', targetMinor: 30_000_000, targetMonths: null, monthsAway: 9 }, hint: 'Short goals belong in savings or a money market fund, not shares.' },
+  { kind: 'home', label: 'Home down payment', growthBps: 700, returnBps: 500, stage: { name: 'Down payment', targetMinor: null, targetMonths: null, monthsAway: 36 }, hint: 'Property prices move with the area, so check the growth yourself.' },
+  { kind: 'wedding', label: 'Wedding', growthBps: 500, returnBps: 500, stage: { name: 'Wedding', targetMinor: null, targetMonths: null, monthsAway: 24 }, hint: 'Add stages for the venue deposit and the balance if you pay in steps.' },
+  { kind: 'vehicle', label: 'Vehicle', growthBps: 300, returnBps: 450, stage: { name: 'Vehicle', targetMinor: null, targetMonths: null, monthsAway: 36 }, hint: 'A down payment and the loan go on Loans; this is for paying cash.' },
+  { kind: 'holiday', label: 'Holiday', growthBps: 300, returnBps: 450, stage: { name: 'Holiday', targetMinor: null, targetMonths: null, monthsAway: 9 }, hint: 'Short goals belong in savings or a money market fund, not shares.' },
 ];
 
 export function templateFor(kind: GoalKind): GoalTemplate | undefined {

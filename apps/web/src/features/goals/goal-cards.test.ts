@@ -81,6 +81,10 @@ describe('goalCard', () => {
 });
 
 describe('templates', () => {
+  it('never prefills an amount, because every owner has their own figure', () => {
+    for (const template of GOAL_TEMPLATES) expect(template.stage.targetMinor, template.kind).toBeNull();
+  });
+
   it('starts every goal with one stage, because schemes differ', () => {
     for (const template of GOAL_TEMPLATES) {
       expect(template.stage.name, template.kind).toBeTruthy();
@@ -92,6 +96,13 @@ describe('templates', () => {
     const emergency = templateFor('emergency')!;
     expect(emergency.stage.targetMonths).toBe(6);
     expect(emergency.stage.targetMinor).toBeNull();
+  });
+
+  it('leaves the hajj amount empty, because only the owner knows their scheme and year', () => {
+    const hajj = templateFor('hajj')!;
+    expect(hajj.stage.targetMinor).toBeNull();
+    expect(hajj.stage.targetMonths).toBeNull();
+    expect(hajj.hint).toMatch(/bank or Kemenag/i);
   });
 
   it('opens hajj at the setoran awal and says to add the rest', () => {

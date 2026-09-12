@@ -155,7 +155,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
                 </Field>
               ) : (
                 <Field label={`Cost in today's money (${ws.baseCurrency})`}>
-                  <Input value={stage.amount} onChange={(e) => setStage(index, { amount: e.target.value })} inputMode="decimal" />
+                  <Input value={stage.amount} onChange={(e) => setStage(index, { amount: e.target.value })} inputMode="decimal" required />
                 </Field>
               )}
               <Field label="Needed by">
