@@ -199,7 +199,9 @@ Core: goal units through buys, sells, retags, splits; annuity math against known
 
 > Corrected during slice 3.5: `0009` is `buy_flow`, so this migration is `0010`.
 
-- `debt_profiles`: `account_id` (PK), `workspace_id`, `person_name`, `person_id_number` (NIK or NPWP, optional), `reason`, `due_on`, `status` (`open` | `settled` | `forgiven`), `status_on`, `coretax_code` (receivable `0201` default, `0202` related party; payable `109` default, `103` related party).
+- `debt_profiles`: `account_id` (PK), `workspace_id`, `person_name`, `person_id_number` (NIK or NPWP, optional), `reason`, `due_on`, `status` (`open` | `settled` | `forgiven`), `status_on`, `coretax_code` (receivable `021` default, `022` related party; payable `104` default, `103` related party).
+
+> Corrected during slice 6 research: the real codes are three digits. The placeholders here were `0201`/`0202` and `109`; `109` does not exist at all, and "other debt" is `104`. Slice 6 migrates the stored values.
 - `entries.spend_category_id` shipped in `0010_buy_flow`'s predecessor `0009_buy_flow`, and `cardSpendLines` already reads any card line carrying it. Lending on a card needs no further storage or points work.
 
 ### 7.2 Postings (core, pure)
@@ -265,6 +267,18 @@ Loans tab: monthly installments total, total left; loan list (progress, rate, ne
 Core: annuity, flat, zero schedules and rounding; rate periods; extra payment both ways; next-12-month principal; flat-to-effective; what-if; installment split; payoff mismatch warning. DB: migration; payment posting; balance on 31 Dec; installment linked to purchase. E2E: existing KPR, prefilled payment, rate change, extra payment; balance sheet split; interest in spending; installment billed and unbilled.
 
 ## 9. Slice 6 — Coretax report
+
+### 9.0 Verified code lists
+
+Researched against three independent sources for harta and two for utang, since the codes written elsewhere in this document were illustrative placeholders and were wrong in both shape and value. Every code is **three digits**.
+
+**Kode harta** — `011` uang tunai · `012` tabungan · `013` giro · `014` deposito · `015` setara kas lainnya · `021` piutang · `022` piutang afiliasi · `029` piutang lainnya · `031` saham dibeli untuk dijual kembali · `032` saham · `033` obligasi perusahaan · `034` obligasi pemerintah (ORI, SBSN) · `035` surat utang lainnya · `036` reksadana · `037` instrumen derivatif · `038` penyertaan modal · `039` investasi lainnya · `041` sepeda · `042` sepeda motor · `043` mobil · `049` alat transportasi lain · `051` logam mulia · `052` batu mulia · `053` barang seni dan antik · `054` pesawat, kapal pesiar, peralatan olahraga khusus · `055` peralatan elektronik dan furnitur · `059` harta bergerak lainnya · `061` tanah atau bangunan tempat tinggal · `062` tanah atau bangunan usaha · `063` tanah atau lahan untuk usaha · `069` harta tidak bergerak lainnya.
+
+**Kode utang** — `101` utang bank atau lembaga keuangan bukan bank (KPR, leasing kendaraan) · `102` kartu kredit · `103` utang afiliasi · `104` utang lainnya. Reported under L-1 Bagian B in Coretax.
+
+**Open, to confirm against the official form:** two sources give `015` "setara kas lainnya"; one gives `019`. The build uses `015` and marks it, and the owner will confirm before the export ships.
+
+**Still unverified, and why the export waits:** DJP publishes Excel-to-XML converters for Bupot, e-Faktur and SPT Badan, but none for Orang Pribadi harta or utang, and DJP's own Coretax pages for OP describe filling the form rather than importing it. The four DJP documents that would settle it are scans with no text layer. Until that is read, this slice builds every row, total and check, and exports CSV in our own documented column order — it does not claim to match a converter's columns.
 
 ### 9.1 Storage (migration `0012_tax_reports`)
 
