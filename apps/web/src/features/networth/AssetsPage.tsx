@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { AddAssetForm } from './AddAssetForm';
+import { UpdatePricesSheet } from './UpdatePricesSheet';
 import { type AssetGroup, type AssetRow, groupAssets, liveGroups, soldRows, staleRows, totalOf } from './asset-rows';
 import { useAssetProfiles, useAssetValues } from './queries';
 
@@ -47,6 +48,7 @@ export function AssetsPage() {
   const profiles = useAssetProfiles();
   const [showSold, setShowSold] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [updatingPrices, setUpdatingPrices] = useState(false);
 
   const groups = values.data && profiles.data ? groupAssets(values.data, profiles.data) : [];
   const live = liveGroups(groups);
@@ -71,11 +73,24 @@ export function AssetsPage() {
       {adding && <AddAssetForm onDone={() => setAdding(false)} />}
       <ErrorBox error={values.error ?? profiles.error} />
 
-      {stale.length > 0 && (
+      {updatingPrices && (
+        <UpdatePricesSheet
+          holdings={stale
+            .filter((row) => row.method === 'Units × price')
+            .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency, priceLabel: 'Price' }))}
+          onDone={() => setUpdatingPrices(false)}
+        />
+      )}
+      {stale.length > 0 && !updatingPrices && (
         <Card className="bg-amber-50 ring-amber-200">
           <p className="text-sm text-amber-900">
             {stale.length === 1 ? '1 asset needs' : `${stale.length} assets need`} a fresh price or estimate: {stale.map((row) => row.name).join(', ')}.
           </p>
+          {stale.some((row) => row.method === 'Units × price') && (
+            <Button variant="secondary" className="mt-2" onClick={() => setUpdatingPrices(true)}>
+              Update prices
+            </Button>
+          )}
         </Card>
       )}
 
