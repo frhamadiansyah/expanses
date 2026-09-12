@@ -15,7 +15,7 @@ const STATUS_BAR: Record<RatioStatus, string> = {
   unknown: 'bg-slate-300',
 };
 
-const EMPTY_FLOWS: PeriodFlows = { months: 0, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0 };
+const EMPTY_FLOWS: PeriodFlows = { months: 0, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, putAwayMinor: 0 };
 
 export function HealthRatios({
   flows,
