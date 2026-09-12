@@ -49,7 +49,7 @@ describe('planNewAsset', () => {
       { occurredOn: '2024-02-03', unitsMicro: 10_000_000, grossMinor: 13_100_000 },
       { occurredOn: '2026-03-09', unitsMicro: 5_000_000, grossMinor: 9_300_000 },
     ]);
-    expect(plan.profile).toMatchObject({ assetKind: 'gold', coretaxSection: 'lainnya', coretaxCode: '051', acquiredYear: 2024 });
+    expect(plan.profile).toMatchObject({ assetKind: 'gold', coretaxSection: 'lainnya', coretaxCode: '0701', acquiredYear: 2024 });
     expect(plan.valuation).toBeNull();
   });
 
@@ -64,7 +64,7 @@ describe('planNewAsset', () => {
     expect(plan.account).toMatchObject({ subtype: 'property', openingBalanceMinor: 1_150_000_000, openedOn: '2021-03-25' });
     expect(plan.trades).toEqual([]);
     expect(plan.valuation).toEqual({ asOf: TODAY, valueMinor: 1_420_000_000, basis: 'appraisal' });
-    expect(plan.profile).toMatchObject({ coretaxSection: 'tidak_bergerak', coretaxCode: '061', acquiredYear: 2021 });
+    expect(plan.profile).toMatchObject({ coretaxSection: 'tidak_bergerak', coretaxCode: '0502', acquiredYear: 2021 });
   });
 
   it('keeps only the Coretax fields that were filled in', () => {

@@ -73,18 +73,18 @@ describe('asset profiles', () => {
       accountId: goldId,
       assetKind: 'gold',
       acquiredYear: 2022,
-      coretaxCode: '052',
+      coretaxCode: '0705',
       coretaxFields: { cert: 'Antam certificates', info: 'Emas batangan Antam' },
     });
 
     const profile = await getAssetProfile(database, ws, goldId);
-    expect(profile).toMatchObject({ acquiredYear: 2022, coretaxCode: '052' });
+    expect(profile).toMatchObject({ acquiredYear: 2022, coretaxCode: '0705' });
     expect(profile!.coretaxFields).toEqual({ cert: 'Antam certificates', info: 'Emas batangan Antam' });
   });
 
-  it('refuses a Coretax code that is not three digits', async () => {
-    // 0701 was the placeholder shape this project used before the codes were checked.
-    await expect(saveAssetProfile(database, ws, { accountId: goldId, assetKind: 'gold', coretaxCode: '0701' })).rejects.toThrow();
+  it('refuses a Coretax code that is not four digits', async () => {
+    // 051 is the e-Form shape, which Coretax does not use.
+    await expect(saveAssetProfile(database, ws, { accountId: goldId, assetKind: 'gold', coretaxCode: '051' })).rejects.toThrow();
   });
 
   it('refuses an account from another workspace', async () => {
@@ -162,7 +162,7 @@ describe('asset settings', () => {
     await setAssetGroup(database, ws, goldId, 'use');
 
     const profile = await getAssetProfile(database, ws, goldId);
-    expect(profile).toMatchObject({ planGroup: 'use', assetKind: 'gold', coretaxCode: '051' });
+    expect(profile).toMatchObject({ planGroup: 'use', assetKind: 'gold', coretaxCode: '0701' });
     expect(profile!.coretaxFields).toEqual({ info: 'Emas batangan Antam' });
   });
 

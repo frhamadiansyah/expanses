@@ -48,53 +48,6 @@ describe('migration 0012', () => {
     await expect(reportFor(older, olderWs, YEAR)).resolves.toMatchObject({ taxYear: YEAR, status: 'draft' });
   });
 
-  it('rewrites the placeholder codes on assets', async () => {
-    const { older, olderWs } = await atVersion11();
-    const gold = await createAccount(older, olderWs, { name: 'Antam gold bars', kind: 'asset', subtype: 'investment', currency: 'IDR' });
-    // Written by hand at the old shape, as a database from before this slice would hold it.
-    await older.db.insert(assetsSchema.assetProfiles).values({
-      accountId: gold.id,
-      workspaceId: olderWs.workspaceId,
-      assetKind: 'gold',
-      planGroup: 'invest',
-      unitKind: 'grams',
-      lotSize: null,
-      risk: 'medium',
-      coretaxSection: 'lainnya',
-      coretaxCode: '0701',
-      coretaxFieldsJson: '{}',
-      acquiredYear: null,
-      updatedAt: new Date().toISOString(),
-    });
-
-    await migrate(older);
-
-    await expect(getAssetProfile(older, olderWs, gold.id)).resolves.toMatchObject({ coretaxCode: '051' });
-  });
-
-  it('rewrites the placeholder codes on debts', async () => {
-    const { older, olderWs } = await atVersion11();
-    const andi = await createAccount(older, olderWs, { name: 'Andi', kind: 'asset', subtype: 'receivable', currency: 'IDR' });
-    const budi = await createAccount(older, olderWs, { name: 'Budi', kind: 'liability', subtype: 'payable', currency: 'IDR' });
-    await saveDebtProfile(older, olderWs, { accountId: andi.id, personName: 'Andi', coretaxCode: '0201' });
-    await saveDebtProfile(older, olderWs, { accountId: budi.id, personName: 'Budi', coretaxCode: '109' });
-
-    await migrate(older);
-
-    await expect(getDebtProfile(older, olderWs, andi.id)).resolves.toMatchObject({ coretaxCode: '021' });
-    await expect(getDebtProfile(older, olderWs, budi.id)).resolves.toMatchObject({ coretaxCode: '104' });
-  });
-
-  it('leaves a code the owner already put right alone', async () => {
-    const { older, olderWs } = await atVersion11();
-    const andi = await createAccount(older, olderWs, { name: 'Andi', kind: 'asset', subtype: 'receivable', currency: 'IDR' });
-    await saveDebtProfile(older, olderWs, { accountId: andi.id, personName: 'Andi', coretaxCode: '022' });
-
-    await migrate(older);
-
-    await expect(getDebtProfile(older, olderWs, andi.id)).resolves.toMatchObject({ coretaxCode: '022' });
-  });
-
   it('keeps the rates already stored when it rebuilds the table', async () => {
     const { older, olderWs } = await atVersion11();
     await older.db.insert(schema.fxRates).values({
@@ -193,7 +146,7 @@ describe('the corrected defaults', () => {
     const andi = await createAccount(database, ws, { name: 'Andi', kind: 'asset', subtype: 'receivable', currency: 'IDR' });
     await saveDebtProfile(database, ws, { accountId: andi.id, personName: 'Andi' });
 
-    await expect(getDebtProfile(database, ws, andi.id)).resolves.toMatchObject({ coretaxCode: '021' });
+    await expect(getDebtProfile(database, ws, andi.id)).resolves.toMatchObject({ coretaxCode: '0201' });
   });
 
   it('opens a new payable on the real code', async () => {
@@ -207,6 +160,6 @@ describe('the corrected defaults', () => {
     const gold = await createAccount(database, ws, { name: 'Antam gold bars', kind: 'asset', subtype: 'investment', currency: 'IDR' });
     await saveAssetProfile(database, ws, { accountId: gold.id, assetKind: 'gold' });
 
-    await expect(getAssetProfile(database, ws, gold.id)).resolves.toMatchObject({ coretaxCode: '051' });
+    await expect(getAssetProfile(database, ws, gold.id)).resolves.toMatchObject({ coretaxCode: '0701' });
   });
 });

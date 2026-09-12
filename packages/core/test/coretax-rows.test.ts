@@ -18,7 +18,7 @@ const inputs = (partial: Partial<CoretaxInputs> = {}): CoretaxInputs => ({ ...em
 const bca = {
   accountId: 'bca',
   name: 'BCA Tahapan',
-  code: '012',
+  code: '0102',
   balanceMinor: 50_000_000,
   currency: 'IDR',
   fields: { owner: 'Fandrian', inst: 'Bank Central Asia', loc: 'IDN' },
@@ -28,7 +28,7 @@ const bca = {
 const gold = {
   accountId: 'gold',
   name: 'Antam gold bars',
-  code: '051',
+  code: '0701',
   currency: 'IDR',
   priceMicro: 1_900_000_000_000,
   byYear: {
@@ -41,7 +41,7 @@ const gold = {
 const house = {
   accountId: 'house',
   name: 'House in Bintaro',
-  code: '061',
+  code: '0502',
   currency: 'IDR',
   costMinor: 900_000_000,
   valueMinor: 1_420_000_000,
@@ -53,7 +53,7 @@ describe('kas', () => {
     const rows = coretaxRows(YEAR, inputs({ cash: [bca] }), settings());
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ section: 'kas', code: '012', name: 'BCA Tahapan', balanceMinor: 50_000_000, valueMinor: 50_000_000 });
+    expect(rows[0]).toMatchObject({ section: 'kas', code: '0102', name: 'BCA Tahapan', balanceMinor: 50_000_000, valueMinor: 50_000_000 });
   });
 
   it('converts a foreign account at the KMK rate', () => {
@@ -86,7 +86,7 @@ describe('holdings', () => {
 
     expect(rows).toHaveLength(1);
     // 15 g cost Rp 22.400.000 and is worth 15 × Rp 1.900.000.
-    expect(rows[0]).toMatchObject({ section: 'lainnya', code: '051', costMinor: 22_400_000, valueMinor: 28_500_000 });
+    expect(rows[0]).toMatchObject({ section: 'lainnya', code: '0701', costMinor: 22_400_000, valueMinor: 28_500_000 });
   });
 
   it('takes the earliest year when everything is on one row', () => {
@@ -148,15 +148,15 @@ describe('property and vehicles', () => {
 
 describe('piutang', () => {
   it('reports what is still owed to you', () => {
-    const andi = { accountId: 'andi', name: 'Andi', code: '021', balanceMinor: 9_000_000, currency: 'IDR', fields: { name: 'Andi' } };
+    const andi = { accountId: 'andi', name: 'Andi', code: '0201', balanceMinor: 9_000_000, currency: 'IDR', fields: { name: 'Andi' } };
 
     const rows = coretaxRows(YEAR, inputs({ receivables: [andi] }), settings());
 
-    expect(rows[0]).toMatchObject({ section: 'piutang', code: '021', balanceMinor: 9_000_000, valueMinor: 9_000_000 });
+    expect(rows[0]).toMatchObject({ section: 'piutang', code: '0201', balanceMinor: 9_000_000, valueMinor: 9_000_000 });
   });
 
   it('reports nothing for a debt already settled', () => {
-    const settled = { accountId: 'budi', name: 'Budi', code: '021', balanceMinor: 0, currency: 'IDR', fields: {} };
+    const settled = { accountId: 'budi', name: 'Budi', code: '0201', balanceMinor: 0, currency: 'IDR', fields: {} };
 
     expect(coretaxRows(YEAR, inputs({ receivables: [settled] }), settings())).toEqual([]);
   });
