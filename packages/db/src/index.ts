@@ -31,3 +31,4 @@ export * from './repos/goal-transfers';
 export * from './repos/convert';
 export * as debtsSchema from './schema-debts';
 export * from './repos/debts';
+export * from './repos/people';
