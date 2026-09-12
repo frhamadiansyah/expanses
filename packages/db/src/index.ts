@@ -37,3 +37,4 @@ export * from './repos/loans';
 export * from './repos/installments';
 export * as taxSchema from './schema-tax';
 export * from './repos/tax-reports';
+export * from './repos/tax-inputs';
