@@ -159,7 +159,7 @@ export function CoretaxPage() {
             ))}
           </Card>
 
-          <FreezePanel taxYear={taxYear} status={report.data.status} />
+          <FreezePanel taxYear={taxYear} status={report.data.status} rows={all} />
 
           {sections.map((section) => (
             <SectionTable key={section.section} section={section} carry={carry} />

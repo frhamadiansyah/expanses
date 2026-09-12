@@ -230,3 +230,4 @@ export {
   type Reconciliation,
   reconciliation,
 } from './coretax/review';
+export { csvColumns, toReportCsv } from './coretax/export';
