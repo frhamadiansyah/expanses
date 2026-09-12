@@ -91,3 +91,14 @@ export {
   UnitsError,
   unitsValueMinor,
 } from './assets/units';
+export {
+  averagePriceMicro,
+  type Position,
+  positionAfter,
+  sellBasisMinor,
+  type TradeErrorCode,
+  TradeError,
+  type TradeKind,
+  type TradeRecord,
+  type YearBucket,
+} from './assets/position';

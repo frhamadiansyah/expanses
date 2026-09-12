@@ -16,7 +16,7 @@ export class UnitsError extends Error {
 }
 
 /** Half away from zero, on a non-negative numerator and denominator. */
-function divRound(numerator: bigint, denominator: bigint): bigint {
+export function divRound(numerator: bigint, denominator: bigint): bigint {
   const negative = numerator < 0n;
   const abs = negative ? -numerator : numerator;
   const quotient = abs / denominator;
