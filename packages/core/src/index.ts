@@ -193,3 +193,4 @@ export {
   PAYOFF_TOLERANCE_MONTHS,
   payoffMismatchMonths,
 } from './loans/effects';
+export { type CardInstallment, type InstallmentSplit, installmentSplit } from './loans/installments';
