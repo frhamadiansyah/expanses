@@ -136,3 +136,20 @@ export {
 } from './assets/balance-sheet';
 export { type HealthRatio, healthRatios, monthly, type PeriodFlows, type RatioKey, type RatioStatus, type SheetTotals } from './assets/health';
 export { GoalError, type GoalUnits, goalUnitsFor, goalUnitsOf, UNTAGGED } from './goals/units';
+export {
+  fitByRank,
+  futureValueMinor,
+  type Goal,
+  type GoalKind,
+  type GoalLink,
+  type GoalPlan,
+  goalPlan,
+  type GoalStage,
+  type GoalStatus,
+  monthlyNeededMinor,
+  monthsUntil,
+  type RankFit,
+  RISK_HORIZON_MONTHS,
+  type StagePlan,
+  type StageState,
+} from './goals/plan';
