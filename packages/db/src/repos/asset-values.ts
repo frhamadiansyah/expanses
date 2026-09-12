@@ -25,6 +25,8 @@ export interface AssetValueRow extends AssetValue {
   currency: string;
   planGroup: PlanGroup;
   mode: ValuationMode;
+  /** Units held on the date, for holdings measured in units, shares or grams. */
+  unitsMicro: number | null;
   /** The owner should type a fresh price or estimate. */
   stale: boolean;
 }
@@ -91,6 +93,7 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
       currency: account.currency ?? ws.baseCurrency,
       planGroup: profile?.planGroup ?? GROUP_BY_SUBTYPE[account.subtype] ?? 'use',
       mode,
+      unitsMicro: position ? position.unitsMicro : null,
       stale: isStaleValue(value, date),
     };
   });
