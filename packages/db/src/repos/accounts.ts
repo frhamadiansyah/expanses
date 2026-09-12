@@ -69,6 +69,14 @@ export async function systemAccountId(tx: Db, ws: WorkspaceContext, key: SystemA
 }
 
 export async function createAccount(database: Database, ws: WorkspaceContext, input: CreateAccountInput): Promise<AccountRow> {
+  return database.transaction((tx) => createAccountTx(tx, ws, input));
+}
+
+/**
+ * Opens an account inside a transaction already running, so a caller can create the account and
+ * post against it as one atomic step. `createAccount` is this with a transaction of its own.
+ */
+export async function createAccountTx(tx: Db, ws: WorkspaceContext, input: CreateAccountInput): Promise<AccountRow> {
   const name = input.name.trim();
   if (!name) throw new AccountError('Name is required');
   if (input.kind === 'asset' || input.kind === 'liability') {
@@ -101,7 +109,7 @@ export async function createAccount(database: Database, ws: WorkspaceContext, in
     createdAt: now,
   };
 
-  return database.transaction(async (tx) => {
+  {
     if (row.parentId) {
       const [parent] = await tx
         .select()
@@ -127,7 +135,7 @@ export async function createAccount(database: Database, ws: WorkspaceContext, in
     }
     await writeAudit(tx, ws, 'create', row.id, input);
     return row;
-  });
+  }
 }
 
 export async function renameAccount(database: Database, ws: WorkspaceContext, id: string, name: string): Promise<void> {
