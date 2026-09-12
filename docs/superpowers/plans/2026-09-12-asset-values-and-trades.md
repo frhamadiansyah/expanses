@@ -394,3 +394,24 @@ Transactions page labels trade transactions "Buy · Equity fund" with a link to 
 **Spec coverage (§3, §4):** value modes and `valueAt` (Task 4, 8); units and price storage (Task 1, 6); `asset_profiles` and Coretax fields (Task 5, 6, 12); trades table and postings (Task 3, 7); average cost and backdated recompute (Task 2, 7); opening positions (Task 7, 11); foreign-currency holdings (Task 7 `ratesToBase`, Task 8 `netWorthAt`); prices and valuations (Task 8); staleness badges (Task 4, 10, 12); templates and due list (Task 9, 13); screens (Tasks 10–14); new category keys (Task 6); Transactions, Accounts and Dashboard changes (Task 14).
 
 **Not in this slice, by design:** goal tags, lend and borrow, loan terms, the Coretax report and export. `byYear` ships early as noted in Deviations.
+
+---
+
+## Execution status (2026-09-12)
+
+All 14 tasks done on `feat/net-worth`, one commit each, gate green after every task.
+
+**Changed from the plan during execution**
+
+- `voidTransactionTx` in `packages/db/src/repos/ledger.ts` is now exported, so a trade and the sells it disturbs are voided and reposted inside one database transaction.
+- `TradeAccounts` gained `currencyExchangeAccountId` and `TradeInput` gained `cashMinor`: a holding bought from an account in another currency posts through Currency Exchange, with the amount in the cash currency. `TradeErrorCode` gained `CURRENCY_MISMATCH`.
+- `AssetValueRow` carries `unitsMicro`, so the assets list can tell a sold holding from one worth nothing.
+- `TradeForm` takes `templateId`, so a buy recorded from a monthly template counts as that month's buy.
+- New shared component `NetWorthTabs` (Assets · Buy & sell) instead of tabs repeated per page.
+- `packages/core/src/assets/value.ts` also exports `PRICE_STALE_DAYS` and `VALUATION_STALE_DAYS`.
+- Two existing db tests were updated for the two new default categories: `database.test.ts` expects migrations 1–7, and `categories.test.ts` deletes child categories before their parents (SQLite foreign keys) and lists `government.final_tax` and `income.realized_gains` among the defaults a v0 workspace lacks.
+- The `web` unit tests for Task 12 cover `value-chart.ts` (the geometry behind `ValueChart`), since the web test runner only picks up `.test.ts`, not component tests.
+
+**Counts at the end of the slice:** core 192, catalog 52, db 117, web 77, e2e 20.
+
+**Left for later slices, as designed:** goal tags on trades, lend and borrow, loan terms, the Coretax report and its export, and the net worth overview with ratios (slice 2).
