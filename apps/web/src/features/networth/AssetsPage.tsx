@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { AddAssetForm } from './AddAssetForm';
+import { NetWorthTabs } from './NetWorthTabs';
 import { UpdatePricesSheet } from './UpdatePricesSheet';
 import { type AssetGroup, type AssetRow, groupAssets, liveGroups, soldRows, staleRows, totalOf } from './asset-rows';
 import { useAssetProfiles, useAssetValues } from './queries';
@@ -70,6 +71,7 @@ export function AssetsPage() {
           </div>
         }
       />
+      <NetWorthTabs />
       {adding && <AddAssetForm onDone={() => setAdding(false)} />}
       <ErrorBox error={values.error ?? profiles.error} />
 
