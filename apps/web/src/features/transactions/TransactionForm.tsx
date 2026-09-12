@@ -1,5 +1,5 @@
 import { CURRENCIES, isoDate, mccName, minorToMajorString, parseMajor, parseRate, resolveMcc } from '@expanses/core';
-import { type AccountRow, mccSourcesFor, postTransaction, replaceTransaction, saveMerchantMcc, type TransactionView, upsertRate } from '@expanses/db';
+import { type AccountRow, mccSourcesFor, postTransaction, recordTaggedTransfer, replaceTransaction, saveMerchantMcc, type TransactionView, upsertRate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -47,6 +47,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
   const [showCardDetails, setShowCardDetails] = useState(() => !!initial?.originalCurrency || !!initial?.mcc);
   const [buying, setBuying] = useState(false);
   const [purchase, setPurchase] = useState<PurchaseDraft>(() => emptyPurchaseDraft('', '', isoDate()));
+  const [transferGoalId, setTransferGoalId] = useState('');
   const assetValues = useAssetValues();
   const assetProfiles = useAssetProfiles();
   const goals = useGoals();
@@ -106,6 +107,21 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
       if (resolved.missing.length > 0) {
         setNeedsRate(resolved.missing[0]!);
         throw new Error(`No ${resolved.missing[0]}→${ws.baseCurrency} rate for ${rateDate}. Enter it below.`);
+      }
+      if (draft.mode === 'transfer' && transferGoalId && !initial) {
+        // Money parked for a goal is set aside where it lands, and a purchase from there spends it.
+        await recordTaggedTransfer(database, ws, {
+          occurredOn: draft.occurredOn,
+          description: draft.description || 'Transfer',
+          amountMinor: parseMajor(draft.amount, currency),
+          fromAccountId: draft.moneyId,
+          toAccountId: draft.toId,
+          goalId: transferGoalId,
+          ratesToBase: resolved.rates,
+        });
+        await invalidate();
+        onDone();
+        return;
       }
       const input = { occurredOn: draft.occurredOn, description: draft.description || (draft.mode === 'transfer' ? 'Transfer' : ''), lines, ratesToBase: resolved.rates, ...extras };
       if (initial) await replaceTransaction(database, ws, initial.id, input);
@@ -228,7 +244,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
         )}
         <div className="grid gap-3 md:grid-cols-2" hidden={buying}>
           <Field label="Date">
-            <Input type="date" value={draft.occurredOn} onChange={(e) => set({ occurredOn: e.target.value })} required />
+            <Input type="date" value={draft.occurredOn} onChange={(e) => set({ occurredOn: e.target.value })} required={!buying} />
           </Field>
           <Field label="Description">
             <Input value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder={draft.mode === 'transfer' ? 'Transfer' : 'Superindo'} />
@@ -239,11 +255,23 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
             </Select>
           </Field>
           {draft.mode === 'transfer' ? (
-            <Field label="To" hint="Buying a fund, shares or gold? Use Buy or sell, so units are counted.">
-              <Select value={draft.toId} onChange={(e) => set({ toId: e.target.value })}>
-                <MoneyAccountOptions accounts={transferTargets(accounts, assetValues.data ?? [])} />
-              </Select>
-            </Field>
+            <>
+              <Field label="To" hint="Buying a fund, shares or gold? Use Buy or sell, so units are counted.">
+                <Select value={draft.toId} onChange={(e) => set({ toId: e.target.value })}>
+                  <MoneyAccountOptions accounts={transferTargets(accounts, assetValues.data ?? [])} />
+                </Select>
+              </Field>
+              {!initial && (goals.data ?? []).length > 0 && (
+                <Field label="For goal" hint="Money parked for a goal counts towards it while it waits.">
+                  <Select value={transferGoalId} onChange={(e) => setTransferGoalId(e.target.value)}>
+                    <option value="">No goal</option>
+                    {(goals.data ?? []).map((goal) => (
+                      <option key={goal.id} value={goal.id}>{goal.name}</option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
+            </>
           ) : (
             draft.splits.length === 0 && (
               <Field label="Category">
@@ -255,7 +283,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
           )}
           {draft.splits.length === 0 && (
             <Field label={`Amount (${currency})`}>
-              <Input aria-label="Amount" value={draft.amount} onChange={(e) => set({ amount: e.target.value })} inputMode="decimal" required />
+              <Input aria-label="Amount" value={draft.amount} onChange={(e) => set({ amount: e.target.value })} inputMode="decimal" required={!buying} />
             </Field>
           )}
           {crossCurrency && (

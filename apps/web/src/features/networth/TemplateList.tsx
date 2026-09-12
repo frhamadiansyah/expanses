@@ -19,7 +19,9 @@ export function TemplateList({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const [adding, setAdding] = useState(false);
+  const [kind, setKind] = useState<'buy' | 'move'>('buy');
   const [accountId, setAccountId] = useState(holdings[0]?.accountId ?? '');
+  const [moveToId, setMoveToId] = useState(cashAccounts[1]?.id ?? cashAccounts[0]?.id ?? '');
   const [cashAccountId, setCashAccountId] = useState(cashAccounts[0]?.id ?? '');
   const [amount, setAmount] = useState('');
   const [day, setDay] = useState('5');
@@ -27,8 +29,9 @@ export function TemplateList({
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  const currency = holdings.find((row) => row.accountId === accountId)?.currency ?? ws.baseCurrency;
-  const nameOf = (id: string) => holdings.find((row) => row.accountId === id)?.name ?? 'Holding';
+  const moving = kind === 'move';
+  const currency = moving ? ws.baseCurrency : (holdings.find((row) => row.accountId === accountId)?.currency ?? ws.baseCurrency);
+  const nameOf = (id: string) => holdings.find((row) => row.accountId === id)?.name ?? cashAccounts.find((account) => account.id === id)?.name ?? 'Holding';
 
   async function add(event: FormEvent) {
     event.preventDefault();
@@ -36,13 +39,14 @@ export function TemplateList({
     setBusy(true);
     try {
       await saveTradeTemplate(database, ws, {
-        accountId,
+        accountId: moving ? moveToId : accountId,
         cashAccountId,
         amountMinor: parseMajor(amount, currency),
         unitsMicro: null,
         dayOfMonth: Number(day),
         active: true,
         goalId: goalId || null,
+        kind,
       });
       setAmount('');
       setAdding(false);
@@ -64,6 +68,7 @@ export function TemplateList({
       dayOfMonth: template.dayOfMonth,
       active: !template.active,
       goalId: template.goalId,
+      kind: template.kind,
     });
     await invalidate();
   }
@@ -76,7 +81,7 @@ export function TemplateList({
   return (
     <Card className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">Monthly buys</h2>
+        <h2 className="text-sm font-semibold">Monthly buys and moves</h2>
         {!adding && holdings.length > 0 && (
           <Button variant="secondary" onClick={() => setAdding(true)}>
             Add monthly buy
@@ -84,7 +89,9 @@ export function TemplateList({
         )}
       </div>
 
-      {templates.length === 0 && !adding && <p className="text-sm text-slate-500">None yet. A monthly buy reminds you on its day and fills the form in.</p>}
+      {templates.length === 0 && !adding && (
+        <p className="text-sm text-slate-500">None yet. A monthly buy reminds you on its day and fills the form in; a monthly move just parks money at the broker until you buy.</p>
+      )}
 
       <div className="divide-y divide-slate-100 text-sm">
         {templates.map((template) => (
@@ -93,6 +100,7 @@ export function TemplateList({
               <span className="font-medium">{nameOf(template.accountId)}</span>
               <span className="text-slate-500">
                 {' · '}
+                {template.kind === 'move' ? 'move ' : ''}
                 {template.amountMinor === null ? `${(template.unitsMicro ?? 0) / 1_000_000} units` : formatMinor(template.amountMinor, currency)} on the {template.dayOfMonth}
                 {template.goalId && ` · for ${goals.find((goal) => goal.id === template.goalId)?.name ?? 'a goal'}`}
                 {!template.active && ' · paused'}
@@ -113,22 +121,40 @@ export function TemplateList({
       {adding && (
         <form onSubmit={add} className="space-y-3">
           <div className="grid gap-3 md:grid-cols-4">
-            <Field label="Holding">
-              <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-                {holdings.map((row) => (
-                  <option key={row.accountId} value={row.accountId}>
-                    {row.name}
-                  </option>
-                ))}
+            <Field label="Every month" hint="A move parks money; you confirm the units when you buy.">
+              <Select value={kind} onChange={(e) => setKind(e.target.value as 'buy' | 'move')}>
+                <option value="buy">Buy a holding</option>
+                <option value="move">Move money to invest later</option>
               </Select>
             </Field>
+            {moving ? (
+              <Field label="Move into" hint="Broker cash or a savings pot.">
+                <Select value={moveToId} onChange={(e) => setMoveToId(e.target.value)}>
+                  {cashAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : (
+              <Field label="Holding">
+                <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                  {holdings.map((row) => (
+                    <option key={row.accountId} value={row.accountId}>
+                      {row.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
             <Field label={`Amount (${currency})`}>
               <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="2.000.000" required />
             </Field>
             <Field label="Day of month" hint="1 to 28, so every month has it.">
               <Input value={day} onChange={(e) => setDay(e.target.value)} inputMode="numeric" />
             </Field>
-            <Field label="For goal" hint="Each recorded buy can override it.">
+            <Field label="For goal" hint={moving ? 'The money is set aside for this goal as soon as it moves.' : 'Each recorded buy can override it.'}>
               <Select value={goalId} onChange={(e) => setGoalId(e.target.value)}>
                 <option value="">No goal</option>
                 {goals.map((goal) => (
@@ -151,7 +177,7 @@ export function TemplateList({
           <ErrorBox error={error} />
           <div className="flex gap-2">
             <Button type="submit" disabled={busy}>
-              Save monthly buy
+              {moving ? 'Save monthly move' : 'Save monthly buy'}
             </Button>
             <Button type="button" variant="secondary" onClick={() => setAdding(false)}>
               Cancel

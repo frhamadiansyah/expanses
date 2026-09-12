@@ -212,6 +212,8 @@ export interface TransactionView {
   originalCurrency: string | null;
   originalAmountMinor: number | null;
   mcc: string | null;
+  /** Goal a tagged transfer funds. Ordinary payments never carry one. */
+  goalId: string | null;
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -270,6 +272,7 @@ export async function listTransactions(
     originalCurrency: t.originalCurrency,
     originalAmountMinor: t.originalAmountMinor,
     mcc: t.mcc,
+    goalId: t.goalId,
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));

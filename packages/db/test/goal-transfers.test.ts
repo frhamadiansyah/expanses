@@ -6,6 +6,7 @@ import {
   type Database,
   goalLinksFor,
   listEarmarks,
+  listTransactions,
   nativeBalances,
   recordTaggedTransfer,
   recordTrade,
@@ -174,5 +175,21 @@ describe('workspace boundaries', () => {
     await expect(
       recordTaggedTransfer(database, other, { occurredOn: '2026-09-05', description: 'Transfer', amountMinor: 1_000_000, fromAccountId: bca.id, toAccountId: rdn.id, goalId: retireId }),
     ).rejects.toThrow();
+  });
+});
+
+describe('the transaction a tagged transfer writes', () => {
+  it('carries the goal, so the Transactions list can say what the money is for', async () => {
+    const result = await park(1_000_000, hajjId);
+
+    const tx = (await listTransactions(database, ws, {})).find((row) => row.id === result.transactionId);
+    expect(tx?.goalId).toBe(hajjId);
+  });
+
+  it('carries no goal when the money was just moved', async () => {
+    const result = await park(1_000_000, null);
+
+    const tx = (await listTransactions(database, ws, {})).find((row) => row.id === result.transactionId);
+    expect(tx?.goalId).toBeNull();
   });
 });

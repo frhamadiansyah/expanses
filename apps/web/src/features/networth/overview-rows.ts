@@ -1,4 +1,5 @@
-import type { AssetValueRow, GoalPlanRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
+import { formatMinor } from '@expanses/core';
+import type { AssetValueRow, GoalPlanRow, IdleCashRow, NetWorthPoint, TradeTemplateRow } from '@expanses/db';
 
 export interface AttentionItem {
   key: string;
@@ -10,8 +11,13 @@ export interface AttentionItem {
 
 const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
-/** What the owner should deal with: prices that have gone stale and monthly buys waiting to be recorded. */
-export function attentionItems(values: AssetValueRow[], dueTemplates: TradeTemplateRow[], goalPlans: GoalPlanRow[] = []): AttentionItem[] {
+/** What the owner should deal with: stale prices, monthly buys waiting, goals behind, and cash parked to be invested. */
+export function attentionItems(
+  values: AssetValueRow[],
+  dueTemplates: TradeTemplateRow[],
+  goalPlans: GoalPlanRow[] = [],
+  idleCash: IdleCashRow[] = [],
+): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const value of values) {
     if (!value.stale) continue;
@@ -31,6 +37,17 @@ export function attentionItems(values: AssetValueRow[], dueTemplates: TradeTempl
     if (plan.earmarkWarning) {
       items.push({ key: `earmark-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name}: ${plan.earmarkWarning}`, action: 'Review', to: '/net-worth/goals' });
     }
+  }
+  for (const row of idleCash) {
+    // Money put at a broker was meant to be invested; while it sits as cash it earns nothing.
+    if (row.planGroup !== 'invest' || row.amountMinor <= 0) continue;
+    items.push({
+      key: `idle-${row.accountId}`,
+      tone: 'info',
+      text: `${formatMinor(row.amountMinor, row.currency)} has been waiting in ${row.name} since ${shortDate(row.since)}`,
+      action: 'Buy',
+      to: '/net-worth/trades',
+    });
   }
   return items;
 }
