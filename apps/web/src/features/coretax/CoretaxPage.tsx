@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Money, PageHeader, Select } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { NetWorthTabs } from '../networth/NetWorthTabs';
 import { useSheet } from '../networth/queries';
 import { FreezePanel } from './FreezePanel';
@@ -25,6 +25,10 @@ export function CoretaxPage() {
   const sheetInputs = useSheet(`${taxYear}-12-31`);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [npwp, setNpwp] = useState('');
+  const [taxpayerName, setTaxpayerName] = useState('');
+  const [savedWho, setSavedWho] = useState(false);
+  const [loadedFor, setLoadedFor] = useState<number | null>(null);
 
   const all = rows.data ?? [];
   const harta = all.filter((row) => row.section !== 'utang');
@@ -38,17 +42,34 @@ export function CoretaxPage() {
   const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
   const check = reconciliation(harta, utang, sheet.netWorthMinor);
 
-  async function start(basis?: 'cost' | 'estimate' | 'njop' | 'appraisal', repeat?: 'holding' | 'year') {
+  async function start(
+    basis?: 'cost' | 'estimate' | 'njop' | 'appraisal',
+    repeat?: 'holding' | 'year',
+    who?: { npwp?: string; taxpayerName?: string },
+  ) {
     setError(null);
     setBusy(true);
     try {
-      await draftReport(database, ws, { taxYear, propertyBasis: basis, repeatRows: repeat });
+      await draftReport(database, ws, { taxYear, propertyBasis: basis, repeatRows: repeat, ...who });
       await invalidate();
     } catch (e) {
       setError(e);
     } finally {
       setBusy(false);
     }
+  }
+
+  if (report.data && loadedFor !== taxYear) {
+    setLoadedFor(taxYear);
+    setNpwp(report.data.npwp ?? '');
+    setTaxpayerName(report.data.taxpayerName ?? '');
+  }
+
+  /** Saves who the report is for, and says so, because the converter file depends on it. */
+  async function saveWho(who: { npwp: string; taxpayerName: string }) {
+    setSavedWho(false);
+    await start(report.data?.propertyBasis, report.data?.repeatRows, who);
+    setSavedWho(true);
   }
 
   return (
@@ -126,6 +147,24 @@ export function CoretaxPage() {
 
           {report.data.status === 'draft' && (
             <Card className="grid gap-3 md:grid-cols-2">
+              <Field label="NPWP" hint="Sixteen digits. The converter sheet starts with it, so a file cannot be built without one.">
+                <Input value={npwp} inputMode="numeric" onChange={(e) => setNpwp(e.target.value)} placeholder="0011223344556677" />
+              </Field>
+              <Field label="Nama wajib pajak">
+                <Input value={taxpayerName} onChange={(e) => setTaxpayerName(e.target.value)} />
+              </Field>
+              <div className="flex items-center gap-3 md:col-span-2">
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void saveWho({ npwp: npwp.trim(), taxpayerName: taxpayerName.trim() })
+                  }
+                >
+                  Save taxpayer details
+                </Button>
+                {savedWho && <span className="text-sm text-emerald-700">Saved</span>}
+              </div>
               <Field label="Property and vehicles report" hint="The cost is what you paid; the others are what you say it is worth now.">
                 <Select value={report.data.propertyBasis} onChange={(e) => void start(e.target.value as 'cost' | 'estimate' | 'njop' | 'appraisal', report.data!.repeatRows)}>
                   <option value="cost">What I paid</option>
@@ -159,7 +198,7 @@ export function CoretaxPage() {
             ))}
           </Card>
 
-          <FreezePanel taxYear={taxYear} status={report.data.status} rows={all} />
+          <FreezePanel taxYear={taxYear} status={report.data.status} rows={all} npwp={report.data.npwp} />
 
           {sections.map((section) => (
             <SectionTable key={section.section} section={section} carry={carry} />

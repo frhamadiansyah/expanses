@@ -1,4 +1,4 @@
-import { type CoretaxRow, csvColumns, isoDate, toReportCsv } from '@expanses/core';
+import { type CoretaxRow, type CoretaxSection, converterProblems, csvColumns, isoDate, type ReportSection, toConverterTsv, toReportCsv } from '@expanses/core';
 import { acceptLedgerValue, freezeReport, markFiled } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -12,7 +12,18 @@ const FIELD_LABELS: Record<string, string> = { costMinor: 'cost', valueMinor: 'v
  * Freezing a year, and what to do when the ledger moves afterwards. A frozen report is a copy: the
  * figures stop following the ledger, so a later edit shows here rather than changing a filed return.
  */
-export function FreezePanel({ taxYear, status, rows }: { taxYear: number; status: 'draft' | 'frozen' | 'filed'; rows: CoretaxRow[] }) {
+export function FreezePanel({
+  taxYear,
+  status,
+  rows,
+  npwp,
+}: {
+  taxYear: number;
+  status: 'draft' | 'frozen' | 'filed';
+  rows: CoretaxRow[];
+  /** The sheet's first line is the taxpayer's NPWP, so a file cannot be built without one. */
+  npwp: string | null;
+}) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const differences = useRowDifferences(taxYear);
@@ -36,16 +47,29 @@ export function FreezePanel({ taxYear, status, rows }: { taxYear: number; status
   const differenceRows = differences.data ?? [];
   const sections = [...new Set(rows.map((row) => row.section))];
 
-  /** The file is written here and never sent anywhere; the browser saves it where downloads go. */
-  function download(section: (typeof sections)[number]) {
-    const csv = toReportCsv(section, rows);
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  /** Written here and never sent anywhere; the browser saves it where downloads go. */
+  function save(name: string, body: string, type: string) {
+    const url = URL.createObjectURL(new Blob([body], { type }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `coretax-${taxYear}-${section}.csv`;
+    link.download = name;
     link.click();
     URL.revokeObjectURL(url);
   }
+
+  const downloadCsv = (section: ReportSection) =>
+    save(`tax-report-${taxYear}-${section}.csv`, toReportCsv(section, rows), 'text/csv;charset=utf-8');
+
+  /** The converter sheet DJP publishes for this table, which becomes XML for Coretax. */
+  const downloadConverter = (section: CoretaxSection) => {
+    if (!npwp) return;
+    save(`coretax-${taxYear}-${section}.tsv`, toConverterTsv(section, rows, { npwp, taxYear }), 'text/tab-separated-values;charset=utf-8');
+  };
+
+  // A type predicate, so the compiler knows utang is gone: it has no converter to call.
+  const isHarta = (section: ReportSection): section is CoretaxSection => section !== 'utang';
+  const hartaSections = sections.filter(isHarta);
+  const blocked = new Set(hartaSections.filter((section) => converterProblems(section, rows).length > 0));
 
   return (
     <Card className="space-y-3">
@@ -106,17 +130,34 @@ export function FreezePanel({ taxYear, status, rows }: { taxYear: number; status
         <div className="space-y-2 border-t border-slate-100 pt-3">
           <h3 className="text-sm font-semibold">Take the tables with you</h3>
           <p className="text-xs text-slate-500">
-            One file per table, in this app's own column order — DJP publishes no import for harta or utang, so nothing here pretends to match a converter. The file holds your NPWP,
-            NIK and account numbers, and is written straight to this device.
+            The converter file carries DJP's own columns for that table: paste it into the Excel converter and export the XML Coretax reads. The CSV is the same rows laid out for
+            reading. Both hold your NPWP, NIK and account numbers, and are written straight to this device.
           </p>
-          <div className="flex flex-wrap gap-2">
-            {sections.map((section) => (
-              <Button key={section} variant="secondary" onClick={() => download(section)}>
-                Download {section === 'utang' ? 'Utang' : section} CSV
-              </Button>
+          <div className="space-y-2">
+            {hartaSections.map((section) => (
+              <div key={section} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="w-32 shrink-0 text-slate-600">{section}</span>
+                <Button variant="secondary" disabled={!npwp || blocked.has(section)} onClick={() => downloadConverter(section)}>
+                  Converter file (.tsv)
+                </Button>
+                <Button variant="ghost" onClick={() => downloadCsv(section)}>
+                  CSV to read
+                </Button>
+                {blocked.has(section) && <span className="text-xs text-red-700">Something this sheet needs is missing; see the list above.</span>}
+              </div>
             ))}
+            {sections.includes('utang') && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="w-32 shrink-0 text-slate-600">utang</span>
+                <Button variant="ghost" onClick={() => downloadCsv('utang')}>
+                  CSV to read
+                </Button>
+                <span className="text-xs text-slate-500">Coretax publishes no import for utang, so Bagian B is typed into the form.</span>
+              </div>
+            )}
           </div>
-          <p className="text-xs text-slate-400">Columns: {csvColumns(sections[0] ?? 'kas').join(', ')}</p>
+          {!npwp && <p className="text-xs text-red-700">The converter sheet starts with your NPWP, so add it to the report before building a file.</p>}
+          <p className="text-xs text-slate-400">CSV columns: {csvColumns(hartaSections[0] ?? 'kas').join(', ')}</p>
         </div>
       )}
 

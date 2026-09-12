@@ -52,7 +52,7 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
       inputs.receivables.push({
         accountId: value.accountId,
         name: value.name,
-        code: person?.coretaxCode ?? '021',
+        code: person?.coretaxCode ?? '0201',
         balanceMinor,
         currency: value.currency,
         fields: { name: person?.personName ?? value.name, ...fields },
@@ -62,7 +62,7 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
 
     if (value.mode === 'derived') {
       if (balanceMinor <= 0) continue;
-      inputs.cash.push({ accountId: value.accountId, name: value.name, code: code ?? '012', balanceMinor, currency: value.currency, fields });
+      inputs.cash.push({ accountId: value.accountId, name: value.name, code: code ?? '0102', balanceMinor, currency: value.currency, fields });
       continue;
     }
 
@@ -72,7 +72,7 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
       // assetValuesAt already picked the last price on or before the date; the price per unit
       // follows from the value it worked out, so no second price lookup can disagree with it.
       const priceMicro = priceMicroFrom(value.valueMinor, position.unitsMicro);
-      inputs.holdings.push({ accountId: value.accountId, name: value.name, code: code ?? '039', currency: value.currency, priceMicro, byYear: position.byYear, fields });
+      inputs.holdings.push({ accountId: value.accountId, name: value.name, code: code ?? '0399', currency: value.currency, priceMicro, byYear: position.byYear, fields });
       continue;
     }
 
@@ -81,7 +81,7 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
     inputs.estimated.push({
       accountId: value.accountId,
       name: value.name,
-      code: code ?? '069',
+      code: code ?? '0509',
       currency: value.currency,
       costMinor: value.costMinor,
       valueMinor: value.valueMinor,

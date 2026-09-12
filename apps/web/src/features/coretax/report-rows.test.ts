@@ -4,7 +4,7 @@ import { carryPillLabel, readinessLinks, screenSections } from './report-rows';
 
 const row = (partial: Partial<CoretaxRow> & Pick<CoretaxRow, 'key'>): CoretaxRow => ({
   section: 'kas',
-  code: '012',
+  code: '0102',
   name: 'BCA Tahapan',
   acquiredYear: null,
   costMinor: 50_000_000,
@@ -16,7 +16,7 @@ const row = (partial: Partial<CoretaxRow> & Pick<CoretaxRow, 'key'>): CoretaxRow
   ...partial,
 });
 
-const gold = row({ key: 'gold', section: 'lainnya', code: '051', name: 'Antam gold bars', costMinor: 22_400_000, valueMinor: 28_500_000, balanceMinor: 0, acquiredYear: 2024 });
+const gold = row({ key: 'gold', section: 'lainnya', code: '0701', name: 'Antam gold bars', costMinor: 22_400_000, valueMinor: 28_500_000, balanceMinor: 0, acquiredYear: 2024 });
 const kpr = row({ key: 'kpr', section: 'utang', code: '101', name: 'KPR Bintaro', costMinor: 0, valueMinor: 700_000_000, balanceMinor: 700_000_000 });
 
 const issue = (partial: Partial<ReadinessIssue> & Pick<ReadinessIssue, 'key'>): ReadinessIssue => ({
@@ -74,7 +74,7 @@ describe('readinessLinks', () => {
   });
 
   it('sends an issue about a debt to Lend & borrow', () => {
-    const links = readinessLinks([issue({ key: 'andi:missing:name', rowKey: 'andi' })], [row({ key: 'andi', section: 'piutang', code: '021', name: 'Andi' })]);
+    const links = readinessLinks([issue({ key: 'andi:missing:name', rowKey: 'andi' })], [row({ key: 'andi', section: 'piutang', code: '0201', name: 'Andi' })]);
 
     expect(links[0]!.to).toBe('/net-worth/debts');
   });
