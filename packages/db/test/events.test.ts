@@ -46,7 +46,7 @@ describe('saveEvent', () => {
     await lebaran(context);
 
     expect(await listEvents(context.database, context.ws)).toEqual([
-      { id: expect.any(String), name: 'Lebaran', startsOn: WINDOW.startsOn, endsOn: WINDOW.endsOn, plannedMinor: null, goalId: null },
+      { id: expect.any(String), name: 'Lebaran', startsOn: WINDOW.startsOn, endsOn: WINDOW.endsOn, plannedMinor: null, goalId: null, setId: null },
     ]);
   });
 

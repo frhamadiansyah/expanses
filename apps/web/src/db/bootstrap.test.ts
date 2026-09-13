@@ -1,5 +1,5 @@
 import { findEntry } from '@expanses/catalog';
-import { applyCatalogEntry, createAccount, createDatabase, createWorkspace, getCatalogState, listAccounts, listEarnRules, migrate } from '@expanses/db';
+import { applyCatalogEntry, createAccount, createDatabase, createWorkspace, getCatalogState, listAccounts, listCategorySets, listEarnRules, migrate } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it } from 'vitest';
 import { openAppDb } from './bootstrap';
@@ -24,6 +24,10 @@ describe('openAppDb', () => {
       expect((await listAccounts(database, ws)).find((a) => a.name === 'Groceries')?.systemKey).toBe('household.groceries');
       expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: findEntry('bca-sq-krisflyer-visa-signature')!.entryVersion, status: 'linked' });
       for (const rule of await listEarnRules(database, ws, programId)) expect(rule.match.excludeCategoryIds).toHaveLength(7);
+
+      // Sets arrive with the feature, so a workspace made before it has them after one open.
+      expect((await listCategorySets(database, ws)).map((set) => set.name)).toEqual(['Holiday', 'Newborn', 'Renovation']);
+      expect((await listAccounts(database, ws)).filter((a) => a.name === 'Diapering')).toHaveLength(1);
     } finally {
       executor.close();
     }

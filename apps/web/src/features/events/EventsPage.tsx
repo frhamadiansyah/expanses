@@ -1,9 +1,11 @@
 import { isoDate, parseMajor } from '@expanses/core';
 import { deleteEvent, removeEventBudget, saveEvent, setEventBudget, tagTransaction } from '@expanses/db';
+import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { useCategorySets, useSetCategories } from '../categories/set-queries';
 import { useEventBudgets, useEvents, useEventSheet, useEventSuggestions } from './queries';
 
 /**
@@ -29,13 +31,18 @@ export function EventsPage() {
   const [startsOn, setStartsOn] = useState(isoDate());
   const [endsOn, setEndsOn] = useState(isoDate());
   const [plannedTotal, setPlannedTotal] = useState('');
+  const [setId, setSetId] = useState('');
 
   const [categoryId, setCategoryId] = useState('');
   const [planned, setPlanned] = useState('');
 
   const list = events.data ?? [];
   const selected = list.find((event) => event.id === selectedId) ?? null;
-  const categories = (accounts.data ?? []).filter((account) => account.kind === 'expense' && account.subtype === 'category');
+  const sets = useCategorySets().data ?? [];
+  // An event plans against its own set when it has one, so a renovation is planned in renovation terms.
+  const setCategories = useSetCategories(selected?.setId ?? null).data ?? [];
+  const monthly = (accounts.data ?? []).filter((account) => account.kind === 'expense' && account.subtype === 'category');
+  const categories = selected?.setId ? setCategories : monthly;
   const nameOf = (id: string) => (accounts.data ?? []).find((account) => account.id === id)?.name ?? id;
 
   async function run(work: () => Promise<unknown>) {
@@ -56,6 +63,7 @@ export function EventsPage() {
         startsOn,
         endsOn,
         plannedMinor: plannedTotal.trim() === '' ? null : parseMajor(plannedTotal, ws.baseCurrency),
+        setId: setId === '' ? null : setId,
       });
       setSelectedId(id);
       setName('');
@@ -92,6 +100,16 @@ export function EventsPage() {
               <Field label="Planned total" hint="Optional. Leave it empty and the category figures add up instead.">
                 <Input value={plannedTotal} onChange={(e) => setPlannedTotal(e.target.value)} inputMode="decimal" placeholder="20000000" />
               </Field>
+              <Field label="Categories" hint="A set keeps an event's categories out of your monthly tree.">
+                <Select value={setId} onChange={(e) => setSetId(e.target.value)}>
+                  <option value="">The monthly categories</option>
+                  {sets.map((set) => (
+                    <option key={set.id} value={set.id}>
+                      {set.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <Field label="Starts on">
                 <Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
               </Field>
@@ -115,12 +133,17 @@ export function EventsPage() {
         <Card className="space-y-1">
           {list.map((event) => (
             <div key={event.id} data-testid="event-row" className="flex flex-wrap items-center justify-between gap-2 py-1 text-sm">
-              <button type="button" className="text-left underline-offset-2 hover:underline" onClick={() => setSelectedId(event.id)}>
-                <span className="font-medium">{event.name}</span>{' '}
-                <span className="text-xs text-slate-500">
-                  {event.startsOn} to {event.endsOn}
-                </span>
-              </button>
+              <span className="flex flex-wrap items-baseline gap-2">
+                <button type="button" className="text-left underline-offset-2 hover:underline" onClick={() => setSelectedId(event.id)}>
+                  <span className="font-medium">{event.name}</span>{' '}
+                  <span className="text-xs text-slate-500">
+                    {event.startsOn} to {event.endsOn}
+                  </span>
+                </button>
+                <Link to="/events/$eventId" params={{ eventId: event.id }} className="text-xs underline">
+                  Open
+                </Link>
+              </span>
               <Button variant="danger" onClick={() => void run(() => deleteEvent(database, ws, event.id))}>
                 Remove
               </Button>

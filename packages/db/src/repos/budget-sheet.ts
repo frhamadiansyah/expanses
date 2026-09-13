@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
+import { NOT_IN_A_SET } from '../schema-category-sets';
 import { getBudgetIncome } from './budget-settings';
 import { goalContributionsFor } from './goal-contributions';
 import { listBudgets } from './budgets';
@@ -28,7 +29,8 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
   const categories = await database.db
     .select({ id: accounts.id, parentId: accounts.parentId, name: accounts.name })
     .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense')));
+    // The monthly sheet speaks for the monthly tree: a set's categories are an event's business, not a cap's.
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense'), NOT_IN_A_SET));
 
   const [amounts, budgets, income, flows, goals, contributions, eventSpendingMinor] = await Promise.all([
     // Events are held out of the caps; they get their own line and are still taken off what is left.

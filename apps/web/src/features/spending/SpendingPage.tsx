@@ -5,6 +5,7 @@ import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
+import { useCategorySets, useCategorySetMembership } from '../categories/set-queries';
 import { Button, Card, Empty, Money, PageHeader } from '../../ui';
 
 function monthLabel(month: string) {
@@ -63,9 +64,16 @@ export function SpendingPage() {
     queryKey: ['category-totals', ws.workspaceId, kind, month],
     queryFn: () => categoryTotalsBetween(database, ws, kind, from, to),
   });
-  const tree = categoryTree(accounts.filter((a) => a.kind === kind), totals.data ?? []);
-  const total = tree.reduce((s, n) => s + n.totalMinor, 0);
-  const max = tree[0]?.totalMinor ?? 0;
+  const membership = useCategorySetMembership().data ?? {};
+  const sets = useCategorySets().data ?? [];
+  const ofKind = accounts.filter((a) => a.kind === kind);
+  const tree = categoryTree(ofKind.filter((a) => membership[a.id] === undefined), totals.data ?? []);
+  // Each set is shown as its own group rather than mixed in: a renovation is read as a renovation.
+  const setGroups = sets
+    .map((set) => ({ set, tree: categoryTree(ofKind.filter((a) => membership[a.id] === set.id), totals.data ?? []) }))
+    .filter((group) => group.tree.length > 0);
+  const total = [tree, ...setGroups.map((group) => group.tree)].flat().reduce((s, n) => s + n.totalMinor, 0);
+  const max = Math.max(0, ...[tree, ...setGroups.map((group) => group.tree)].flat().map((n) => n.totalMinor));
 
   return (
     <div className="space-y-4">
@@ -94,7 +102,7 @@ export function SpendingPage() {
         <p className="mt-1 text-xs text-slate-500">Card purchases count when made. Paying a card bill is a transfer, not spending.</p>
       </Card>
       <Card>
-        {totals.isSuccess && tree.length === 0 ? (
+        {totals.isSuccess && tree.length === 0 && setGroups.length === 0 ? (
           <Empty>Nothing recorded for {monthLabel(month)}.</Empty>
         ) : (
           <ul className="divide-y divide-slate-100">
@@ -104,6 +112,18 @@ export function SpendingPage() {
           </ul>
         )}
       </Card>
+      {setGroups.map((group) => (
+        <Card key={group.set.id}>
+          <div data-testid={`set-group-${group.set.name}`}>
+            <h2 className="text-sm font-semibold">{group.set.name}</h2>
+            <ul className="divide-y divide-slate-100">
+              {group.tree.map((node) => (
+                <Node key={node.id} node={node} max={max} month={month} depth={0} />
+              ))}
+            </ul>
+          </div>
+        </Card>
+      ))}
     </div>
   );
 }

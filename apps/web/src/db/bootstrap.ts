@@ -6,6 +6,7 @@ import {
   createWorkspace,
   type Database,
   ensureCategoryKeys,
+  ensureDefaultCategorySets,
   listWorkspaces,
   migrate,
   syncLinkedPrograms,
@@ -29,6 +30,8 @@ export async function openAppDb(database: Database): Promise<AppDb> {
   const ws = contextOf(workspace!);
   // Keys first, so catalogue exclusions map to categories when linked programs re-apply.
   await ensureCategoryKeys(database, ws);
+  // Then the sets, which a workspace of any age can be missing: they arrive with the feature, not with the workspace.
+  await ensureDefaultCategorySets(database, ws);
   try {
     await syncLinkedPrograms(database, ws, CATALOG, isoDate());
   } catch (error) {

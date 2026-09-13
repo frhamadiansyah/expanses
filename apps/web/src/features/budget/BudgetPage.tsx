@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { useCategorySetMembership } from '../categories/set-queries';
 import { useBudgets, useBudgetSheet, useCommittedBills } from './queries';
 
 function monthLabel(month: string) {
@@ -66,7 +67,9 @@ export function BudgetPage() {
   const [error, setError] = useState<unknown>(null);
 
   const accounts = useAccounts().data ?? [];
-  const categories = accounts.filter((account) => account.kind === 'expense');
+  const membership = useCategorySetMembership().data ?? {};
+  // Caps are for the monthly tree; an event plans its set on its own page.
+  const categories = accounts.filter((account) => account.kind === 'expense' && membership[account.id] === undefined);
   const sheetQuery = useBudgetSheet(month);
   const budgets = useBudgets(month);
   const sheet = sheetQuery.data;

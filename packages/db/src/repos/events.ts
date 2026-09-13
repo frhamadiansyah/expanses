@@ -23,6 +23,8 @@ export interface EventRow {
   /** A figure for the whole event, instead of planning category by category. */
   plannedMinor: number | null;
   goalId: string | null;
+  /** The category set the event draws on, when it draws on one rather than the monthly categories. */
+  setId: string | null;
 }
 
 export interface SaveEventInput {
@@ -32,6 +34,7 @@ export interface SaveEventInput {
   endsOn: string;
   plannedMinor?: number | null;
   goalId?: string | null;
+  setId?: string | null;
 }
 
 export interface EventBudgetRow {
@@ -48,6 +51,7 @@ const toRow = (row: typeof events.$inferSelect): EventRow => ({
   endsOn: row.endsOn,
   plannedMinor: row.plannedMinor,
   goalId: row.goalId,
+  setId: row.setId,
 });
 
 async function eventOf(database: Database, ws: WorkspaceContext, id: string): Promise<EventRow> {
@@ -79,12 +83,13 @@ export async function saveEvent(database: Database, ws: WorkspaceContext, input:
       endsOn: input.endsOn,
       plannedMinor,
       goalId: input.goalId ?? null,
+      setId: input.setId ?? null,
       archivedAt: null,
       createdAt: new Date().toISOString(),
     })
     .onConflictDoUpdate({
       target: events.id,
-      set: { name, startsOn: input.startsOn, endsOn: input.endsOn, plannedMinor, goalId: input.goalId ?? null },
+      set: { name, startsOn: input.startsOn, endsOn: input.endsOn, plannedMinor, goalId: input.goalId ?? null, setId: input.setId ?? null },
     });
   return id;
 }

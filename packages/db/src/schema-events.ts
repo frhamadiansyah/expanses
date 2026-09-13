@@ -9,6 +9,8 @@ export const events = sqliteTable('events', {
   /** A figure for the whole event, instead of planning category by category. */
   plannedMinor: integer('planned_minor'),
   goalId: text('goal_id'),
+  /** The category set the event draws on, when it draws on one rather than the monthly categories. */
+  setId: text('set_id'),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
 });

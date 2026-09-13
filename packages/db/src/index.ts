@@ -53,3 +53,5 @@ export * from './repos/business-income';
 export * from './repos/kmk-rates';
 export * from './repos/expense-templates';
 export * from './repos/events';
+export * as categorySetsSchema from './schema-category-sets';
+export * from './repos/category-sets';

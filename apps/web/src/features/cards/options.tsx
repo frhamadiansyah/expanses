@@ -1,6 +1,12 @@
 import type { AccountRow } from '@expanses/db';
+import { useCategorySetMembership } from '../categories/set-queries';
 
-/** Category <option>s grouped by top-level parent. Parents are selectable as "(general)". */
+/**
+ * Category <option>s grouped by top-level parent. Parents are selectable as "(general)".
+ *
+ * Set categories are left out: every picker built on this one speaks for the monthly tree, and an
+ * event's categories are chosen on the event itself.
+ */
 export function CategoryOptions({
   accounts,
   kind,
@@ -12,7 +18,8 @@ export function CategoryOptions({
   placeholder?: string | null;
   parentSuffix?: string;
 }) {
-  const categories = accounts.filter((a) => a.kind === kind && a.archivedAt === null);
+  const membership = useCategorySetMembership().data ?? {};
+  const categories = accounts.filter((a) => a.kind === kind && a.archivedAt === null && membership[a.id] === undefined);
   const roots = categories.filter((c) => c.parentId === null);
   return (
     <>

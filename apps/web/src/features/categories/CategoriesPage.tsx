@@ -6,6 +6,7 @@ import { useApp } from '../../app/context';
 import { isCategoryOf, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, ErrorBox, PageHeader } from '../../ui';
 import { categoryMcc } from './category-mcc';
+import { useCategorySetMembership } from './set-queries';
 
 export function CategoriesPage() {
   const { database, ws } = useApp();
@@ -14,7 +15,9 @@ export function CategoriesPage() {
   const [kind, setKind] = useState<'expense' | 'income'>('expense');
   const [error, setError] = useState<unknown>(null);
 
-  const categories = (accounts.data ?? []).filter(isCategoryOf(kind));
+  const membership = useCategorySetMembership().data ?? {};
+  // The monthly tree only: a set's categories are managed on the event that draws on them.
+  const categories = (accounts.data ?? []).filter(isCategoryOf(kind)).filter((account) => membership[account.id] === undefined);
   const overrides = useQuery({ queryKey: ['category-mccs', ws.workspaceId], queryFn: () => listCategoryMccs(database, ws) });
   const allCategories = (accounts.data ?? []).filter((a) => a.subtype === 'category');
   const roots = categories.filter((c) => c.parentId === null);

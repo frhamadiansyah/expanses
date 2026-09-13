@@ -3,6 +3,7 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { NOT_IN_A_SET } from '../schema-category-sets';
 
 type AccountRow = typeof accounts.$inferSelect;
 
@@ -22,7 +23,7 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
     const rows: AccountRow[] = await tx
       .select()
       .from(accounts)
-      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category')));
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category'), NOT_IN_A_SET));
     const byKey = new Map(rows.flatMap((row) => (row.systemKey ? [[row.systemKey, row] as const] : [])));
     const keyed: string[] = [];
     const created: string[] = [];
