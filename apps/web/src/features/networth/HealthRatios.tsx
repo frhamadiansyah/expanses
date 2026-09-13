@@ -88,7 +88,7 @@ export function HealthRatios({
       </div>
 
       <p className="text-xs text-slate-500">
-        Take-home pay is what actually landed in your accounts, so tax and contributions withheld at source are already out. Employer JHT and DPLK are not counted yet.
+        Take-home pay is what actually landed in your accounts, so tax and contributions withheld at source are already out. Employer pension contributions are not counted yet.
       </p>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-600">
