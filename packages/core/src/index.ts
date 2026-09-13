@@ -295,3 +295,11 @@ export {
   type UmkmMonth,
   type UmkmResult,
 } from './coretax/business';
+export {
+  type EventActual,
+  type EventPlanLine,
+  eventSheet,
+  type EventSheet,
+  type EventSheetInput,
+  type EventSheetLine,
+} from './events/sheet';

@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
 import { AccountsPage } from '../features/accounts/AccountsPage';
 import { BackupPage } from '../features/backup/BackupPage';
+import { EventsPage } from '../features/events/EventsPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
 import { CalculatorsPage } from '../features/calculators/CalculatorsPage';
 import { ImportPage } from '../features/import/ImportPage';
@@ -43,6 +44,7 @@ const routeTree = rootRoute.addChildren([
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/spending', component: SpendingPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/budget', component: BudgetPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators', component: CalculatorsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),

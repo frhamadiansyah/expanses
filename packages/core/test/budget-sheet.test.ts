@@ -25,6 +25,7 @@ const input = (overrides: Partial<BudgetSheetInput> = {}): BudgetSheetInput => (
   debtPaymentsPlanMinor: 0,
   debtPaymentsActualMinor: 0,
   savings: [],
+  eventSpendingMinor: 0,
   ...overrides,
 });
 
@@ -128,5 +129,36 @@ describe('the two bottom lines', () => {
 
     expect(sheet.savingsPlanMinor).toBe(3_500_000);
     expect(sheet.savingsActualMinor).toBe(2_500_000);
+  });
+});
+
+describe('an occasion', () => {
+  it('is held out of the caps, so an ordinary month still reads honestly', () => {
+    const caps = [{ categoryId: 'food', amountMinor: 5_000_000 }];
+    const without = budgetSheet(input({ caps }));
+    const with_ = budgetSheet(input({ caps, eventSpendingMinor: 9_000_000 }));
+
+    // A wedding would otherwise read as every category blown at once.
+    expect(with_.spendingActualMinor).toBe(without.spendingActualMinor);
+    expect(with_.overCount).toBe(without.overCount);
+    expect(with_.capsTotalMinor).toBe(without.capsTotalMinor);
+  });
+
+  it('is still taken off what is left, because the money went', () => {
+    const sheet = budgetSheet(input({ incomeActualMinor: 10_000_000, eventSpendingMinor: 2_000_000 }));
+
+    // Rp 10.000.000 in, Rp 5.000.000 of ordinary spending, Rp 2.000.000 on the occasion.
+    expect(sheet.leftOverActualMinor).toBe(3_000_000);
+  });
+
+  it('is carried through, so the sheet can name it rather than hide it', () => {
+    expect(budgetSheet(input({ eventSpendingMinor: 2_000_000 })).eventSpendingMinor).toBe(2_000_000);
+  });
+
+  it('changes nothing when there was no occasion', () => {
+    const sheet = budgetSheet(input({ incomeActualMinor: 10_000_000 }));
+
+    expect(sheet.eventSpendingMinor).toBe(0);
+    expect(sheet.leftOverActualMinor).toBe(5_000_000);
   });
 });
