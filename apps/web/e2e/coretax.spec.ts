@@ -41,7 +41,7 @@ async function addGold(page: Page) {
 }
 
 async function startReport(page: Page) {
-  await page.goto('/net-worth/coretax');
+  await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));
   await page.getByRole('button', { name: `Start the ${YEAR} report` }).click();
   await expect(page.getByText('Ikhtisar')).toBeVisible();
@@ -80,7 +80,7 @@ test('says what is missing before it can be filed, and stops saying it once fixe
   await page.getByRole('button', { name: 'Save tax-report details' }).click();
   await expect(page.getByText('Saved')).toBeVisible();
 
-  await page.goto('/net-worth/coretax');
+  await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));
   await expect(page.getByText('Nothing missing. Every row has what its table asks for.')).toBeVisible();
 });
@@ -101,7 +101,7 @@ test('freezing keeps the figures when a trade is backdated into the year afterwa
   await page.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(page.getByText(/Recorded\./)).toBeVisible();
 
-  await page.goto('/net-worth/coretax');
+  await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));
   // The frozen figure stands, and the change is listed rather than applied.
   await expect(page.getByText(/Frozen at/).first()).toBeVisible();
@@ -179,7 +179,7 @@ test('downloads the converter file once the sheet has everything it needs', asyn
   await page.getByRole('button', { name: 'Save tax-report details' }).click();
   await expect(page.getByText('Saved')).toBeVisible();
 
-  await page.goto('/net-worth/coretax');
+  await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));
 
   const download = page.waitForEvent('download');

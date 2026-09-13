@@ -4,10 +4,8 @@ const TABS = [
   { to: '/net-worth', label: 'Overview' },
   { to: '/net-worth/assets', label: 'Assets' },
   { to: '/net-worth/trades', label: 'Buy & sell' },
-  { to: '/net-worth/goals', label: 'Goals' },
   { to: '/net-worth/debts', label: 'Lend & borrow' },
   { to: '/net-worth/loans', label: 'Loans' },
-  { to: '/net-worth/coretax', label: 'Tax report' },
 ] as const;
 
 export function NetWorthTabs() {

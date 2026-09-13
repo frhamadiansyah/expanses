@@ -75,7 +75,7 @@ test('the sheet plans against typed income and reports what happened', async ({ 
 });
 
 test('a goal becomes a savings row on the sheet', async ({ page }) => {
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await page.getByRole('button', { name: 'Add goal' }).first().click();
   await page.getByLabel('What kind of goal').selectOption('education');
   await page.getByLabel('Name', { exact: true }).fill('School fees');

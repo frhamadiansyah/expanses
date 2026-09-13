@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
-import { NetWorthTabs } from '../networth/NetWorthTabs';
 import { useSheet } from '../networth/queries';
 import { FreezePanel } from './FreezePanel';
 import { readinessLinks, screenSections } from './report-rows';
@@ -75,7 +74,6 @@ export function CoretaxPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Tax report" />
-      <NetWorthTabs />
       <ErrorBox error={error ?? report.error ?? rows.error} />
 
       <Card className="flex flex-wrap items-end justify-between gap-3">

@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
-import { NetWorthTabs } from '../networth/NetWorthTabs';
 import { Calculator, calculatorKindOf } from './Calculator';
 import { GoalForm } from './GoalForm';
 import { type GoalCard, goalCard, GOAL_TEMPLATES } from './goal-cards';
@@ -65,7 +64,6 @@ export function GoalsPage() {
         title="Goals"
         action={!adding && !editing ? <Button onClick={() => setAdding(GOAL_TEMPLATES[0]!.kind)}>Add goal</Button> : undefined}
       />
-      <NetWorthTabs />
       <ErrorBox error={summary.error ?? error} />
 
       {calculating && <Calculator goal={calculating} onDone={() => setCalculating(null)} />}

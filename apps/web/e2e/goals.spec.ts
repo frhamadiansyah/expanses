@@ -31,7 +31,7 @@ async function addGold(page: Page) {
 }
 
 async function addGoal(page: Page, kind: string, name: string, amount: string, dueOn: string) {
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await page.getByRole('button', { name: 'Add goal' }).first().click();
   await page.getByLabel('What kind of goal').selectOption(kind);
   await page.getByLabel('Name', { exact: true }).fill(name);
@@ -57,7 +57,7 @@ test('a goal funded by a tagged gold buy shows progress and what it needs each m
 
   await buyGold(page, '5', '9000000', 'Hajj for two');
 
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await expect(page.getByText('Antam gold bars').first()).toBeVisible();
   await expect(page.getByText(/9\.000\.000/).first()).toBeVisible();
   await expect(page.getByText('Needed a month').first()).toBeVisible();
@@ -72,7 +72,7 @@ test('one holding funds two goals, by the tag on each buy', async ({ page }) => 
   await buyGold(page, '2', '3600000', 'Hajj for two');
   await buyGold(page, '1', '1800000', 'University for Aisyah');
 
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   const hajj = page.locator('section', { hasText: 'Hajj for two' }).first();
   const education = page.locator('section', { hasText: 'University for Aisyah' }).first();
   await expect(hajj.getByText(/3\.600\.000/).first()).toBeVisible();
@@ -93,7 +93,7 @@ test('retagging a buy moves it between goals without touching the ledger', async
   await page.locator('select[aria-label="Goal for this buy"]').first().selectOption({ label: 'University for Aisyah' });
   await expect(page.getByText(/University for Aisyah/).first()).toBeVisible();
 
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   const education = page.locator('section', { hasText: 'University for Aisyah' }).first();
   await expect(education.getByText(/3\.600\.000/).first()).toBeVisible();
 
@@ -118,7 +118,7 @@ test('refuses a sell the goal cannot cover', async ({ page }) => {
 });
 
 test('a template button opens that template, not the first one', async ({ page }) => {
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await page.getByRole('button', { name: 'Hajj or umrah' }).click();
 
   await expect(page.getByLabel('What kind of goal')).toHaveValue('hajj');
@@ -126,7 +126,7 @@ test('a template button opens that template, not the first one', async ({ page }
 });
 
 test('works out a retirement target from your own figures', async ({ page }) => {
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await page.getByRole('button', { name: 'Add goal' }).first().click();
   await page.getByLabel('What kind of goal').selectOption('retirement');
   await page.getByLabel('Name', { exact: true }).fill('Retirement');
@@ -147,7 +147,7 @@ test('works out a retirement target from your own figures', async ({ page }) => 
 });
 
 test('typing an amount by hand stops the goal being worked out', async ({ page }) => {
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await page.getByRole('button', { name: 'Add goal' }).first().click();
   await page.getByLabel('What kind of goal').selectOption('retirement');
   await page.getByLabel('Name', { exact: true }).fill('Retirement');

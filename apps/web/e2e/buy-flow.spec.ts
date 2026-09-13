@@ -129,7 +129,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover k
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Saved.')).toBeVisible();
 
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await page.getByRole('button', { name: 'Add goal' }).first().click();
   await page.getByLabel('What kind of goal').selectOption('education');
   await page.getByLabel('Name', { exact: true }).fill('University for Aisyah');
@@ -150,7 +150,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover k
   await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
 
   // Parked money is set aside for the goal straight away.
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await expect(page.getByText(/2\.000\.000/).first()).toBeVisible();
 
   // One lot of 100 shares at Rp 9.889,81 leaves Rp 1.011.019 behind.

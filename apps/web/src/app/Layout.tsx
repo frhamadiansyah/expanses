@@ -9,6 +9,7 @@ const NAV = [
   { to: '/cards', label: 'Cards' },
   { to: '/spending', label: 'Spending' },
   { to: '/budget', label: 'Budget' },
+  { to: '/goals', label: 'Goals' },
   { to: '/accounts', label: 'Accounts' },
   { to: '/categories', label: 'Categories' },
   { to: '/net-worth', label: 'Net worth' },
@@ -16,6 +17,7 @@ const NAV = [
 
 const MORE = [
   { to: '/calculators', label: 'Calculators' },
+  { to: '/tax-report', label: 'Tax report' },
   { to: '/recommend', label: 'Which card?' },
   { to: '/import', label: 'Import CSV' },
   { to: '/backup', label: 'Backup' },

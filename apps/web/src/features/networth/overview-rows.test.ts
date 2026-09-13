@@ -113,7 +113,7 @@ describe('attentionItems with goals', () => {
   it('flags a goal that is behind', () => {
     const items = attentionItems([], [], [goalPlanRow()]);
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ tone: 'warn', action: 'Review', to: '/net-worth/goals' });
+    expect(items[0]).toMatchObject({ tone: 'warn', action: 'Review', to: '/goals' });
     expect(items[0]!.text).toContain('Hajj for two');
   });
 

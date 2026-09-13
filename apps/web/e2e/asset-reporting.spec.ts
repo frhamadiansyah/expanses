@@ -25,7 +25,7 @@ async function openSettings(page: Page) {
 }
 
 async function startReport(page: Page) {
-  await page.goto('/net-worth/coretax');
+  await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption(String(YEAR));
   await page.getByRole('button', { name: `Start the ${YEAR} report` }).click();
   await expect(page.getByText('Ikhtisar')).toBeVisible();
