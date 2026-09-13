@@ -1,5 +1,5 @@
 import { coretaxRows, isoDate, utangRows } from '@expanses/core';
-import { businessInputsFor, coretaxInputsFor, incomeInputsFor, listReports, reportFor, rowDifferences, savedRows } from '@expanses/db';
+import { businessInputsFor, coretaxInputsFor, foreignCurrenciesFor, incomeInputsFor, kmkRateRowsFor, kmkRatesFor, listReports, reportFor, rowDifferences, savedRows } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -26,7 +26,7 @@ export function useReportRows(taxYear: number) {
       if (!report) return [];
       if (report.status !== 'draft') return savedRows(database, ws, taxYear);
       const inputs = await coretaxInputsFor(database, ws, taxYear);
-      const settings = { propertyBasis: report.propertyBasis, repeatRows: report.repeatRows, kmkRateBps: {} };
+      const settings = { propertyBasis: report.propertyBasis, repeatRows: report.repeatRows, kmkRateBps: await kmkRatesFor(database, ws, taxYear) };
       return [...coretaxRows(taxYear, inputs, settings), ...utangRows(taxYear, inputs, settings)];
     },
   });
@@ -62,5 +62,23 @@ export function useBusinessReport(taxYear: number) {
   return useQuery({
     queryKey: ['tax-business', ws.workspaceId, taxYear],
     queryFn: () => businessInputsFor(database, ws, taxYear),
+  });
+}
+
+/** The currencies this year actually needs a Menteri Keuangan rate for. */
+export function useForeignCurrencies(taxYear: number) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['tax-currencies', ws.workspaceId, taxYear],
+    queryFn: () => foreignCurrenciesFor(database, ws, taxYear),
+  });
+}
+
+/** The rates already entered, with the decree each came from. */
+export function useKmkRates(taxYear: number) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['tax-kmk-rates', ws.workspaceId, taxYear],
+    queryFn: () => kmkRateRowsFor(database, ws, taxYear),
   });
 }

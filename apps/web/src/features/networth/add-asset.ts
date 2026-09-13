@@ -20,6 +20,8 @@ export interface NewAssetDraft {
   /** Optional first estimate of what it is worth now. */
   estimate: string;
   estimateBasis: ValuationBasis;
+  /** What one unit of the asset's currency was worth in base when it was got. Held in the ledger only. */
+  openingRate: string;
   coretaxFields: Record<string, string>;
 }
 
@@ -29,6 +31,11 @@ export interface NewAssetPlan {
   /** Opening positions, paid from Opening Balances so bank balances do not move. */
   trades: { occurredOn: string; unitsMicro: number; grossMinor: number }[];
   valuation: { asOf: string; valueMinor: number; basis: ValuationBasis } | null;
+  /**
+   * The rate that prices the opening entry in the ledger. Undefined when the asset is already in the
+   * base currency. This is not the tax report's rate: that one is the KMK figure, entered per year.
+   */
+  openingRateToBase?: number;
 }
 
 /** Holdings are counted in units and priced; property and vehicles are estimated. */
@@ -47,6 +54,7 @@ export function emptyDraft(kind: AssetKind, currency: string, today: string): Ne
     cost: '',
     estimate: '',
     estimateBasis: 'estimate',
+    openingRate: '',
     coretaxFields: {},
   };
 }
@@ -89,6 +97,10 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
     years = [Number(draft.purchasedOn.slice(0, 4))];
   }
 
+  const typedRate = draft.openingRate.trim();
+  const openingRateToBase = typedRate === '' ? undefined : Number(typedRate.replace(/\./g, '').replace(',', '.'));
+  if (openingRateToBase !== undefined && !(openingRateToBase > 0)) throw new Error('The rate must be more than zero');
+
   let valuation: NewAssetPlan['valuation'] = null;
   if (needsEstimate(draft.kind) && draft.estimate.trim() !== '') {
     valuation = { asOf: today, valueMinor: parseMajor(draft.estimate, draft.currency), basis: draft.estimateBasis };
@@ -106,5 +118,6 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
     },
     trades,
     valuation,
+    openingRateToBase,
   };
 }

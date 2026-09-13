@@ -34,6 +34,7 @@ export function AddAssetForm({ onDone }: { onDone: () => void }) {
         currency: plan.account.currency,
         openingBalanceMinor: plan.account.openingBalanceMinor,
         openedOn: plan.account.openedOn,
+        openingRateToBase: plan.openingRateToBase,
       });
       await saveAssetProfile(database, ws, {
         accountId: account.id,
@@ -53,6 +54,7 @@ export function AddAssetForm({ onDone }: { onDone: () => void }) {
           feeMinor: 0,
           taxMinor: 0,
           cashAccountId: null,
+          ratesToBase: plan.openingRateToBase === undefined ? undefined : { [plan.account.currency]: plan.openingRateToBase },
         });
       }
       if (plan.valuation) {
@@ -93,6 +95,20 @@ export function AddAssetForm({ onDone }: { onDone: () => void }) {
               ))}
             </Select>
           </Field>
+          {draft.currency !== ws.baseCurrency && (
+            <Field
+              label={`Rate to ${ws.baseCurrency}`}
+              hint={`What one ${draft.currency} was worth when you got this. Your ledger needs it to hold one running total; the tax report uses the KMK rate instead.`}
+            >
+              <Input
+                aria-label="Opening rate"
+                value={draft.openingRate}
+                onChange={(e) => change({ openingRate: e.target.value })}
+                inputMode="decimal"
+                placeholder="16000"
+              />
+            </Field>
+          )}
         </div>
 
         {needsPurchases(draft.kind) && (

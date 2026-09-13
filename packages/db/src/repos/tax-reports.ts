@@ -3,6 +3,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { taxYearReports, taxYearRows } from '../schema-tax';
+import { kmkRatesFor } from './kmk-rates';
 import { coretaxInputsFor } from './tax-inputs';
 
 export class TaxDbError extends Error {
@@ -104,15 +105,15 @@ export async function listReports(database: Database, ws: WorkspaceContext): Pro
 }
 
 /** The settings a report was saved with, in the shape the row builders expect. */
-function settingsOf(report: TaxReportRow): ReportSettings {
-  // KMK rates are entered per report on the freeze panel; none yet means a foreign amount waits.
-  return { propertyBasis: report.propertyBasis, repeatRows: report.repeatRows, kmkRateBps: {} };
+function settingsOf(report: TaxReportRow, kmkRateBps: Record<string, number>): ReportSettings {
+  // A currency with no rate entered yet reports as nothing, rather than at a rate the form does not ask for.
+  return { propertyBasis: report.propertyBasis, repeatRows: report.repeatRows, kmkRateBps };
 }
 
 /** The rows the ledger says the year holds right now, harta then utang. */
 async function liveRows(database: Database, ws: WorkspaceContext, report: TaxReportRow): Promise<CoretaxRow[]> {
   const inputs = await coretaxInputsFor(database, ws, report.taxYear);
-  const settings = settingsOf(report);
+  const settings = settingsOf(report, await kmkRatesFor(database, ws, report.taxYear));
   return [...coretaxRows(report.taxYear, inputs, settings), ...utangRows(report.taxYear, inputs, settings)];
 }
 
