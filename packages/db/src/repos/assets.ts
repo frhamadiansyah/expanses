@@ -24,6 +24,8 @@ export interface AssetProfileRow {
   coretaxCode: string | null;
   acquiredYear: number | null;
   coretaxFields: Record<string, string>;
+  /** False when the asset is yours but does not belong on the tax report. */
+  reportable: boolean;
   updatedAt: string;
 }
 
@@ -38,6 +40,7 @@ export interface SaveAssetProfileInput {
   coretaxCode?: string | null;
   acquiredYear?: number | null;
   coretaxFields?: Record<string, string>;
+  reportable?: boolean;
 }
 
 /** What a profile looks like before the owner changes anything. */
@@ -53,6 +56,7 @@ export function profileDefaults(kind: AssetKind): Omit<AssetProfileRow, 'account
     coretaxCode: preset.coretaxCode,
     acquiredYear: null,
     coretaxFields: {},
+    reportable: true,
   };
 }
 
@@ -78,6 +82,7 @@ function toProfile(row: ProfileDbRow): AssetProfileRow {
     coretaxCode: row.coretaxCode,
     acquiredYear: row.acquiredYear,
     coretaxFields,
+    reportable: row.reportable === 1,
     updatedAt: row.updatedAt,
   };
 }
@@ -178,10 +183,44 @@ export async function saveAssetProfile(database: Database, ws: WorkspaceContext,
     coretaxCode,
     coretaxFieldsJson: JSON.stringify(input.coretaxFields ?? {}),
     acquiredYear,
+    reportable: (input.reportable ?? defaults.reportable) ? 1 : 0,
     updatedAt: new Date().toISOString(),
   };
   await database.transaction(async (tx) => {
     await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
     await tx.insert(assetProfiles).values(row).onConflictDoUpdate({ target: assetProfiles.accountId, set: row });
   });
+}
+
+export interface AssetReportingInput {
+  /** False keeps the asset off the tax report while it still counts toward net worth. */
+  reportable?: boolean;
+  coretaxCode?: string | null;
+  coretaxSection?: CoretaxSection | null;
+}
+
+/**
+ * How an asset is treated by the tax report: whether it appears at all, and under which code.
+ *
+ * DJP does not prescribe a code for every holding — for DPLK it says to pick kas, setara kas or an
+ * investasi code to match your actual situation — so the code has to be the owner's to choose.
+ */
+export async function setAssetReporting(
+  database: Database,
+  ws: WorkspaceContext,
+  accountId: string,
+  input: AssetReportingInput,
+): Promise<void> {
+  if (input.coretaxCode !== undefined && input.coretaxCode !== null && !/^\d{4}$/.test(input.coretaxCode)) {
+    throw new AssetError('A Coretax code is four digits');
+  }
+  const changes: Partial<typeof assetProfiles.$inferInsert> = { updatedAt: new Date().toISOString() };
+  if (input.reportable !== undefined) changes.reportable = input.reportable ? 1 : 0;
+  if (input.coretaxCode !== undefined) changes.coretaxCode = input.coretaxCode;
+  if (input.coretaxSection !== undefined) changes.coretaxSection = input.coretaxSection;
+
+  await database.db
+    .update(assetProfiles)
+    .set(changes)
+    .where(and(eq(assetProfiles.accountId, accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
 }

@@ -210,6 +210,8 @@ export function AssetDetailPage() {
           group={profile.data?.planGroup ?? value.planGroup}
           lotSize={profile.data?.lotSize ?? null}
           showLotSize={value.mode === 'market' && profile.data?.unitKind !== 'grams'}
+          reportable={profile.data?.reportable ?? true}
+          coretaxCode={profile.data?.coretaxCode ?? null}
         />
       )}
 

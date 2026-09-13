@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { balanceOf, consumeFifo, dueToExpire, expiresOn, feeRoi, LedgerError, type PointEntry } from '../src/index';
+import { balanceOf, consumeFifo, dueToExpire, expiresOn, feeRoi, LedgerError, type PointEntry, spendableOf } from '../src/index';
 
 const TODAY = '2026-09-13';
 
@@ -210,5 +210,69 @@ describe('what a card year was worth', () => {
     const entries = [earn('a', 10_000, '2026-03-01')];
 
     expect(feeRoi({ entries, ...year, valuePerPointMicro: RATE, annualFeeMinor: 0 }).netMinor).toBe(250_000);
+  });
+});
+
+describe('points anchored from the issuer app', () => {
+  const anchored: PointEntry[] = [
+    { id: 'a1', kind: 'adjust', quantity: 500, occurredOn: '2026-09-01', status: 'posted', batchId: null, expiresOn: null, source: 'snapshot' },
+  ];
+
+  it('can be spent, because they are points you hold', () => {
+    expect(consumeFifo(anchored, 100, TODAY)).toEqual([{ batchId: 'a1', quantity: 100 }]);
+  });
+
+  it('is drawn on only after points that are going to die', () => {
+    const entries: PointEntry[] = [...anchored, earn('dying', 200, '2026-01-01', { expiresOn: '2026-10-01' })];
+
+    expect(consumeFifo(entries, 300, TODAY)).toEqual([
+      { batchId: 'dying', quantity: 200 },
+      { batchId: 'a1', quantity: 100 },
+    ]);
+  });
+
+  it('falls when spent from, like any other batch', () => {
+    const entries: PointEntry[] = [
+      ...anchored,
+      { id: 'r1', kind: 'redeem', quantity: -400, occurredOn: TODAY, status: 'posted', batchId: 'a1', expiresOn: null },
+    ];
+
+    expect(balanceOf(entries, TODAY).total).toBe(100);
+    expect(consumeFifo(entries, 100, TODAY)).toEqual([{ batchId: 'a1', quantity: 100 }]);
+    expect(() => consumeFifo(entries, 200, TODAY)).toThrow(LedgerError);
+  });
+
+  it('does not open a batch when the correction takes points away', () => {
+    // A downward correction draws batches down; it is not itself a pot to spend from.
+    const entries: PointEntry[] = [
+      earn('a', 500, '2026-01-01'),
+      { id: 'd1', kind: 'adjust', quantity: -200, occurredOn: TODAY, status: 'posted', batchId: 'a', expiresOn: null, source: 'snapshot' },
+    ];
+
+    expect(balanceOf(entries, TODAY).total).toBe(300);
+    expect(() => consumeFifo(entries, 400, TODAY)).toThrow(LedgerError);
+    expect(consumeFifo(entries, 300, TODAY)).toEqual([{ batchId: 'a', quantity: 300 }]);
+  });
+});
+
+describe('what could be spent today', () => {
+  it('counts the batches still alive, not the total', () => {
+    const entries = [earn('dead', 900, '2023-01-01', { expiresOn: '2025-01-01' }), earn('alive', 400, '2026-01-01')];
+
+    // The dead batch is still in the total until it is written off, but nothing can be spent from it.
+    expect(balanceOf(entries, TODAY).total).toBe(1_300);
+    expect(spendableOf(entries, TODAY)).toBe(400);
+  });
+
+  it('counts points anchored from the app', () => {
+    const entries: PointEntry[] = [
+      { id: 'a1', kind: 'adjust', quantity: 500, occurredOn: TODAY, status: 'posted', batchId: null, expiresOn: null },
+    ];
+
+    expect(spendableOf(entries, TODAY)).toBe(500);
+  });
+
+  it('is nothing when there is nothing left', () => {
+    expect(spendableOf([], TODAY)).toBe(0);
   });
 });

@@ -108,8 +108,8 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
     label: 'Hajj or umrah',
     growthBps: 500,
     returnBps: 600,
-    stage: { name: 'Setoran awal', targetMinor: null, targetMonths: null, monthsAway: 12 },
-    hint: 'Put in the setoran awal your bank or Kemenag quotes today, then add a stage for each payment your scheme asks for; reguler, plus and furoda pay in different steps.',
+    stage: { name: 'First payment', targetMinor: null, targetMonths: null, monthsAway: 12 },
+    hint: 'Put in the first payment your scheme asks for, at the price it costs today, then add a stage for each payment that follows.',
   },
   {
     kind: 'education',

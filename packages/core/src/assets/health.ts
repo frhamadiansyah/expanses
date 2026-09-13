@@ -144,7 +144,7 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       40,
       false,
       atLeast(10),
-      'What you put into savings and investments ÷ take-home pay. The guide asks 10%, and 20% is strong. Employer JHT and DPLK are not counted yet.',
+      'What you put into savings and investments ÷ take-home pay. The guide asks 10%, and 20% is strong. Employer pension contributions are not counted yet.',
     ),
     ratio(
       'surplus',

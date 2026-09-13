@@ -13,6 +13,8 @@ export const assetProfiles = sqliteTable('asset_profiles', {
   /** JSON of the Coretax detail fields for the section. */
   coretaxFieldsJson: text('coretax_fields_json').notNull(),
   acquiredYear: integer('acquired_year'),
+  /** 1 unless the owner says this asset is not reported as harta. */
+  reportable: integer('reportable').notNull().default(1),
   updatedAt: text('updated_at').notNull(),
 });
 

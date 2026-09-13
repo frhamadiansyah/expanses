@@ -137,7 +137,7 @@ export function CalculatorsPage() {
       <ErrorBox error={error} />
       {saved && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">Saved {saved} as a goal.</p>}
 
-      <Panel title="Dana darurat" blurb="Months of everything that goes out, spending and debt payments alike.">
+      <Panel title="Emergency fund" blurb="Months of everything that goes out, spending and debt payments alike.">
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Months of outgoings">
             <Input value={months} onChange={(e) => setMonths(e.target.value)} inputMode="numeric" />
@@ -147,12 +147,12 @@ export function CalculatorsPage() {
           </Field>
         </div>
         <Answer targetMinor={emergencyTarget} months={12} returnBps={200} alreadySavedMinor={0} testId="answer-emergency" />
-        <Button variant="secondary" onClick={() => save('Dana darurat', 'emergency', { months: num(months) })} disabled={emergencyTarget <= 0}>
-          Save Dana darurat as a goal
+        <Button variant="secondary" onClick={() => save('Emergency fund', 'emergency', { months: num(months) })} disabled={emergencyTarget <= 0}>
+          Save Emergency fund as a goal
         </Button>
       </Panel>
 
-      <Panel title="Dana pendidikan" blurb="Each year of study at the price it will cost in the year you pay it.">
+      <Panel title="Education fund" blurb="Each year of study at the price it will cost in the year you pay it.">
         <div className="grid gap-3 md:grid-cols-4">
           <Field label={`Fee a year today (${ws.baseCurrency})`}>
             <Input value={feeToday} onChange={(e) => setFeeToday(e.target.value)} inputMode="numeric" />
@@ -178,7 +178,7 @@ export function CalculatorsPage() {
           variant="secondary"
           disabled={educationTarget <= 0}
           onClick={() =>
-            save('Dana pendidikan', 'education', {
+            save('Education fund', 'education', {
               feeTodayMinor: money(feeToday),
               startsInYears: num(startsIn),
               yearsOfStudy: num(yearsOfStudy),
@@ -186,11 +186,11 @@ export function CalculatorsPage() {
             })
           }
         >
-          Save Dana pendidikan as a goal
+          Save Education fund as a goal
         </Button>
       </Panel>
 
-      <Panel title="Dana hari tua" blurb="What the pot must hold the day you stop, drawn down while it keeps earning.">
+      <Panel title="Retirement fund" blurb="What the pot must hold the day you stop, drawn down while it keeps earning.">
         <div className="grid gap-3 md:grid-cols-3">
           <Field label={`Yearly spending in retirement (${ws.baseCurrency})`} hint="At today's prices.">
             <Input value={annualSpend} onChange={(e) => setAnnualSpend(e.target.value)} inputMode="numeric" />
@@ -225,7 +225,7 @@ export function CalculatorsPage() {
           variant="secondary"
           disabled={retirementTarget <= 0}
           onClick={() =>
-            save('Dana hari tua', 'retirement', {
+            save('Retirement fund', 'retirement', {
               annualSpendTodayMinor: money(annualSpend),
               yearsToRetirement,
               yearsInRetirement: num(yearsInRetirement),
@@ -234,7 +234,7 @@ export function CalculatorsPage() {
             })
           }
         >
-          Save Dana hari tua as a goal
+          Save Retirement fund as a goal
         </Button>
       </Panel>
     </div>

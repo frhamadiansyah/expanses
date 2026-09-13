@@ -25,7 +25,7 @@ const plan = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
   currentMinor: 30_000_000,
   totalTargetMinor: 60_000_000,
   stages: [
-    { stageId: 'awal', name: 'Setoran awal', dueOn: '2027-06-30', months: 10, todayMinor: 25_000_000, targetMinor: 26_000_000, state: 'covered' },
+    { stageId: 'awal', name: 'First payment', dueOn: '2027-06-30', months: 10, todayMinor: 25_000_000, targetMinor: 26_000_000, state: 'covered' },
     { stageId: 'lunas', name: 'Pelunasan', dueOn: '2035-06-30', months: 105, todayMinor: 120_000_000, targetMinor: 190_000_000, state: 'saving' },
   ],
   requiredMonthlyMinor: 1_000_000,
@@ -65,7 +65,7 @@ describe('goalCard', () => {
 
   it('names each stage state in plain words', () => {
     expect(goalCard(plan()).stageLines.map((line) => line.stateLabel)).toEqual(['Covered', 'Saving for this']);
-    const withPaid = goalCard(plan({ stages: [{ stageId: 'awal', name: 'Setoran awal', dueOn: '2027-06-30', months: 10, todayMinor: 1, targetMinor: 1, state: 'paid' }] }));
+    const withPaid = goalCard(plan({ stages: [{ stageId: 'awal', name: 'First payment', dueOn: '2027-06-30', months: 10, todayMinor: 1, targetMinor: 1, state: 'paid' }] }));
     expect(withPaid.stageLines[0]!.stateLabel).toBe('Paid');
   });
 
@@ -102,13 +102,13 @@ describe('templates', () => {
     const hajj = templateFor('hajj')!;
     expect(hajj.stage.targetMinor).toBeNull();
     expect(hajj.stage.targetMonths).toBeNull();
-    expect(hajj.hint).toMatch(/bank or Kemenag/i);
+    expect(hajj.hint).toMatch(/first payment/i);
   });
 
   it('opens hajj at the setoran awal and says to add the rest', () => {
     const hajj = templateFor('hajj')!;
-    expect(hajj.stage.name).toBe('Setoran awal');
-    expect(hajj.hint).toContain('reguler');
+    expect(hajj.stage.name).toBe('First payment');
+    expect(hajj.hint).toContain('each payment that follows');
   });
 
   it('dates the first stage from today', () => {

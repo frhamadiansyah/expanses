@@ -271,4 +271,5 @@ export {
   type FeeRoiInput,
   LedgerError,
   type PointEntry,
+  spendableOf,
 } from './points/ledger';

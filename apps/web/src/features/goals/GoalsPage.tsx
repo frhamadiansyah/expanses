@@ -116,7 +116,7 @@ export function GoalsPage() {
       )}
 
       {cards.length === 0 && !adding && summary.isSuccess && (
-        <Empty>No goals yet. Start with an emergency fund, hajj, education or a holiday.</Empty>
+        <Empty>No goals yet. Start with an emergency fund, education or a holiday.</Empty>
       )}
 
       {!adding && !editing && (

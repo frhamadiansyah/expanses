@@ -19,6 +19,7 @@ const value = (partial: Partial<AssetValueRow> & Pick<AssetValueRow, 'accountId'
 const profile = (accountId: string, partial: Partial<AssetProfileRow> = {}): AssetProfileRow => ({
   accountId,
   workspaceId: 'ws',
+  reportable: true,
   assetKind: 'stock',
   planGroup: 'invest',
   unitKind: 'shares',

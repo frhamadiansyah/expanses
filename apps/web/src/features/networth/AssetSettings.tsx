@@ -1,5 +1,5 @@
-import type { PlanGroup } from '@expanses/core';
-import { setAssetGroup, setLotSize } from '@expanses/db';
+import { hartaLabel, type PlanGroup } from '@expanses/core';
+import { setAssetGroup, setAssetReporting, setLotSize } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
@@ -12,17 +12,24 @@ export function AssetSettings({
   group: current,
   lotSize,
   showLotSize,
+  reportable: currentReportable,
+  coretaxCode: currentCode,
 }: {
   accountId: string;
   group: PlanGroup;
   /** Null when the holding is counted in single units, or has no profile yet. */
   lotSize: number | null;
   showLotSize: boolean;
+  reportable: boolean;
+  /** Null when the asset has no profile yet. */
+  coretaxCode: string | null;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const [group, setGroup] = useState<PlanGroup>(current);
   const [lots, setLots] = useState(lotSize === null ? '' : String(lotSize));
+  const [reportable, setReportable] = useState(currentReportable);
+  const [code, setCode] = useState(currentCode ?? '');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -38,6 +45,13 @@ export function AssetSettings({
         const size = typed === '' ? null : Number(typed);
         if (size !== null && !Number.isInteger(size)) throw new Error('A lot is a whole number of shares');
         if (size !== lotSize) await setLotSize(database, ws, accountId, size);
+      }
+      const typedCode = code.trim();
+      if (reportable !== currentReportable || typedCode !== (currentCode ?? '')) {
+        await setAssetReporting(database, ws, accountId, {
+          reportable,
+          ...(typedCode === (currentCode ?? '') ? {} : { coretaxCode: typedCode === '' ? null : typedCode }),
+        });
       }
       await invalidate();
       setNotice('Saved.');
@@ -66,7 +80,24 @@ export function AssetSettings({
             <Input value={lots} inputMode="numeric" onChange={(e) => setLots(e.target.value)} placeholder="100" />
           </Field>
         )}
+        <Field
+          label="Tax report code"
+          hint={code.trim() === '' ? 'Four digits. Empty uses the code this kind of asset normally takes.' : hartaLabel(code.trim()) || 'Not a code the form knows.'}
+        >
+          <Input value={code} inputMode="numeric" onChange={(e) => setCode(e.target.value)} placeholder="0109" disabled={!reportable} />
+        </Field>
       </div>
+
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-1" checked={reportable} onChange={(e) => setReportable(e.target.checked)} />
+        <span>
+          Report this as harta
+          <span className="block text-xs text-slate-500">
+            Turn it off for money that is yours but is not reported yet — a pension balance that counts only once it has been paid out, for
+            instance. It still counts toward your net worth.
+          </span>
+        </span>
+      </label>
       <ErrorBox error={error} />
       <div className="flex items-center gap-3">
         <Button onClick={save} disabled={busy}>

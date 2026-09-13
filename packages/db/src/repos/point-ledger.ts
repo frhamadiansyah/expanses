@@ -1,6 +1,7 @@
 import {
   type Balance,
   balanceOf,
+  spendableOf,
   bestRedemption,
   categoryAncestors,
   computeCycleEarn,
@@ -175,9 +176,44 @@ export async function recordPointSnapshot(database: Database, ws: WorkspaceConte
     .where(and(eq(rewardPrograms.id, input.programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
   if (!program) throw new PointsError('Reward program not found');
 
-  const current = await programBalance(database, ws, input.programId, input.observedOn);
-  const difference = input.balance - current.total;
+  const entries = await listPointEntries(database, ws, input.programId);
+  const difference = input.balance - balanceOf(entries, input.observedOn).total;
   const now = new Date().toISOString();
+  const note = `Balance read as ${input.balance}`;
+
+  const correction = (quantity: number, batchId: string | null) => ({
+    id: uuidv7(),
+    workspaceId: ws.workspaceId,
+    programId: input.programId,
+    transactionId: null,
+    kind: 'adjust' as const,
+    quantity,
+    occurredOn: input.observedOn,
+    status: 'posted' as const,
+    source: 'snapshot' as const,
+    batchId,
+    expiresOn: null,
+    note,
+    valueMinor: null,
+    createdAt: now,
+  });
+
+  // Downward, the batches have to come down with the total. An unattached correction would leave them
+  // full, and more could then be spent than is actually held.
+  const rows: ReturnType<typeof correction>[] = [];
+  if (difference > 0) {
+    rows.push(correction(difference, null));
+  } else if (difference < 0) {
+    const wanted = -difference;
+    const spendable = spendableOf(entries, input.observedOn);
+    const drawn = Math.min(wanted, spendable);
+    if (drawn > 0) {
+      for (const batch of consumeFifo(entries, drawn, input.observedOn)) rows.push(correction(-batch.quantity, batch.batchId));
+    }
+    // Points sitting in batches that have already died are in the total but cannot be drawn on.
+    const remainder = wanted - drawn;
+    if (remainder > 0) rows.push(correction(-remainder, null));
+  }
 
   await database.transaction(async (tx) => {
     await tx.insert(pointSnapshots).values({
@@ -188,22 +224,7 @@ export async function recordPointSnapshot(database: Database, ws: WorkspaceConte
       observedOn: input.observedOn,
       createdAt: now,
     });
-    if (difference === 0) return;
-    await tx.insert(pointEntries).values({
-      id: uuidv7(),
-      workspaceId: ws.workspaceId,
-      programId: input.programId,
-      transactionId: null,
-      kind: 'adjust',
-      quantity: difference,
-      occurredOn: input.observedOn,
-      status: 'posted',
-      source: 'snapshot',
-      batchId: null,
-      expiresOn: null,
-      note: `Balance read as ${input.balance}`,
-      createdAt: now,
-    });
+    if (rows.length > 0) await tx.insert(pointEntries).values(rows);
   });
 
   return difference;
