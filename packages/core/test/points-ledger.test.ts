@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { balanceOf, type PointEntry } from '../src/index';
+import { balanceOf, consumeFifo, dueToExpire, expiresOn, LedgerError, type PointEntry } from '../src/index';
 
 const TODAY = '2026-09-13';
 
@@ -85,5 +85,83 @@ describe('what is about to expire', () => {
 
     expect(balance.total).toBe(0);
     expect(balance.expiringSoon).toBe(0);
+  });
+});
+
+describe('when points die', () => {
+  it('gives no date at all while the program has no policy', () => {
+    expect(expiresOn('2026-09-13', 'none', 24)).toBeNull();
+  });
+
+  it('counts months from the day they were earned', () => {
+    expect(expiresOn('2026-09-13', 'months_from_earn', 24)).toBe('2028-09-13');
+    expect(expiresOn('2026-09-13', 'months_from_earn', 18)).toBe('2028-03-13');
+  });
+
+  it('kills a year of points at the end of that year', () => {
+    expect(expiresOn('2026-02-01', 'fixed_annual', null)).toBe('2026-12-31');
+    expect(expiresOn('2026-12-31', 'fixed_annual', null)).toBe('2026-12-31');
+  });
+
+  it('gives no date when the policy counts months but nobody said how many', () => {
+    expect(expiresOn('2026-09-13', 'months_from_earn', null)).toBeNull();
+  });
+});
+
+describe('spending oldest first', () => {
+  const batches: PointEntry[] = [
+    earn('older', 1_000, '2026-01-01', { expiresOn: '2027-01-01' }),
+    earn('newer', 2_000, '2026-06-01', { expiresOn: '2027-06-01' }),
+  ];
+
+  it('takes the batch that dies soonest', () => {
+    expect(consumeFifo(batches, 600, TODAY)).toEqual([{ batchId: 'older', quantity: 600 }]);
+  });
+
+  it('runs into the next batch when the first cannot cover it', () => {
+    expect(consumeFifo(batches, 1_500, TODAY)).toEqual([
+      { batchId: 'older', quantity: 1_000 },
+      { batchId: 'newer', quantity: 500 },
+    ]);
+  });
+
+  it('leaves out what was already spent from a batch', () => {
+    const entries = [...batches, spend('r1', 900, 'older')];
+
+    expect(consumeFifo(entries, 200, TODAY)).toEqual([
+      { batchId: 'older', quantity: 100 },
+      { batchId: 'newer', quantity: 100 },
+    ]);
+  });
+
+  it('will not spend points that have already died', () => {
+    const entries = [earn('dead', 5_000, '2023-01-01', { expiresOn: '2025-01-01' }), ...batches];
+
+    expect(consumeFifo(entries, 1_000, TODAY)).toEqual([{ batchId: 'older', quantity: 1_000 }]);
+  });
+
+  it('refuses to spend more than is held', () => {
+    expect(() => consumeFifo(batches, 4_000, TODAY)).toThrow(LedgerError);
+  });
+});
+
+describe('what has to be written off', () => {
+  it('names each batch that is past its date and still holds something', () => {
+    const entries = [earn('gone', 400, '2024-01-01', { expiresOn: '2026-01-01' }), earn('alive', 900, '2026-01-01', { expiresOn: '2027-01-01' })];
+
+    expect(dueToExpire(entries, TODAY)).toEqual([{ batchId: 'gone', quantity: 400, expiresOn: '2026-01-01' }]);
+  });
+
+  it('says nothing about a batch already written off', () => {
+    const entries: PointEntry[] = [
+      earn('gone', 400, '2024-01-01', { expiresOn: '2026-01-01' }),
+      { id: 'x1', kind: 'expire', quantity: -400, occurredOn: '2026-01-01', status: 'posted', batchId: 'gone', expiresOn: null },
+    ];
+
+    expect(dueToExpire(entries, TODAY)).toEqual([]);
+  });
+
+  it('says nothing at all when no batch has a date', () => {
+    expect(dueToExpire([earn('a', 1_000, '2020-01-01')], TODAY)).toEqual([]);
   });
 });

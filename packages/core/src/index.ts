@@ -257,4 +257,15 @@ export {
   type SavingPlan,
   type SavingPlanInput,
 } from './budget/calculators';
-export { balanceOf, type Balance, type EntryKind, type EntrySource, type PointEntry } from './points/ledger';
+export {
+  balanceOf,
+  type Balance,
+  consumeFifo,
+  dueToExpire,
+  type EntryKind,
+  type EntrySource,
+  type ExpiryPolicy,
+  expiresOn,
+  LedgerError,
+  type PointEntry,
+} from './points/ledger';

@@ -39,6 +39,16 @@ export interface Balance {
   nextExpiryOn: string | null;
 }
 
+export class LedgerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LedgerError';
+  }
+}
+
+/** How a program's points die. None is the default: nothing expires until the owner says how. */
+export type ExpiryPolicy = 'none' | 'months_from_earn' | 'fixed_annual';
+
 const DEFAULT_SOON_DAYS = 60;
 
 const addDays = (date: string, days: number): string => {
@@ -79,4 +89,54 @@ export function balanceOf(entries: PointEntry[], today: string, soonDays: number
   }
 
   return { total: postedTotal + projectedTotal, postedTotal, projectedTotal, expiringSoon, nextExpiryOn };
+}
+
+/** When points earned on a day die under a policy. Null when they do not. */
+export function expiresOn(earnedOn: string, policy: ExpiryPolicy, months: number | null): string | null {
+  if (policy === 'none') return null;
+  const [year, month, day] = earnedOn.split('-').map(Number);
+  // Points earned any time in a year die with that year.
+  if (policy === 'fixed_annual') return `${year}-12-31`;
+  if (months === null || !Number.isFinite(months) || months <= 0) return null;
+  return new Date(Date.UTC(year!, month! - 1 + months, day!)).toISOString().slice(0, 10);
+}
+
+/** Batches with something left, soonest to die first, leaving out any that already have. */
+function liveBatches(entries: PointEntry[], onDate: string): { batchId: string; remaining: number; expiresOn: string | null; earnedOn: string }[] {
+  const earnedOn = new Map(entries.filter((entry) => entry.kind === 'earn').map((entry) => [entry.id, entry.occurredOn]));
+  return [...remainingByBatch(entries).entries()]
+    .filter(([, batch]) => batch.remaining > 0 && (batch.expiresOn === null || batch.expiresOn >= onDate))
+    .map(([batchId, batch]) => ({ batchId, remaining: batch.remaining, expiresOn: batch.expiresOn, earnedOn: earnedOn.get(batchId) ?? '' }))
+    // What dies soonest goes first. Two batches under one policy sort the same either way, but the
+    // moment a policy changes, spending the soonest-to-die is what stops points being lost.
+    .sort((a, b) => (a.expiresOn ?? '9999-12-31').localeCompare(b.expiresOn ?? '9999-12-31') || a.earnedOn.localeCompare(b.earnedOn));
+}
+
+/**
+ * Draws `quantity` from the batches that die soonest, spanning as many as it takes. Points already past
+ * their date are not available to spend, because the issuer has taken them back.
+ */
+export function consumeFifo(entries: PointEntry[], quantity: number, onDate: string): { batchId: string; quantity: number }[] {
+  if (!Number.isFinite(quantity) || quantity <= 0) throw new LedgerError('Spend an amount above zero');
+
+  const taken: { batchId: string; quantity: number }[] = [];
+  let left = quantity;
+  for (const batch of liveBatches(entries, onDate)) {
+    if (left <= 0) break;
+    const take = Math.min(batch.remaining, left);
+    taken.push({ batchId: batch.batchId, quantity: take });
+    left -= take;
+  }
+  if (left > 0) throw new LedgerError(`Only ${quantity - left} available, which is less than the ${quantity} asked for`);
+  return taken;
+}
+
+/** Batches past their date that still hold something, and so have to be written off. */
+export function dueToExpire(entries: PointEntry[], today: string): { batchId: string; quantity: number; expiresOn: string }[] {
+  const due: { batchId: string; quantity: number; expiresOn: string }[] = [];
+  for (const [batchId, batch] of remainingByBatch(entries)) {
+    if (batch.expiresOn === null || batch.remaining <= 0 || batch.expiresOn > today) continue;
+    due.push({ batchId, quantity: batch.remaining, expiresOn: batch.expiresOn });
+  }
+  return due.sort((a, b) => a.expiresOn.localeCompare(b.expiresOn));
 }
