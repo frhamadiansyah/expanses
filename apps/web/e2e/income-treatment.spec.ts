@@ -87,14 +87,18 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
   // The reinvested part is reported with no tax; the rest keeps the holding's treatment and all of it.
   const notObject = page.locator('li', { hasText: 'BBRI shares' }).filter({ hasText: 'reinvested into SBN ORI025' });
   await expect(notObject).toContainText('400.000');
-  await expect(notObject).toContainText('tax Rp 0');
+  // Coretax works the tax out from the gross, so no row carries a tax figure of its own.
+  await expect(notObject).not.toContainText('tax');
 
   await expect(page.getByRole('heading', { name: /Tidak termasuk objek pajak/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Final tax/ })).toBeVisible();
 
   const final = page.locator('li', { hasText: 'BBRI shares' }).filter({ hasNotText: 'reinvested into' });
   await expect(final).toContainText('600.000');
-  await expect(final).toContainText('100.000');
+
+  // All of the withheld tax stays with the part still taxable, and only the band subtotal shows it.
+  const finalBand = page.locator('div').filter({ has: page.getByRole('heading', { name: /Final tax/ }) }).last();
+  await expect(finalBand).toContainText('100.000');
 
   // The exemption holds only if that report reaches DJP too, which this app cannot send.
   await expect(page.getByText(/Laporan Realisasi Investasi/)).toBeVisible();
