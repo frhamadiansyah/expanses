@@ -282,3 +282,16 @@ export {
   investmentIncomeFor,
   type ReinvestedInto,
 } from './coretax/income';
+export {
+  type BusinessInput,
+  businessIncomeFor,
+  type BusinessProblem,
+  type BusinessReport,
+  type BusinessScheme,
+  type BusinessSource,
+  type NppnResult,
+  type TurnoverMonth,
+  UMKM_RATE_BPS,
+  type UmkmMonth,
+  type UmkmResult,
+} from './coretax/business';

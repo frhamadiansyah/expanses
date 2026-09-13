@@ -1,5 +1,5 @@
 import { coretaxRows, isoDate, utangRows } from '@expanses/core';
-import { coretaxInputsFor, incomeInputsFor, listReports, reportFor, rowDifferences, savedRows } from '@expanses/db';
+import { businessInputsFor, coretaxInputsFor, incomeInputsFor, listReports, reportFor, rowDifferences, savedRows } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -55,4 +55,12 @@ export function useReportYears(): number[] {
 export function useIncomeRows(taxYear: number) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['tax-income', ws.workspaceId, taxYear], queryFn: () => incomeInputsFor(database, ws, taxYear) });
+}
+
+export function useBusinessReport(taxYear: number) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['tax-business', ws.workspaceId, taxYear],
+    queryFn: () => businessInputsFor(database, ws, taxYear),
+  });
 }
