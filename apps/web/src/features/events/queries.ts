@@ -16,7 +16,7 @@ export function useEventBudgets(eventId: string | null) {
   });
 }
 
-/** What the occasion was expected to cost, against what it did. */
+/** What the event was expected to cost, against what it did. */
 export function useEventSheet(eventId: string | null) {
   const { database, ws } = useApp();
   return useQuery({
@@ -26,7 +26,7 @@ export function useEventSheet(eventId: string | null) {
   });
 }
 
-/** Payments inside the window, in a category the occasion draws on, not yet tagged to anything. */
+/** Payments inside the window, in a category the event draws on, not yet tagged to anything. */
 export function useEventSuggestions(eventId: string | null) {
   const { database, ws } = useApp();
   return useQuery({

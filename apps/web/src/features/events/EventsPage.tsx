@@ -7,9 +7,9 @@ import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select 
 import { useEventBudgets, useEvents, useEventSheet, useEventSuggestions } from './queries';
 
 /**
- * Occasions: a birth, a wedding, a renovation, a trip, Lebaran.
+ * Events: a birth, a wedding, a renovation, a trip, Lebaran.
  *
- * Spending on an occasion lands across many categories and a few weeks, so no budget line ever sees
+ * Spending on an event lands across many categories and a few weeks, so no budget line ever sees
  * the whole of it. Planning it category by category answers what it should cost, and also says which
  * categories to look in — which is what keeps the tagging to one sitting rather than a running chore.
  */
@@ -79,7 +79,7 @@ export function EventsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Occasions" action={!adding && <Button onClick={() => setAdding(true)}>Add an occasion</Button>} />
+      <PageHeader title="Events" action={!adding && <Button onClick={() => setAdding(true)}>Add an event</Button>} />
       <ErrorBox error={error ?? events.error ?? sheet.error} />
 
       {adding && (
@@ -100,7 +100,7 @@ export function EventsPage() {
               </Field>
             </div>
             <div className="flex gap-2">
-              <Button type="submit">Save occasion</Button>
+              <Button type="submit">Save event</Button>
               <Button type="button" variant="secondary" onClick={() => setAdding(false)}>
                 Cancel
               </Button>
@@ -109,7 +109,7 @@ export function EventsPage() {
         </Card>
       )}
 
-      {list.length === 0 && !adding && <Empty>No occasions yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</Empty>}
+      {list.length === 0 && !adding && <Empty>No events yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</Empty>}
 
       {list.length > 0 && (
         <Card className="space-y-1">

@@ -31,7 +31,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense')));
 
   const [amounts, budgets, income, flows, goals, contributions, eventSpendingMinor] = await Promise.all([
-    // Occasions are held out of the caps; they get their own line and are still taken off what is left.
+    // Events are held out of the caps; they get their own line and are still taken off what is left.
     categoryTotalsBetween(database, ws, 'expense', from, to, { excludeEvents: true }),
     listBudgets(database, ws, month),
     getBudgetIncome(database, ws, month),

@@ -8,7 +8,7 @@ import { accounts, entries, transactions } from '../schema';
  * Per-category totals in base currency for posted transactions in [from, to], sign-normalized so
  * spending and income are positive.
  *
- * `excludeEvents` leaves out anything tagged to an occasion. Only the monthly budget asks for that:
+ * `excludeEvents` leaves out anything tagged to an event. Only the monthly budget asks for that:
  * a wedding would otherwise read as every category blown at once, when the money was always meant to
  * go. Everywhere else the spending is real and is shown.
  */
@@ -42,7 +42,7 @@ export async function categoryTotalsBetween(
 }
 
 /**
- * What the month's occasions cost in total.
+ * What the month's events cost in total.
  *
  * The budget leaves this out of its caps, so it has to be shown and subtracted somewhere: money spent
  * on a wedding is money gone, however deliberately it went.

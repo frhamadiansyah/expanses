@@ -46,7 +46,7 @@ export interface BudgetSheetInput {
   debtPaymentsActualMinor: number;
   savings: SavingsRow[];
   /**
-   * Spending tagged to an occasion, which the caps deliberately do not see: a wedding would read as
+   * Spending tagged to an event, which the caps deliberately do not see: a wedding would read as
    * every category blown at once, when the money was always meant to go. It is still subtracted from
    * what is left, because it did leave the account.
    */
@@ -61,7 +61,7 @@ export interface BudgetSheet {
   /** Only budgets with no budgeted ancestor, so a purchase is never counted twice. */
   capsTotalMinor: number;
   spendingActualMinor: number;
-  /** What occasions cost this month, held apart from the caps but not from the cash. */
+  /** What events cost this month, held apart from the caps but not from the cash. */
   eventSpendingMinor: number;
   overCount: number;
   incomePlanMinor: number;
