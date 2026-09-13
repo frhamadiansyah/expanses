@@ -1,4 +1,5 @@
 import { type Goal, type GoalKind, type GoalStage, uuidv7 } from '@expanses/core';
+import { recordContributionTx } from './goal-contributions';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -204,16 +205,31 @@ export async function saveEarmark(database: Database, ws: WorkspaceContext, inpu
     }
     const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, input.goalId), eq(goals.workspaceId, ws.workspaceId)));
     if (!goal) throw new GoalDbError('Goal not found in this workspace');
+    const [before] = await tx
+      .select({ amountMinor: goalEarmarks.amountMinor })
+      .from(goalEarmarks)
+      .where(and(eq(goalEarmarks.goalId, input.goalId), eq(goalEarmarks.accountId, input.accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
     const row = { goalId: input.goalId, accountId: input.accountId, workspaceId: ws.workspaceId, amountMinor: input.amountMinor };
     await tx
       .insert(goalEarmarks)
       .values(row)
       .onConflictDoUpdate({ target: [goalEarmarks.goalId, goalEarmarks.accountId], set: { amountMinor: input.amountMinor } });
+    // Only the difference is a contribution: re-saving the same amount moved nothing.
+    await recordContributionTx(tx, ws, input.goalId, input.accountId, input.amountMinor - (before?.amountMinor ?? 0));
   });
 }
 
 export async function removeEarmark(database: Database, ws: WorkspaceContext, goalId: string, accountId: string): Promise<void> {
-  await database.db
-    .delete(goalEarmarks)
-    .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
+  // The balance and its record of the movement have to fall together, so this runs as one.
+  await database.transaction(async (tx) => {
+    const [before] = await tx
+      .select({ amountMinor: goalEarmarks.amountMinor })
+      .from(goalEarmarks)
+      .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
+    if (!before) return;
+    await tx
+      .delete(goalEarmarks)
+      .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
+    await recordContributionTx(tx, ws, goalId, accountId, -before.amountMinor);
+  });
 }

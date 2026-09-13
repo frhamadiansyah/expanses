@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { getBudgetIncome } from './budget-settings';
+import { goalContributionsFor } from './goal-contributions';
 import { listBudgets } from './budgets';
 import { periodFlows } from './flows';
 import { goalPlansFor } from './goal-funding';
@@ -29,13 +30,14 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense')));
 
-  const [amounts, budgets, income, flows, goals] = await Promise.all([
+  const [amounts, budgets, income, flows, goals, contributions] = await Promise.all([
     categoryTotalsBetween(database, ws, 'expense', from, to),
     listBudgets(database, ws, month),
     getBudgetIncome(database, ws, month),
     periodFlows(database, ws, { from, to }),
     // As the month ends, so a goal due inside it still says what it asked for.
     goalPlansFor(database, ws, to),
+    goalContributionsFor(database, ws, month),
   ]);
 
   const sheet = budgetSheet({
@@ -51,8 +53,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
       goalId: plan.goalId,
       name: plan.goal.name,
       planMinor: plan.requiredMonthlyMinor,
-      // Real contributions arrive with goal_contributions; until then nothing is claimed as saved.
-      actualMinor: 0,
+      actualMinor: contributions[plan.goalId] ?? 0,
     })),
   });
 

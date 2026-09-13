@@ -28,3 +28,14 @@ export const budgetIncomeOverrides = sqliteTable('budget_income_overrides', {
   month: text('month').notNull(),
   amountMinor: integer('amount_minor').notNull(),
 });
+
+export const goalContributions = sqliteTable('goal_contributions', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  goalId: text('goal_id').notNull(),
+  accountId: text('account_id').notNull(),
+  deltaMinor: integer('delta_minor').notNull(),
+  occurredOn: text('occurred_on').notNull(),
+  source: text('source', { enum: ['earmark'] }).notNull(),
+  createdAt: text('created_at').notNull(),
+});
