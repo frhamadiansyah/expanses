@@ -6,10 +6,12 @@ import {
   deriveCycleEntries,
   listAccounts,
   listPointEntries,
+  PointsError,
   postTransaction,
   programBalance,
   recordCycleActual,
   recordPointSnapshot,
+  recordRedemption,
   recordTransactionPointActual,
   saveCardTerms,
   saveEarnRule,
@@ -144,5 +146,50 @@ describe('a balance read from the app', () => {
 
     expect((await listPointEntries(database, ws, program.id)).filter((entry) => entry.kind === 'adjust')).toHaveLength(1);
     expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(200);
+  });
+});
+
+describe('anchoring the balance downward', () => {
+  it('draws the batches down, so what is left can still be spent', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending();
+    await deriveCycleEntries(database, ws, program.id, cycle);
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(150);
+
+    await recordPointSnapshot(database, ws, { programId: program.id, balance: 100, observedOn: TODAY });
+
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(100);
+    // The batches have to agree with the total, or more could be spent than is held.
+    await recordRedemption(database, ws, { programId: program.id, kind: 'redeem', points: 100, occurredOn: TODAY, note: null, valueMinor: null });
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(0);
+  });
+
+  it('will not let more be spent than the anchored balance', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending();
+    await deriveCycleEntries(database, ws, program.id, cycle);
+
+    await recordPointSnapshot(database, ws, { programId: program.id, balance: 100, observedOn: TODAY });
+
+    await expect(
+      recordRedemption(database, ws, { programId: program.id, kind: 'redeem', points: 120, occurredOn: TODAY, note: null, valueMinor: null }),
+    ).rejects.toThrow(PointsError);
+  });
+
+  it('anchors upward into points that can be spent', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending();
+    await deriveCycleEntries(database, ws, program.id, cycle);
+
+    await recordPointSnapshot(database, ws, { programId: program.id, balance: 400, observedOn: TODAY });
+    await recordRedemption(database, ws, { programId: program.id, kind: 'redeem', points: 400, occurredOn: TODAY, note: null, valueMinor: null });
+
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(0);
+  });
+
+  it('takes everything down to nothing when the app says the balance is empty', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending();
+    await deriveCycleEntries(database, ws, program.id, cycle);
+
+    await recordPointSnapshot(database, ws, { programId: program.id, balance: 0, observedOn: TODAY });
+
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(0);
   });
 });

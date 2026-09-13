@@ -59,14 +59,19 @@ const addDays = (date: string, days: number): string => {
   return new Date(Date.UTC(year!, month! - 1, day! + days)).toISOString().slice(0, 10);
 };
 
-/** What is left in each earn batch: the batch itself, less everything drawn against it. */
+/** A batch is points you hold: earning them, or a correction upward from a balance you read. */
+function opensBatch(entry: PointEntry): boolean {
+  return entry.kind === 'earn' || (entry.kind === 'adjust' && entry.quantity > 0);
+}
+
+/** What is left in each batch: the batch itself, less everything drawn against it. */
 function remainingByBatch(entries: PointEntry[]): Map<string, { remaining: number; expiresOn: string | null }> {
   const batches = new Map<string, { remaining: number; expiresOn: string | null }>();
   for (const entry of entries) {
-    if (entry.kind === 'earn') batches.set(entry.id, { remaining: entry.quantity, expiresOn: entry.expiresOn });
+    if (opensBatch(entry)) batches.set(entry.id, { remaining: entry.quantity, expiresOn: entry.expiresOn });
   }
   for (const entry of entries) {
-    if (entry.kind === 'earn' || entry.batchId === null) continue;
+    if (opensBatch(entry) || entry.batchId === null) continue;
     const batch = batches.get(entry.batchId);
     // A consumption is negative, so adding it draws the batch down.
     if (batch) batch.remaining += entry.quantity;
@@ -106,13 +111,18 @@ export function expiresOn(earnedOn: string, policy: ExpiryPolicy, months: number
 
 /** Batches with something left, soonest to die first, leaving out any that already have. */
 function liveBatches(entries: PointEntry[], onDate: string): { batchId: string; remaining: number; expiresOn: string | null; earnedOn: string }[] {
-  const earnedOn = new Map(entries.filter((entry) => entry.kind === 'earn').map((entry) => [entry.id, entry.occurredOn]));
+  const earnedOn = new Map(entries.filter(opensBatch).map((entry) => [entry.id, entry.occurredOn]));
   return [...remainingByBatch(entries).entries()]
     .filter(([, batch]) => batch.remaining > 0 && (batch.expiresOn === null || batch.expiresOn >= onDate))
     .map(([batchId, batch]) => ({ batchId, remaining: batch.remaining, expiresOn: batch.expiresOn, earnedOn: earnedOn.get(batchId) ?? '' }))
     // What dies soonest goes first. Two batches under one policy sort the same either way, but the
     // moment a policy changes, spending the soonest-to-die is what stops points being lost.
     .sort((a, b) => (a.expiresOn ?? '9999-12-31').localeCompare(b.expiresOn ?? '9999-12-31') || a.earnedOn.localeCompare(b.earnedOn));
+}
+
+/** What could actually be spent today: the batches still alive, whatever the total says. */
+export function spendableOf(entries: PointEntry[], onDate: string): number {
+  return liveBatches(entries, onDate).reduce((total, batch) => total + batch.remaining, 0);
 }
 
 /**
