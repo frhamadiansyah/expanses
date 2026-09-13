@@ -32,6 +32,8 @@ export interface PostTransactionInput {
   originalAmountMinor?: number | null;
   /** Merchant category code typed for the purchase, when the user knows it. */
   mcc?: string | null;
+  /** The recurring bill this settles, so the month stops being asked for. */
+  templateId?: string | null;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -94,6 +96,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     originalCurrency,
     originalAmountMinor,
     mcc,
+    templateId: input.templateId ?? null,
     createdAt: new Date().toISOString(),
   });
   await tx.insert(entries).values(

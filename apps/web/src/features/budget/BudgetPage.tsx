@@ -4,13 +4,13 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
-import { useBudgets, useBudgetSheet } from './queries';
+import { useBudgets, useBudgetSheet, useCommittedBills } from './queries';
 
 function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
-function Line({ node, overridden, depth }: { node: BudgetLine; overridden: Set<string>; depth: number }) {
+function Line({ node, overridden, depth, committed }: { node: BudgetLine; overridden: Set<string>; depth: number; committed: Record<string, number> }) {
   const { ws } = useApp();
   return (
     <li data-testid={`line-${node.name}`}>
@@ -24,6 +24,12 @@ function Line({ node, overridden, depth }: { node: BudgetLine; overridden: Set<s
               <>
                 Cap <Money minor={node.capMinor} currency={ws.baseCurrency} />
                 {overridden.has(node.id) && ' · just this month'}
+                {committed[node.id] !== undefined && (
+                  <>
+                    {' · '}
+                    <Money minor={committed[node.id]!} currency={ws.baseCurrency} /> of it is bills
+                  </>
+                )}
               </>
             )}
           </div>
@@ -40,7 +46,7 @@ function Line({ node, overridden, depth }: { node: BudgetLine; overridden: Set<s
       {node.children.length > 0 && (
         <ul>
           {node.children.map((child) => (
-            <Line key={child.id} node={child} overridden={overridden} depth={depth + 1} />
+            <Line key={child.id} node={child} overridden={overridden} depth={depth + 1} committed={committed} />
           ))}
         </ul>
       )}
@@ -65,6 +71,7 @@ export function BudgetPage() {
   const budgets = useBudgets(month);
   const sheet = sheetQuery.data;
   const overridden = new Set((budgets.data ?? []).filter((row) => row.overridden).map((row) => row.categoryAccountId));
+  const committed = useCommittedBills().data ?? {};
 
   // Roots first, each followed by its children, so the select reads like the sheet.
   const options = categories
@@ -243,7 +250,7 @@ export function BudgetPage() {
       <Card>
         <ul className="divide-y divide-slate-100">
           {(sheet?.lines ?? []).map((node) => (
-            <Line key={node.id} node={node} overridden={overridden} depth={0} />
+            <Line key={node.id} node={node} overridden={overridden} depth={0} committed={committed} />
           ))}
         </ul>
       </Card>

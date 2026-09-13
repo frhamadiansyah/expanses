@@ -13,6 +13,8 @@ import { classify } from './classify';
 import { isEditable } from './draft';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
+import { BillList } from './BillList';
+import { BillsDue } from './BillsDue';
 import { TransactionForm } from './TransactionForm';
 
 const route = getRouteApi('/transactions');
@@ -147,6 +149,7 @@ export function TransactionsPage() {
     <div className="space-y-4">
       <PageHeader title="Transactions" action={!adding && <Button onClick={() => setAdding(true)}>Add transaction</Button>} />
       {adding && <TransactionForm onDone={() => setAdding(false)} />}
+      <BillsDue />
       <Card className="grid gap-3 md:grid-cols-3">
         <Field label="Account">
           <Select value={search.account ?? ''} onChange={(e) => void navigate({ search: (s: TransactionsSearch) => ({ ...s, account: e.target.value || undefined }) })}>
@@ -254,6 +257,7 @@ export function TransactionsPage() {
           </ul>
         </Card>
       ))}
+      <BillList />
     </div>
   );
 }
