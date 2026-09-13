@@ -89,13 +89,13 @@ describe('readinessLinks', () => {
     const manual = row({ key: 'manual-1', source: 'manual', name: 'Lukisan' });
     const links = readinessLinks([issue({ key: 'manual-1:missing:info', rowKey: 'manual-1' })], [manual]);
 
-    expect(links[0]!.to).toBe('/net-worth/coretax');
+    expect(links[0]!.to).toBe('/tax-report');
   });
 
   it('keeps an issue that belongs to no row on the report', () => {
     const links = readinessLinks([issue({ key: 'report:npwp', rowKey: null, message: 'The report needs your NPWP' })], rows);
 
-    expect(links[0]!.to).toBe('/net-worth/coretax');
+    expect(links[0]!.to).toBe('/tax-report');
   });
 
   it('carries the level through, so a warning still reads as one', () => {

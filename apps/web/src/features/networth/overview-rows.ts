@@ -19,7 +19,7 @@ export interface AttentionItem {
   tone: 'warn' | 'info';
   text: string;
   action: string;
-  to: '/net-worth/assets' | '/net-worth/trades' | '/net-worth/goals' | '/net-worth/debts' | '/net-worth/loans';
+  to: '/net-worth/assets' | '/net-worth/trades' | '/goals' | '/net-worth/debts' | '/net-worth/loans';
 }
 
 const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -47,10 +47,10 @@ export function attentionItems(
   }
   for (const plan of goalPlans) {
     if (plan.status === 'behind') {
-      items.push({ key: `goal-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name} needs more each month than you have set up`, action: 'Review', to: '/net-worth/goals' });
+      items.push({ key: `goal-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name} needs more each month than you have set up`, action: 'Review', to: '/goals' });
     }
     if (plan.earmarkWarning) {
-      items.push({ key: `earmark-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name}: ${plan.earmarkWarning}`, action: 'Review', to: '/net-worth/goals' });
+      items.push({ key: `earmark-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name}: ${plan.earmarkWarning}`, action: 'Review', to: '/goals' });
     }
   }
   for (const row of idleCash) {

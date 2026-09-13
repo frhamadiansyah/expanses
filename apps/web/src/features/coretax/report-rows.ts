@@ -27,7 +27,7 @@ export function screenSections(rows: CoretaxRow[]): ScreenSection[] {
   return SECTION_ORDER.filter((section) => bySection.has(section)).map((section) => bySection.get(section)!);
 }
 
-export type ReadinessDestination = '/net-worth/assets' | '/net-worth/debts' | '/net-worth/loans' | '/net-worth/coretax';
+export type ReadinessDestination = '/net-worth/assets' | '/net-worth/debts' | '/net-worth/loans' | '/tax-report';
 
 export interface ReadinessLink {
   issue: ReadinessIssue;
@@ -45,7 +45,7 @@ export function readinessLinks(issues: ReadinessIssue[], rows: CoretaxRow[]): Re
 
   return issues.map((issue) => {
     const row = issue.rowKey ? rowByKey.get(issue.rowKey) : undefined;
-    let to: ReadinessDestination = '/net-worth/coretax';
+    let to: ReadinessDestination = '/tax-report';
     if (row && row.source !== 'manual') {
       if (row.section === 'utang') to = row.code === '101' ? '/net-worth/loans' : '/net-worth/debts';
       else if (row.section === 'piutang') to = '/net-worth/debts';

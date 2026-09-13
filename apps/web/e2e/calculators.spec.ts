@@ -13,7 +13,7 @@ test('answers what retirement costs a month without saving anything', async ({ p
   await expect(page.getByTestId('answer-retirement')).toContainText('Save each month');
 
   // Nothing is stored until it is asked for.
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await expect(page.getByRole('heading', { name: 'Retirement fund' })).toHaveCount(0);
 });
 
@@ -25,7 +25,7 @@ test('turns the answer into a goal, which reaches the budget sheet', async ({ pa
   await page.getByRole('button', { name: 'Save Retirement fund as a goal' }).click();
   await expect(page.getByText('Saved Retirement fund as a goal.')).toBeVisible();
 
-  await page.goto('/net-worth/goals');
+  await page.goto('/goals');
   await expect(page.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
   await expect(page.getByText('Worked out from your figures')).toBeVisible();
 
