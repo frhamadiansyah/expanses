@@ -67,9 +67,6 @@ export function IncomeSection({ taxYear }: { taxYear: number }) {
                   </span>
                   <span className="tabular text-right">
                     <Money minor={row.grossMinor} currency={ws.baseCurrency} />
-                    <span className="ml-3 text-xs text-slate-500">
-                      tax <Money minor={row.taxMinor} currency={ws.baseCurrency} />
-                    </span>
                   </span>
                 </li>
               ))}
