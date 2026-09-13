@@ -25,13 +25,18 @@ export interface CatalogRule {
   capSpendMinor?: number | null;
   capPoints?: number | null;
   minTransactionMinor?: number | null;
+  /** Levels this rule earns at. Absent means every level, which is how an untiered card is written. */
+  memberLevels?: string[];
 }
 
 export interface CatalogCycleBonus {
   key: string;
   name: string;
+  /** Spend thresholds within a cycle. Unrelated to memberLevels, which is the holder's standing with the bank. */
   tiers: BonusTier[];
   match: CatalogMatch;
+  /** Levels this bonus is paid at. Absent means every level. */
+  memberLevels?: string[];
 }
 
 export interface CatalogTermsPeriod {
@@ -58,6 +63,20 @@ export interface CatalogTransferPartner {
   incrementPoints: number;
   effectiveFrom: string | null;
   effectiveTo: string | null;
+  /** Levels this ratio is offered at. Absent means every level. */
+  memberLevels?: string[];
+}
+
+/**
+ * A standing with the bank that changes what the card earns or what a point converts to — Jenius Club levels,
+ * a priority-banking tier. It belongs to the holder, not the card, so the entry publishes every level and the
+ * card records which one applies.
+ */
+export interface CatalogMemberLevel {
+  key: string;
+  name: string;
+  /** How the holder qualifies, in words: "average balance Rp 10.000.000 or more". */
+  condition: string;
 }
 
 export interface CatalogProgram {
@@ -68,6 +87,8 @@ export interface CatalogProgram {
   fixedStatementDay?: number;
   /** How the issuer credits points; decides whether users check each purchase or the statement total. Defaults to per_statement. */
   crediting?: 'per_transaction' | 'per_statement';
+  /** Set when earning or conversion depends on the holder's standing with the bank. */
+  memberLevels?: CatalogMemberLevel[];
 }
 
 export interface CatalogEntry {

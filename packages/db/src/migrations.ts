@@ -13,6 +13,7 @@ import loans from '../migrations/0011_loans.sql?raw';
 import taxReports from '../migrations/0012_tax_reports.sql?raw';
 import coretaxCodes from '../migrations/0013_coretax_codes.sql?raw';
 import utangCodes from '../migrations/0014_utang_codes.sql?raw';
+import memberLevels from '../migrations/0015_member_levels.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -36,6 +37,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 12, name: 'tax_reports', sql: taxReports },
   { version: 13, name: 'coretax_codes', sql: coretaxCodes },
   { version: 14, name: 'utang_codes', sql: utangCodes },
+  { version: 15, name: 'member_levels', sql: memberLevels },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

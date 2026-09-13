@@ -25,6 +25,10 @@ export interface CatalogPlan {
   annualFeeMinor: number | null;
   /** Category keys with no matching category in the workspace, sorted. */
   unmappedKeys: string[];
+  /** True when the entry publishes member levels, so the card must record which one the holder is on. */
+  requiresMemberLevel: boolean;
+  /** The level this plan was expanded at, or null when none was chosen. */
+  memberLevel: string | null;
 }
 
 /**
@@ -32,8 +36,15 @@ export interface CatalogPlan {
  * or updating an entry never changes how past cycles compute. Rules and bonuses are keyed `<period start>:<key>`,
  * partners by their key.
  */
-export function planCatalogApply(entry: CatalogEntry, categoryIdsByKey: Record<string, string>, today: string): CatalogPlan {
+export function planCatalogApply(
+  entry: CatalogEntry,
+  categoryIdsByKey: Record<string, string>,
+  today: string,
+  memberLevel?: string | null,
+): CatalogPlan {
   const unmapped = new Set<string>();
+  /** A row with no levels applies at every level; one that names levels needs the chosen level among them. */
+  const atLevel = (levels: readonly string[] | undefined) => !levels || (!!memberLevel && levels.includes(memberLevel));
   const ids = (keys: readonly string[] | undefined) =>
     (keys ?? []).flatMap((key) => {
       const id = categoryIdsByKey[key];
@@ -63,6 +74,7 @@ export function planCatalogApply(entry: CatalogEntry, categoryIdsByKey: Record<s
   for (const period of entry.terms) {
     const start = period.effectiveFrom ?? 'start';
     for (const rule of period.rules) {
+      if (!atLevel(rule.memberLevels)) continue;
       const match = toMatch(rule.match);
       if (!match) continue;
       rules.push({
@@ -82,6 +94,7 @@ export function planCatalogApply(entry: CatalogEntry, categoryIdsByKey: Record<s
       });
     }
     for (const bonus of period.cycleBonuses) {
+      if (!atLevel(bonus.memberLevels)) continue;
       const match = toMatch(bonus.match);
       if (!match) continue;
       bonuses.push({
@@ -100,7 +113,7 @@ export function planCatalogApply(entry: CatalogEntry, categoryIdsByKey: Record<s
     program: { ...entry.program },
     rules,
     bonuses,
-    transferPartners: entry.transferPartners.map((partner) => ({
+    transferPartners: entry.transferPartners.filter((partner) => atLevel(partner.memberLevels)).map((partner) => ({
       catalogKey: partner.key,
       key: partner.key,
       program: partner.program,
@@ -114,5 +127,7 @@ export function planCatalogApply(entry: CatalogEntry, categoryIdsByKey: Record<s
     crediting: entry.program.crediting ?? 'per_statement',
     annualFeeMinor: feeOn(entry, today)?.annualFeeMinor ?? null,
     unmappedKeys: [...unmapped].sort(),
+    requiresMemberLevel: (entry.program.memberLevels?.length ?? 0) > 0,
+    memberLevel: memberLevel ?? null,
   };
 }

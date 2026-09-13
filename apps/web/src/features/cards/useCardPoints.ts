@@ -63,7 +63,7 @@ export interface CardPoints {
   previous: CycleResult | null;
 }
 
-const NO_CATALOG: CardPoints['catalog'] = { entryId: null, entryVersion: null, status: null, dismissedVersion: null, snapshot: null, entry: undefined };
+const NO_CATALOG: CardPoints['catalog'] = { entryId: null, entryVersion: null, status: null, dismissedVersion: null, snapshot: null, memberLevel: null, entry: undefined };
 
 export function expenseAncestors(accounts: AccountRow[]): Record<string, string[]> {
   return categoryAncestors(accounts.filter((a) => a.kind === 'expense'));

@@ -19,6 +19,8 @@ export const rewardPrograms = sqliteTable('reward_programs', {
   catalogEntryId: text('catalog_entry_id'),
   catalogEntryVersion: integer('catalog_entry_version'),
   catalogStatus: text('catalog_status', { enum: ['linked', 'customised'] }),
+  /** Which published member level the entry was applied at, when it publishes any. */
+  catalogMemberLevel: text('catalog_member_level'),
   catalogDismissedVersion: integer('catalog_dismissed_version'),
   /** JSON of the catalogue entry as applied. */
   catalogSnapshotJson: text('catalog_snapshot_json'),

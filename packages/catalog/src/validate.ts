@@ -15,6 +15,7 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
   const errors: string[] = [];
   const add = (path: string, message: string) => errors.push(`${path}: ${message}`);
   if (!isObj(entry)) return ['entry: must be an object'];
+  const declaredLevels = new Set<string>();
 
   if (typeof entry.id !== 'string' || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(entry.id)) add('id', 'must be lowercase kebab-case');
   if (!isPositiveInt(entry.entryVersion)) add('entryVersion', 'must be a positive integer');
@@ -39,6 +40,24 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
     }
     if (program.crediting !== undefined && program.crediting !== 'per_transaction' && program.crediting !== 'per_statement') {
       add('program.crediting', 'must be per_transaction or per_statement');
+    }
+    if (program.memberLevels !== undefined) {
+      if (!Array.isArray(program.memberLevels) || program.memberLevels.length === 0) add('program.memberLevels', 'must list at least one level');
+      else {
+        const seen = new Set<string>();
+        program.memberLevels.forEach((level, i) => {
+          const path = `program.memberLevels[${i}]`;
+          if (!isObj(level)) return add(path, 'must be an object');
+          if (!isText(level.key)) add(`${path}.key`, 'is required');
+          else if (seen.has(level.key)) add(`${path}.key`, `duplicate key "${level.key}"`);
+          else {
+            seen.add(level.key);
+            declaredLevels.add(level.key);
+          }
+          if (!isText(level.name)) add(`${path}.name`, 'is required');
+          if (!isText(level.condition)) add(`${path}.condition`, 'is required');
+        });
+      }
     }
   }
 
@@ -84,6 +103,15 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
     }
   };
 
+  /** A row may name the levels it applies at; absent means every level. */
+  const checkMemberLevels = (path: string, levels: unknown) => {
+    if (levels === undefined) return;
+    if (!Array.isArray(levels) || levels.some((level) => !isText(level))) return add(`${path}.memberLevels`, 'must be a list of member level keys');
+    if (levels.length === 0) return add(`${path}.memberLevels`, 'must list at least one member level');
+    if (declaredLevels.size === 0) return add(`${path}.memberLevels`, 'the program declares no member levels');
+    for (const level of levels) if (!declaredLevels.has(level as string)) add(`${path}.memberLevels`, `unknown member level "${String(level)}"`);
+  };
+
   const uniqueKeys = (path: string, items: unknown[]) => {
     const seen = new Set<string>();
     items.forEach((item, i) => {
@@ -118,6 +146,7 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
         for (const cap of ['capSpendMinor', 'capPoints', 'minTransactionMinor'] as const) {
           if (rule[cap] !== undefined && rule[cap] !== null && !isNonNegativeInt(rule[cap])) add(`${path}.${cap}`, 'must be a non-negative integer or null');
         }
+        checkMemberLevels(path, rule.memberLevels);
         checkMatch(`${path}.match`, rule.match);
       });
       bonuses.forEach((bonus, b) => {
@@ -131,6 +160,7 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
           const prev = tiers[i - 1];
           if (i > 0 && isObj(prev) && isObj(tier) && (tier.minSpendMinor as number) <= (prev.minSpendMinor as number)) add(`${path}.tiers[${i}]`, 'tiers must be ascending by minSpendMinor');
         });
+        checkMemberLevels(path, bonus.memberLevels);
         checkMatch(`${path}.match`, bonus.match);
       });
     });
@@ -156,6 +186,7 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
       if (!isText(partner.program)) add(`${path}.program`, 'is required');
       for (const field of ['points', 'partnerUnits', 'incrementPoints'] as const) if (!isPositiveInt(partner[field])) add(`${path}.${field}`, 'must be a positive integer');
       if (!isDateOrNull(partner.effectiveFrom) || !isDateOrNull(partner.effectiveTo)) add(path, 'effectiveFrom and effectiveTo must be YYYY-MM-DD or null');
+      checkMemberLevels(path, partner.memberLevels);
     });
   }
 

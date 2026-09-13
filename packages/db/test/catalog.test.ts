@@ -73,7 +73,7 @@ describe('applyCatalogEntry', () => {
       ['2024-08-12', '2025-09-22', [{ minSpendMinor: 20_000_000, bonus: 1000 }]],
       ['2025-09-23', null, [{ minSpendMinor: 20_000_000, bonus: 1000 }]],
     ]);
-    expect(await getCatalogState(database, ws, programId)).toEqual({ entryId: signature.id, entryVersion: signature.entryVersion, status: 'linked', dismissedVersion: null, snapshot: signature });
+    expect(await getCatalogState(database, ws, programId)).toEqual({ entryId: signature.id, entryVersion: signature.entryVersion, status: 'linked', dismissedVersion: null, snapshot: signature, memberLevel: null });
   });
 
   it('applies UnionPay partners and cash value onto the card’s existing empty program', async () => {

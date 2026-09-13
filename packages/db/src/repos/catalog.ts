@@ -22,6 +22,8 @@ export interface CatalogState {
   dismissedVersion: number | null;
   /** The entry as last applied, for diffing against the bundled entry. */
   snapshot: CatalogEntry | null;
+  /** The published member level this program was applied at, when the entry publishes any. */
+  memberLevel: string | null;
 }
 
 const CASH_VALUE_KEY = 'cash-value';
@@ -65,8 +67,17 @@ async function clearRows(tx: Db, ws: WorkspaceContext, programId: string, manual
 
 /** Writes the entry's planned rows and catalogue fields onto the program. Returns category keys that could not be mapped. */
 /** `setCrediting` is true only when applying or resetting: crediting is the user's checking preference once linked. */
-async function writePlan(tx: Db, ws: WorkspaceContext, program: RewardProgramRow, entry: CatalogEntry, today: string, status: 'linked' | 'customised', setCrediting = false) {
-  const plan = planCatalogApply(entry, await categoryIdsByKeyTx(tx, ws), today);
+async function writePlan(
+  tx: Db,
+  ws: WorkspaceContext,
+  program: RewardProgramRow,
+  entry: CatalogEntry,
+  today: string,
+  status: 'linked' | 'customised',
+  setCrediting = false,
+  memberLevel: string | null = null,
+) {
+  const plan = planCatalogApply(entry, await categoryIdsByKeyTx(tx, ws), today, memberLevel);
   for (const { catalogKey, ...rule } of plan.rules) await saveEarnRuleTx(tx, ws, program.id, { ...rule, catalogKey }, FROM_CATALOG);
   for (const { catalogKey, ...bonus } of plan.bonuses) await saveCycleBonusTx(tx, ws, program.id, { ...bonus, catalogKey }, FROM_CATALOG);
   for (const { catalogKey, ...partner } of plan.transferPartners) await saveTransferPartnerTx(tx, ws, program.id, { ...partner, catalogKey }, FROM_CATALOG);
@@ -103,6 +114,7 @@ async function writePlan(tx: Db, ws: WorkspaceContext, program: RewardProgramRow
       catalogEntryVersion: entry.entryVersion,
       catalogStatus: status,
       catalogDismissedVersion: null,
+      catalogMemberLevel: plan.requiresMemberLevel ? memberLevel : null,
       catalogSnapshotJson: JSON.stringify(entry),
       ...(setCrediting ? { crediting: plan.crediting } : {}),
     })
@@ -118,6 +130,7 @@ export async function getCatalogState(database: Database, ws: WorkspaceContext, 
     status: program.catalogStatus,
     dismissedVersion: program.catalogDismissedVersion,
     snapshot: program.catalogSnapshotJson ? (JSON.parse(program.catalogSnapshotJson) as CatalogEntry) : null,
+    memberLevel: program.catalogMemberLevel,
   };
 }
 
@@ -129,9 +142,15 @@ export async function getCatalogState(database: Database, ws: WorkspaceContext, 
 export function applyCatalogEntry(
   database: Database,
   ws: WorkspaceContext,
-  input: { cardAccountId: string; entry: CatalogEntry; today: string; replaceManual: boolean },
+  input: { cardAccountId: string; entry: CatalogEntry; today: string; replaceManual: boolean; memberLevel?: string | null },
 ): Promise<{ programId: string; unmappedKeys: string[] }> {
+  const levels = input.entry.program.memberLevels ?? [];
+  const memberLevel = input.memberLevel ?? null;
   return database.transaction(async (tx) => {
+    // Rejects like every other refusal here, rather than throwing before the promise exists.
+    if (levels.length > 0 && !levels.some((level) => level.key === memberLevel)) {
+      throw new CatalogError(`This card earns by ${input.entry.program.name} level. Choose the level you are on before applying it.`);
+    }
     const [card] = await tx
       .select({ subtype: accounts.subtype })
       .from(accounts)
@@ -156,6 +175,7 @@ export function applyCatalogEntry(
         catalogEntryVersion: null,
         catalogStatus: null,
         catalogDismissedVersion: null,
+        catalogMemberLevel: null,
         catalogSnapshotJson: null,
         crediting: input.entry.program.crediting ?? 'per_statement',
         archivedAt: null,
@@ -172,7 +192,7 @@ export function applyCatalogEntry(
     }
 
     await clearRows(tx, ws, program.id, input.replaceManual);
-    const unmappedKeys = await writePlan(tx, ws, program, input.entry, input.today, 'linked', true);
+    const unmappedKeys = await writePlan(tx, ws, program, input.entry, input.today, 'linked', true, memberLevel);
     return { programId: program.id, unmappedKeys };
   });
 }
@@ -190,7 +210,7 @@ export async function syncLinkedPrograms(database: Database, ws: WorkspaceContex
       const entry = catalog.find((candidate) => candidate.id === program.catalogEntryId);
       if (program.catalogStatus !== 'linked' || !entry || entry.entryVersion <= (program.catalogEntryVersion ?? 0)) return false;
       await clearRows(tx, ws, program.id, false);
-      await writePlan(tx, ws, program, entry, today, 'linked');
+      await writePlan(tx, ws, program, entry, today, 'linked', false, program.catalogMemberLevel);
       return true;
     });
     if (didSync) synced.push(id);
@@ -204,7 +224,7 @@ export function applyCatalogUpdate(database: Database, ws: WorkspaceContext, pro
     const program = await programById(tx, ws, programId);
     if (program.catalogEntryId !== entry.id) throw new CatalogError('This program is not linked to that catalogue entry');
     await clearRows(tx, ws, program.id, false);
-    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked');
+    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked', false, program.catalogMemberLevel);
   });
 }
 
@@ -221,6 +241,22 @@ export function resetToCatalog(database: Database, ws: WorkspaceContext, program
     const program = await programById(tx, ws, programId);
     if (program.catalogEntryId !== entry.id) throw new CatalogError('This program is not linked to that catalogue entry');
     await clearRows(tx, ws, program.id, true);
-    await writePlan(tx, ws, program, entry, today, 'linked', true);
+    await writePlan(tx, ws, program, entry, today, 'linked', true, program.catalogMemberLevel);
+  });
+}
+
+/**
+ * Moves a linked program to another published member level — the holder's standing with the bank changed.
+ * Re-applies the entry at that level, so the rules and transfer ratios follow.
+ */
+export function setCatalogMemberLevel(database: Database, ws: WorkspaceContext, programId: string, memberLevel: string, today: string): Promise<void> {
+  return database.transaction(async (tx) => {
+    const program = await programById(tx, ws, programId);
+    const entry = program.catalogSnapshotJson ? (JSON.parse(program.catalogSnapshotJson) as CatalogEntry) : null;
+    if (!entry) throw new CatalogError('This program is not linked to a catalogue entry');
+    const levels = entry.program.memberLevels ?? [];
+    if (!levels.some((level) => level.key === memberLevel)) throw new CatalogError(`"${memberLevel}" is not a level this card publishes`);
+    await clearRows(tx, ws, program.id, false);
+    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked', false, memberLevel);
   });
 }
