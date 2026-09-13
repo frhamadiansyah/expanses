@@ -254,11 +254,11 @@ export function CardDetailPage() {
     // Some issuers close every cardholder's statement on the same day.
     if (!hasTerms && entry.program.fixedStatementDay && !statementDay) setStatementDay(String(entry.program.fixedStatementDay));
   };
-  const applyEntry = (entry: CatalogEntry) => {
+  const applyEntry = (entry: CatalogEntry, memberLevel: string | null = null) => {
     const manual = cp.rules.length;
     if (manual > 0 && !window.confirm(`Replace your ${manual} earn rule${manual === 1 ? '' : 's'} with the catalogue terms for ${entry.name}?`)) return;
     void run(async () => {
-      await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today, replaceManual: manual > 0 });
+      await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today, replaceManual: manual > 0, memberLevel });
       setBrowsingCatalog(false);
     });
   };

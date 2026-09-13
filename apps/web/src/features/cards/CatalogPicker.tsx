@@ -3,8 +3,8 @@ import { categoryIdsByKey } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { Button, cx, Field, Input } from '../../ui';
-import { categoryNameForKey, searchCatalog } from './catalog-picker';
+import { Button, cx, Field, Input, Select } from '../../ui';
+import { canApplyEntry, categoryNameForKey, memberLevelsOf, searchCatalog } from './catalog-picker';
 
 /** Searches the bundled catalogue and previews an entry's terms. Without onApply it only previews, showing applyHint instead. */
 export function CatalogPicker({
@@ -17,16 +17,19 @@ export function CatalogPicker({
   today: string;
   selectedId: string | null;
   onSelect: (entry: CatalogEntry) => void;
-  onApply?: (entry: CatalogEntry) => void;
+  onApply?: (entry: CatalogEntry, memberLevel: string | null) => void;
   applyHint?: string;
 }) {
   const { database, ws } = useApp();
   const [query, setQuery] = useState('');
+  const [memberLevel, setMemberLevel] = useState<string | null>(null);
   const categoryKeys = useQuery({ queryKey: ['category-keys', ws.workspaceId], queryFn: () => categoryIdsByKey(database, ws) });
   const matches = searchCatalog(CATALOG, query);
   const selected = CATALOG.find((entry) => entry.id === selectedId);
   const preview = selected ? describeEntry(selected, today) : null;
-  const unmapped = selected && categoryKeys.data ? planCatalogApply(selected, categoryKeys.data, today).unmappedKeys : [];
+  const unmapped = selected && categoryKeys.data ? planCatalogApply(selected, categoryKeys.data, today, memberLevel).unmappedKeys : [];
+  const levels = selected ? memberLevelsOf(selected) : [];
+  const ready = !!selected && canApplyEntry(selected, memberLevel);
 
   return (
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
@@ -40,7 +43,10 @@ export function CatalogPicker({
               <button
                 type="button"
                 aria-pressed={entry.id === selectedId}
-                onClick={() => onSelect(entry)}
+                onClick={() => {
+                  setMemberLevel(null);
+                  onSelect(entry);
+                }}
                 className={cx('w-full px-3 py-2 text-left text-sm hover:bg-slate-50', entry.id === selectedId && 'bg-emerald-50 font-medium')}
               >
                 {entry.name}
@@ -77,7 +83,27 @@ export function CatalogPicker({
             ))}
             . Estimates only; your statement is the final word.
           </p>
-          {onApply ? <Button onClick={() => onApply(selected)}>Use these terms</Button> : applyHint && <p className="text-xs text-slate-500">{applyHint}</p>}
+          {levels.length > 0 && (
+            <div className="space-y-1 rounded border border-slate-200 bg-slate-50 p-3">
+              <Field label={`Your ${selected.program.name} level`} hint="This card earns by your standing with the bank, so the rate and the transfer ratio follow it.">
+                <Select id="member-level" value={memberLevel ?? ''} onChange={(e) => setMemberLevel(e.target.value || null)}>
+                  <option value="">Choose your level</option>
+                  {levels.map((level) => (
+                    <option key={level.key} value={level.key}>
+                      {level.name} — {level.condition}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          )}
+          {onApply ? (
+            <Button disabled={!ready} onClick={() => onApply(selected, memberLevel)}>
+              Use these terms
+            </Button>
+          ) : (
+            applyHint && <p className="text-xs text-slate-500">{applyHint}</p>
+          )}
         </div>
       ) : (
         <p className="text-sm text-slate-500">Pick a card to preview its earn rates, bonuses, exclusions, and fees.</p>

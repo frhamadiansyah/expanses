@@ -1,5 +1,6 @@
 import { DEFAULT_CATEGORY_KEYS } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
+import { describeEntry } from '../src/describe';
 import { planCatalogApply } from '../src/plan';
 import type { CatalogEntry } from '../src/types';
 import { validateEntry } from '../src/validate';
@@ -172,5 +173,31 @@ describe('member levels: applying an entry', () => {
     ];
     expect(validateEntry(entry, DEFAULT_CATEGORY_KEYS)).toEqual([]);
     expect(planCatalogApply(entry, {}, '2026-09-13', 'low').bonuses[0]!.tiers).toEqual([{ minSpendMinor: 30000000, bonus: 2500 }]);
+  });
+});
+
+describe('member levels: the preview', () => {
+  it('says which level a rule and a transfer ratio belong to, by name', () => {
+    const { lines } = describeEntry(tiered(), '2026-09-13');
+    expect(lines).toContainEqual(expect.stringMatching(/^Base, High:.*at High level\.$/));
+    expect(lines).toContainEqual(expect.stringMatching(/^Base, Low:.*at Low level\.$/));
+    expect(lines.filter((line) => line.startsWith('Transfers to KrisFlyer'))).toEqual([
+      expect.stringContaining('at High level.'),
+      expect.stringContaining('at Low level.'),
+    ]);
+  });
+
+  it('says nothing about levels on a line that applies at every level', () => {
+    const { lines } = describeEntry(tiered(), '2026-09-13');
+    const dining = lines.find((line) => line.startsWith('Double at restaurants'))!;
+    expect(dining).not.toContain('level');
+  });
+
+  it('leaves an untiered card\u2019s wording untouched', () => {
+    const flat = tiered();
+    delete flat.program.memberLevels;
+    for (const rule of flat.terms[0]!.rules) delete rule.memberLevels;
+    for (const partner of flat.transferPartners) delete partner.memberLevels;
+    expect(describeEntry(flat, '2026-09-13').lines.some((line) => line.includes(' level.'))).toBe(false);
   });
 });

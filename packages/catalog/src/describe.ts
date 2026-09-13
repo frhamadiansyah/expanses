@@ -16,6 +16,13 @@ import {
 import { feeOn, isStale, withinPeriod } from './lookup';
 import type { CatalogEntry, CatalogMatch, CatalogTermsPeriod } from './types';
 
+/** Names the levels a line belongs to, so a reader can tell two published rates apart. Empty when it applies to all. */
+function levelPart(entry: CatalogEntry, memberLevels: readonly string[] | undefined): string[] {
+  if (!memberLevels?.length) return [];
+  const byKey = new Map((entry.program.memberLevels ?? []).map((level) => [level.key, level.name]));
+  return [`at ${memberLevels.map((key) => byKey.get(key) ?? key).join(' or ')} level`];
+}
+
 /** Plain-language preview of an entry: earning, bonuses, exclusions with dates, fees, partners, and verification. */
 export function describeEntry(entry: CatalogEntry, today: string): { heading: string; lines: string[] } {
   const lines = [`Earns ${unitWord(entry, 2)} in ${entry.program.name}, counted per ${cycleText(entry)}.`];
@@ -42,8 +49,9 @@ export function describeEntry(entry: CatalogEntry, today: string): { heading: st
     if (partner.effectiveTo && partner.effectiveTo < today) continue;
     const from = partner.effectiveFrom && partner.effectiveFrom > today ? `, from ${partner.effectiveFrom}` : '';
     const to = partner.effectiveTo ? `, until ${partner.effectiveTo}` : '';
+    const level = levelPart(entry, partner.memberLevels);
     lines.push(
-      `Transfers to ${partner.program}: ${amountOf(entry, partner.points)} = ${count(partner.partnerUnits)} ${partner.program}, in steps of ${count(partner.incrementPoints)}${from}${to}.`,
+      `Transfers to ${partner.program}: ${amountOf(entry, partner.points)} = ${count(partner.partnerUnits)} ${partner.program}, in steps of ${count(partner.incrementPoints)}${from}${to}${level.length ? `, ${level[0]}` : ''}.`,
     );
   }
   if (entry.cashValue) lines.push(`Cash value: ${cashValueText(entry, entry.cashValue)}.`);
@@ -67,7 +75,7 @@ function describePeriod(entry: CatalogEntry, period: CatalogTermsPeriod): string
   };
 
   for (const rule of rules) {
-    const parts = [...conditionParts(entry, rule.match), ...limitParts(entry, rule), ...(rule.stackable ? ['on top of other rules'] : [])];
+    const parts = [...conditionParts(entry, rule.match), ...limitParts(entry, rule), ...(rule.stackable ? ['on top of other rules'] : []), ...levelPart(entry, rule.memberLevels)];
     lines.push(`${rule.name}: ${[rateText(entry, rule), ...withExclusion(parts, rule.match)].join('; ')}.`);
   }
   if (new Set(rules.filter((rule) => !rule.stackable).map((rule) => rule.priority)).size > 1) {
@@ -75,7 +83,7 @@ function describePeriod(entry: CatalogEntry, period: CatalogTermsPeriod): string
   }
   for (const bonus of period.cycleBonuses) {
     const earn = `${tiersText(entry, bonus.tiers)} per ${cycleText(entry)}${bonus.tiers.length > 1 ? ', highest tier reached only' : ''}`;
-    lines.push(`${bonus.name}: ${[earn, ...withExclusion(conditionParts(entry, bonus.match), bonus.match)].join('; ')}.`);
+    lines.push(`${bonus.name}: ${[earn, ...withExclusion(conditionParts(entry, bonus.match), bonus.match), ...levelPart(entry, bonus.memberLevels)].join('; ')}.`);
   }
   if (shared && exclusions[0]) lines.push(`Earns nothing on ${exclusions[0]}.`);
   return lines;
