@@ -1,3 +1,4 @@
+import { futureValueMinor, monthlyNeededMinor } from '../goals/plan';
 import { roundHalfAwayFromZero } from '../money/money';
 
 /**
@@ -89,4 +90,33 @@ export function retirementTargetMinor(inputs: RetirementInputs): number {
   // Earning exactly what prices do: every year has to be there in full.
   if (Math.abs(real) < 1e-12) return roundHalfAwayFromZero(spendAtRetirement * inputs.yearsInRetirement);
   return roundHalfAwayFromZero((spendAtRetirement * (1 - (1 + real) ** -inputs.yearsInRetirement)) / real);
+}
+
+export interface SavingPlanInput {
+  targetMinor: number;
+  /** What is already put aside for this, which keeps earning until the money is needed. */
+  alreadySavedMinor: number;
+  returnBps: number;
+  months: number;
+}
+
+export interface SavingPlan {
+  /** What still has to be found, after what you hold has grown. */
+  gapMinor: number;
+  monthlyMinor: number;
+}
+
+/**
+ * What a target costs a month: the gap left after what you already hold has grown to the day it is
+ * needed, spread over the months while the payments themselves earn the same rate.
+ *
+ * The same annuity `goalPlan` uses, exposed for a calculator answering the question without a goal.
+ */
+export function savingPlanFor(input: SavingPlanInput): SavingPlan {
+  assertAbove(input.months, 0, 'The number of months');
+  if (input.targetMinor < 0 || input.alreadySavedMinor < 0) throw new CalculatorError('Amounts cannot be below nothing');
+
+  const grown = futureValueMinor(input.alreadySavedMinor, input.returnBps, input.months);
+  const gapMinor = Math.max(0, input.targetMinor - grown);
+  return { gapMinor, monthlyMinor: monthlyNeededMinor(gapMinor, input.returnBps, input.months) };
 }
