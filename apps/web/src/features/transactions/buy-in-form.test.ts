@@ -20,6 +20,7 @@ const profile = (accountId: string, partial: Partial<AssetProfileRow> = {}): Ass
   accountId,
   workspaceId: 'ws',
   reportable: true,
+  taxTreatment: null,
   assetKind: 'stock',
   planGroup: 'invest',
   unitKind: 'shares',

@@ -7,6 +7,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { useSheet } from '../networth/queries';
 import { FreezePanel } from './FreezePanel';
+import { IncomeSection } from './IncomeSection';
 import { readinessLinks, screenSections } from './report-rows';
 import { SectionTable } from './SectionTable';
 import { useReport, usePreviousRows, useReportRows, useReportYears } from './queries';
@@ -195,6 +196,8 @@ export function CoretaxPage() {
               </div>
             ))}
           </Card>
+
+          <IncomeSection taxYear={taxYear} />
 
           <FreezePanel taxYear={taxYear} status={report.data.status} rows={all} npwp={report.data.npwp} />
 

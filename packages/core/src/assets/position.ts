@@ -17,6 +17,9 @@ export interface TradeRecord {
   taxMinor: number;
   /** Goal this buy funds, or the goal a sell takes units from. Null or missing means no goal. */
   goalId?: string | null;
+  /** Declared reinvestment of this payment, and the holding it was declared into. */
+  reinvestedMinor?: number | null;
+  reinvestedIntoAccountId?: string | null;
 }
 
 export interface YearBucket {

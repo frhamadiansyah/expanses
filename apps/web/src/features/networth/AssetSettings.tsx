@@ -14,6 +14,7 @@ export function AssetSettings({
   showLotSize,
   reportable: currentReportable,
   coretaxCode: currentCode,
+  taxTreatment: currentTreatment,
 }: {
   accountId: string;
   group: PlanGroup;
@@ -23,6 +24,8 @@ export function AssetSettings({
   reportable: boolean;
   /** Null when the asset has no profile yet. */
   coretaxCode: string | null;
+  /** How its income is taxed. Null means the owner has not said. */
+  taxTreatment: 'final' | 'not_object' | 'ordinary' | null;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -30,6 +33,7 @@ export function AssetSettings({
   const [lots, setLots] = useState(lotSize === null ? '' : String(lotSize));
   const [reportable, setReportable] = useState(currentReportable);
   const [code, setCode] = useState(currentCode ?? '');
+  const [treatment, setTreatment] = useState<string>(currentTreatment ?? '');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -47,10 +51,12 @@ export function AssetSettings({
         if (size !== lotSize) await setLotSize(database, ws, accountId, size);
       }
       const typedCode = code.trim();
-      if (reportable !== currentReportable || typedCode !== (currentCode ?? '')) {
+      const treatmentChanged = treatment !== (currentTreatment ?? '');
+      if (reportable !== currentReportable || typedCode !== (currentCode ?? '') || treatmentChanged) {
         await setAssetReporting(database, ws, accountId, {
           reportable,
           ...(typedCode === (currentCode ?? '') ? {} : { coretaxCode: typedCode === '' ? null : typedCode }),
+          ...(treatmentChanged ? { taxTreatment: treatment === '' ? null : (treatment as 'final' | 'not_object' | 'ordinary') } : {}),
         });
       }
       await invalidate();
@@ -80,6 +86,17 @@ export function AssetSettings({
             <Input value={lots} inputMode="numeric" onChange={(e) => setLots(e.target.value)} placeholder="100" />
           </Field>
         )}
+        <Field
+          label="How its income is taxed"
+          hint="A government coupon is final; a holding abroad is ordinary. A dividend you reinvest is marked on the payment itself."
+        >
+          <Select value={treatment} onChange={(e) => setTreatment(e.target.value)}>
+            <option value="">Not set</option>
+            <option value="final">Final — reported, not added to taxable income</option>
+            <option value="not_object">Tidak termasuk objek pajak — no tax</option>
+            <option value="ordinary">Ordinary — added to taxable income</option>
+          </Select>
+        </Field>
         <Field
           label="Tax report code"
           hint={code.trim() === '' ? 'Four digits. Empty uses the code this kind of asset normally takes.' : hartaLabel(code.trim()) || 'Not a code the form knows.'}

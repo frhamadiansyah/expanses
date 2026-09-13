@@ -212,6 +212,7 @@ export function AssetDetailPage() {
           showLotSize={value.mode === 'market' && profile.data?.unitKind !== 'grams'}
           reportable={profile.data?.reportable ?? true}
           coretaxCode={profile.data?.coretaxCode ?? null}
+          taxTreatment={profile.data?.taxTreatment ?? null}
         />
       )}
 

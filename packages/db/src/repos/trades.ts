@@ -83,6 +83,8 @@ const toRow = (row: TradeDbRow): TradeRow => ({
   taxMinor: row.taxMinor,
   cashAccountId: row.cashAccountId,
   goalId: row.goalId,
+  reinvestedMinor: row.reinvestedMinor,
+  reinvestedIntoAccountId: row.reinvestedIntoAccountId,
   templateId: row.templateId,
   status: row.status,
   replacesTradeId: row.replacesTradeId,
