@@ -257,3 +257,4 @@ export {
   type SavingPlan,
   type SavingPlanInput,
 } from './budget/calculators';
+export { balanceOf, type Balance, type EntryKind, type EntrySource, type PointEntry } from './points/ledger';
