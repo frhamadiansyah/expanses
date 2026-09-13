@@ -22,7 +22,14 @@
       }
     ]
   },
-  "fees": [],
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 500000,
+      "supplementaryFeeMinor": null
+    }
+  ],
   "terms": [
     {
       "effectiveFrom": null,
@@ -46,7 +53,9 @@
           "rounding": "per_increment",
           "priority": 0,
           "stackable": true,
-          "match": { "origin": "foreign" }
+          "match": {
+            "origin": "foreign"
+          }
         }
       ],
       "cycleBonuses": []
@@ -64,7 +73,9 @@
           "priority": 0,
           "stackable": false,
           "match": {},
-          "memberLevels": ["grow-plus"]
+          "memberLevels": [
+            "grow-plus"
+          ]
         },
         {
           "key": "double-yay-grow",
@@ -74,8 +85,12 @@
           "rounding": "per_increment",
           "priority": 0,
           "stackable": true,
-          "match": { "origin": "foreign" },
-          "memberLevels": ["grow-plus"]
+          "match": {
+            "origin": "foreign"
+          },
+          "memberLevels": [
+            "grow-plus"
+          ]
         },
         {
           "key": "base-seed-plant",
@@ -86,7 +101,9 @@
           "priority": 0,
           "stackable": false,
           "match": {},
-          "memberLevels": ["seed-plant"]
+          "memberLevels": [
+            "seed-plant"
+          ]
         },
         {
           "key": "double-yay-seed-plant",
@@ -96,8 +113,12 @@
           "rounding": "per_increment",
           "priority": 0,
           "stackable": true,
-          "match": { "origin": "foreign" },
-          "memberLevels": ["seed-plant"]
+          "match": {
+            "origin": "foreign"
+          },
+          "memberLevels": [
+            "seed-plant"
+          ]
         }
       ],
       "cycleBonuses": []
@@ -121,7 +142,9 @@
       "incrementPoints": 40000,
       "effectiveFrom": "2026-08-01",
       "effectiveTo": null,
-      "memberLevels": ["grow-plus"]
+      "memberLevels": [
+        "grow-plus"
+      ]
     },
     {
       "key": "krisflyer-seed-plant",
@@ -131,7 +154,9 @@
       "incrementPoints": 50000,
       "effectiveFrom": "2026-08-01",
       "effectiveTo": null,
-      "memberLevels": ["seed-plant"]
+      "memberLevels": [
+        "seed-plant"
+      ]
     },
     {
       "key": "garudamiles",
@@ -154,7 +179,7 @@
     "Conversion to KrisFlyer or GarudaMiles is limited to once a month, and capped at 30.000 KrisFlyer miles and 20.000 GarudaMiles a month. Neither limit is applied to estimates.",
     "Yay Points can be forfeited when the card bill is more than 60 days late.",
     "Rounding is taken as per full increment of the stated amount; the sources do not say how a part increment is treated.",
-    "The annual fee is not published here because the sources do not give it.",
+    "The annual fee is Rp 500.000 a year, given by the cardholder rather than taken from the sources. The supplementary card fee is not known.",
     "Every figure comes from secondary reporting, not from Jenius's own terms. Bank SMBC Indonesia's site could not be reached when this entry was written, so treat it as unverified against the issuer."
   ],
   "sources": [

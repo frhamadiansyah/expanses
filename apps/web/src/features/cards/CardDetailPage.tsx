@@ -260,6 +260,11 @@ export function CardDetailPage() {
     void run(async () => {
       await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today, replaceManual: manual > 0, memberLevel });
       setBrowsingCatalog(false);
+    }).then((applied) => {
+      // The catalogue writes the published annual fee onto the card terms, so the form has to read them again —
+      // after run() has awaited the refetch, or it would reload the terms as they were before applying. Without
+      // this the fee box stays empty, and saving terms would write that emptiness back over the fee.
+      if (applied) setLoadedTermsFor(null);
     });
   };
 

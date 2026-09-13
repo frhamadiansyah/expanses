@@ -2,7 +2,7 @@ import { DEFAULT_CATEGORY_KEYS } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { describeEntry } from '../src/describe';
 import { findEntry } from '../src/index';
-import { termsOn } from '../src/lookup';
+import { feeOn, termsOn } from '../src/lookup';
 import { planCatalogApply } from '../src/plan';
 import type { CatalogEntry } from '../src/types';
 import { validateEntry } from '../src/validate';
@@ -241,8 +241,18 @@ describe('Kartu Kredit Jenius', () => {
     expect(gm[0]!.memberLevels).toBeUndefined();
     expect(planCatalogApply(jenius(), {}, NEW, 'seed-plant').transferPartners.some((partner) => partner.program === 'GarudaMiles')).toBe(true);
   });
+});
 
-  it('publishes no annual fee, because the sources do not give one', () => {
-    expect(jenius().fees).toEqual([]);
+describe('Kartu Kredit Jenius: the annual fee', () => {
+  it('charges Rp 500.000 a year, with no end date', () => {
+    const fee = feeOn(findEntry('jenius-kartu-kredit')!, '2026-09-13')!;
+    expect(fee.annualFeeMinor).toBe(500_000);
+    expect(fee.effectiveTo).toBeNull();
+  });
+
+  it('applies the fee to the card whatever level the holder is on', () => {
+    const at = (level: string) => planCatalogApply(findEntry('jenius-kartu-kredit')!, {}, '2026-09-13', level).annualFeeMinor;
+    expect(at('grow-plus')).toBe(500_000);
+    expect(at('seed-plant')).toBe(500_000);
   });
 });
