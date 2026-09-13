@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createAccount,
   createProgram,
+  backfillCycles,
   deriveCycleEntries,
   listAccounts,
   listPointEntries,
@@ -191,5 +192,54 @@ describe('anchoring the balance downward', () => {
     await recordPointSnapshot(database, ws, { programId: program.id, balance: 0, observedOn: TODAY });
 
     expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(0);
+  });
+});
+
+describe('catching a card up', () => {
+  /** A purchase five cycles back, which no page has ever derived. */
+  async function withOldSpending() {
+    const { database, ws, card, program } = await cardWithSpending();
+    const all = await listAccounts(database, ws);
+    const groceries = all.find((account) => account.name === 'Groceries')!.id;
+    await postTransaction(database, ws, {
+      occurredOn: '2026-04-05',
+      description: 'Old shop',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: card.id, amountMinor: 2_000_000, currency: 'IDR' }),
+    });
+    return { database, ws, card, program };
+  }
+
+  it('finds points earned before the app was ever opened on this card', async () => {
+    const { database, ws, program } = await withOldSpending();
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(0);
+
+    await backfillCycles(database, ws, program.id, 8, TODAY);
+
+    // The April purchase at one point per 10.000, plus the two in the current cycle.
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(350);
+  });
+
+  it('changes nothing when it runs again', async () => {
+    const { database, ws, program } = await withOldSpending();
+
+    await backfillCycles(database, ws, program.id, 8, TODAY);
+    await backfillCycles(database, ws, program.id, 8, TODAY);
+
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(350);
+  });
+
+  it('reaches back only as far as it is asked to', async () => {
+    const { database, ws, program } = await withOldSpending();
+
+    await backfillCycles(database, ws, program.id, 2, TODAY);
+
+    // Two cycles does not reach April, so only the current cycle's purchases are counted.
+    expect((await programBalance(database, ws, program.id, TODAY)).total).toBe(150);
+  });
+
+  it('says how many cycles it worked out', async () => {
+    const { database, ws, program } = await withOldSpending();
+
+    expect(await backfillCycles(database, ws, program.id, 4, TODAY)).toBe(4);
   });
 });

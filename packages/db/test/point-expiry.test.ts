@@ -11,9 +11,12 @@ import {
   PointsError,
   postTransaction,
   programBalance,
+  recordPointSnapshot,
   saveCardTerms,
   saveEarnRule,
   setProgramExpiry,
+  type Database,
+  type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -152,5 +155,48 @@ describe('across every card', () => {
     await deriveCycleEntries(database, ws, program.id, cycle);
 
     expect(await expiringSoonAcross(database, ws, TODAY)).toEqual([]);
+  });
+});
+
+describe('points typed in from the issuer app', () => {
+  const anchoredEntry = async (database: Database, ws: WorkspaceContext, programId: string) =>
+    (await listPointEntries(database, ws, programId)).find((entry) => entry.kind === 'adjust')!;
+
+  it('gets a date from the policy, so it dies like anything else', async () => {
+    const { database, ws, program } = await cardWithSpending(TODAY);
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+
+    await recordPointSnapshot(database, ws, { programId: program.id, balance: 500, observedOn: TODAY, earnedOn: '2025-01-15' });
+
+    expect(await anchoredEntry(database, ws, program.id)).toMatchObject({ quantity: 500, expiresOn: '2027-01-15' });
+  });
+
+  it('counts them as earned the day they were typed in when nobody says otherwise', async () => {
+    const { database, ws, program } = await cardWithSpending(TODAY);
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+
+    await recordPointSnapshot(database, ws, { programId: program.id, balance: 500, observedOn: TODAY });
+
+    expect(await anchoredEntry(database, ws, program.id)).toMatchObject({ expiresOn: '2028-09-13' });
+  });
+
+  it('leaves them undated while the card has no policy', async () => {
+    const { database, ws, program } = await cardWithSpending(TODAY);
+
+    await recordPointSnapshot(database, ws, { programId: program.id, balance: 500, observedOn: TODAY });
+
+    expect(await anchoredEntry(database, ws, program.id)).toMatchObject({ expiresOn: null });
+  });
+
+  it('warns about them when they are about to die, like any other batch', async () => {
+    const { database, ws, program } = await cardWithSpending(TODAY);
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+
+    // Earned two years ago less a month: the anchored points die inside the sixty-day window.
+    await recordPointSnapshot(database, ws, { programId: program.id, balance: 500, observedOn: TODAY, earnedOn: '2024-10-01' });
+
+    const balance = await programBalance(database, ws, program.id, TODAY);
+    expect(balance.expiringSoon).toBe(500);
+    expect(balance.nextExpiryOn).toBe('2026-10-01');
   });
 });

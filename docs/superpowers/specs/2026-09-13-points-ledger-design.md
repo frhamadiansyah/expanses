@@ -157,11 +157,17 @@ the warning, which strict mode rightly rejects.
 
 **Known limits:**
 
-- **Cycles nobody opened contribute nothing.** Derivation is lazy: a card page fills the two cycles it
-  shows. Points earned before the app was used are not in the ledger, so expiry cannot see them. The
-  fix is a "catch up this card" backfill, deliberately not built here.
+- ~~**Cycles nobody opened contribute nothing.**~~ Built on 13 September 2026: "Catch up this card"
+  derives two years of cycles on demand. It still finds nothing where the purchases were never entered
+  — a balance read from the issuer's app is the answer for a card with no history here.
 - **A policy change restamps on the next derivation**, so a dashboard visited in the same instant can
   lag by one view. It self-heals, and the ledger is right.
-- **Fee ROI values points at the best redemption rate**, which is a ceiling: it assumes the best use.
-  What a redemption actually fetched is recorded beside it, for when that comparison is worth drawing.
+- ~~**Fee ROI values points at the best redemption rate.**~~ Built on 13 September 2026: the card year
+  now shows both — the ceiling, and what redemptions have really fetched. The realised rate is taken
+  from every redemption that recorded a value, not only the year in view, because how someone redeems
+  is a habit rather than a property of one card year.
+
+- ~~**An anchored balance carries no earn date.**~~ Built on 13 September 2026: the batch takes its date
+  from the program's policy, and "Earned around" says when those points were earned. Left empty they
+  count as earned the day they were typed in — generous, but the only date the app can know unaided.
 - **A statement-total card cannot attribute points to a purchase**, so its cycle entry names none.

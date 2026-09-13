@@ -7,6 +7,7 @@ import {
   deleteRedemptionOption,
   type RewardProgramRow,
   recordCycleActual,
+  backfillCycles,
   recordPointSnapshot,
   recordRedemption,
   saveCardTerms,
@@ -215,6 +216,7 @@ export function CardDetailPage() {
   const ledger = useCardLedger(data.data?.program?.id, [data.data?.current?.cycle ?? null, data.data?.previous?.cycle ?? null], today);
   const { error, run } = useAction();
   const [observedBalance, setObservedBalance] = useState('');
+  const [anchorEarnedOn, setAnchorEarnedOn] = useState('');
   const [spendPoints, setSpendPoints] = useState('');
   const [spendNote, setSpendNote] = useState('');
   const [spendValue, setSpendValue] = useState('');
@@ -371,6 +373,15 @@ export function CardDetailPage() {
                 Posted points come from figures you typed in. Estimated points are worked out from your rules, and become posted as you
                 record what the bank actually gave.
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <Button variant="secondary" onClick={() => void run(() => backfillCycles(database, ws, cp.program!.id, 24, today))}>
+                  Catch up this card
+                </Button>
+                <span className="text-xs text-slate-500">
+                  Works the last two years of cycles out from purchases already recorded here. Points earned before you used this app are not
+                  among them — type the balance the issuer shows instead.
+                </span>
+              </div>
               <form
                 className="mt-3 flex flex-wrap items-end gap-2"
                 onSubmit={(event) => {
@@ -380,13 +391,18 @@ export function CardDetailPage() {
                       programId: cp.program!.id,
                       balance: Number(observedBalance.trim().replace(',', '.')),
                       observedOn: today,
+                      ...(anchorEarnedOn.trim() === '' ? {} : { earnedOn: anchorEarnedOn }),
                     });
                     setObservedBalance('');
+                    setAnchorEarnedOn('');
                   });
                 }}
               >
                 <Field label="Balance in the app">
                   <Input value={observedBalance} onChange={(event) => setObservedBalance(event.target.value)} inputMode="decimal" required />
+                </Field>
+                <Field label="Earned around" hint="Roughly when those points were earned, which decides when they expire. Empty counts them as earned today.">
+                  <Input type="date" value={anchorEarnedOn} onChange={(event) => setAnchorEarnedOn(event.target.value)} />
                 </Field>
                 <Button type="submit" variant="secondary">
                   Anchor balance
@@ -468,6 +484,18 @@ export function CardDetailPage() {
                   </div>
                 </div>
               </div>
+              {ledger.data.roi.realised && (
+                <div className="mt-3 flex flex-wrap items-baseline gap-3 border-t border-slate-100 pt-3" data-testid="card-year-realised">
+                  <span className="text-xs text-slate-500">At what your points have really fetched</span>
+                  <span className="text-sm font-semibold">
+                    <Money minor={ledger.data.roi.realised.valueMinor} currency={currency} /> earned
+                  </span>
+                  <span className={cx('text-sm font-semibold', ledger.data.roi.realised.netMinor < 0 ? 'text-rose-600' : 'text-emerald-700')}>
+                    <Money minor={ledger.data.roi.realised.netMinor} currency={currency} /> net
+                  </span>
+                  <span className="text-xs text-slate-500">The figures above value points at the best option, which assumes the best use.</span>
+                </div>
+              )}
               <p className="mt-2 text-xs text-slate-500">
                 {ledger.data.roi.from} to {ledger.data.roi.to} ·{' '}
                 {ledger.data.roi.anchoredOn === 'fee' ? 'from the day the fee was charged' : 'the last twelve months, since no fee charge is recorded'}
