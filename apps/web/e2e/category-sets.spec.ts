@@ -95,6 +95,20 @@ test('an event can be called done, and put back', async ({ page }) => {
   await expect(page.getByRole('button', { name: /finished/ })).toHaveCount(0);
 });
 
+test('a set category can be given a card MCC, so its spending earns the right rate', async ({ page }) => {
+  await page.goto('/categories');
+  answerPrompts(page, ['4511']);
+
+  const holiday = page.getByTestId('set-Holiday');
+  await expect(holiday.getByText('No card MCC').first()).toBeVisible();
+  await holiday.getByRole('button', { name: 'Card MCC for Flights' }).click();
+  await expect(holiday).toContainText('MCC 4511 (yours)');
+
+  // Clearing puts it back to having none, the same as the monthly categories behave.
+  await holiday.getByRole('button', { name: 'Reset card MCC for Flights' }).click();
+  await expect(holiday).not.toContainText('MCC 4511');
+});
+
 test('an event records its spending in its own categories, from its own page', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Rumah Bintaro', 'Renovation');
