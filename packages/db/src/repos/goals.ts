@@ -3,7 +3,9 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { goalCalculators } from '../schema-budget';
 import { goalEarmarks, goalStages, goals } from '../schema-goals';
+import { recordContributionTx } from './goal-contributions';
 
 export class GoalDbError extends Error {
   constructor(message: string) {
@@ -37,6 +39,8 @@ export interface SaveGoalInput {
   standingMonthlyMinor?: number;
   standingNote?: string | null;
   stages: SaveGoalStageInput[];
+  /** Set only by a calculator writing its own working. Anything else typed here breaks the link. */
+  derived?: boolean;
 }
 
 /** Only money you can move can be set aside; holdings are tagged per purchase instead. */
@@ -149,6 +153,13 @@ export async function saveGoal(database: Database, ws: WorkspaceContext, input: 
       const { id: _stageId, goalId: _goalId, workspaceId: _workspaceId, ...stageChanges } = stageRow;
       await tx.insert(goalStages).values(stageRow).onConflictDoUpdate({ target: goalStages.id, set: stageChanges });
     }
+
+    // An amount typed by hand is the owner's, so the goal stops being derived from a calculator.
+    // Only an existing goal can carry one, and saveGoal still has to work on a database that has
+    // not reached migration 0017 — creating a goal must not reach for a table that is not there yet.
+    if (!input.derived && existing.length > 0) {
+      await tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, id), eq(goalCalculators.workspaceId, ws.workspaceId)));
+    }
     return id;
   });
 }
@@ -204,16 +215,31 @@ export async function saveEarmark(database: Database, ws: WorkspaceContext, inpu
     }
     const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, input.goalId), eq(goals.workspaceId, ws.workspaceId)));
     if (!goal) throw new GoalDbError('Goal not found in this workspace');
+    const [before] = await tx
+      .select({ amountMinor: goalEarmarks.amountMinor })
+      .from(goalEarmarks)
+      .where(and(eq(goalEarmarks.goalId, input.goalId), eq(goalEarmarks.accountId, input.accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
     const row = { goalId: input.goalId, accountId: input.accountId, workspaceId: ws.workspaceId, amountMinor: input.amountMinor };
     await tx
       .insert(goalEarmarks)
       .values(row)
       .onConflictDoUpdate({ target: [goalEarmarks.goalId, goalEarmarks.accountId], set: { amountMinor: input.amountMinor } });
+    // Only the difference is a contribution: re-saving the same amount moved nothing.
+    await recordContributionTx(tx, ws, input.goalId, input.accountId, input.amountMinor - (before?.amountMinor ?? 0));
   });
 }
 
 export async function removeEarmark(database: Database, ws: WorkspaceContext, goalId: string, accountId: string): Promise<void> {
-  await database.db
-    .delete(goalEarmarks)
-    .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
+  // The balance and its record of the movement have to fall together, so this runs as one.
+  await database.transaction(async (tx) => {
+    const [before] = await tx
+      .select({ amountMinor: goalEarmarks.amountMinor })
+      .from(goalEarmarks)
+      .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
+    if (!before) return;
+    await tx
+      .delete(goalEarmarks)
+      .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
+    await recordContributionTx(tx, ws, goalId, accountId, -before.amountMinor);
+  });
 }

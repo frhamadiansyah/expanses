@@ -13,6 +13,9 @@ import loans from '../migrations/0011_loans.sql?raw';
 import taxReports from '../migrations/0012_tax_reports.sql?raw';
 import coretaxCodes from '../migrations/0013_coretax_codes.sql?raw';
 import utangCodes from '../migrations/0014_utang_codes.sql?raw';
+import budgetTables from '../migrations/0015_budgets.sql?raw';
+import goalContributionTables from '../migrations/0016_goal_contributions.sql?raw';
+import goalCalculatorTables from '../migrations/0017_goal_calculators.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -36,6 +39,9 @@ export const MIGRATIONS: Migration[] = [
   { version: 12, name: 'tax_reports', sql: taxReports },
   { version: 13, name: 'coretax_codes', sql: coretaxCodes },
   { version: 14, name: 'utang_codes', sql: utangCodes },
+  { version: 15, name: 'budgets', sql: budgetTables },
+  { version: 16, name: 'goal_contributions', sql: goalContributionTables },
+  { version: 17, name: 'goal_calculators', sql: goalCalculatorTables },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

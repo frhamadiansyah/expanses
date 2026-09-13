@@ -124,3 +124,49 @@ test('a template button opens that template, not the first one', async ({ page }
   await expect(page.getByLabel('What kind of goal')).toHaveValue('hajj');
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Hajj or umrah');
 });
+
+test('works out a retirement target from your own figures', async ({ page }) => {
+  await page.goto('/net-worth/goals');
+  await page.getByRole('button', { name: 'Add goal' }).first().click();
+  await page.getByLabel('What kind of goal').selectOption('retirement');
+  await page.getByLabel('Name', { exact: true }).fill('Retirement');
+  await page.getByLabel(/Cost in today's money/).first().fill('1000000000');
+  await page.getByLabel('Needed by').first().fill('2046-09-13');
+  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await expect(page.getByRole('heading', { name: 'Retirement' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await page.getByLabel('Yearly spending in retirement (IDR)').fill('120000000');
+  await page.getByLabel('Years until retirement').fill('20');
+  await page.getByLabel('Years in retirement').fill('20');
+  await page.getByLabel('Inflation a year (%)').fill('5');
+  await page.getByLabel('Return while retired (%)').fill('8');
+  await page.getByRole('button', { name: 'Use this amount' }).click();
+
+  await expect(page.getByText('Worked out from your figures')).toBeVisible();
+});
+
+test('typing an amount by hand stops the goal being worked out', async ({ page }) => {
+  await page.goto('/net-worth/goals');
+  await page.getByRole('button', { name: 'Add goal' }).first().click();
+  await page.getByLabel('What kind of goal').selectOption('retirement');
+  await page.getByLabel('Name', { exact: true }).fill('Retirement');
+  await page.getByLabel(/Cost in today's money/).first().fill('1000000000');
+  await page.getByLabel('Needed by').first().fill('2046-09-13');
+  await page.getByRole('button', { name: 'Add goal' }).last().click();
+
+  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await page.getByLabel('Yearly spending in retirement (IDR)').fill('120000000');
+  await page.getByLabel('Years until retirement').fill('20');
+  await page.getByLabel('Years in retirement').fill('20');
+  await page.getByLabel('Inflation a year (%)').fill('5');
+  await page.getByLabel('Return while retired (%)').fill('8');
+  await page.getByRole('button', { name: 'Use this amount' }).click();
+  await expect(page.getByText('Worked out from your figures')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await page.getByLabel(/Cost in today's money/).first().fill('3000000000');
+  await page.getByRole('button', { name: 'Save goal' }).click();
+
+  await expect(page.getByText('Worked out from your figures')).toHaveCount(0);
+});

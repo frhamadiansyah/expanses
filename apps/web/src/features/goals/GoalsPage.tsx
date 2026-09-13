@@ -5,9 +5,10 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { NetWorthTabs } from '../networth/NetWorthTabs';
+import { Calculator, calculatorKindOf } from './Calculator';
 import { GoalForm } from './GoalForm';
 import { type GoalCard, goalCard, GOAL_TEMPLATES } from './goal-cards';
-import { useEarmarks, useGoalPlans, useGoals } from './queries';
+import { useEarmarks, useGoalCalculators, useGoalPlans, useGoals } from './queries';
 
 function StatusPill({ card }: { card: GoalCard }) {
   const tone = card.statusTone === 'good' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800';
@@ -22,9 +23,12 @@ export function GoalsPage() {
   const goals = useGoals();
   const earmarks = useEarmarks();
   const [editing, setEditing] = useState<GoalRow | null>(null);
+  const [calculating, setCalculating] = useState<GoalRow | null>(null);
   const [adding, setAdding] = useState<GoalKind | null>(null);
   const [error, setError] = useState<unknown>(null);
 
+  const calculators = useGoalCalculators();
+  const derived = new Set((calculators.data ?? []).map((row) => row.goalId));
   const plans = summary.data?.plans ?? [];
   const cards = plans.map(goalCard);
   const shortfall = (summary.data?.neededMonthlyMinor ?? 0) - (summary.data?.capacityMonthlyMinor ?? 0);
@@ -63,6 +67,8 @@ export function GoalsPage() {
       />
       <NetWorthTabs />
       <ErrorBox error={summary.error ?? error} />
+
+      {calculating && <Calculator goal={calculating} onDone={() => setCalculating(null)} />}
 
       {(adding || editing) && (
         <GoalForm
@@ -145,6 +151,7 @@ export function GoalsPage() {
                   </span>
                   <span className="text-xs text-slate-500">
                     of <Money minor={card.targetMinor} currency={ws.baseCurrency} />
+                    {derived.has(card.goalId) && <span className="block text-emerald-700">Worked out from your figures</span>}
                   </span>
                 </div>
                 <div className="mt-1 h-1.5 rounded-full bg-slate-100">
@@ -208,6 +215,11 @@ export function GoalsPage() {
                 <Button variant="secondary" onClick={() => setEditing(plan.goal)}>
                   Edit
                 </Button>
+                {calculatorKindOf(plan.goal.kind) && (
+                  <Button variant="secondary" onClick={() => setCalculating(plan.goal)}>
+                    Work out the amount
+                  </Button>
+                )}
                 <Button variant="ghost" onClick={() => move(card.goalId, -1)} aria-label={`Move ${card.name} up`}>
                   Move up
                 </Button>
