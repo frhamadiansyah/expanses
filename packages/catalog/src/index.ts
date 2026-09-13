@@ -1,4 +1,5 @@
 import infinite from '../entries/bca-sq-krisflyer-visa-infinite.json';
+import jenius from '../entries/jenius-kartu-kredit.json';
 import signature from '../entries/bca-sq-krisflyer-visa-signature.json';
 import unionpay from '../entries/bca-unionpay.json';
 import cimbAccor from '../entries/cimb-niaga-world-all-accor.json';
@@ -32,6 +33,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   maybankBmw,
   maybankMini,
   maybankManchesterUnited,
+  jenius,
 ] as unknown as CatalogEntry[];
 
 export function findEntry(id: string): CatalogEntry | undefined {

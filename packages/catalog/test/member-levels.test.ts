@@ -1,6 +1,8 @@
 import { DEFAULT_CATEGORY_KEYS } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { describeEntry } from '../src/describe';
+import { findEntry } from '../src/index';
+import { termsOn } from '../src/lookup';
 import { planCatalogApply } from '../src/plan';
 import type { CatalogEntry } from '../src/types';
 import { validateEntry } from '../src/validate';
@@ -199,5 +201,48 @@ describe('member levels: the preview', () => {
     for (const rule of flat.terms[0]!.rules) delete rule.memberLevels;
     for (const partner of flat.transferPartners) delete partner.memberLevels;
     expect(describeEntry(flat, '2026-09-13').lines.some((line) => line.includes(' level.'))).toBe(false);
+  });
+});
+
+describe('Kartu Kredit Jenius', () => {
+  const jenius = () => findEntry('jenius-kartu-kredit')!;
+  const OLD = '2026-07-31';
+  const NEW = '2026-08-01';
+
+  it('earned the same for everyone until the devaluation', () => {
+    const before = termsOn(jenius(), OLD)!;
+    expect(before.rules.every((rule) => rule.memberLevels === undefined)).toBe(true);
+    expect(before.rules.find((rule) => rule.key === 'base')!.rateDen).toBe(10_000);
+  });
+
+  it('splits the base rate by Club status from 1 August 2026', () => {
+    const after = termsOn(jenius(), NEW)!;
+    expect(after.rules.find((rule) => rule.key === 'base-grow')!.rateDen).toBe(10_000);
+    expect(after.rules.find((rule) => rule.key === 'base-seed-plant')!.rateDen).toBe(12_000);
+  });
+
+  it('Grow keeps 40.000 Yay for 30.000 KrisFlyer; Seed and Plant need 50.000', () => {
+    const at = (level: string) => planCatalogApply(jenius(), {}, NEW, level).transferPartners.filter((partner) => partner.program === 'KrisFlyer' && partner.validFrom === NEW);
+    expect(at('grow-plus').map((partner) => partner.points)).toEqual([40_000]);
+    expect(at('seed-plant').map((partner) => partner.points)).toEqual([50_000]);
+  });
+
+  it('Double Yay abroad stacks on the base rule, so a foreign purchase earns at half the spend', () => {
+    const rules = planCatalogApply(jenius(), {}, NEW, 'seed-plant').rules.filter((rule) => rule.validFrom === NEW);
+    const double = rules.find((rule) => rule.name === 'Double Yay abroad')!;
+    expect(double.stackable).toBe(true);
+    expect(double.match.origin).toBe('foreign');
+    expect(double.rateDen).toBe(12_000);
+  });
+
+  it('GarudaMiles was not devalued, so one ratio covers both levels and both periods', () => {
+    const gm = jenius().transferPartners.filter((partner) => partner.program === 'GarudaMiles');
+    expect(gm).toHaveLength(1);
+    expect(gm[0]!.memberLevels).toBeUndefined();
+    expect(planCatalogApply(jenius(), {}, NEW, 'seed-plant').transferPartners.some((partner) => partner.program === 'GarudaMiles')).toBe(true);
+  });
+
+  it('publishes no annual fee, because the sources do not give one', () => {
+    expect(jenius().fees).toEqual([]);
   });
 });
