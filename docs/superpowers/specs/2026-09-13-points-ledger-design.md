@@ -119,3 +119,49 @@ from estimated to posted; a redemption reduces the balance oldest-first; a card-
 - A cycle-total card cannot attribute points to a purchase; the cycle's entry carries no `transaction_id`.
 - Fee ROI values points at the best redemption rate, which is a ceiling: it assumes the best use.
 - Expiry runs when the app opens, not on a schedule; a balance is correct as at the last time it was read.
+
+
+---
+
+## Execution notes
+
+All three slices are done on `feat/points-ledger`. Gate on the finished tree: `npm test` green (catalog
+52, core 497, db 441, web 182), `npm run typecheck` clean, `npm run e2e` 70 passed. Migrations 0018,
+0019 and 0020.
+
+**Most of Stage 3 turned out to be built already.** Cap splits and projected-versus-actual
+reconciliation were done, and `redemption_options` and transfer partners existed as data. The single
+thing missing was a stored balance, and expiry, redemptions and fee ROI all hung off that absence.
+
+**No per-card source setting was needed.** `reward_programs.crediting` already recorded whether an
+issuer credits per purchase or per statement, so the ledger takes the best evidence a cycle has —
+per-purchase figures, else the statement total, else its own working — and a card moves up on its own
+as figures are typed in. Jenius and Mandiri show points per purchase in their apps, which is the best
+case, not the awkward one.
+
+**Four defects the tests found in my own work:**
+
+1. `expiry_policy` declared `.notNull()` in drizzle without `.default()`, so drizzle named the column in
+   every insert and sent null, the SQL default never applied, and `createProgram` failed outright.
+2. Two places build a full program row by hand — `createProgram` and the catalogue — so adding columns
+   broke both. The catalogue's four "possibly undefined" errors were cascades of that one assignment.
+3. `EntrySource` was not widened for `'system'` after the SQL CHECK and the drizzle enum were.
+4. **The ROI panel read an empty ledger.** Asked for in its own query, it raced the derivation and
+   reported a year worth nothing until the card was opened again. Folding it into the query that fills
+   the ledger removed the whole class of bug rather than that one instance.
+
+**Two test-side findings worth keeping:** the per-purchase input renders only for a card that credits
+per purchase, so a hand-made program has to be switched over first — which is also how a real owner
+would set up a Jenius card. And asserting on a card's name alone matches its account link as well as
+the warning, which strict mode rightly rejects.
+
+**Known limits:**
+
+- **Cycles nobody opened contribute nothing.** Derivation is lazy: a card page fills the two cycles it
+  shows. Points earned before the app was used are not in the ledger, so expiry cannot see them. The
+  fix is a "catch up this card" backfill, deliberately not built here.
+- **A policy change restamps on the next derivation**, so a dashboard visited in the same instant can
+  lag by one view. It self-heals, and the ledger is right.
+- **Fee ROI values points at the best redemption rate**, which is a ceiling: it assumes the best use.
+  What a redemption actually fetched is recorded beside it, for when that comparison is worth drawing.
+- **A statement-total card cannot attribute points to a purchase**, so its cycle entry names none.
