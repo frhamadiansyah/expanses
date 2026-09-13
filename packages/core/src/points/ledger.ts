@@ -10,6 +10,8 @@
  * the app believes in are different claims.
  */
 
+import { roundHalfAwayFromZero } from '../money/money';
+
 export type EntryKind = 'earn' | 'redeem' | 'expire' | 'adjust' | 'transfer';
 
 /** Where an entry's figure came from, best evidence first. 'system' is the app's own act, such as
@@ -140,4 +142,42 @@ export function dueToExpire(entries: PointEntry[], today: string): { batchId: st
     due.push({ batchId, quantity: batch.remaining, expiresOn: batch.expiresOn });
   }
   return due.sort((a, b) => a.expiresOn.localeCompare(b.expiresOn));
+}
+
+export interface FeeRoiInput {
+  entries: PointEntry[];
+  from: string;
+  to: string;
+  /** Micro-rupiah a point is worth, so a point worth Rp 25 is 25_000_000. */
+  valuePerPointMicro: number;
+  annualFeeMinor: number;
+}
+
+export interface FeeRoi {
+  pointsEarned: number;
+  valueMinor: number;
+  annualFeeMinor: number;
+  netMinor: number;
+  /** True when any of the points counted were worked out rather than confirmed by the issuer. */
+  estimated: boolean;
+}
+
+/**
+ * What a card year was worth: the points it earned, valued at a rate, less the annual fee.
+ *
+ * Only earning counts. Spending, expiring and corrections are left out because the fee bought the
+ * earning — what was later done with the points is a separate question, and netting them here would
+ * make a year look worse for having used its points.
+ */
+export function feeRoi(input: FeeRoiInput): FeeRoi {
+  const earned = input.entries.filter((entry) => entry.kind === 'earn' && entry.occurredOn >= input.from && entry.occurredOn <= input.to);
+  const pointsEarned = earned.reduce((total, entry) => total + entry.quantity, 0);
+  const valueMinor = roundHalfAwayFromZero((pointsEarned * input.valuePerPointMicro) / 1_000_000);
+  return {
+    pointsEarned,
+    valueMinor,
+    annualFeeMinor: input.annualFeeMinor,
+    netMinor: valueMinor - input.annualFeeMinor,
+    estimated: earned.some((entry) => entry.status === 'projected'),
+  };
 }

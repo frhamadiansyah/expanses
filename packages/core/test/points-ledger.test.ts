@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { balanceOf, consumeFifo, dueToExpire, expiresOn, LedgerError, type PointEntry } from '../src/index';
+import { balanceOf, consumeFifo, dueToExpire, expiresOn, feeRoi, LedgerError, type PointEntry } from '../src/index';
 
 const TODAY = '2026-09-13';
 
@@ -163,5 +163,52 @@ describe('what has to be written off', () => {
 
   it('says nothing at all when no batch has a date', () => {
     expect(dueToExpire([earn('a', 1_000, '2020-01-01')], TODAY)).toEqual([]);
+  });
+});
+
+describe('what a card year was worth', () => {
+  const year = { from: '2026-01-01', to: '2026-12-31' };
+  // Rp 25 a point, in micro-rupiah.
+  const RATE = 25_000_000;
+
+  it('values the points earned and takes the fee off', () => {
+    const entries = [earn('a', 6_000, '2026-03-01'), earn('b', 4_000, '2026-07-01')];
+
+    expect(feeRoi({ entries, ...year, valuePerPointMicro: RATE, annualFeeMinor: 750_000 })).toMatchObject({
+      pointsEarned: 10_000,
+      valueMinor: 250_000,
+      annualFeeMinor: 750_000,
+      netMinor: -500_000,
+    });
+  });
+
+  it('counts only what was earned inside the year', () => {
+    const entries = [earn('old', 8_000, '2025-12-31'), earn('in', 2_000, '2026-06-01'), earn('next', 5_000, '2027-01-01')];
+
+    expect(feeRoi({ entries, ...year, valuePerPointMicro: RATE, annualFeeMinor: 0 }).pointsEarned).toBe(2_000);
+  });
+
+  it('leaves out what was spent, expired or corrected: the fee bought the earning', () => {
+    const entries = [earn('a', 10_000, '2026-03-01'), spend('r1', 4_000, 'a', '2026-04-01')];
+
+    expect(feeRoi({ entries, ...year, valuePerPointMicro: RATE, annualFeeMinor: 0 }).pointsEarned).toBe(10_000);
+  });
+
+  it('says so when any of it was only worked out', () => {
+    const entries = [earn('a', 6_000, '2026-03-01'), earn('b', 4_000, '2026-07-01', { status: 'projected' })];
+
+    expect(feeRoi({ entries, ...year, valuePerPointMicro: RATE, annualFeeMinor: 0 }).estimated).toBe(true);
+  });
+
+  it('stands behind the figure when every point was confirmed', () => {
+    const entries = [earn('a', 6_000, '2026-03-01')];
+
+    expect(feeRoi({ entries, ...year, valuePerPointMicro: RATE, annualFeeMinor: 0 }).estimated).toBe(false);
+  });
+
+  it('is the plain value of the points when the card is free', () => {
+    const entries = [earn('a', 10_000, '2026-03-01')];
+
+    expect(feeRoi({ entries, ...year, valuePerPointMicro: RATE, annualFeeMinor: 0 }).netMinor).toBe(250_000);
   });
 });

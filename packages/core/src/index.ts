@@ -266,6 +266,9 @@ export {
   type EntrySource,
   type ExpiryPolicy,
   expiresOn,
+  feeRoi,
+  type FeeRoi,
+  type FeeRoiInput,
   LedgerError,
   type PointEntry,
 } from './points/ledger';
