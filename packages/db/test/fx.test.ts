@@ -13,6 +13,23 @@ describe('fx rates', () => {
     expect(await findRate(database, 'THB', 'IDR', '2026-09-01')).toBeUndefined();
   });
 
+  it('lets a corrected KMK rate replace the one already stored', async () => {
+    const { database } = await setupDb();
+    // A rate typed from the wrong week, then corrected. A tax figure must not be stuck at the mistake.
+    await upsertRate(database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: '2026-12-31', rate: 16_000, source: 'kmk', sourceDate: '2026-12-30', note: 'KMK 40/MK/EF.2/2026' });
+    await upsertRate(database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: '2026-12-31', rate: 17_714, source: 'kmk', sourceDate: '2026-12-30', note: 'KMK 42/MK/EF.2/2026' });
+
+    expect((await findRate(database, 'USD', 'IDR', '2026-12-31'))?.rate).toBe(17_714);
+  });
+
+  it('still keeps a hand-entered rate safe from a fetched one', async () => {
+    const { database } = await setupDb();
+    await upsertRate(database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: '2026-12-31', rate: 17_714, source: 'kmk', sourceDate: '2026-12-30' });
+    await upsertRate(database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: '2026-12-31', rate: 16_100, source: 'frankfurter', sourceDate: '2026-12-31' });
+
+    expect((await findRate(database, 'USD', 'IDR', '2026-12-31'))?.rate).toBe(17_714);
+  });
+
   it('resolves cached, fetched, stale, and missing rates', async () => {
     const { database } = await setupDb();
     await upsertRate(database, { fromCurrency: 'THB', toCurrency: 'IDR', onDate: '2026-09-05', rate: 536.49, source: 'frankfurter', sourceDate: '2026-09-05' });

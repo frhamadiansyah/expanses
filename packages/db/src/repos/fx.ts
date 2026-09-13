@@ -13,18 +13,22 @@ export interface FoundRate {
   stale: boolean;
 }
 
-/** Stores a rate for a date. A manual rate is never overwritten by a fetched one. */
+/**
+ * Stores a rate for a date. A rate entered by hand is never overwritten by a fetched one, and a
+ * hand-entered rate can always be corrected: a mistyped KMK figure would otherwise be stuck on a
+ * return forever.
+ */
 export async function upsertRate(
   database: Database,
-  row: { fromCurrency: string; toCurrency: string; onDate: string; rate: number; source: FxSource; sourceDate: string },
+  row: { fromCurrency: string; toCurrency: string; onDate: string; rate: number; source: FxSource; sourceDate: string; note?: string | null },
 ): Promise<void> {
   if (!(row.rate > 0) || !Number.isFinite(row.rate)) throw new Error(`Invalid rate ${row.rate}`);
   await database.db.run(sql`
-    INSERT INTO fx_rates (from_currency, to_currency, on_date, rate, source, source_date, fetched_at)
-    VALUES (${row.fromCurrency}, ${row.toCurrency}, ${row.onDate}, ${row.rate}, ${row.source}, ${row.sourceDate}, ${new Date().toISOString()})
+    INSERT INTO fx_rates (from_currency, to_currency, on_date, rate, source, source_date, fetched_at, note)
+    VALUES (${row.fromCurrency}, ${row.toCurrency}, ${row.onDate}, ${row.rate}, ${row.source}, ${row.sourceDate}, ${new Date().toISOString()}, ${row.note ?? null})
     ON CONFLICT (from_currency, to_currency, on_date) DO UPDATE SET
-      rate = excluded.rate, source = excluded.source, source_date = excluded.source_date, fetched_at = excluded.fetched_at
-    WHERE excluded.source = 'manual' OR fx_rates.source = 'frankfurter'
+      rate = excluded.rate, source = excluded.source, source_date = excluded.source_date, fetched_at = excluded.fetched_at, note = excluded.note
+    WHERE excluded.source IN ('manual', 'kmk') OR fx_rates.source = 'frankfurter'
   `);
 }
 

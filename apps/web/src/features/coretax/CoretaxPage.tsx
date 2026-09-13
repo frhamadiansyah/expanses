@@ -9,6 +9,7 @@ import { useSheet } from '../networth/queries';
 import { FreezePanel } from './FreezePanel';
 import { BusinessSection } from './BusinessSection';
 import { IncomeSection } from './IncomeSection';
+import { KmkRates } from './KmkRates';
 import { readinessLinks, screenSections } from './report-rows';
 import { SectionTable } from './SectionTable';
 import { useReport, usePreviousRows, useReportRows, useReportYears } from './queries';
@@ -198,6 +199,7 @@ export function CoretaxPage() {
             ))}
           </Card>
 
+          <KmkRates taxYear={taxYear} />
           <IncomeSection taxYear={taxYear} />
           <BusinessSection taxYear={taxYear} />
 

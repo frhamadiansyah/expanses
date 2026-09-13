@@ -50,15 +50,12 @@ describe('migration 0012', () => {
 
   it('keeps the rates already stored when it rebuilds the table', async () => {
     const { older, olderWs } = await atVersion11();
-    await older.db.insert(schema.fxRates).values({
-      fromCurrency: 'USD',
-      toCurrency: 'IDR',
-      onDate: '2026-12-31',
-      rate: 16_000,
-      source: 'manual',
-      sourceDate: '2026-12-31',
-      fetchedAt: new Date().toISOString(),
-    });
+    // A row as version 11 stored it, written in raw SQL: the current drizzle table names columns
+    // that did not exist yet, so inserting through it would fail on the very database being tested.
+    await older.db.run(sql`
+      INSERT INTO fx_rates (from_currency, to_currency, on_date, rate, source, source_date, fetched_at)
+      VALUES ('USD', 'IDR', '2026-12-31', 16000, 'manual', '2026-12-31', ${new Date().toISOString()})
+    `);
 
     await migrate(older);
 

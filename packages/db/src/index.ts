@@ -48,3 +48,4 @@ export * from './repos/goal-calculators';
 export * from './repos/point-ledger';
 export * from './repos/coretax-income';
 export * from './repos/business-income';
+export * from './repos/kmk-rates';

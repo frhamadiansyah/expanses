@@ -88,6 +88,8 @@ export const fxRates = sqliteTable('fx_rates', {
   onDate: text('on_date').notNull(),
   rate: real('rate').notNull(),
   source: text('source', { enum: ['frankfurter', 'manual', 'kmk'] }).notNull(),
+  /** Where a hand-entered rate came from, such as the KMK decree number. */
+  note: text('note'),
   sourceDate: text('source_date').notNull(),
   fetchedAt: text('fetched_at').notNull(),
 });
