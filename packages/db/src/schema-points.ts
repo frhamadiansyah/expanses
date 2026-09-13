@@ -135,7 +135,7 @@ export const pointEntries = sqliteTable('point_entries', {
   quantity: real('quantity').notNull(),
   occurredOn: text('occurred_on').notNull(),
   status: text('status', { enum: ['posted', 'projected'] }).notNull(),
-  source: text('source', { enum: ['transaction', 'statement', 'snapshot', 'projected', 'manual'] }).notNull(),
+  source: text('source', { enum: ['transaction', 'statement', 'snapshot', 'projected', 'manual', 'system'] }).notNull(),
   batchId: text('batch_id'),
   expiresOn: text('expires_on'),
   note: text('note'),

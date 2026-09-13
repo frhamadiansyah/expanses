@@ -1,4 +1,15 @@
-import { type Balance, balanceOf, categoryAncestors, computeCycleEarn, type Cycle, type PointEntry, uuidv7 } from '@expanses/core';
+import {
+  type Balance,
+  balanceOf,
+  categoryAncestors,
+  computeCycleEarn,
+  type Cycle,
+  dueToExpire,
+  type ExpiryPolicy,
+  expiresOn as expiryDateFor,
+  type PointEntry,
+  uuidv7,
+} from '@expanses/core';
 import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -96,8 +107,8 @@ export async function deriveCycleEntries(database: Database, ws: WorkspaceContex
     status: input.status,
     source: input.source,
     batchId: null,
-    // Expiry arrives with the policy; nothing dies while a program has none.
-    expiresOn: null,
+    // Stamped from the program's policy, so changing the policy restamps on the next derivation.
+    expiresOn: expiryDateFor(input.occurredOn, program.expiryPolicy, program.expiryMonths),
     note: null,
     createdAt: now,
   });
@@ -186,4 +197,55 @@ export async function recordPointSnapshot(database: Database, ws: WorkspaceConte
   });
 
   return difference;
+}
+
+/** How this program's points die. Setting a policy restamps the batches next time they are derived. */
+export async function setProgramExpiry(
+  database: Database,
+  ws: WorkspaceContext,
+  programId: string,
+  policy: ExpiryPolicy,
+  months: number | null,
+): Promise<void> {
+  if (policy !== 'none' && policy !== 'months_from_earn' && policy !== 'fixed_annual') throw new PointsError('Unknown expiry policy');
+  if (policy === 'months_from_earn' && (months === null || !Number.isInteger(months) || months <= 0)) {
+    throw new PointsError('Say how many months the points last');
+  }
+  await database.db
+    .update(rewardPrograms)
+    // A month count left behind by an earlier policy would be read again if that policy came back.
+    .set({ expiryPolicy: policy, expiryMonths: policy === 'months_from_earn' ? months : null })
+    .where(and(eq(rewardPrograms.id, programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
+}
+
+/**
+ * Writes off every batch that has died, one entry each, and returns how many were written.
+ *
+ * The issuer took these points back whether or not the app noticed, so recording it is not a choice —
+ * refusing to would leave the balance claiming points that no longer exist. A written-off batch holds
+ * nothing, so running this again writes nothing.
+ */
+export async function expireDueEntries(database: Database, ws: WorkspaceContext, programId: string, today: string): Promise<number> {
+  const due = dueToExpire(await listPointEntries(database, ws, programId), today);
+  if (due.length === 0) return 0;
+
+  const now = new Date().toISOString();
+  await database.db.insert(pointEntries).values(
+    due.map((batch) => ({
+      id: uuidv7(),
+      workspaceId: ws.workspaceId,
+      programId,
+      transactionId: null,
+      kind: 'expire' as const,
+      quantity: -batch.quantity,
+      occurredOn: batch.expiresOn,
+      status: 'posted' as const,
+      source: 'system' as const,
+      batchId: batch.batchId,
+      expiresOn: null,
+      note: `Expired on ${batch.expiresOn}`,
+      createdAt: now,
+    })),
+  );
+  return due.length;
 }
