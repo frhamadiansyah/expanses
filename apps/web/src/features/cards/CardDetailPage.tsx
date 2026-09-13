@@ -7,6 +7,7 @@ import {
   deleteRedemptionOption,
   type RewardProgramRow,
   recordCycleActual,
+  recordPointSnapshot,
   saveCardTerms,
   saveRedemptionOption,
 } from '@expanses/db';
@@ -25,6 +26,7 @@ import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { activeDuring } from './catalog-panel';
 import { RuleForm } from './RuleForm';
 import { TransferEstimates } from './TransferEstimates';
+import { useCardLedger } from './useCardLedger';
 import { type CycleResult, formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
 
 const route = getRouteApi('/cards/$cardId');
@@ -208,7 +210,10 @@ export function CardDetailPage() {
     enabled: !!card,
     queryFn: () => loadCardPoints(database, ws, card!, all, today),
   });
+  // Before the early returns: the ledger fills the cycles this page shows, then reports the balance.
+  const ledger = useCardLedger(data.data?.program?.id, [data.data?.current?.cycle ?? null, data.data?.previous?.cycle ?? null], today);
   const { error, run } = useAction();
+  const [observedBalance, setObservedBalance] = useState('');
   const [editingRule, setEditingRule] = useState<EarnRule | 'new' | null>(null);
   const [catalogId, setCatalogId] = useState<string | null>(null);
   const [browsingCatalog, setBrowsingCatalog] = useState(false);
@@ -347,6 +352,43 @@ export function CardDetailPage() {
 
       {hasTerms && cp.program && (
         <>
+          {ledger.data && (
+            <Section title="Points balance">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div className="text-2xl font-semibold" data-testid="points-balance">
+                  {formatPoints(ledger.data.total)} {cp.program.unit}
+                </div>
+                <div className="text-xs text-slate-500" data-testid="points-provenance">
+                  {formatPoints(ledger.data.postedTotal)} posted · {formatPoints(ledger.data.projectedTotal)} estimated
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Posted points come from figures you typed in. Estimated points are worked out from your rules, and become posted as you
+                record what the bank actually gave.
+              </p>
+              <form
+                className="mt-3 flex flex-wrap items-end gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void run(async () => {
+                    await recordPointSnapshot(database, ws, {
+                      programId: cp.program!.id,
+                      balance: Number(observedBalance.trim().replace(',', '.')),
+                      observedOn: today,
+                    });
+                    setObservedBalance('');
+                  });
+                }}
+              >
+                <Field label="Balance in the app">
+                  <Input value={observedBalance} onChange={(event) => setObservedBalance(event.target.value)} inputMode="decimal" required />
+                </Field>
+                <Button type="submit" variant="secondary">
+                  Anchor balance
+                </Button>
+              </form>
+            </Section>
+          )}
           {cp.current && cp.rules.length > 0 && (
             <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} bonuses={cp.bonuses} partners={cp.transferPartners} unit={cp.program.unit} currency={currency} best={cp.best} today={today} />
           )}

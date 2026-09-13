@@ -1,0 +1,73 @@
+import { expect, type Page, test } from '@playwright/test';
+
+test.beforeEach(({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept());
+});
+
+/** A card earning 1 point per Rp 2.500, with one purchase on it. */
+async function cardWithAPurchase(page: Page) {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('CIMB Octo');
+  await page.getByLabel('Type').selectOption('credit_card');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'CIMB Octo' })).toBeVisible();
+
+  await page.goto('/cards');
+  await page.getByRole('link', { name: 'CIMB Octo' }).click();
+  await page.getByLabel('Statement day').fill('25');
+  await page.getByLabel('Payment due day').fill('12');
+  await page.getByRole('button', { name: 'Save terms' }).click();
+  await page.getByRole('button', { name: 'Set up rewards' }).click();
+
+  await page.getByRole('button', { name: 'Add rule' }).click();
+  await page.getByLabel('Rule name').fill('Base');
+  await page.getByLabel('Points', { exact: true }).fill('1');
+  await page.getByLabel('Per spend (IDR)').fill('2500');
+  await page.getByRole('button', { name: 'Save rule' }).click();
+  await expect(page.getByText('1 per Rp')).toBeVisible();
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await page.getByLabel('Description').fill('Superindo');
+  await page.getByLabel('Paid with').selectOption({ label: 'CIMB Octo (IDR)' });
+  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
+  await page.getByLabel('Amount', { exact: true }).fill('250000');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Superindo')).toBeVisible();
+
+  await page.goto('/cards');
+  await page.getByRole('link', { name: 'CIMB Octo' }).click();
+}
+
+test('a balance says how much of it the app only worked out', async ({ page }) => {
+  await cardWithAPurchase(page);
+
+  // 250.000 at 1 per 2.500 is 100 points, and nobody has confirmed them.
+  await expect(page.getByTestId('points-balance')).toContainText('100');
+  await expect(page.getByTestId('points-provenance')).toContainText('0 posted');
+  await expect(page.getByTestId('points-provenance')).toContainText('100 estimated');
+});
+
+test('typing what the bank gave moves points from estimated to posted', async ({ page }) => {
+  await cardWithAPurchase(page);
+
+  // Per-purchase figures only exist for a card that credits that way — Jenius and Mandiri do.
+  await expect(page.getByTestId('points-balance')).toBeVisible();
+  await page.getByLabel('Bank credits points').selectOption('per_transaction');
+  const row = page.locator('li', { hasText: 'Superindo' });
+  await row.getByLabel('Actual points for Superindo').fill('120');
+  await row.getByRole('button', { name: 'Save actual for Superindo' }).click();
+
+  await expect(page.getByTestId('points-provenance')).toContainText('120 posted');
+  await expect(page.getByTestId('points-provenance')).toContainText('0 estimated');
+  await expect(page.getByTestId('points-balance')).toContainText('120');
+});
+
+test('a balance read in the app anchors the ledger', async ({ page }) => {
+  await cardWithAPurchase(page);
+
+  await page.getByLabel('Balance in the app').fill('500');
+  await page.getByRole('button', { name: 'Anchor balance' }).click();
+
+  await expect(page.getByTestId('points-balance')).toContainText('500');
+});
