@@ -1,16 +1,24 @@
 import { displayAmount } from '@expanses/core';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 
-/** Per-category totals in base currency for posted transactions in [from, to], sign-normalized so spending and income are positive. */
+/**
+ * Per-category totals in base currency for posted transactions in [from, to], sign-normalized so
+ * spending and income are positive.
+ *
+ * `excludeEvents` leaves out anything tagged to an occasion. Only the monthly budget asks for that:
+ * a wedding would otherwise read as every category blown at once, when the money was always meant to
+ * go. Everywhere else the spending is real and is shown.
+ */
 export async function categoryTotalsBetween(
   database: Database,
   ws: WorkspaceContext,
   kind: 'expense' | 'income',
   from: string,
   to: string,
+  opts: { excludeEvents?: boolean } = {},
 ): Promise<{ accountId: string; amountBaseMinor: number }[]> {
   const rows = await database.db
     .select({ accountId: entries.accountId, total: sql<number>`sum(${entries.amountBaseMinor})` })
@@ -24,10 +32,36 @@ export async function categoryTotalsBetween(
         eq(accounts.kind, kind),
         gte(transactions.occurredOn, from),
         lte(transactions.occurredOn, to),
+        ...(opts.excludeEvents ? [isNull(transactions.eventId)] : []),
       ),
     )
     .groupBy(entries.accountId);
   return rows
     .map((r) => ({ accountId: r.accountId, amountBaseMinor: displayAmount(kind, Number(r.total)) }))
     .filter((r) => r.amountBaseMinor !== 0);
+}
+
+/**
+ * What the month's occasions cost in total.
+ *
+ * The budget leaves this out of its caps, so it has to be shown and subtracted somewhere: money spent
+ * on a wedding is money gone, however deliberately it went.
+ */
+export async function eventSpendingBetween(database: Database, ws: WorkspaceContext, from: string, to: string): Promise<number> {
+  const [row] = await database.db
+    .select({ total: sql<number>`sum(${entries.amountBaseMinor})` })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .innerJoin(accounts, eq(entries.accountId, accounts.id))
+    .where(
+      and(
+        eq(entries.workspaceId, ws.workspaceId),
+        eq(transactions.status, 'posted'),
+        eq(accounts.kind, 'expense'),
+        gte(transactions.occurredOn, from),
+        lte(transactions.occurredOn, to),
+        isNotNull(transactions.eventId),
+      ),
+    );
+  return displayAmount('expense', Number(row?.total ?? 0));
 }

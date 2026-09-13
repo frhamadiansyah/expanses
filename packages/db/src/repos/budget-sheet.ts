@@ -8,7 +8,7 @@ import { goalContributionsFor } from './goal-contributions';
 import { listBudgets } from './budgets';
 import { periodFlows } from './flows';
 import { goalPlansFor } from './goal-funding';
-import { categoryTotalsBetween } from './reports';
+import { categoryTotalsBetween, eventSpendingBetween } from './reports';
 
 export interface BudgetSheetResult extends BudgetSheet {
   /** True when this month's income is a bonus-month figure rather than the plan. */
@@ -30,14 +30,16 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense')));
 
-  const [amounts, budgets, income, flows, goals, contributions] = await Promise.all([
-    categoryTotalsBetween(database, ws, 'expense', from, to),
+  const [amounts, budgets, income, flows, goals, contributions, eventSpendingMinor] = await Promise.all([
+    // Occasions are held out of the caps; they get their own line and are still taken off what is left.
+    categoryTotalsBetween(database, ws, 'expense', from, to, { excludeEvents: true }),
     listBudgets(database, ws, month),
     getBudgetIncome(database, ws, month),
     periodFlows(database, ws, { from, to }),
     // As the month ends, so a goal due inside it still says what it asked for.
     goalPlansFor(database, ws, to),
     goalContributionsFor(database, ws, month),
+    eventSpendingBetween(database, ws, from, to),
   ]);
 
   const sheet = budgetSheet({
@@ -55,6 +57,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
       planMinor: plan.requiredMonthlyMinor,
       actualMinor: contributions[plan.goalId] ?? 0,
     })),
+    eventSpendingMinor,
   });
 
   return { ...sheet, incomeOverridden: income.overridden };

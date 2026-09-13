@@ -190,6 +190,15 @@ export function BudgetPage() {
             </div>
             <Money minor={sheet.debtPaymentsActualMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
           </div>
+          {sheet.eventSpendingMinor > 0 && (
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" data-testid="event-line">
+              <div>
+                <div className="text-sm font-medium">Occasions</div>
+                <div className="text-xs text-slate-500">Outside the caps, because you meant to spend it. Still taken off what is left.</div>
+              </div>
+              <Money minor={sheet.eventSpendingMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
+            </div>
+          )}
           {sheet.savings.map((row) => (
             <div key={row.goalId} className="flex items-center justify-between gap-3" data-testid={`savings-${row.name}`}>
               <div>
