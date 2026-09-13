@@ -18,6 +18,7 @@ import goalContributionTables from '../migrations/0016_goal_contributions.sql?ra
 import goalCalculatorTables from '../migrations/0017_goal_calculators.sql?raw';
 import pointEntryTables from '../migrations/0018_point_entries.sql?raw';
 import pointEntrySystemSource from '../migrations/0019_point_entry_system_source.sql?raw';
+import pointEntryValue from '../migrations/0020_point_entry_value.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -46,6 +47,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 17, name: 'goal_calculators', sql: goalCalculatorTables },
   { version: 18, name: 'point_entries', sql: pointEntryTables },
   { version: 19, name: 'point_entry_system_source', sql: pointEntrySystemSource },
+  { version: 20, name: 'point_entry_value', sql: pointEntryValue },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

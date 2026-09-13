@@ -1,23 +1,30 @@
 import {
   type Balance,
   balanceOf,
+  bestRedemption,
   categoryAncestors,
   computeCycleEarn,
+  consumeFifo,
   type Cycle,
   dueToExpire,
   type ExpiryPolicy,
   expiresOn as expiryDateFor,
+  type FeeRoi,
+  feeRoi,
+  LedgerError,
   type PointEntry,
   uuidv7,
 } from '@expanses/core';
-import { and, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { pointEntries, pointSnapshots, rewardPrograms } from '../schema-points';
 import { listAccounts } from './accounts';
 import { listTransactionPointActuals } from './point-actuals';
-import { cardSpendLines, listCycleActuals, listCycleBonuses, listEarnRules, PointsError } from './points';
+import { categoryIdsByKey } from './categories';
+import { cardTerms } from '../schema-points';
+import { cardSpendLines, listCycleActuals, listCycleBonuses, listEarnRules, listRedemptionOptions, PointsError, toRedemption } from './points';
 
 /** Entries the derivation owns and may rewrite. Everything else is the owner's own record. */
 const DERIVED_SOURCES = ['transaction', 'statement', 'projected'] as const;
@@ -26,6 +33,8 @@ export interface PointEntryRow extends PointEntry {
   programId: string;
   transactionId: string | null;
   note: string | null;
+  /** What a redemption fetched, when the owner recorded it. */
+  valueMinor: number | null;
 }
 
 export interface RecordSnapshotInput {
@@ -52,6 +61,7 @@ export async function listPointEntries(database: Database, ws: WorkspaceContext,
     batchId: row.batchId,
     expiresOn: row.expiresOn,
     note: row.note,
+    valueMinor: row.valueMinor,
   }));
 }
 
@@ -291,4 +301,112 @@ export async function expiringSoonAcross(database: Database, ws: WorkspaceContex
     });
   }
   return rows.sort((a, b) => (a.nextExpiryOn ?? '').localeCompare(b.nextExpiryOn ?? ''));
+}
+
+export interface RecordRedemptionInput {
+  programId: string;
+  /** Spending them on something, or moving them to an airline. */
+  kind: 'redeem' | 'transfer';
+  points: number;
+  occurredOn: string;
+  note: string | null;
+  /** What it fetched, when that is known. */
+  valueMinor: number | null;
+}
+
+/**
+ * Spends points, drawing from the batches that die soonest so nothing is lost to expiry that could
+ * have been used. One entry per batch, each naming the batch it came from, so the remaining life of
+ * what is left stays correct.
+ */
+export async function recordRedemption(database: Database, ws: WorkspaceContext, input: RecordRedemptionInput): Promise<void> {
+  const entries = await listPointEntries(database, ws, input.programId);
+  let taken: { batchId: string; quantity: number }[];
+  try {
+    taken = consumeFifo(entries, input.points, input.occurredOn);
+  } catch (error) {
+    // The ledger's refusal is the repo's refusal; callers already handle PointsError.
+    throw error instanceof LedgerError ? new PointsError(error.message) : error;
+  }
+
+  const now = new Date().toISOString();
+  await database.db.insert(pointEntries).values(
+    taken.map((batch, index) => ({
+      id: uuidv7(),
+      workspaceId: ws.workspaceId,
+      programId: input.programId,
+      transactionId: null,
+      kind: input.kind,
+      quantity: -batch.quantity,
+      occurredOn: input.occurredOn,
+      status: 'posted' as const,
+      source: 'manual' as const,
+      batchId: batch.batchId,
+      expiresOn: null,
+      note: input.note,
+      // One act with one value: it sits on the first entry rather than being split into per-batch
+      // precision that was never measured. Summing the column still gives the right total.
+      valueMinor: index === 0 ? input.valueMinor : null,
+      createdAt: now,
+    })),
+  );
+}
+
+export interface CardYearRoi extends FeeRoi {
+  from: string;
+  to: string;
+  /** Whether the year runs from a fee actually charged, or is the trailing twelve months. */
+  anchoredOn: 'fee' | 'assumed';
+}
+
+const shiftDate = (date: string, years: number, days: number): string => {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(Date.UTC(year! + years, month! - 1, day! + days)).toISOString().slice(0, 10);
+};
+
+/**
+ * What this card's year of points was worth against its annual fee.
+ *
+ * The year runs from the day the fee was charged, because that is the money being judged. With no fee
+ * charge in the ledger, the trailing twelve months stand in and the figure says so.
+ */
+export async function cardYearRoi(database: Database, ws: WorkspaceContext, programId: string, today: string): Promise<CardYearRoi> {
+  const [program] = await database.db
+    .select()
+    .from(rewardPrograms)
+    .where(and(eq(rewardPrograms.id, programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
+  if (!program) throw new PointsError('Reward program not found');
+
+  const keys = await categoryIdsByKey(database, ws);
+  const feeCategoryId = keys['fees.card_annual'];
+  const charges = feeCategoryId
+    ? await database.db.values<[string, number]>(sql`
+        SELECT t.occurred_on, e.amount_minor
+        FROM entries e
+        JOIN transactions t ON t.id = e.transaction_id
+        WHERE e.workspace_id = ${ws.workspaceId}
+          AND t.status = 'posted'
+          AND e.account_id = ${feeCategoryId}
+          AND t.occurred_on <= ${today}
+          AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${program.cardAccountId})
+        ORDER BY t.occurred_on DESC
+        LIMIT 1
+      `)
+    : [];
+
+  const [terms] = await database.db
+    .select({ annualFeeMinor: cardTerms.annualFeeMinor })
+    .from(cardTerms)
+    .where(and(eq(cardTerms.accountId, program.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+
+  const charge = charges[0];
+  const from = charge ? String(charge[0]) : shiftDate(today, -1, 1);
+  const to = charge ? shiftDate(String(charge[0]), 1, -1) : today;
+  const annualFeeMinor = charge ? Number(charge[1]) : (terms?.annualFeeMinor ?? 0);
+
+  const best = bestRedemption((await listRedemptionOptions(database, ws, programId)).map(toRedemption));
+  const valuePerPointMicro = best ? Math.round((best.valueMinor * 1_000_000) / best.perPoints) : 0;
+
+  const roi = feeRoi({ entries: await listPointEntries(database, ws, programId), from, to, valuePerPointMicro, annualFeeMinor });
+  return { ...roi, from, to, anchoredOn: charge ? 'fee' : 'assumed' };
 }

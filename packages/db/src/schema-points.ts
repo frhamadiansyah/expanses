@@ -139,6 +139,7 @@ export const pointEntries = sqliteTable('point_entries', {
   batchId: text('batch_id'),
   expiresOn: text('expires_on'),
   note: text('note'),
+  valueMinor: integer('value_minor'),
   createdAt: text('created_at').notNull(),
 });
 
