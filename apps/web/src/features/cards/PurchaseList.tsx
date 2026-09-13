@@ -1,5 +1,5 @@
 import { explainTransaction, formatMinor, monthOf, type Suggestion } from '@expanses/core';
-import { clearTransactionPointActual, recordTransactionPointActual, saveMerchantMcc, setProgramCrediting, setTransactionMcc } from '@expanses/db';
+import { clearTransactionPointActual, recordTransactionPointActual, saveMerchantMcc, setProgramCrediting, setProgramExpiry, setTransactionMcc } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -99,6 +99,35 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
           <Button variant="ghost" onClick={() => setLastCycle(!lastCycle)}>
             {lastCycle ? 'This cycle' : 'Last cycle'}
           </Button>
+          <Field label="Points expire">
+            <Select
+              value={program.expiryPolicy}
+              onChange={(e) => {
+                const policy = e.target.value as 'none' | 'months_from_earn' | 'fixed_annual';
+                void run(() => setProgramExpiry(database, ws, program.id, policy, policy === 'months_from_earn' ? (program.expiryMonths ?? 24) : null));
+              }}
+            >
+              <option value="none">Never</option>
+              <option value="months_from_earn">After a number of months</option>
+              <option value="fixed_annual">At the end of the year earned</option>
+            </Select>
+          </Field>
+          {program.expiryPolicy === 'months_from_earn' && (
+            <Field label="Months they last">
+              <Input
+                aria-label="Months they last"
+                defaultValue={String(program.expiryMonths ?? 24)}
+                inputMode="numeric"
+                className="w-20"
+                onBlur={(e) => {
+                  const months = Number(e.target.value.trim());
+                  if (Number.isInteger(months) && months > 0 && months !== program.expiryMonths) {
+                    void run(() => setProgramExpiry(database, ws, program.id, 'months_from_earn', months));
+                  }
+                }}
+              />
+            </Field>
+          )}
           <Field label="Bank credits points">
             <Select value={cp.crediting} onChange={(e) => void run(() => setProgramCrediting(database, ws, program.id, e.target.value as 'per_transaction' | 'per_statement'))}>
               <option value="per_statement">Per statement</option>

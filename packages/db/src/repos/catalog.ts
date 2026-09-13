@@ -158,6 +158,8 @@ export function applyCatalogEntry(
         catalogDismissedVersion: null,
         catalogSnapshotJson: null,
         crediting: input.entry.program.crediting ?? 'per_statement',
+        expiryPolicy: 'none',
+        expiryMonths: null,
         archivedAt: null,
         createdAt: now(),
       };

@@ -7,6 +7,8 @@ import {
   deleteRedemptionOption,
   type RewardProgramRow,
   recordCycleActual,
+  recordPointSnapshot,
+  recordRedemption,
   saveCardTerms,
   saveRedemptionOption,
 } from '@expanses/db';
@@ -15,7 +17,7 @@ import { getRouteApi, Link } from '@tanstack/react-router';
 import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { InstallmentList } from '../loans/InstallmentList';
 import { BonusProgress } from './BonusProgress';
 import { CatalogPanel } from './CatalogPanel';
@@ -25,6 +27,7 @@ import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { activeDuring } from './catalog-panel';
 import { RuleForm } from './RuleForm';
 import { TransferEstimates } from './TransferEstimates';
+import { useCardLedger } from './useCardLedger';
 import { type CycleResult, formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
 
 const route = getRouteApi('/cards/$cardId');
@@ -208,7 +211,14 @@ export function CardDetailPage() {
     enabled: !!card,
     queryFn: () => loadCardPoints(database, ws, card!, all, today),
   });
+  // Before the early returns: the ledger fills the cycles this page shows, then reports the balance.
+  const ledger = useCardLedger(data.data?.program?.id, [data.data?.current?.cycle ?? null, data.data?.previous?.cycle ?? null], today);
   const { error, run } = useAction();
+  const [observedBalance, setObservedBalance] = useState('');
+  const [spendPoints, setSpendPoints] = useState('');
+  const [spendNote, setSpendNote] = useState('');
+  const [spendValue, setSpendValue] = useState('');
+  const [spendKind, setSpendKind] = useState<'redeem' | 'transfer'>('redeem');
   const [editingRule, setEditingRule] = useState<EarnRule | 'new' | null>(null);
   const [catalogId, setCatalogId] = useState<string | null>(null);
   const [browsingCatalog, setBrowsingCatalog] = useState(false);
@@ -347,6 +357,125 @@ export function CardDetailPage() {
 
       {hasTerms && cp.program && (
         <>
+          {ledger.data && (
+            <Section title="Points balance">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div className="text-2xl font-semibold" data-testid="points-balance">
+                  {formatPoints(ledger.data.balance.total)} {cp.program.unit}
+                </div>
+                <div className="text-xs text-slate-500" data-testid="points-provenance">
+                  {formatPoints(ledger.data.balance.postedTotal)} posted · {formatPoints(ledger.data.balance.projectedTotal)} estimated
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Posted points come from figures you typed in. Estimated points are worked out from your rules, and become posted as you
+                record what the bank actually gave.
+              </p>
+              <form
+                className="mt-3 flex flex-wrap items-end gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void run(async () => {
+                    await recordPointSnapshot(database, ws, {
+                      programId: cp.program!.id,
+                      balance: Number(observedBalance.trim().replace(',', '.')),
+                      observedOn: today,
+                    });
+                    setObservedBalance('');
+                  });
+                }}
+              >
+                <Field label="Balance in the app">
+                  <Input value={observedBalance} onChange={(event) => setObservedBalance(event.target.value)} inputMode="decimal" required />
+                </Field>
+                <Button type="submit" variant="secondary">
+                  Anchor balance
+                </Button>
+              </form>
+            </Section>
+          )}
+          {ledger.data && cp.rules.length > 0 && (
+            <Section title="Spend points">
+              <form
+                className="grid gap-3 md:grid-cols-5 md:items-end"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void run(async () => {
+                    await recordRedemption(database, ws, {
+                      programId: cp.program!.id,
+                      kind: spendKind,
+                      points: Number(spendPoints.trim().replace(',', '.')),
+                      occurredOn: today,
+                      note: spendNote.trim() || null,
+                      valueMinor: spendValue.trim() === '' ? null : parseMajor(spendValue, currency),
+                    });
+                    setSpendPoints('');
+                    setSpendNote('');
+                    setSpendValue('');
+                  });
+                }}
+              >
+                <Field label={`${cp.program.unit === 'miles' ? 'Miles' : 'Points'} spent`}>
+                  <Input value={spendPoints} onChange={(event) => setSpendPoints(event.target.value)} inputMode="decimal" required />
+                </Field>
+                <Field label="What for">
+                  <Input value={spendNote} onChange={(event) => setSpendNote(event.target.value)} placeholder="Statement credit" />
+                </Field>
+                <Field label={`What it fetched (${currency})`} hint="Leave empty if it had no cash value.">
+                  <Input value={spendValue} onChange={(event) => setSpendValue(event.target.value)} inputMode="decimal" />
+                </Field>
+                <Field label="Kind">
+                  <Select value={spendKind} onChange={(event) => setSpendKind(event.target.value as 'redeem' | 'transfer')}>
+                    <option value="redeem">Redeemed</option>
+                    <option value="transfer">Moved to a partner</option>
+                  </Select>
+                </Field>
+                <div className="pb-1">
+                  <Button type="submit" variant="secondary">
+                    Spend points
+                  </Button>
+                </div>
+              </form>
+              <p className="mt-2 text-xs text-slate-500">Taken from the points that expire soonest, so none are lost that could have been used.</p>
+            </Section>
+          )}
+
+          {ledger.data && (
+            <Section title="What the annual fee bought">
+              <div className="grid gap-3 sm:grid-cols-4" data-testid="card-year-roi">
+                <div>
+                  <div className="text-xs text-slate-500">Earned</div>
+                  <div className="text-lg font-semibold">
+                    {formatPoints(ledger.data.roi.pointsEarned)} {cp.program.unit}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Worth</div>
+                  <div className="text-lg font-semibold">
+                    <Money minor={ledger.data.roi.valueMinor} currency={currency} />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Annual fee</div>
+                  <div className="text-lg font-semibold">
+                    <Money minor={ledger.data.roi.annualFeeMinor} currency={currency} />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Net</div>
+                  <div className={cx('text-lg font-semibold', ledger.data.roi.netMinor < 0 ? 'text-rose-600' : 'text-emerald-700')}>
+                    <Money minor={ledger.data.roi.netMinor} currency={currency} />
+                  </div>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                {ledger.data.roi.from} to {ledger.data.roi.to} ·{' '}
+                {ledger.data.roi.anchoredOn === 'fee' ? 'from the day the fee was charged' : 'the last twelve months, since no fee charge is recorded'}
+                {ledger.data.roi.estimated ? ' · estimated, because some points were worked out rather than confirmed' : ''}
+              </p>
+            </Section>
+          )}
+
           {cp.current && cp.rules.length > 0 && (
             <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} bonuses={cp.bonuses} partners={cp.transferPartners} unit={cp.program.unit} currency={currency} best={cp.best} today={today} />
           )}
