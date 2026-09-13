@@ -12,8 +12,9 @@
 
 export type EntryKind = 'earn' | 'redeem' | 'expire' | 'adjust' | 'transfer';
 
-/** Where an entry's figure came from, best evidence first. */
-export type EntrySource = 'transaction' | 'statement' | 'snapshot' | 'projected' | 'manual';
+/** Where an entry's figure came from, best evidence first. 'system' is the app's own act, such as
+ * writing off a batch the issuer has already taken back. */
+export type EntrySource = 'transaction' | 'statement' | 'snapshot' | 'projected' | 'manual' | 'system';
 
 export interface PointEntry {
   id: string;

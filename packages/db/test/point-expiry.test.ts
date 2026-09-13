@@ -5,6 +5,7 @@ import {
   createProgram,
   deriveCycleEntries,
   expireDueEntries,
+  expiringSoonAcross,
   listAccounts,
   listPointEntries,
   PointsError,
@@ -123,5 +124,33 @@ describe('writing off what has died', () => {
     const balance = await programBalance(database, ws, program.id, TODAY);
     expect(balance.expiringSoon).toBe(100);
     expect(balance.nextExpiryOn).toBe('2026-10-01');
+  });
+});
+
+describe('across every card', () => {
+  it('names each program with points about to die, and leaves out the rest', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending('2024-10-01');
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+    await deriveCycleEntries(database, ws, program.id, cycle);
+
+    const rows = await expiringSoonAcross(database, ws, TODAY);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ programId: program.id, cardName: 'CIMB Octo', expiringSoon: 100, nextExpiryOn: '2026-10-01' });
+  });
+
+  it('says nothing for a program whose points are not near dying', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending(TODAY);
+    await setProgramExpiry(database, ws, program.id, 'months_from_earn', 24);
+    await deriveCycleEntries(database, ws, program.id, cycle);
+
+    expect(await expiringSoonAcross(database, ws, TODAY)).toEqual([]);
+  });
+
+  it('says nothing while no program has a policy at all', async () => {
+    const { database, ws, program, cycle } = await cardWithSpending('2024-10-01');
+    await deriveCycleEntries(database, ws, program.id, cycle);
+
+    expect(await expiringSoonAcross(database, ws, TODAY)).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { addMonths, displayAmount, isoDate, lastNMonths, monthOf, monthRange } from '@expanses/core';
-import { categoryTotalsBetween, nativeBalances, netWorthAt } from '@expanses/db';
+import { categoryTotalsBetween, expiringSoonAcross, nativeBalances, netWorthAt } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
@@ -59,6 +59,12 @@ export function DashboardPage() {
     },
   });
 
+  // Reporting only: dead points are written off when a card is opened, never by looking at a summary.
+  const expiring = useQuery({
+    queryKey: ['points-expiring', ws.workspaceId, today],
+    queryFn: () => expiringSoonAcross(database, ws, today),
+  });
+
   if (accounts.isSuccess && money.length === 0) {
     return (
       <div className="space-y-4">
@@ -77,7 +83,11 @@ export function DashboardPage() {
   }
 
   const nw = current.data?.result;
-  const warnings = [...(current.data?.rates.stale ?? []).map((c) => `${c} rate is out of date`), ...(nw?.missingRates ?? []).map((c) => `No ${c} rate — ${c} accounts excluded`)];
+  const warnings = [
+    ...(current.data?.rates.stale ?? []).map((c) => `${c} rate is out of date`),
+    ...(nw?.missingRates ?? []).map((c) => `No ${c} rate — ${c} accounts excluded`),
+    ...(expiring.data ?? []).map((row) => `${row.expiringSoon.toLocaleString('id-ID')} ${row.unit} on ${row.cardName} expire on ${row.nextExpiryOn}`),
+  ];
   const maxAbs = Math.max(1, ...(trend.data ?? []).map((p) => Math.abs(p.value)));
   const cards = money.filter((a) => a.subtype === 'credit_card');
 

@@ -1,5 +1,5 @@
 import type { Balance, Cycle } from '@expanses/core';
-import { type Database, deriveCycleEntries, programBalance, type WorkspaceContext } from '@expanses/db';
+import { type Database, deriveCycleEntries, expireDueEntries, programBalance, type WorkspaceContext } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -19,6 +19,9 @@ export async function refreshLedger(
   for (const cycle of cycles) {
     if (cycle) await deriveCycleEntries(database, ws, programId, cycle);
   }
+  // Points the issuer has already taken back are written off here, rather than left on a balance that
+  // would then be wrong. The entry stays visible, so nothing disappears without a record.
+  await expireDueEntries(database, ws, programId, today);
   return programBalance(database, ws, programId, today);
 }
 

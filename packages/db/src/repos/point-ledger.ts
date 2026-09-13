@@ -249,3 +249,46 @@ export async function expireDueEntries(database: Database, ws: WorkspaceContext,
   );
   return due.length;
 }
+
+export interface ExpiringSoonRow {
+  programId: string;
+  cardName: string;
+  unit: string;
+  expiringSoon: number;
+  nextExpiryOn: string | null;
+}
+
+/**
+ * Every program holding points that die soon, for the warning on the dashboard.
+ *
+ * This only reports. Writing dead points off happens when a card is opened, so that looking at a
+ * summary never changes what it is summarising.
+ */
+export async function expiringSoonAcross(database: Database, ws: WorkspaceContext, today: string): Promise<ExpiringSoonRow[]> {
+  const programs = await database.db
+    .select({ id: rewardPrograms.id, cardAccountId: rewardPrograms.cardAccountId, unit: rewardPrograms.unit })
+    .from(rewardPrograms)
+    .where(eq(rewardPrograms.workspaceId, ws.workspaceId));
+  if (programs.length === 0) return [];
+
+  const cards = new Map(
+    (await database.db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.workspaceId, ws.workspaceId))).map((row) => [
+      row.id,
+      row.name,
+    ]),
+  );
+
+  const rows: ExpiringSoonRow[] = [];
+  for (const program of programs) {
+    const balance = balanceOf(await listPointEntries(database, ws, program.id), today);
+    if (balance.expiringSoon <= 0) continue;
+    rows.push({
+      programId: program.id,
+      cardName: cards.get(program.cardAccountId) ?? 'Card',
+      unit: program.unit,
+      expiringSoon: balance.expiringSoon,
+      nextExpiryOn: balance.nextExpiryOn,
+    });
+  }
+  return rows.sort((a, b) => (a.nextExpiryOn ?? '').localeCompare(b.nextExpiryOn ?? ''));
+}
