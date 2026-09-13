@@ -101,6 +101,40 @@ export async function saveGoalCalculator(database: Database, ws: WorkspaceContex
   return computedMinor;
 }
 
+export interface CreateGoalFromCalculatorInput extends Omit<SaveGoalCalculatorInput, 'goalId'> {
+  name: string;
+  growthBps?: number;
+  returnBps?: number;
+}
+
+/**
+ * Starts a goal from a calculator's working, for someone who came to the answer before the goal.
+ *
+ * The figures are worked out before anything is written, so a refused input leaves no half-made goal
+ * behind — the goal and its working arrive together or not at all.
+ */
+export async function createGoalFromCalculator(
+  database: Database,
+  ws: WorkspaceContext,
+  input: CreateGoalFromCalculatorInput,
+): Promise<string> {
+  if (!input.name.trim()) throw new GoalDbError('Give this goal a name');
+  // Throws before the goal exists when the figures make no sense.
+  const { stages } = stagesFor({ ...input, goalId: 'unsaved' }, input.name.trim());
+
+  const goalId = await saveGoal(database, ws, {
+    name: input.name.trim(),
+    kind: input.kind === 'emergency' ? 'emergency' : input.kind === 'education' ? 'education' : 'retirement',
+    growthBps: input.growthBps ?? 400,
+    returnBps: input.returnBps ?? 900,
+    stages,
+    derived: true,
+  });
+
+  await saveGoalCalculator(database, ws, { goalId, kind: input.kind, inputs: input.inputs, today: input.today });
+  return goalId;
+}
+
 export async function getGoalCalculator(database: Database, ws: WorkspaceContext, goalId: string): Promise<GoalCalculatorRow | null> {
   const [row] = await database.db
     .select()

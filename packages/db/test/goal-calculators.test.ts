@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clearGoalCalculator,
+  createGoalFromCalculator,
   getGoalCalculator,
   listGoals,
   saveGoal,
@@ -131,5 +132,39 @@ describe('breaking the link', () => {
     const goalId = await goal(database, ws, 'Hajj', 'education');
 
     expect(await getGoalCalculator(database, ws, goalId)).toBeNull();
+  });
+});
+
+describe('starting a goal from a calculator', () => {
+  it('creates the goal and derives it in one go', async () => {
+    const { database, ws } = await setupDb();
+
+    const goalId = await createGoalFromCalculator(database, ws, {
+      name: 'Dana hari tua',
+      kind: 'retirement',
+      inputs: { annualSpendTodayMinor: 120_000_000, yearsToRetirement: 20, yearsInRetirement: 20, inflationBps: 500, returnInRetirementBps: 800 },
+      today: TODAY,
+    });
+
+    const goal = (await listGoals(database, ws)).find((row) => row.id === goalId)!;
+    expect(goal.name).toBe('Dana hari tua');
+    expect(goal.stages).toHaveLength(1);
+    expect(goal.stages[0]!.targetMinor).toBeGreaterThan(0);
+    expect(await getGoalCalculator(database, ws, goalId)).toMatchObject({ kind: 'retirement' });
+  });
+
+  it('leaves no half-made goal behind when the figures are refused', async () => {
+    const { database, ws } = await setupDb();
+
+    await expect(
+      createGoalFromCalculator(database, ws, {
+        name: 'Nonsense',
+        kind: 'retirement',
+        inputs: { annualSpendTodayMinor: 0, yearsToRetirement: 20, yearsInRetirement: 20, inflationBps: 500, returnInRetirementBps: 800 },
+        today: TODAY,
+      }),
+    ).rejects.toThrow();
+
+    expect(await listGoals(database, ws)).toHaveLength(0);
   });
 });

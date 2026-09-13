@@ -15,6 +15,7 @@ const NAV = [
 ] as const;
 
 const MORE = [
+  { to: '/calculators', label: 'Calculators' },
   { to: '/recommend', label: 'Which card?' },
   { to: '/import', label: 'Import CSV' },
   { to: '/backup', label: 'Backup' },

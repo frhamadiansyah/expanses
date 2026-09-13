@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CalculatorError, educationStages, emergencyTargetMinor, retirementTargetMinor } from '../src/index';
+import { CalculatorError, educationStages, emergencyTargetMinor, retirementTargetMinor, savingPlanFor } from '../src/index';
 
 const TODAY = '2026-09-13';
 
@@ -81,5 +81,33 @@ describe('retirement', () => {
   it('refuses a retirement of no years, or spending of nothing', () => {
     expect(() => retirementTargetMinor({ ...inputs, yearsInRetirement: 0 })).toThrow(CalculatorError);
     expect(() => retirementTargetMinor({ ...inputs, annualSpendTodayMinor: 0 })).toThrow(CalculatorError);
+  });
+});
+
+describe('what it takes a month', () => {
+  it('is the gap spread over the months, when the money earns nothing', () => {
+    expect(savingPlanFor({ targetMinor: 120_000_000, alreadySavedMinor: 0, returnBps: 0, months: 12 })).toEqual({
+      gapMinor: 120_000_000,
+      monthlyMinor: 10_000_000,
+    });
+  });
+
+  it('counts what is already put aside, grown to the day it is needed', () => {
+    const plan = savingPlanFor({ targetMinor: 120_000_000, alreadySavedMinor: 50_000_000, returnBps: 1200, months: 12 });
+
+    // 50 juta earning 12% for a year is worth 56 juta by then, so only the rest has to be saved.
+    expect(plan.gapMinor).toBe(120_000_000 - 56_000_000);
+    expect(plan.monthlyMinor).toBeGreaterThan(0);
+  });
+
+  it('asks for nothing when what you hold already covers it', () => {
+    expect(savingPlanFor({ targetMinor: 100_000_000, alreadySavedMinor: 200_000_000, returnBps: 500, months: 24 })).toEqual({
+      gapMinor: 0,
+      monthlyMinor: 0,
+    });
+  });
+
+  it('refuses a target that is not ahead of you', () => {
+    expect(() => savingPlanFor({ targetMinor: 100_000_000, alreadySavedMinor: 0, returnBps: 500, months: 0 })).toThrow(CalculatorError);
   });
 });
