@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createDatabase, migrate, schema } from '../src/index';
+import { createDatabase, migrate, MIGRATIONS, schema } from '../src/index';
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
 
 let executor: NodeExecutor;
@@ -98,5 +98,38 @@ describe('review fixes: rollback failure', () => {
     const flaky = { ...inner, execScript: async (sql: string) => { if (sql === 'ROLLBACK') throw new Error('rollback failed'); return inner.execScript(sql); } };
     const database = createDatabase(flaky);
     await expect(database.transaction(async () => { throw new Error('original'); })).rejects.toThrow('original');
+  });
+});
+
+describe('a version recorded under another name', () => {
+  it('is applied again, so a renumbered migration cannot be skipped for ever', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database, MIGRATIONS.filter((m) => m.version <= 21));
+    // What a running app wrote while 0022 briefly existed under a different name.
+    await database.execScript(`INSERT INTO schema_migrations (version, name, applied_at) VALUES (22, 'income_slips', '2026-09-13T00:00:00Z')`);
+
+    const applied = await migrate(database);
+
+    expect(applied).toContain(22);
+    const columns = await database.db.values<[number, string]>(sql.raw('PRAGMA table_info(asset_profiles)'));
+    expect(columns.map((column) => column[1])).toContain('tax_treatment');
+  });
+
+  it('leaves a version alone when the name agrees', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+
+    expect(await migrate(database)).toEqual([]);
+  });
+
+  it('ignores a version this build knows nothing about', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+    await database.execScript(`INSERT INTO schema_migrations (version, name, applied_at) VALUES (999, 'from_the_future', '2026-09-13T00:00:00Z')`);
+
+    expect(await migrate(database)).toEqual([]);
   });
 });
