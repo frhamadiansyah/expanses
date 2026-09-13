@@ -1,10 +1,11 @@
 import { averagePriceMicro, formatPriceMicro, formatUnits, isoDate, minorToMajorString, positionAfter, presetFor } from '@expanses/core';
-import { deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
+import { declareReinvestment, deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { NetWorthTabs } from './NetWorthTabs';
+import { ReinvestCell } from './ReinvestCell';
 import { useAssetProfiles, useAssetValues, usePositions, useTradeTemplates, useTrades, useDueTemplates } from './queries';
 import { useGoals } from '../goals/queries';
 import { TemplateList } from './TemplateList';
@@ -64,6 +65,18 @@ export function TradesPage() {
       const result = await deleteTrade(database, ws, trade.id);
       await invalidate();
       setNotice(result.recalculatedSells.length ? `Removed. ${result.recalculatedSells.length} later sells were worked out again.` : 'Removed.');
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  /** Only a payment can be reinvested; the repo refuses proceeds from a sale. */
+  async function declare(trade: TradeRow, amountMinor: number, intoAccountId: string | null) {
+    setError(null);
+    try {
+      await declareReinvestment(database, ws, trade.id, { amountMinor, intoAccountId });
+      await invalidate();
+      setNotice(amountMinor > 0 ? 'Recorded as reinvested, so it is not an object of tax.' : 'No longer marked as reinvested.');
     } catch (e) {
       setError(e);
     }
@@ -236,6 +249,14 @@ export function TradesPage() {
                         </option>
                       ))}
                     </select>
+                  )}
+                  {trade.kind === 'income' && (
+                    <ReinvestCell
+                      trade={trade}
+                      holdings={holdings}
+                      currency={currencyOf(trade.accountId)}
+                      onSave={(amountMinor, intoAccountId) => void declare(trade, amountMinor, intoAccountId)}
+                    />
                   )}
                   <Money minor={trade.grossMinor} currency={currencyOf(trade.accountId)} />
                   <Button

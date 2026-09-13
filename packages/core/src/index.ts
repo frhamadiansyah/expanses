@@ -273,3 +273,12 @@ export {
   type PointEntry,
   spendableOf,
 } from './points/ledger';
+export {
+  type IncomeHolding,
+  type IncomeInput,
+  type IncomeKind,
+  type IncomeRow,
+  type IncomeTreatment,
+  investmentIncomeFor,
+  type ReinvestedInto,
+} from './coretax/income';

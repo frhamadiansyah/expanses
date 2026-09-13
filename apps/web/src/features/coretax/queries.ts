@@ -1,5 +1,5 @@
 import { coretaxRows, isoDate, utangRows } from '@expanses/core';
-import { coretaxInputsFor, listReports, reportFor, rowDifferences, savedRows } from '@expanses/db';
+import { coretaxInputsFor, incomeInputsFor, listReports, reportFor, rowDifferences, savedRows } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -49,4 +49,10 @@ export function useReportYears(): number[] {
   const thisYear = Number(isoDate().slice(0, 4));
   const years = new Set<number>([thisYear, thisYear - 1, ...(reports.data ?? []).map((report) => report.taxYear)]);
   return [...years].sort((a, b) => b - a);
+}
+
+/** What each holding paid in the year, and how it is taxed. Live from the ledger; never frozen. */
+export function useIncomeRows(taxYear: number) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['tax-income', ws.workspaceId, taxYear], queryFn: () => incomeInputsFor(database, ws, taxYear) });
 }

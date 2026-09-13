@@ -15,6 +15,8 @@ export const assetProfiles = sqliteTable('asset_profiles', {
   acquiredYear: integer('acquired_year'),
   /** 1 unless the owner says this asset is not reported as harta. */
   reportable: integer('reportable').notNull().default(1),
+  /** How this holding's income is taxed. Null until the owner says; never guessed. */
+  taxTreatment: text('tax_treatment', { enum: ['final', 'not_object', 'ordinary'] }),
   updatedAt: text('updated_at').notNull(),
 });
 
@@ -31,6 +33,9 @@ export const investmentTrades = sqliteTable('investment_trades', {
   taxMinor: integer('tax_minor').notNull(),
   cashAccountId: text('cash_account_id'),
   goalId: text('goal_id'),
+  /** Declared reinvestment of a dividend, and the holding it was declared into. */
+  reinvestedMinor: integer('reinvested_minor'),
+  reinvestedIntoAccountId: text('reinvested_into_account_id'),
   templateId: text('template_id'),
   status: text('status', { enum: ['active', 'replaced', 'deleted'] }).notNull(),
   replacesTradeId: text('replaces_trade_id'),

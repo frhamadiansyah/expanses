@@ -45,3 +45,4 @@ export * from './repos/budget-sheet';
 export * from './repos/goal-contributions';
 export * from './repos/goal-calculators';
 export * from './repos/point-ledger';
+export * from './repos/coretax-income';

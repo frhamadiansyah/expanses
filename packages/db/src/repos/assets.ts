@@ -26,6 +26,8 @@ export interface AssetProfileRow {
   coretaxFields: Record<string, string>;
   /** False when the asset is yours but does not belong on the tax report. */
   reportable: boolean;
+  /** How its income is taxed, as the owner set it. Null means not set, and nothing guesses it. */
+  taxTreatment: 'final' | 'not_object' | 'ordinary' | null;
   updatedAt: string;
 }
 
@@ -41,6 +43,7 @@ export interface SaveAssetProfileInput {
   acquiredYear?: number | null;
   coretaxFields?: Record<string, string>;
   reportable?: boolean;
+  taxTreatment?: 'final' | 'not_object' | 'ordinary' | null;
 }
 
 /** What a profile looks like before the owner changes anything. */
@@ -57,6 +60,7 @@ export function profileDefaults(kind: AssetKind): Omit<AssetProfileRow, 'account
     acquiredYear: null,
     coretaxFields: {},
     reportable: true,
+    taxTreatment: null,
   };
 }
 
@@ -83,6 +87,7 @@ function toProfile(row: ProfileDbRow): AssetProfileRow {
     acquiredYear: row.acquiredYear,
     coretaxFields,
     reportable: row.reportable === 1,
+    taxTreatment: row.taxTreatment,
     updatedAt: row.updatedAt,
   };
 }
@@ -184,6 +189,7 @@ export async function saveAssetProfile(database: Database, ws: WorkspaceContext,
     coretaxFieldsJson: JSON.stringify(input.coretaxFields ?? {}),
     acquiredYear,
     reportable: (input.reportable ?? defaults.reportable) ? 1 : 0,
+    taxTreatment: input.taxTreatment === undefined ? defaults.taxTreatment : input.taxTreatment,
     updatedAt: new Date().toISOString(),
   };
   await database.transaction(async (tx) => {
@@ -197,6 +203,8 @@ export interface AssetReportingInput {
   reportable?: boolean;
   coretaxCode?: string | null;
   coretaxSection?: CoretaxSection | null;
+  /** How its income is taxed. Null puts it back to not set. */
+  taxTreatment?: 'final' | 'not_object' | 'ordinary' | null;
 }
 
 /**
@@ -218,6 +226,7 @@ export async function setAssetReporting(
   if (input.reportable !== undefined) changes.reportable = input.reportable ? 1 : 0;
   if (input.coretaxCode !== undefined) changes.coretaxCode = input.coretaxCode;
   if (input.coretaxSection !== undefined) changes.coretaxSection = input.coretaxSection;
+  if (input.taxTreatment !== undefined) changes.taxTreatment = input.taxTreatment;
 
   await database.db
     .update(assetProfiles)

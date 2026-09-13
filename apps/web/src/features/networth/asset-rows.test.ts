@@ -17,6 +17,7 @@ const profile = (accountId: string, partial: Partial<AssetProfileRow> = {}): Ass
   accountId,
   workspaceId: 'ws',
   reportable: true,
+  taxTreatment: null,
   assetKind: 'gold',
   planGroup: 'invest',
   unitKind: 'grams',
