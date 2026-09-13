@@ -1,5 +1,5 @@
 /**
- * What an occasion was expected to cost, against what it actually cost.
+ * What an event was expected to cost, against what it actually cost.
  *
  * An event is planned category by category, and a category with a plan is also a category the event
  * draws on — which is what makes suggesting its transactions precise rather than offering the whole
@@ -22,7 +22,7 @@ export interface EventSheetInput {
   actuals: EventActual[];
   /** Names for the categories on either side, so a line can be read. */
   categoryNames: Record<string, string>;
-  /** One figure for the whole occasion. When set, it is what the total is measured against. */
+  /** One figure for the whole event. When set, it is what the total is measured against. */
   totalPlannedMinor: number | null;
 }
 
@@ -39,10 +39,10 @@ export interface EventSheetLine {
 
 export interface EventSheet {
   lines: EventSheetLine[];
-  /** The figure for the whole occasion when one was set, otherwise the plans added up. */
+  /** The figure for the whole event when one was set, otherwise the plans added up. */
   plannedMinor: number | null;
   actualMinor: number;
-  /** How far past the plan the occasion went, or nought. Null while nothing was planned. */
+  /** How far past the plan the event went, or nought. Null while nothing was planned. */
   overMinor: number | null;
   /** Spending in categories the plan never mentioned. */
   unplannedMinor: number;
@@ -79,7 +79,7 @@ export function eventSheet(input: EventSheetInput): EventSheet {
     (total, line) => (line.plannedMinor === null ? total : (total ?? 0) + line.plannedMinor),
     null,
   );
-  // A figure set for the whole occasion wins: it is what the owner said the thing should cost.
+  // A figure set for the whole event wins: it is what the owner said the thing should cost.
   const plannedMinor = input.totalPlannedMinor ?? summed;
 
   return {

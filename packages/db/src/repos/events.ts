@@ -20,7 +20,7 @@ export interface EventRow {
   name: string;
   startsOn: string;
   endsOn: string;
-  /** A figure for the whole occasion, instead of planning category by category. */
+  /** A figure for the whole event, instead of planning category by category. */
   plannedMinor: number | null;
   goalId: string | null;
 }
@@ -55,16 +55,16 @@ async function eventOf(database: Database, ws: WorkspaceContext, id: string): Pr
     .select()
     .from(events)
     .where(and(eq(events.workspaceId, ws.workspaceId), eq(events.id, id)));
-  if (!row) throw new EventError('NOT_FOUND', 'That occasion is not in this workspace');
+  if (!row) throw new EventError('NOT_FOUND', 'That event is not in this workspace');
   return toRow(row);
 }
 
-/** Adds or edits an occasion. */
+/** Adds or edits an event. */
 export async function saveEvent(database: Database, ws: WorkspaceContext, input: SaveEventInput): Promise<string> {
   const name = input.name.trim();
-  if (!name) throw new EventError('NAME_REQUIRED', 'An occasion needs a name');
-  if (!DATE.test(input.startsOn) || !DATE.test(input.endsOn)) throw new EventError('INVALID_DATE', 'An occasion needs a start and an end');
-  if (input.endsOn < input.startsOn) throw new EventError('BACKWARDS', 'An occasion cannot end before it starts');
+  if (!name) throw new EventError('NAME_REQUIRED', 'An event needs a name');
+  if (!DATE.test(input.startsOn) || !DATE.test(input.endsOn)) throw new EventError('INVALID_DATE', 'An event needs a start and an end');
+  if (input.endsOn < input.startsOn) throw new EventError('BACKWARDS', 'An event cannot end before it starts');
   const plannedMinor = input.plannedMinor ?? null;
   if (plannedMinor !== null && !(plannedMinor > 0)) throw new EventError('AMOUNT_RANGE', 'Leave the figure empty, or give one above nought');
 
@@ -106,8 +106,8 @@ export async function deleteEvent(database: Database, ws: WorkspaceContext, id: 
 }
 
 /**
- * What a category is expected to cost for this occasion. A row here also says the category is one the
- * occasion draws on, which is what makes its suggestions precise rather than the whole month.
+ * What a category is expected to cost for this event. A row here also says the category is one the
+ * event draws on, which is what makes its suggestions precise rather than the whole month.
  */
 export async function setEventBudget(
   database: Database,
@@ -123,7 +123,7 @@ export async function setEventBudget(
     .select({ kind: accounts.kind })
     .from(accounts)
     .where(and(eq(accounts.id, input.categoryAccountId), eq(accounts.workspaceId, ws.workspaceId)));
-  if (category?.kind !== 'expense') throw new EventError('NOT_A_CATEGORY', 'An occasion is planned against spending categories');
+  if (category?.kind !== 'expense') throw new EventError('NOT_A_CATEGORY', 'An event is planned against spending categories');
 
   await database.db
     .insert(eventBudgets)
@@ -161,7 +161,7 @@ export async function listEventBudgets(database: Database, ws: WorkspaceContext,
   return rows.map((row) => ({ categoryAccountId: row.categoryAccountId, plannedMinor: row.plannedMinor }));
 }
 
-/** Says a payment belongs to an occasion, or no longer does. */
+/** Says a payment belongs to an event, or no longer does. */
 export async function tagTransaction(database: Database, ws: WorkspaceContext, transactionId: string, eventId: string | null): Promise<void> {
   if (eventId !== null) await eventOf(database, ws, eventId);
   await database.db
@@ -179,7 +179,7 @@ export interface EventCandidate {
 }
 
 /**
- * Payments that fall inside the occasion, in a category it draws on, and are not tagged to anything.
+ * Payments that fall inside the event, in a category it draws on, and are not tagged to anything.
  *
  * This is what makes the feature usable: tagging forty purchases one at a time is the sort of chore
  * nobody finishes, so the window and the categories narrow it to a list worth reading through once.
@@ -215,7 +215,7 @@ export async function suggestForEvent(database: Database, ws: WorkspaceContext, 
   return rows.map((row) => ({ ...row, amountBaseMinor: Math.abs(row.amountBaseMinor) }));
 }
 
-/** What the occasion was expected to cost, against what it did. */
+/** What the event was expected to cost, against what it did. */
 export async function eventSheetFor(database: Database, ws: WorkspaceContext, eventId: string): Promise<EventSheet> {
   const event = await eventOf(database, ws, eventId);
   const planned = await listEventBudgets(database, ws, eventId);

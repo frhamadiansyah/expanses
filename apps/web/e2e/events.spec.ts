@@ -15,7 +15,7 @@ async function addWallet(page: Page) {
   await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
 }
 
-/** Spending against the Food & Drink parent, which the occasion can then be planned against. */
+/** Spending against the Food & Drink parent, which the event can then be planned against. */
 async function spend(page: Page, description: string, amount: string) {
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
@@ -27,22 +27,22 @@ async function spend(page: Page, description: string, amount: string) {
   await expect(page.getByRole('listitem').filter({ hasText: description }).first()).toBeVisible();
 }
 
-async function addOccasion(page: Page, name: string) {
+async function addEvent(page: Page, name: string) {
   await page.goto('/events');
-  await page.getByRole('button', { name: 'Add an occasion' }).click();
+  await page.getByRole('button', { name: 'Add an event' }).click();
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);
-  await page.getByRole('button', { name: 'Save occasion' }).click();
+  await page.getByRole('button', { name: 'Save event' }).click();
   await expect(page.getByTestId('event-row')).toContainText(name);
 }
 
-test('an occasion is planned by category, and suggests what to tag', async ({ page }) => {
+test('an event is planned by category, and suggests what to tag', async ({ page }) => {
   await addWallet(page);
   await spend(page, 'Hampers', '4200000');
-  await addOccasion(page, 'Lebaran');
+  await addEvent(page, 'Lebaran');
 
-  // Nothing is suggested until the occasion says which categories it draws on.
+  // Nothing is suggested until the event says which categories it draws on.
   await expect(page.getByTestId('event-suggestions')).toHaveCount(0);
 
   await page.getByLabel('Category').selectOption({ label: 'Food & Drink' });
@@ -54,7 +54,7 @@ test('an occasion is planned by category, and suggests what to tag', async ({ pa
 
   await suggestions.getByRole('button', { name: 'Tag Hampers' }).click();
 
-  // Tagged: it counts towards the occasion, and is over what was planned for it.
+  // Tagged: it counts towards the event, and is over what was planned for it.
   const sheet = page.getByTestId('event-sheet');
   await expect(sheet).toContainText('4.200.000');
   await expect(sheet).toContainText('Over by');
@@ -73,7 +73,7 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
   const leftOverBefore = await page.getByTestId('left-over-actual').textContent();
   await expect(page.getByTestId('spent-total')).toContainText('4.200.000');
 
-  await addOccasion(page, 'Lebaran');
+  await addEvent(page, 'Lebaran');
   await page.getByLabel('Category').selectOption({ label: 'Food & Drink' });
   await page.getByRole('button', { name: 'Add category' }).click();
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Hampers' }).click();

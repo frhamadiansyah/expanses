@@ -6,7 +6,7 @@ export const events = sqliteTable('events', {
   name: text('name').notNull(),
   startsOn: text('starts_on').notNull(),
   endsOn: text('ends_on').notNull(),
-  /** A figure for the whole occasion, instead of planning category by category. */
+  /** A figure for the whole event, instead of planning category by category. */
   plannedMinor: integer('planned_minor'),
   goalId: text('goal_id'),
   archivedAt: text('archived_at'),
