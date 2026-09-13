@@ -1,6 +1,7 @@
 import { Link, Outlet } from '@tanstack/react-router';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
+import { usePendingDraftCount } from '../features/review/queries';
 import { useApp } from './context';
 
 const NAV = [
@@ -23,6 +24,24 @@ const MORE = [
   { to: '/import', label: 'Import CSV' },
   { to: '/backup', label: 'Backup' },
 ] as const;
+
+/**
+ * The queue is only useful if you can tell from anywhere that something is waiting in it, so the
+ * count rides on the link rather than being something to remember to go and look at.
+ */
+function ReviewLink() {
+  const pending = usePendingDraftCount().data ?? 0;
+  return (
+    <Link
+      to="/review"
+      className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+      activeProps={{ className: 'bg-slate-100 font-medium text-slate-900' }}
+    >
+      Review
+      {pending > 0 && <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-white">{pending}</span>}
+    </Link>
+  );
+}
 
 export function Layout() {
   const { workspaceName, ws } = useApp();
@@ -49,6 +68,7 @@ export function Layout() {
           ))}
         </nav>
         <div className="mt-6 space-y-1 border-t border-slate-200 pt-4">
+          <ReviewLink />
           {MORE.map((item) => (
             <Link key={item.to} to={item.to} className="block rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100" activeProps={{ className: 'bg-slate-100 font-medium text-slate-900' }}>
               {item.label}
