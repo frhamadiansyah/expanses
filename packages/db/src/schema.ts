@@ -55,6 +55,8 @@ export const transactions = sqliteTable('transactions', {
   mcc: text('mcc'),
   /** Goal a tagged transfer funds. Ordinary payments never carry one. */
   goalId: text('goal_id'),
+  /** The recurring bill this payment settled, when it was recorded from one. */
+  templateId: text('template_id'),
   createdAt: text('created_at').notNull(),
 });
 

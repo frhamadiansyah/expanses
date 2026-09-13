@@ -23,6 +23,7 @@ import assetReportable from '../migrations/0021_asset_reportable.sql?raw';
 import incomeTreatment from '../migrations/0022_income_treatment.sql?raw';
 import incomeSources from '../migrations/0023_income_sources.sql?raw';
 import fxRateNote from '../migrations/0024_fx_rate_note.sql?raw';
+import expenseTemplates from '../migrations/0025_expense_templates.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -56,6 +57,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 22, name: 'income_treatment', sql: incomeTreatment },
   { version: 23, name: 'income_sources', sql: incomeSources },
   { version: 24, name: 'fx_rate_note', sql: fxRateNote },
+  { version: 25, name: 'expense_templates', sql: expenseTemplates },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */
