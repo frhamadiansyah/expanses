@@ -167,7 +167,7 @@ the warning, which strict mode rightly rejects.
   from every redemption that recorded a value, not only the year in view, because how someone redeems
   is a habit rather than a property of one card year.
 
-- **An anchored balance carries no earn date.** Points typed in from the issuer's app open a batch that
-  never expires, so on a card with an expiry policy the anchored lump outlives points earned the same
-  week. The fix is to let the anchor take a date; not built.
+- ~~**An anchored balance carries no earn date.**~~ Built on 13 September 2026: the batch takes its date
+  from the program's policy, and "Earned around" says when those points were earned. Left empty they
+  count as earned the day they were typed in — generous, but the only date the app can know unaided.
 - **A statement-total card cannot attribute points to a purchase**, so its cycle entry names none.
