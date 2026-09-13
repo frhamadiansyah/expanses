@@ -67,8 +67,24 @@ export async function migrate(database: Database, migrations: Migration[] = MIGR
   await database.execScript(
     'CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)',
   );
-  const rows = await database.db.values<[number]>(sql`SELECT version FROM schema_migrations`);
-  const done = new Set(rows.map((r) => Number(r[0])));
+  const rows = await database.db.values<[number, string]>(sql`SELECT version, name FROM schema_migrations`);
+  const recorded = new Map(rows.map((r) => [Number(r[0]), String(r[1])]));
+  const expected = new Map(migrations.map((m) => [m.version, m.name]));
+
+  /*
+   * A version recorded under a different name came from a migration that no longer exists, because a
+   * branch renumbered one. Matching on the number alone would skip this build's migration for ever,
+   * and the divergence surfaces much later as an opaque failed query against a missing column. The
+   * row is dropped so the real migration runs; if its change is somehow already present the attempt
+   * fails loudly and rolls back, which is the outcome worth having.
+   */
+  for (const [version, name] of recorded) {
+    if (!expected.has(version) || expected.get(version) === name) continue;
+    await database.execScript(`DELETE FROM schema_migrations WHERE version = ${version}`);
+    recorded.delete(version);
+  }
+
+  const done = new Set(recorded.keys());
   const applied: number[] = [];
   for (const m of [...migrations].sort((a, b) => a.version - b.version)) {
     if (done.has(m.version)) continue;
