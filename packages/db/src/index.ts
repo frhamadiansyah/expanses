@@ -43,3 +43,4 @@ export * from './repos/budgets';
 export * from './repos/budget-settings';
 export * from './repos/budget-sheet';
 export * from './repos/goal-contributions';
+export * from './repos/goal-calculators';

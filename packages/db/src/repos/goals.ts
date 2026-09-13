@@ -1,10 +1,11 @@
 import { type Goal, type GoalKind, type GoalStage, uuidv7 } from '@expanses/core';
-import { recordContributionTx } from './goal-contributions';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { goalCalculators } from '../schema-budget';
 import { goalEarmarks, goalStages, goals } from '../schema-goals';
+import { recordContributionTx } from './goal-contributions';
 
 export class GoalDbError extends Error {
   constructor(message: string) {
@@ -38,6 +39,8 @@ export interface SaveGoalInput {
   standingMonthlyMinor?: number;
   standingNote?: string | null;
   stages: SaveGoalStageInput[];
+  /** Set only by a calculator writing its own working. Anything else typed here breaks the link. */
+  derived?: boolean;
 }
 
 /** Only money you can move can be set aside; holdings are tagged per purchase instead. */
@@ -149,6 +152,11 @@ export async function saveGoal(database: Database, ws: WorkspaceContext, input: 
       };
       const { id: _stageId, goalId: _goalId, workspaceId: _workspaceId, ...stageChanges } = stageRow;
       await tx.insert(goalStages).values(stageRow).onConflictDoUpdate({ target: goalStages.id, set: stageChanges });
+    }
+
+    // An amount typed by hand is the owner's, so the goal stops being derived from a calculator.
+    if (!input.derived) {
+      await tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, id), eq(goalCalculators.workspaceId, ws.workspaceId)));
     }
     return id;
   });

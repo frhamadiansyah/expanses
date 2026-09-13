@@ -39,3 +39,12 @@ export const goalContributions = sqliteTable('goal_contributions', {
   source: text('source', { enum: ['earmark'] }).notNull(),
   createdAt: text('created_at').notNull(),
 });
+
+export const goalCalculators = sqliteTable('goal_calculators', {
+  goalId: text('goal_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  kind: text('kind', { enum: ['emergency', 'education', 'retirement'] }).notNull(),
+  inputsJson: text('inputs_json').notNull(),
+  computedMinor: integer('computed_minor').notNull(),
+  computedAt: text('computed_at').notNull(),
+});
