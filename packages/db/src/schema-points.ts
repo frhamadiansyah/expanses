@@ -23,6 +23,8 @@ export const rewardPrograms = sqliteTable('reward_programs', {
   /** JSON of the catalogue entry as applied. */
   catalogSnapshotJson: text('catalog_snapshot_json'),
   crediting: text('crediting', { enum: ['per_transaction', 'per_statement'] }).notNull(),
+  expiryPolicy: text('expiry_policy', { enum: ['none', 'months_from_earn', 'fixed_annual'] }).notNull().default('none'),
+  expiryMonths: integer('expiry_months'),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
 });
@@ -122,4 +124,29 @@ export const transactionPointActuals = sqliteTable('transaction_point_actuals', 
   actualPoints: real('actual_points').notNull(),
   editedAfterCheck: integer('edited_after_check').notNull(),
   recordedAt: text('recorded_at').notNull(),
+});
+
+export const pointEntries = sqliteTable('point_entries', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  programId: text('program_id').notNull(),
+  transactionId: text('transaction_id'),
+  kind: text('kind', { enum: ['earn', 'redeem', 'expire', 'adjust', 'transfer'] }).notNull(),
+  quantity: real('quantity').notNull(),
+  occurredOn: text('occurred_on').notNull(),
+  status: text('status', { enum: ['posted', 'projected'] }).notNull(),
+  source: text('source', { enum: ['transaction', 'statement', 'snapshot', 'projected', 'manual'] }).notNull(),
+  batchId: text('batch_id'),
+  expiresOn: text('expires_on'),
+  note: text('note'),
+  createdAt: text('created_at').notNull(),
+});
+
+export const pointSnapshots = sqliteTable('point_snapshots', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  programId: text('program_id').notNull(),
+  balance: real('balance').notNull(),
+  observedOn: text('observed_on').notNull(),
+  createdAt: text('created_at').notNull(),
 });
