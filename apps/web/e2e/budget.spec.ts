@@ -61,3 +61,29 @@ test('an override changes one month and leaves the next alone', async ({ page })
   await expect(page.getByTestId('line-Food & Drink')).toContainText('1.000.000');
   await expect(page.getByTestId('line-Food & Drink')).not.toContainText('just this month');
 });
+
+test('the sheet plans against typed income and reports what happened', async ({ page }) => {
+  await page.goto('/budget');
+  await page.getByLabel('Expected take-home (IDR)').fill('25000000');
+  await page.getByRole('button', { name: 'Set income' }).click();
+  await setBudget(page, 'Food & Drink', '5000000');
+
+  await expect(page.getByTestId('income-line')).toContainText('25.000.000');
+  // Nothing earned or spent yet, so the plan has 20 juta left and the month itself has nothing.
+  await expect(page.getByTestId('left-over-plan')).toContainText('20.000.000');
+  await expect(page.getByTestId('left-over-actual')).toContainText('0');
+});
+
+test('a goal becomes a savings row on the sheet', async ({ page }) => {
+  await page.goto('/net-worth/goals');
+  await page.getByRole('button', { name: 'Add goal' }).first().click();
+  await page.getByLabel('What kind of goal').selectOption('education');
+  await page.getByLabel('Name', { exact: true }).fill('School fees');
+  await page.getByLabel(/Cost in today's money/).first().fill('120000000');
+  await page.getByLabel('Needed by').first().fill('2030-06-30');
+  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await expect(page.getByRole('heading', { name: 'School fees' })).toBeVisible();
+
+  await page.goto('/budget');
+  await expect(page.getByTestId('savings-School fees')).toContainText('a month');
+});

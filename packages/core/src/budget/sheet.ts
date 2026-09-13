@@ -50,6 +50,8 @@ export interface BudgetSheetInput {
 export interface BudgetSheet {
   month: string;
   lines: BudgetLine[];
+  /** One row per goal, carried through so the sheet can list what each asks for. */
+  savings: SavingsRow[];
   /** Only budgets with no budgeted ancestor, so a purchase is never counted twice. */
   capsTotalMinor: number;
   spendingActualMinor: number;
@@ -120,6 +122,7 @@ export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
   return {
     month: input.month,
     lines,
+    savings: input.savings,
     capsTotalMinor,
     spendingActualMinor,
     overCount,

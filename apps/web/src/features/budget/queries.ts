@@ -1,17 +1,13 @@
-import { monthRange } from '@expanses/core';
-import { categoryTotalsBetween, listBudgets } from '@expanses/db';
+import { budgetSheetFor, listBudgets } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
-export function useCategorySpending(month: string) {
+export function useBudgetSheet(month: string) {
   const { database, ws } = useApp();
-  const { from, to } = monthRange(month);
-  return useQuery({
-    queryKey: ['category-totals', ws.workspaceId, 'expense', month],
-    queryFn: () => categoryTotalsBetween(database, ws, 'expense', from, to),
-  });
+  return useQuery({ queryKey: ['budget-sheet', ws.workspaceId, month], queryFn: () => budgetSheetFor(database, ws, month) });
 }
 
+/** The plan rows themselves, so the sheet can mark which caps this month overrode. */
 export function useBudgets(month: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['budgets', ws.workspaceId, month], queryFn: () => listBudgets(database, ws, month) });

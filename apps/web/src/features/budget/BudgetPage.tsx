@@ -1,10 +1,10 @@
-import { addMonths, type BudgetLine, budgetSheet, isoDate, monthOf, parseMajor } from '@expanses/core';
-import { clearBudgetOverride, removeBudget, saveBudget, setBudgetOverride } from '@expanses/db';
+import { addMonths, type BudgetLine, isoDate, monthOf, parseMajor } from '@expanses/core';
+import { clearBudgetOverride, removeBudget, saveBudget, saveExpectedIncome, setBudgetOverride, setIncomeOverride } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
-import { useBudgets, useCategorySpending } from './queries';
+import { useBudgets, useBudgetSheet } from './queries';
 
 function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -55,25 +55,15 @@ export function BudgetPage() {
   const [categoryId, setCategoryId] = useState('');
   const [amount, setAmount] = useState('');
   const [thisMonthOnly, setThisMonthOnly] = useState(false);
+  const [income, setIncome] = useState('');
+  const [incomeThisMonthOnly, setIncomeThisMonthOnly] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   const accounts = useAccounts().data ?? [];
   const categories = accounts.filter((account) => account.kind === 'expense');
-  const spending = useCategorySpending(month);
+  const sheetQuery = useBudgetSheet(month);
   const budgets = useBudgets(month);
-
-  const sheet = budgetSheet({
-    month,
-    categories,
-    amounts: spending.data ?? [],
-    caps: (budgets.data ?? []).map((row) => ({ categoryId: row.categoryAccountId, amountMinor: row.amountMinor })),
-    // The income, debt and savings lines arrive with the rest of the sheet in the next slice.
-    incomePlanMinor: 0,
-    incomeActualMinor: 0,
-    debtPaymentsPlanMinor: 0,
-    debtPaymentsActualMinor: 0,
-    savings: [],
-  });
+  const sheet = sheetQuery.data;
   const overridden = new Set((budgets.data ?? []).filter((row) => row.overridden).map((row) => row.categoryAccountId));
 
   // Roots first, each followed by its children, so the select reads like the sheet.
@@ -95,6 +85,20 @@ export function BudgetPage() {
       else await saveBudget(database, ws, { categoryAccountId: target, amountMinor: minor });
       await invalidate();
       setAmount('');
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  async function submitIncome(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    try {
+      const minor = parseMajor(income, ws.baseCurrency);
+      if (incomeThisMonthOnly) await setIncomeOverride(database, ws, { month, amountMinor: minor });
+      else await saveExpectedIncome(database, ws, minor);
+      await invalidate();
+      setIncome('');
     } catch (e) {
       setError(e);
     }
@@ -128,27 +132,85 @@ export function BudgetPage() {
 
       <ErrorBox error={error} />
 
-      <Card className="space-y-3">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <div className="text-xs text-slate-500">Budgeted</div>
-            <div data-testid="caps-total" className="text-xl font-semibold">
-              <Money minor={sheet.capsTotalMinor} currency={ws.baseCurrency} />
+      {sheet && (
+        <Card className="space-y-3">
+          <div className="grid gap-4 sm:grid-cols-4">
+            <div>
+              <div className="text-xs text-slate-500">Budgeted</div>
+              <div data-testid="caps-total" className="text-xl font-semibold">
+                <Money minor={sheet.capsTotalMinor} currency={ws.baseCurrency} />
+              </div>
             </div>
-            <div className="text-xs text-slate-500">A budget inside a budget is a tighter cap, not more money.</div>
-          </div>
-          <div>
-            <div className="text-xs text-slate-500">Spent</div>
-            <div data-testid="spent-total" className="text-xl font-semibold">
-              <Money minor={sheet.spendingActualMinor} currency={ws.baseCurrency} />
+            <div>
+              <div className="text-xs text-slate-500">Spent</div>
+              <div data-testid="spent-total" className="text-xl font-semibold">
+                <Money minor={sheet.spendingActualMinor} currency={ws.baseCurrency} />
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">Left over, as planned</div>
+              <div data-testid="left-over-plan" className="text-xl font-semibold">
+                <Money minor={sheet.leftOverPlanMinor} currency={ws.baseCurrency} />
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500">Left over, so far</div>
+              <div data-testid="left-over-actual" className="text-xl font-semibold">
+                <Money minor={sheet.leftOverActualMinor} currency={ws.baseCurrency} />
+              </div>
+              <div className="text-xs text-slate-500">{sheet.overCount} over their cap</div>
             </div>
           </div>
-          <div>
-            <div className="text-xs text-slate-500">Over</div>
-            <div className="text-xl font-semibold">{sheet.overCount}</div>
-            <div className="text-xs text-slate-500">Going over is recorded, never blocked.</div>
+        </Card>
+      )}
+
+      {sheet && (
+        <Card className="space-y-2">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" data-testid="income-line">
+            <div>
+              <div className="text-sm font-medium">Take-home pay</div>
+              <div className="text-xs text-slate-500">
+                Planned <Money minor={sheet.incomePlanMinor} currency={ws.baseCurrency} />
+                {sheet.incomeOverridden && ' · just this month'}
+              </div>
+            </div>
+            <Money minor={sheet.incomeActualMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
           </div>
-        </div>
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" data-testid="debt-line">
+            <div>
+              <div className="text-sm font-medium">Debt payments</div>
+              <div className="text-xs text-slate-500">Loans and instalments, which are committed before anything else.</div>
+            </div>
+            <Money minor={sheet.debtPaymentsActualMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
+          </div>
+          {sheet.savings.map((row) => (
+            <div key={row.goalId} className="flex items-center justify-between gap-3" data-testid={`savings-${row.name}`}>
+              <div>
+                <div className="text-sm font-medium">{row.name}</div>
+                <div className="text-xs text-slate-500">
+                  Needs <Money minor={row.planMinor} currency={ws.baseCurrency} /> a month
+                </div>
+              </div>
+              <Money minor={row.actualMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
+            </div>
+          ))}
+          {sheet.savings.length === 0 && <p className="text-xs text-slate-500">No goals yet, so nothing is being saved towards.</p>}
+        </Card>
+      )}
+
+      <Card>
+        <form onSubmit={submitIncome} className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+          <Field label={`Expected take-home (${ws.baseCurrency})`}>
+            <Input value={income} onChange={(e) => setIncome(e.target.value)} inputMode="numeric" />
+          </Field>
+          <label className="flex items-center gap-2 pb-2 text-xs text-slate-600">
+            <input type="checkbox" checked={incomeThisMonthOnly} onChange={(e) => setIncomeThisMonthOnly(e.target.checked)} />
+            Bonus month
+          </label>
+          <div className="pb-1">
+            <Button type="submit">Set income</Button>
+          </div>
+        </form>
       </Card>
 
       <Card>
@@ -180,7 +242,7 @@ export function BudgetPage() {
 
       <Card>
         <ul className="divide-y divide-slate-100">
-          {sheet.lines.map((node) => (
+          {(sheet?.lines ?? []).map((node) => (
             <Line key={node.id} node={node} overridden={overridden} depth={0} />
           ))}
         </ul>

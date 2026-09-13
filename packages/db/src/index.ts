@@ -40,3 +40,5 @@ export * from './repos/tax-reports';
 export * from './repos/tax-inputs';
 export * as budgetSchema from './schema-budget';
 export * from './repos/budgets';
+export * from './repos/budget-settings';
+export * from './repos/budget-sheet';

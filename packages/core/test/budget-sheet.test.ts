@@ -107,6 +107,15 @@ describe('the two bottom lines', () => {
     expect(sheet.leftOverActualMinor).toBe(19_000_000 - 5_000_000 - 4_000_000 - 1_000_000);
   });
 
+  it('carries the goal rows through, so the sheet can list them', () => {
+    const sheet = budgetSheet({
+      ...input(),
+      savings: [{ goalId: 'hajj', name: 'Hajj', planMinor: 1_500_000, actualMinor: 500_000 }],
+    });
+
+    expect(sheet.savings).toEqual([{ goalId: 'hajj', name: 'Hajj', planMinor: 1_500_000, actualMinor: 500_000 }]);
+  });
+
   it('sums what the goals ask for and what reached them', () => {
     const sheet = budgetSheet(
       input({
