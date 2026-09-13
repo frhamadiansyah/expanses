@@ -5,7 +5,7 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
-import { useCategorySets, useSetCategories } from '../categories/set-queries';
+import { useCategorySetMembership, useCategorySets, useSetCategories } from '../categories/set-queries';
 import { useEventBudgets, useEvents, useEventSheet, useEventSuggestions } from './queries';
 
 /**
@@ -45,7 +45,12 @@ export function EventsPage() {
   const sets = useCategorySets().data ?? [];
   // An event plans against its own set when it has one, so a renovation is planned in renovation terms.
   const setCategories = useSetCategories(selected?.setId ?? null).data ?? [];
-  const monthly = (accounts.data ?? []).filter((account) => account.kind === 'expense' && account.subtype === 'category');
+  // Without a set of its own an event plans against the monthly tree — which does not include other
+  // sets' categories, or the list would offer two Flights and a Postpartum.
+  const membership = useCategorySetMembership().data ?? {};
+  const monthly = (accounts.data ?? []).filter(
+    (account) => account.kind === 'expense' && account.subtype === 'category' && membership[account.id] === undefined,
+  );
   const categories = selected?.setId ? setCategories : monthly;
   const nameOf = (id: string) => (accounts.data ?? []).find((account) => account.id === id)?.name ?? id;
 
