@@ -13,7 +13,7 @@ describe('describeEntry', () => {
     expect(lines).toMatch(/Terms from 2025-09-23 \(in force today\):/);
     expect(lines).toMatch(/Base: 1 mile per Rp 10\.800, rounded down per purchase\./);
     expect(lines).toMatch(/1\.000 miles from Rp 20\.000\.000 spent, 2\.000 miles from Rp 50\.000\.000 spent/);
-    expect(lines).toMatch(/Earns nothing on Electricity, Water, Gas, Government & Taxes, Donations, Fees & Charges; merchants matching prudential; MCC 4900 Electric/);
+    expect(lines).toMatch(/Earns nothing on Electricity, Water & sanitation, Gas & energy, Government & taxes, Charity, Obligation, Fees & charges; merchants matching prudential; MCC 4900 Electric/);
     expect(lines).toMatch(/Annual fee: Rp 1\.000\.000, supplementary Rp 500\.000\./);
     expect(lines).not.toMatch(/750\.000/);
   });

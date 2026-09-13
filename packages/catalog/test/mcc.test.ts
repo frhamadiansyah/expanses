@@ -43,7 +43,7 @@ describe('MCC rules in catalogue entries', () => {
     entry.terms[0]!.rules[1]!.match.mccs = ['3000-3299'];
     entry.program.crediting = 'per_transaction';
     const lines = describeEntry(entry, '2026-09-11').lines.join('\n');
-    expect(lines).toMatch(/Earns nothing on Fees & Charges; MCC 5814 Fast Food Restaurants\./);
+    expect(lines).toMatch(/Earns nothing on Fees & charges; MCC 5814 Fast Food Restaurants\./);
     expect(lines).toMatch(/at MCC 3000–3299/);
     expect(lines).toMatch(/credited per purchase/);
   });

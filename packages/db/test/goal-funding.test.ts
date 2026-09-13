@@ -181,7 +181,7 @@ describe('goalPlansFor', () => {
         occurredOn: `2026-${month}-15`,
         description: 'Living',
         lines: [
-          { accountId: categories['food.groceries']!, amountMinor: 20_000_000, currency: 'IDR' },
+          { accountId: categories['household.groceries']!, amountMinor: 20_000_000, currency: 'IDR' },
           { accountId: bca.id, amountMinor: -20_000_000, currency: 'IDR' },
         ],
       });

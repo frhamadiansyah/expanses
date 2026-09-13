@@ -39,7 +39,7 @@ const salary = (occurredOn: string, amountMinor: number) =>
 
 const groceries = (occurredOn: string, amountMinor: number) =>
   post(occurredOn, 'Superindo', [
-    { accountId: categories['food.groceries']!, amountMinor },
+    { accountId: categories['household.groceries']!, amountMinor },
     { accountId: bca.id, amountMinor: -amountMinor },
   ]);
 
@@ -47,7 +47,7 @@ const groceries = (occurredOn: string, amountMinor: number) =>
 const loanPayment = (occurredOn: string, principalMinor: number, interestMinor: number) =>
   post(occurredOn, 'KPR installment', [
     { accountId: kpr.id, amountMinor: principalMinor },
-    { accountId: categories['fees.interest']!, amountMinor: interestMinor },
+    { accountId: categories['miscellaneous.interest']!, amountMinor: interestMinor },
     { accountId: bca.id, amountMinor: -(principalMinor + interestMinor) },
   ]);
 
@@ -77,7 +77,7 @@ describe('periodFlows income and spending', () => {
   it('adds expenses into spending and leaves final tax out', async () => {
     await groceries('2026-01-15', 4_000_000);
     await post('2026-01-16', 'Final tax on a dividend', [
-      { accountId: categories['government.final_tax']!, amountMinor: 500_000 },
+      { accountId: categories['government_taxes.estimated_tax']!, amountMinor: 500_000 },
       { accountId: bca.id, amountMinor: -500_000 },
     ]);
 
@@ -130,7 +130,7 @@ describe('periodFlows debt payments', () => {
     const kkb = await createAccount(database, ws, { name: 'Car loan', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 84_000_000, openedOn: '2026-01-01' });
     await post('2026-01-05', 'Car installment', [
       { accountId: kkb.id, amountMinor: 4_000_000 },
-      { accountId: categories['fees.interest']!, amountMinor: 900_000 },
+      { accountId: categories['miscellaneous.interest']!, amountMinor: 900_000 },
       { accountId: bca.id, amountMinor: -4_900_000 },
     ]);
 

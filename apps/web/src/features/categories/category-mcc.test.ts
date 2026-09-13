@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { categoryMcc } from './category-mcc';
 
 const categories = [
-  { id: 'food', parentId: null, systemKey: 'food' },
-  { id: 'dining', parentId: 'food', systemKey: 'food.dining' },
+  { id: 'food', parentId: null, systemKey: 'food_beverage' },
+  { id: 'dining', parentId: 'food', systemKey: 'food_beverage.restaurants' },
   { id: 'hawker', parentId: 'food', systemKey: null },
-  { id: 'misc', parentId: null, systemKey: 'other_expense' },
+  { id: 'misc', parentId: null, systemKey: 'miscellaneous' },
 ];
 
 describe('categoryMcc', () => {

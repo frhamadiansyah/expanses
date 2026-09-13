@@ -30,7 +30,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await page.getByLabel('Rule name').fill('5x dining');
   await page.getByLabel('Points', { exact: true }).fill('5');
   await page.getByLabel('Per spend (IDR)').fill('2500');
-  await page.getByLabel('Only these categories').selectOption([{ label: 'Food & Drink (all)' }]);
+  await page.getByLabel('Only these categories').selectOption([{ label: 'Food and beverage (all)' }]);
   await page.getByLabel('Priority').fill('10');
   await page.getByLabel('Bonus cap: spend per cycle (IDR)').fill('3000000');
   await page.getByRole('button', { name: 'Save rule' }).click();
@@ -45,7 +45,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await page.getByLabel('Description').fill('Wedding dinner');
   await page.getByLabel('Paid with').selectOption({ label: 'CIMB Octo (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Dining Out' });
+  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
   await page.getByLabel('Amount', { exact: true }).fill('3500000');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Wedding dinner')).toBeVisible();
@@ -56,7 +56,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
 
   await page.goto('/recommend');
   await page.getByLabel('Amount (IDR)').fill('100000');
-  await page.getByLabel('Category').selectOption({ label: 'Dining Out' });
+  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
   await page.getByRole('button', { name: 'Compare cards' }).click();
   const best = page.locator('section', { hasText: 'Best' });
   await expect(best).toContainText('CIMB Octo');

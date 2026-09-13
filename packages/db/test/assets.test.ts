@@ -107,12 +107,12 @@ describe('category keys', () => {
     await ensureCategoryKeys(database, ws);
 
     const accounts = await listAccounts(database, ws, { includeArchived: true });
-    const keys = accounts.filter((a) => a.systemKey === 'income.realized_gains' || a.systemKey === 'government.final_tax');
+    const keys = accounts.filter((a) => a.systemKey === 'income.realized_gains' || a.systemKey === 'government_taxes.estimated_tax');
     expect(keys).toHaveLength(2);
     expect(keys.find((a) => a.systemKey === 'income.realized_gains')!.kind).toBe('income');
-    const finalTax = keys.find((a) => a.systemKey === 'government.final_tax')!;
+    const finalTax = keys.find((a) => a.systemKey === 'government_taxes.estimated_tax')!;
     expect(finalTax.kind).toBe('expense');
-    expect(accounts.find((a) => a.id === finalTax.parentId)!.systemKey).toBe('government');
+    expect(accounts.find((a) => a.id === finalTax.parentId)!.systemKey).toBe('government_taxes');
   });
 });
 

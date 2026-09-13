@@ -18,8 +18,8 @@ describe('categoryTotalsBetween', () => {
         lines: expenseLines({ categoryAccountId: id(category), paymentAccountId: visa.id, amountMinor, currency: 'IDR' }),
       });
     await post('2026-09-02', 'Groceries', 500_000);
-    await post('2026-09-10', 'Dining Out', 300_000);
-    const voided = await post('2026-09-12', 'Dining Out', 999_999);
+    await post('2026-09-10', 'Restaurants', 300_000);
+    const voided = await post('2026-09-12', 'Restaurants', 999_999);
     await post('2026-10-01', 'Groceries', 1);
     await voidTransaction(database, ws, voided);
     await postTransaction(database, ws, {
@@ -30,7 +30,10 @@ describe('categoryTotalsBetween', () => {
 
     const spending = await categoryTotalsBetween(database, ws, 'expense', '2026-09-01', '2026-09-30');
     const tree = categoryTree(all, spending);
-    expect(tree.map((n) => [n.name, n.totalMinor])).toEqual([['Food & Drink', 800_000]]);
+    expect(tree.map((n) => [n.name, n.totalMinor])).toEqual([
+      ['Household', 500_000],
+      ['Food and beverage', 300_000],
+    ]);
 
     expect(await categoryTotalsBetween(database, ws, 'income', '2026-09-01', '2026-09-30')).toEqual([
       { accountId: id('Salary'), amountBaseMinor: 10_000_000 },

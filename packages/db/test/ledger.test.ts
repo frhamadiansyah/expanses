@@ -20,7 +20,7 @@ async function cardSetup() {
   const visa = await createAccount(database, ws, { name: 'BCA Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
   const all = await listAccounts(database, ws);
   const groceries = all.find((a) => a.name === 'Groceries')!;
-  const household = all.find((a) => a.name === 'Household')!;
+  const household = all.find((a) => a.name === 'Supplies')!;
   return { ...t, checking, visa, groceries, household };
 }
 
@@ -145,8 +145,8 @@ describe('review fixes: replace keeps import identity', () => {
     const t = await setupDb();
     const visa = await createAccount(t.database, t.ws, { name: 'Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
     const all = await listAccounts(t.database, t.ws);
-    const other = all.find((a) => a.name === 'Other Expense')!;
-    const dining = all.find((a) => a.name === 'Dining Out')!;
+    const other = all.find((a) => a.name === 'Miscellaneous')!;
+    const dining = all.find((a) => a.name === 'Restaurants')!;
     const id = await postTransaction(t.database, t.ws, {
       occurredOn: '2026-09-11', description: 'Sushi Tei', source: 'csv', externalRef: 'csv:visa|x|0',
       lines: expenseLines({ categoryAccountId: other.id, paymentAccountId: visa.id, amountMinor: 400_000, currency: 'IDR' }),

@@ -312,7 +312,7 @@ export async function recordLoanPayment(
     const total = input.principalMinor + input.interestMinor + extras.reduce((sum, extra) => sum + extra.amountMinor, 0);
 
     const lines: PostingLine[] = [line(input.accountId, input.principalMinor, currency)];
-    if (input.interestMinor > 0) lines.push(line(keys['fees.interest']!, input.interestMinor, currency));
+    if (input.interestMinor > 0) lines.push(line(keys['miscellaneous.interest']!, input.interestMinor, currency));
     for (const extra of extras) lines.push(line(extra.categoryId, extra.amountMinor, currency));
     lines.push(line(input.moneyAccountId, -total, currency));
 
@@ -376,7 +376,7 @@ export async function recordExtraPayment(
 
     const lines: PostingLine[] = [line(input.accountId, input.amountMinor, currency)];
     // A penalty is what the bank charges for paying early: a fee, never part of the principal.
-    if (penaltyMinor > 0) lines.push(line(keys['fees.bank']!, penaltyMinor, currency));
+    if (penaltyMinor > 0) lines.push(line(keys['miscellaneous.fees_charges']!, penaltyMinor, currency));
     lines.push(line(input.moneyAccountId, -(input.amountMinor + penaltyMinor), currency));
 
     const transactionId = await postTransactionTx(tx, ws, {

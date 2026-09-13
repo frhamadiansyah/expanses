@@ -16,13 +16,14 @@ describe('openAppDb', () => {
       const card = await createAccount(database, ws, { name: 'BCA KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
       const older = { ...findEntry('bca-sq-krisflyer-visa-signature')!, entryVersion: 0 };
       const { programId, unmappedKeys } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry: older, today: '2026-09-11', replaceManual: false });
-      expect(unmappedKeys).toHaveLength(6);
+      // Seven now: Obligation is excluded alongside Charity, so the rule names one key more.
+      expect(unmappedKeys).toHaveLength(7);
 
       const app = await openAppDb(database);
       expect(app.ws).toEqual(ws);
-      expect((await listAccounts(database, ws)).find((a) => a.name === 'Groceries')?.systemKey).toBe('food.groceries');
+      expect((await listAccounts(database, ws)).find((a) => a.name === 'Groceries')?.systemKey).toBe('household.groceries');
       expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: findEntry('bca-sq-krisflyer-visa-signature')!.entryVersion, status: 'linked' });
-      for (const rule of await listEarnRules(database, ws, programId)) expect(rule.match.excludeCategoryIds).toHaveLength(6);
+      for (const rule of await listEarnRules(database, ws, programId)) expect(rule.match.excludeCategoryIds).toHaveLength(7);
     } finally {
       executor.close();
     }

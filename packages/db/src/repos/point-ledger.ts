@@ -450,7 +450,7 @@ export async function cardYearRoi(database: Database, ws: WorkspaceContext, prog
   if (!program) throw new PointsError('Reward program not found');
 
   const keys = await categoryIdsByKey(database, ws);
-  const feeCategoryId = keys['fees.card_annual'];
+  const feeCategoryId = keys['miscellaneous.membership_fee'];
   const charges = feeCategoryId
     ? await database.db.values<[string, number]>(sql`
         SELECT t.occurred_on, e.amount_minor

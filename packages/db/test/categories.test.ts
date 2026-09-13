@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { categoryIdsByKey, createWorkspace, ensureCategoryKeys, listAccounts } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
-const NEW_DEFAULTS = ['business', 'entertainment.sports', 'fees.administration', 'fees.notification', 'fees.stamp_duty', 'fees.statement', 'gifts_donations.donations', 'gifts_donations.gifts', 'government', 'government.final_tax', 'housing.real_estate', 'income.realized_gains', 'utilities.gas'];
+const NEW_DEFAULTS = ['business', 'donation.charity', 'donation.obligation', 'government_taxes.estimated_tax', 'income.realized_gains', 'personal_care.sports_fitness', 'property.real_estate', 'utilities.gas_energy'];
 const ALL_KEYS = [...DEFAULT_CATEGORY_KEYS].sort();
 const ARCHIVED = "'2026-09-11T00:00:00.000Z'";
 
@@ -32,46 +32,44 @@ describe('ensureCategoryKeys', () => {
     expect(Object.keys(await categoryIdsByKey(database, ws)).sort()).toEqual(ALL_KEYS);
   });
 
-  it('creates Gas, Real Estate, Gifts, Donations, Government & Taxes, Business & Invoices, and Sports & Fitness', async () => {
+  it('creates the defaults a workspace from before the catalogue never had', async () => {
     const { database, ws } = await v0Workspace();
     expect([...(await ensureCategoryKeys(database, ws)).created].sort()).toEqual(NEW_DEFAULTS);
     const all = await listAccounts(database, ws);
     const named = (name: string) => all.find((account) => account.name === name)!;
-    expect(named('Gas')).toMatchObject({ kind: 'expense', subtype: 'category', systemKey: 'utilities.gas', parentId: named('Bills & Utilities').id });
-    expect(named('Real Estate').parentId).toBe(named('Housing').id);
-    expect(named('Gifts').parentId).toBe(named('Gifts & Donations').id);
-    expect(named('Donations').parentId).toBe(named('Gifts & Donations').id);
-    expect(named('Government & Taxes')).toMatchObject({ kind: 'expense', parentId: null, systemKey: 'government' });
+    expect(named('Gas & energy')).toMatchObject({ kind: 'expense', subtype: 'category', systemKey: 'utilities.gas_energy', parentId: named('Utilities').id });
+    expect(named('Real estate').parentId).toBe(named('Property').id);
+    expect(named('Charity').parentId).toBe(named('Donation').id);
+    expect(named('Obligation').parentId).toBe(named('Donation').id);
     expect(named('Business & Invoices')).toMatchObject({ kind: 'expense', parentId: null, systemKey: 'business' });
-    expect(named('Sports & Fitness')).toMatchObject({ systemKey: 'entertainment.sports', parentId: named('Entertainment').id });
-    for (const name of ['Notification Fee', 'Statement Fee', 'Stamp Duty', 'Administration Fee']) expect(named(name).parentId, name).toBe(named('Fees & Charges').id);
+    expect(named('Sports & fitness')).toMatchObject({ systemKey: 'personal_care.sports_fitness', parentId: named('Personal care').id });
   });
 
   it('skips a renamed default and does not recreate it', async () => {
     const { database, ws } = await v0Workspace();
     await database.execScript(`UPDATE accounts SET name = 'Supermarket' WHERE name = 'Groceries'`);
     const result = await ensureCategoryKeys(database, ws);
-    expect(result.keyed).not.toContain('food.groceries');
-    expect(result.created).not.toContain('food.groceries');
+    expect(result.keyed).not.toContain('household.groceries');
+    expect(result.created).not.toContain('household.groceries');
     const names = (await listAccounts(database, ws)).map((account) => account.name);
     expect(names).toContain('Supermarket');
     expect(names).not.toContain('Groceries');
-    expect(await categoryIdsByKey(database, ws)).not.toHaveProperty(['food.groceries']);
+    expect(await categoryIdsByKey(database, ws)).not.toHaveProperty(['household.groceries']);
   });
 
   it('neither keys nor creates children under a renamed parent', async () => {
     const { database, ws } = await v0Workspace();
-    await database.execScript(`UPDATE accounts SET name = 'Bills' WHERE name = 'Bills & Utilities'`);
+    await database.execScript(`UPDATE accounts SET name = 'Bills' WHERE name = 'Utilities'`);
     const result = await ensureCategoryKeys(database, ws);
     expect(result.keyed.filter((key) => key.startsWith('utilities'))).toEqual([]);
-    expect(result.created).not.toContain('utilities.gas');
+    expect(result.created).not.toContain('utilities.gas_energy');
   });
 
   it('changes nothing on a second run, even after a created category is archived', async () => {
     const { database, ws } = await v0Workspace();
     await ensureCategoryKeys(database, ws);
     expect(await ensureCategoryKeys(database, ws)).toEqual({ keyed: [], created: [] });
-    await database.execScript(`UPDATE accounts SET archived_at = ${ARCHIVED} WHERE system_key = 'utilities.gas'`);
+    await database.execScript(`UPDATE accounts SET archived_at = ${ARCHIVED} WHERE system_key = 'utilities.gas_energy'`);
     expect(await ensureCategoryKeys(database, ws)).toEqual({ keyed: [], created: [] });
   });
 
@@ -86,12 +84,12 @@ describe('categoryIdsByKey', () => {
     current = await setupDb();
     const { database, ws } = current;
     const all = await listAccounts(database, ws);
-    await database.execScript(`UPDATE accounts SET archived_at = ${ARCHIVED} WHERE system_key = 'fees.interest'`);
+    await database.execScript(`UPDATE accounts SET archived_at = ${ARCHIVED} WHERE system_key = 'miscellaneous.interest'`);
     const ids = await categoryIdsByKey(database, ws);
-    expect(Object.keys(ids).sort()).toEqual(ALL_KEYS.filter((key) => key !== 'fees.interest'));
-    expect(ids['food.groceries']).toBe(all.find((account) => account.name === 'Groceries')!.id);
+    expect(Object.keys(ids).sort()).toEqual(ALL_KEYS.filter((key) => key !== 'miscellaneous.interest'));
+    expect(ids['household.groceries']).toBe(all.find((account) => account.name === 'Groceries')!.id);
     expect(ids).not.toHaveProperty('opening_balance');
     const other = await createWorkspace(database, { name: 'Travel', type: 'travel', baseCurrency: 'IDR' });
-    expect((await categoryIdsByKey(database, other)).food).not.toBe(ids.food);
+    expect((await categoryIdsByKey(database, other)).food_beverage).not.toBe(ids.food_beverage);
   });
 });

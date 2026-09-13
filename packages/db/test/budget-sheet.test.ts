@@ -19,7 +19,7 @@ async function categoryId(database: Database, ws: WorkspaceContext, name: string
 async function workspaceWithSpending() {
   const { database, ws } = await setupDb();
   const bca = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
-  const groceries = await categoryId(database, ws, 'Groceries');
+  const restaurants = await categoryId(database, ws, 'Restaurants');
   const salary = await categoryId(database, ws, 'Salary');
 
   await postTransaction(database, ws, {
@@ -32,9 +32,9 @@ async function workspaceWithSpending() {
   });
   await postTransaction(database, ws, {
     occurredOn: '2026-09-09',
-    description: 'Superindo',
+    description: 'Warung',
     lines: [
-      { accountId: groceries, amountMinor: 500_000, currency: 'IDR' },
+      { accountId: restaurants, amountMinor: 500_000, currency: 'IDR' },
       { accountId: bca.id, amountMinor: -500_000, currency: 'IDR' },
     ],
   });
@@ -62,10 +62,10 @@ describe('the assembled sheet', () => {
 
   it('counts a child category against a cap on its parent', async () => {
     const { database, ws } = await workspaceWithSpending();
-    await saveBudget(database, ws, { categoryAccountId: await categoryId(database, ws, 'Food & Drink'), amountMinor: 300_000 });
+    await saveBudget(database, ws, { categoryAccountId: await categoryId(database, ws, 'Food and beverage'), amountMinor: 300_000 });
 
     const sheet = await budgetSheetFor(database, ws, MONTH);
-    const food = sheet.lines.find((line) => line.name === 'Food & Drink')!;
+    const food = sheet.lines.find((line) => line.name === 'Food and beverage')!;
 
     expect(food.totalMinor).toBe(500_000);
     expect(food.overMinor).toBe(200_000);
@@ -93,7 +93,7 @@ describe('the assembled sheet', () => {
   it('leaves both bottom lines standing on their own figures', async () => {
     const { database, ws } = await workspaceWithSpending();
     await saveExpectedIncome(database, ws, 25_000_000);
-    await saveBudget(database, ws, { categoryAccountId: await categoryId(database, ws, 'Food & Drink'), amountMinor: 300_000 });
+    await saveBudget(database, ws, { categoryAccountId: await categoryId(database, ws, 'Food and beverage'), amountMinor: 300_000 });
 
     const sheet = await budgetSheetFor(database, ws, MONTH);
 

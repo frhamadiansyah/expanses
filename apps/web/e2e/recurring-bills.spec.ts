@@ -63,7 +63,7 @@ test('a bill is only offered once its day has come round', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add a bill' }).click();
-  await page.getByLabel('What is it').fill('Rent');
+  await page.getByLabel('What is it').fill('Housing rent');
   // The 31st has not passed in any month this test can run in, except on the 31st itself.
   await page.getByLabel('Day of the month').fill('31');
   await page.getByLabel('Category').selectOption({ index: 1 });
@@ -71,6 +71,6 @@ test('a bill is only offered once its day has come round', async ({ page }) => {
   await page.getByLabel('Amount', { exact: true }).fill('5000000');
   await page.getByRole('button', { name: 'Save bill' }).click();
 
-  await expect(page.getByTestId('bill-row')).toContainText('Rent');
+  await expect(page.getByTestId('bill-row')).toContainText('Housing rent');
   if (new Date().getDate() < 31) await expect(page.getByTestId('bills-due')).toHaveCount(0);
 });

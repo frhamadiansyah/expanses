@@ -16,7 +16,7 @@ const valid = (): CatalogEntry => ({
     {
       effectiveFrom: null,
       effectiveTo: '2025-12-31',
-      rules: [{ key: 'base', name: 'Base', rateNum: 1, rateDen: 10000, rounding: 'per_transaction_floor', priority: 0, stackable: false, match: { excludeCategoryKeys: ['fees'] } }],
+      rules: [{ key: 'base', name: 'Base', rateNum: 1, rateDen: 10000, rounding: 'per_transaction_floor', priority: 0, stackable: false, match: { excludeCategoryKeys: ['miscellaneous.fees_charges'] } }],
       cycleBonuses: [{ key: 'monthly', name: 'Monthly', tiers: [{ minSpendMinor: 20000000, bonus: 1000 }, { minSpendMinor: 50000000, bonus: 2000 }], match: {} }],
     },
     {

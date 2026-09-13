@@ -34,7 +34,7 @@ describe('points repository', () => {
     const program = await createProgram(database, ws, { cardAccountId: card.id, name: 'CIMB Points', unit: 'points', cycleAnchor: 'statement' });
     expect((await listPrograms(database, ws)).map((p) => p.id)).toEqual([program.id]);
     const dining = await saveEarnRule(database, ws, program.id, {
-      name: '5x dining', priority: 10, stackable: false, match: { categoryIds: [id('Food & Drink')] }, rateNum: 5, rateDen: 2500,
+      name: '5x dining', priority: 10, stackable: false, match: { categoryIds: [id('Food and beverage')] }, rateNum: 5, rateDen: 2500,
       rounding: 'per_transaction_floor', capSpendMinor: 3_000_000, capPoints: null, minTransactionMinor: null, validFrom: null, validTo: null,
     });
     await saveEarnRule(database, ws, program.id, {
@@ -42,15 +42,15 @@ describe('points repository', () => {
       rounding: 'per_transaction_floor', capSpendMinor: null, capPoints: null, minTransactionMinor: null, validFrom: null, validTo: null,
     });
     const rules = await listEarnRules(database, ws, program.id);
-    expect(rules.find((r) => r.id === dining)?.match).toEqual({ categoryIds: [id('Food & Drink')] });
+    expect(rules.find((r) => r.id === dining)?.match).toEqual({ categoryIds: [id('Food and beverage')] });
 
     const buy = (occurredOn: string, category: string, amountMinor: number) =>
       postTransaction(database, ws, { occurredOn, description: category, lines: expenseLines({ categoryAccountId: id(category), paymentAccountId: card.id, amountMinor, currency: 'IDR' }) });
-    await buy('2026-08-21', 'Dining Out', 2_000_000);
-    await buy('2026-09-01', 'Groceries', 1_500_000);
-    const voided = await buy('2026-09-02', 'Dining Out', 9_000_000);
+    await buy('2026-08-21', 'Restaurants', 2_000_000);
+    await buy('2026-09-01', 'Takeaways', 1_500_000);
+    const voided = await buy('2026-09-02', 'Restaurants', 9_000_000);
     await voidTransaction(database, ws, voided);
-    await buy('2026-09-21', 'Fuel', 999_999);
+    await buy('2026-09-21', 'Fuel cost', 999_999);
     await postTransaction(database, ws, { occurredOn: '2026-09-10', description: 'Pay card', lines: transferLines({ fromAccountId: checking.id, toAccountId: card.id, amountMinor: 2_000_000, currency: 'IDR' }) });
 
     const cycle = statementCycleFor('2026-09-11', 20);

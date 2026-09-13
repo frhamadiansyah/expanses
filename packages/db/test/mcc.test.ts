@@ -53,11 +53,11 @@ describe('card spend lines with MCC', () => {
   it('resolves typed, memory, bundled, and category MCCs with their sources', async () => {
     const { database, ws, buy, lines } = await cardSetup();
     await saveMerchantMcc(database, ws, { pattern: 'mcdonald', mcc: '5813' });
-    await buy('SUSHI TEI', 'food.dining', '2026-09-01', { mcc: '5813' });
-    await buy('MCDONALD SENAYAN', 'food.dining', '2026-09-02');
-    await buy('KFC KEMANG', 'food.dining', '2026-09-03');
-    await buy('WARUNG BU TINI', 'food.dining', '2026-09-04');
-    await buy('LAIN LAIN', 'other_expense', '2026-09-05');
+    await buy('SUSHI TEI', 'food_beverage.restaurants', '2026-09-01', { mcc: '5813' });
+    await buy('MCDONALD SENAYAN', 'food_beverage.restaurants', '2026-09-02');
+    await buy('KFC KEMANG', 'food_beverage.restaurants', '2026-09-03');
+    await buy('WARUNG BU TINI', 'food_beverage.restaurants', '2026-09-04');
+    await buy('LAIN LAIN', 'miscellaneous', '2026-09-05');
     expect(await lines()).toEqual([
       ['SUSHI TEI', '5813', 'typed'],
       ['MCDONALD SENAYAN', '5813', 'memory'],
@@ -69,7 +69,7 @@ describe('card spend lines with MCC', () => {
 
   it('applies merchant memory saved later to past cycles', async () => {
     const { database, ws, buy, lines } = await cardSetup();
-    await buy('KFC KEMANG', 'food.dining', '2026-08-10');
+    await buy('KFC KEMANG', 'food_beverage.restaurants', '2026-08-10');
     expect(await lines('2026-08-01', '2026-08-31')).toEqual([['KFC KEMANG', '5814', 'bundled']]);
     await saveMerchantMcc(database, ws, { pattern: 'kfc', mcc: '5812' });
     expect(await lines('2026-08-01', '2026-08-31')).toEqual([['KFC KEMANG', '5812', 'memory']]);
@@ -77,20 +77,20 @@ describe('card spend lines with MCC', () => {
 
   it('uses category overrides and returns to the built-in default after clearing', async () => {
     const { database, ws, buy, lines, category, checking } = await cardSetup();
-    await buy('WARUNG BU TINI', 'food.dining', '2026-09-04');
-    await saveCategoryMcc(database, ws, category('food.dining'), '5813');
+    await buy('WARUNG BU TINI', 'food_beverage.restaurants', '2026-09-04');
+    await saveCategoryMcc(database, ws, category('food_beverage.restaurants'), '5813');
     expect(await lines()).toEqual([['WARUNG BU TINI', '5813', 'category']]);
-    await clearCategoryMcc(database, ws, category('food.dining'));
+    await clearCategoryMcc(database, ws, category('food_beverage.restaurants'));
     expect(await lines()).toEqual([['WARUNG BU TINI', '5812', 'category']]);
     await expect(saveCategoryMcc(database, ws, checking.id, '5812')).rejects.toThrow(MccError);
-    await expect(saveCategoryMcc(database, ws, category('food.dining'), 'abcd')).rejects.toThrow(MccError);
+    await expect(saveCategoryMcc(database, ws, category('food_beverage.restaurants'), 'abcd')).rejects.toThrow(MccError);
   });
 
   it('counts posted expense purchases whose description matches a pattern', async () => {
     const { database, ws, buy, checking } = await cardSetup();
-    await buy('KFC KEMANG', 'food.dining', '2026-09-01');
-    await buy('KFC PIM', 'food.dining', '2026-09-02', { payment: checking.id });
-    await buy('KFCX ONLINE', 'food.dining', '2026-09-03');
+    await buy('KFC KEMANG', 'food_beverage.restaurants', '2026-09-01');
+    await buy('KFC PIM', 'food_beverage.restaurants', '2026-09-02', { payment: checking.id });
+    await buy('KFCX ONLINE', 'food_beverage.restaurants', '2026-09-03');
     expect(await countMatchingPurchases(database, ws, 'KFC')).toBe(2);
   });
 });
@@ -98,9 +98,9 @@ describe('card spend lines with MCC', () => {
 describe('merchant counts', () => {
   it('counts several patterns from one scan', async () => {
     const { database, ws, buy } = await cardSetup();
-    await buy('KFC KEMANG', 'food.dining', '2026-09-01');
-    await buy('GRAB FOOD KFC', 'food.dining', '2026-09-02');
-    await buy('GRAB CAR', 'transport.ride_hailing', '2026-09-03');
+    await buy('KFC KEMANG', 'food_beverage.restaurants', '2026-09-01');
+    await buy('GRAB FOOD KFC', 'food_beverage.restaurants', '2026-09-02');
+    await buy('GRAB CAR', 'transportation.ride_hailing', '2026-09-03');
     expect(await countPurchasesByPattern(database, ws, ['kfc', 'grab', 'mcdonald'])).toEqual({ kfc: 2, grab: 2, mcdonald: 0 });
   });
 });

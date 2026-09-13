@@ -17,7 +17,7 @@ async function household() {
   const { database, ws } = await setupDb();
   const bca = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' });
   const phone = await createAccount(database, ws, { name: 'Phone', kind: 'expense', subtype: 'category', currency: null });
-  const water = await createAccount(database, ws, { name: 'Water', kind: 'expense', subtype: 'category', currency: null });
+  const water = await createAccount(database, ws, { name: 'Water & sanitation', kind: 'expense', subtype: 'category', currency: null });
   return { database, ws, bca, phone, water };
 }
 

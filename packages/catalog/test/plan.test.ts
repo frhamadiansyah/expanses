@@ -24,17 +24,23 @@ describe('planCatalogApply', () => {
   });
 
   it('maps category keys to account ids and reports unmapped keys', () => {
-    const plan = planCatalogApply(entry('bca-sq-krisflyer-visa-signature'), idsExcept('government', 'fees'), '2026-09-11');
-    expect(plan.rules[0]!.match.excludeCategoryIds).toEqual(['id:utilities.electricity', 'id:utilities.water', 'id:utilities.gas', 'id:gifts_donations.donations']);
-    expect(plan.unmappedKeys).toEqual(['fees', 'government']);
+    const plan = planCatalogApply(entry('bca-sq-krisflyer-visa-signature'), idsExcept('government_taxes', 'miscellaneous.fees_charges'), '2026-09-11');
+    expect(plan.rules[0]!.match.excludeCategoryIds).toEqual([
+      'id:utilities.electricity',
+      'id:utilities.water_sanitation',
+      'id:utilities.gas_energy',
+      'id:donation.charity',
+      'id:donation.obligation',
+    ]);
+    expect(plan.unmappedKeys).toEqual(['government_taxes', 'miscellaneous.fees_charges']);
   });
 
   it('leaves out a rule whose only category keys are unmapped instead of widening it to every category', () => {
-    const none = planCatalogApply(entry('mandiri-world-prioritas'), idsExcept('transport', 'housing.real_estate', 'education'), '2026-09-11');
+    const none = planCatalogApply(entry('mandiri-world-prioritas'), idsExcept('transportation', 'property.real_estate', 'education'), '2026-09-11');
     expect(none.rules.map((r) => r.catalogKey)).toEqual(['start:reduced-qris', 'start:reduced-insurance', 'start:foreign', 'start:domestic']);
-    expect(none.unmappedKeys).toEqual(['education', 'housing.real_estate', 'transport']);
+    expect(none.unmappedKeys).toEqual(['education', 'property.real_estate', 'transportation']);
     const some = planCatalogApply(entry('mandiri-world-prioritas'), idsExcept('education'), '2026-09-11');
-    expect(some.rules[0]!.match.categoryIds).toEqual(['id:transport', 'id:housing.real_estate']);
+    expect(some.rules[0]!.match.categoryIds).toEqual(['id:transportation', 'id:property.real_estate']);
   });
 
   it('includes the UnionPay double-points rule, four partners, and cash value', () => {

@@ -35,8 +35,8 @@
               "octo"
             ],
             "excludeCategoryKeys": [
-              "fees",
-              "health.insurance"
+              "miscellaneous.fees_charges",
+              "protection.health_insurance"
             ],
             "merchantPatterns": [
               "accor",
@@ -79,8 +79,8 @@
               "octo"
             ],
             "excludeCategoryKeys": [
-              "fees",
-              "health.insurance"
+              "miscellaneous.fees_charges",
+              "protection.health_insurance"
             ],
             "origin": "foreign"
           }
@@ -103,8 +103,8 @@
               "octo"
             ],
             "excludeCategoryKeys": [
-              "fees",
-              "health.insurance"
+              "miscellaneous.fees_charges",
+              "protection.health_insurance"
             ],
             "origin": "domestic"
           }
@@ -136,7 +136,7 @@
               "forex"
             ],
             "excludeCategoryKeys": [
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "merchantPatterns": [
               "accor",
@@ -181,7 +181,7 @@
               "forex"
             ],
             "excludeCategoryKeys": [
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "origin": "foreign"
           }
@@ -206,7 +206,7 @@
               "forex"
             ],
             "excludeCategoryKeys": [
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "origin": "domestic"
           }

@@ -20,7 +20,7 @@ async function purchaseSetup() {
   const { database, ws } = t;
   const card = await createAccount(database, ws, { name: 'Maybank Platinum', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
   const program = await createProgram(database, ws, { cardAccountId: card.id, name: 'Maybank TREATS Points', unit: 'points', cycleAnchor: 'statement' });
-  const dining = (await listAccounts(database, ws)).find((a) => a.systemKey === 'food.dining')!.id;
+  const dining = (await listAccounts(database, ws)).find((a) => a.systemKey === 'food_beverage.restaurants')!.id;
   const lines = expenseLines({ categoryAccountId: dining, paymentAccountId: card.id, amountMinor: 60_000, currency: 'IDR' });
   const purchaseId = await postTransaction(database, ws, { occurredOn: '2026-09-05', description: 'MCDONALD SENAYAN', lines });
   return { ...t, card, program, lines, purchaseId };

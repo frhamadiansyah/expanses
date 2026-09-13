@@ -33,7 +33,7 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "fees"
+              "miscellaneous.fees_charges"
             ]
           }
         },
@@ -47,7 +47,7 @@
           "stackable": true,
           "match": {
             "excludeCategoryKeys": [
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "currencies": [
               "SGD",

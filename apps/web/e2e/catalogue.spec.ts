@@ -53,7 +53,7 @@ const thisCycle = (page: Page) => page.locator('section', { has: page.getByRole(
 test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with full progress', async ({ page }) => {
   await addCard(page, 'KF Signature');
   await applyCatalogue(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
-  await buy(page, { card: 'KF Signature', description: 'Anniversary dinner', category: 'Dining Out', amount: '21000000' });
+  await buy(page, { card: 'KF Signature', description: 'Anniversary dinner', category: 'Restaurants', amount: '21000000' });
 
   await openCard(page, 'KF Signature');
   const cycle = thisCycle(page);
@@ -68,7 +68,7 @@ test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with ful
 test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({ page }) => {
   await addCard(page, 'UnionPay');
   await applyCatalogue(page, 'UnionPay', 'unionpay', 'BCA UnionPay');
-  await buy(page, { card: 'UnionPay', description: 'Din Tai Fung Orchard', category: 'Dining Out', amount: '540000', original: ['SGD', '45,20'] });
+  await buy(page, { card: 'UnionPay', description: 'Din Tai Fung Orchard', category: 'Restaurants', amount: '540000', original: ['SGD', '45,20'] });
   await expect(page.getByText(/SGD\s45,20/)).toBeVisible();
 
   await openCard(page, 'UnionPay');
@@ -98,7 +98,7 @@ test('comparing in KrisFlyer ranks UnionPay converted miles above Signature mile
   await page.goto('/recommend');
   await page.getByLabel('Amount (IDR)').fill('540000');
   await page.getByLabel('Spent in').selectOption('SGD');
-  await page.getByLabel('Category').selectOption({ label: 'Dining Out' });
+  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
   await expect(page.getByLabel('Compare in').locator('option', { hasText: 'KrisFlyer' })).toHaveCount(1);
   await page.getByLabel('Compare in').selectOption('KrisFlyer');
   await page.getByRole('button', { name: 'Compare cards' }).click();
@@ -113,8 +113,8 @@ test('comparing in KrisFlyer ranks UnionPay converted miles above Signature mile
 test('Mandiri World Prioritas earns per Rp 20.000 multiple, and a CNY taxi earns the transport rate', async ({ page }) => {
   await addCard(page, 'Mandiri Prioritas');
   await applyCatalogue(page, 'Mandiri Prioritas', 'prioritas', 'Mandiri World Prioritas');
-  await buy(page, { card: 'Mandiri Prioritas', description: 'Kopi Kenangan', category: 'Coffee & Snacks', amount: '25000' });
-  await buy(page, { card: 'Mandiri Prioritas', description: 'Didi Shanghai', category: 'Ride Hailing', amount: '250000', original: ['CNY', '55,00'] });
+  await buy(page, { card: 'Mandiri Prioritas', description: 'Kopi Kenangan', category: 'Cafe & dessert', amount: '25000' });
+  await buy(page, { card: 'Mandiri Prioritas', description: 'Didi Shanghai', category: 'Ride hailing', amount: '250000', original: ['CNY', '55,00'] });
 
   await openCard(page, 'Mandiri Prioritas');
   const cycle = thisCycle(page);

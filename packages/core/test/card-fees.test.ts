@@ -2,20 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { cardFeeCategoryIds, computeCycleEarn, type CycleBonus, type EarnRule, isCardFee, type SpendLine } from '../src/index';
 
 const feeIds = cardFeeCategoryIds([
-  { id: 'fees', parentId: null, systemKey: 'fees' },
-  { id: 'stamp', parentId: 'fees', systemKey: 'fees.stamp_duty' },
+  { id: 'misc', parentId: null, systemKey: 'miscellaneous' },
+  { id: 'fees', parentId: 'misc', systemKey: 'miscellaneous.fees_charges' },
+  { id: 'annual', parentId: 'misc', systemKey: 'miscellaneous.membership_fee' },
+  { id: 'interest', parentId: 'misc', systemKey: 'miscellaneous.interest' },
+  { id: 'postage', parentId: 'misc', systemKey: 'miscellaneous.postal_service' },
   { id: 'mine', parentId: 'fees', systemKey: null },
-  { id: 'food', parentId: null, systemKey: 'food' },
-  { id: 'dining', parentId: 'food', systemKey: 'food.dining' },
+  { id: 'food', parentId: null, systemKey: 'food_beverage' },
+  { id: 'dining', parentId: 'food', systemKey: 'food_beverage.restaurants' },
 ]);
 
 describe('card fees', () => {
-  it('finds the fees category and everything under it', () => {
-    expect([...feeIds].sort()).toEqual(['fees', 'mine', 'stamp']);
+  it('finds every fee category and anything under them, but not their siblings', () => {
+    expect([...feeIds].sort()).toEqual(['annual', 'fees', 'interest', 'mine']);
+    // Miscellaneous holds the fee categories but is not one itself, so neither it nor Postage is swept in.
+    expect(feeIds.has('misc')).toBe(false);
+    expect(feeIds.has('postage')).toBe(false);
   });
 
   it('recognises fee categories and issuer charge phrases, but not ordinary merchants', () => {
-    expect(isCardFee('ANYTHING', 'stamp', feeIds)).toBe(true);
+    expect(isCardFee('ANYTHING', 'annual', feeIds)).toBe(true);
     for (const description of ['BIAYA NOTIFIKASI SMS', 'BEA MATERAI', 'Stamp Duty', 'BIAYA ADMINISTRASI KARTU', 'IURAN TAHUNAN KARTU UTAMA', 'LATE PAYMENT FEE']) {
       expect(isCardFee(description, 'dining', feeIds), description).toBe(true);
     }

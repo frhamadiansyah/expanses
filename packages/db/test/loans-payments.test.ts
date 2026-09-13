@@ -53,7 +53,7 @@ describe('recording a payment', () => {
 
     expect(result.balanceMinor).toBe(698_150_134);
     expect(await owed()).toBe(698_150_134);
-    expect(await balanceOf(categories['fees.interest']!)).toBe(5_250_000);
+    expect(await balanceOf(categories['miscellaneous.interest']!)).toBe(5_250_000);
     expect(await balanceOf(bca.id)).toBe(100_000_000 - 7_099_866);
   });
 
@@ -64,10 +64,10 @@ describe('recording a payment', () => {
       moneyAccountId: bca.id,
       principalMinor: 1_849_866,
       interestMinor: 5_250_000,
-      extras: [{ categoryId: categories['health.insurance']!, amountMinor: 150_000 }],
+      extras: [{ categoryId: categories['protection.health_insurance']!, amountMinor: 150_000 }],
     });
 
-    expect(await balanceOf(categories['health.insurance']!)).toBe(150_000);
+    expect(await balanceOf(categories['protection.health_insurance']!)).toBe(150_000);
     expect(await balanceOf(bca.id)).toBe(100_000_000 - 7_249_866);
   });
 
@@ -183,7 +183,7 @@ describe('paying extra off the principal', () => {
     });
 
     expect(await owed()).toBe(650_000_000);
-    expect(await balanceOf(categories['fees.bank']!)).toBe(500_000);
+    expect(await balanceOf(categories['miscellaneous.fees_charges']!)).toBe(500_000);
     expect(await balanceOf(bca.id)).toBe(49_500_000);
   });
 

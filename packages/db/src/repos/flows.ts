@@ -56,8 +56,8 @@ export async function periodFlows(
 ): Promise<PeriodFlowsResult> {
   const keys = await categoryIdsByKey(database, ws);
   const realizedGainsId = keys['income.realized_gains'];
-  const finalTaxId = keys['government.final_tax'];
-  const interestId = keys['fees.interest'];
+  const finalTaxId = keys['government_taxes.estimated_tax'];
+  const interestId = keys['miscellaneous.interest'];
   // A caller may name the home loans; otherwise the loans say so themselves, by what they bought.
   const homeLoans = new Set(opts.homeLoanAccountIds ?? (await homeLoanAccountIds(database, ws)));
 

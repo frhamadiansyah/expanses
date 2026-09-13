@@ -29,8 +29,8 @@ describe('bundled catalogue', () => {
 
   it('excludes CIMB insurance premiums until 2025-12-31 only', () => {
     const cimb = findEntry('cimb-niaga-world-all-accor')!;
-    expect(termsOn(cimb, '2025-12-31')!.rules[0]!.match.excludeCategoryKeys).toContain('health.insurance');
-    expect(termsOn(cimb, '2026-01-01')!.rules[0]!.match.excludeCategoryKeys).not.toContain('health.insurance');
+    expect(termsOn(cimb, '2025-12-31')!.rules[0]!.match.excludeCategoryKeys).toContain('protection.health_insurance');
+    expect(termsOn(cimb, '2026-01-01')!.rules[0]!.match.excludeCategoryKeys).not.toContain('protection.health_insurance');
     expect(cimb.program.fixedStatementDay).toBe(22);
   });
 

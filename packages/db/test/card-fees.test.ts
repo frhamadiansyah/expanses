@@ -11,9 +11,9 @@ describe('card fees in spend lines', () => {
     const category = (key: string) => all.find((a) => a.systemKey === key)!.id;
     const post = (occurredOn: string, description: string, key: string) =>
       postTransaction(database, ws, { occurredOn, description, lines: expenseLines({ categoryAccountId: category(key), paymentAccountId: card.id, amountMinor: 10_000, currency: 'IDR' }) });
-    await post('2026-09-01', 'BIAYA NOTIFIKASI', 'other_expense');
-    await post('2026-09-02', 'KARTU UTAMA', 'fees.card_annual');
-    await post('2026-09-03', 'SUPERINDO', 'food.groceries');
+    await post('2026-09-01', 'BIAYA NOTIFIKASI', 'miscellaneous.fees_charges');
+    await post('2026-09-02', 'KARTU UTAMA', 'miscellaneous.membership_fee');
+    await post('2026-09-03', 'SUPERINDO', 'household.groceries');
     const lines = await cardSpendLines(database, ws, card.id, '2026-09-01', '2026-09-30');
     expect(lines.map((l) => [l.description, l.cardFee])).toEqual([
       ['BIAYA NOTIFIKASI', true],

@@ -114,7 +114,7 @@ describe('what actually went into savings and investments', () => {
       description: 'KPR installment',
       lines: [
         { accountId: kpr.id, amountMinor: 2_000_000, currency: 'IDR' },
-        { accountId: categories['fees.interest']!, amountMinor: 6_000_000, currency: 'IDR' },
+        { accountId: categories['miscellaneous.interest']!, amountMinor: 6_000_000, currency: 'IDR' },
         { accountId: bca.id, amountMinor: -8_000_000, currency: 'IDR' },
       ],
     });
@@ -127,7 +127,7 @@ describe('what actually went into savings and investments', () => {
       occurredOn: '2026-01-15',
       description: 'Superindo',
       lines: [
-        { accountId: categories['food.groceries']!, amountMinor: 4_000_000, currency: 'IDR' },
+        { accountId: categories['household.groceries']!, amountMinor: 4_000_000, currency: 'IDR' },
         { accountId: bca.id, amountMinor: -4_000_000, currency: 'IDR' },
       ],
     });
@@ -143,7 +143,7 @@ describe('what actually went into savings and investments', () => {
       description: 'KPR installment',
       lines: [
         { accountId: kpr.id, amountMinor: 2_000_000, currency: 'IDR' },
-        { accountId: categories['fees.interest']!, amountMinor: 6_000_000, currency: 'IDR' },
+        { accountId: categories['miscellaneous.interest']!, amountMinor: 6_000_000, currency: 'IDR' },
         { accountId: bca.id, amountMinor: -8_000_000, currency: 'IDR' },
       ],
     });

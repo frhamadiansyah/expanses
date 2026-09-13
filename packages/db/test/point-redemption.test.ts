@@ -120,7 +120,7 @@ describe('what the annual fee bought', () => {
     await postTransaction(database, ws, {
       occurredOn: '2026-03-01',
       description: 'Annual fee',
-      lines: expenseLines({ categoryAccountId: id('Card Annual Fee'), paymentAccountId: card.id, amountMinor: 600_000, currency: 'IDR' }),
+      lines: expenseLines({ categoryAccountId: id('Membership fee'), paymentAccountId: card.id, amountMinor: 600_000, currency: 'IDR' }),
     });
 
     const roi = await cardYearRoi(database, ws, program.id, TODAY);
@@ -133,7 +133,7 @@ describe('what the annual fee bought', () => {
     await postTransaction(database, ws, {
       occurredOn: '2026-03-01',
       description: 'Annual fee',
-      lines: expenseLines({ categoryAccountId: id('Card Annual Fee'), paymentAccountId: card.id, amountMinor: 600_000, currency: 'IDR' }),
+      lines: expenseLines({ categoryAccountId: id('Membership fee'), paymentAccountId: card.id, amountMinor: 600_000, currency: 'IDR' }),
     });
 
     const roi = await cardYearRoi(database, ws, program.id, TODAY);
@@ -176,7 +176,7 @@ describe('what points actually fetch', () => {
     await postTransaction(database, ws, {
       occurredOn: '2026-03-01',
       description: 'Annual fee',
-      lines: expenseLines({ categoryAccountId: id('Card Annual Fee'), paymentAccountId: card.id, amountMinor: 600_000, currency: 'IDR' }),
+      lines: expenseLines({ categoryAccountId: id('Membership fee'), paymentAccountId: card.id, amountMinor: 600_000, currency: 'IDR' }),
     });
     await recordRedemption(database, ws, { programId: program.id, kind: 'redeem', points: 400, occurredOn: TODAY, note: null, valueMinor: 4_000 });
 

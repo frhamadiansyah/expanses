@@ -91,7 +91,7 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await page.getByLabel('Description').fill('Dinner at Plataran');
   await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Dining Out' });
+  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
   await page.getByLabel('Amount').fill('900000');
   await page.getByLabel('Someone owes part of this').check();
   await page.getByLabel('Who owes you').fill('Andi');

@@ -219,7 +219,7 @@ describe('borrowing money', () => {
 
     const categories = await categoryIdsByKey(database, ws);
     expect(await balanceOf(debtAccountId)).toBe(-3_000_000);
-    expect(await balanceOf(categories['fees.interest']!)).toBe(100_000);
+    expect(await balanceOf(categories['miscellaneous.interest']!)).toBe(100_000);
     expect(await balanceOf(bca.id)).toBe(52_900_000);
   });
 
@@ -249,7 +249,7 @@ describe('forgiving what is left', () => {
     await forgiveRemainder(database, ws, { debtAccountId, occurredOn: '2026-11-01' });
 
     const categories = await categoryIdsByKey(database, ws);
-    expect(await balanceOf(categories['gifts_donations']!)).toBe(10_000_000);
+    expect(await balanceOf(categories['gift_giving']!)).toBe(10_000_000);
   });
 
   it('refuses to forgive a debt with nothing left', async () => {
@@ -269,7 +269,7 @@ describe('splitting a bill', () => {
       description: 'Dinner at Plataran',
       totalMinor: 900_000,
       moneyAccountId: bca.id,
-      ownCategoryId: categories['food.dining']!,
+      ownCategoryId: categories['food_beverage.restaurants']!,
       ownShareMinor: 300_000,
       shares: [
         { person: { name: 'Andi', currency: 'IDR' }, amountMinor: 300_000 },
@@ -278,7 +278,7 @@ describe('splitting a bill', () => {
     });
 
     expect(debtAccountIds).toHaveLength(2);
-    expect(await balanceOf(categories['food.dining']!)).toBe(300_000);
+    expect(await balanceOf(categories['food_beverage.restaurants']!)).toBe(300_000);
     expect(await balanceOf(debtAccountIds[0]!)).toBe(300_000);
     expect(await balanceOf(debtAccountIds[1]!)).toBe(300_000);
     expect(await balanceOf(bca.id)).toBe(49_100_000);
@@ -293,7 +293,7 @@ describe('splitting a bill', () => {
         description: 'Dinner',
         totalMinor: 900_000,
         moneyAccountId: bca.id,
-        ownCategoryId: categories['food.dining']!,
+        ownCategoryId: categories['food_beverage.restaurants']!,
         ownShareMinor: 200_000,
         shares: [{ person: { name: 'Andi', currency: 'IDR' }, amountMinor: 300_000 }],
       }),

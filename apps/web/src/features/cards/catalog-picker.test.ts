@@ -19,8 +19,8 @@ describe('searchCatalog', () => {
 
 describe('categoryNameForKey', () => {
   it('names default category keys and passes unknown keys through', () => {
-    expect(categoryNameForKey('government')).toBe('Government & Taxes');
-    expect(categoryNameForKey('utilities.gas')).toBe('Gas');
+    expect(categoryNameForKey('government_taxes')).toBe('Government & taxes');
+    expect(categoryNameForKey('utilities.gas_energy')).toBe('Gas & energy');
     expect(categoryNameForKey('unknown.key')).toBe('unknown.key');
   });
 });

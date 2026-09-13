@@ -7,10 +7,10 @@ describe('workspace seed', () => {
     const { database, ws } = await setupDb();
     const all = await listAccounts(database, ws);
     expect(all.filter((a) => a.kind === 'equity').map((a) => a.systemKey).sort()).toEqual(['currency_exchange', 'opening_balance']);
-    const food = all.find((a) => a.name === 'Food & Drink')!;
+    const food = all.find((a) => a.name === 'Food and beverage')!;
     const groceries = all.find((a) => a.name === 'Groceries')!;
     expect(food.kind).toBe('expense');
-    expect(groceries.parentId).toBe(food.id);
+    expect(groceries.parentId).toBe(all.find((a) => a.name === 'Household')!.id);
     expect(all.find((a) => a.name === 'Salary')?.kind).toBe('income');
   });
 });
@@ -49,7 +49,7 @@ describe('createAccount', () => {
   it('validates kind, subtype, currency, and parent', async () => {
     const { database, ws } = await setupDb();
     const all = await listAccounts(database, ws);
-    const food = all.find((a) => a.name === 'Food & Drink')!;
+    const food = all.find((a) => a.name === 'Food and beverage')!;
     const salary = all.find((a) => a.name === 'Salary')!;
     await expect(createAccount(database, ws, { name: 'X', kind: 'asset', subtype: 'credit_card', currency: 'IDR' })).rejects.toThrow(AccountError);
     await expect(createAccount(database, ws, { name: 'X', kind: 'asset', subtype: 'bank', currency: null })).rejects.toThrow(AccountError);
@@ -79,7 +79,7 @@ describe('review fixes: archiving with a balance', () => {
     expect((await listAccounts(database, ws)).some((a) => a.id === card.id)).toBe(true);
     const equity = (await listAccounts(database, ws)).find((a) => a.systemKey === 'opening_balance')!;
     expect((await nativeBalances(database, ws))[equity.id]).toBe(2_000_000);
-    const other = (await listAccounts(database, ws)).find((a) => a.name === 'Other Expense')!;
+    const other = (await listAccounts(database, ws)).find((a) => a.name === 'Miscellaneous')!;
     await archiveAccount(database, ws, other.id);
   });
 });
@@ -91,7 +91,7 @@ describe('category keys on new workspaces', () => {
     const categories = (await listAccounts(database, ws)).filter((a) => a.subtype === 'category');
     expect(categories.every((c) => c.systemKey !== null)).toBe(true);
     expect(new Set(categories.map((c) => c.systemKey))).toEqual(new Set(DEFAULT_CATEGORY_KEYS));
-    expect(categories.find((c) => c.systemKey === 'utilities.gas')?.name).toBe('Gas');
-    expect(categories.find((c) => c.systemKey === 'government')?.name).toBe('Government & Taxes');
+    expect(categories.find((c) => c.systemKey === 'utilities.gas_energy')?.name).toBe('Gas & energy');
+    expect(categories.find((c) => c.systemKey === 'government_taxes')?.name).toBe('Government & taxes');
   });
 });

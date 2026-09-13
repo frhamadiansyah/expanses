@@ -21,7 +21,7 @@ const WINDOW = { startsOn: `${MONTH}-18`, endsOn: `${MONTH}-28` };
 async function household() {
   const { database, ws } = await setupDb();
   const bca = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' });
-  const gifts = await createAccount(database, ws, { name: 'Gifts', kind: 'expense', subtype: 'category', currency: null });
+  const gifts = await createAccount(database, ws, { name: 'Gift giving', kind: 'expense', subtype: 'category', currency: null });
   const food = await createAccount(database, ws, { name: 'Food', kind: 'expense', subtype: 'category', currency: null });
   return { database, ws, bca, gifts, food };
 }

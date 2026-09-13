@@ -10,7 +10,21 @@ describe('default categories', () => {
   });
 
   it('includes the keys catalogue exclusions need', () => {
-    for (const key of ['utilities.electricity', 'utilities.water', 'utilities.gas', 'government', 'gifts_donations.gifts', 'gifts_donations.donations', 'fees']) {
+    for (const key of [
+      'utilities.electricity',
+      'utilities.water_sanitation',
+      'utilities.gas_energy',
+      'government_taxes',
+      'gift_giving',
+      'donation.charity',
+      'donation.obligation',
+      'miscellaneous.fees_charges',
+      'protection.health_insurance',
+      'property.real_estate',
+      'transportation',
+      'travel',
+      'business',
+    ]) {
       expect(DEFAULT_CATEGORY_KEYS.has(key), key).toBe(true);
     }
   });
@@ -21,11 +35,12 @@ describe('default categories', () => {
     }
   });
 
-  it('keeps existing default names so v0 workspaces can be matched', () => {
+  it('names every default, so a workspace can be matched by name where it has no key', () => {
     const names = DEFAULT_CATEGORIES.flatMap((c) => [c.name, ...(c.children ?? []).map((child) => child.name)]);
-    for (const name of ['Food & Drink', 'Groceries', 'Dining Out', 'Coffee & Snacks', 'Bills & Utilities', 'Electricity', 'Water', 'Gifts & Donations', 'Fees & Charges', 'Card Annual Fee', 'Other Expense', 'Salary', 'Other Income']) {
+    for (const name of ['Household', 'Groceries', 'Food and beverage', 'Restaurants', 'Utilities', 'Electricity', 'Water & sanitation', 'Donation', 'Charity', 'Miscellaneous', 'Membership fee', 'Salary', 'Other Income']) {
       expect(names, name).toContain(name);
     }
+    expect(new Set(names).size, 'names are unique, so a match is never ambiguous').toBe(names.length);
   });
 });
 
@@ -36,18 +51,18 @@ describe('currencies', () => {
 });
 
 describe('addendum categories', () => {
-  it('includes Real Estate under Housing and a Business & Invoices category', () => {
-    expect(DEFAULT_CATEGORY_KEYS.has('housing.real_estate')).toBe(true);
+  it('keeps real estate and business, which card rules name', () => {
+    expect(DEFAULT_CATEGORY_KEYS.has('property.real_estate')).toBe(true);
     expect(DEFAULT_CATEGORY_KEYS.has('business')).toBe(true);
-    const housing = DEFAULT_CATEGORIES.find((c) => c.key === 'housing');
-    expect(housing?.children?.find((c) => c.key === 'housing.real_estate')?.name).toBe('Real Estate');
+    const property = DEFAULT_CATEGORIES.find((c) => c.key === 'property');
+    expect(property?.children?.find((c) => c.key === 'property.real_estate')?.name).toBe('Real estate');
     expect(DEFAULT_CATEGORIES.find((c) => c.key === 'business')?.name).toBe('Business & Invoices');
   });
 });
 
 describe('MCC addendum categories', () => {
-  it('adds Sports & Fitness under Entertainment', () => {
-    const entertainment = DEFAULT_CATEGORIES.find((c) => c.key === 'entertainment');
-    expect(entertainment?.children?.find((c) => c.key === 'entertainment.sports')?.name).toBe('Sports & Fitness');
+  it('files sports and fitness under personal care, where it now belongs', () => {
+    const personal = DEFAULT_CATEGORIES.find((c) => c.key === 'personal_care');
+    expect(personal?.children?.find((c) => c.key === 'personal_care.sports_fitness')?.name).toBe('Sports & fitness');
   });
 });

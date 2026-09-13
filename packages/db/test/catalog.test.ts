@@ -67,7 +67,7 @@ describe('applyCatalogEntry', () => {
       ['2024-08-12', '2025-09-22', 1, 13_500],
       ['2025-09-23', null, 1, 13_500],
     ]);
-    expect(rules[1]!.match.excludeCategoryIds).toHaveLength(6);
+    expect(rules[1]!.match.excludeCategoryIds).toHaveLength(7);
     expect(rules[1]!.match.excludeMerchantPatterns).toEqual(['prudential']);
     expect(byValidFrom(await listCycleBonuses(database, ws, programId)).map((b) => [b.validFrom, b.validTo, b.tiers])).toEqual([
       ['2024-08-12', '2025-09-22', [{ minSpendMinor: 20_000_000, bonus: 1000 }]],
@@ -110,9 +110,9 @@ describe('applyCatalogEntry', () => {
 
   it('reports exclusions whose category is archived', async () => {
     const { database, ws, card } = await withCard();
-    await database.execScript(`UPDATE accounts SET archived_at = '${TODAY}T00:00:00.000Z' WHERE system_key = 'government'`);
+    await database.execScript(`UPDATE accounts SET archived_at = '${TODAY}T00:00:00.000Z' WHERE system_key = 'government_taxes'`);
     const { unmappedKeys } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry: entry('bca-sq-krisflyer-visa-signature'), today: TODAY, replaceManual: false });
-    expect(unmappedKeys).toEqual(['government']);
+    expect(unmappedKeys).toEqual(['government_taxes']);
   });
 
   it('rejects an account that is not a credit card', async () => {
@@ -146,7 +146,7 @@ describe('catalogue updates', () => {
     const { database, ws, card } = await withCard();
     const { programId } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry: entry('bca-sq-krisflyer-visa-signature'), today: TODAY, replaceManual: false });
     const all = await listAccounts(database, ws);
-    const dining = all.find((a) => a.systemKey === 'food.dining')!.id;
+    const dining = all.find((a) => a.systemKey === 'food_beverage.restaurants')!.id;
     const ancestors = Object.fromEntries(all.map((a) => [a.id, a.parentId ? [a.parentId] : []]));
     for (const occurredOn of ['2026-09-15', '2026-10-15']) {
       await postTransaction(database, ws, {

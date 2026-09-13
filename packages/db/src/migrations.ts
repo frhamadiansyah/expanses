@@ -25,6 +25,7 @@ import incomeSources from '../migrations/0023_income_sources.sql?raw';
 import fxRateNote from '../migrations/0024_fx_rate_note.sql?raw';
 import expenseTemplates from '../migrations/0025_expense_templates.sql?raw';
 import eventTables from '../migrations/0026_events.sql?raw';
+import categoryRevamp from '../migrations/0027_category_revamp.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -60,6 +61,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 24, name: 'fx_rate_note', sql: fxRateNote },
   { version: 25, name: 'expense_templates', sql: expenseTemplates },
   { version: 26, name: 'events', sql: eventTables },
+  { version: 27, name: 'category_revamp', sql: categoryRevamp },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

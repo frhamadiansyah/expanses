@@ -35,7 +35,15 @@ export const CARD_FEE_PHRASES: readonly string[] = [
   'finance charge',
 ];
 
-/** Ids of the default Fees & Charges category and every category under it. */
+/**
+ * The categories an issuer's own charges land in, and anything filed under them.
+ *
+ * These are named rather than found by walking to a common parent: the fee categories are siblings
+ * under Miscellaneous, not children of one Fees category, so a walk upward finds only Miscellaneous
+ * and would sweep in postal charges and fines with it.
+ */
+const CARD_FEE_KEYS = new Set(['miscellaneous.fees_charges', 'miscellaneous.membership_fee', 'miscellaneous.interest']);
+
 export function cardFeeCategoryIds(categories: readonly { id: string; parentId: string | null; systemKey: string | null }[]): Set<string> {
   const byId = new Map(categories.map((category) => [category.id, category]));
   const ids = new Set<string>();
@@ -43,7 +51,7 @@ export function cardFeeCategoryIds(categories: readonly { id: string; parentId: 
     const seen = new Set<string>();
     for (let current: (typeof categories)[number] | undefined = category; current && !seen.has(current.id); current = current.parentId ? byId.get(current.parentId) : undefined) {
       seen.add(current.id);
-      if (current.systemKey === 'fees') {
+      if (current.systemKey !== null && CARD_FEE_KEYS.has(current.systemKey)) {
         ids.add(category.id);
         break;
       }

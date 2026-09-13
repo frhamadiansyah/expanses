@@ -62,10 +62,10 @@ describe('MCC specs', () => {
 
 describe('category default MCC', () => {
   const categories = [
-    { id: 'food', parentId: null, systemKey: 'food' },
-    { id: 'dining', parentId: 'food', systemKey: 'food.dining' },
+    { id: 'food', parentId: null, systemKey: 'food_beverage' },
+    { id: 'dining', parentId: 'food', systemKey: 'food_beverage.restaurants' },
     { id: 'hawker', parentId: 'food', systemKey: null },
-    { id: 'misc', parentId: null, systemKey: 'other_expense' },
+    { id: 'misc', parentId: null, systemKey: 'miscellaneous' },
   ];
 
   it('uses the override, then the built-in default for the key, then the parent', () => {
@@ -82,8 +82,11 @@ describe('category default MCC', () => {
       expect(DEFAULT_CATEGORY_KEYS.has(key), key).toBe(true);
       expect(isMcc(mcc), key).toBe(true);
     }
-    expect(DEFAULT_CATEGORY_MCCS['food.coffee']).toBe('5814');
-    expect(DEFAULT_CATEGORY_MCCS['entertainment.sports']).toBe('5941');
+    expect(DEFAULT_CATEGORY_MCCS['food_beverage.cafe_dessert']).toBe('5814');
+    expect(DEFAULT_CATEGORY_MCCS['personal_care.sports_fitness']).toBe('5941');
+    // Both halves of the split telephone line keep the telecom code.
+    expect(DEFAULT_CATEGORY_MCCS['utilities.internet_provider']).toBe('4814');
+    expect(DEFAULT_CATEGORY_MCCS['utilities.mobile_phone']).toBe('4814');
     expect(DEFAULT_CATEGORY_MCCS.fees).toBeUndefined();
   });
 });

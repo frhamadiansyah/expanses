@@ -40,11 +40,12 @@
           "match": {
             "excludeCategoryKeys": [
               "utilities.electricity",
-              "utilities.water",
-              "utilities.gas",
-              "government",
-              "gifts_donations.donations",
-              "fees"
+              "utilities.water_sanitation",
+              "utilities.gas_energy",
+              "government_taxes",
+              "donation.charity",
+              "donation.obligation",
+              "miscellaneous.fees_charges"
             ],
             "excludeMccs": [
               "4900",
@@ -78,11 +79,12 @@
           "match": {
             "excludeCategoryKeys": [
               "utilities.electricity",
-              "utilities.water",
-              "utilities.gas",
-              "government",
-              "gifts_donations.donations",
-              "fees"
+              "utilities.water_sanitation",
+              "utilities.gas_energy",
+              "government_taxes",
+              "donation.charity",
+              "donation.obligation",
+              "miscellaneous.fees_charges"
             ],
             "excludeMccs": [
               "4900",
@@ -115,11 +117,12 @@
           "match": {
             "excludeCategoryKeys": [
               "utilities.electricity",
-              "utilities.water",
-              "utilities.gas",
-              "government",
-              "gifts_donations.donations",
-              "fees"
+              "utilities.water_sanitation",
+              "utilities.gas_energy",
+              "government_taxes",
+              "donation.charity",
+              "donation.obligation",
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "prudential"
@@ -156,11 +159,12 @@
           "match": {
             "excludeCategoryKeys": [
               "utilities.electricity",
-              "utilities.water",
-              "utilities.gas",
-              "government",
-              "gifts_donations.donations",
-              "fees"
+              "utilities.water_sanitation",
+              "utilities.gas_energy",
+              "government_taxes",
+              "donation.charity",
+              "donation.obligation",
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "prudential"

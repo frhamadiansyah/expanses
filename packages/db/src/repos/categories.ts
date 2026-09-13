@@ -7,11 +7,11 @@ import { accounts } from '../schema';
 type AccountRow = typeof accounts.$inferSelect;
 
 /** Defaults added with the card catalogue. Any other default missing from a workspace was renamed or deleted by the user. */
-const ADDED_WITH_CATALOGUE = new Set(['entertainment.sports', 'fees.notification', 'fees.statement', 'fees.stamp_duty', 'fees.administration', 'utilities.gas', 'housing.real_estate', 'gifts_donations.gifts', 'gifts_donations.donations', 'government', 'business']);
+/** Defaults added with the card catalogue. Any other default missing from a workspace was renamed or deleted by the user. */
+const ADDED_WITH_CATALOGUE = new Set(['personal_care.sports_fitness', 'utilities.gas_energy', 'property.real_estate', 'gift_giving', 'donation.charity', 'donation.obligation', 'government_taxes', 'business']);
 
-/** Defaults added with the asset and trade work: investment gains and the final tax they are taxed under. */
-const ADDED_WITH_ASSETS = new Set(['income.realized_gains', 'government.final_tax']);
-
+/** Defaults added with the asset and trade work: investment gains and the tax they are taxed under. */
+const ADDED_WITH_ASSETS = new Set(['income.realized_gains', 'government_taxes.estimated_tax']);
 /**
  * Gives default categories their stable keys in workspaces created before keys existed, and creates the defaults added
  * with the catalogue. Idempotent; runs on app open. A default is keyed only when its seed name sits under its keyed

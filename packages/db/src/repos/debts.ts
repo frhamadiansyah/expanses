@@ -159,8 +159,8 @@ async function debtCategoriesTx(tx: Db, ws: WorkspaceContext) {
   const keys = await categoryIdsByKeyTx(tx, ws);
   return {
     otherIncomeAccountId: keys['income.other']!,
-    interestAccountId: keys['fees.interest']!,
-    forgivenessAccountId: keys['gifts_donations']!,
+    interestAccountId: keys['miscellaneous.interest']!,
+    forgivenessAccountId: keys['gift_giving']!,
   };
 }
 

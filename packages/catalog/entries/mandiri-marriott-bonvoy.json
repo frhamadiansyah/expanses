@@ -33,15 +33,16 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "transport",
-              "housing.real_estate",
+              "transportation",
+              "property.real_estate",
               "education",
-              "health.insurance",
+              "protection.health_insurance",
               "utilities",
-              "government",
-              "gifts_donations.donations",
+              "government_taxes",
+              "donation.charity",
+              "donation.obligation",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "qris",
@@ -98,15 +99,16 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "transport",
-              "housing.real_estate",
+              "transportation",
+              "property.real_estate",
               "education",
-              "health.insurance",
+              "protection.health_insurance",
               "utilities",
-              "government",
-              "gifts_donations.donations",
+              "government_taxes",
+              "donation.charity",
+              "donation.obligation",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "qris",
@@ -163,15 +165,16 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "transport",
-              "housing.real_estate",
+              "transportation",
+              "property.real_estate",
               "education",
-              "health.insurance",
+              "protection.health_insurance",
               "utilities",
-              "government",
-              "gifts_donations.donations",
+              "government_taxes",
+              "donation.charity",
+              "donation.obligation",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "qris",
@@ -199,15 +202,16 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "transport",
-              "housing.real_estate",
+              "transportation",
+              "property.real_estate",
               "education",
-              "health.insurance",
+              "protection.health_insurance",
               "utilities",
-              "government",
-              "gifts_donations.donations",
+              "government_taxes",
+              "donation.charity",
+              "donation.obligation",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "qris",
@@ -237,15 +241,16 @@
           ],
           "match": {
             "excludeCategoryKeys": [
-              "transport",
-              "housing.real_estate",
+              "transportation",
+              "property.real_estate",
               "education",
-              "health.insurance",
+              "protection.health_insurance",
               "utilities",
-              "government",
-              "gifts_donations.donations",
+              "government_taxes",
+              "donation.charity",
+              "donation.obligation",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "qris",

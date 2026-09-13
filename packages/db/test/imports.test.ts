@@ -8,7 +8,7 @@ describe('importRows', () => {
     const { database, ws } = await setupDb();
     const card = await createAccount(database, ws, { name: 'Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
     const all = await listAccounts(database, ws);
-    const coffee = all.find((a) => a.name === 'Coffee & Snacks')!.id;
+    const coffee = all.find((a) => a.name === 'Cafe & dessert')!.id;
     const rows = [
       { occurredOn: '2026-09-01', description: 'Kopi', amountMinor: 25_000, externalRef: 'csv:a|0', categoryAccountId: coffee },
       { occurredOn: '2026-09-02', description: 'Kopi refund', amountMinor: -5_000, externalRef: 'csv:b|0', categoryAccountId: coffee },
@@ -41,8 +41,8 @@ describe('review fixes: re-import after recategorize', () => {
     const { database, ws } = await setupDb();
     const card = await createAccount(database, ws, { name: 'Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
     const all = await listAccounts(database, ws);
-    const other = all.find((a) => a.name === 'Other Expense')!.id;
-    const dining = all.find((a) => a.name === 'Dining Out')!.id;
+    const other = all.find((a) => a.name === 'Miscellaneous')!.id;
+    const dining = all.find((a) => a.name === 'Restaurants')!.id;
     const rows = [{ occurredOn: '2026-09-11', description: 'Sushi Tei', amountMinor: 400_000, externalRef: `csv:${card.id}|2026-09-11|400000|sushi tei|0`, categoryAccountId: other }];
     await importRows(database, ws, { accountId: card.id, currency: 'IDR', rows });
     const [tx] = await listTransactions(database, ws, { accountId: card.id });

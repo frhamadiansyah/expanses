@@ -76,7 +76,7 @@ function mutations(database: Database, ws: WorkspaceContext, programId: string, 
 describe('card spend lines', () => {
   it('returns a card refund as a negative line with its original currency, and never a statement payment', async () => {
     const { database, ws, checking, card, category } = await cardWithProgram();
-    const dining = category('food.dining');
+    const dining = category('food_beverage.restaurants');
     await postTransaction(database, ws, {
       occurredOn: '2026-09-02', description: 'Din Tai Fung', originalCurrency: 'SGD', originalAmountMinor: 4500,
       lines: expenseLines({ categoryAccountId: dining, paymentAccountId: card.id, amountMinor: 540_000, currency: 'IDR' }),
@@ -104,7 +104,7 @@ describe('card spend lines', () => {
 describe('cycle bonuses and transfer partners', () => {
   it('round-trips bonuses with JSON tiers and match, and rejects invalid tiers', async () => {
     const { database, ws, program, category } = await cardWithProgram();
-    const match = { excludeCategoryIds: [category('fees')], excludeMerchantPatterns: ['prudential'] };
+    const match = { excludeCategoryIds: [category('miscellaneous.fees_charges')], excludeMerchantPatterns: ['prudential'] };
     const id = await saveCycleBonus(database, ws, program.id, { ...BONUS, match });
     expect(await listCycleBonuses(database, ws, program.id)).toEqual([{ id, ...BONUS, match }]);
 

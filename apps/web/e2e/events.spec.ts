@@ -15,13 +15,13 @@ async function addWallet(page: Page) {
   await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
 }
 
-/** Spending against the Food & Drink parent, which the event can then be planned against. */
+/** Spending against the Food and beverage parent, which the event can then be planned against. */
 async function spend(page: Page, description: string, amount: string) {
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await page.getByLabel('Description').fill(description);
   await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Food & Drink (general)' });
+  await page.getByLabel('Category').selectOption({ label: 'Food and beverage (general)' });
   await page.getByLabel('Amount', { exact: true }).fill(amount);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('listitem').filter({ hasText: description }).first()).toBeVisible();
@@ -45,7 +45,7 @@ test('an event is planned by category, and suggests what to tag', async ({ page 
   // Nothing is suggested until the event says which categories it draws on.
   await expect(page.getByTestId('event-suggestions')).toHaveCount(0);
 
-  await page.getByLabel('Category').selectOption({ label: 'Food & Drink' });
+  await page.getByLabel('Category').selectOption({ label: 'Food and beverage' });
   await page.getByLabel('Planned', { exact: true }).fill('3000000');
   await page.getByRole('button', { name: 'Add category' }).click();
 
@@ -66,7 +66,7 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
 
   await page.goto('/budget');
   // The same form budget.spec.ts drives: the parent option is its plain name.
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Food & Drink' });
+  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Food and beverage' });
   await page.getByLabel('Monthly amount (IDR)').fill('1000000');
   await page.getByLabel('Just this month').uncheck();
   await page.getByRole('button', { name: 'Set budget' }).click();
@@ -74,7 +74,7 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
   await expect(page.getByTestId('spent-total')).toContainText('4.200.000');
 
   await addEvent(page, 'Lebaran');
-  await page.getByLabel('Category').selectOption({ label: 'Food & Drink' });
+  await page.getByLabel('Category').selectOption({ label: 'Food and beverage' });
   await page.getByRole('button', { name: 'Add category' }).click();
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Hampers' }).click();
   // Wait for the write to land: navigating on the next line can abandon it in flight.

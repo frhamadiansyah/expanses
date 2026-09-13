@@ -35,11 +35,12 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "gifts_donations.donations",
+              "donation.charity",
+              "donation.obligation",
               "utilities",
-              "government",
+              "government_taxes",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "cicilan",
@@ -52,8 +53,8 @@
               "virtual account"
             ],
             "categoryKeys": [
-              "transport",
-              "housing.real_estate",
+              "transportation",
+              "property.real_estate",
               "education"
             ]
           }
@@ -68,11 +69,12 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "gifts_donations.donations",
+              "donation.charity",
+              "donation.obligation",
               "utilities",
-              "government",
+              "government_taxes",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "cicilan",
@@ -99,11 +101,12 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "gifts_donations.donations",
+              "donation.charity",
+              "donation.obligation",
               "utilities",
-              "government",
+              "government_taxes",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "cicilan",
@@ -131,11 +134,12 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "gifts_donations.donations",
+              "donation.charity",
+              "donation.obligation",
               "utilities",
-              "government",
+              "government_taxes",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "cicilan",
@@ -160,11 +164,12 @@
           "stackable": false,
           "match": {
             "excludeCategoryKeys": [
-              "gifts_donations.donations",
+              "donation.charity",
+              "donation.obligation",
               "utilities",
-              "government",
+              "government_taxes",
               "business",
-              "fees"
+              "miscellaneous.fees_charges"
             ],
             "excludeMerchantPatterns": [
               "cicilan",

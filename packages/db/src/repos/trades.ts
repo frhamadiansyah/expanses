@@ -128,7 +128,7 @@ async function tradeAccountsFor(tx: Db, ws: WorkspaceContext, accountId: string,
       cashCurrency: cash?.currency ?? holdingCurrency,
       realizedGainsCategoryId: need('income.realized_gains'),
       investmentIncomeCategoryId: need('income.investment'),
-      finalTaxCategoryId: need('government.final_tax'),
+      finalTaxCategoryId: need('government_taxes.estimated_tax'),
       currencyExchangeAccountId: await systemAccountId(tx, ws, 'currency_exchange'),
     },
   };

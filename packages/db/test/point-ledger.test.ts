@@ -53,7 +53,7 @@ async function cardWithSpending() {
     });
 
   const groceries = await buy('2026-09-01', 'Groceries', 1_000_000);
-  const dining = await buy('2026-09-05', 'Dining Out', 500_000);
+  const dining = await buy('2026-09-05', 'Restaurants', 500_000);
   const cycle = statementCycleFor(TODAY, 20);
 
   return { database, ws, card, program, cycle, groceries, dining };
