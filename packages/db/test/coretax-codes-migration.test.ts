@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
-  assetsSchema,
   createAccount,
   createDatabase,
   createWorkspace,
@@ -27,20 +26,9 @@ async function atVersion12(): Promise<{ older: Database; olderWs: WorkspaceConte
 
 /** Writes a profile the way a version 12 database held it, three-digit code and all. */
 async function oldProfile(older: Database, ws: WorkspaceContext, accountId: string, assetKind: string, code: string, section: string) {
-  await older.db.insert(assetsSchema.assetProfiles).values({
-    accountId,
-    workspaceId: ws.workspaceId,
-    assetKind: assetKind as 'gold',
-    planGroup: 'invest',
-    unitKind: null,
-    lotSize: null,
-    risk: null,
-    coretaxSection: section as 'lainnya',
-    coretaxCode: code,
-    coretaxFieldsJson: '{}',
-    acquiredYear: null,
-    updatedAt: new Date().toISOString(),
-  });
+  await older.db.values(sql`INSERT INTO asset_profiles
+    (account_id, workspace_id, asset_kind, plan_group, unit_kind, lot_size, risk, coretax_section, coretax_code, coretax_fields_json, acquired_year, updated_at)
+    VALUES (${accountId}, ${ws.workspaceId}, ${assetKind}, 'invest', NULL, NULL, NULL, ${section}, ${code}, '{}', NULL, ${new Date().toISOString()})`);
 }
 
 describe('migration 0013', () => {

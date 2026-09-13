@@ -41,6 +41,8 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
 
   for (const value of values) {
     const profile = profileOf.get(value.accountId);
+    // Yours, but not harta: JHT is reported only once it has been paid out.
+    if (profile && !profile.reportable) continue;
     const code = profile?.coretaxCode ?? null;
     const fields = profile?.coretaxFields ?? {};
     const balanceMinor = balances[value.accountId] ?? 0;
