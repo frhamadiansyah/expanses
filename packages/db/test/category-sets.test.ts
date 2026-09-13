@@ -6,6 +6,7 @@ import {
   categoryIdsByKey,
   categorySetMembership,
   createAccount,
+  archiveAccount,
   createCategorySet,
   ensureCategoryKeys,
   ensureDefaultCategorySets,
@@ -13,6 +14,7 @@ import {
   listCategorySets,
   listSetCategories,
   postTransaction,
+  renameCategorySet,
 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
@@ -102,6 +104,37 @@ describe('seeding the defaults', () => {
     await database.execScript(`UPDATE category_sets SET name = 'Trips' WHERE id = '${holiday.id}'`);
     // Renaming is the owner's business; the default is a starting point, not something to restore.
     expect(await ensureDefaultCategorySets(database, ws)).toEqual(['Holiday']);
+  });
+});
+
+describe('keeping a set', () => {
+  it('renames a set without touching its categories', async () => {
+    current = await opened();
+    const { database, ws } = current;
+    const holiday = await setNamed(current, 'Holiday');
+    await renameCategorySet(database, ws, holiday.id, 'Trips');
+
+    expect((await listCategorySets(database, ws)).map((set) => set.name)).toContain('Trips');
+    expect((await listSetCategories(database, ws, holiday.id)).map((row) => row.name)).toContain('Flights');
+  });
+
+  it('drops an archived category from the set, and keeps what was spent on it', async () => {
+    current = await opened();
+    const { database, ws } = current;
+    const bca = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const holiday = await setNamed(current, 'Holiday');
+    const photo = (await listSetCategories(database, ws, holiday.id)).find((row) => row.name === 'Photo')!;
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-09',
+      description: 'Kamera sewa',
+      lines: expenseLines({ categoryAccountId: photo.id, paymentAccountId: bca.id, amountMinor: 250_000, currency: 'IDR' }),
+    });
+
+    await archiveAccount(database, ws, photo.id);
+
+    expect((await listSetCategories(database, ws, holiday.id)).map((row) => row.name)).not.toContain('Photo');
+    // Archived, never deleted: the payment still points at it.
+    expect((await listAccounts(database, ws, { includeArchived: true })).find((a) => a.id === photo.id)).toBeDefined();
   });
 });
 

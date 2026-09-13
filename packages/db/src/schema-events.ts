@@ -11,6 +11,8 @@ export const events = sqliteTable('events', {
   goalId: text('goal_id'),
   /** The category set the event draws on, when it draws on one rather than the monthly categories. */
   setId: text('set_id'),
+  /** When the owner called it done. Null while it is still running. */
+  finishedAt: text('finished_at'),
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
 });

@@ -1,18 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  budgetSheetFor,
-  createAccount,
-  deleteEvent,
-  eventSheetFor,
-  listEventBudgets,
-  listEvents,
-  postTransaction,
-  saveBudget,
-  saveEvent,
-  setEventBudget,
-  suggestForEvent,
-  tagTransaction,
-} from '../src/index';
+import { budgetSheetFor, createAccount, deleteEvent, eventSheetFor, finishEvent, listEventBudgets, listEvents, postTransaction, saveBudget, saveEvent, setEventBudget, suggestForEvent, tagTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 const MONTH = '2026-09';
@@ -40,13 +27,27 @@ const spend = ({ database, ws, bca }: Household, categoryId: string, occurredOn:
 
 const lebaran = (context: Household) => saveEvent(context.database, context.ws, { name: 'Lebaran', ...WINDOW });
 
+describe('finishing an event', () => {
+  it('calls it done and puts it back, keeping it in the list either way', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+
+    await finishEvent(context.database, context.ws, id, true);
+    const finished = (await listEvents(context.database, context.ws)).find((event) => event.id === id)!;
+    expect(finished.finishedAt).toEqual(expect.any(String));
+
+    await finishEvent(context.database, context.ws, id, false);
+    expect((await listEvents(context.database, context.ws)).find((event) => event.id === id)!.finishedAt).toBeNull();
+  });
+});
+
 describe('saveEvent', () => {
   it('stores an occasion and its window', async () => {
     const context = await household();
     await lebaran(context);
 
     expect(await listEvents(context.database, context.ws)).toEqual([
-      { id: expect.any(String), name: 'Lebaran', startsOn: WINDOW.startsOn, endsOn: WINDOW.endsOn, plannedMinor: null, goalId: null, setId: null },
+      { id: expect.any(String), name: 'Lebaran', startsOn: WINDOW.startsOn, endsOn: WINDOW.endsOn, plannedMinor: null, goalId: null, setId: null, finishedAt: null },
     ]);
   });
 

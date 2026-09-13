@@ -54,6 +54,15 @@ export async function deleteCategorySet(database: Database, ws: WorkspaceContext
     .where(and(eq(categorySets.workspaceId, ws.workspaceId), eq(categorySets.id, id)));
 }
 
+export async function renameCategorySet(database: Database, ws: WorkspaceContext, id: string, name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new CategorySetError('NAME_REQUIRED', 'A set needs a name');
+  await database.db
+    .update(categorySets)
+    .set({ name: trimmed })
+    .where(and(eq(categorySets.workspaceId, ws.workspaceId), eq(categorySets.id, id)));
+}
+
 /** Which set each category belongs to, for the one query every category picker needs. */
 export async function categorySetMembership(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
   const rows = await database.db

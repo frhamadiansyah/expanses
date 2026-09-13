@@ -27,6 +27,7 @@ import expenseTemplates from '../migrations/0025_expense_templates.sql?raw';
 import eventTables from '../migrations/0026_events.sql?raw';
 import categoryRevamp from '../migrations/0027_category_revamp.sql?raw';
 import categorySetTables from '../migrations/0028_category_sets.sql?raw';
+import eventFinished from '../migrations/0029_event_finished.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -64,6 +65,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 26, name: 'events', sql: eventTables },
   { version: 27, name: 'category_revamp', sql: categoryRevamp },
   { version: 28, name: 'category_sets', sql: categorySetTables },
+  { version: 29, name: 'event_finished', sql: eventFinished },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

@@ -26,6 +26,75 @@ async function addEvent(page: Page, name: string, set: string) {
   await expect(page.getByTestId('event-row')).toContainText(name);
 }
 
+/**
+ * The sets UI asks through window.prompt, and the blanket handler above accepts with an empty string,
+ * which would answer every prompt with nothing at all. These tests answer in order instead.
+ */
+function answerPrompts(page: Page, answers: string[]) {
+  const queue = [...answers];
+  page.removeAllListeners('dialog');
+  page.on('dialog', (dialog) => void dialog.accept(dialog.type() === 'prompt' ? (queue.shift() ?? '') : ''));
+}
+
+test('a set of your own can be made, added to, and drawn on by an event', async ({ page }) => {
+  await addWallet(page);
+
+  await page.goto('/categories');
+  answerPrompts(page, ['Wedding', 'Catering', 'Venue']);
+  await page.getByRole('button', { name: 'Add a set' }).click();
+  await expect(page.getByTestId('set-Wedding')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Add a category to Wedding' }).click();
+  await page.getByRole('button', { name: 'Add a category to Wedding' }).click();
+  await expect(page.getByTestId('set-Wedding')).toContainText('Catering');
+  await expect(page.getByTestId('set-Wedding')).toContainText('Venue');
+
+  // Made here, usable there: the event draws on the set without any of it reaching the monthly tree.
+  await addEvent(page, 'Nikahan', 'Wedding');
+  await page.getByRole('link', { name: 'Open' }).click();
+  await page.getByLabel('Description').fill('Katering Bu Tuti');
+  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await page.getByLabel('Category').selectOption({ label: 'Catering' });
+  await page.getByLabel('Amount', { exact: true }).fill('12000000');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('event-total')).toContainText('12.000.000');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  // Anchored: the monthly tree has its own Home catering and School catering, which must stay.
+  await expect(page.getByLabel('Category').locator('option', { hasText: /^Catering$/ })).toHaveCount(0);
+  await expect(page.getByLabel('Category').locator('option', { hasText: /^Home catering$/ })).toHaveCount(1);
+});
+
+test('a set category can be renamed, and archiving it leaves the set', async ({ page }) => {
+  await page.goto('/categories');
+  answerPrompts(page, ['Lodging & stays']);
+
+  await page.getByTestId('set-Holiday').getByRole('button', { name: 'Rename Lodging' }).click();
+  await expect(page.getByTestId('set-Holiday')).toContainText('Lodging & stays');
+
+  await page.getByTestId('set-Holiday').getByRole('button', { name: 'Archive Photo' }).click();
+  await expect(page.getByTestId('set-Holiday')).not.toContainText('Photo');
+});
+
+test('an event can be called done, and put back', async ({ page }) => {
+  await addEvent(page, 'Lebaran', 'Holiday');
+
+  await page.getByRole('button', { name: 'Finish Lebaran' }).click();
+  // Gone from what is still asking for attention, not gone from the workspace.
+  await expect(page.getByTestId('event-row')).toHaveCount(0);
+
+  await page.getByRole('button', { name: /Show finished/ }).click();
+  await expect(page.getByTestId('event-row')).toContainText('Lebaran');
+  await expect(page.getByTestId('event-row')).toContainText('finished');
+
+  // Reopening empties the finished list, so its toggle goes with it: the row is simply back.
+  await page.getByRole('button', { name: 'Reopen Lebaran' }).click();
+  await expect(page.getByTestId('event-row')).toContainText('Lebaran');
+  await expect(page.getByTestId('event-row')).not.toContainText('finished');
+  await expect(page.getByRole('button', { name: /finished/ })).toHaveCount(0);
+});
+
 test('an event records its spending in its own categories, from its own page', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Rumah Bintaro', 'Renovation');

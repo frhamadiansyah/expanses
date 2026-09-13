@@ -1,5 +1,5 @@
 import { isoDate, parseMajor } from '@expanses/core';
-import { deleteEvent, removeEventBudget, saveEvent, setEventBudget, tagTransaction } from '@expanses/db';
+import { deleteEvent, finishEvent, removeEventBudget, saveEvent, setEventBudget, tagTransaction } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -32,11 +32,15 @@ export function EventsPage() {
   const [endsOn, setEndsOn] = useState(isoDate());
   const [plannedTotal, setPlannedTotal] = useState('');
   const [setId, setSetId] = useState('');
+  const [showFinished, setShowFinished] = useState(false);
 
   const [categoryId, setCategoryId] = useState('');
   const [planned, setPlanned] = useState('');
 
-  const list = events.data ?? [];
+  // Finished events leave the list rather than the workspace: the spending and the sheet stay readable.
+  const all = events.data ?? [];
+  const list = showFinished ? all : all.filter((event) => event.finishedAt === null);
+  const finishedCount = all.filter((event) => event.finishedAt !== null).length;
   const selected = list.find((event) => event.id === selectedId) ?? null;
   const sets = useCategorySets().data ?? [];
   // An event plans against its own set when it has one, so a renovation is planned in renovation terms.
@@ -127,6 +131,12 @@ export function EventsPage() {
         </Card>
       )}
 
+      {finishedCount > 0 && (
+        <Button variant="secondary" aria-pressed={showFinished} onClick={() => setShowFinished(!showFinished)}>
+          {showFinished ? 'Hide finished' : `Show finished (${finishedCount})`}
+        </Button>
+      )}
+
       {list.length === 0 && !adding && <Empty>No events yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</Empty>}
 
       {list.length > 0 && (
@@ -143,10 +153,20 @@ export function EventsPage() {
                 <Link to="/events/$eventId" params={{ eventId: event.id }} className="text-xs underline">
                   Open
                 </Link>
+                {event.finishedAt !== null && <span className="text-xs text-slate-500">finished</span>}
               </span>
-              <Button variant="danger" onClick={() => void run(() => deleteEvent(database, ws, event.id))}>
-                Remove
-              </Button>
+              <span className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  aria-label={event.finishedAt === null ? `Finish ${event.name}` : `Reopen ${event.name}`}
+                  onClick={() => void run(() => finishEvent(database, ws, event.id, event.finishedAt === null))}
+                >
+                  {event.finishedAt === null ? 'Done' : 'Reopen'}
+                </Button>
+                <Button variant="danger" onClick={() => void run(() => deleteEvent(database, ws, event.id))}>
+                  Remove
+                </Button>
+              </span>
             </div>
           ))}
         </Card>

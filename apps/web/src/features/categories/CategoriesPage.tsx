@@ -1,12 +1,24 @@
 import { mccName } from '@expanses/core';
-import { type AccountRow, archiveAccount, clearCategoryMcc, createAccount, listCategoryMccs, renameAccount, saveCategoryMcc } from '@expanses/db';
+import {
+  type AccountRow,
+  addSetCategory,
+  archiveAccount,
+  clearCategoryMcc,
+  createAccount,
+  createCategorySet,
+  deleteCategorySet,
+  listCategoryMccs,
+  renameAccount,
+  renameCategorySet,
+  saveCategoryMcc,
+} from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { isCategoryOf, useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, ErrorBox, PageHeader } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, PageHeader } from '../../ui';
 import { categoryMcc } from './category-mcc';
-import { useCategorySetMembership } from './set-queries';
+import { useCategorySetMembership, useCategorySets } from './set-queries';
 
 export function CategoriesPage() {
   const { database, ws } = useApp();
@@ -18,6 +30,7 @@ export function CategoriesPage() {
   const membership = useCategorySetMembership().data ?? {};
   // The monthly tree only: a set's categories are managed on the event that draws on them.
   const categories = (accounts.data ?? []).filter(isCategoryOf(kind)).filter((account) => membership[account.id] === undefined);
+  const sets = useCategorySets().data ?? [];
   const overrides = useQuery({ queryKey: ['category-mccs', ws.workspaceId], queryFn: () => listCategoryMccs(database, ws) });
   const allCategories = (accounts.data ?? []).filter((a) => a.subtype === 'category');
   const roots = categories.filter((c) => c.parentId === null);
@@ -46,6 +59,22 @@ export function CategoriesPage() {
   };
   const archive = (c: AccountRow) => {
     if (window.confirm(`Archive ${c.name}? Past transactions keep it.`)) void run(() => archiveAccount(database, ws, c.id));
+  };
+
+  const addSet = () => {
+    const name = window.prompt('New set of categories, for events that spend on the same things every time');
+    if (name?.trim()) void run(() => createCategorySet(database, ws, name));
+  };
+  const renameSet = (id: string, current: string) => {
+    const name = window.prompt('Rename set', current);
+    if (name?.trim() && name !== current) void run(() => renameCategorySet(database, ws, id, name));
+  };
+  const removeSet = (id: string, name: string) => {
+    if (window.confirm(`Remove the ${name} set? Its categories and what was spent on them stay.`)) void run(() => deleteCategorySet(database, ws, id));
+  };
+  const addToSet = (id: string, name: string) => {
+    const category = window.prompt(`New category in ${name}`);
+    if (category?.trim()) void run(() => addSetCategory(database, ws, id, category));
   };
 
   const Row = ({ c, depth }: { c: AccountRow; depth: number }) => (
@@ -110,6 +139,59 @@ export function CategoriesPage() {
           ))}
         </ul>
       </Card>
+
+      {kind === 'expense' && (
+        <Card className="space-y-3">
+          <div data-testid="category-sets" className="space-y-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold">Sets</h2>
+                <p className="text-xs text-slate-500">
+                  Categories an event draws on, kept out of the list above. A set is named once and used by any number of events.
+                </p>
+              </div>
+              <Button variant="secondary" onClick={addSet}>
+                Add a set
+              </Button>
+            </div>
+
+            {sets.length === 0 && <Empty>No sets yet.</Empty>}
+
+            {sets.map((set) => {
+              const inSet = (accounts.data ?? []).filter((account) => membership[account.id] === set.id && account.archivedAt === null);
+              return (
+                <div key={set.id} data-testid={`set-${set.name}`} className="border-t border-slate-100 pt-2 first:border-0 first:pt-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex-1 font-medium">{set.name}</span>
+                    <Button variant="ghost" onClick={() => addToSet(set.id, set.name)} aria-label={`Add a category to ${set.name}`}>
+                      + Category
+                    </Button>
+                    <Button variant="ghost" onClick={() => renameSet(set.id, set.name)} aria-label={`Rename ${set.name}`}>
+                      Rename
+                    </Button>
+                    <Button variant="ghost" onClick={() => removeSet(set.id, set.name)} aria-label={`Remove ${set.name}`}>
+                      Remove
+                    </Button>
+                  </div>
+                  <ul className="divide-y divide-slate-100">
+                    {inSet.map((category) => (
+                      <li key={category.id} className="flex items-center gap-2 py-1.5 pl-6">
+                        <span className="flex-1">{category.name}</span>
+                        <Button variant="ghost" onClick={() => rename(category)} aria-label={`Rename ${category.name}`}>
+                          Rename
+                        </Button>
+                        <Button variant="ghost" onClick={() => archive(category)} aria-label={`Archive ${category.name}`}>
+                          Archive
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

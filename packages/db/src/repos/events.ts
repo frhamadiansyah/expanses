@@ -25,6 +25,8 @@ export interface EventRow {
   goalId: string | null;
   /** The category set the event draws on, when it draws on one rather than the monthly categories. */
   setId: string | null;
+  /** When the owner called it done. Null while it is still running. */
+  finishedAt: string | null;
 }
 
 export interface SaveEventInput {
@@ -52,6 +54,7 @@ const toRow = (row: typeof events.$inferSelect): EventRow => ({
   plannedMinor: row.plannedMinor,
   goalId: row.goalId,
   setId: row.setId,
+  finishedAt: row.finishedAt,
 });
 
 async function eventOf(database: Database, ws: WorkspaceContext, id: string): Promise<EventRow> {
@@ -84,6 +87,7 @@ export async function saveEvent(database: Database, ws: WorkspaceContext, input:
       plannedMinor,
       goalId: input.goalId ?? null,
       setId: input.setId ?? null,
+      finishedAt: null,
       archivedAt: null,
       createdAt: new Date().toISOString(),
     })
@@ -101,6 +105,20 @@ export async function listEvents(database: Database, ws: WorkspaceContext): Prom
     .where(and(eq(events.workspaceId, ws.workspaceId), sql`${events.archivedAt} IS NULL`))
     .orderBy(asc(events.startsOn));
   return rows.map(toRow);
+}
+
+/**
+ * Calls an event done, or puts it back.
+ *
+ * Finishing is kept apart from deleting: the spending stays, the sheet stays readable, and the event
+ * simply stops being one of the things still asking for attention.
+ */
+export async function finishEvent(database: Database, ws: WorkspaceContext, id: string, finished: boolean): Promise<void> {
+  await eventOf(database, ws, id);
+  await database.db
+    .update(events)
+    .set({ finishedAt: finished ? new Date().toISOString() : null })
+    .where(and(eq(events.workspaceId, ws.workspaceId), eq(events.id, id)));
 }
 
 export async function deleteEvent(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
