@@ -104,3 +104,25 @@ test('warns on the dashboard about points that are about to die', async ({ page 
   // One specific line: the card's name alone also matches its link in the account list.
   await expect(page.getByText(/100 points on CIMB Octo expire on/)).toBeVisible();
 });
+
+test('spending points takes them off the balance, oldest first', async ({ page }) => {
+  await cardWithAPurchase(page);
+  await expect(page.getByTestId('points-balance')).toContainText('100');
+
+  await page.getByLabel('Points spent').fill('40');
+  await page.getByLabel('What for').fill('Statement credit');
+  await page.getByLabel('What it fetched (IDR)').fill('1000');
+  await page.getByRole('button', { name: 'Spend points' }).click();
+
+  await expect(page.getByTestId('points-balance')).toContainText('60');
+});
+
+test('says what the annual fee bought, and admits when it is guessing', async ({ page }) => {
+  await cardWithAPurchase(page);
+
+  const roi = page.getByTestId('card-year-roi');
+  await expect(roi).toBeVisible();
+  // No fee charge on the ledger, and the points were worked out rather than confirmed.
+  await expect(page.getByText(/no fee charge is recorded/)).toBeVisible();
+  await expect(page.getByText(/estimated, because some points were worked out/)).toBeVisible();
+});
