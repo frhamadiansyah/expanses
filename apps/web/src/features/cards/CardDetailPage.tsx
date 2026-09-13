@@ -2,6 +2,7 @@ import { CURRENCIES, type CycleBonus, displayAmount, type EarnRule, explainCycle
 import type { CatalogEntry } from '@expanses/catalog';
 import {
   applyCatalogEntry,
+  archiveCycleBonus,
   archiveEarnRule,
   createProgram,
   deleteRedemptionOption,
@@ -20,6 +21,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { InstallmentList } from '../loans/InstallmentList';
+import { BonusForm } from './BonusForm';
 import { BonusProgress } from './BonusProgress';
 import { CatalogPanel } from './CatalogPanel';
 import { CatalogPicker } from './CatalogPicker';
@@ -222,6 +224,7 @@ export function CardDetailPage() {
   const [spendValue, setSpendValue] = useState('');
   const [spendKind, setSpendKind] = useState<'redeem' | 'transfer'>('redeem');
   const [editingRule, setEditingRule] = useState<EarnRule | 'new' | null>(null);
+  const [editingBonus, setEditingBonus] = useState<CycleBonus | 'new' | null>(null);
   const [catalogId, setCatalogId] = useState<string | null>(null);
   const [browsingCatalog, setBrowsingCatalog] = useState(false);
 
@@ -571,6 +574,77 @@ export function CardDetailPage() {
               )}
             </ul>
           </Section>
+
+          {cp.rules.length > 0 && (
+            <Section
+              title="Spend bonuses"
+              action={
+                editingBonus === null && (
+                  <Button variant="secondary" onClick={() => confirmCustomise() && setEditingBonus('new')}>
+                    Add bonus
+                  </Button>
+                )
+              }
+            >
+              {editingBonus === 'new' && (
+                <BonusForm
+                  programId={cp.program.id}
+                  currency={currency}
+                  unit={cp.program.unit}
+                  accounts={all}
+                  beforeSave={confirmCustomise}
+                  onDone={() => setEditingBonus(null)}
+                />
+              )}
+              {cp.bonuses.length === 0 && editingBonus === null && (
+                <Empty>No spend bonuses. Add one for a card that pays a lump for reaching a spend in a cycle.</Empty>
+              )}
+              <ul className="divide-y divide-slate-100">
+                {cp.bonuses.map((bonus) =>
+                  editingBonus !== 'new' && editingBonus?.id === bonus.id ? (
+                    <li key={bonus.id} className="py-2">
+                      <BonusForm
+                        programId={cp.program!.id}
+                        currency={currency}
+                        unit={cp.program!.unit}
+                        accounts={all}
+                        initial={bonus}
+                        beforeSave={confirmCustomise}
+                        onDone={() => setEditingBonus(null)}
+                      />
+                    </li>
+                  ) : (
+                    <li key={bonus.id} className="flex items-center gap-3 py-2 text-sm" data-testid={`bonus-${bonus.id}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium">
+                          {bonus.name}
+                          {!activeDuring(bonus, today, today) && <span className="ml-2 text-xs font-normal text-slate-500">past terms</span>}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {bonus.tiers
+                            .map((tier) => `${formatMinor(tier.minSpendMinor, currency)} → ${formatPoints(tier.bonus)} ${cp.program!.unit}`)
+                            .join(' · ')}
+                          {bonus.validFrom && ` · from ${bonus.validFrom}`}
+                          {bonus.validTo && ` · until ${bonus.validTo}`}
+                        </div>
+                      </div>
+                      <Button variant="ghost" onClick={() => confirmCustomise() && setEditingBonus(bonus)}>
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          window.confirm(`Remove bonus ${bonus.name}?`) && confirmCustomise() && void run(() => archiveCycleBonus(database, ws, bonus.id))
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </Section>
+          )}
 
           {cp.rules.length > 0 && (
             <Section title="What points are worth">

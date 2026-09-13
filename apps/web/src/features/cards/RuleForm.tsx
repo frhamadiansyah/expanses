@@ -1,11 +1,11 @@
-import { type EarnRule, minorToMajorString, parseMajor, type RuleMatch } from '@expanses/core';
+import { type EarnRule, minorToMajorString, parseMajor } from '@expanses/core';
 import { type AccountRow, saveEarnRule } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
 import { CategoryOptions } from './options';
-import { parseRulePoints } from './rule-values';
+import { mergeMatch, parseRulePoints } from './rule-values';
 
 const optionalMinor = (value: string, currency: string) => (value.trim() ? parseMajor(value, currency) : null);
 const optionalInt = (value: string) => {
@@ -63,23 +63,13 @@ export function RuleForm({
       if (rateNum === null) throw new Error('Enter how many points are earned');
       if (rateDen === null || rateDen <= 0) throw new Error('Enter the spend amount that earns those points');
       const patterns = merchants.split(',').map((s) => s.trim()).filter(Boolean);
-      // Keep conditions this form does not edit, such as origin, currencies, and excluded keywords from the catalogue.
-      const kept: RuleMatch = { ...initial?.match };
-      delete kept.categoryIds;
-      delete kept.excludeCategoryIds;
-      delete kept.merchantPatterns;
       if (beforeSave && !beforeSave()) return;
       await saveEarnRule(database, ws, programId, {
         id: initial?.id,
         name,
         priority: Number(priority) || 0,
         stackable,
-        match: {
-          ...kept,
-          ...(categoryIds.length ? { categoryIds } : {}),
-          ...(excludeIds.length ? { excludeCategoryIds: excludeIds } : {}),
-          ...(patterns.length ? { merchantPatterns: patterns } : {}),
-        },
+        match: mergeMatch(initial?.match, { categoryIds, excludeCategoryIds: excludeIds, merchantPatterns: patterns }),
         rateNum,
         rateDen,
         rounding,
@@ -98,7 +88,8 @@ export function RuleForm({
 
   return (
     <Card className="bg-slate-50">
-      <form onSubmit={submit} className="grid gap-3 md:grid-cols-2">
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2">
         <Field label="Rule name">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="5x dining" required />
         </Field>
@@ -110,6 +101,11 @@ export function RuleForm({
             <Input value={per} onChange={(e) => setPer(e.target.value)} inputMode="decimal" placeholder="2500" required />
           </Field>
         </div>
+        </div>
+
+        <div className="border-t border-slate-200 pt-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Where it applies</div>
+          <div className="grid gap-3 md:grid-cols-2">
         <Field label="Only these categories" hint="None selected = every category. Ctrl/⌘-click for several.">
           <Select multiple size={6} value={categoryIds} onChange={(e) => setCategoryIds(selected(e.target))}>
             <CategoryOptions accounts={accounts} kind="expense" placeholder={null} />
@@ -123,6 +119,12 @@ export function RuleForm({
         <Field label="Merchant keywords" hint="Comma-separated, matched in the description. Empty = any merchant.">
           <Input value={merchants} onChange={(e) => setMerchants(e.target.value)} placeholder="grab, gojek" />
         </Field>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200 pt-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Limits and validity</div>
+          <div className="grid gap-3 md:grid-cols-2">
         <Field label="Priority" hint="Higher runs first. Put bonus rules above the base rule.">
           <Input value={priority} onChange={(e) => setPriority(e.target.value)} inputMode="numeric" />
         </Field>
@@ -148,14 +150,15 @@ export function RuleForm({
         <Field label="Valid until">
           <Input type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
         </Field>
-        <label className="flex items-center gap-2 text-sm md:col-span-2">
+          </div>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={stackable} onChange={(e) => setStackable(e.target.checked)} />
           Bonus on top of other rules (a promo that stacks, not a replacement rate)
         </label>
-        <div className="md:col-span-2">
-          <ErrorBox error={error} />
-        </div>
-        <div className="flex gap-2 md:col-span-2">
+        <ErrorBox error={error} />
+        <div className="flex gap-2">
           <Button type="submit">Save rule</Button>
           <Button variant="ghost" onClick={onDone}>
             Cancel
