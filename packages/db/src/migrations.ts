@@ -21,6 +21,7 @@ import pointEntrySystemSource from '../migrations/0019_point_entry_system_source
 import pointEntryValue from '../migrations/0020_point_entry_value.sql?raw';
 import assetReportable from '../migrations/0021_asset_reportable.sql?raw';
 import incomeTreatment from '../migrations/0022_income_treatment.sql?raw';
+import incomeSources from '../migrations/0023_income_sources.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -52,6 +53,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 20, name: 'point_entry_value', sql: pointEntryValue },
   { version: 21, name: 'asset_reportable', sql: assetReportable },
   { version: 22, name: 'income_treatment', sql: incomeTreatment },
+  { version: 23, name: 'income_sources', sql: incomeSources },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */
