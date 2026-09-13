@@ -155,7 +155,9 @@ export async function saveGoal(database: Database, ws: WorkspaceContext, input: 
     }
 
     // An amount typed by hand is the owner's, so the goal stops being derived from a calculator.
-    if (!input.derived) {
+    // Only an existing goal can carry one, and saveGoal still has to work on a database that has
+    // not reached migration 0017 — creating a goal must not reach for a table that is not there yet.
+    if (!input.derived && existing.length > 0) {
       await tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, id), eq(goalCalculators.workspaceId, ws.workspaceId)));
     }
     return id;

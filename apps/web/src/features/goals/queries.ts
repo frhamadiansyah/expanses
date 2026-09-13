@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { goalLinksFor, goalPlansFor, listEarmarks, listGoals } from '@expanses/db';
+import { goalLinksFor, goalPlansFor, listEarmarks, listGoalCalculators, listGoals } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -23,4 +23,9 @@ export function useGoalLinks(date?: string) {
 export function useEarmarks() {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['goal-earmarks', ws.workspaceId], queryFn: () => listEarmarks(database, ws) });
+}
+
+export function useGoalCalculators() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['goal-calculators', ws.workspaceId], queryFn: () => listGoalCalculators(database, ws) });
 }
