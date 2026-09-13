@@ -216,6 +216,7 @@ export function CardDetailPage() {
   const ledger = useCardLedger(data.data?.program?.id, [data.data?.current?.cycle ?? null, data.data?.previous?.cycle ?? null], today);
   const { error, run } = useAction();
   const [observedBalance, setObservedBalance] = useState('');
+  const [anchorEarnedOn, setAnchorEarnedOn] = useState('');
   const [spendPoints, setSpendPoints] = useState('');
   const [spendNote, setSpendNote] = useState('');
   const [spendValue, setSpendValue] = useState('');
@@ -390,13 +391,18 @@ export function CardDetailPage() {
                       programId: cp.program!.id,
                       balance: Number(observedBalance.trim().replace(',', '.')),
                       observedOn: today,
+                      ...(anchorEarnedOn.trim() === '' ? {} : { earnedOn: anchorEarnedOn }),
                     });
                     setObservedBalance('');
+                    setAnchorEarnedOn('');
                   });
                 }}
               >
                 <Field label="Balance in the app">
                   <Input value={observedBalance} onChange={(event) => setObservedBalance(event.target.value)} inputMode="decimal" required />
+                </Field>
+                <Field label="Earned around" hint="Roughly when those points were earned, which decides when they expire. Empty counts them as earned today.">
+                  <Input type="date" value={anchorEarnedOn} onChange={(event) => setAnchorEarnedOn(event.target.value)} />
                 </Field>
                 <Button type="submit" variant="secondary">
                   Anchor balance

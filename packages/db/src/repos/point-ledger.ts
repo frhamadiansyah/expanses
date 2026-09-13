@@ -45,6 +45,12 @@ export interface RecordSnapshotInput {
   /** The balance the owner read in the issuer's app. */
   balance: number;
   observedOn: string;
+  /**
+   * Roughly when those points were earned, which decides when they die under the program's policy.
+   * Defaults to the day they were typed in — the only date the app can know without being told, and
+   * a generous one, but far better than a lump that never expires while everything around it does.
+   */
+  earnedOn?: string;
 }
 
 export async function listPointEntries(database: Database, ws: WorkspaceContext, programId: string): Promise<PointEntryRow[]> {
@@ -173,10 +179,12 @@ export async function recordPointSnapshot(database: Database, ws: WorkspaceConte
   if (!Number.isFinite(input.balance) || input.balance < 0) throw new PointsError('A balance cannot be below nothing');
 
   const [program] = await database.db
-    .select({ id: rewardPrograms.id })
+    .select()
     .from(rewardPrograms)
     .where(and(eq(rewardPrograms.id, input.programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
   if (!program) throw new PointsError('Reward program not found');
+  // Points typed in are a batch like any other, so they age under the same policy.
+  const anchoredExpiry = expiryDateFor(input.earnedOn ?? input.observedOn, program.expiryPolicy, program.expiryMonths);
 
   const entries = await listPointEntries(database, ws, input.programId);
   const difference = input.balance - balanceOf(entries, input.observedOn).total;
@@ -194,7 +202,8 @@ export async function recordPointSnapshot(database: Database, ws: WorkspaceConte
     status: 'posted' as const,
     source: 'snapshot' as const,
     batchId,
-    expiresOn: null,
+    // Only a correction upward opens a batch, so only that one carries a date.
+    expiresOn: quantity > 0 ? anchoredExpiry : null,
     note,
     valueMinor: null,
     createdAt: now,
