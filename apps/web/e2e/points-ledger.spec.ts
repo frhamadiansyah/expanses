@@ -126,3 +126,25 @@ test('says what the annual fee bought, and admits when it is guessing', async ({
   await expect(page.getByText(/no fee charge is recorded/)).toBeVisible();
   await expect(page.getByText(/estimated, because some points were worked out/)).toBeVisible();
 });
+
+test('says what the points really fetched, beside what the best option claims', async ({ page }) => {
+  await cardWithAPurchase(page);
+
+  await page.getByLabel('Points spent').fill('40');
+  await page.getByLabel('What for').fill('Statement credit');
+  await page.getByLabel('What it fetched (IDR)').fill('200');
+  await page.getByRole('button', { name: 'Spend points' }).click();
+  await expect(page.getByTestId('points-balance')).toContainText('60');
+
+  // Rp 200 for 40 points is Rp 5 a point, whatever the best redemption option says.
+  await expect(page.getByTestId('card-year-realised')).toContainText('net');
+});
+
+test('catches a card up without complaint', async ({ page }) => {
+  await cardWithAPurchase(page);
+
+  await page.getByRole('button', { name: 'Catch up this card' }).click();
+
+  // Nothing older exists here, so the balance is what this cycle earned and no error is shown.
+  await expect(page.getByTestId('points-balance')).toContainText('100');
+});

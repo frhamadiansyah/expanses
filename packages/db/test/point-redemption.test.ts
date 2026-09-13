@@ -158,3 +158,38 @@ describe('what the annual fee bought', () => {
     expect((await cardYearRoi(database, ws, program.id, TODAY)).estimated).toBe(true);
   });
 });
+
+describe('what points actually fetch', () => {
+  it('works the rate out from what redemptions really brought in', async () => {
+    const { database, ws, program } = await cardWithPoints();
+    // 400 points fetched Rp 4.000, so Rp 10 a point — well under the Rp 25 the best option claims.
+    await recordRedemption(database, ws, { programId: program.id, kind: 'redeem', points: 400, occurredOn: TODAY, note: null, valueMinor: 4_000 });
+
+    const roi = await cardYearRoi(database, ws, program.id, TODAY);
+
+    expect(roi.valueMinor).toBe(25_000);
+    expect(roi.realised).toMatchObject({ valueMinor: 10_000, pointsEarned: 1_000 });
+  });
+
+  it('nets the fee at the realised rate too', async () => {
+    const { database, ws, card, program, id } = await cardWithPoints();
+    await postTransaction(database, ws, {
+      occurredOn: '2026-03-01',
+      description: 'Annual fee',
+      lines: expenseLines({ categoryAccountId: id('Card Annual Fee'), paymentAccountId: card.id, amountMinor: 600_000, currency: 'IDR' }),
+    });
+    await recordRedemption(database, ws, { programId: program.id, kind: 'redeem', points: 400, occurredOn: TODAY, note: null, valueMinor: 4_000 });
+
+    const roi = await cardYearRoi(database, ws, program.id, TODAY);
+
+    expect(roi.netMinor).toBe(-575_000);
+    expect(roi.realised!.netMinor).toBe(-590_000);
+  });
+
+  it('says nothing about a realised rate until a redemption records what it fetched', async () => {
+    const { database, ws, program } = await cardWithPoints();
+    await recordRedemption(database, ws, { programId: program.id, kind: 'redeem', points: 400, occurredOn: TODAY, note: null, valueMinor: null });
+
+    expect((await cardYearRoi(database, ws, program.id, TODAY)).realised).toBeNull();
+  });
+});

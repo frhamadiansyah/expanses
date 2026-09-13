@@ -7,6 +7,7 @@ import {
   computeCycleEarn,
   consumeFifo,
   type Cycle,
+  cycleFor,
   dueToExpire,
   type ExpiryPolicy,
   expiresOn as expiryDateFor,
@@ -14,6 +15,7 @@ import {
   feeRoi,
   LedgerError,
   type PointEntry,
+  previousCycle,
   uuidv7,
 } from '@expanses/core';
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
@@ -378,6 +380,46 @@ export interface CardYearRoi extends FeeRoi {
   to: string;
   /** Whether the year runs from a fee actually charged, or is the trailing twelve months. */
   anchoredOn: 'fee' | 'assumed';
+  /** The same year valued at what redemptions have actually fetched. Null until one records a value. */
+  realised: FeeRoi | null;
+}
+
+/**
+ * Works out the cycles a card page never looked at.
+ *
+ * Derivation is lazy — a card fills only the cycles it shows — so points earned before the app was
+ * opened on that card are not in the ledger, and expiry cannot see them. This walks back and derives
+ * each cycle in turn.
+ *
+ * It invents nothing: the same rules over purchases already recorded. A card whose history was never
+ * entered has nothing to find, and a balance read from the issuer's app is the answer there instead.
+ */
+export async function backfillCycles(
+  database: Database,
+  ws: WorkspaceContext,
+  programId: string,
+  cycles: number,
+  today: string,
+): Promise<number> {
+  const [program] = await database.db
+    .select()
+    .from(rewardPrograms)
+    .where(and(eq(rewardPrograms.id, programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
+  if (!program) throw new PointsError('Reward program not found');
+  const [terms] = await database.db
+    .select({ statementDay: cardTerms.statementDay })
+    .from(cardTerms)
+    .where(and(eq(cardTerms.accountId, program.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+
+  const statementDay = terms?.statementDay ?? 1;
+  let cycle = cycleFor(today, program.cycleAnchor, statementDay);
+  let done = 0;
+  for (let index = 0; index < Math.max(0, Math.floor(cycles)); index += 1) {
+    await deriveCycleEntries(database, ws, programId, cycle);
+    done += 1;
+    cycle = previousCycle(cycle, program.cycleAnchor, statementDay);
+  }
+  return done;
 }
 
 const shiftDate = (date: string, years: number, days: number): string => {
@@ -428,6 +470,18 @@ export async function cardYearRoi(database: Database, ws: WorkspaceContext, prog
   const best = bestRedemption((await listRedemptionOptions(database, ws, programId)).map(toRedemption));
   const valuePerPointMicro = best ? Math.round((best.valueMinor * 1_000_000) / best.perPoints) : 0;
 
-  const roi = feeRoi({ entries: await listPointEntries(database, ws, programId), from, to, valuePerPointMicro, annualFeeMinor });
-  return { ...roi, from, to, anchoredOn: charge ? 'fee' : 'assumed' };
+  const entries = await listPointEntries(database, ws, programId);
+  const roi = feeRoi({ entries, from, to, valuePerPointMicro, annualFeeMinor });
+
+  // What points have really fetched, over every redemption that recorded a value — not only this
+  // year, because how the owner redeems is a habit rather than a property of one card year.
+  const withValue = entries.filter((entry) => entry.valueMinor !== null && entry.quantity < 0);
+  const spent = withValue.reduce((total, entry) => total - entry.quantity, 0);
+  const fetched = withValue.reduce((total, entry) => total + (entry.valueMinor ?? 0), 0);
+  const realised =
+    spent > 0
+      ? feeRoi({ entries, from, to, valuePerPointMicro: Math.round((fetched * 1_000_000) / spent), annualFeeMinor })
+      : null;
+
+  return { ...roi, from, to, anchoredOn: charge ? 'fee' : 'assumed', realised };
 }
