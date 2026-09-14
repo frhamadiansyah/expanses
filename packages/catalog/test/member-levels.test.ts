@@ -473,3 +473,16 @@ describe('rounding, per full increment', () => {
     }
   });
 });
+
+describe('Mandiri World Prioritas conversion', () => {
+  const mandiri = () => findEntry('mandiri-world-prioritas')!;
+
+  it('records the 25.000 a month ceiling on converting Livin’poin to miles', () => {
+    expect(mandiri().notes.some((note) => note.includes('25.000 a month'))).toBe(true);
+  });
+
+  it('publishes no transfer ratio, because 1:1 is a slogan rather than a rate', () => {
+    // The page advertises "1:1 Mileage Redemption" without naming a partner or a ratio, so nothing is encoded.
+    expect(mandiri().transferPartners).toEqual([]);
+  });
+});
