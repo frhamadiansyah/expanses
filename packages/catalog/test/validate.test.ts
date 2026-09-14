@@ -45,6 +45,14 @@ describe('validateEntry', () => {
     expect(validateEntry(valid(), DEFAULT_CATEGORY_KEYS)).toEqual([]);
   });
 
+  it('accepts a step published in partner units when it agrees with the step in points', () => {
+    // The fixture is 200 points to 100 units, so a 500-unit block is 1.000 points.
+    expect(errorsFor((e) => {
+      e.transferPartners[0]!.incrementPoints = 1000;
+      e.transferPartners[0]!.incrementPartnerUnits = 500;
+    })).toEqual([]);
+  });
+
   it('accepts a minimum larger than the step, and leaves it out where the step is the only floor', () => {
     expect(errorsFor((e) => { e.transferPartners[0]!.minimumPoints = 100; })).toEqual([]);
     expect(errorsFor((e) => { e.transferPartners[0]!.minimumPoints = 20; })).toEqual([]);
@@ -72,6 +80,7 @@ describe('validateEntry', () => {
     ['a cap on an unknown window', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'week' as 'month', capPoints: 1000 }; }, /window/],
     ['half a reduced ratio', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'month', capPoints: 1000, beyondPoints: 3000 }; }, /beyondPoints and beyondPartnerUnits/],
     ['a ceiling of zero', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'month', capPoints: 0 }; }, /capPoints/],
+    ['a step in partner units that contradicts the step in points', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.incrementPartnerUnits = 500; }, /must be 1000 to match/],
     ['a minimum below the step', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.minimumPoints = 10; }, /at least incrementPoints/],
     ['a minimum of zero', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.minimumPoints = 0; }, /minimumPoints/],
   ])('rejects %s', (_name, mutate, pattern) => {

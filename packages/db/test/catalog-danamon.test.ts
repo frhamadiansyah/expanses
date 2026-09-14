@@ -211,23 +211,30 @@ describe('Danamon JCB Precious conversion', () => {
     expect(ratios).toEqual({ GarudaMiles: [15, 1], KrisFlyer: [20, 1], 'Asia Miles': [20, 1] });
   });
 
-  it('moves in 500 D-Point at a time, so anything smaller converts to nothing', async () => {
+  it('takes miles out in blocks of 500, which is 10.000 D-Point at 20 to 1', async () => {
     const partners = await partnersOf();
     const krisflyer = partners.find((p) => p.program === 'KrisFlyer')!;
-    expect(partners.every((p) => p.incrementPoints === 500)).toBe(true);
-    expect(convertPoints(499, krisflyer)).toBe(0);
-    expect(convertPoints(500, krisflyer)).toBe(25);
-    // 900 is one whole step and a remainder, so only the first 500 moves.
-    expect(convertPoints(900, krisflyer)).toBe(25);
+    expect(convertPoints(9_999, krisflyer)).toBe(0);
+    expect(convertPoints(10_000, krisflyer)).toBe(500);
+    // 19.000 is one whole block and a remainder, so only the first 10.000 moves.
+    expect(convertPoints(19_000, krisflyer)).toBe(500);
+    expect(convertPoints(20_000, krisflyer)).toBe(1_000);
   });
 
-  it('floors the GarudaMile that the 500 step cannot divide into', async () => {
+  it('takes a GarudaMiles block for 7.500, since a mile costs 15 there rather than 20', async () => {
     const garuda = (await partnersOf()).find((p) => p.program === 'GarudaMiles')!;
-    // 500 at 15 to 1 is 33,3 miles.
-    expect(convertPoints(500, garuda)).toBe(33);
-    // Every 1.500 lands whole.
-    expect(convertPoints(1_500, garuda)).toBe(100);
+    expect(convertPoints(7_499, garuda)).toBe(0);
+    expect(convertPoints(7_500, garuda)).toBe(500);
     expect(convertPoints(15_000, garuda)).toBe(1_000);
+  });
+
+  it('loses no fraction of a mile, every block dividing whole', async () => {
+    for (const partner of await partnersOf()) {
+      const block = partner.incrementPoints;
+      // A whole number of blocks is a whole number of miles at every partner.
+      expect((block * 1) % partner.points, partner.program).toBe(0);
+      expect(convertPoints(block * 3, partner), partner.program).toBe(1_500);
+    }
   });
 
   it('matches the rupiah cost a mile that the ratios imply, at 1 D-Point per Rp 2.500', async () => {

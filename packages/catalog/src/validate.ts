@@ -235,6 +235,13 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
       if (!isObj(partner)) return add(path, 'must be an object');
       if (!isText(partner.program)) add(`${path}.program`, 'is required');
       for (const field of ['points', 'partnerUnits', 'incrementPoints'] as const) if (!isPositiveInt(partner[field])) add(`${path}.${field}`, 'must be a positive integer');
+      if (partner.incrementPartnerUnits !== undefined) {
+        if (!isPositiveInt(partner.incrementPartnerUnits)) add(`${path}.incrementPartnerUnits`, 'must be a positive integer');
+        else if (isPositiveInt(partner.points) && isPositiveInt(partner.partnerUnits)) {
+          const asPoints = Math.ceil((partner.incrementPartnerUnits * partner.points) / partner.partnerUnits);
+          if (partner.incrementPoints !== asPoints) add(`${path}.incrementPoints`, `must be ${asPoints} to match incrementPartnerUnits through the ratio`);
+        }
+      }
       if (partner.minimumPoints !== undefined && !isPositiveInt(partner.minimumPoints)) add(`${path}.minimumPoints`, 'must be a positive integer');
       else if (isPositiveInt(partner.minimumPoints) && isPositiveInt(partner.incrementPoints) && partner.minimumPoints < partner.incrementPoints) {
         add(`${path}.minimumPoints`, 'must be at least incrementPoints, or the step is the only floor and it should be left out');

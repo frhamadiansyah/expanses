@@ -88,6 +88,12 @@ export interface CatalogTransferPartner {
   points: number;
   partnerUnits: number;
   incrementPoints: number;
+  /**
+   * Set when the issuer publishes the step in partner units instead of points, as Danamon does with
+   * its 500-mile blocks. incrementPoints must then be the same step read through the ratio, which
+   * validation checks, so the entry records what the bank says as well as what the engine needs.
+   */
+  incrementPartnerUnits?: number;
   /** Set when the issuer takes a first transfer larger than the step it moves in afterwards. */
   minimumPoints?: number;
   effectiveFrom: string | null;

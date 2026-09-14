@@ -1,6 +1,6 @@
 {
   "id": "danamon-jcb-precious",
-  "entryVersion": 5,
+  "entryVersion": 6,
   "bank": "Bank Danamon",
   "name": "Kartu Kredit Danamon JCB Precious",
   "network": "jcb",
@@ -295,9 +295,9 @@
     }
   ],
   "transferPartners": [
-    { "key": "garudamiles", "program": "GarudaMiles", "points": 15, "partnerUnits": 1, "incrementPoints": 500, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "krisflyer", "program": "KrisFlyer", "points": 20, "partnerUnits": 1, "incrementPoints": 500, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "asia-miles", "program": "Asia Miles", "points": 20, "partnerUnits": 1, "incrementPoints": 500, "effectiveFrom": null, "effectiveTo": null }
+    { "key": "garudamiles", "program": "GarudaMiles", "points": 15, "partnerUnits": 1, "incrementPoints": 7500, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "krisflyer", "program": "KrisFlyer", "points": 20, "partnerUnits": 1, "incrementPoints": 10000, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "asia-miles", "program": "Asia Miles", "points": 20, "partnerUnits": 1, "incrementPoints": 10000, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null }
   ],
   "cashValue": null,
   "welcomeBonus": "From 1 March 2026: Rp 1.000.000 cashback after Rp 25.000.000 of transactions within 2 months of approval, plus registering at least one kind of bill payment.",
@@ -313,10 +313,10 @@
     "The card limit runs from Rp 15.000.000 to Rp 1.000.000.000.",
     "The terms come from Danamon's own RIPLAY, the 26 August 2025 version, which gives no start date, so the first period runs open until the 1 June 2026 change. Secondary reporting also describes a later clarification that walks some of these changes back; it could not be read here, so if it softened the June exclusions this entry takes away more than it should.",
     "Rounding is per full increment of Rp 2.500, confirmed by the cardholder: the remainder of a purchase earns nothing, so Rp 6.000 earns 2 D-Point at the base rate, not 2,4.",
-    "D-Point convert to miles in multiples of 500, given by the cardholder. Conversion runs through dpoint.id rather than the card's own statement.",
     "The ratios are 15 D-Point a GarudaMile and 20 a KrisFlyer or Asia Mile. At 1 D-Point per Rp 2.500 that is Rp 37.500 and Rp 50.000 a mile, which is how PinterPoin quotes them, so the two figures agree. The Asia Miles ratio is read off a Danamon World Elite promotion rather than a JCB Precious page, and is the weakest of the three.",
-    "GarudaMiles does not divide into the 500 step: 500 D-Point work out at 33,3 miles, and the app floors that to 33. The ratio only lands on whole miles every 1.500 D-Point, so a balance that is a multiple of 500 but not of 1.500 may convert to a mile less than the bank gives.",
-    "No minimum conversion was confirmed, only the 500 step, so the entry records a step alone. A balance under 500 converts to nothing, which is right either way."
+    "Miles are taken out in blocks of 500, given by the cardholder: the step is counted in miles, not in D-Point. Through the ratios that is 7.500 D-Point a block for GarudaMiles and 10.000 for KrisFlyer and Asia Miles, which is what the entry stores alongside the published 500 so the two are checked against each other. Conversion runs through dpoint.id rather than the card's own statement.",
+    "Every block divides whole, so no fraction of a mile is lost anywhere. An earlier version read the 500 as D-Point rather than miles, which made a GarudaMiles block 33,3 miles and cost a mile to rounding; that was wrong.",
+    "No minimum conversion was confirmed, only the 500-mile block, so the entry records a step alone. A balance short of one block converts to nothing, which is right either way."
   ],
   "sources": [
     {
