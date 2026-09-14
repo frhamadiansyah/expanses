@@ -1,6 +1,6 @@
 {
   "id": "danamon-amex-gold-charge",
-  "entryVersion": 1,
+  "entryVersion": 2,
   "bank": "Bank Danamon",
   "name": "Kartu Charge Danamon American Express Gold",
   "network": "amex",
@@ -76,24 +76,12 @@
     }
   ],
   "transferPartners": [
-    {
-      "key": "krisflyer",
-      "program": "KrisFlyer",
-      "points": 8,
-      "partnerUnits": 1,
-      "incrementPoints": 1000,
-      "effectiveFrom": "2023-11-01",
-      "effectiveTo": null
-    },
-    {
-      "key": "asia-miles",
-      "program": "Asia Miles",
-      "points": 12,
-      "partnerUnits": 1,
-      "incrementPoints": 1000,
-      "effectiveFrom": "2023-11-01",
-      "effectiveTo": null
-    }
+    { "key": "krisflyer", "program": "KrisFlyer", "points": 6, "partnerUnits": 1, "incrementPoints": 6000, "incrementPartnerUnits": 1000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "asia-miles", "program": "Asia Miles", "points": 9, "partnerUnits": 1, "incrementPoints": 9000, "incrementPartnerUnits": 1000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "garudamiles", "program": "GarudaMiles", "points": 9, "partnerUnits": 1, "incrementPoints": 4500, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "enrich", "program": "Enrich", "points": 10, "partnerUnits": 1, "incrementPoints": 50000, "incrementPartnerUnits": 5000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "hilton", "program": "Hilton Honors", "points": 28, "partnerUnits": 5, "incrementPoints": 7000, "incrementPartnerUnits": 1250, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "bonvoy", "program": "Marriott Bonvoy", "points": 625, "partnerUnits": 99, "incrementPoints": 6250, "incrementPartnerUnits": 990, "effectiveFrom": null, "effectiveTo": null }
   ],
   "cashValue": null,
   "welcomeBonus": "Up to 210.000 Membership Rewards points has been offered on this card. The amount and the conditions move between campaigns, so nothing is modelled.",
@@ -104,11 +92,13 @@
     "The cap is read from the card's own credit limit when the entry is applied. A charge card has no preset limit, so the figure to record is whatever monthly limit Danamon has set for the holder. If no limit is recorded the uplift runs uncapped and every rupiah earns 1,5, which overstates a month that goes past the limit.",
     "Insurance premiums, cash advances, money transfers, balance conversions, instalment conversions and cancelled transactions earn nothing. Insurance is matched by category; the rest are matched on the description, so a cash advance or an instalment is only recognised when the description says so.",
     "Converting points to airline miles or hotel points needs the Frequent Traveller Option, a separate subscription of Rp 250.000 a year. The app treats the partners as always available and does not charge the subscription, so a holder without FTO cannot actually transfer at all.",
-    "The Frequent Traveller Option covers seven partners: KrisFlyer, GarudaMiles, Asia Miles, AirAsia BIG points, Enrich, Marriott Bonvoy and Hilton Honors. Only KrisFlyer and Asia Miles carry a ratio here, because only those two could be pinned down; the other five are left out rather than guessed, so an estimate for them shows nothing.",
-    "The two ratios are derived, not published, and are carried over from the credit card on the assumption that a Gold card's Membership Rewards convert the same either way. Reporting after the 1 November 2023 devaluation gives the cost of a mile as Rp 20.000 for KrisFlyer and Rp 30.000 for Asia Miles; at 1 point per Rp 2.500 that is 8 points a KrisFlyer mile and 12 an Asia Mile. On this card the uplift makes a mile cheaper than that while spending stays under the limit.",
-    "The transfer step of 1.000 points is a placeholder. No minimum or increment was found for Danamon's own conversions, and the 1.000 figure that circulates belongs to American Express's international Membership Rewards rather than this card.",
     "No source could be read directly. Bank Danamon's site, its RIPLAY, americanexpress.com, PinterPoin and IndoMiles are all unreachable from here, so every figure comes from search summaries of those pages rather than the pages themselves. Treat the whole entry as unverified until the RIPLAY is checked.",
-    "Not modelled: Priority Pass lounge visits twice a year and the travel insurance cover. Neither pays points."
+    "Not modelled: Priority Pass lounge visits twice a year and the travel insurance cover. Neither pays points.",
+    "Six conversions were read off the cardholder's own Frequent Traveller Option screens: 6.000 points for 1.000 KrisFlyer miles, 9.000 for 1.000 Asia Miles, 4.500 for 500 GarudaMiles, 50.000 for 5.000 Enrich miles, 7.000 for 1.250 Hilton Honors points and 6.250 for 990 Marriott Bonvoy points. Reduced, those are 6:1, 9:1, 9:1, 10:1, 28:5 and 625:99, and every block reproduces exactly from its reduced ratio.",
+    "At the base rate of 1 point per Rp 2.500 that makes a KrisFlyer mile Rp 15.000, a GarudaMile or Asia Mile Rp 22.500, an Enrich mile Rp 25.000, a Hilton point Rp 14.000 and a Bonvoy point Rp 15.783. While spending stays under the monthly limit the 1,5 rate takes a third off each: a KrisFlyer mile costs Rp 10.000, which is what makes this card worth its fee.",
+    "These replace ratios of 8 points a KrisFlyer mile and 12 an Asia Mile, which earlier versions of this entry and its credit-card sibling derived from reported per-mile rupiah figures. The derivation was wrong in both cases; the cardholder's screens are what the entry now records.",
+    "The figures given are minimums, and the step past the minimum is not known. The entry treats each minimum as the step too, so a balance converts in whole blocks and a remainder waits. If the bank in fact allows finer increments past the minimum, a conversion is understated.",
+    "AirAsia BIG points are the one Frequent Traveller Option partner left without a ratio, so an estimate for them shows nothing."
   ],
   "sources": [
     {

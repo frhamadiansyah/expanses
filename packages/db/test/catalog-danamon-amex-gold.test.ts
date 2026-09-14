@@ -84,29 +84,44 @@ describe('Danamon American Express Gold earning', () => {
 });
 
 describe('Danamon American Express Gold conversion', () => {
-  it('offers only the two partners whose ratio could be pinned down', async () => {
+  it('offers the six partners whose conversion is known, leaving AirAsia without one', async () => {
     const t = await withCard();
     const partners = await listTransferPartners(t.database, t.ws, t.programId);
-    expect(partners.map((p) => p.program)).toEqual(['KrisFlyer', 'Asia Miles']);
-    // The other five the Frequent Traveller Option covers are named in the notes rather than guessed at.
-    const notes = findEntry('danamon-amex-gold-credit-card')!.notes.join(' ');
-    for (const program of ['GarudaMiles', 'AirAsia BIG points', 'Enrich', 'Marriott Bonvoy', 'Hilton Honors']) {
-      expect(notes, program).toContain(program);
-    }
+    expect(partners.map((p) => p.program)).toEqual(['KrisFlyer', 'Asia Miles', 'GarudaMiles', 'Enrich', 'Hilton Honors', 'Marriott Bonvoy']);
+    expect(findEntry('danamon-amex-gold-credit-card')!.notes.some((n) => n.includes('AirAsia BIG points are the one'))).toBe(true);
   });
 
-  it('takes 8 points for a KrisFlyer mile and 12 for an Asia Mile', async () => {
+  it('takes 6.000 points for 1.000 KrisFlyer miles and 9.000 for 1.000 Asia Miles', async () => {
     const t = await withCard();
     const partners = await listTransferPartners(t.database, t.ws, t.programId);
     const at = (program: string, points: number) => convertPoints(points, partners.find((p) => p.program === program)!);
-    expect(at('KrisFlyer', 8_000)).toBe(1_000);
-    expect(at('Asia Miles', 12_000)).toBe(1_000);
+    expect(at('KrisFlyer', 6_000)).toBe(1_000);
+    expect(at('Asia Miles', 9_000)).toBe(1_000);
+    expect(at('GarudaMiles', 4_500)).toBe(500);
+    expect(at('Enrich', 50_000)).toBe(5_000);
   });
 
-  it('says plainly that the ratios are derived and the transfer step is a placeholder', () => {
+  it('converts to hotel points at ratios that do not reduce to whole numbers', async () => {
+    const t = await withCard();
+    const partners = await listTransferPartners(t.database, t.ws, t.programId);
+    const at = (program: string, points: number) => convertPoints(points, partners.find((p) => p.program === program)!);
+    // 28 points for 5 Hilton, and 625 for 99 Bonvoy: neither is a whole number of points per unit.
+    expect(at('Hilton Honors', 7_000)).toBe(1_250);
+    expect(at('Marriott Bonvoy', 6_250)).toBe(990);
+  });
+
+  it('converts in whole blocks, so a balance short of one moves nothing', async () => {
+    const t = await withCard();
+    const krisflyer = (await listTransferPartners(t.database, t.ws, t.programId)).find((p) => p.program === 'KrisFlyer')!;
+    expect(convertPoints(5_999, krisflyer)).toBe(0);
+    expect(convertPoints(11_999, krisflyer)).toBe(1_000);
+    expect(convertPoints(12_000, krisflyer)).toBe(2_000);
+  });
+
+  it('says the ratios come from the charge card and that only minimums are known', () => {
     const notes = findEntry('danamon-amex-gold-credit-card')!.notes;
-    expect(notes.some((note) => note.includes('derived, not published'))).toBe(true);
-    expect(notes.some((note) => note.includes('placeholder'))).toBe(true);
+    expect(notes.some((note) => note.includes("charge card's Frequent Traveller Option screens"))).toBe(true);
+    expect(notes.some((note) => note.includes('the step past the minimum is not known'))).toBe(true);
   });
 });
 

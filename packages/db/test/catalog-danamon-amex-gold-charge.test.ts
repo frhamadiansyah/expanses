@@ -104,6 +104,24 @@ describe('the charge card against the credit card', () => {
     for (const id of ['danamon-amex-gold-charge', 'danamon-amex-gold-credit-card']) {
       expect(findEntry(id)!.program.name, id).toBe('Membership Rewards');
     }
-    expect(findEntry('danamon-amex-gold-charge')!.notes.some((n) => n.includes('carried over from the credit card'))).toBe(true);
+    // The ratios were read off this card's own screens, and the credit card borrows them rather than the other way about.
+    expect(findEntry('danamon-amex-gold-charge')!.notes.some((n) => n.includes("cardholder's own Frequent Traveller Option screens"))).toBe(true);
+    expect(findEntry('danamon-amex-gold-credit-card')!.notes.some((n) => n.includes('carried over because the two share one Membership Rewards balance'))).toBe(true);
+  });
+});
+
+describe('what the charge card uplift does to the cost of a mile', () => {
+  it('brings a KrisFlyer mile from Rp 15.000 to Rp 10.000 while spending stays under the limit', () => {
+    const krisflyer = findEntry('danamon-amex-gold-charge')!.transferPartners.find((p) => p.program === 'KrisFlyer')!;
+    const perMileAtBase = krisflyer.points * 2_500;
+    expect(perMileAtBase).toBe(15_000);
+    // The uplift earns 1,5 points for the same rupiah, so a mile costs two thirds of that.
+    expect((perMileAtBase * 2) / 3).toBe(10_000);
+  });
+
+  it('carries the same six ratios as the credit card, the balance being shared', () => {
+    const ratio = (id: string) =>
+      Object.fromEntries(findEntry(id)!.transferPartners.map((p) => [p.program, [p.points, p.partnerUnits]]));
+    expect(ratio('danamon-amex-gold-charge')).toEqual(ratio('danamon-amex-gold-credit-card'));
   });
 });
