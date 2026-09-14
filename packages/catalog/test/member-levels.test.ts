@@ -463,3 +463,13 @@ describe('Kartu Kredit Jenius: which Club each level covers', () => {
     expect(levels.find((level) => level.key === 'seed-plant')!.condition).toContain('Seed or Plant');
   });
 });
+
+describe('rounding, per full increment', () => {
+  it('every Jenius and Danamon rule rounds per increment, not per transaction', () => {
+    for (const id of ['jenius-kartu-kredit', 'danamon-jcb-precious']) {
+      for (const period of findEntry(id)!.terms) {
+        for (const rule of period.rules) expect(rule.rounding, `${id}/${rule.key}`).toBe('per_increment');
+      }
+    }
+  });
+});

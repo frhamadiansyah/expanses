@@ -176,3 +176,25 @@ describe('the 1 June 2026 change, which stopped points on utilities, tax, fuel a
     expect(await earnedIn(t, '2026-06-01', '2026-06-30')).toBe(400);
   });
 });
+
+describe('rounding the remainder away', () => {
+  it('earns on whole increments of Rp 2.500 and nothing on the remainder', async () => {
+    const t = await withCard('dana-kelolaan-50');
+    await spendOn(t, '2026-09-10', 6_000, 'shopping');
+    // Two whole increments of Rp 2.500; the last Rp 1.000 earns nothing.
+    expect(await earnedIn(t, FROM, TO)).toBe(2);
+  });
+
+  it('earns nothing at all below one increment', async () => {
+    const t = await withCard('dana-kelolaan-50');
+    await spendOn(t, '2026-09-10', 2_499, 'shopping');
+    expect(await earnedIn(t, FROM, TO)).toBe(0);
+  });
+
+  it('rounds the uplift the same way, over the cycle', async () => {
+    const t = await withCard('dana-kelolaan-50');
+    await spendOn(t, '2026-09-10', 1_501_000, 'shopping');
+    // 600 whole increments: 600 at the base and 1.200 from the uplift. The trailing Rp 1.000 earns nothing.
+    expect(await earnedIn(t, FROM, TO)).toBe(1_800);
+  });
+});

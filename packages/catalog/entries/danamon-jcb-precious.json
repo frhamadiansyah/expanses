@@ -1,6 +1,6 @@
 {
   "id": "danamon-jcb-precious",
-  "entryVersion": 3,
+  "entryVersion": 4,
   "bank": "Bank Danamon",
   "name": "Kartu Kredit Danamon JCB Precious",
   "network": "jcb",
@@ -308,7 +308,7 @@
     "Not modelled: the 5% cashback up to Rp 100.000 a month on routine bill payments, which needs at least five retail transactions of Rp 100.000 or more, and airport lounge access. Neither pays D-Point.",
     "The card limit runs from Rp 15.000.000 to Rp 1.000.000.000.",
     "The terms come from Danamon's own RIPLAY, the 26 August 2025 version, which gives no start date, so the first period runs open until the 1 June 2026 change. Secondary reporting also describes a later clarification that walks some of these changes back; it could not be read here, so if it softened the June exclusions this entry takes away more than it should.",
-    "Rounding is taken as per full increment of Rp 2.500; the RIPLAY does not say how a part increment is treated."
+    "Rounding is per full increment of Rp 2.500, confirmed by the cardholder: the remainder of a purchase earns nothing, so Rp 6.000 earns 2 D-Point at the base rate, not 2,4."
   ],
   "sources": [
     {
