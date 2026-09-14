@@ -1,0 +1,147 @@
+{
+  "id": "uob-privi-miles",
+  "entryVersion": 1,
+  "bank": "Bank UOB Indonesia",
+  "name": "Kartu Kredit UOB PRIVI Miles",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "UOB Miles",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 1000000,
+      "supplementaryFeeMinor": null,
+      "condition": "waived on spending Rp 15.000.000 within 3 months of approval"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "foreign",
+          "name": "Spent abroad",
+          "rateNum": 1,
+          "rateDen": 500,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "origin": "foreign"
+          }
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 1000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {}
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer-old",
+      "program": "KrisFlyer",
+      "points": 10,
+      "partnerUnits": 1,
+      "incrementPoints": 10,
+      "effectiveFrom": null,
+      "effectiveTo": "2026-01-08"
+    },
+    {
+      "key": "garudamiles-old",
+      "program": "GarudaMiles",
+      "points": 10,
+      "partnerUnits": 1,
+      "incrementPoints": 10,
+      "effectiveFrom": null,
+      "effectiveTo": "2026-01-08"
+    },
+    {
+      "key": "asia-miles-old",
+      "program": "Asia Miles",
+      "points": 10,
+      "partnerUnits": 1,
+      "incrementPoints": 10,
+      "effectiveFrom": null,
+      "effectiveTo": "2026-01-08"
+    },
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 12,
+      "partnerUnits": 1,
+      "incrementPoints": 12,
+      "effectiveFrom": "2026-01-09",
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 12,
+      "partnerUnits": 1,
+      "incrementPoints": 12,
+      "effectiveFrom": "2026-01-09",
+      "effectiveTo": null
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 12,
+      "partnerUnits": 1,
+      "incrementPoints": 12,
+      "effectiveFrom": "2026-01-09",
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": null,
+  "welcomeBonus": "From 1 January 2026 the equivalent of 10.000 airline miles, up from 4.000, after spending Rp 5.000.000 a month or Rp 15.000.000 within 3 months of approval.",
+  "notes": [
+    "Every figure is from PinterPoin and Cermati. UOB Indonesia's own pages could not be reached, so nothing is confirmed against the issuer.",
+    "What changed on 9 January 2026 was the conversion, not the earning. A mile still costs Rp 1.000 at home and Rp 500 abroad; it now takes 12 UOB Miles to make an airline mile instead of 10. That is why the change is written on the transfer ratios and the earn rules have a single open period.",
+    "The effect is that an airline mile costs Rp 12.000 of domestic spending from 9 January 2026, against Rp 10.000 before, and Rp 6.000 of foreign spending against Rp 5.000.",
+    "Earning in foreign currency was deliberately left alone in that change, which is what the sources say makes this the strongest Indonesian card for spending in Singapore dollars, ringgit, baht and dong.",
+    "Cermati still describes 36.000 UOB Miles converting to 4.500 airline miles, which is 8 to 1. That is two devaluations out of date and is not encoded.",
+    "AirAsia is a fourth airline partner, alongside KrisFlyer, GarudaMiles and Asia Miles. Its current ratio was not published anywhere reachable, so it is left out rather than guessed; the figure quoted in older reviews belongs to the 8 to 1 era.",
+    "Conversion needs a balance of at least 50.000 UOB Miles, is for the main card only, and requires the account to be in good standing. None of that is modelled: the app estimates conversion at the published ratio whatever the balance.",
+    "No source lists the transactions that earn nothing, so cash advance, instalments and fees are not excluded here and such spend is overestimated.",
+    "Rounding is taken as per full increment, in line with the other entries.",
+    "The Indonesian card is spelled PRIVI Miles by UOB Indonesia; reviews also write PRVI Miles, which is how Singapore and Malaysia spell their own different cards. One source mentions the Indonesian card being renamed, but not to what.",
+    "Not the Singapore or Malaysian PRVI Miles, which earn UNI$ per Singapore dollar or ringgit and convert on their own terms. UOB Zenith is a separate Indonesian card, around Rp 8.800 an airline mile."
+  ],
+  "sources": [
+    {
+      "title": "PinterPoin — Devaluasi: earning rate kartu kredit UOB PRIVI Miles pada 9 Januari 2026",
+      "url": "https://pinterpoin.com/devaluasi-earning-rate-kartu-kredit-uob-privi-miles-pada-9-januari-2026/"
+    },
+    {
+      "title": "PinterPoin — Memahami konsep devaluasi UOB PRIVI Miles & UOB Zenith pada 9 Januari 2026",
+      "url": "https://pinterpoin.com/memahami-konsep-devaluasi-uob-privi-miles-uob-zenith-pada-9-januari-2026-tukarkan-sekarang/"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit UOB PRIVI Miles",
+      "url": "https://pinterpoin.com/review-kartu-kredit-uob-privi-miles-visa-signature/"
+    },
+    {
+      "title": "Cermati — Review Kartu Kredit: UOB PRVI Miles",
+      "url": "https://www.cermati.com/artikel/review-kartu-kredit-uob-prvi-miles"
+    },
+    {
+      "title": "UOB Indonesia — UOB PRIVI Miles",
+      "url": "https://www.uob.co.id/personal/kartu-kredit/uob-privi-miles/apply-now.html"
+    }
+  ],
+  "verifiedOn": "2026-09-14"
+}
