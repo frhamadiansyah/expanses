@@ -33,6 +33,25 @@ async function withCard(level: string, creditLimitMinor: number | null = 100_000
   return { ...t, card, programId };
 }
 
+async function spendOn(t: Awaited<ReturnType<typeof withCard>>, occurredOn: string, amountMinor: number, category: string) {
+  const all = await listAccounts(t.database, t.ws);
+  const categoryAccountId = all.find((a) => a.systemKey === category)!.id;
+  await postTransaction(t.database, t.ws, {
+    occurredOn,
+    description: 'Bayar',
+    lines: expenseLines({ categoryAccountId, paymentAccountId: t.card.id, amountMinor, currency: 'IDR' }),
+  });
+}
+
+async function earnedIn(t: Awaited<ReturnType<typeof withCard>>, from: string, to: string) {
+  const all = await listAccounts(t.database, t.ws);
+  const ancestors = Object.fromEntries(all.map((a) => [a.id, a.parentId ? [a.parentId] : []]));
+  const lines = await cardSpendLines(t.database, t.ws, t.card.id, from, to);
+  const rules = await listEarnRules(t.database, t.ws, t.programId);
+  const bonuses = await listCycleBonuses(t.database, t.ws, t.programId);
+  return computeCycleEarn(lines, rules, ancestors, { bonuses, cycleEnd: to }).totalPoints;
+}
+
 async function spend(t: Awaited<ReturnType<typeof withCard>>, amounts: number[], category = 'shopping') {
   const all = await listAccounts(t.database, t.ws);
   const categoryAccountId = all.find((a) => a.systemKey === category)!.id;
@@ -122,5 +141,38 @@ describe('Danamon JCB Precious earning', () => {
     const t = await withCard('dana-kelolaan-50');
     await spend(t, [2_000_000], 'health.insurance');
     expect(await earned(t)).toBe(0);
+  });
+});
+
+describe('the 1 June 2026 change, which stopped points on utilities, tax, fuel and invoicing', () => {
+  it('paid on an electricity bill in May and pays nothing on the same bill in June', async () => {
+    const t = await withCard('dana-kelolaan-50');
+    await spendOn(t, '2026-05-10', 1_000_000, 'utilities.electricity');
+    await spendOn(t, '2026-06-10', 1_000_000, 'utilities.electricity');
+
+    expect(await earnedIn(t, '2026-05-01', '2026-05-31')).toBe(400);
+    expect(await earnedIn(t, '2026-06-01', '2026-06-30')).toBe(0);
+  });
+
+  it('stops paying on fuel, tax and invoicing too', async () => {
+    const t = await withCard('dana-kelolaan-50');
+    for (const category of ['transport.fuel', 'government', 'business']) {
+      await spendOn(t, '2026-06-10', 1_000_000, category);
+    }
+    expect(await earnedIn(t, '2026-06-01', '2026-06-30')).toBe(0);
+  });
+
+  it('still pays on ordinary shopping after the change', async () => {
+    const t = await withCard('dana-kelolaan-50');
+    await spendOn(t, '2026-06-10', 1_000_000, 'shopping');
+    expect(await earnedIn(t, '2026-06-01', '2026-06-30')).toBe(400);
+  });
+
+  it('leaves excluded spend out of the Rp 1.500.000 floor, so it cannot unlock the uplift', async () => {
+    const t = await withCard('dana-kelolaan-50');
+    await spendOn(t, '2026-06-10', 2_000_000, 'utilities.electricity');
+    await spendOn(t, '2026-06-11', 1_000_000, 'shopping');
+    // Only the Rp 1.000.000 of shopping counts, which is under the floor: base alone.
+    expect(await earnedIn(t, '2026-06-01', '2026-06-30')).toBe(400);
   });
 });
