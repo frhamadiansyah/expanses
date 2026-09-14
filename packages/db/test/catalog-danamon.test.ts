@@ -1,5 +1,5 @@
 import { findEntry } from '@expanses/catalog';
-import { computeCycleEarn, expenseLines } from '@expanses/core';
+import { computeCycleEarn, convertPoints, expenseLines } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   applyCatalogEntry,
@@ -8,6 +8,7 @@ import {
   listAccounts,
   listCycleBonuses,
   listEarnRules,
+  listTransferPartners,
   postTransaction,
   saveCardTerms,
 } from '../src/index';
@@ -196,5 +197,43 @@ describe('rounding the remainder away', () => {
     await spendOn(t, '2026-09-10', 1_501_000, 'shopping');
     // 600 whole increments: 600 at the base and 1.200 from the uplift. The trailing Rp 1.000 earns nothing.
     expect(await earnedIn(t, FROM, TO)).toBe(1_800);
+  });
+});
+
+describe('Danamon JCB Precious conversion', () => {
+  const partnersOf = async () => {
+    const t = await withCard('dana-kelolaan-50');
+    return listTransferPartners(t.database, t.ws, t.programId);
+  };
+
+  it('converts to three airlines, at 15 D-Point a GarudaMile and 20 a KrisFlyer or Asia Mile', async () => {
+    const ratios = Object.fromEntries((await partnersOf()).map((p) => [p.program, [p.points, p.partnerUnits]]));
+    expect(ratios).toEqual({ GarudaMiles: [15, 1], KrisFlyer: [20, 1], 'Asia Miles': [20, 1] });
+  });
+
+  it('moves in 500 D-Point at a time, so anything smaller converts to nothing', async () => {
+    const partners = await partnersOf();
+    const krisflyer = partners.find((p) => p.program === 'KrisFlyer')!;
+    expect(partners.every((p) => p.incrementPoints === 500)).toBe(true);
+    expect(convertPoints(499, krisflyer)).toBe(0);
+    expect(convertPoints(500, krisflyer)).toBe(25);
+    // 900 is one whole step and a remainder, so only the first 500 moves.
+    expect(convertPoints(900, krisflyer)).toBe(25);
+  });
+
+  it('floors the GarudaMile that the 500 step cannot divide into', async () => {
+    const garuda = (await partnersOf()).find((p) => p.program === 'GarudaMiles')!;
+    // 500 at 15 to 1 is 33,3 miles.
+    expect(convertPoints(500, garuda)).toBe(33);
+    // Every 1.500 lands whole.
+    expect(convertPoints(1_500, garuda)).toBe(100);
+    expect(convertPoints(15_000, garuda)).toBe(1_000);
+  });
+
+  it('matches the rupiah cost a mile that the ratios imply, at 1 D-Point per Rp 2.500', async () => {
+    const partners = await partnersOf();
+    const perMile = (program: string) => partners.find((p) => p.program === program)!.points * 2_500;
+    expect(perMile('GarudaMiles')).toBe(37_500);
+    expect(perMile('KrisFlyer')).toBe(50_000);
   });
 });
