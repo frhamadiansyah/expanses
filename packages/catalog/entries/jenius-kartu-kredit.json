@@ -1,6 +1,6 @@
 {
   "id": "jenius-kartu-kredit",
-  "entryVersion": 5,
+  "entryVersion": 6,
   "bank": "Bank SMBC Indonesia",
   "name": "Kartu Kredit Jenius",
   "network": "visa",
@@ -369,7 +369,7 @@
     "Food & Beverages does not include MCC 5812, eating places and restaurants: the list gives only 5813 bars, 5814 fast food, 5462 bakeries and 5499 miscellaneous food stores. An ordinary restaurant therefore earns the base rate, which is worth checking against a statement before relying on it.",
     "Travel & Leisure does not include MCC 7011, hotels and lodging: the list names hotel chains individually as 3501-3825, so a hotel booked through a merchant that presents 7011 earns the base rate.",
     "The four Double Yay categories are Jenius's own Visa MCC lists, read from Kategori Double Yay: Travel & Leisure is 555 codes (airlines 3000-3299, hotel chains 3501-3825, car hire, tour operators, attractions), Beauty & Fashion 16, Food & Beverages 4, and Groceries & Gasoline 3. The fourth category is groceries and fuel together, not groceries alone.",
-    "Seed and Plant: the source quotes Double Yay at about Rp 8.000 per KrisFlyer mile, but Rp 6.000 per Yay at the stated 50.000 Yay = 30.000 miles is Rp 10.000 per mile. Rp 8.000 only holds at the old 40.000 = 30.000 ratio, so it reads as a figure carried over and not updated. The published ratio is encoded; check this one against the Jenius app.",
+    "Two Club statuses matter, and they are independent. The status when a purchase is made fixes the earn rate into the points — Rp 10.000 per Yay at Grow or above, Rp 12.000 at Seed or Plant, halved on Double Yay. The status when the points are converted fixes the ratio, and only KrisFlyer's changes with it. So points earned at Seed or Plant and converted at Grow cost Rp 8.000 a KrisFlyer mile on Double Yay, while the same points converted at Seed or Plant cost Rp 10.000. Both figures are right; they are different cells.",
     "The five conversion ratios were read from the Jenius app by the cardholder: AirAsia rewards 10.000 Yay for 10.000, LinkMiles 15.000 for 12.500, GarudaMiles 25.000 for 20.000, KrisFlyer 40.000 for 30.000, and Traveloka Points 2.500 for 100.000. KrisFlyer is the only one that follows Club status — Seed and Plant need 50.000 Yay for the same 30.000 miles — and the cardholder confirms the other four are the same at every level, so only KrisFlyer is scoped by level.",
     "From 1 August 2026 a purchase converted to a 0% instalment, including Split Pay 0% at a merchant or in the app, earns no Yay Points. An interest-bearing instalment still earns. Estimates cannot see instalment status, so a 0% instalment will be overestimated.",
     "Conversion to KrisFlyer or GarudaMiles is limited to once a month, and capped at 30.000 KrisFlyer miles and 20.000 GarudaMiles a month. Neither limit is applied to estimates.",
@@ -382,6 +382,10 @@
     {
       "title": "Jenius — Kategori Double Yay (MCC list, Bank SMBC Indonesia)",
       "url": "https://assets.jenius.com/assets/2023/12/27080618/Kategori-Double-Yay-1.pdf"
+    },
+    {
+      "title": "Jenius Club and Double Yay effective earn tables, supplied by the cardholder",
+      "url": "https://www.jenius.com/en/faq/rewards-points/yay-points"
     },
     {
       "title": "PinterPoin — Devaluasi perolehan poin, penukaran poin ke miles, dan cicilan Kartu Kredit Jenius efektif 1 Agustus 2026",

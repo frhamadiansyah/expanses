@@ -400,3 +400,55 @@ describe('Kartu Kredit Jenius: only KrisFlyer follows Club status', () => {
     expect([gm[0]!.points, gm[0]!.partnerUnits]).toEqual([25_000, 20_000]);
   });
 });
+
+/**
+ * The effective cost per mile Jenius publishes, for every combination of the Club you transacted in and the
+ * Club you convert in. Each figure has to fall out of the encoded rates and ratios, or one of them is wrong.
+ */
+describe('Kartu Kredit Jenius: the published effective earn tables', () => {
+  const NEW = '2026-08-01';
+  const rateDen = (level: string, rule: 'Base' | 'Double Yay abroad') =>
+    planCatalogApply(findEntry('jenius-kartu-kredit')!, {}, NEW, level).rules.find((row) => row.name === rule && row.validFrom === NEW)!.rateDen;
+  const milesPerYay = (level: string, program: string) => {
+    const partner = planCatalogApply(findEntry('jenius-kartu-kredit')!, {}, NEW, level).transferPartners.find(
+      (row) => row.program === program && row.validTo === null,
+    )!;
+    return partner.partnerUnits / partner.points;
+  };
+  /** Rupiah per mile: what a point costs to earn, divided by the miles it converts into. */
+  const perMile = (transacted: string, program: string, redeemed: string, rule: 'Base' | 'Double Yay abroad') =>
+    Math.round(rateDen(transacted, rule) / milesPerYay(redeemed, program));
+
+  const GROW = 'grow-plus';
+  const SEED = 'seed-plant';
+
+  it('transacted at Grow or above', () => {
+    expect(perMile(GROW, 'LinkMiles', GROW, 'Base')).toBe(12_000);
+    expect(perMile(GROW, 'LinkMiles', GROW, 'Double Yay abroad')).toBe(6_000);
+    expect(perMile(GROW, 'GarudaMiles', GROW, 'Base')).toBe(12_500);
+    expect(perMile(GROW, 'GarudaMiles', GROW, 'Double Yay abroad')).toBe(6_250);
+    expect(perMile(GROW, 'KrisFlyer', GROW, 'Base')).toBe(13_333);
+    expect(perMile(GROW, 'KrisFlyer', GROW, 'Double Yay abroad')).toBe(6_667);
+  });
+
+  it('transacted at Grow, converted after dropping to Seed or Plant: only KrisFlyer moves', () => {
+    expect(perMile(GROW, 'KrisFlyer', SEED, 'Base')).toBe(16_667);
+    expect(perMile(GROW, 'KrisFlyer', SEED, 'Double Yay abroad')).toBe(8_333);
+    expect(perMile(GROW, 'GarudaMiles', SEED, 'Base')).toBe(perMile(GROW, 'GarudaMiles', GROW, 'Base'));
+  });
+
+  it('transacted at Seed or Plant, converted at Grow or above', () => {
+    expect(perMile(SEED, 'LinkMiles', GROW, 'Base')).toBe(14_400);
+    expect(perMile(SEED, 'LinkMiles', GROW, 'Double Yay abroad')).toBe(7_200);
+    expect(perMile(SEED, 'GarudaMiles', GROW, 'Base')).toBe(15_000);
+    expect(perMile(SEED, 'GarudaMiles', GROW, 'Double Yay abroad')).toBe(7_500);
+    expect(perMile(SEED, 'KrisFlyer', GROW, 'Base')).toBe(16_000);
+    // The figure earlier reporting gave, and which a single-level reading wrongly called stale.
+    expect(perMile(SEED, 'KrisFlyer', GROW, 'Double Yay abroad')).toBe(8_000);
+  });
+
+  it('transacted and converted at Seed or Plant', () => {
+    expect(perMile(SEED, 'KrisFlyer', SEED, 'Base')).toBe(20_000);
+    expect(perMile(SEED, 'KrisFlyer', SEED, 'Double Yay abroad')).toBe(10_000);
+  });
+});
