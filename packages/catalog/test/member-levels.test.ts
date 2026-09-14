@@ -372,3 +372,31 @@ describe('Kartu Kredit Jenius: the Double Yay categories are the bank\u2019s own
     }
   });
 });
+
+describe('Kartu Kredit Jenius: only KrisFlyer follows Club status', () => {
+  const jenius = () => findEntry('jenius-kartu-kredit')!;
+
+  it('gives Grow and Seed the same ratio at every partner except KrisFlyer', () => {
+    const at = (level: string) =>
+      Object.fromEntries(
+        planCatalogApply(jenius(), {}, '2026-09-14', level)
+          .transferPartners.filter((partner) => partner.validTo === null)
+          .map((partner) => [partner.program, [partner.points, partner.partnerUnits]]),
+      );
+    const grow = at('grow-plus');
+    const seed = at('seed-plant');
+
+    for (const program of ['AirAsia rewards', 'LinkMiles', 'GarudaMiles', 'Traveloka Points']) {
+      expect(seed[program], program).toEqual(grow[program]);
+    }
+    expect(grow['KrisFlyer']).toEqual([40_000, 30_000]);
+    expect(seed['KrisFlyer']).toEqual([50_000, 30_000]);
+  });
+
+  it('GarudaMiles stays 25.000 for 20.000 whichever Club you are in', () => {
+    const gm = jenius().transferPartners.filter((partner) => partner.program === 'GarudaMiles');
+    expect(gm).toHaveLength(1);
+    expect(gm[0]!.memberLevels).toBeUndefined();
+    expect([gm[0]!.points, gm[0]!.partnerUnits]).toEqual([25_000, 20_000]);
+  });
+});
