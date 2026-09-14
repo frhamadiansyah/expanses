@@ -1,6 +1,6 @@
 {
   "id": "mandiri-world-prioritas",
-  "entryVersion": 8,
+  "entryVersion": 9,
   "bank": "Mandiri",
   "name": "Mandiri World Prioritas",
   "network": "mastercard",
@@ -194,7 +194,8 @@
       "program": "KrisFlyer",
       "points": 1,
       "partnerUnits": 1,
-      "incrementPoints": 10000,
+      "incrementPoints": 1000,
+      "minimumPoints": 10000,
       "effectiveFrom": null,
       "effectiveTo": null,
       "cap": {
@@ -210,7 +211,8 @@
       "program": "GarudaMiles",
       "points": 1,
       "partnerUnits": 1,
-      "incrementPoints": 10000,
+      "incrementPoints": 1000,
+      "minimumPoints": 10000,
       "effectiveFrom": null,
       "effectiveTo": null,
       "cap": {
@@ -226,7 +228,8 @@
       "program": "Asia Miles",
       "points": 1,
       "partnerUnits": 1,
-      "incrementPoints": 10000,
+      "incrementPoints": 1000,
+      "minimumPoints": 10000,
       "effectiveFrom": null,
       "effectiveTo": null,
       "cap": {
@@ -242,7 +245,8 @@
       "program": "ANA Mileage Club",
       "points": 1,
       "partnerUnits": 1,
-      "incrementPoints": 10000,
+      "incrementPoints": 1000,
+      "minimumPoints": 10000,
       "effectiveFrom": null,
       "effectiveTo": null,
       "cap": {
@@ -281,12 +285,12 @@
     "A Livin'poin converts to one mile at all five partners: KrisFlyer, GarudaMiles, Asia Miles, ANA Mileage Club and AirAsia Rewards. The cardholder gave the partner list and the one-for-one ratio; the bank's page advertises \"1:1 Mileage Redemption\" without naming either, so PinterPoin and Tuwaga are what confirm them.",
     "The one-for-one rate covers the first 25.000 Livin'poin a month, counted across every airline together rather than per airline. Beyond that the rate drops to 3.000 Livin'poin for 1.000 miles at all five partners, so the points still move, at a third of the value. Both are applied to transfer estimates. The ceiling is shared, so an estimate showing one airline assumes nothing has gone to the others that month.",
     "Livin'poin are credited per purchase, so the app checks this card per purchase.",
-    "Converting moves 10.000 Livin'poin at a time and in multiples of 10.000, given by the cardholder. It is a step rather than only a floor, so a balance of 15.000 converts 10.000 and leaves the rest, which is what the entry records. PinterPoin and Tuwaga instead describe 10.000 as a floor with 1.000 steps after it; the cardholder's reading is the one recorded, and the two differ only on remainders.",
-    "AirAsia Rewards moves in 1.000 steps rather than 10.000, which is the one partner that differs. That is from Tuwaga rather than the cardholder.",
+    "A conversion needs 10.000 Livin'poin to open and moves in 1.000 from there, so a balance of 15.000 converts in full rather than leaving 5.000 behind. The entry records the floor and the step separately, which an earlier version could not: it carried 10.000 as the step alone and rounded every balance down to a multiple of it.",
+    "AirAsia Rewards opens at 1.000 rather than 10.000, which is the one partner without the larger floor. That is from Tuwaga rather than the cardholder.",
     "Livin'poin expire two years after they are earned, given by the cardholder. The app does not expire points, so a balance it shows may include points the bank has already dropped.",
     "The card carries no annual fee, main or supplementary, while the holder is a Bank Mandiri Prioritas customer.",
     "Converting to Asia Miles was withdrawn for a time and restored on 18 June 2026. The withdrawal date was not published, so the entry offers Asia Miles throughout and overstates the gap.",
-    "A transfer estimate now applies the ceiling. It is spent in whole transfer steps, so a step straddling the ceiling waits for the next window rather than being split, which the issuer's own screens may not do."
+    "A transfer estimate applies the ceiling. It is spent in whole transfer steps, and since the step is 1.000 the 25.000 ceiling lands exactly on one, so nothing is lost to rounding at the ceiling itself."
   ],
   "sources": [
     {

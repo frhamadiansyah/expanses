@@ -495,9 +495,10 @@ describe('Mandiri World Prioritas conversion', () => {
     });
   });
 
-  it('moves AirAsia Rewards in 1.000 steps and every other airline in 10.000', () => {
-    const steps = Object.fromEntries(mandiri().transferPartners.map((p) => [p.key, p.incrementPoints]));
-    expect(steps).toEqual({ krisflyer: 10_000, garudamiles: 10_000, 'asia-miles': 10_000, ana: 10_000, airasia: 1_000 });
+  it('opens every airline but AirAsia at 10.000, then moves them all in 1.000', () => {
+    const opens = Object.fromEntries(mandiri().transferPartners.map((p) => [p.key, p.minimumPoints ?? null]));
+    expect(opens).toEqual({ krisflyer: 10_000, garudamiles: 10_000, 'asia-miles': 10_000, ana: 10_000, airasia: null });
+    for (const partner of mandiri().transferPartners) expect(partner.incrementPoints, partner.key).toBe(1_000);
   });
 
   it('records that points lapse after two years, which the app does not apply', () => {
@@ -509,14 +510,15 @@ describe('Mandiri World Prioritas conversion', () => {
     expect([fee.annualFeeMinor, fee.supplementaryFeeMinor]).toEqual([0, 0]);
   });
 
-  it('converts in 10.000 steps, one for one, leaving any remainder behind', () => {
+  it('needs 10.000 to open, then converts one for one in 1.000 from there', () => {
     const kf = mandiri().transferPartners.find((p) => p.program === 'KrisFlyer')!;
-    const at = (points: number) => convertPoints(points, { points: kf.points, partnerUnits: kf.partnerUnits, incrementPoints: kf.incrementPoints });
+    const at = (points: number) =>
+      convertPoints(points, { points: kf.points, partnerUnits: kf.partnerUnits, incrementPoints: kf.incrementPoints, minimumPoints: kf.minimumPoints });
     expect(at(9_999)).toBe(0);
     expect(at(10_000)).toBe(10_000);
-    // A step, not only a floor: the trailing 5.000 stays put rather than converting.
-    expect(at(15_000)).toBe(10_000);
-    expect(at(40_000)).toBe(40_000);
+    // A floor, not a step: past 10.000 the trailing 5.000 converts rather than waiting for the next 10.000.
+    expect(at(15_000)).toBe(15_000);
+    expect(at(15_999)).toBe(15_000);
   });
 });
 

@@ -52,6 +52,25 @@ describe('transfer conversion', () => {
     expect(convertPoints(120_000, yay)).toBe(30_000);
   });
 
+  it('refuses a balance below the minimum, then moves it in the smaller step', async () => {
+    const { convertDetail, convertPoints } = await import('../src/points/transfer');
+    // Mandiri: 10.000 opens a conversion, 1.000 at a time after that.
+    const livin = { ...kf, points: 1, partnerUnits: 1, incrementPoints: 1000, minimumPoints: 10_000 };
+    expect(convertDetail(9_999, livin)).toEqual({ units: 0, fullRatePoints: 0, beyondPoints: 0, unconvertedPoints: 9_999 });
+    expect(convertPoints(10_000, livin)).toBe(10_000);
+    expect(convertPoints(15_500, livin)).toBe(15_000);
+  });
+
+  it('applies the minimum before the ceiling, not instead of it', async () => {
+    const { convertPoints } = await import('../src/points/transfer');
+    const livin = {
+      ...kf, points: 1, partnerUnits: 1, incrementPoints: 1000, minimumPoints: 10_000,
+      cap: cap({ capPoints: 25_000, beyond: { points: 3000, partnerUnits: 1000 } }),
+    };
+    expect(convertPoints(9_000, livin)).toBe(0);
+    expect(convertPoints(40_000, livin)).toBe(25_000 + 5_000);
+  });
+
   it('leaves an uncapped partner exactly as it was', async () => {
     const { convertPoints } = await import('../src/points/transfer');
     expect(convertPoints(1240, kf)).toBe(620);

@@ -124,13 +124,22 @@ describe('cycle bonuses and transfer partners', () => {
     const { database, ws, program } = await cardWithProgram();
     const id = await saveTransferPartner(database, ws, program.id, PARTNER);
     // A partner with no published ceiling reads back uncapped.
-    expect(await listTransferPartners(database, ws, program.id)).toEqual([{ id, ...PARTNER, cap: null }]);
+    expect(await listTransferPartners(database, ws, program.id)).toEqual([{ id, ...PARTNER, cap: null, minimumPoints: null }]);
     await saveTransferPartner(database, ws, program.id, { ...PARTNER, id, points: 150, incrementPoints: 15, validFrom: '2025-11-01' });
-    expect(await listTransferPartners(database, ws, program.id)).toEqual([{ id, ...PARTNER, cap: null, points: 150, incrementPoints: 15, validFrom: '2025-11-01' }]);
+    expect(await listTransferPartners(database, ws, program.id)).toEqual([{ id, ...PARTNER, cap: null, minimumPoints: null, points: 150, incrementPoints: 15, validFrom: '2025-11-01' }]);
     await archiveTransferPartner(database, ws, id);
     expect(await listTransferPartners(database, ws, program.id)).toEqual([]);
     await expect(saveTransferPartner(database, ws, program.id, { ...PARTNER, points: 0 })).rejects.toThrow(PointsError);
     await expect(saveTransferPartner(database, ws, program.id, { ...PARTNER, program: ' ' })).rejects.toThrow(PointsError);
+  });
+
+  it('stores a transfer minimum and refuses one smaller than the step', async () => {
+    const { database, ws, program } = await cardWithProgram();
+    const id = await saveTransferPartner(database, ws, program.id, { ...PARTNER, incrementPoints: 1000, minimumPoints: 10_000 });
+    expect((await listTransferPartners(database, ws, program.id)).find((p) => p.id === id)?.minimumPoints).toBe(10_000);
+    await expect(
+      saveTransferPartner(database, ws, program.id, { ...PARTNER, incrementPoints: 1000, minimumPoints: 500 }),
+    ).rejects.toThrow(PointsError);
   });
 
   it('stores a redemption cap and refuses one with no ceiling in it', async () => {

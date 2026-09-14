@@ -22,6 +22,8 @@ export interface TransferPartner {
   partnerUnits: number;
   /** Conversions happen in steps of this many points. */
   incrementPoints: number;
+  /** Nothing converts below this, even a whole step. Null when the step is the only floor. */
+  minimumPoints?: number | null;
   validFrom: string | null;
   validTo: string | null;
   /** Set when the issuer limits how much converts in a window. */
@@ -29,7 +31,7 @@ export interface TransferPartner {
 }
 
 type Ratio = Pick<TransferPartner, 'points' | 'partnerUnits'>;
-type Convertible = Ratio & Pick<TransferPartner, 'incrementPoints'> & { cap?: RedemptionCap | null };
+type Convertible = Ratio & Pick<TransferPartner, 'incrementPoints'> & { minimumPoints?: number | null; cap?: RedemptionCap | null };
 
 const units = (points: number, ratio: Ratio): number => Math.floor((points * ratio.partnerUnits) / ratio.points);
 
@@ -55,13 +57,17 @@ export interface ConversionDetail {
 }
 
 /**
- * Converts a points balance: only whole increments convert, and partner units round down.
- * A ceiling is spent in whole increments too, so a step straddling it waits for the next window
- * rather than being split; anything past the ceiling moves at the reduced ratio, if the issuer offers one.
+ * Converts a points balance: nothing moves below the minimum, then only whole increments convert
+ * and partner units round down. A ceiling is spent in whole increments too, so a step straddling it
+ * waits for the next window rather than being split; anything past the ceiling moves at the reduced
+ * ratio, if the issuer offers one.
  */
 export function convertDetail(points: number, partner: Convertible): ConversionDetail {
   const none = { units: 0, fullRatePoints: 0, beyondPoints: 0, unconvertedPoints: Math.max(0, Math.floor(points) || 0) };
   if (points <= 0 || partner.points <= 0 || partner.incrementPoints <= 0) return none;
+
+  const minimum = partner.minimumPoints ?? 0;
+  if (points < minimum) return none;
 
   const step = partner.incrementPoints;
   const whole = Math.floor(points / step) * step;

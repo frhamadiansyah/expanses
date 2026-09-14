@@ -45,6 +45,12 @@ describe('validateEntry', () => {
     expect(validateEntry(valid(), DEFAULT_CATEGORY_KEYS)).toEqual([]);
   });
 
+  it('accepts a minimum larger than the step, and leaves it out where the step is the only floor', () => {
+    expect(errorsFor((e) => { e.transferPartners[0]!.minimumPoints = 100; })).toEqual([]);
+    expect(errorsFor((e) => { e.transferPartners[0]!.minimumPoints = 20; })).toEqual([]);
+    expect(errorsFor(() => undefined)).toEqual([]);
+  });
+
   it('accepts a redemption cap measured either way, with or without a ratio past it', () => {
     expect(errorsFor((e) => { e.transferPartners[0]!.cap = { window: 'month', capPoints: 25_000, shared: true, beyondPoints: 3000, beyondPartnerUnits: 1000 }; })).toEqual([]);
     expect(errorsFor((e) => { e.transferPartners[0]!.cap = { window: 'year', capPartnerUnits: 30_000 }; })).toEqual([]);
@@ -66,6 +72,8 @@ describe('validateEntry', () => {
     ['a cap on an unknown window', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'week' as 'month', capPoints: 1000 }; }, /window/],
     ['half a reduced ratio', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'month', capPoints: 1000, beyondPoints: 3000 }; }, /beyondPoints and beyondPartnerUnits/],
     ['a ceiling of zero', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'month', capPoints: 0 }; }, /capPoints/],
+    ['a minimum below the step', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.minimumPoints = 10; }, /at least incrementPoints/],
+    ['a minimum of zero', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.minimumPoints = 0; }, /minimumPoints/],
   ])('rejects %s', (_name, mutate, pattern) => {
     const errors = errorsFor(mutate);
     expect(errors.some((message) => pattern.test(message)), errors.join(' | ')).toBe(true);

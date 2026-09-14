@@ -88,6 +88,8 @@ export interface CatalogTransferPartner {
   points: number;
   partnerUnits: number;
   incrementPoints: number;
+  /** Set when the issuer takes a first transfer larger than the step it moves in afterwards. */
+  minimumPoints?: number;
   effectiveFrom: string | null;
   effectiveTo: string | null;
   /** Levels this ratio is offered at. Absent means every level. */

@@ -62,11 +62,13 @@ describe('redemption caps survive a round trip through the database', () => {
 });
 
 describe('what the ceilings do to an estimate', () => {
-  it('holds a Mandiri cycle to two whole steps at one for one, then a third of the rate', async () => {
+  it('holds a Mandiri cycle to 25.000 at one for one, then a third of the rate', async () => {
     const krisflyer = byKey(await partnersOf('mandiri-world-prioritas'), 'krisflyer');
-    // 25.000 is the ceiling but steps are 10.000, so 20.000 moves one for one and the rest at 3.000 for 1.000.
-    expect(convertPoints(40_000, krisflyer)).toBe(20_000 + 6_666);
+    // The 1.000 step lands exactly on the ceiling, so 25.000 moves one for one and the last 15.000 at 3.000 for 1.000.
+    expect(convertPoints(40_000, krisflyer)).toBe(25_000 + 5_000);
     expect(convertPoints(20_000, krisflyer)).toBe(20_000);
+    // Below the 10.000 that opens a conversion, nothing moves at all.
+    expect(convertPoints(9_999, krisflyer)).toBe(0);
   });
 
   it('refuses to move an OCBC balance past 100.000 at all', async () => {

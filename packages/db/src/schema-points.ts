@@ -98,6 +98,8 @@ export const transferPartners = sqliteTable('transfer_partners', {
   points: integer('points').notNull(),
   partnerUnits: integer('partner_units').notNull(),
   incrementPoints: integer('increment_points').notNull(),
+  /** Null when the step is the only floor on a conversion. */
+  minimumPoints: integer('minimum_points'),
   /** Null leaves the partner uncapped; otherwise the window the ceiling resets on. */
   capWindow: text('cap_window'),
   capPoints: integer('cap_points'),

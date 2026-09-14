@@ -182,6 +182,7 @@ export function planCatalogApply(
       points: partner.points,
       partnerUnits: partner.partnerUnits,
       incrementPoints: partner.incrementPoints,
+      minimumPoints: partner.minimumPoints ?? null,
       validFrom: partner.effectiveFrom,
       validTo: partner.effectiveTo,
       cap: redemptionCap(partner.cap),

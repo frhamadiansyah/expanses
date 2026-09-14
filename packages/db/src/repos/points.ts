@@ -291,6 +291,7 @@ export async function listTransferPartners(database: Database, ws: WorkspaceCont
     points: r.points,
     partnerUnits: r.partnerUnits,
     incrementPoints: r.incrementPoints,
+    minimumPoints: r.minimumPoints,
     validFrom: r.validFrom,
     validTo: r.validTo,
     cap:
@@ -318,6 +319,9 @@ export async function saveTransferPartnerTx(
   for (const value of [partner.points, partner.partnerUnits, partner.incrementPoints]) {
     if (!Number.isInteger(value) || value <= 0) throw new PointsError('Transfer ratio and step must be whole numbers > 0');
   }
+  if (partner.minimumPoints != null && (!Number.isInteger(partner.minimumPoints) || partner.minimumPoints < partner.incrementPoints)) {
+    throw new PointsError('A transfer minimum must be a whole number no smaller than the step');
+  }
   const cap = partner.cap ?? null;
   if (cap) {
     if (cap.capPoints === null && cap.capPartnerUnits === null) throw new PointsError('A redemption cap needs a ceiling in points or partner units');
@@ -331,6 +335,7 @@ export async function saveTransferPartnerTx(
     points: partner.points,
     partnerUnits: partner.partnerUnits,
     incrementPoints: partner.incrementPoints,
+    minimumPoints: partner.minimumPoints ?? null,
     capWindow: cap?.window ?? null,
     capPoints: cap?.capPoints ?? null,
     capPartnerUnits: cap?.capPartnerUnits ?? null,

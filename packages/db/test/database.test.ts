@@ -17,7 +17,7 @@ describe('database', () => {
   it('migrates once and is idempotent', async () => {
     executor = createNodeExecutor();
     const database = createDatabase(executor);
-    expect(await migrate(database)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]);
+    expect(await migrate(database)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]);
     expect(await migrate(database)).toEqual([]);
   });
 
@@ -33,7 +33,7 @@ describe('database', () => {
     expect(await columns('cycle_bonuses')).toEqual(['id', 'workspace_id', 'program_id', 'key', 'name', 'tiers_json', 'match_json', 'valid_from', 'valid_to', 'catalog_key', 'archived_at', 'created_at']);
     expect(await columns('transfer_partners')).toEqual([
       'id', 'workspace_id', 'program_id', 'key', 'program_name', 'points', 'partner_units', 'increment_points', 'valid_from', 'valid_to', 'catalog_key', 'archived_at', 'created_at',
-      'cap_window', 'cap_points', 'cap_partner_units', 'cap_shared', 'beyond_points', 'beyond_partner_units',
+      'cap_window', 'cap_points', 'cap_partner_units', 'cap_shared', 'beyond_points', 'beyond_partner_units', 'minimum_points',
     ]);
   });
 

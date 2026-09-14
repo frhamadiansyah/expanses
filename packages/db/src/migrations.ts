@@ -34,6 +34,7 @@ import categoryChoice from '../migrations/0032_category_choice.sql?raw';
 import cycleFloor from '../migrations/0033_cycle_floor.sql?raw';
 import cardIdentity from '../migrations/0034_card_identity.sql?raw';
 import redemptionCaps from '../migrations/0035_redemption_caps.sql?raw';
+import transferMinimum from '../migrations/0036_transfer_minimum.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -78,6 +79,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 33, name: 'cycle_floor', sql: cycleFloor },
   { version: 34, name: 'card_identity', sql: cardIdentity },
   { version: 35, name: 'redemption_caps', sql: redemptionCaps },
+  { version: 36, name: 'transfer_minimum', sql: transferMinimum },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */
