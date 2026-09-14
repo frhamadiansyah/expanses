@@ -267,11 +267,30 @@ describe('Kartu Kredit Jenius', () => {
     expect(names('seed-plant')).toEqual(['Double Yay category: Groceries & Gasoline']);
   });
 
-  it('GarudaMiles was not devalued, so one ratio covers both levels and both periods', () => {
-    const gm = jenius().transferPartners.filter((partner) => partner.program === 'GarudaMiles');
-    expect(gm).toHaveLength(1);
-    expect(gm[0]!.memberLevels).toBeUndefined();
-    expect(planCatalogApply(jenius(), {}, NEW, 'seed-plant').transferPartners.some((partner) => partner.program === 'GarudaMiles')).toBe(true);
+  it('carries the five ratios the app offers, at the steps it offers them in', () => {
+    const steps = Object.fromEntries(jenius().transferPartners.map((partner) => [partner.key, [partner.points, partner.partnerUnits]]));
+    expect(steps['airasia']).toEqual([10_000, 10_000]);
+    expect(steps['linkmiles']).toEqual([15_000, 12_500]);
+    expect(steps['garudamiles']).toEqual([25_000, 20_000]);
+    expect(steps['traveloka']).toEqual([2_500, 100_000]);
+  });
+
+  it('scopes only KrisFlyer by Club status, the one ratio known to follow it', () => {
+    for (const partner of jenius().transferPartners) {
+      if (partner.program === 'KrisFlyer') continue;
+      expect(partner.memberLevels, partner.key).toBeUndefined();
+    }
+  });
+
+  it('offers every non-KrisFlyer ratio at both levels', () => {
+    const programs = (level: string) =>
+      planCatalogApply(jenius(), {}, NEW, level)
+        // The pre-devaluation KrisFlyer row is still in the plan, dated to end on 2026-07-31.
+        .transferPartners.filter((partner) => partner.validTo === null)
+        .map((partner) => partner.program)
+        .sort();
+    expect(programs('grow-plus')).toEqual(['AirAsia rewards', 'GarudaMiles', 'KrisFlyer', 'LinkMiles', 'Traveloka Points']);
+    expect(programs('seed-plant')).toEqual(['AirAsia rewards', 'GarudaMiles', 'KrisFlyer', 'LinkMiles', 'Traveloka Points']);
   });
 });
 
