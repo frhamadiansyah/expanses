@@ -487,9 +487,33 @@ describe('Mandiri World Prioritas conversion', () => {
     expect(partners).toEqual({ KrisFlyer: [1, 1], GarudaMiles: [1, 1] });
   });
 
-  it('converts a cycle’s points at one for one, which the ceiling then limits separately', () => {
+  it('needs 10.000 before anything converts, then goes one for one', () => {
     const kf = mandiri().transferPartners.find((p) => p.program === 'KrisFlyer')!;
-    expect(convertPoints(40_000, { points: kf.points, partnerUnits: kf.partnerUnits, incrementPoints: kf.incrementPoints })).toBe(40_000);
+    const at = (points: number) => convertPoints(points, { points: kf.points, partnerUnits: kf.partnerUnits, incrementPoints: kf.incrementPoints });
+    expect(at(9_999)).toBe(0);
+    expect(at(10_000)).toBe(10_000);
+    expect(at(40_000)).toBe(40_000);
     expect(mandiri().notes.some((note) => note.includes('capped at 25.000 a month'))).toBe(true);
+  });
+});
+
+describe('Maybank TREATS conversion steps', () => {
+  const MAYBANK = ['maybank-visa-platinum', 'maybank-visa-infinite', 'maybank-bmw', 'maybank-mini', 'maybank-manchester-united'];
+
+  it('moves miles in 20.000 steps on every card', () => {
+    for (const id of MAYBANK) {
+      for (const partner of findEntry(id)!.transferPartners) {
+        if (partner.program === 'AirAsia points') continue;
+        expect(partner.incrementPoints, `${id}/${partner.key}`).toBe(20_000);
+      }
+    }
+  });
+
+  it('keeps AirAsia at 5.000, which is what Maybank’s own terms say', () => {
+    // Flagged to the cardholder: it conflicts with "20.000 and multiples" covering every partner.
+    for (const id of MAYBANK) {
+      const airasia = findEntry(id)!.transferPartners.find((p) => p.program === 'AirAsia points')!;
+      expect(airasia.incrementPoints, id).toBe(5_000);
+    }
   });
 });
