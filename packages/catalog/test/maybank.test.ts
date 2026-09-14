@@ -34,7 +34,7 @@ describe('catalogue data after the MCC addendum', () => {
   });
 
   it('credits Mandiri World Prioritas and Maybank cards per purchase', () => {
-    expect(findEntry('mandiri-world-prioritas')).toMatchObject({ entryVersion: 3, program: { crediting: 'per_transaction' } });
+    expect(findEntry('mandiri-world-prioritas')?.program.crediting).toBe('per_transaction');
     for (const id of ['maybank-visa-platinum', 'maybank-visa-infinite', 'maybank-bmw', 'maybank-mini', 'maybank-manchester-united']) {
       expect(findEntry(id)?.program.crediting, id).toBe('per_transaction');
     }

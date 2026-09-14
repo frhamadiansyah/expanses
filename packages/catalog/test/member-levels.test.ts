@@ -1,4 +1,4 @@
-import { DEFAULT_CATEGORY_KEYS } from '@expanses/core';
+import { convertPoints, DEFAULT_CATEGORY_KEYS } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { describeEntry } from '../src/describe';
 import { findEntry } from '../src/index';
@@ -481,8 +481,15 @@ describe('Mandiri World Prioritas conversion', () => {
     expect(mandiri().notes.some((note) => note.includes('25.000 a month'))).toBe(true);
   });
 
-  it('publishes no transfer ratio, because 1:1 is a slogan rather than a rate', () => {
-    // The page advertises "1:1 Mileage Redemption" without naming a partner or a ratio, so nothing is encoded.
-    expect(mandiri().transferPartners).toEqual([]);
+  it('converts one for one to KrisFlyer and GarudaMiles', () => {
+    // The page's "1:1 Mileage Redemption" names neither partner nor ratio; both come from the cardholder.
+    const partners = Object.fromEntries(mandiri().transferPartners.map((p) => [p.program, [p.points, p.partnerUnits]]));
+    expect(partners).toEqual({ KrisFlyer: [1, 1], GarudaMiles: [1, 1] });
+  });
+
+  it('converts a cycle’s points at one for one, which the ceiling then limits separately', () => {
+    const kf = mandiri().transferPartners.find((p) => p.program === 'KrisFlyer')!;
+    expect(convertPoints(40_000, { points: kf.points, partnerUnits: kf.partnerUnits, incrementPoints: kf.incrementPoints })).toBe(40_000);
+    expect(mandiri().notes.some((note) => note.includes('capped at 25.000 a month'))).toBe(true);
   });
 });

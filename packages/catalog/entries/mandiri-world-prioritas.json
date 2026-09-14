@@ -1,6 +1,6 @@
 {
   "id": "mandiri-world-prioritas",
-  "entryVersion": 3,
+  "entryVersion": 4,
   "bank": "Mandiri",
   "name": "Mandiri World Prioritas",
   "network": "mastercard",
@@ -188,7 +188,26 @@
       "cycleBonuses": []
     }
   ],
-  "transferPartners": [],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 1,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 1,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
+  ],
   "cashValue": null,
   "welcomeBonus": "Cashback worth Rp 3.000.000 after activation and first transaction.",
   "notes": [
@@ -197,9 +216,10 @@
     "Power Bills payments at PLN earn nothing, while Power Bills insurance earns the reduced rate.",
     "Converting a purchase to Power Installment or Power Buy deducts its points; add \"cicilan\" to the description to reflect it.",
     "QRIS, installments, and virtual account payments are recognised only when the description contains those words.",
-    "Airline conversion is advertised as '1:1 Mileage Redemption'; ratios are not published in page text.",
-    "Converting Livin'poin to airline miles is capped at 25.000 a month, given by the cardholder on 14 September 2026. The app does not apply redemption limits to estimates, so a cycle earning more than that shows the whole amount as convertible when only 25.000 of it can move in any one month.",
-    "Livin'poin are credited per purchase, so the app checks this card per purchase."
+    "A Livin'poin converts to one KrisFlyer mile or one GarudaMile, given by the cardholder on 14 September 2026. The bank's page advertises \"1:1 Mileage Redemption\" without naming the partners or the ratio, so this is the cardholder's figure rather than a published one.",
+    "Converting to miles is capped at 25.000 a month. The app applies no redemption limit, so a cycle earning more than that shows the whole balance as convertible when only 25.000 can actually move. The cardholder gave the ceiling as one figure for miles rather than one per airline.",
+    "Livin'poin are credited per purchase, so the app checks this card per purchase.",
+    "No minimum balance or conversion step was given, so the ratio is recorded as one for one and any number of points is treated as convertible."
   ],
   "sources": [
     {
@@ -211,5 +231,5 @@
       "url": "https://www.mandirikartukredit.com/livinpoin"
     }
   ],
-  "verifiedOn": "2026-09-11"
+  "verifiedOn": "2026-09-14"
 }
