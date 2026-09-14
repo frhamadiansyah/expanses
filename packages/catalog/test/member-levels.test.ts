@@ -509,8 +509,9 @@ describe('Maybank TREATS conversion steps', () => {
     }
   });
 
-  it('keeps AirAsia at 5.000, which is what Maybank’s own terms say', () => {
-    // Flagged to the cardholder: it conflicts with "20.000 and multiples" covering every partner.
+  it('keeps AirAsia at 5.000, which is the exception to the 20.000 step', () => {
+    // Maybank's own terms say 5.000, and the cardholder confirmed it from the redemption screen on 14 September
+    // 2026. The 20.000 minimum covers the mileage partners, not this one.
     for (const id of MAYBANK) {
       const airasia = findEntry(id)!.transferPartners.find((p) => p.program === 'AirAsia points')!;
       expect(airasia.incrementPoints, id).toBe(5_000);
