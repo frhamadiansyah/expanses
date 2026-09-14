@@ -1,6 +1,6 @@
 {
   "id": "mandiri-world-prioritas",
-  "entryVersion": 5,
+  "entryVersion": 6,
   "bank": "Mandiri",
   "name": "Mandiri World Prioritas",
   "network": "mastercard",
@@ -219,7 +219,7 @@
     "A Livin'poin converts to one KrisFlyer mile or one GarudaMile, given by the cardholder on 14 September 2026. The bank's page advertises \"1:1 Mileage Redemption\" without naming the partners or the ratio, so this is the cardholder's figure rather than a published one.",
     "Converting to miles is capped at 25.000 a month. The app applies no redemption limit, so a cycle earning more than that shows the whole balance as convertible when only 25.000 can actually move. The cardholder gave the ceiling as one figure for miles rather than one per airline.",
     "Livin'poin are credited per purchase, so the app checks this card per purchase.",
-    "Converting needs at least 10.000 Livin'poin, given by the cardholder. The schema carries a step rather than a minimum, so 10.000 is recorded as the step: a balance below it converts to nothing, which is right, and a balance between multiples is rounded down, which may understate if the bank in fact allows any amount once the 10.000 is cleared."
+    "Converting moves 10.000 Livin'poin at a time and in multiples of 10.000, given by the cardholder. It is a step rather than only a floor, so a balance of 15.000 converts 10.000 and leaves the rest, which is what the entry records."
   ],
   "sources": [
     {

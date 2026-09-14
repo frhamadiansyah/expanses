@@ -487,11 +487,13 @@ describe('Mandiri World Prioritas conversion', () => {
     expect(partners).toEqual({ KrisFlyer: [1, 1], GarudaMiles: [1, 1] });
   });
 
-  it('needs 10.000 before anything converts, then goes one for one', () => {
+  it('converts in 10.000 steps, one for one, leaving any remainder behind', () => {
     const kf = mandiri().transferPartners.find((p) => p.program === 'KrisFlyer')!;
     const at = (points: number) => convertPoints(points, { points: kf.points, partnerUnits: kf.partnerUnits, incrementPoints: kf.incrementPoints });
     expect(at(9_999)).toBe(0);
     expect(at(10_000)).toBe(10_000);
+    // A step, not only a floor: the trailing 5.000 stays put rather than converting.
+    expect(at(15_000)).toBe(10_000);
     expect(at(40_000)).toBe(40_000);
     expect(mandiri().notes.some((note) => note.includes('capped at 25.000 a month'))).toBe(true);
   });
