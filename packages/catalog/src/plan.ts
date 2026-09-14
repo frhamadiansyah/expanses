@@ -1,6 +1,19 @@
-import type { CycleBonus, EarnRule, RuleMatch, TransferPartner } from '@expanses/core';
+import type { CycleBonus, EarnRule, RedemptionCap, RuleMatch, TransferPartner } from '@expanses/core';
 import { feeOn } from './lookup';
-import type { CatalogEntry, CatalogMatch } from './types';
+import type { CatalogEntry, CatalogMatch, CatalogRedemptionCap } from './types';
+
+/** Fills in the defaults the entry leaves out: a cap is per-partner and hard unless it says otherwise. */
+function redemptionCap(cap: CatalogRedemptionCap | undefined): RedemptionCap | null {
+  if (!cap) return null;
+  const beyond = cap.beyondPoints && cap.beyondPartnerUnits ? { points: cap.beyondPoints, partnerUnits: cap.beyondPartnerUnits } : null;
+  return {
+    window: cap.window,
+    capPoints: cap.capPoints ?? null,
+    capPartnerUnits: cap.capPartnerUnits ?? null,
+    shared: cap.shared ?? false,
+    beyond,
+  };
+}
 
 /** A stretch of time the holder ran one option of the program's category choice. `to` null means it still runs. */
 export interface AppliedCategoryChoice {
@@ -171,6 +184,7 @@ export function planCatalogApply(
       incrementPoints: partner.incrementPoints,
       validFrom: partner.effectiveFrom,
       validTo: partner.effectiveTo,
+      cap: redemptionCap(partner.cap),
     })),
     cashValue: entry.cashValue ? { ...entry.cashValue } : null,
     crediting: entry.program.crediting ?? 'per_statement',

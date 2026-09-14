@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { EarnRule } from '../src/points/earn';
+import type { RedemptionCap } from '../src/points/transfer';
 import { type CardCandidate, recommendCards } from '../src/points/recommend';
 
 const kf = { id: 'kf', key: 'krisflyer', program: 'KrisFlyer', points: 200, partnerUnits: 100, incrementPoints: 20, validFrom: null, validTo: null };
+
 const garuda = { id: 'ga', key: 'garudamiles', program: 'GarudaMiles', points: 150, partnerUnits: 100, incrementPoints: 15, validFrom: '2025-11-01', validTo: null };
+
+/** A redemption cap with the fields a test does not care about filled in. */
+const cap = (over: Partial<RedemptionCap>): RedemptionCap => ({
+  window: 'month', capPoints: null, capPartnerUnits: null, shared: false, beyond: null, ...over,
+});
 
 describe('transfer conversion', () => {
   it('converts balances in whole increments', async () => {
@@ -18,6 +25,37 @@ describe('transfer conversion', () => {
     const { estimatePartnerUnits } = await import('../src/points/transfer');
     expect(estimatePartnerUnits(54, kf)).toBe(27);
     expect(estimatePartnerUnits(55, kf)).toBe(27);
+  });
+
+  it('stops at a hard ceiling, in whole steps', async () => {
+    const { convertDetail } = await import('../src/points/transfer');
+    // 100.000 a month, moving in 1.000 steps, nothing past it.
+    const capped = { ...kf, points: 1000, partnerUnits: 1000, incrementPoints: 1000, cap: cap({ capPoints: 100_000 }) };
+    expect(convertDetail(60_000, capped)).toEqual({ units: 60_000, fullRatePoints: 60_000, beyondPoints: 0, unconvertedPoints: 0 });
+    expect(convertDetail(160_000, capped)).toEqual({ units: 100_000, fullRatePoints: 100_000, beyondPoints: 0, unconvertedPoints: 60_000 });
+  });
+
+  it('spends the ceiling in whole steps, so a step straddling it waits', async () => {
+    const { convertPoints } = await import('../src/points/transfer');
+    // Mandiri: 25.000 a month at one for one, in 10.000 steps, then 3.000 for 1.000.
+    const livin = { ...kf, points: 1, partnerUnits: 1, incrementPoints: 10_000, cap: cap({ capPoints: 25_000, beyond: { points: 3000, partnerUnits: 1000 } }) };
+    // Only two whole steps fit under 25.000, so 20.000 moves one for one and the next 20.000 at a third.
+    expect(convertPoints(40_000, livin)).toBe(20_000 + 6_666);
+    expect(convertPoints(20_000, livin)).toBe(20_000);
+  });
+
+  it('reads a ceiling published in partner units through the ratio it is published against', async () => {
+    const { capInPoints, convertPoints } = await import('../src/points/transfer');
+    // Jenius KrisFlyer: 40.000 Yay give 30.000 miles, and 30.000 miles a month is the ceiling.
+    const yay = { ...kf, points: 40_000, partnerUnits: 30_000, incrementPoints: 40_000, cap: cap({ capPartnerUnits: 30_000 }) };
+    expect(capInPoints(yay)).toBe(40_000);
+    expect(convertPoints(120_000, yay)).toBe(30_000);
+  });
+
+  it('leaves an uncapped partner exactly as it was', async () => {
+    const { convertPoints } = await import('../src/points/transfer');
+    expect(convertPoints(1240, kf)).toBe(620);
+    expect(convertPoints(1240, { ...kf, cap: null })).toBe(620);
   });
 
   it('finds partners by program and validity date', async () => {

@@ -1,5 +1,6 @@
-import { convertPoints, type TransferPartner } from '@expanses/core';
+import { convertDetail, type TransferPartner } from '@expanses/core';
 import { activeDuring } from './catalog-panel';
+import { capNote } from './transfer-summary';
 import { formatPoints } from './useCardPoints';
 
 /** What the cycle's points would convert to at each partner available today, in whole transfer steps. */
@@ -9,12 +10,17 @@ export function TransferEstimates({ partners, points, unit, today }: { partners:
   return (
     <div className="mt-3 text-sm">
       <div className="text-xs text-slate-500">This cycle's {unit} transfer to</div>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1">
-        {available.map((partner) => (
-          <li key={partner.id} className="tabular">
-            {formatPoints(convertPoints(Math.floor(points), partner))} {partner.program}
-          </li>
-        ))}
+      <ul className="flex flex-col gap-y-1">
+        {available.map((partner) => {
+          const detail = convertDetail(Math.floor(points), partner);
+          const note = capNote(partner, detail, unit);
+          return (
+            <li key={partner.id} className="tabular">
+              {formatPoints(detail.units)} {partner.program}
+              {note ? <span className="ml-2 text-xs text-slate-500">{note}</span> : null}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

@@ -45,6 +45,11 @@ describe('validateEntry', () => {
     expect(validateEntry(valid(), DEFAULT_CATEGORY_KEYS)).toEqual([]);
   });
 
+  it('accepts a redemption cap measured either way, with or without a ratio past it', () => {
+    expect(errorsFor((e) => { e.transferPartners[0]!.cap = { window: 'month', capPoints: 25_000, shared: true, beyondPoints: 3000, beyondPartnerUnits: 1000 }; })).toEqual([]);
+    expect(errorsFor((e) => { e.transferPartners[0]!.cap = { window: 'year', capPartnerUnits: 30_000 }; })).toEqual([]);
+  });
+
   it.each([
     ['missing sources', (e: ReturnType<typeof valid>) => { e.sources = []; }, /sources/],
     ['missing verifiedOn', (e: ReturnType<typeof valid>) => { (e as { verifiedOn?: string }).verifiedOn = undefined; }, /verifiedOn/],
@@ -56,6 +61,11 @@ describe('validateEntry', () => {
     ['duplicate rule key', (e: ReturnType<typeof valid>) => { e.terms[0]!.rules.push({ ...e.terms[0]!.rules[0]! }); }, /duplicate/],
     ['two-decimal rate', (e: ReturnType<typeof valid>) => { e.terms[1]!.rules[0]!.rateNum = 7.25; }, /one decimal/],
     ['statement day 32', (e: ReturnType<typeof valid>) => { (e.program as { fixedStatementDay?: number }).fixedStatementDay = 32; }, /fixedStatementDay/],
+    ['a cap with no ceiling', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'month' }; }, /exactly one of capPoints/],
+    ['a cap measured two ways at once', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'month', capPoints: 1000, capPartnerUnits: 1000 }; }, /exactly one of capPoints/],
+    ['a cap on an unknown window', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'week' as 'month', capPoints: 1000 }; }, /window/],
+    ['half a reduced ratio', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'month', capPoints: 1000, beyondPoints: 3000 }; }, /beyondPoints and beyondPartnerUnits/],
+    ['a ceiling of zero', (e: ReturnType<typeof valid>) => { e.transferPartners[0]!.cap = { window: 'month', capPoints: 0 }; }, /capPoints/],
   ])('rejects %s', (_name, mutate, pattern) => {
     const errors = errorsFor(mutate);
     expect(errors.some((message) => pattern.test(message)), errors.join(' | ')).toBe(true);

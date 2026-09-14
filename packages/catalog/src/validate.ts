@@ -214,6 +214,19 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
     });
   }
 
+  const checkRedemptionCap = (path: string, cap: unknown) => {
+    if (cap === undefined) return;
+    if (!isObj(cap)) return add(path, 'must be an object when present');
+    if (cap.window !== 'month' && cap.window !== 'year') add(`${path}.window`, "must be 'month' or 'year'");
+    const measures = (['capPoints', 'capPartnerUnits'] as const).filter((field) => cap[field] !== undefined);
+    if (measures.length !== 1) add(path, 'must set exactly one of capPoints and capPartnerUnits');
+    for (const field of measures) if (!isPositiveInt(cap[field])) add(`${path}.${field}`, 'must be a positive integer');
+    if (cap.shared !== undefined && typeof cap.shared !== 'boolean') add(`${path}.shared`, 'must be a boolean');
+    const beyond = (['beyondPoints', 'beyondPartnerUnits'] as const).filter((field) => cap[field] !== undefined);
+    if (beyond.length === 1) add(path, 'needs both beyondPoints and beyondPartnerUnits, or neither');
+    for (const field of beyond) if (!isPositiveInt(cap[field])) add(`${path}.${field}`, 'must be a positive integer');
+  };
+
   if (!Array.isArray(entry.transferPartners)) add('transferPartners', 'must be a list (possibly empty)');
   else {
     uniqueKeys('transferPartners', entry.transferPartners);
@@ -224,6 +237,7 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
       for (const field of ['points', 'partnerUnits', 'incrementPoints'] as const) if (!isPositiveInt(partner[field])) add(`${path}.${field}`, 'must be a positive integer');
       if (!isDateOrNull(partner.effectiveFrom) || !isDateOrNull(partner.effectiveTo)) add(path, 'effectiveFrom and effectiveTo must be YYYY-MM-DD or null');
       checkMemberLevels(path, partner.memberLevels);
+      checkRedemptionCap(`${path}.cap`, partner.cap);
     });
   }
 

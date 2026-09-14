@@ -1,6 +1,6 @@
 {
   "id": "maybank-manchester-united",
-  "entryVersion": 1,
+  "entryVersion": 2,
   "bank": "Maybank",
   "name": "Maybank Kartu Kredit Manchester United",
   "network": "visa",
@@ -194,7 +194,14 @@
       "partnerUnits": 20000,
       "incrementPoints": 20000,
       "effectiveFrom": null,
-      "effectiveTo": null
+      "effectiveTo": null,
+      "cap": {
+        "window": "year",
+        "capPoints": 200000,
+        "shared": true,
+        "beyondPoints": 20000,
+        "beyondPartnerUnits": 6666
+      }
     },
     {
       "key": "garudamiles",
@@ -203,7 +210,14 @@
       "partnerUnits": 20000,
       "incrementPoints": 20000,
       "effectiveFrom": null,
-      "effectiveTo": null
+      "effectiveTo": null,
+      "cap": {
+        "window": "year",
+        "capPoints": 200000,
+        "shared": true,
+        "beyondPoints": 20000,
+        "beyondPartnerUnits": 6666
+      }
     },
     {
       "key": "asia-miles",
@@ -212,7 +226,14 @@
       "partnerUnits": 20000,
       "incrementPoints": 20000,
       "effectiveFrom": null,
-      "effectiveTo": null
+      "effectiveTo": null,
+      "cap": {
+        "window": "year",
+        "capPoints": 200000,
+        "shared": true,
+        "beyondPoints": 20000,
+        "beyondPartnerUnits": 6666
+      }
     },
     {
       "key": "airasia",
@@ -221,7 +242,14 @@
       "partnerUnits": 5000,
       "incrementPoints": 5000,
       "effectiveFrom": null,
-      "effectiveTo": null
+      "effectiveTo": null,
+      "cap": {
+        "window": "year",
+        "capPoints": 200000,
+        "shared": true,
+        "beyondPoints": 5000,
+        "beyondPartnerUnits": 1666
+      }
     }
   ],
   "cashValue": {
@@ -236,8 +264,9 @@
     "10x TREATS on Manchester United Premier League win days is not estimated.",
     "TREATS Points are credited as purchases post, with category extras credited separately, so the app checks this card per purchase.",
     "From 10 September 2026 no TREATS on Maybank XBill, XCash, balance conversion, QR payments, taxes and government services (MCC 9211, 9222, 9311, 9399), fast food (MCC 5814), or utility payments (MCC 4900) above Rp 10.000.000. The terms set that limit per card; estimates apply it per purchase. The exclusion list before that date was not retrieved.",
-    "Transfers to KrisFlyer, GarudaMiles, and Asia Miles are 20.000 TREATS for 20.000 miles, and to AirAsia points 5.000 for 5.000, until 200.000 TREATS are converted in 12 months; after that 20.000 give 6.666 (AirAsia 5.000 give 1.666). Each mileage conversion costs Rp 20.000.",
-    "TREATS Points expire one year after they are earned."
+    "Transfers to KrisFlyer, GarudaMiles, and Asia Miles are 20.000 TREATS for 20.000 miles, and to AirAsia points 5.000 for 5.000, until 200.000 TREATS are converted in 12 months; after that 20.000 give 6.666 (AirAsia 5.000 give 1.666). Each mileage conversion costs Rp 20.000. The ceiling and the reduced rate are applied to transfer estimates; the Rp 20.000 fee is not. The 200.000 covers every partner together, so an estimate showing one airline assumes nothing has gone to the others that year.",
+    "TREATS Points expire one year after they are earned.",
+    "A transfer estimate now applies the ceiling. It is spent in whole transfer steps, so a step straddling the ceiling waits for the next window rather than being split, which the issuer's own screens may not do."
   ],
   "sources": [
     {

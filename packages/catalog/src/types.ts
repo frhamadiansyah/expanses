@@ -67,6 +67,21 @@ export interface CatalogFeePeriod {
   condition?: string;
 }
 
+/** A ceiling on how much converts in one window, and the ratio past it. */
+export interface CatalogRedemptionCap {
+  /** The window the ceiling resets on. */
+  window: 'month' | 'year';
+  /** The ceiling in program points. Set exactly one of this and capPartnerUnits. */
+  capPoints?: number;
+  /** The ceiling in partner units, for issuers that publish it that way. */
+  capPartnerUnits?: number;
+  /** True when one ceiling covers every partner together rather than each partner on its own. */
+  shared?: boolean;
+  /** The reduced ratio past the ceiling. Absent means nothing converts past it. */
+  beyondPoints?: number;
+  beyondPartnerUnits?: number;
+}
+
 export interface CatalogTransferPartner {
   key: string;
   program: string;
@@ -77,6 +92,8 @@ export interface CatalogTransferPartner {
   effectiveTo: string | null;
   /** Levels this ratio is offered at. Absent means every level. */
   memberLevels?: string[];
+  /** Set when the issuer limits how much converts in a window. */
+  cap?: CatalogRedemptionCap;
 }
 
 /**

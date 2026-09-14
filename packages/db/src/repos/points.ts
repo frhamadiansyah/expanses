@@ -293,6 +293,16 @@ export async function listTransferPartners(database: Database, ws: WorkspaceCont
     incrementPoints: r.incrementPoints,
     validFrom: r.validFrom,
     validTo: r.validTo,
+    cap:
+      r.capWindow === 'month' || r.capWindow === 'year'
+        ? {
+            window: r.capWindow,
+            capPoints: r.capPoints,
+            capPartnerUnits: r.capPartnerUnits,
+            shared: r.capShared === 1,
+            beyond: r.beyondPoints && r.beyondPartnerUnits ? { points: r.beyondPoints, partnerUnits: r.beyondPartnerUnits } : null,
+          }
+        : null,
   }));
 }
 
@@ -308,12 +318,25 @@ export async function saveTransferPartnerTx(
   for (const value of [partner.points, partner.partnerUnits, partner.incrementPoints]) {
     if (!Number.isInteger(value) || value <= 0) throw new PointsError('Transfer ratio and step must be whole numbers > 0');
   }
+  const cap = partner.cap ?? null;
+  if (cap) {
+    if (cap.capPoints === null && cap.capPartnerUnits === null) throw new PointsError('A redemption cap needs a ceiling in points or partner units');
+    for (const value of [cap.capPoints, cap.capPartnerUnits, cap.beyond?.points, cap.beyond?.partnerUnits]) {
+      if (value != null && (!Number.isInteger(value) || value <= 0)) throw new PointsError('Redemption cap figures must be whole numbers > 0');
+    }
+  }
   const values = {
     key: partner.key.trim(),
     programName: partner.program.trim(),
     points: partner.points,
     partnerUnits: partner.partnerUnits,
     incrementPoints: partner.incrementPoints,
+    capWindow: cap?.window ?? null,
+    capPoints: cap?.capPoints ?? null,
+    capPartnerUnits: cap?.capPartnerUnits ?? null,
+    capShared: cap?.shared ? 1 : 0,
+    beyondPoints: cap?.beyond?.points ?? null,
+    beyondPartnerUnits: cap?.beyond?.partnerUnits ?? null,
     validFrom: partner.validFrom,
     validTo: partner.validTo,
     ...(partner.catalogKey === undefined ? {} : { catalogKey: partner.catalogKey }),

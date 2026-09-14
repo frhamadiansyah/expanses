@@ -68,7 +68,16 @@ export {
 export { containsKeyword } from './text/keywords';
 export { CARD_FEE_PHRASES, cardFeeCategoryIds, isCardFee } from './points/card-fees';
 export { candidateMccs, type CycleContext, explainCycle, explainTransaction, type Suggestion } from './points/explain';
-export { convertPoints, estimatePartnerUnits, partnerFor, type TransferPartner } from './points/transfer';
+export {
+  capInPoints,
+  convertDetail,
+  convertPoints,
+  estimatePartnerUnits,
+  partnerFor,
+  type ConversionDetail,
+  type RedemptionCap,
+  type TransferPartner,
+} from './points/transfer';
 export {
   type CsvDateFormat,
   type CsvMapping,

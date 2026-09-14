@@ -123,13 +123,27 @@ describe('cycle bonuses and transfer partners', () => {
   it('round-trips transfer partners and rejects non-positive ratios', async () => {
     const { database, ws, program } = await cardWithProgram();
     const id = await saveTransferPartner(database, ws, program.id, PARTNER);
-    expect(await listTransferPartners(database, ws, program.id)).toEqual([{ id, ...PARTNER }]);
+    // A partner with no published ceiling reads back uncapped.
+    expect(await listTransferPartners(database, ws, program.id)).toEqual([{ id, ...PARTNER, cap: null }]);
     await saveTransferPartner(database, ws, program.id, { ...PARTNER, id, points: 150, incrementPoints: 15, validFrom: '2025-11-01' });
-    expect(await listTransferPartners(database, ws, program.id)).toEqual([{ id, ...PARTNER, points: 150, incrementPoints: 15, validFrom: '2025-11-01' }]);
+    expect(await listTransferPartners(database, ws, program.id)).toEqual([{ id, ...PARTNER, cap: null, points: 150, incrementPoints: 15, validFrom: '2025-11-01' }]);
     await archiveTransferPartner(database, ws, id);
     expect(await listTransferPartners(database, ws, program.id)).toEqual([]);
     await expect(saveTransferPartner(database, ws, program.id, { ...PARTNER, points: 0 })).rejects.toThrow(PointsError);
     await expect(saveTransferPartner(database, ws, program.id, { ...PARTNER, program: ' ' })).rejects.toThrow(PointsError);
+  });
+
+  it('stores a redemption cap and refuses one with no ceiling in it', async () => {
+    const { database, ws, program } = await cardWithProgram();
+    const cap = { window: 'month' as const, capPoints: 25_000, capPartnerUnits: null, shared: true, beyond: { points: 3000, partnerUnits: 1000 } };
+    const id = await saveTransferPartner(database, ws, program.id, { ...PARTNER, cap });
+    expect((await listTransferPartners(database, ws, program.id)).find((p) => p.id === id)?.cap).toEqual(cap);
+    await expect(
+      saveTransferPartner(database, ws, program.id, { ...PARTNER, cap: { ...cap, capPoints: null } }),
+    ).rejects.toThrow(PointsError);
+    await expect(
+      saveTransferPartner(database, ws, program.id, { ...PARTNER, cap: { ...cap, capPoints: -1 } }),
+    ).rejects.toThrow(PointsError);
   });
 });
 

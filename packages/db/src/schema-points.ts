@@ -98,6 +98,15 @@ export const transferPartners = sqliteTable('transfer_partners', {
   points: integer('points').notNull(),
   partnerUnits: integer('partner_units').notNull(),
   incrementPoints: integer('increment_points').notNull(),
+  /** Null leaves the partner uncapped; otherwise the window the ceiling resets on. */
+  capWindow: text('cap_window'),
+  capPoints: integer('cap_points'),
+  capPartnerUnits: integer('cap_partner_units'),
+  /** 1 when one ceiling covers every partner together rather than each on its own. */
+  capShared: integer('cap_shared').notNull().default(0),
+  /** The reduced ratio past the ceiling; null leaves the ceiling hard. */
+  beyondPoints: integer('beyond_points'),
+  beyondPartnerUnits: integer('beyond_partner_units'),
   validFrom: text('valid_from'),
   validTo: text('valid_to'),
   catalogKey: text('catalog_key'),
