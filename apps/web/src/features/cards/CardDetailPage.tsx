@@ -21,6 +21,7 @@ import { InstallmentList } from '../loans/InstallmentList';
 import { BonusProgress } from './BonusProgress';
 import { CatalogPanel } from './CatalogPanel';
 import { CatalogPicker } from './CatalogPicker';
+import { ruleQualifiers } from './rule-summary';
 import { describeSuggestion } from './hint-text';
 import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { activeDuring } from './catalog-panel';
@@ -407,8 +408,10 @@ export function CardDetailPage() {
                         {rule.validFrom && ` · from ${rule.validFrom}`}
                         {rule.validTo && ` · until ${rule.validTo}`}
                         {rule.capSpendMinor !== null && ` · cap ${formatMinor(rule.capSpendMinor, currency)}/cycle`}
-                        {rule.match.categoryIds?.length ? ` · ${rule.match.categoryIds.map((id) => all.find((a) => a.id === id)?.name ?? '?').join(', ')}` : ' · all categories'}
-                        {rule.match.merchantPatterns?.length ? ` · merchants: ${rule.match.merchantPatterns.join(', ')}` : ''}
+                        {(() => {
+                          const parts = ruleQualifiers(rule.match, (id) => all.find((a) => a.id === id)?.name ?? '?');
+                          return parts.length ? parts.map((part) => ` · ${part}`).join('') : ' · all categories';
+                        })()}
                       </div>
                     </div>
                     <Button variant="ghost" onClick={() => setEditingRule(rule)}>

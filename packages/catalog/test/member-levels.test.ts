@@ -254,8 +254,8 @@ describe('Kartu Kredit Jenius', () => {
 
   it('offers the four Jenius categories, one at a time, changeable each cycle', () => {
     const choice = jenius().program.categoryChoice!;
-    expect(choice.options.map((option) => option.name)).toEqual(['Beauty & Fashion', 'Food & Beverages', 'Travel & Leisure', 'Groceries']);
-    expect(choice.changeable).toBe('once a billing cycle, taking effect straight away');
+    expect(choice.options.map((option) => option.name)).toEqual(['Beauty & Fashion', 'Food & Beverages', 'Travel & Leisure', 'Groceries & Gasoline']);
+    expect(choice.changeable).toBe('once a month, after the statement is printed');
   });
 
   it('offers the same four whatever the Club status', () => {
@@ -263,8 +263,8 @@ describe('Kartu Kredit Jenius', () => {
       planCatalogApply(jenius(), { 'food.groceries': 'c-groceries' }, NEW, level, [{ optionKey: 'groceries', from: null, to: null }]).rules
         .filter((rule) => rule.name.startsWith('Double Yay category') && rule.validFrom === NEW)
         .map((rule) => rule.name);
-    expect(names('grow-plus')).toEqual(['Double Yay category: Groceries']);
-    expect(names('seed-plant')).toEqual(['Double Yay category: Groceries']);
+    expect(names('grow-plus')).toEqual(['Double Yay category: Groceries & Gasoline']);
+    expect(names('seed-plant')).toEqual(['Double Yay category: Groceries & Gasoline']);
   });
 
   it('GarudaMiles was not devalued, so one ratio covers both levels and both periods', () => {
@@ -301,7 +301,55 @@ describe('Kartu Kredit Jenius: how points are credited', () => {
     expect(describeEntry(jenius(), '2026-09-14').lines).toContainEqual(expect.stringContaining('credited per purchase'));
   });
 
-  it('says the category change takes effect straight away', () => {
-    expect(jenius().program.categoryChoice!.changeable).toBe('once a billing cycle, taking effect straight away');
+  it('says how often the category may change, in the bank\u2019s own words', () => {
+    expect(jenius().program.categoryChoice!.changeable).toBe('once a month, after the statement is printed');
+  });
+});
+
+describe('Kartu Kredit Jenius: the Double Yay categories are the bank\u2019s own MCC lists', () => {
+  const choice = () => findEntry('jenius-kartu-kredit')!.program.categoryChoice!;
+  const mccsOf = (key: string) => choice().options.find((option) => option.key === key)!.match.mccs!;
+
+  it('matches on merchant category codes, not on this workspace\u2019s categories', () => {
+    for (const option of choice().options) {
+      expect(option.match.mccs, option.key).toBeDefined();
+      expect(option.match.categoryKeys, option.key).toBeUndefined();
+    }
+  });
+
+  it('Groceries & Gasoline is grocery stores and fuel: 5411, 5541 and 5542', () => {
+    expect(mccsOf('groceries')).toEqual(['5411', '5541-5542']);
+  });
+
+  it('Food & Beverages is bars, fast food, bakeries and food stores — and not 5812 restaurants', () => {
+    expect(mccsOf('food-beverages')).toEqual(['5462', '5499', '5813-5814']);
+    expect(mccsOf('food-beverages').join(' ')).not.toContain('5812');
+  });
+
+  it('Beauty & Fashion covers clothing, jewellery, cosmetics, salons and department stores', () => {
+    expect(mccsOf('beauty-fashion')).toContain('5977');
+    expect(mccsOf('beauty-fashion')).toContain('7230');
+    expect(mccsOf('beauty-fashion')).toContain('5311');
+  });
+
+  it('Travel & Leisure carries the airline and hotel-chain blocks, and not 7011 lodging', () => {
+    const specs = mccsOf('travel-leisure');
+    expect(specs).toContain('3000-3068');
+    expect(specs.some((spec) => spec.startsWith('3501-'))).toBe(true);
+    expect(specs).not.toContain('7011');
+  });
+
+  it('no code is claimed by two categories', () => {
+    const expand = (spec: string) => {
+      const [from, to] = spec.includes('-') ? spec.split('-').map(Number) : [Number(spec), Number(spec)];
+      return Array.from({ length: to! - from! + 1 }, (_, i) => from! + i);
+    };
+    const seen = new Set<number>();
+    for (const option of choice().options) {
+      for (const code of option.match.mccs!.flatMap(expand)) {
+        expect(seen.has(code), `MCC ${code} is in two categories`).toBe(false);
+        seen.add(code);
+      }
+    }
   });
 });
