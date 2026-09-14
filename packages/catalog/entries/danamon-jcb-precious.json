@@ -1,6 +1,6 @@
 {
   "id": "danamon-jcb-precious",
-  "entryVersion": 6,
+  "entryVersion": 7,
   "bank": "Bank Danamon",
   "name": "Kartu Kredit Danamon JCB Precious",
   "network": "jcb",
@@ -296,8 +296,11 @@
   ],
   "transferPartners": [
     { "key": "garudamiles", "program": "GarudaMiles", "points": 15, "partnerUnits": 1, "incrementPoints": 7500, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "enrich", "program": "Enrich", "points": 15, "partnerUnits": 1, "incrementPoints": 7500, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null },
     { "key": "krisflyer", "program": "KrisFlyer", "points": 20, "partnerUnits": 1, "incrementPoints": 10000, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "asia-miles", "program": "Asia Miles", "points": 20, "partnerUnits": 1, "incrementPoints": 10000, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null }
+    { "key": "asia-miles", "program": "Asia Miles", "points": 20, "partnerUnits": 1, "incrementPoints": 10000, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "jal", "program": "JAL Mileage Bank", "points": 32, "partnerUnits": 1, "incrementPoints": 16000, "incrementPartnerUnits": 500, "minimumPoints": 32000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "airasia", "program": "AirAsia rewards", "points": 10, "partnerUnits": 1, "incrementPoints": 5000, "incrementPartnerUnits": 500, "minimumPoints": 10000, "effectiveFrom": null, "effectiveTo": null }
   ],
   "cashValue": null,
   "welcomeBonus": "From 1 March 2026: Rp 1.000.000 cashback after Rp 25.000.000 of transactions within 2 months of approval, plus registering at least one kind of bill payment.",
@@ -313,10 +316,11 @@
     "The card limit runs from Rp 15.000.000 to Rp 1.000.000.000.",
     "The terms come from Danamon's own RIPLAY, the 26 August 2025 version, which gives no start date, so the first period runs open until the 1 June 2026 change. Secondary reporting also describes a later clarification that walks some of these changes back; it could not be read here, so if it softened the June exclusions this entry takes away more than it should.",
     "Rounding is per full increment of Rp 2.500, confirmed by the cardholder: the remainder of a purchase earns nothing, so Rp 6.000 earns 2 D-Point at the base rate, not 2,4.",
-    "The ratios are 15 D-Point a GarudaMile and 20 a KrisFlyer or Asia Mile. At 1 D-Point per Rp 2.500 that is Rp 37.500 and Rp 50.000 a mile, which is how PinterPoin quotes them, so the two figures agree. The Asia Miles ratio is read off a Danamon World Elite promotion rather than a JCB Precious page, and is the weakest of the three.",
-    "Miles are taken out in blocks of 500, given by the cardholder: the step is counted in miles, not in D-Point. Through the ratios that is 7.500 D-Point a block for GarudaMiles and 10.000 for KrisFlyer and Asia Miles, which is what the entry stores alongside the published 500 so the two are checked against each other. Conversion runs through dpoint.id rather than the card's own statement.",
-    "Every block divides whole, so no fraction of a mile is lost anywhere. An earlier version read the 500 as D-Point rather than miles, which made a GarudaMiles block 33,3 miles and cost a mile to rounding; that was wrong.",
-    "No minimum conversion was confirmed, only the 500-mile block, so the entry records a step alone. A balance short of one block converts to nothing, which is right either way."
+    "Six partners take D-Point: GarudaMiles and Enrich at 15 a mile, KrisFlyer and Asia Miles at 20, JAL Mileage Bank at 32, and AirAsia rewards at 10 a point. At 1 D-Point per Rp 2.500 that is Rp 37.500, Rp 50.000, Rp 80.000 and Rp 25.000 a unit. JAL is much the worst of them and AirAsia much the best.",
+    "Miles are taken out in blocks of 500, given by the cardholder, and the 500 is counted in miles rather than in D-Point. A block is therefore 7.500 D-Point at GarudaMiles and Enrich, 10.000 at KrisFlyer and Asia Miles, 16.000 at JAL and 5.000 at AirAsia. The entry stores both figures and validation checks that they agree through the ratio.",
+    "JAL takes at least 32.000 D-Point, which is 1.000 miles, from Japan Airlines's own page. Danamon's promotion terms put the same 1.000-unit minimum on AirAsia, which is recorded too but rests on promotion wording rather than a product page. Whether the other four carry it is not settled; they are recorded with the 500 block alone, so a balance between 500 and 1.000 miles may be shown converting when the bank would refuse.",
+    "Every block divides whole, so no fraction of a unit is lost anywhere. An earlier version read the 500 as D-Point rather than miles, which made a GarudaMiles block 33,3 miles and cost a mile to rounding; that was wrong.",
+    "Conversion runs through dpoint.id rather than the card's own statement, and Danamon runs frequent bonus promotions on it — 15% on airline miles, 80% and 100% on AirAsia points have all run. None of them is modelled, so a conversion made during one is understated."
   ],
   "sources": [
     {
@@ -346,6 +350,18 @@
     {
       "title": "PinterPoin — Promo: bonus hingga 15% konversi poin Danamon menjadi airline miles",
       "url": "https://pinterpoin.com/promo-bonus-hingga-15-konversi-poin-danamon-menjadi-airline-miles/"
+    },
+    {
+      "title": "Japan Airlines — Accumulating JAL Mileage with Bank Danamon",
+      "url": "https://www.jal.co.jp/world/en/world/jalmile/partner/point/danamon.html"
+    },
+    {
+      "title": "Malaysia Airlines — Enrich bank conversion partners",
+      "url": "https://www.malaysiaairlines.com/my/en/enrich/earn-miles/financial-services/bank-partners.html"
+    },
+    {
+      "title": "Bank Danamon — Bonus 80% konversi D-Point menjadi AirAsia points",
+      "url": "https://www.danamon.co.id/id/Personal/Promo/Promo-Kartu-Danamon/Promo-Traveling/Bonus-80-persen-AirAsia-points"
     }
   ],
   "verifiedOn": "2026-09-14"

@@ -206,41 +206,61 @@ describe('Danamon JCB Precious conversion', () => {
     return listTransferPartners(t.database, t.ws, t.programId);
   };
 
-  it('converts to three airlines, at 15 D-Point a GarudaMile and 20 a KrisFlyer or Asia Mile', async () => {
-    const ratios = Object.fromEntries((await partnersOf()).map((p) => [p.program, [p.points, p.partnerUnits]]));
-    expect(ratios).toEqual({ GarudaMiles: [15, 1], KrisFlyer: [20, 1], 'Asia Miles': [20, 1] });
+  it('converts to six airlines, each at its own ratio', async () => {
+    const ratios = Object.fromEntries((await partnersOf()).map((p) => [p.program, p.points]));
+    expect(ratios).toEqual({
+      GarudaMiles: 15, Enrich: 15, KrisFlyer: 20, 'Asia Miles': 20, 'JAL Mileage Bank': 32, 'AirAsia rewards': 10,
+    });
   });
 
-  it('takes miles out in blocks of 500, which is 10.000 D-Point at 20 to 1', async () => {
-    const partners = await partnersOf();
-    const krisflyer = partners.find((p) => p.program === 'KrisFlyer')!;
-    expect(convertPoints(9_999, krisflyer)).toBe(0);
-    expect(convertPoints(10_000, krisflyer)).toBe(500);
-    // 19.000 is one whole block and a remainder, so only the first 10.000 moves.
-    expect(convertPoints(19_000, krisflyer)).toBe(500);
-    expect(convertPoints(20_000, krisflyer)).toBe(1_000);
-  });
-
-  it('takes a GarudaMiles block for 7.500, since a mile costs 15 there rather than 20', async () => {
-    const garuda = (await partnersOf()).find((p) => p.program === 'GarudaMiles')!;
-    expect(convertPoints(7_499, garuda)).toBe(0);
-    expect(convertPoints(7_500, garuda)).toBe(500);
-    expect(convertPoints(15_000, garuda)).toBe(1_000);
-  });
-
-  it('loses no fraction of a mile, every block dividing whole', async () => {
+  it('takes miles out in blocks of 500, counted in miles rather than D-Point', async () => {
+    const blocks = Object.fromEntries((await partnersOf()).map((p) => [p.program, p.incrementPoints]));
+    expect(blocks).toEqual({
+      GarudaMiles: 7_500, Enrich: 7_500, KrisFlyer: 10_000, 'Asia Miles': 10_000, 'JAL Mileage Bank': 16_000, 'AirAsia rewards': 5_000,
+    });
     for (const partner of await partnersOf()) {
-      const block = partner.incrementPoints;
-      // A whole number of blocks is a whole number of miles at every partner.
-      expect((block * 1) % partner.points, partner.program).toBe(0);
-      expect(convertPoints(block * 3, partner), partner.program).toBe(1_500);
+      // The smallest balance that moves is the minimum where there is one, otherwise a single block.
+      const floor = partner.minimumPoints ?? partner.incrementPoints;
+      expect(convertPoints(floor, partner), partner.program).toBe(floor / partner.points);
+      expect(convertPoints(floor - 1, partner), partner.program).toBe(0);
+      // Whatever the floor, another block is another 500 units.
+      expect(convertPoints(floor + partner.incrementPoints, partner) - convertPoints(floor, partner), partner.program).toBe(500);
     }
   });
 
-  it('matches the rupiah cost a mile that the ratios imply, at 1 D-Point per Rp 2.500', async () => {
+  it('holds JAL and AirAsia to the 1.000 units they will not go below', async () => {
     const partners = await partnersOf();
-    const perMile = (program: string) => partners.find((p) => p.program === program)!.points * 2_500;
-    expect(perMile('GarudaMiles')).toBe(37_500);
-    expect(perMile('KrisFlyer')).toBe(50_000);
+    const jal = partners.find((p) => p.program === 'JAL Mileage Bank')!;
+    const airasia = partners.find((p) => p.program === 'AirAsia rewards')!;
+    expect([jal.minimumPoints, airasia.minimumPoints]).toEqual([32_000, 10_000]);
+    // One 500 block is under the minimum at both, so nothing moves until the second.
+    expect(convertPoints(16_000, jal)).toBe(0);
+    expect(convertPoints(32_000, jal)).toBe(1_000);
+    expect(convertPoints(5_000, airasia)).toBe(0);
+    expect(convertPoints(10_000, airasia)).toBe(1_000);
+  });
+
+  it('leaves the other four on the block alone, no minimum having been confirmed', async () => {
+    for (const partner of await partnersOf()) {
+      if (['JAL Mileage Bank', 'AirAsia rewards'].includes(partner.program)) continue;
+      expect(partner.minimumPoints, partner.program).toBeNull();
+      expect(convertPoints(partner.incrementPoints, partner), partner.program).toBe(500);
+    }
+  });
+
+  it('loses no fraction of a unit, every block dividing whole', async () => {
+    for (const partner of await partnersOf()) {
+      expect(partner.incrementPoints % partner.points, partner.program).toBe(0);
+    }
+  });
+
+  it('matches the rupiah cost a unit that the ratios imply, at 1 D-Point per Rp 2.500', async () => {
+    const partners = await partnersOf();
+    const perUnit = (program: string) => partners.find((p) => p.program === program)!.points * 2_500;
+    expect(perUnit('GarudaMiles')).toBe(37_500);
+    expect(perUnit('KrisFlyer')).toBe(50_000);
+    // JAL costs more than twice what AirAsia does for a unit, which is the spread across the six.
+    expect(perUnit('JAL Mileage Bank')).toBe(80_000);
+    expect(perUnit('AirAsia rewards')).toBe(25_000);
   });
 });
