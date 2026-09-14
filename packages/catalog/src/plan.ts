@@ -18,6 +18,8 @@ function overlap(a: { from: string | null; to: string | null }, b: { from: strin
 
 export interface PlannedRule extends Omit<EarnRule, 'id'> {
   catalogKey: string;
+  /** Set when the rule's spend cap is the card's credit limit, which only the card's own terms can supply. */
+  capSpendAtCreditLimit?: boolean;
 }
 
 export interface PlannedBonus extends Omit<CycleBonus, 'id'> {
@@ -102,6 +104,8 @@ export function planCatalogApply(
         capSpendMinor: rule.capSpendMinor ?? null,
         capPoints: rule.capPoints ?? null,
         minTransactionMinor: rule.minTransactionMinor ?? null,
+        minCycleSpendMinor: rule.minCycleSpendMinor ?? null,
+        ...(rule.capSpendAtCreditLimit ? { capSpendAtCreditLimit: true } : {}),
       };
 
       // A rule tied to the category choice becomes one dated row per stretch the holder ran an option, so a

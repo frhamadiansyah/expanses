@@ -3,6 +3,7 @@ import jenius from '../entries/jenius-kartu-kredit.json';
 import signature from '../entries/bca-sq-krisflyer-visa-signature.json';
 import unionpay from '../entries/bca-unionpay.json';
 import cimbAccor from '../entries/cimb-niaga-world-all-accor.json';
+import danamonJcb from '../entries/danamon-jcb-precious.json';
 import marriott from '../entries/mandiri-marriott-bonvoy.json';
 import prioritas from '../entries/mandiri-world-prioritas.json';
 import maybankBmw from '../entries/maybank-bmw.json';
@@ -34,6 +35,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   maybankMini,
   maybankManchesterUnited,
   jenius,
+  danamonJcb,
 ] as unknown as CatalogEntry[];
 
 export function findEntry(id: string): CatalogEntry | undefined {

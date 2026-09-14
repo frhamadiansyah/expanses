@@ -80,7 +80,18 @@ async function writePlan(
   memberLevel: string | null = null,
 ) {
   const plan = planCatalogApply(entry, await categoryIdsByKeyTx(tx, ws), today, memberLevel, await choicesFor(tx, ws, program.id));
-  for (const { catalogKey, ...rule } of plan.rules) await saveEarnRuleTx(tx, ws, program.id, { ...rule, catalogKey }, FROM_CATALOG);
+  // A rule capped at "one times your limit" needs the card's own terms; the smaller of that and any published
+  // cap wins. With no limit recorded, the published cap stands alone rather than the rule going uncapped.
+  const [terms] = await tx
+    .select({ creditLimitMinor: cardTerms.creditLimitMinor })
+    .from(cardTerms)
+    .where(and(eq(cardTerms.accountId, program.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+  const creditLimitMinor = terms?.creditLimitMinor ?? null;
+  for (const { catalogKey, capSpendAtCreditLimit, ...rule } of plan.rules) {
+    const caps = [rule.capSpendMinor, capSpendAtCreditLimit ? creditLimitMinor : null].filter((cap): cap is number => cap !== null);
+    const capSpendMinor = caps.length ? Math.min(...caps) : null;
+    await saveEarnRuleTx(tx, ws, program.id, { ...rule, capSpendMinor, catalogKey }, FROM_CATALOG);
+  }
   for (const { catalogKey, ...bonus } of plan.bonuses) await saveCycleBonusTx(tx, ws, program.id, { ...bonus, catalogKey }, FROM_CATALOG);
   for (const { catalogKey, ...partner } of plan.transferPartners) await saveTransferPartnerTx(tx, ws, program.id, { ...partner, catalogKey }, FROM_CATALOG);
   if (plan.cashValue) {

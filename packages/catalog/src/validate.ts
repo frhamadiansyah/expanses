@@ -176,7 +176,10 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
         if (!ROUNDINGS.has(rule.rounding as string)) add(`${path}.rounding`, 'is not a supported rounding mode');
         if (!Number.isInteger(rule.priority)) add(`${path}.priority`, 'must be an integer');
         if (typeof rule.stackable !== 'boolean') add(`${path}.stackable`, 'must be true or false');
-        for (const cap of ['capSpendMinor', 'capPoints', 'minTransactionMinor'] as const) {
+        if (rule.capSpendAtCreditLimit !== undefined && typeof rule.capSpendAtCreditLimit !== 'boolean') {
+          add(`${path}.capSpendAtCreditLimit`, 'must be true or false');
+        }
+        for (const cap of ['capSpendMinor', 'capPoints', 'minTransactionMinor', 'minCycleSpendMinor'] as const) {
           if (rule[cap] !== undefined && rule[cap] !== null && !isNonNegativeInt(rule[cap])) add(`${path}.${cap}`, 'must be a non-negative integer or null');
         }
         checkMemberLevels(path, rule.memberLevels);

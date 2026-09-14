@@ -409,7 +409,7 @@ export function CardDetailPage() {
                         {rule.validTo && ` · until ${rule.validTo}`}
                         {rule.capSpendMinor !== null && ` · cap ${formatMinor(rule.capSpendMinor, currency)}/cycle`}
                         {(() => {
-                          const parts = ruleQualifiers(rule.match, (id) => all.find((a) => a.id === id)?.name ?? '?');
+                          const parts = ruleQualifiers(rule, (id) => all.find((a) => a.id === id)?.name ?? '?', (minor) => formatMinor(minor, currency));
                           return parts.length ? parts.map((part) => ` · ${part}`).join('') : ' · all categories';
                         })()}
                       </div>

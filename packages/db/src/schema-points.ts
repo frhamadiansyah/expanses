@@ -43,6 +43,8 @@ export const earnRules = sqliteTable('earn_rules', {
   capSpendMinor: integer('cap_spend_minor'),
   capPoints: integer('cap_points'),
   minTransactionMinor: integer('min_transaction_minor'),
+  /** Spend the whole cycle must reach, net of refunds, before this rule earns at all. */
+  minCycleSpendMinor: integer('min_cycle_spend_minor'),
   validFrom: text('valid_from'),
   validTo: text('valid_to'),
   catalogKey: text('catalog_key'),

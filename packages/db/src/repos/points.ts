@@ -148,6 +148,7 @@ export async function listEarnRules(database: Database, ws: WorkspaceContext, pr
     capSpendMinor: r.capSpendMinor,
     capPoints: r.capPoints,
     minTransactionMinor: r.minTransactionMinor,
+    minCycleSpendMinor: r.minCycleSpendMinor,
     validFrom: r.validFrom,
     validTo: r.validTo,
   }));
@@ -174,6 +175,7 @@ export async function saveEarnRuleTx(tx: Db, ws: WorkspaceContext, programId: st
     capSpendMinor: rule.capSpendMinor,
     capPoints: rule.capPoints,
     minTransactionMinor: rule.minTransactionMinor,
+    minCycleSpendMinor: rule.minCycleSpendMinor ?? null,
     validFrom: rule.validFrom,
     validTo: rule.validTo,
     ...(rule.catalogKey === undefined ? {} : { catalogKey: rule.catalogKey }),

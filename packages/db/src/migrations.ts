@@ -15,6 +15,7 @@ import coretaxCodes from '../migrations/0013_coretax_codes.sql?raw';
 import utangCodes from '../migrations/0014_utang_codes.sql?raw';
 import memberLevels from '../migrations/0015_member_levels.sql?raw';
 import categoryChoice from '../migrations/0016_category_choice.sql?raw';
+import cycleFloor from '../migrations/0017_cycle_floor.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -40,6 +41,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 14, name: 'utang_codes', sql: utangCodes },
   { version: 15, name: 'member_levels', sql: memberLevels },
   { version: 16, name: 'category_choice', sql: categoryChoice },
+  { version: 17, name: 'cycle_floor', sql: cycleFloor },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

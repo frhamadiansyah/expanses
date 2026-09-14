@@ -19,8 +19,8 @@ const buy = (amountMinor: number, over: Partial<SpendLine> = {}): SpendLine => {
 };
 
 describe('catalogue data after the MCC addendum', () => {
-  it('bundles twelve entries', () => {
-    expect(CATALOG).toHaveLength(12);
+  it('bundles thirteen entries', () => {
+    expect(CATALOG).toHaveLength(13);
   });
 
   it('adds Reward BCA MCC exclusions to both KrisFlyer terms periods', () => {

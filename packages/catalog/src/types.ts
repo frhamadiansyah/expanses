@@ -25,6 +25,13 @@ export interface CatalogRule {
   capSpendMinor?: number | null;
   capPoints?: number | null;
   minTransactionMinor?: number | null;
+  /** Spend the cycle must reach, net of refunds, before this rule earns at all. */
+  minCycleSpendMinor?: number | null;
+  /**
+   * Caps this rule's spend at the card's own credit limit, which the catalogue cannot know. Combined with
+   * capSpendMinor the smaller of the two wins, the way an issuer writes "one times your limit, at most Rp X".
+   */
+  capSpendAtCreditLimit?: boolean;
   /** Levels this rule earns at. Absent means every level, which is how an untiered card is written. */
   memberLevels?: string[];
   /**
