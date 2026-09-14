@@ -1,6 +1,6 @@
 {
   "id": "danamon-jcb-precious",
-  "entryVersion": 2,
+  "entryVersion": 3,
   "bank": "Bank Danamon",
   "name": "Kartu Kredit Danamon JCB Precious",
   "network": "jcb",
@@ -307,7 +307,7 @@
     "The card requires total dana kelolaan of at least Rp 50.000.000 to be issued, so the lower level applies to a holder whose balance has since fallen rather than to a new applicant.",
     "Not modelled: the 5% cashback up to Rp 100.000 a month on routine bill payments, which needs at least five retail transactions of Rp 100.000 or more, and airport lounge access. Neither pays D-Point.",
     "The card limit runs from Rp 15.000.000 to Rp 1.000.000.000.",
-    "Taken from Danamon's own RIPLAY, the 26 August 2025 version, which gives no start date for the D-Point terms, so they are recorded as one open period. Secondary reporting describes a later devaluation and a clarification; neither was available here, so if the terms have since moved this entry is behind.",
+    "The terms come from Danamon's own RIPLAY, the 26 August 2025 version, which gives no start date, so the first period runs open until the 1 June 2026 change. Secondary reporting also describes a later clarification that walks some of these changes back; it could not be read here, so if it softened the June exclusions this entry takes away more than it should.",
     "Rounding is taken as per full increment of Rp 2.500; the RIPLAY does not say how a part increment is treated."
   ],
   "sources": [
