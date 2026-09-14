@@ -1,6 +1,6 @@
 {
   "id": "jenius-kartu-kredit",
-  "entryVersion": 6,
+  "entryVersion": 7,
   "bank": "Bank SMBC Indonesia",
   "name": "Kartu Kredit Jenius",
   "network": "visa",
@@ -13,12 +13,12 @@
       {
         "key": "grow-plus",
         "name": "Grow or above",
-        "condition": "average monthly balance Rp 10.000.000 or more"
+        "condition": "Green Club Grow, Nurture or Bloom, including Sinaya Prioritas — average monthly balance Rp 10.000.000 or more"
       },
       {
         "key": "seed-plant",
         "name": "Seed or Plant",
-        "condition": "average monthly balance below Rp 10.000.000"
+        "condition": "Green Club Seed or Plant — average monthly balance below Rp 10.000.000"
       }
     ],
     "categoryChoice": {
@@ -376,7 +376,7 @@
     "Yay Points can be forfeited when the card bill is more than 60 days late.",
     "Rounding is taken as per full increment of the stated amount; the sources do not say how a part increment is treated.",
     "The annual fee is Rp 500.000 a year, given by the cardholder rather than taken from the sources. The supplementary card fee is not known.",
-    "The Double Yay categories come from Jenius's own document. The rates, the Club thresholds and the transfer ratios do not: those are from secondary reporting, and jenius.com could not be reached to check them."
+    "What is confirmed and what is not. From Jenius's own Kategori Double Yay: the four categories, their MCC lists, and that the category may change once a month after the statement is printed. From the cardholder's own screens: the five conversion ratios, the annual fee, per-transaction crediting, and that a category change bites immediately. The published effective-earn tables reconcile every cell against the encoded rates, which confirms Rp 10.000 and Rp 12.000 a Yay and their Double Yay halves. Still only from secondary reporting: the Rp 10.000.000 threshold itself and how the average balance is measured, the 1 August 2026 start date, the instalment and conversion limits, the 60-day forfeiture, and how a part increment rounds."
   ],
   "sources": [
     {

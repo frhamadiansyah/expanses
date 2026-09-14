@@ -452,3 +452,14 @@ describe('Kartu Kredit Jenius: the published effective earn tables', () => {
     expect(perMile(SEED, 'KrisFlyer', SEED, 'Double Yay abroad')).toBe(10_000);
   });
 });
+
+describe('Kartu Kredit Jenius: which Club each level covers', () => {
+  it('groups Grow, Nurture and Bloom, and names Sinaya Prioritas with them', () => {
+    const levels = findEntry('jenius-kartu-kredit')!.program.memberLevels!;
+    const grow = levels.find((level) => level.key === 'grow-plus')!;
+    expect(grow.condition).toContain('Nurture');
+    expect(grow.condition).toContain('Bloom');
+    expect(grow.condition).toContain('Sinaya Prioritas');
+    expect(levels.find((level) => level.key === 'seed-plant')!.condition).toContain('Seed or Plant');
+  });
+});
