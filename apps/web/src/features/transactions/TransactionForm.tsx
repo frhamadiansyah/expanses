@@ -6,6 +6,7 @@ import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
 import { MccPicker } from '../merchants/MccPicker';
 import { suggestPattern } from '../merchants/mcc-search';
@@ -67,6 +68,9 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
   const currency = moneyAccount?.currency ?? ws.baseCurrency;
   const crossCurrency = draft.mode === 'transfer' && !!moneyAccount && !!toAccount && moneyAccount.currency !== toAccount.currency;
   const onCard = draft.mode === 'expense' && moneyAccount?.subtype === 'credit_card';
+  // Only worth asking when the statement carries more than one: a supplementary card on the same account.
+  const cardsOnAccount = useCards(draft.moneyId || undefined).data ?? [];
+  const askWhichCard = onCard && cardsOnAccount.length > 1;
   const mccSources = useQuery({ queryKey: ['mcc-sources', ws.workspaceId], queryFn: () => mccSourcesFor(database.db, ws), enabled: onCard });
   const guessCategory = draft.splits[0]?.categoryId || draft.categoryId;
   const guess = mccSources.data && guessCategory ? resolveMcc(draft.description, guessCategory, { typed: null, ...mccSources.data }) : null;
@@ -281,6 +285,18 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
               <MoneyAccountOptions accounts={accounts} />
             </Select>
           </Field>
+          {askWhichCard && (
+            <Field label="Card" hint="One statement, more than one card.">
+              <Select value={draft.cardId} onChange={(e) => set({ cardId: e.target.value })}>
+                <option value="">Not saying</option>
+                {cardsOnAccount.map((piece) => (
+                  <option key={piece.id} value={piece.id}>
+                    {`···· ${piece.last4 ?? '????'}${piece.holderName ? ` · ${piece.holderName}` : ''}`}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           {draft.mode === 'transfer' ? (
             <>
               <Field label="To" hint="Buying a fund, shares or gold? Use Buy or sell, so units are counted.">

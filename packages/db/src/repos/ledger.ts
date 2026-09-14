@@ -32,6 +32,8 @@ export interface PostTransactionInput {
   originalAmountMinor?: number | null;
   /** Merchant category code typed for the purchase, when the user knows it. */
   mcc?: string | null;
+  /** The card the purchase was made on, when the account carries more than one. */
+  cardId?: string | null;
   /** The recurring bill this settles, so the month stops being asked for. */
   templateId?: string | null;
 }
@@ -96,6 +98,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     originalCurrency,
     originalAmountMinor,
     mcc,
+    cardId: input.cardId ?? null,
     templateId: input.templateId ?? null,
     createdAt: new Date().toISOString(),
   });
@@ -215,6 +218,8 @@ export interface TransactionView {
   originalCurrency: string | null;
   originalAmountMinor: number | null;
   mcc: string | null;
+  /** The card a purchase was made on, when the account carries more than one. */
+  cardId: string | null;
   /** Goal a tagged transfer funds. Ordinary payments never carry one. */
   goalId: string | null;
   createdAt: string;
@@ -275,6 +280,7 @@ export async function listTransactions(
     originalCurrency: t.originalCurrency,
     originalAmountMinor: t.originalAmountMinor,
     mcc: t.mcc,
+    cardId: t.cardId,
     goalId: t.goalId,
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),

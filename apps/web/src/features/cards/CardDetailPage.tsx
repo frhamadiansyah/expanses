@@ -2,6 +2,8 @@ import { CURRENCIES, type CycleBonus, displayAmount, type EarnRule, explainCycle
 import type { CatalogEntry } from '@expanses/catalog';
 import {
   applyCatalogEntry,
+  addCard,
+  archiveCard,
   archiveCycleBonus,
   setCatalogCategoryChoice,
   archiveEarnRule,
@@ -25,6 +27,7 @@ import { InstallmentList } from '../loans/InstallmentList';
 import { BonusForm } from './BonusForm';
 import { BonusProgress } from './BonusProgress';
 import { CatalogPanel } from './CatalogPanel';
+import { useCards } from './card-queries';
 import { CatalogPicker } from './CatalogPicker';
 import { ruleQualifiers } from './rule-summary';
 import { describeSuggestion } from './hint-text';
@@ -210,6 +213,9 @@ export function CardDetailPage() {
   const balances = useBalances();
   const all = accounts.data ?? [];
   const card = all.find((a) => a.id === cardId);
+  const plastic = useCards(card?.id).data ?? [];
+  const [newLast4, setNewLast4] = useState('');
+  const [newHolder, setNewHolder] = useState('');
   const today = isoDate();
   const data = useQuery({
     queryKey: ['card-points-detail', ws.workspaceId, today, cardId],
@@ -324,6 +330,49 @@ export function CardDetailPage() {
               Owed now <Money minor={owed} currency={currency} />
               {cp.terms?.creditLimitMinor ? ` · ${Math.round((owed / cp.terms.creditLimitMinor) * 100)}% of limit` : ''}
             </span>
+          </div>
+        </form>
+      </Section>
+
+      <Section title="Cards on this account">
+        <p className="mb-3 text-sm text-slate-600">
+          One statement, one limit — and sometimes more than one card. A supplementary card spends against this same
+          account, so recording its last four digits is what tells whose spending is whose.
+        </p>
+        {plastic.length > 0 && (
+          <ul className="mb-3 divide-y divide-slate-100">
+            {plastic.map((piece) => (
+              <li key={piece.id} data-testid="card-on-account" className="flex items-center gap-3 py-1.5 text-sm">
+                <span className="tabular">···· {piece.last4 ?? '????'}</span>
+                <span className="flex-1 text-slate-600">{piece.holderName ?? (piece.isPrimary ? 'Primary' : 'Supplementary')}</span>
+                <Button variant="ghost" aria-label={`Remove card ending ${piece.last4 ?? 'unknown'}`} onClick={() => void run(() => archiveCard(database, ws, piece.id))}>
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form
+          className="grid gap-3 md:grid-cols-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(async () => {
+              await addCard(database, ws, { accountId: card.id, last4: newLast4, holderName: newHolder, isPrimary: plastic.length === 0 });
+              setNewLast4('');
+              setNewHolder('');
+            });
+          }}
+        >
+          <Field label="Last 4 digits">
+            <Input value={newLast4} onChange={(e) => setNewLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="8802" />
+          </Field>
+          <Field label="Whose card" hint="Optional. Yours, or whoever holds the supplementary card.">
+            <Input value={newHolder} onChange={(e) => setNewHolder(e.target.value)} placeholder="Spouse" />
+          </Field>
+          <div className="flex items-end">
+            <Button type="submit" variant="secondary">
+              Add card
+            </Button>
           </div>
         </form>
       </Section>

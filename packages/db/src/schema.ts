@@ -53,6 +53,8 @@ export const transactions = sqliteTable('transactions', {
   originalAmountMinor: integer('original_amount_minor'),
   /** Merchant category code typed for a card purchase. */
   mcc: text('mcc'),
+  /** Which piece of plastic was used, when one statement carries more than one card. */
+  cardId: text('card_id'),
   /** Goal a tagged transfer funds. Ordinary payments never carry one. */
   goalId: text('goal_id'),
   /** The recurring bill this payment settled, when it was recorded from one. */

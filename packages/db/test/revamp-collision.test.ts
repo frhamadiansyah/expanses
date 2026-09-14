@@ -1,7 +1,7 @@
-import { expenseLines } from '@expanses/core';
+import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAccount, createDatabase, createWorkspace, listAccounts, listWorkspaces, migrate, MIGRATIONS, postTransaction } from '../src/index';
+import { createAccount, createDatabase, createWorkspace, listAccounts, listWorkspaces, migrate, MIGRATIONS } from '../src/index';
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
 
 let executor: NodeExecutor | undefined;
@@ -34,16 +34,37 @@ async function workspaceHolding(keys: readonly string[]) {
   return { database, ws };
 }
 
+
+/**
+ * Spending posted the way a pre-revamp database already holds it.
+ *
+ * Written as plain SQL on purpose: the ORM names every column it knows on every insert, and a
+ * database stopped at version 26 has none of the ones added since.
+ */
+async function spendAt(
+  database: Awaited<ReturnType<typeof workspaceHolding>>['database'],
+  ws: { workspaceId: string; baseCurrency: string },
+  categoryId: string,
+  accountId: string,
+  amountMinor: number,
+  description: string,
+) {
+  const txId = uuidv7();
+  await database.execScript(`
+    INSERT INTO transactions (id, workspace_id, occurred_on, description, source, status, created_at)
+    VALUES ('${txId}', '${ws.workspaceId}', '2026-02-02', '${description}', 'manual', 'posted', '2026-02-02T00:00:00Z');
+    INSERT INTO entries (id, workspace_id, transaction_id, account_id, amount_minor, currency, fx_rate_to_base, amount_base_minor)
+    VALUES ('${uuidv7()}', '${ws.workspaceId}', '${txId}', '${categoryId}', ${amountMinor}, 'IDR', 1, ${amountMinor}),
+           ('${uuidv7()}', '${ws.workspaceId}', '${txId}', '${accountId}', ${-amountMinor}, 'IDR', 1, ${-amountMinor});
+  `);
+}
+
 describe('the revamp when both spellings are already present', () => {
   it('applies, and the spending keeps the key', async () => {
     const { database, ws } = await workspaceHolding(['government', 'government_taxes']);
     const bca = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
     const spent = (await listAccounts(database, ws)).find((a) => a.systemKey === 'government')!;
-    await postTransaction(database, ws, {
-      occurredOn: '2026-02-02',
-      description: 'PBB',
-      lines: expenseLines({ categoryAccountId: spent.id, paymentAccountId: bca.id, amountMinor: 900_000, currency: 'IDR' }),
-    });
+    await spendAt(database, ws, spent.id, bca.id, 900_000, 'PBB');
 
     await expect(migrate(database)).resolves.toContain(27);
 
@@ -60,11 +81,7 @@ describe('the revamp when both spellings are already present', () => {
     const oldSpelling = before.find((a) => a.systemKey === 'gifts_donations.gifts')!;
     const newSpelling = before.find((a) => a.systemKey === 'gift_giving')!;
     for (const category of [oldSpelling, newSpelling]) {
-      await postTransaction(database, ws, {
-        occurredOn: '2026-02-02',
-        description: `spend on ${category.systemKey}`,
-        lines: expenseLines({ categoryAccountId: category.id, paymentAccountId: bca.id, amountMinor: 100_000, currency: 'IDR' }),
-      });
+      await spendAt(database, ws, category.id, bca.id, 100_000, `spend on ${category.systemKey}`);
     }
 
     await expect(migrate(database)).resolves.toContain(27);

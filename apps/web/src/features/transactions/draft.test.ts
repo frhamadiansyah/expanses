@@ -26,7 +26,7 @@ function view(
 ): TransactionView {
   const byId = new Map(accounts.map((a) => [a.id, a]));
   return {
-    id: 'tx1', occurredOn: '2026-09-11', description: 'Test', source: 'manual', status, externalRef: null, mcc: null, goalId: null, ...original, createdAt: '2026-09-11T00:00:00Z',
+    id: 'tx1', occurredOn: '2026-09-11', description: 'Test', source: 'manual', status, externalRef: null, mcc: null, cardId: null, goalId: null, ...original, createdAt: '2026-09-11T00:00:00Z',
     entries: lines.map((l, i) => ({
       id: `e${i}`, accountId: l.accountId, accountName: l.accountId, accountKind: byId.get(l.accountId)!.kind,
       amountMinor: l.amountMinor, currency: l.currency, fxRateToBase: 1, amountBaseMinor: l.amountMinor, memo: null, spendCategoryId: null,
@@ -81,11 +81,11 @@ describe('transaction drafts', () => {
 
 describe('original currency on card purchases', () => {
   const base = { ...emptyDraft('2026-09-11'), description: 'Cold Storage', moneyId: 'visa', categoryId: 'groceries', amount: '540.000' };
-  const none = { originalCurrency: null, originalAmountMinor: null, mcc: null };
+  const none = { originalCurrency: null, originalAmountMinor: null, mcc: null, cardId: null };
 
   it('round-trips an SGD 45,20 purchase billed to an IDR card', () => {
     const extras = draftToExtras({ ...base, originalCurrency: 'SGD', originalAmount: '45,20' }, accounts);
-    expect(extras).toEqual({ originalCurrency: 'SGD', originalAmountMinor: 4520, mcc: null });
+    expect(extras).toEqual({ originalCurrency: 'SGD', originalAmountMinor: 4520, mcc: null, cardId: null });
     const restored = draftFromTransaction(view(draftToLines(base, accounts), 'posted', extras));
     expect(restored).toMatchObject({ originalCurrency: 'SGD', originalAmount: '45.20' });
     expect(draftToExtras(restored, accounts)).toEqual(extras);
