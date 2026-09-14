@@ -2,6 +2,8 @@ import infinite from '../entries/bca-sq-krisflyer-visa-infinite.json';
 import jenius from '../entries/jenius-kartu-kredit.json';
 import signature from '../entries/bca-sq-krisflyer-visa-signature.json';
 import unionpay from '../entries/bca-unionpay.json';
+import bniGarudaPlatinum from '../entries/bni-garuda-visa-platinum.json';
+import bniGarudaSignature from '../entries/bni-garuda-visa-signature.json';
 import cimbAccor from '../entries/cimb-niaga-world-all-accor.json';
 import danamonJcb from '../entries/danamon-jcb-precious.json';
 import marriott from '../entries/mandiri-marriott-bonvoy.json';
@@ -38,6 +40,8 @@ export const CATALOG: readonly CatalogEntry[] = [
   jenius,
   danamonJcb,
   ocbc90n,
+  bniGarudaSignature,
+  bniGarudaPlatinum,
 ] as unknown as CatalogEntry[];
 
 export function findEntry(id: string): CatalogEntry | undefined {
