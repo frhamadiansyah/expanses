@@ -1,12 +1,16 @@
 import { CURRENCIES, displayAmount, isoDate, parseMajor, parseRate } from '@expanses/core';
-import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, renameAccount, upsertRate } from '@expanses/db';
+import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, createCardAccount, renameAccount, upsertRate } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, SUBTYPE_LABELS, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { useAssetValues } from '../networth/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { Button, Card, Empty, ErrorBox, errorMessage, Field, Input, Money, PageHeader, Select } from '../../ui';
+
+/** Sentinel for a bank the catalogue has never heard of. */
+const OTHER = '__other';
 
 const TYPES: { subtype: AccountSubtype; kind: 'asset' | 'liability' }[] = [
   { subtype: 'bank', kind: 'asset' },
@@ -26,6 +30,9 @@ function AddAccountForm() {
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const [name, setName] = useState('');
+  const [issuer, setIssuer] = useState('');
+  const [otherIssuer, setOtherIssuer] = useState('');
+  const [last4, setLast4] = useState('');
   const [subtype, setSubtype] = useState<AccountSubtype>('bank');
   const [currency, setCurrency] = useState(ws.baseCurrency);
   const [balance, setBalance] = useState('');
@@ -36,6 +43,10 @@ function AddAccountForm() {
 
   const kind = TYPES.find((t) => t.subtype === subtype)!.kind;
   const foreign = currency !== ws.baseCurrency;
+  // A card is the one account that comes from a bank as a named product. Cash and property do not.
+  const isCard = subtype === 'credit_card';
+  const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
+  const chosenIssuer = issuer === OTHER ? otherIssuer : issuer;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -55,8 +66,15 @@ function AddAccountForm() {
           if (openingRateToBase === undefined) throw new Error(`No ${currency}→${ws.baseCurrency} rate available. Enter it manually.`);
         }
       }
-      await createAccount(database, ws, { name, kind, subtype, currency, openingBalanceMinor, openedOn, openingRateToBase });
+      if (isCard) {
+        await createCardAccount(database, ws, { name, subtype: 'credit_card', currency, issuer: chosenIssuer, last4, openingBalanceMinor, openedOn, openingRateToBase });
+      } else {
+        await createAccount(database, ws, { name, kind, subtype, currency, openingBalanceMinor, openedOn, openingRateToBase });
+      }
       setName('');
+      setIssuer('');
+      setOtherIssuer('');
+      setLast4('');
       setBalance('');
       setManualRate('');
       await invalidate();
@@ -82,6 +100,29 @@ function AddAccountForm() {
             ))}
           </Select>
         </Field>
+        {isCard && (
+          <Field label="Bank" hint="Optional. Applying a catalogue entry fills this in.">
+            <Select value={issuer} onChange={(e) => setIssuer(e.target.value)}>
+              <option value="">Not saying</option>
+              {banks.map((bank) => (
+                <option key={bank} value={bank}>
+                  {bank}
+                </option>
+              ))}
+              <option value={OTHER}>Other…</option>
+            </Select>
+          </Field>
+        )}
+        {isCard && issuer === OTHER && (
+          <Field label="Bank name">
+            <Input value={otherIssuer} onChange={(e) => setOtherIssuer(e.target.value)} placeholder="Bank Mega" />
+          </Field>
+        )}
+        {isCard && (
+          <Field label="Last 4 digits" hint="Optional. Tells two cards on one statement apart.">
+            <Input value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="1467" />
+          </Field>
+        )}
         <Field label="Currency">
           <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {CURRENCIES.map((c) => (

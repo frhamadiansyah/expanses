@@ -32,6 +32,7 @@ import draftTransactionTables from '../migrations/0030_draft_transactions.sql?ra
 import memberLevels from '../migrations/0031_member_levels.sql?raw';
 import categoryChoice from '../migrations/0032_category_choice.sql?raw';
 import cycleFloor from '../migrations/0033_cycle_floor.sql?raw';
+import cardIdentity from '../migrations/0034_card_identity.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -74,6 +75,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 31, name: 'member_levels', sql: memberLevels },
   { version: 32, name: 'category_choice', sql: categoryChoice },
   { version: 33, name: 'cycle_floor', sql: cycleFloor },
+  { version: 34, name: 'card_identity', sql: cardIdentity },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

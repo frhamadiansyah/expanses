@@ -4,6 +4,7 @@ import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { cardIdentity } from '../schema-cards';
 import { cardTerms, catalogCategoryChoices, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 import { categoryIdsByKeyTx } from './categories';
 import { type RewardProgramRow, saveCycleBonusTx, saveEarnRuleTx, saveRedemptionOptionTx, saveTransferPartnerTx } from './points';
@@ -169,6 +170,12 @@ export function applyCatalogEntry(
       .from(accounts)
       .where(and(eq(accounts.id, input.cardAccountId), eq(accounts.workspaceId, ws.workspaceId)));
     if (card?.subtype !== 'credit_card') throw new CatalogError('Account is not a credit card in this workspace');
+
+    // The entry knows which bank issued it, so applying one fills the bank in rather than asking.
+    await tx
+      .insert(cardIdentity)
+      .values({ accountId: input.cardAccountId, workspaceId: ws.workspaceId, issuer: input.entry.bank })
+      .onConflictDoUpdate({ target: cardIdentity.accountId, set: { issuer: input.entry.bank } });
 
     let [program]: (RewardProgramRow | undefined)[] = await tx
       .select()
