@@ -1,6 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
 
-const TODAY = new Date().toISOString().slice(0, 10);
+// Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00
+// in Jakarta it names yesterday and any window built from it excludes what was just recorded.
+const NOW = new Date();
+const TODAY = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(NOW.getDate()).padStart(2, '0')}`;
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -93,6 +96,20 @@ test('an event can be called done, and put back', async ({ page }) => {
   await expect(page.getByTestId('event-row')).toContainText('Lebaran');
   await expect(page.getByTestId('event-row')).not.toContainText('finished');
   await expect(page.getByRole('button', { name: /finished/ })).toHaveCount(0);
+});
+
+test('a set category can be given a card MCC, so its spending earns the right rate', async ({ page }) => {
+  await page.goto('/categories');
+  answerPrompts(page, ['4511']);
+
+  const holiday = page.getByTestId('set-Holiday');
+  await expect(holiday.getByText('No card MCC').first()).toBeVisible();
+  await holiday.getByRole('button', { name: 'Card MCC for Flights' }).click();
+  await expect(holiday).toContainText('MCC 4511 (yours)');
+
+  // Clearing puts it back to having none, the same as the monthly categories behave.
+  await holiday.getByRole('button', { name: 'Reset card MCC for Flights' }).click();
+  await expect(holiday).not.toContainText('MCC 4511');
 });
 
 test('an event records its spending in its own categories, from its own page', async ({ page }) => {

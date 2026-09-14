@@ -1,6 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
 
-const TODAY = new Date().toISOString().slice(0, 10);
+// Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00
+// in Jakarta it names yesterday and any window built from it excludes what was just recorded.
+const NOW = new Date();
+const TODAY = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(NOW.getDate()).padStart(2, '0')}`;
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());

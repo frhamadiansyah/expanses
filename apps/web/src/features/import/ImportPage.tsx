@@ -1,5 +1,5 @@
 import { type CsvDateFormat, type CsvMapping, type CsvRow, detectDelimiter, formatMinor, mapCsvRows, parseCsv } from '@expanses/core';
-import { existingExternalRefs, importRows } from '@expanses/db';
+import { captureDrafts, existingExternalRefs, importRows } from '@expanses/db';
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -55,8 +55,9 @@ export function ImportPage() {
   const account = all.find((a) => a.id === accountId);
   const currency = account?.currency ?? ws.baseCurrency;
   const mapped = useMemo(() => (mapping ? mapCsvRows(table, mapping, currency, accountId) : { rows: [], errors: [] }), [table, mapping, currency, accountId]);
-  const otherExpense = all.find((a) => a.kind === 'expense' && a.name === 'Other Expense')?.id ?? '';
-  const otherIncome = all.find((a) => a.kind === 'income' && a.name === 'Other Income')?.id ?? '';
+  // Matched on key, not name: renaming Other Expense to Miscellaneous once left every row defaulting to Skip.
+  const otherExpense = all.find((a) => a.systemKey === 'miscellaneous')?.id ?? '';
+  const otherIncome = all.find((a) => a.systemKey === 'income.other')?.id ?? '';
   const categoryFor = (row: CsvRow) => overrides[row.externalRef] ?? (row.amountMinor > 0 ? otherExpense : account?.subtype === 'credit_card' ? '' : otherIncome);
 
   useEffect(() => {
@@ -100,6 +101,47 @@ export function ImportPage() {
   );
 
   const toImport = mapped.rows.filter((r) => !duplicates.has(r.externalRef) && categoryFor(r));
+  const toReview = mapped.rows.filter((r) => !duplicates.has(r.externalRef));
+
+  /**
+   * Sends the mapped rows to the review queue instead of the ledger.
+   *
+   * The same rows, stopped one step earlier: nothing is recorded until each is confirmed. A row whose
+   * category could not be guessed comes along without one, which is a question to answer in the queue
+   * rather than a reason to drop it here.
+   */
+  async function onSendToReview() {
+    if (!account) return;
+    setError(null);
+    setBusy(true);
+    try {
+      if (toReview.length === 0) throw new Error('Nothing to send: every row has already been imported.');
+      const outcome = await captureDrafts(
+        database,
+        ws,
+        toReview.map((r) => ({
+          source: 'csv' as const,
+          occurredOn: r.occurredOn,
+          description: r.description,
+          amountMinor: r.amountMinor,
+          currency,
+          accountId: account.id,
+          categoryAccountId: categoryFor(r) || null,
+          externalRef: r.externalRef,
+          // No per-row payload for a CSV: the file is what the source said, and it is not retained.
+          rawPayload: null,
+        })),
+      );
+      setResult(`Sent ${outcome.captured} rows to Review${outcome.skipped > 0 ? `, ${outcome.skipped} already captured` : ''}. Nothing is recorded until you confirm it there.`);
+      setTable([]);
+      setMapping(null);
+      await invalidate();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onImport() {
     if (!account) return;
@@ -210,9 +252,14 @@ export function ImportPage() {
                 {mapped.rows.length} rows · {duplicates.size} already imported · {mapped.errors.length} unreadable
                 {account.subtype === 'credit_card' && ' · Card payments default to Skip — record them as transfers from your bank.'}
               </p>
-              <Button onClick={() => void onImport()} disabled={busy || toImport.length === 0}>
-                Import {toImport.length} rows
-              </Button>
+              <span className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={() => void onSendToReview()} disabled={busy || toReview.length === 0}>
+                  Send {toReview.length} to review
+                </Button>
+                <Button onClick={() => void onImport()} disabled={busy || toImport.length === 0}>
+                  Import {toImport.length} rows
+                </Button>
+              </span>
             </div>
             {mapped.errors.length > 0 && (
               <ul className="mb-2 text-xs text-red-700">

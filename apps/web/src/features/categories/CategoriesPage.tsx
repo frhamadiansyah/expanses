@@ -177,6 +177,29 @@ export function CategoriesPage() {
                     {inSet.map((category) => (
                       <li key={category.id} className="flex items-center gap-2 py-1.5 pl-6">
                         <span className="flex-1">{category.name}</span>
+                        {(() => {
+                          // A set category has no key and no parent, so an MCC here is always one you set.
+                          const card = categoryMcc(category, allCategories, overrides.data ?? {});
+                          return (
+                            <>
+                              <span className="tabular text-xs text-slate-500" title={card.mcc ? (mccName(card.mcc) ?? undefined) : undefined}>
+                                {card.mcc ? `MCC ${card.mcc} (yours)` : 'No card MCC'}
+                              </span>
+                              <Button variant="ghost" onClick={() => changeMcc(category, card.mcc)} aria-label={`Card MCC for ${category.name}`}>
+                                MCC
+                              </Button>
+                              {card.mcc !== null && (
+                                <Button
+                                  variant="ghost"
+                                  onClick={() => void run(() => clearCategoryMcc(database, ws, category.id))}
+                                  aria-label={`Reset card MCC for ${category.name}`}
+                                >
+                                  Reset
+                                </Button>
+                              )}
+                            </>
+                          );
+                        })()}
                         <Button variant="ghost" onClick={() => rename(category)} aria-label={`Rename ${category.name}`}>
                           Rename
                         </Button>

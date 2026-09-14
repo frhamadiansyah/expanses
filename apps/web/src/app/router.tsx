@@ -6,6 +6,7 @@ import { EventsPage } from '../features/events/EventsPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
 import { CalculatorsPage } from '../features/calculators/CalculatorsPage';
 import { ImportPage } from '../features/import/ImportPage';
+import { ReviewPage } from '../features/review/ReviewPage';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardsPage } from '../features/cards/CardsPage';
 import { RecommendPage } from '../features/cards/RecommendPage';
@@ -64,6 +65,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/tax-report', component: CoretaxPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
 ]);
 
