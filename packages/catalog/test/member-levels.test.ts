@@ -516,8 +516,10 @@ describe('Mandiri World Prioritas conversion', () => {
       convertPoints(points, { points: kf.points, partnerUnits: kf.partnerUnits, incrementPoints: kf.incrementPoints, minimumPoints: kf.minimumPoints });
     expect(at(9_999)).toBe(0);
     expect(at(10_000)).toBe(10_000);
-    // A floor, not a step: past 10.000 the trailing 5.000 converts rather than waiting for the next 10.000.
+    // A floor, not a step: past 10.000 every 1.000 is its own conversion.
+    expect([at(11_000), at(12_000), at(13_000)]).toEqual([11_000, 12_000, 13_000]);
     expect(at(15_000)).toBe(15_000);
+    // The 1.000 step is still a step, so the trailing 999 waits.
     expect(at(15_999)).toBe(15_000);
   });
 });
