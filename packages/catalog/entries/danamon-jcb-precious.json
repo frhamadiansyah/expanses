@@ -1,0 +1,336 @@
+{
+  "id": "danamon-jcb-precious",
+  "entryVersion": 4,
+  "bank": "Bank Danamon",
+  "name": "Kartu Kredit Danamon JCB Precious",
+  "network": "jcb",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "D-Point",
+    "cycleAnchor": "statement",
+    "memberLevels": [
+      {
+        "key": "dana-kelolaan-50",
+        "name": "Dana kelolaan Rp 50 juta or more",
+        "condition": "total funds under management at Danamon in the previous month of Rp 50.000.000 or more"
+      },
+      {
+        "key": "dana-kelolaan-under-50",
+        "name": "Dana kelolaan under Rp 50 juta",
+        "condition": "total funds under management at Danamon in the previous month below Rp 50.000.000"
+      }
+    ]
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 800000,
+      "supplementaryFeeMinor": 400000
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": "2026-05-31",
+      "rules": [
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 2500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "protection.health_insurance"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "qris",
+              "cicilan",
+              "installment"
+            ]
+          }
+        },
+        {
+          "key": "uplift-50",
+          "name": "3x D-Point above Rp 1.500.000 a month",
+          "rateNum": 2,
+          "rateDen": 2500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": true,
+          "match": {
+            "excludeCategoryKeys": [
+              "protection.health_insurance"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "qris",
+              "cicilan",
+              "installment"
+            ]
+          },
+          "minCycleSpendMinor": 1500000,
+          "capSpendMinor": 300000000,
+          "capSpendAtCreditLimit": true,
+          "memberLevels": [
+            "dana-kelolaan-50"
+          ]
+        },
+        {
+          "key": "uplift-under-50",
+          "name": "2,5x D-Point above Rp 1.500.000 a month",
+          "rateNum": 1.5,
+          "rateDen": 2500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": true,
+          "match": {
+            "excludeCategoryKeys": [
+              "protection.health_insurance"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "qris",
+              "cicilan",
+              "installment"
+            ]
+          },
+          "minCycleSpendMinor": 1500000,
+          "capSpendMinor": 300000000,
+          "capSpendAtCreditLimit": true,
+          "memberLevels": [
+            "dana-kelolaan-under-50"
+          ]
+        }
+      ],
+      "cycleBonuses": [
+        {
+          "key": "monthly-10m",
+          "name": "8.000 D-Point at Rp 10.000.000 a month",
+          "tiers": [
+            {
+              "minSpendMinor": 10000000,
+              "bonus": 8000
+            }
+          ],
+          "match": {
+            "excludeCategoryKeys": [
+              "protection.health_insurance"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "qris",
+              "cicilan",
+              "installment"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 2500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "business",
+              "government_taxes",
+              "protection.health_insurance",
+              "transportation.fuel_cost",
+              "utilities"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "qris",
+              "cicilan",
+              "installment"
+            ],
+            "excludeMccs": [
+              "5541-5542"
+            ]
+          }
+        },
+        {
+          "key": "uplift-50",
+          "name": "3x D-Point above Rp 1.500.000 a month",
+          "rateNum": 2,
+          "rateDen": 2500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": true,
+          "match": {
+            "excludeCategoryKeys": [
+              "business",
+              "government_taxes",
+              "protection.health_insurance",
+              "transportation.fuel_cost",
+              "utilities"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "qris",
+              "cicilan",
+              "installment"
+            ],
+            "excludeMccs": [
+              "5541-5542"
+            ]
+          },
+          "minCycleSpendMinor": 1500000,
+          "capSpendMinor": 300000000,
+          "capSpendAtCreditLimit": true,
+          "memberLevels": [
+            "dana-kelolaan-50"
+          ]
+        },
+        {
+          "key": "uplift-under-50",
+          "name": "2,5x D-Point above Rp 1.500.000 a month",
+          "rateNum": 1.5,
+          "rateDen": 2500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": true,
+          "match": {
+            "excludeCategoryKeys": [
+              "business",
+              "government_taxes",
+              "protection.health_insurance",
+              "transportation.fuel_cost",
+              "utilities"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "qris",
+              "cicilan",
+              "installment"
+            ],
+            "excludeMccs": [
+              "5541-5542"
+            ]
+          },
+          "minCycleSpendMinor": 1500000,
+          "capSpendMinor": 300000000,
+          "capSpendAtCreditLimit": true,
+          "memberLevels": [
+            "dana-kelolaan-under-50"
+          ]
+        }
+      ],
+      "cycleBonuses": [
+        {
+          "key": "monthly-10m",
+          "name": "8.000 D-Point at Rp 10.000.000 a month",
+          "tiers": [
+            {
+              "minSpendMinor": 10000000,
+              "bonus": 8000
+            }
+          ],
+          "match": {
+            "excludeCategoryKeys": [
+              "business",
+              "government_taxes",
+              "protection.health_insurance",
+              "transportation.fuel_cost",
+              "utilities"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "qris",
+              "cicilan",
+              "installment"
+            ],
+            "excludeMccs": [
+              "5541-5542"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "transferPartners": [],
+  "cashValue": null,
+  "welcomeBonus": "From 1 March 2026: Rp 1.000.000 cashback after Rp 25.000.000 of transactions within 2 months of approval, plus registering at least one kind of bill payment.",
+  "notes": [
+    "The rate follows total dana kelolaan at Danamon in the previous month: Rp 50.000.000 or more earns 3x D-Point per Rp 2.500, below it 2,5x. Both need the month's accumulated retail transactions to reach Rp 1.500.000, and the uplift then applies across the whole month, not only the spend above the floor.",
+    "The RIPLAY states the 3x and 2,5x multiples but never the figure they multiply. PinterPoin gives the regular earning as 1 D-Point per Rp 2.500, which is what the entry uses and what the card earns below the Rp 1.500.000 floor.",
+    "The uplift is capped at whichever is smaller: retail transactions of one times the card limit, including a temporary limit, or Rp 300.000.000 a month. The Rp 300.000.000 ceiling is in the entry; the card limit is read from the card's own terms when the entry is applied, so set the credit limit before relying on the estimate.",
+    "From 1 June 2026 Danamon stopped paying D-Point on utility bills, taxes, petrol stations and invoicing. That is the second terms period; cycles before it keep earning on those categories. The change is from PinterPoin, not from the RIPLAY, which predates it — and the exact scope is a reading: utilities, government and taxes, fuel and business invoicing by category, with MCC 5541 and 5542 excluded as well for petrol.",
+    "8.000 D-Point once a month at Rp 10.000.000 of accumulated transactions, with no multiples for spending more.",
+    "Earning excludes insurance payments, cash advance, money transfer, balance conversion, QRIS funded by this card, any transaction converted to an instalment together with the monthly instalment charges, and cancelled transactions. Insurance is matched by category; the rest are matched on the words an issuer usually puts on the statement line, so a differently worded description will be missed and overestimated.",
+    "The card requires total dana kelolaan of at least Rp 50.000.000 to be issued, so the lower level applies to a holder whose balance has since fallen rather than to a new applicant.",
+    "Not modelled: the 5% cashback up to Rp 100.000 a month on routine bill payments, which needs at least five retail transactions of Rp 100.000 or more, and airport lounge access. Neither pays D-Point.",
+    "The card limit runs from Rp 15.000.000 to Rp 1.000.000.000.",
+    "The terms come from Danamon's own RIPLAY, the 26 August 2025 version, which gives no start date, so the first period runs open until the 1 June 2026 change. Secondary reporting also describes a later clarification that walks some of these changes back; it could not be read here, so if it softened the June exclusions this entry takes away more than it should.",
+    "Rounding is per full increment of Rp 2.500, confirmed by the cardholder: the remainder of a purchase earns nothing, so Rp 6.000 earns 2 D-Point at the base rate, not 2,4."
+  ],
+  "sources": [
+    {
+      "title": "RIPLAY Umum — Kartu Kredit Danamon JCB Precious (PT Bank Danamon Indonesia Tbk, 26 August 2025)",
+      "url": "https://www.danamon.co.id/id/Personal/KartuTransaksi/Kartu-Kredit/-/media/ALL-CONTENT-PERSONAL-BANKING/Kartu-Kredit/pdf/26082025/3-RIPLAY-Kartu-Danamon-JCB.pdf"
+    },
+    {
+      "title": "PinterPoin — Danamon menghilangkan perolehan poin dari transaksi utility, pajak, SPBU dan invoicing efektif 1 Juni 2026",
+      "url": "https://pinterpoin.com/rip-danamon-menghilangkan-perolehan-poin-dari-transaksi-utility-pajak-spbu-dan-invoicing-efektif-1-juni-2026/"
+    },
+    {
+      "title": "Bank Danamon — Kartu Kredit Danamon JCB Precious",
+      "url": "https://www.danamon.co.id/Personal/KartuTransaksi/Kartu-Kredit/1-Menit-Bisa-Kartu-Kredit-Danamon-JCB-Precious"
+    },
+    {
+      "title": "PinterPoin — Review Kartu Kredit Danamon JCB Precious",
+      "url": "https://pinterpoin.com/review-kartu-kredit-danamon-jcb-precious/"
+    },
+    {
+      "title": "PinterPoin — Perubahan penawaran welcome bonus kartu kredit Danamon di 2026",
+      "url": "https://pinterpoin.com/welcome-bonus-kartu-kredit-danamon-2026/"
+    }
+  ],
+  "verifiedOn": "2026-09-14"
+}

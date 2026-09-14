@@ -3,6 +3,7 @@ import type { CatalogEntry } from '@expanses/catalog';
 import {
   applyCatalogEntry,
   archiveCycleBonus,
+  setCatalogCategoryChoice,
   archiveEarnRule,
   createProgram,
   deleteRedemptionOption,
@@ -25,6 +26,7 @@ import { BonusForm } from './BonusForm';
 import { BonusProgress } from './BonusProgress';
 import { CatalogPanel } from './CatalogPanel';
 import { CatalogPicker } from './CatalogPicker';
+import { ruleQualifiers } from './rule-summary';
 import { describeSuggestion } from './hint-text';
 import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { activeDuring } from './catalog-panel';
@@ -269,12 +271,19 @@ export function CardDetailPage() {
     // Some issuers close every cardholder's statement on the same day.
     if (!hasTerms && entry.program.fixedStatementDay && !statementDay) setStatementDay(String(entry.program.fixedStatementDay));
   };
-  const applyEntry = (entry: CatalogEntry) => {
+  const applyEntry = (entry: CatalogEntry, memberLevel: string | null = null, categoryOption: string | null = null) => {
     const manual = cp.rules.length;
     if (manual > 0 && !window.confirm(`Replace your ${manual} earn rule${manual === 1 ? '' : 's'} with the catalogue terms for ${entry.name}?`)) return;
     void run(async () => {
-      await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today, replaceManual: manual > 0 });
+      const { programId } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today, replaceManual: manual > 0, memberLevel });
+      // The first pick runs from the start of the card, so every cycle already recorded is covered by it.
+      if (categoryOption) await setCatalogCategoryChoice(database, ws, programId, categoryOption, today, today);
       setBrowsingCatalog(false);
+    }).then((applied) => {
+      // The catalogue writes the published annual fee onto the card terms, so the form has to read them again —
+      // after run() has awaited the refetch, or it would reload the terms as they were before applying. Without
+      // this the fee box stays empty, and saving terms would write that emptiness back over the fee.
+      if (applied) setLoadedTermsFor(null);
     });
   };
 
@@ -559,8 +568,10 @@ export function CardDetailPage() {
                         {rule.validFrom && ` · from ${rule.validFrom}`}
                         {rule.validTo && ` · until ${rule.validTo}`}
                         {rule.capSpendMinor !== null && ` · cap ${formatMinor(rule.capSpendMinor, currency)}/cycle`}
-                        {rule.match.categoryIds?.length ? ` · ${rule.match.categoryIds.map((id) => all.find((a) => a.id === id)?.name ?? '?').join(', ')}` : ' · all categories'}
-                        {rule.match.merchantPatterns?.length ? ` · merchants: ${rule.match.merchantPatterns.join(', ')}` : ''}
+                        {(() => {
+                          const parts = ruleQualifiers(rule, (id) => all.find((a) => a.id === id)?.name ?? '?', (minor) => formatMinor(minor, currency));
+                          return parts.length ? parts.map((part) => ` · ${part}`).join('') : ' · all categories';
+                        })()}
                       </div>
                     </div>
                     <Button variant="ghost" onClick={() => setEditingRule(rule)}>

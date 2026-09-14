@@ -19,6 +19,8 @@ export const rewardPrograms = sqliteTable('reward_programs', {
   catalogEntryId: text('catalog_entry_id'),
   catalogEntryVersion: integer('catalog_entry_version'),
   catalogStatus: text('catalog_status', { enum: ['linked', 'customised'] }),
+  /** Which published member level the entry was applied at, when it publishes any. */
+  catalogMemberLevel: text('catalog_member_level'),
   catalogDismissedVersion: integer('catalog_dismissed_version'),
   /** JSON of the catalogue entry as applied. */
   catalogSnapshotJson: text('catalog_snapshot_json'),
@@ -43,6 +45,8 @@ export const earnRules = sqliteTable('earn_rules', {
   capSpendMinor: integer('cap_spend_minor'),
   capPoints: integer('cap_points'),
   minTransactionMinor: integer('min_transaction_minor'),
+  /** Spend the whole cycle must reach, net of refunds, before this rule earns at all. */
+  minCycleSpendMinor: integer('min_cycle_spend_minor'),
   validFrom: text('valid_from'),
   validTo: text('valid_to'),
   catalogKey: text('catalog_key'),
@@ -149,5 +153,16 @@ export const pointSnapshots = sqliteTable('point_snapshots', {
   programId: text('program_id').notNull(),
   balance: real('balance').notNull(),
   observedOn: text('observed_on').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+/** Stretches of time the holder ran one option of a program's published category choice. */
+export const catalogCategoryChoices = sqliteTable('catalog_category_choices', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  programId: text('program_id').notNull(),
+  optionKey: text('option_key').notNull(),
+  validFrom: text('valid_from'),
+  validTo: text('valid_to'),
   createdAt: text('created_at').notNull(),
 });

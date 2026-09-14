@@ -1,10 +1,10 @@
-import { type CatalogEntry, planCatalogApply } from '@expanses/catalog';
+import { type AppliedCategoryChoice, type CatalogEntry, planCatalogApply } from '@expanses/catalog';
 import { uuidv7 } from '@expanses/core';
 import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
-import { cardTerms, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
+import { cardTerms, catalogCategoryChoices, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
 import { categoryIdsByKeyTx } from './categories';
 import { type RewardProgramRow, saveCycleBonusTx, saveEarnRuleTx, saveRedemptionOptionTx, saveTransferPartnerTx } from './points';
 
@@ -22,11 +22,15 @@ export interface CatalogState {
   dismissedVersion: number | null;
   /** The entry as last applied, for diffing against the bundled entry. */
   snapshot: CatalogEntry | null;
+  /** The published member level this program was applied at, when the entry publishes any. */
+  memberLevel: string | null;
 }
 
 const CASH_VALUE_KEY = 'cash-value';
 const FROM_CATALOG = { fromCatalog: true };
 const now = () => new Date().toISOString();
+/** The day before an ISO date, so one stretch ends exactly where the next begins. */
+const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
 async function programById(tx: Db, ws: WorkspaceContext, programId: string): Promise<RewardProgramRow> {
   const [program] = await tx
@@ -65,9 +69,29 @@ async function clearRows(tx: Db, ws: WorkspaceContext, programId: string, manual
 
 /** Writes the entry's planned rows and catalogue fields onto the program. Returns category keys that could not be mapped. */
 /** `setCrediting` is true only when applying or resetting: crediting is the user's checking preference once linked. */
-async function writePlan(tx: Db, ws: WorkspaceContext, program: RewardProgramRow, entry: CatalogEntry, today: string, status: 'linked' | 'customised', setCrediting = false) {
-  const plan = planCatalogApply(entry, await categoryIdsByKeyTx(tx, ws), today);
-  for (const { catalogKey, ...rule } of plan.rules) await saveEarnRuleTx(tx, ws, program.id, { ...rule, catalogKey }, FROM_CATALOG);
+async function writePlan(
+  tx: Db,
+  ws: WorkspaceContext,
+  program: RewardProgramRow,
+  entry: CatalogEntry,
+  today: string,
+  status: 'linked' | 'customised',
+  setCrediting = false,
+  memberLevel: string | null = null,
+) {
+  const plan = planCatalogApply(entry, await categoryIdsByKeyTx(tx, ws), today, memberLevel, await choicesFor(tx, ws, program.id));
+  // A rule capped at "one times your limit" needs the card's own terms; the smaller of that and any published
+  // cap wins. With no limit recorded, the published cap stands alone rather than the rule going uncapped.
+  const [terms] = await tx
+    .select({ creditLimitMinor: cardTerms.creditLimitMinor })
+    .from(cardTerms)
+    .where(and(eq(cardTerms.accountId, program.cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+  const creditLimitMinor = terms?.creditLimitMinor ?? null;
+  for (const { catalogKey, capSpendAtCreditLimit, ...rule } of plan.rules) {
+    const caps = [rule.capSpendMinor, capSpendAtCreditLimit ? creditLimitMinor : null].filter((cap): cap is number => cap !== null);
+    const capSpendMinor = caps.length ? Math.min(...caps) : null;
+    await saveEarnRuleTx(tx, ws, program.id, { ...rule, capSpendMinor, catalogKey }, FROM_CATALOG);
+  }
   for (const { catalogKey, ...bonus } of plan.bonuses) await saveCycleBonusTx(tx, ws, program.id, { ...bonus, catalogKey }, FROM_CATALOG);
   for (const { catalogKey, ...partner } of plan.transferPartners) await saveTransferPartnerTx(tx, ws, program.id, { ...partner, catalogKey }, FROM_CATALOG);
   if (plan.cashValue) {
@@ -103,6 +127,7 @@ async function writePlan(tx: Db, ws: WorkspaceContext, program: RewardProgramRow
       catalogEntryVersion: entry.entryVersion,
       catalogStatus: status,
       catalogDismissedVersion: null,
+      catalogMemberLevel: plan.requiresMemberLevel ? memberLevel : null,
       catalogSnapshotJson: JSON.stringify(entry),
       ...(setCrediting ? { crediting: plan.crediting } : {}),
     })
@@ -118,6 +143,7 @@ export async function getCatalogState(database: Database, ws: WorkspaceContext, 
     status: program.catalogStatus,
     dismissedVersion: program.catalogDismissedVersion,
     snapshot: program.catalogSnapshotJson ? (JSON.parse(program.catalogSnapshotJson) as CatalogEntry) : null,
+    memberLevel: program.catalogMemberLevel,
   };
 }
 
@@ -129,9 +155,15 @@ export async function getCatalogState(database: Database, ws: WorkspaceContext, 
 export function applyCatalogEntry(
   database: Database,
   ws: WorkspaceContext,
-  input: { cardAccountId: string; entry: CatalogEntry; today: string; replaceManual: boolean },
+  input: { cardAccountId: string; entry: CatalogEntry; today: string; replaceManual: boolean; memberLevel?: string | null },
 ): Promise<{ programId: string; unmappedKeys: string[] }> {
+  const levels = input.entry.program.memberLevels ?? [];
+  const memberLevel = input.memberLevel ?? null;
   return database.transaction(async (tx) => {
+    // Rejects like every other refusal here, rather than throwing before the promise exists.
+    if (levels.length > 0 && !levels.some((level) => level.key === memberLevel)) {
+      throw new CatalogError(`This card earns by ${input.entry.program.name} level. Choose the level you are on before applying it.`);
+    }
     const [card] = await tx
       .select({ subtype: accounts.subtype })
       .from(accounts)
@@ -156,6 +188,7 @@ export function applyCatalogEntry(
         catalogEntryVersion: null,
         catalogStatus: null,
         catalogDismissedVersion: null,
+        catalogMemberLevel: null,
         catalogSnapshotJson: null,
         crediting: input.entry.program.crediting ?? 'per_statement',
         expiryPolicy: 'none',
@@ -174,7 +207,7 @@ export function applyCatalogEntry(
     }
 
     await clearRows(tx, ws, program.id, input.replaceManual);
-    const unmappedKeys = await writePlan(tx, ws, program, input.entry, input.today, 'linked', true);
+    const unmappedKeys = await writePlan(tx, ws, program, input.entry, input.today, 'linked', true, memberLevel);
     return { programId: program.id, unmappedKeys };
   });
 }
@@ -192,7 +225,7 @@ export async function syncLinkedPrograms(database: Database, ws: WorkspaceContex
       const entry = catalog.find((candidate) => candidate.id === program.catalogEntryId);
       if (program.catalogStatus !== 'linked' || !entry || entry.entryVersion <= (program.catalogEntryVersion ?? 0)) return false;
       await clearRows(tx, ws, program.id, false);
-      await writePlan(tx, ws, program, entry, today, 'linked');
+      await writePlan(tx, ws, program, entry, today, 'linked', false, program.catalogMemberLevel);
       return true;
     });
     if (didSync) synced.push(id);
@@ -206,7 +239,7 @@ export function applyCatalogUpdate(database: Database, ws: WorkspaceContext, pro
     const program = await programById(tx, ws, programId);
     if (program.catalogEntryId !== entry.id) throw new CatalogError('This program is not linked to that catalogue entry');
     await clearRows(tx, ws, program.id, false);
-    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked');
+    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked', false, program.catalogMemberLevel);
   });
 }
 
@@ -223,6 +256,79 @@ export function resetToCatalog(database: Database, ws: WorkspaceContext, program
     const program = await programById(tx, ws, programId);
     if (program.catalogEntryId !== entry.id) throw new CatalogError('This program is not linked to that catalogue entry');
     await clearRows(tx, ws, program.id, true);
-    await writePlan(tx, ws, program, entry, today, 'linked', true);
+    await writePlan(tx, ws, program, entry, today, 'linked', true, program.catalogMemberLevel);
+  });
+}
+
+/**
+ * Moves a linked program to another published member level — the holder's standing with the bank changed.
+ * Re-applies the entry at that level, so the rules and transfer ratios follow.
+ */
+export function setCatalogMemberLevel(database: Database, ws: WorkspaceContext, programId: string, memberLevel: string, today: string): Promise<void> {
+  return database.transaction(async (tx) => {
+    const program = await programById(tx, ws, programId);
+    const entry = program.catalogSnapshotJson ? (JSON.parse(program.catalogSnapshotJson) as CatalogEntry) : null;
+    if (!entry) throw new CatalogError('This program is not linked to a catalogue entry');
+    const levels = entry.program.memberLevels ?? [];
+    if (!levels.some((level) => level.key === memberLevel)) throw new CatalogError(`"${memberLevel}" is not a level this card publishes`);
+    await clearRows(tx, ws, program.id, false);
+    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked', false, memberLevel);
+  });
+}
+
+/** Every stretch the holder has run an option on this program, oldest first. */
+async function choicesFor(tx: Db, ws: WorkspaceContext, programId: string): Promise<AppliedCategoryChoice[]> {
+  const rows = await tx
+    .select()
+    .from(catalogCategoryChoices)
+    .where(and(eq(catalogCategoryChoices.programId, programId), eq(catalogCategoryChoices.workspaceId, ws.workspaceId)))
+    .orderBy(asc(catalogCategoryChoices.createdAt));
+  return rows.map((row) => ({ optionKey: row.optionKey, from: row.validFrom, to: row.validTo }));
+}
+
+/** The options the holder has run, for a screen to show the current one and what came before. */
+export async function listCategoryChoices(database: Database, ws: WorkspaceContext, programId: string): Promise<AppliedCategoryChoice[]> {
+  return choicesFor(database.db as unknown as Db, ws, programId);
+}
+
+/**
+ * Starts running an option of the program's published category choice from `from`. The stretch running before it
+ * is closed the day before, so a cycle that has already closed keeps the category that was running while it ran.
+ */
+export function setCatalogCategoryChoice(
+  database: Database,
+  ws: WorkspaceContext,
+  programId: string,
+  optionKey: string,
+  from: string,
+  today: string,
+): Promise<void> {
+  return database.transaction(async (tx) => {
+    const program = await programById(tx, ws, programId);
+    const entry = program.catalogSnapshotJson ? (JSON.parse(program.catalogSnapshotJson) as CatalogEntry) : null;
+    const choice = entry?.program.categoryChoice;
+    if (!choice) throw new CatalogError('This card has no category to choose');
+    if (!choice.options.some((option) => option.key === optionKey)) throw new CatalogError(`"${optionKey}" is not an option this card offers`);
+
+    const open = await tx
+      .select()
+      .from(catalogCategoryChoices)
+      .where(and(eq(catalogCategoryChoices.programId, programId), eq(catalogCategoryChoices.workspaceId, ws.workspaceId), isNull(catalogCategoryChoices.validTo)));
+    for (const row of open) {
+      if (row.validFrom !== null && row.validFrom >= from) throw new CatalogError('That date is not after the category already running');
+      await tx.update(catalogCategoryChoices).set({ validTo: dayBefore(from) }).where(eq(catalogCategoryChoices.id, row.id));
+    }
+    await tx.insert(catalogCategoryChoices).values({
+      id: uuidv7(),
+      workspaceId: ws.workspaceId,
+      programId,
+      optionKey,
+      validFrom: open.length === 0 ? null : from,
+      validTo: null,
+      createdAt: now(),
+    });
+
+    await clearRows(tx, ws, program.id, false);
+    if (entry) await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked', false, program.catalogMemberLevel);
   });
 }

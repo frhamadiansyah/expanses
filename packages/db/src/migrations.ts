@@ -29,6 +29,9 @@ import categoryRevamp from '../migrations/0027_category_revamp.sql?raw';
 import categorySetTables from '../migrations/0028_category_sets.sql?raw';
 import eventFinished from '../migrations/0029_event_finished.sql?raw';
 import draftTransactionTables from '../migrations/0030_draft_transactions.sql?raw';
+import memberLevels from '../migrations/0031_member_levels.sql?raw';
+import categoryChoice from '../migrations/0032_category_choice.sql?raw';
+import cycleFloor from '../migrations/0033_cycle_floor.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -68,6 +71,9 @@ export const MIGRATIONS: Migration[] = [
   { version: 28, name: 'category_sets', sql: categorySetTables },
   { version: 29, name: 'event_finished', sql: eventFinished },
   { version: 30, name: 'draft_transactions', sql: draftTransactionTables },
+  { version: 31, name: 'member_levels', sql: memberLevels },
+  { version: 32, name: 'category_choice', sql: categoryChoice },
+  { version: 33, name: 'cycle_floor', sql: cycleFloor },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

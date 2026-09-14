@@ -1,0 +1,404 @@
+{
+  "id": "jenius-kartu-kredit",
+  "entryVersion": 8,
+  "bank": "Bank SMBC Indonesia",
+  "name": "Kartu Kredit Jenius",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "Yay Points",
+    "cycleAnchor": "statement",
+    "memberLevels": [
+      {
+        "key": "grow-plus",
+        "name": "Grow or above",
+        "condition": "Green Club Grow, Nurture or Bloom, including Sinaya Prioritas — average monthly balance Rp 10.000.000 or more"
+      },
+      {
+        "key": "seed-plant",
+        "name": "Seed or Plant",
+        "condition": "Green Club Seed or Plant — average monthly balance below Rp 10.000.000"
+      }
+    ],
+    "categoryChoice": {
+      "key": "double-yay",
+      "name": "Double Yay category",
+      "changeable": "once a month, after the statement is printed",
+      "options": [
+        {
+          "key": "beauty-fashion",
+          "name": "Beauty & Fashion",
+          "match": {
+            "mccs": [
+              "5311",
+              "5611",
+              "5621",
+              "5631",
+              "5641",
+              "5651",
+              "5655",
+              "5661",
+              "5691",
+              "5697",
+              "5699",
+              "5944",
+              "5948",
+              "5977",
+              "7230",
+              "7298"
+            ]
+          }
+        },
+        {
+          "key": "food-beverages",
+          "name": "Food & Beverages",
+          "match": {
+            "mccs": [
+              "5462",
+              "5499",
+              "5813-5814"
+            ]
+          }
+        },
+        {
+          "key": "travel-leisure",
+          "name": "Travel & Leisure",
+          "match": {
+            "mccs": [
+              "3000-3068",
+              "3071-3072",
+              "3075-3079",
+              "3081-3090",
+              "3094",
+              "3096-3100",
+              "3102-3103",
+              "3106",
+              "3110-3112",
+              "3115",
+              "3117-3118",
+              "3125-3127",
+              "3129-3133",
+              "3135-3138",
+              "3143-3146",
+              "3148",
+              "3151",
+              "3154",
+              "3156",
+              "3159",
+              "3161",
+              "3164-3165",
+              "3167",
+              "3170-3172",
+              "3174-3178",
+              "3180-3188",
+              "3190-3193",
+              "3196-3197",
+              "3200",
+              "3203-3204",
+              "3206",
+              "3211-3213",
+              "3215-3223",
+              "3226",
+              "3228-3229",
+              "3231",
+              "3233-3236",
+              "3238-3243",
+              "3245-3248",
+              "3251-3254",
+              "3256",
+              "3259-3263",
+              "3266-3267",
+              "3280",
+              "3282",
+              "3284-3287",
+              "3292-3299",
+              "3501-3815",
+              "3817-3825",
+              "4457",
+              "4511",
+              "4722",
+              "5309",
+              "5551",
+              "5561",
+              "7032-7033",
+              "7513",
+              "7519",
+              "7922",
+              "7929",
+              "7932-7933",
+              "7941",
+              "7991-7992",
+              "7994-7996",
+              "7998-7999"
+            ]
+          }
+        },
+        {
+          "key": "groceries",
+          "name": "Groceries & Gasoline",
+          "match": {
+            "mccs": [
+              "5411",
+              "5541-5542"
+            ]
+          }
+        }
+      ]
+    },
+    "crediting": "per_transaction"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 500000,
+      "supplementaryFeeMinor": null
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": "2026-07-31",
+      "rules": [
+        {
+          "key": "double-yay-abroad",
+          "name": "Double Yay abroad",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 5000,
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "origin": "foreign"
+          }
+        },
+        {
+          "key": "double-yay-category",
+          "name": "Double Yay category",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 5000,
+          "priority": 10,
+          "stackable": false,
+          "match": {},
+          "categoryChoice": "double-yay"
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "priority": 0,
+          "stackable": false,
+          "match": {}
+        }
+      ],
+      "cycleBonuses": []
+    },
+    {
+      "effectiveFrom": "2026-08-01",
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "double-yay-abroad-grow",
+          "name": "Double Yay abroad",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 5000,
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "origin": "foreign"
+          },
+          "memberLevels": [
+            "grow-plus"
+          ]
+        },
+        {
+          "key": "double-yay-category-grow",
+          "name": "Double Yay category",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 5000,
+          "priority": 10,
+          "stackable": false,
+          "match": {},
+          "categoryChoice": "double-yay",
+          "memberLevels": [
+            "grow-plus"
+          ]
+        },
+        {
+          "key": "base-grow",
+          "name": "Base",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "priority": 0,
+          "stackable": false,
+          "match": {},
+          "memberLevels": [
+            "grow-plus"
+          ]
+        },
+        {
+          "key": "double-yay-abroad-seed-plant",
+          "name": "Double Yay abroad",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 6000,
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "origin": "foreign"
+          },
+          "memberLevels": [
+            "seed-plant"
+          ]
+        },
+        {
+          "key": "double-yay-category-seed-plant",
+          "name": "Double Yay category",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 6000,
+          "priority": 10,
+          "stackable": false,
+          "match": {},
+          "categoryChoice": "double-yay",
+          "memberLevels": [
+            "seed-plant"
+          ]
+        },
+        {
+          "key": "base-seed-plant",
+          "name": "Base",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 12000,
+          "priority": 0,
+          "stackable": false,
+          "match": {},
+          "memberLevels": [
+            "seed-plant"
+          ]
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 40000,
+      "partnerUnits": 30000,
+      "incrementPoints": 40000,
+      "effectiveFrom": null,
+      "effectiveTo": "2026-07-31"
+    },
+    {
+      "key": "krisflyer-grow",
+      "program": "KrisFlyer",
+      "points": 40000,
+      "partnerUnits": 30000,
+      "incrementPoints": 40000,
+      "effectiveFrom": "2026-08-01",
+      "effectiveTo": null,
+      "memberLevels": [
+        "grow-plus"
+      ]
+    },
+    {
+      "key": "krisflyer-seed-plant",
+      "program": "KrisFlyer",
+      "points": 50000,
+      "partnerUnits": 30000,
+      "incrementPoints": 50000,
+      "effectiveFrom": "2026-08-01",
+      "effectiveTo": null,
+      "memberLevels": [
+        "seed-plant"
+      ]
+    },
+    {
+      "key": "airasia",
+      "program": "AirAsia rewards",
+      "points": 10000,
+      "partnerUnits": 10000,
+      "incrementPoints": 10000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "linkmiles",
+      "program": "LinkMiles",
+      "points": 15000,
+      "partnerUnits": 12500,
+      "incrementPoints": 15000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 25000,
+      "partnerUnits": 20000,
+      "incrementPoints": 25000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "traveloka",
+      "program": "Traveloka Points",
+      "points": 2500,
+      "partnerUnits": 100000,
+      "incrementPoints": 2500,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": null,
+  "welcomeBonus": null,
+  "notes": [
+    "From 1 August 2026 earning and KrisFlyer conversion follow the Jenius Club status set by average monthly balance: Grow and above keep the old terms, Seed and Plant earn less and convert worse.",
+    "Yay Points are shown against each transaction rather than only on the statement, so the app checks this card purchase by purchase.",
+    "Double Yay pays double on foreign transactions and on one category the holder picks from four. It replaces the base rate rather than adding to it: a Food & Beverages purchase in US dollars earns double once, not four times, so both rules sit above the base rule at the same priority. A change takes effect immediately, so one billing cycle can earn on the old category before the change and the new one after it.",
+    "Food & Beverages does not include MCC 5812, eating places and restaurants: the list gives only 5813 bars, 5814 fast food, 5462 bakeries and 5499 miscellaneous food stores. An ordinary restaurant therefore earns the base rate, which is worth checking against a statement before relying on it.",
+    "Travel & Leisure does not include MCC 7011, hotels and lodging: the list names hotel chains individually as 3501-3825, so a hotel booked through a merchant that presents 7011 earns the base rate.",
+    "The four Double Yay categories are Jenius's own Visa MCC lists, read from Kategori Double Yay: Travel & Leisure is 555 codes (airlines 3000-3299, hotel chains 3501-3825, car hire, tour operators, attractions), Beauty & Fashion 16, Food & Beverages 4, and Groceries & Gasoline 3. The fourth category is groceries and fuel together, not groceries alone.",
+    "Two Club statuses matter, and they are independent. The status when a purchase is made fixes the earn rate into the points — Rp 10.000 per Yay at Grow or above, Rp 12.000 at Seed or Plant, halved on Double Yay. The status when the points are converted fixes the ratio, and only KrisFlyer's changes with it. So points earned at Seed or Plant and converted at Grow cost Rp 8.000 a KrisFlyer mile on Double Yay, while the same points converted at Seed or Plant cost Rp 10.000. Both figures are right; they are different cells.",
+    "The five conversion ratios were read from the Jenius app by the cardholder: AirAsia rewards 10.000 Yay for 10.000, LinkMiles 15.000 for 12.500, GarudaMiles 25.000 for 20.000, KrisFlyer 40.000 for 30.000, and Traveloka Points 2.500 for 100.000. KrisFlyer is the only one that follows Club status — Seed and Plant need 50.000 Yay for the same 30.000 miles — and the cardholder confirms the other four are the same at every level, so only KrisFlyer is scoped by level.",
+    "From 1 August 2026 a purchase converted to a 0% instalment, including Split Pay 0% at a merchant or in the app, earns no Yay Points. An interest-bearing instalment still earns. Estimates cannot see instalment status, so a 0% instalment will be overestimated.",
+    "Conversion to KrisFlyer or GarudaMiles is limited to once a month, and capped at 30.000 KrisFlyer miles and 20.000 GarudaMiles a month. Neither limit is applied to estimates.",
+    "Yay Points can be forfeited when the card bill is more than 60 days late.",
+    "Rounding is per full increment, confirmed by the cardholder: a purchase earns on whole multiples of the stated amount and the remainder earns nothing, so Rp 7.000 at Rp 5.000 a Yay earns one Yay, not 1,4.",
+    "The annual fee is Rp 500.000 a year, given by the cardholder rather than taken from the sources. The supplementary card fee is not known.",
+    "What is confirmed and what is not. From Jenius's own Kategori Double Yay: the four categories, their MCC lists, and that the category may change once a month after the statement is printed. From the cardholder's own screens: the five conversion ratios, the annual fee, per-transaction crediting, and that a category change bites immediately. The published effective-earn tables reconcile every cell against the encoded rates, which confirms Rp 10.000 and Rp 12.000 a Yay and their Double Yay halves. Still only from secondary reporting: the Rp 10.000.000 threshold itself and how the average balance is measured, the 1 August 2026 start date, the instalment and conversion limits, the 60-day forfeiture, and how a part increment rounds."
+  ],
+  "sources": [
+    {
+      "title": "Jenius — Kategori Double Yay (MCC list, Bank SMBC Indonesia)",
+      "url": "https://assets.jenius.com/assets/2023/12/27080618/Kategori-Double-Yay-1.pdf"
+    },
+    {
+      "title": "Jenius Club and Double Yay effective earn tables, supplied by the cardholder",
+      "url": "https://www.jenius.com/en/faq/rewards-points/yay-points"
+    },
+    {
+      "title": "PinterPoin — Devaluasi perolehan poin, penukaran poin ke miles, dan cicilan Kartu Kredit Jenius efektif 1 Agustus 2026",
+      "url": "https://pinterpoin.com/devaluasi-jenius-aug26/"
+    },
+    {
+      "title": "IndoMiles — Jenius ubah benefit Yay Points mulai 1 Agustus 2026, kini bergantung pada status Club",
+      "url": "https://indomiles.com/jenius-ubah-benefit-yay-points-mulai-1-agustus-2026-kini-bergantung-pada-status-club"
+    },
+    {
+      "title": "IndoMiles — Review Kartu Kredit Jenius",
+      "url": "https://indomiles.com/review-kartu-kredit-jenius"
+    }
+  ],
+  "verifiedOn": "2026-09-14"
+}

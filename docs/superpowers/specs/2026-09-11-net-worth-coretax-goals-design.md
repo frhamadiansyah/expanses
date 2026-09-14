@@ -352,7 +352,7 @@ Each slice is its own implementation plan and branch-sized drop, in the order of
 - No income attachments for the SPT (dividends, coupons, final tax), though trades keep gross amounts and tax for a later slice.
 - No direct Coretax XML or .xlsx export.
 - Goal math uses constant growth and return; no Monte Carlo or inflation scenarios.
-- Hajj figures (setoran awal amount, queue years) are user-editable defaults and need checking against Kemenag each year.
+- Hajj figures (setoran awal amount, queue years) are typed by the owner, not shipped as defaults (decided 2026-09-12): a template opens with a blank required amount and says to use whatever the bank or Kemenag quotes today. Nothing to re-check each year.
 - BPJS JHT, DPLK, and insurance cash values are tracked only as manual other assets until a dedicated slice.
 
 ## 13. Buying flow, ratio corrections, and goal tags on transfers (approved 2026-09-12)

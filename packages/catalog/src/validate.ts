@@ -15,6 +15,8 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
   const errors: string[] = [];
   const add = (path: string, message: string) => errors.push(`${path}: ${message}`);
   if (!isObj(entry)) return ['entry: must be an object'];
+  const declaredLevels = new Set<string>();
+  let declaredChoiceKey: string | null = null;
 
   if (typeof entry.id !== 'string' || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(entry.id)) add('id', 'must be lowercase kebab-case');
   if (!isPositiveInt(entry.entryVersion)) add('entryVersion', 'must be a positive integer');
@@ -39,6 +41,24 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
     }
     if (program.crediting !== undefined && program.crediting !== 'per_transaction' && program.crediting !== 'per_statement') {
       add('program.crediting', 'must be per_transaction or per_statement');
+    }
+    if (program.memberLevels !== undefined) {
+      if (!Array.isArray(program.memberLevels) || program.memberLevels.length === 0) add('program.memberLevels', 'must list at least one level');
+      else {
+        const seen = new Set<string>();
+        program.memberLevels.forEach((level, i) => {
+          const path = `program.memberLevels[${i}]`;
+          if (!isObj(level)) return add(path, 'must be an object');
+          if (!isText(level.key)) add(`${path}.key`, 'is required');
+          else if (seen.has(level.key)) add(`${path}.key`, `duplicate key "${level.key}"`);
+          else {
+            seen.add(level.key);
+            declaredLevels.add(level.key);
+          }
+          if (!isText(level.name)) add(`${path}.name`, 'is required');
+          if (!isText(level.condition)) add(`${path}.condition`, 'is required');
+        });
+      }
     }
   }
 
@@ -84,6 +104,47 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
     }
   };
 
+  if (isObj(program) && program.categoryChoice !== undefined) {
+    const choice = program.categoryChoice;
+    if (!isObj(choice)) add('program.categoryChoice', 'must be an object');
+    else {
+      if (!isText(choice.key)) add('program.categoryChoice.key', 'is required');
+      else declaredChoiceKey = choice.key;
+      if (!isText(choice.name)) add('program.categoryChoice.name', 'is required');
+      if (!isText(choice.changeable)) add('program.categoryChoice.changeable', 'is required, so the screen can say how often it may change');
+      if (!Array.isArray(choice.options) || choice.options.length < 2) add('program.categoryChoice.options', 'must offer at least two options');
+      else {
+        const seen = new Set<string>();
+        choice.options.forEach((option, i) => {
+          const path = `program.categoryChoice.options[${i}]`;
+          if (!isObj(option)) return add(path, 'must be an object');
+          if (!isText(option.key)) add(`${path}.key`, 'is required');
+          else if (seen.has(option.key)) add(`${path}.key`, `duplicate key "${option.key}"`);
+          else seen.add(option.key);
+          if (!isText(option.name)) add(`${path}.name`, 'is required');
+          checkMatch(`${path}.match`, option.match);
+        });
+      }
+    }
+  }
+
+  /** A rule may earn only on the holder's chosen option; it must name the choice the program declares. */
+  const checkCategoryChoice = (path: string, key: unknown) => {
+    if (key === undefined) return;
+    if (!isText(key)) return add(`${path}.categoryChoice`, 'must be the key of the program category choice');
+    if (declaredChoiceKey === null) return add(`${path}.categoryChoice`, 'the program declares no category choice');
+    if (key !== declaredChoiceKey) add(`${path}.categoryChoice`, `unknown category choice "${key}"`);
+  };
+
+  /** A row may name the levels it applies at; absent means every level. */
+  const checkMemberLevels = (path: string, levels: unknown) => {
+    if (levels === undefined) return;
+    if (!Array.isArray(levels) || levels.some((level) => !isText(level))) return add(`${path}.memberLevels`, 'must be a list of member level keys');
+    if (levels.length === 0) return add(`${path}.memberLevels`, 'must list at least one member level');
+    if (declaredLevels.size === 0) return add(`${path}.memberLevels`, 'the program declares no member levels');
+    for (const level of levels) if (!declaredLevels.has(level as string)) add(`${path}.memberLevels`, `unknown member level "${String(level)}"`);
+  };
+
   const uniqueKeys = (path: string, items: unknown[]) => {
     const seen = new Set<string>();
     items.forEach((item, i) => {
@@ -115,9 +176,14 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
         if (!ROUNDINGS.has(rule.rounding as string)) add(`${path}.rounding`, 'is not a supported rounding mode');
         if (!Number.isInteger(rule.priority)) add(`${path}.priority`, 'must be an integer');
         if (typeof rule.stackable !== 'boolean') add(`${path}.stackable`, 'must be true or false');
-        for (const cap of ['capSpendMinor', 'capPoints', 'minTransactionMinor'] as const) {
+        if (rule.capSpendAtCreditLimit !== undefined && typeof rule.capSpendAtCreditLimit !== 'boolean') {
+          add(`${path}.capSpendAtCreditLimit`, 'must be true or false');
+        }
+        for (const cap of ['capSpendMinor', 'capPoints', 'minTransactionMinor', 'minCycleSpendMinor'] as const) {
           if (rule[cap] !== undefined && rule[cap] !== null && !isNonNegativeInt(rule[cap])) add(`${path}.${cap}`, 'must be a non-negative integer or null');
         }
+        checkMemberLevels(path, rule.memberLevels);
+        checkCategoryChoice(path, rule.categoryChoice);
         checkMatch(`${path}.match`, rule.match);
       });
       bonuses.forEach((bonus, b) => {
@@ -131,6 +197,7 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
           const prev = tiers[i - 1];
           if (i > 0 && isObj(prev) && isObj(tier) && (tier.minSpendMinor as number) <= (prev.minSpendMinor as number)) add(`${path}.tiers[${i}]`, 'tiers must be ascending by minSpendMinor');
         });
+        checkMemberLevels(path, bonus.memberLevels);
         checkMatch(`${path}.match`, bonus.match);
       });
     });
@@ -156,6 +223,7 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
       if (!isText(partner.program)) add(`${path}.program`, 'is required');
       for (const field of ['points', 'partnerUnits', 'incrementPoints'] as const) if (!isPositiveInt(partner[field])) add(`${path}.${field}`, 'must be a positive integer');
       if (!isDateOrNull(partner.effectiveFrom) || !isDateOrNull(partner.effectiveTo)) add(path, 'effectiveFrom and effectiveTo must be YYYY-MM-DD or null');
+      checkMemberLevels(path, partner.memberLevels);
     });
   }
 

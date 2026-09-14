@@ -122,7 +122,7 @@ export async function createProgram(
 ): Promise<RewardProgramRow> {
   const name = input.name.trim();
   if (!name) throw new PointsError('Program name is required');
-  const row: RewardProgramRow = { id: uuidv7(), workspaceId: ws.workspaceId, cardAccountId: input.cardAccountId, name, unit: input.unit, cycleAnchor: input.cycleAnchor, catalogEntryId: null, catalogEntryVersion: null, catalogStatus: null, catalogDismissedVersion: null, catalogSnapshotJson: null, crediting: 'per_statement', expiryPolicy: 'none', expiryMonths: null, archivedAt: null, createdAt: new Date().toISOString() };
+  const row: RewardProgramRow = { id: uuidv7(), workspaceId: ws.workspaceId, cardAccountId: input.cardAccountId, name, unit: input.unit, cycleAnchor: input.cycleAnchor, catalogEntryId: null, catalogEntryVersion: null, catalogStatus: null, catalogMemberLevel: null, catalogDismissedVersion: null, catalogSnapshotJson: null, crediting: 'per_statement', expiryPolicy: 'none', expiryMonths: null, archivedAt: null, createdAt: new Date().toISOString() };
   await database.transaction(async (tx) => {
     await requireCard(tx, ws, input.cardAccountId);
     await tx.insert(rewardPrograms).values(row);
@@ -148,6 +148,7 @@ export async function listEarnRules(database: Database, ws: WorkspaceContext, pr
     capSpendMinor: r.capSpendMinor,
     capPoints: r.capPoints,
     minTransactionMinor: r.minTransactionMinor,
+    minCycleSpendMinor: r.minCycleSpendMinor,
     validFrom: r.validFrom,
     validTo: r.validTo,
   }));
@@ -174,6 +175,7 @@ export async function saveEarnRuleTx(tx: Db, ws: WorkspaceContext, programId: st
     capSpendMinor: rule.capSpendMinor,
     capPoints: rule.capPoints,
     minTransactionMinor: rule.minTransactionMinor,
+    minCycleSpendMinor: rule.minCycleSpendMinor ?? null,
     validFrom: rule.validFrom,
     validTo: rule.validTo,
     ...(rule.catalogKey === undefined ? {} : { catalogKey: rule.catalogKey }),

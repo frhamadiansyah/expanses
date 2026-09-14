@@ -13,14 +13,14 @@ let seq = 0;
 const buy = (amountMinor: number, over: Partial<SpendLine> = {}): SpendLine => {
   seq += 1;
   return {
-    transactionId: `t${seq}`, entryId: `e${seq}`, occurredOn: '2026-09-15', categoryId: 'food.dining', description: 'DIN TAI FUNG',
+    transactionId: `t${seq}`, entryId: `e${seq}`, occurredOn: '2026-09-15', categoryId: 'food_beverage.restaurants', description: 'DIN TAI FUNG',
     amountMinor, currency: 'IDR', originalCurrency: null, mcc: '5812', mccSource: 'category', ...over,
   };
 };
 
 describe('catalogue data after the MCC addendum', () => {
-  it('bundles eleven entries', () => {
-    expect(CATALOG).toHaveLength(11);
+  it('bundles thirteen entries', () => {
+    expect(CATALOG).toHaveLength(13);
   });
 
   it('adds Reward BCA MCC exclusions to both KrisFlyer terms periods', () => {

@@ -40,6 +40,12 @@ export interface EarnRule {
   capPoints: number | null;
   /** Applies to the whole purchase, not to one category line of a split. */
   minTransactionMinor: number | null;
+  /**
+   * Spend the whole cycle must reach, net of refunds, before this rule earns at all. Unlike minTransactionMinor
+   * it is not a floor per purchase: once the cycle reaches it the rule earns over every matching purchase,
+   * including the ones made before the floor was crossed.
+   */
+  minCycleSpendMinor?: number | null;
   validFrom: string | null;
   validTo: string | null;
 }
@@ -172,9 +178,20 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
   const purchaseTotals = new Map<string, number>();
   for (const l of sorted) purchaseTotals.set(l.transactionId, (purchaseTotals.get(l.transactionId) ?? 0) + l.amountMinor);
 
+  // A rule with a cycle floor is in or out for the whole cycle, so it is settled before any spend is allocated.
+  const reachesCycleFloor = (rule: EarnRule) => {
+    const floor = rule.minCycleSpendMinor ?? null;
+    if (floor === null) return true;
+    const counts = (l: SpendLine) => ruleMatches(rule, l, ancestors, purchaseTotals.get(l.transactionId) ?? l.amountMinor, billingCurrency);
+    const purchased = sorted.filter(counts).reduce((s, l) => s + l.amountMinor, 0);
+    const refunded = refunds.filter(counts).reduce((s, l) => s - l.amountMinor, 0);
+    return Math.max(0, purchased - refunded) >= floor;
+  };
+  const earning = rules.filter(reachesCycleFloor);
+
   const byPriority = (a: EarnRule, b: EarnRule) => b.priority - a.priority || a.id.localeCompare(b.id);
-  const primary = rules.filter((r) => !r.stackable).sort(byPriority);
-  const stackable = rules.filter((r) => r.stackable).sort(byPriority);
+  const primary = earning.filter((r) => !r.stackable).sort(byPriority);
+  const stackable = earning.filter((r) => r.stackable).sort(byPriority);
 
   const spendByRule: Record<string, number> = Object.fromEntries(rules.map((r) => [r.id, 0]));
   // Points are tracked in integer tenths so half points (e.g. 7,5 per multiple) sum exactly.

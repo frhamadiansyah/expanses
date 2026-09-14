@@ -1,8 +1,9 @@
 import { describeEntry, diffCatalogEntries, isStale } from '@expanses/catalog';
-import { applyCatalogUpdate, dismissCatalogVersion, resetToCatalog } from '@expanses/db';
+import { applyCatalogUpdate, dismissCatalogVersion, listCategoryChoices, resetToCatalog, setCatalogCategoryChoice } from '@expanses/db';
 import { useApp } from '../../app/context';
 import { CATALOG_REPORT_EMAIL, reportMailto, shouldShowReport } from '../../lib/catalog-config';
-import { Button, Card, cx } from '../../ui';
+import { useQuery } from '@tanstack/react-query';
+import { Button, Card, cx, Field, Select } from '../../ui';
 import { pendingUpdate } from './catalog-panel';
 import type { CardPoints } from './useCardPoints';
 
@@ -91,6 +92,8 @@ export function CatalogPanel({ cp, today, run }: { cp: CardPoints; today: string
         </div>
       )}
 
+      {entry.program.categoryChoice && <CategoryChoice cp={cp} today={today} run={run} />}
+
       <details className="mt-3 text-sm">
         <summary className="cursor-pointer text-slate-600">Card terms, welcome bonus, and notes</summary>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-700">
@@ -100,5 +103,53 @@ export function CatalogPanel({ cp, today, run }: { cp: CardPoints; today: string
         </ul>
       </details>
     </Card>
+  );
+}
+
+/** The category the holder is running now, and a way to move to another one from today. */
+function CategoryChoice({ cp, today, run }: { cp: CardPoints; today: string; run: (fn: () => Promise<unknown>) => Promise<boolean> }) {
+  const { database, ws } = useApp();
+  const choice = cp.catalog.entry?.program.categoryChoice;
+  const programId = cp.program?.id;
+  const choices = useQuery({
+    queryKey: ['category-choices', ws.workspaceId, programId],
+    queryFn: () => listCategoryChoices(database, ws, programId!),
+    enabled: !!programId,
+  });
+  if (!choice || !programId) return null;
+
+  const running = choices.data?.find((applied) => applied.to === null);
+  const runningName = choice.options.find((option) => option.key === running?.optionKey)?.name;
+
+  return (
+    <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+      <Field
+        label={choice.name}
+        hint={
+          runningName
+            ? `Running ${runningName}. You can change it ${choice.changeable} — purchases before today keep ${runningName}, and a cycle can hold both.`
+            : `Not picked yet. You can change it ${choice.changeable}.`
+        }
+      >
+        <Select
+          id="running-category"
+          value={running?.optionKey ?? ''}
+          onChange={(e) => {
+            const optionKey = e.target.value;
+            if (!optionKey || optionKey === running?.optionKey) return;
+            void run(async () => {
+              await setCatalogCategoryChoice(database, ws, programId, optionKey, today, today);
+            });
+          }}
+        >
+          <option value="">Choose a category</option>
+          {choice.options.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    </div>
   );
 }
