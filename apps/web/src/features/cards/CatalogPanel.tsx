@@ -127,7 +127,7 @@ function CategoryChoice({ cp, today, run }: { cp: CardPoints; today: string; run
         label={choice.name}
         hint={
           runningName
-            ? `Running ${runningName}. You can change it ${choice.changeable}; cycles before today keep what was running then.`
+            ? `Running ${runningName}. You can change it ${choice.changeable} — purchases before today keep ${runningName}, and a cycle can hold both.`
             : `Not picked yet. You can change it ${choice.changeable}.`
         }
       >

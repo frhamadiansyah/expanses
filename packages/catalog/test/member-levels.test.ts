@@ -255,7 +255,7 @@ describe('Kartu Kredit Jenius', () => {
   it('offers the four Jenius categories, one at a time, changeable each cycle', () => {
     const choice = jenius().program.categoryChoice!;
     expect(choice.options.map((option) => option.name)).toEqual(['Beauty & Fashion', 'Food & Beverages', 'Travel & Leisure', 'Groceries']);
-    expect(choice.changeable).toBe('once a billing cycle');
+    expect(choice.changeable).toBe('once a billing cycle, taking effect straight away');
   });
 
   it('offers the same four whatever the Club status', () => {
@@ -286,5 +286,22 @@ describe('Kartu Kredit Jenius: the annual fee', () => {
     const at = (level: string) => planCatalogApply(findEntry('jenius-kartu-kredit')!, {}, '2026-09-13', level).annualFeeMinor;
     expect(at('grow-plus')).toBe(500_000);
     expect(at('seed-plant')).toBe(500_000);
+  });
+});
+
+describe('Kartu Kredit Jenius: how points are credited', () => {
+  const jenius = () => findEntry('jenius-kartu-kredit')!;
+
+  it('credits per transaction, so each purchase can be checked against the app', () => {
+    expect(jenius().program.crediting).toBe('per_transaction');
+    expect(planCatalogApply(jenius(), {}, '2026-09-14', 'grow-plus').crediting).toBe('per_transaction');
+  });
+
+  it('says so in the preview', () => {
+    expect(describeEntry(jenius(), '2026-09-14').lines).toContainEqual(expect.stringContaining('credited per purchase'));
+  });
+
+  it('says the category change takes effect straight away', () => {
+    expect(jenius().program.categoryChoice!.changeable).toBe('once a billing cycle, taking effect straight away');
   });
 });

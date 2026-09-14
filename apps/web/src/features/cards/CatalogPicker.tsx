@@ -102,7 +102,7 @@ export function CatalogPicker({
           )}
           {choice && (
             <div className="space-y-1 rounded border border-slate-200 bg-slate-50 p-3">
-              <Field label={`Your ${choice.name}`} hint={`Pick the one you are running now — you can change it ${choice.changeable}, and past cycles keep what was running then.`}>
+              <Field label={`Your ${choice.name}`} hint={`Pick the one you are running now — you can change it ${choice.changeable}. Purchases keep the category that was running on the day they happened.`}>
                 <Select id="category-choice" value={categoryOption ?? ''} onChange={(e) => setCategoryOption(e.target.value || null)}>
                   <option value="">Choose later</option>
                   {choice.options.map((option) => (

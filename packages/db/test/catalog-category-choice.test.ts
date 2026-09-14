@@ -1,6 +1,19 @@
 import { type CatalogEntry, findEntry } from '@expanses/catalog';
 import { describe, expect, it } from 'vitest';
-import { applyCatalogEntry, CatalogError, createAccount, listCategoryChoices, listEarnRules, setCatalogCategoryChoice, syncLinkedPrograms } from '../src/index';
+import { computeCycleEarn, expenseLines } from '@expanses/core';
+import {
+  applyCatalogEntry,
+  cardSpendLines,
+  CatalogError,
+  createAccount,
+  listAccounts,
+  listCategoryChoices,
+  listCycleBonuses,
+  listEarnRules,
+  postTransaction,
+  setCatalogCategoryChoice,
+  syncLinkedPrograms,
+} from '../src/index';
 import { setupDb } from './helpers';
 
 const TODAY = '2026-09-14';
@@ -117,6 +130,60 @@ describe('running a category the holder picked', () => {
     const card = await createAccount(t.database, t.ws, { name: 'Plain', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
     const { programId } = await applyCatalogEntry(t.database, t.ws, { cardAccountId: card.id, entry: structuredClone(findEntry('bca-unionpay')!), today: TODAY, replaceManual: false });
     await expect(setCatalogCategoryChoice(t.database, t.ws, programId, 'dining', TODAY, TODAY)).rejects.toBeInstanceOf(CatalogError);
+  });
+
+  it('changes immediately, so one cycle can earn on both categories', async () => {
+    const t = await applied();
+    const all = await listAccounts(t.database, t.ws);
+    const dining = all.find((a) => a.systemKey === 'food.dining')!.id;
+    const groceries = all.find((a) => a.systemKey === 'food.groceries')!.id;
+    const ancestors = Object.fromEntries(all.map((a) => [a.id, a.parentId ? [a.parentId] : []]));
+
+    // Food & Beverages from the start, swapped to Groceries in the middle of the September cycle.
+    await setCatalogCategoryChoice(t.database, t.ws, t.programId, 'dining', TODAY, TODAY);
+    await setCatalogCategoryChoice(t.database, t.ws, t.programId, 'groceries', '2026-09-20', '2026-09-20');
+
+    // Rp 100.000 on each, one either side of the swap, both inside the same cycle.
+    for (const [occurredOn, categoryAccountId] of [
+      ['2026-09-15', dining],
+      ['2026-09-25', groceries],
+    ] as const) {
+      await postTransaction(t.database, t.ws, {
+        occurredOn,
+        description: 'Belanja',
+        lines: expenseLines({ categoryAccountId, paymentAccountId: t.card.id, amountMinor: 100_000, currency: 'IDR' }),
+      });
+    }
+
+    const lines = await cardSpendLines(t.database, t.ws, t.card.id, '2026-09-01', '2026-09-30');
+    const rules = await listEarnRules(t.database, t.ws, t.programId);
+    const bonuses = await listCycleBonuses(t.database, t.ws, t.programId);
+    const earn = computeCycleEarn(lines, rules, ancestors, { bonuses, cycleEnd: '2026-09-30' });
+
+    // Both earned at the double rate (Rp 5.000 per point) in their own stretch: 20 + 20, not 10 + 20.
+    expect(earn.totalPoints).toBe(40);
+  });
+
+  it('a purchase in the category that is no longer running earns only the base rate', async () => {
+    const t = await applied();
+    const all = await listAccounts(t.database, t.ws);
+    const dining = all.find((a) => a.systemKey === 'food.dining')!.id;
+    const ancestors = Object.fromEntries(all.map((a) => [a.id, a.parentId ? [a.parentId] : []]));
+
+    await setCatalogCategoryChoice(t.database, t.ws, t.programId, 'dining', TODAY, TODAY);
+    await setCatalogCategoryChoice(t.database, t.ws, t.programId, 'groceries', '2026-09-20', '2026-09-20');
+
+    await postTransaction(t.database, t.ws, {
+      occurredOn: '2026-09-25',
+      description: 'Din Tai Fung',
+      lines: expenseLines({ categoryAccountId: dining, paymentAccountId: t.card.id, amountMinor: 100_000, currency: 'IDR' }),
+    });
+
+    const lines = await cardSpendLines(t.database, t.ws, t.card.id, '2026-09-01', '2026-09-30');
+    const rules = await listEarnRules(t.database, t.ws, t.programId);
+    const bonuses = await listCycleBonuses(t.database, t.ws, t.programId);
+    // Rp 100.000 at the base Rp 10.000 per point, because Groceries was running by then.
+    expect(computeCycleEarn(lines, rules, ancestors, { bonuses, cycleEnd: '2026-09-30' }).totalPoints).toBe(10);
   });
 
   it('keeps the base rule alongside, at a lower priority', async () => {

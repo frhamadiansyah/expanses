@@ -24,7 +24,7 @@
     "categoryChoice": {
       "key": "double-yay",
       "name": "Double Yay category",
-      "changeable": "once a billing cycle",
+      "changeable": "once a billing cycle, taking effect straight away",
       "options": [
         {
           "key": "beauty-fashion",
@@ -66,7 +66,8 @@
           }
         }
       ]
-    }
+    },
+    "crediting": "per_transaction"
   },
   "fees": [
     {
@@ -257,7 +258,8 @@
   "welcomeBonus": null,
   "notes": [
     "From 1 August 2026 earning and KrisFlyer conversion follow the Jenius Club status set by average monthly balance: Grow and above keep the old terms, Seed and Plant earn less and convert worse.",
-    "Double Yay pays double on foreign transactions and on one category the holder picks from four, changeable once a billing cycle. It replaces the base rate rather than adding to it: a Food & Beverages purchase in US dollars earns double once, not four times, so both rules sit above the base rule at the same priority.",
+    "Yay Points are shown against each transaction rather than only on the statement, so the app checks this card purchase by purchase.",
+    "Double Yay pays double on foreign transactions and on one category the holder picks from four. It replaces the base rate rather than adding to it: a Food & Beverages purchase in US dollars earns double once, not four times, so both rules sit above the base rule at the same priority. A change takes effect immediately, so one billing cycle can earn on the old category before the change and the new one after it.",
     "Jenius decides the four categories by merchant category code; they are mapped here onto this workspace's categories (Beauty & Fashion to clothing and personal care, Food & Beverages to dining and coffee, Travel & Leisure to travel and entertainment, Groceries to groceries). A merchant the bank counts differently will not match.",
     "Seed and Plant: the source quotes Double Yay at about Rp 8.000 per KrisFlyer mile, but Rp 6.000 per Yay at the stated 50.000 Yay = 30.000 miles is Rp 10.000 per mile. Rp 8.000 only holds at the old 40.000 = 30.000 ratio, so it reads as a figure carried over and not updated. The published ratio is encoded; check this one against the Jenius app.",
     "The GarudaMiles ratio is derived, not published: Rp 6.250 per mile at Rp 5.000 per Yay (Grow) and Rp 7.500 at Rp 6.000 (Seed and Plant) both give 0,8 miles per Yay, so GarudaMiles was not devalued. The step of 40.000 Yay is an assumption; the real minimum may differ.",
