@@ -106,7 +106,46 @@ INSERT INTO category_revamp (new_key, name, parent_key, old_key, sort) VALUES
   ('miscellaneous.fees_charges', 'Fees & charges', 'miscellaneous', 'fees', 94),
   ('miscellaneous.membership_fee', 'Membership fee', 'miscellaneous', 'fees.card_annual', 95);
 
-/* 1. Carry each key a workspace already holds to its new spelling. */
+/* 1a. Give up the new spelling where it is already taken and holds nothing.
+
+   A workspace can already hold the new key: ensureCategoryKeys creates several of them on its own
+   (government_taxes, gift_giving, property.real_estate and the rest), so a build where it ran before
+   this migration did leaves both spellings side by side. Renaming the old one onto the new one then
+   trips the unique index on (workspace_id, system_key) and the whole migration rolls back, which
+   leaves the app unable to open at all.
+
+   The row the owner actually spent against keeps the key. This one was created empty by the app, so
+   unkeying it costs nothing; it stays as a plain category rather than being deleted, because deleting
+   an account is not something a migration should do behind the owner's back. */
+UPDATE accounts
+   SET system_key = NULL
+ WHERE subtype = 'category'
+   AND system_key IN (SELECT new_key FROM category_revamp WHERE old_key IS NOT NULL AND old_key <> new_key)
+   AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.account_id = accounts.id)
+   AND EXISTS (
+         SELECT 1
+           FROM accounts a2
+           JOIN category_revamp r ON r.new_key = accounts.system_key
+          WHERE a2.workspace_id = accounts.workspace_id
+            AND a2.system_key = r.old_key
+       );
+
+/* 1b. If the new spelling is still taken, it is by a row with its own spending. That one keeps the
+   key, and the old row gives it up — no category and no transaction is lost either way. */
+UPDATE accounts
+   SET system_key = NULL
+ WHERE subtype = 'category'
+   AND system_key IN (SELECT old_key FROM category_revamp WHERE old_key IS NOT NULL AND old_key <> new_key)
+   AND EXISTS (
+         SELECT 1
+           FROM accounts b
+           JOIN category_revamp r ON r.old_key = accounts.system_key
+          WHERE b.workspace_id = accounts.workspace_id
+            AND b.system_key = r.new_key
+            AND b.id <> accounts.id
+       );
+
+/* 1c. Carry each key a workspace already holds to its new spelling. */
 UPDATE accounts
    SET system_key = (SELECT r.new_key FROM category_revamp r WHERE r.old_key = accounts.system_key)
  WHERE subtype = 'category'
