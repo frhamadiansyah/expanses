@@ -1,0 +1,162 @@
+{
+  "id": "ocbc-90n",
+  "entryVersion": 1,
+  "bank": "Bank OCBC NISP",
+  "name": "Kartu Kredit OCBC 90°N",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "miles",
+    "name": "Travel Miles",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 1000000,
+      "supplementaryFeeMinor": null,
+      "condition": "waived after Rp 300.000.000 of transactions in the previous year, for Private Banking customers, for a Premier Banking main card while total combined funds of Rp 500.000.000 are kept, or by redeeming 25.000 Travel Miles for a year"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": "2026-02-12",
+      "rules": [
+        {
+          "key": "foreign-bonus-categories",
+          "name": "Double miles abroad on dining, transport, lodging and airlines",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": true,
+          "match": {
+            "origin": "foreign",
+            "categoryKeys": ["food_beverage", "transportation", "travel"],
+            "excludeCategoryKeys": ["education", "transportation.fuel_cost"]
+          },
+          "capSpendAtCreditLimit": true
+        },
+        {
+          "key": "foreign",
+          "name": "Spent abroad",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "origin": "foreign",
+            "excludeCategoryKeys": ["education", "transportation.fuel_cost"]
+          },
+          "capSpendAtCreditLimit": true
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 12000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": ["education", "transportation.fuel_cost"]
+          },
+          "capSpendAtCreditLimit": true
+        }
+      ],
+      "cycleBonuses": [
+        {
+          "key": "monthly-60m",
+          "name": "1.000 Travel Miles at Rp 60.000.000 a statement",
+          "tiers": [{ "minSpendMinor": 60000000, "bonus": 1000 }],
+          "match": {
+            "excludeCategoryKeys": ["education", "transportation.fuel_cost"]
+          }
+        }
+      ]
+    },
+    {
+      "effectiveFrom": "2026-02-13",
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "foreign",
+          "name": "Spent abroad",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "origin": "foreign",
+            "excludeCategoryKeys": ["education", "transportation.fuel_cost"]
+          },
+          "capSpendAtCreditLimit": true
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 12000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": ["education", "transportation.fuel_cost"]
+          },
+          "capSpendAtCreditLimit": true
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    { "key": "krisflyer", "program": "KrisFlyer", "points": 1000, "partnerUnits": 1000, "incrementPoints": 1000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "garudamiles", "program": "GarudaMiles", "points": 1000, "partnerUnits": 1050, "incrementPoints": 1000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "airasia", "program": "AirAsia points", "points": 1000, "partnerUnits": 1000, "incrementPoints": 1000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "asia-miles", "program": "Asia Miles", "points": 1000, "partnerUnits": 750, "incrementPoints": 1000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "british-airways", "program": "British Airways Executive Club", "points": 1000, "partnerUnits": 900, "incrementPoints": 1000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "etihad", "program": "Etihad Guest", "points": 1000, "partnerUnits": 900, "incrementPoints": 1000, "effectiveFrom": null, "effectiveTo": null }
+  ],
+  "cashValue": null,
+  "welcomeBonus": "12.000 Travel Miles from 1 February 2026, down from 13.000, for a customer who has not held a Visa 90°N card or closed one more than 3 months ago, with the card activated within 2 months of approval.",
+  "notes": [
+    "Every figure here is from PinterPoin and IndoMiles. Bank OCBC NISP's own site and RIPLAY could not be reached, so nothing is confirmed against the issuer.",
+    "The rates changed in November 2025: Rp 10.000 a mile became Rp 12.000 at home and Rp 8.000 became Rp 10.000 abroad. The exact day was not given, so the entry runs the current rates from the start. A cycle before November 2025 is therefore underestimated by about a fifth.",
+    "From 13 February 2026 the double miles on foreign-currency dining, transport, lodging and airlines stopped, and so did the 1.000 Travel Miles paid at Rp 60.000.000 a statement. That is the second terms period; cycles before it keep both.",
+    "Education, digital advertising and petrol stations stopped earning in November 2025. Education and fuel are matched by category; digital advertising has no category of its own here, so an advertising spend will be overestimated.",
+    "Earning is capped at one times the card limit a month, which is read from the card's own terms when the entry is applied, so set the credit limit before relying on the estimate.",
+    "The double-miles rule is written as a stackable extra on top of the foreign rate, which doubles it to a mile per Rp 5.000. Whether the bank instead paid a flat doubled rate is not something the sources settle; on whole multiples of Rp 10.000 the two agree.",
+    "Redemption is capped at 100.000 Travel Miles a month, down from 150.000 in November 2025. The app does not apply redemption limits to estimates.",
+    "Travel Miles do not expire and transfers to airline partners carry no fee.",
+    "Transfer ratios are quoted relative to KrisFlyer: Asia Miles gives 25% fewer and British Airways and Etihad Guest 10% fewer, which is recorded as 750 and 900 per 1.000 Travel Miles. The real transfer steps and minimums were not published, so 1.000 is a placeholder for the increment.",
+    "The annual fee of Rp 1.000.000 can be waived several ways, including redeeming 25.000 Travel Miles for a year. The fee condition records them; the app always shows the fee as charged.",
+    "Not the Singapore OCBC 90°N, which is a different card in Singapore dollars earning 1,3 miles per dollar at home and up to 7 through Agoda. Reviews of that card do not describe this one."
+  ],
+  "sources": [
+    {
+      "title": "PinterPoin — Devaluasi: OCBC 90N memangkas earning rate dan menambah batasan perolehan & penukaran poin",
+      "url": "https://pinterpoin.com/devaluasi-ocbc-90n-memangkas-earning-rate-dan-menambah-batasan-perolehan-penukaran-poin/"
+    },
+    {
+      "title": "PinterPoin — Devaluasi perdana 2026: OCBC 90N memangkas spending reward bulanan & double point transaksi luar negeri",
+      "url": "https://pinterpoin.com/devaluasi-perdana-2026-ocbc-90n-memangkas-spending-reward-bulanan-double-point-transaksi-luar-negeri/"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit OCBC 90°N",
+      "url": "https://pinterpoin.com/review-kartu-kredit-ocbc-90n/"
+    },
+    {
+      "title": "IndoMiles — Review Kartu Kredit OCBC 90°N",
+      "url": "https://indomiles.com/review-kartu-kredit-ocbc-90n/"
+    },
+    {
+      "title": "Bank OCBC NISP — OCBC 90°N",
+      "url": "https://www.ocbc.id/individu/kartu-transaksi/kartu-kredit/ocbc-nisp-90n"
+    }
+  ],
+  "verifiedOn": "2026-09-14"
+}
