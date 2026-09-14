@@ -478,13 +478,35 @@ describe('Mandiri World Prioritas conversion', () => {
   const mandiri = () => findEntry('mandiri-world-prioritas')!;
 
   it('records the 25.000 a month ceiling on converting Livin’poin to miles', () => {
-    expect(mandiri().notes.some((note) => note.includes('25.000 a month'))).toBe(true);
+    expect(mandiri().notes.some((note) => note.includes('25.000 Livin\'poin a month'))).toBe(true);
+    // Past the ceiling the points still move, at a third of the rate, which the app does not model.
+    expect(mandiri().notes.some((note) => note.includes('3.000 Livin\'poin for 1.000 miles'))).toBe(true);
   });
 
-  it('converts one for one to KrisFlyer and GarudaMiles', () => {
+  it('converts one for one at all five airlines, ANA included', () => {
     // The page's "1:1 Mileage Redemption" names neither partner nor ratio; both come from the cardholder.
     const partners = Object.fromEntries(mandiri().transferPartners.map((p) => [p.program, [p.points, p.partnerUnits]]));
-    expect(partners).toEqual({ KrisFlyer: [1, 1], GarudaMiles: [1, 1] });
+    expect(partners).toEqual({
+      KrisFlyer: [1, 1],
+      GarudaMiles: [1, 1],
+      'Asia Miles': [1, 1],
+      'ANA Mileage Club': [1, 1],
+      'AirAsia Rewards': [1, 1],
+    });
+  });
+
+  it('moves AirAsia Rewards in 1.000 steps and every other airline in 10.000', () => {
+    const steps = Object.fromEntries(mandiri().transferPartners.map((p) => [p.key, p.incrementPoints]));
+    expect(steps).toEqual({ krisflyer: 10_000, garudamiles: 10_000, 'asia-miles': 10_000, ana: 10_000, airasia: 1_000 });
+  });
+
+  it('records that points lapse after two years, which the app does not apply', () => {
+    expect(mandiri().notes.some((note) => note.includes('expire two years after they are earned'))).toBe(true);
+  });
+
+  it('charges no annual fee, main or supplementary', () => {
+    const fee = mandiri().fees[0]!;
+    expect([fee.annualFeeMinor, fee.supplementaryFeeMinor]).toEqual([0, 0]);
   });
 
   it('converts in 10.000 steps, one for one, leaving any remainder behind', () => {
@@ -495,7 +517,6 @@ describe('Mandiri World Prioritas conversion', () => {
     // A step, not only a floor: the trailing 5.000 stays put rather than converting.
     expect(at(15_000)).toBe(10_000);
     expect(at(40_000)).toBe(40_000);
-    expect(mandiri().notes.some((note) => note.includes('capped at 25.000 a month'))).toBe(true);
   });
 });
 

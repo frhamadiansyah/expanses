@@ -1,6 +1,6 @@
 {
   "id": "mandiri-world-prioritas",
-  "entryVersion": 6,
+  "entryVersion": 7,
   "bank": "Mandiri",
   "name": "Mandiri World Prioritas",
   "network": "mastercard",
@@ -206,6 +206,33 @@
       "incrementPoints": 10000,
       "effectiveFrom": null,
       "effectiveTo": null
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 10000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "ana",
+      "program": "ANA Mileage Club",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 10000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "airasia",
+      "program": "AirAsia Rewards",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 1000,
+      "effectiveFrom": null,
+      "effectiveTo": null
     }
   ],
   "cashValue": null,
@@ -216,10 +243,14 @@
     "Power Bills payments at PLN earn nothing, while Power Bills insurance earns the reduced rate.",
     "Converting a purchase to Power Installment or Power Buy deducts its points; add \"cicilan\" to the description to reflect it.",
     "QRIS, installments, and virtual account payments are recognised only when the description contains those words.",
-    "A Livin'poin converts to one KrisFlyer mile or one GarudaMile, given by the cardholder on 14 September 2026. The bank's page advertises \"1:1 Mileage Redemption\" without naming the partners or the ratio, so this is the cardholder's figure rather than a published one.",
-    "Converting to miles is capped at 25.000 a month. The app applies no redemption limit, so a cycle earning more than that shows the whole balance as convertible when only 25.000 can actually move. The cardholder gave the ceiling as one figure for miles rather than one per airline.",
+    "A Livin'poin converts to one mile at all five partners: KrisFlyer, GarudaMiles, Asia Miles, ANA Mileage Club and AirAsia Rewards. The cardholder gave the partner list and the one-for-one ratio; the bank's page advertises \"1:1 Mileage Redemption\" without naming either, so PinterPoin and Tuwaga are what confirm them.",
+    "The one-for-one rate covers the first 25.000 Livin'poin a month, counted across every airline together rather than per airline. Beyond that the rate drops to 3.000 Livin'poin for 1.000 miles at all five partners, so the points still move, at a third of the value. The app applies neither the ceiling nor the reduced rate, so a cycle earning more than 25.000 is shown as converting entirely at one for one and is overstated.",
     "Livin'poin are credited per purchase, so the app checks this card per purchase.",
-    "Converting moves 10.000 Livin'poin at a time and in multiples of 10.000, given by the cardholder. It is a step rather than only a floor, so a balance of 15.000 converts 10.000 and leaves the rest, which is what the entry records."
+    "Converting moves 10.000 Livin'poin at a time and in multiples of 10.000, given by the cardholder. It is a step rather than only a floor, so a balance of 15.000 converts 10.000 and leaves the rest, which is what the entry records. PinterPoin and Tuwaga instead describe 10.000 as a floor with 1.000 steps after it; the cardholder's reading is the one recorded, and the two differ only on remainders.",
+    "AirAsia Rewards moves in 1.000 steps rather than 10.000, which is the one partner that differs. That is from Tuwaga rather than the cardholder.",
+    "Livin'poin expire two years after they are earned, given by the cardholder. The app does not expire points, so a balance it shows may include points the bank has already dropped.",
+    "The card carries no annual fee, main or supplementary, while the holder is a Bank Mandiri Prioritas customer.",
+    "Converting to Asia Miles was withdrawn for a time and restored on 18 June 2026. The withdrawal date was not published, so the entry offers Asia Miles throughout and overstates the gap."
   ],
   "sources": [
     {
@@ -229,6 +260,26 @@
     {
       "title": "Livin'poin",
       "url": "https://www.mandirikartukredit.com/livinpoin"
+    },
+    {
+      "title": "Livin'poin — penukaran ANA Mileage Club",
+      "url": "https://www.mandirikartukredit.com/livinpoin/redeem/anamileageclub"
+    },
+    {
+      "title": "Livin'poin — penukaran Asia Miles",
+      "url": "https://www.mandirikartukredit.com/livinpoin/redeem/asia-miles"
+    },
+    {
+      "title": "Tuwaga — Kartu Kredit Mandiri Prioritas Mastercard",
+      "url": "https://tuwaga.id/produk/kartu-kredit/mandiri-prioritas-mastercard/"
+    },
+    {
+      "title": "PinterPoin — Juni 2026: Mandiri mengembalikan opsi penukaran Livin'poin menjadi Asia Miles",
+      "url": "https://pinterpoin.com/juni-2026-mandiri-mengembalikan-opsi-penukaran-livinpoin-menjadi-asia-miles/"
+    },
+    {
+      "title": "PinterPoin — Mandiri menambahkan ANA Mileage Club sebagai transfer partner kartu kredit",
+      "url": "https://pinterpoin.com/mandiri-menambahkan-ana-mileage-club-sebagai-transfer-partner-kartu-kredit/"
     }
   ],
   "verifiedOn": "2026-09-14"
