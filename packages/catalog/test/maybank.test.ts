@@ -19,8 +19,8 @@ const buy = (amountMinor: number, over: Partial<SpendLine> = {}): SpendLine => {
 };
 
 describe('catalogue data after the MCC addendum', () => {
-  it('bundles nineteen entries, each with a unique id', () => {
-    expect(CATALOG).toHaveLength(19);
+  it('bundles twenty entries, each with a unique id', () => {
+    expect(CATALOG).toHaveLength(20);
     expect(new Set(CATALOG.map((entry) => entry.id)).size).toBe(CATALOG.length);
   });
 

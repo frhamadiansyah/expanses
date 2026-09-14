@@ -1,0 +1,136 @@
+{
+  "id": "danamon-amex-gold-charge",
+  "entryVersion": 1,
+  "bank": "Bank Danamon",
+  "name": "Kartu Charge Danamon American Express Gold",
+  "network": "amex",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "Membership Rewards",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 1200000,
+      "supplementaryFeeMinor": null,
+      "condition": "converting points to airline miles or hotel points needs the Frequent Traveller Option at a further Rp 250.000 a year"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "uplift",
+          "name": "Half a point more, up to one times the monthly limit",
+          "rateNum": 0.5,
+          "rateDen": 2500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": true,
+          "match": {
+            "excludeCategoryKeys": [
+              "protection"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "cicilan",
+              "installment"
+            ]
+          },
+          "capSpendAtCreditLimit": true
+        },
+        {
+          "key": "base",
+          "name": "Retail spend",
+          "rateNum": 1,
+          "rateDen": 2500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "protection"
+            ],
+            "excludeMerchantPatterns": [
+              "cash advance",
+              "tarik tunai",
+              "money transfer",
+              "transfer dana",
+              "balance conversion",
+              "cicilan",
+              "installment"
+            ]
+          }
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 8,
+      "partnerUnits": 1,
+      "incrementPoints": 1000,
+      "effectiveFrom": "2023-11-01",
+      "effectiveTo": null
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 12,
+      "partnerUnits": 1,
+      "incrementPoints": 1000,
+      "effectiveFrom": "2023-11-01",
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": null,
+  "welcomeBonus": "Up to 210.000 Membership Rewards points has been offered on this card. The amount and the conditions move between campaigns, so nothing is modelled.",
+  "notes": [
+    "This is the charge card, sometimes called RCP Gold: no preset spending limit, no minimum payment, and an annual fee of Rp 1.200.000. Danamon also issues a Danamon American Express Gold credit card at Rp 350.000, which is a separate entry. The two share the Membership Rewards programme but earn differently.",
+    "Earning is 1,5 Membership Rewards points per Rp 2.500 up to one times the monthly limit, and 1 point per Rp 2.500 above it. That is written as a base of 1 with half a point stacked on top, the stacked half capped at the card's limit, so the two rates fall out of one cascade.",
+    "The rate is the same at home and abroad, and the same in every category. There is no foreign-currency or category bonus on this card.",
+    "The cap is read from the card's own credit limit when the entry is applied. A charge card has no preset limit, so the figure to record is whatever monthly limit Danamon has set for the holder. If no limit is recorded the uplift runs uncapped and every rupiah earns 1,5, which overstates a month that goes past the limit.",
+    "Insurance premiums, cash advances, money transfers, balance conversions, instalment conversions and cancelled transactions earn nothing. Insurance is matched by category; the rest are matched on the description, so a cash advance or an instalment is only recognised when the description says so.",
+    "Converting points to airline miles or hotel points needs the Frequent Traveller Option, a separate subscription of Rp 250.000 a year. The app treats the partners as always available and does not charge the subscription, so a holder without FTO cannot actually transfer at all.",
+    "The Frequent Traveller Option covers seven partners: KrisFlyer, GarudaMiles, Asia Miles, AirAsia BIG points, Enrich, Marriott Bonvoy and Hilton Honors. Only KrisFlyer and Asia Miles carry a ratio here, because only those two could be pinned down; the other five are left out rather than guessed, so an estimate for them shows nothing.",
+    "The two ratios are derived, not published, and are carried over from the credit card on the assumption that a Gold card's Membership Rewards convert the same either way. Reporting after the 1 November 2023 devaluation gives the cost of a mile as Rp 20.000 for KrisFlyer and Rp 30.000 for Asia Miles; at 1 point per Rp 2.500 that is 8 points a KrisFlyer mile and 12 an Asia Mile. On this card the uplift makes a mile cheaper than that while spending stays under the limit.",
+    "The transfer step of 1.000 points is a placeholder. No minimum or increment was found for Danamon's own conversions, and the 1.000 figure that circulates belongs to American Express's international Membership Rewards rather than this card.",
+    "No source could be read directly. Bank Danamon's site, its RIPLAY, americanexpress.com, PinterPoin and IndoMiles are all unreachable from here, so every figure comes from search summaries of those pages rather than the pages themselves. Treat the whole entry as unverified until the RIPLAY is checked.",
+    "Not modelled: Priority Pass lounge visits twice a year and the travel insurance cover. Neither pays points."
+  ],
+  "sources": [
+    {
+      "title": "PinterPoin — Review: Kartu Danamon American Express (Amex) Gold",
+      "url": "https://pinterpoin.com/review-kartu-danamon-american-express-gold/"
+    },
+    {
+      "title": "PinterPoin — Lebih menarik: Danamon menambahkan fitur kartu Danamon American Express Gold",
+      "url": "https://pinterpoin.com/lebih-menarik-danamon-menambahkan-fitur-kartu-danamon-american-express-gold/"
+    },
+    {
+      "title": "Bank Danamon — Danamon American Express Gold Card",
+      "url": "https://www.danamon.co.id/en/Personal/KartuTransaksi/Kartu-Kredit/Gold-Card-Revamp"
+    },
+    {
+      "title": "Bank Danamon — bonus up to 210.000 Membership Rewards points on the Amex Gold charge card",
+      "url": "https://www.danamon.co.id/en/promo/2025/05/23/Program-Bonus-210000-MR-Points-Kartu-Charge-Danamon-Amex-Gold"
+    },
+    {
+      "title": "American Express Indonesia — Bank Danamon Gold Card",
+      "url": "https://www.americanexpress.com/id/network/credit-cards/danamon/gold-card.html"
+    }
+  ],
+  "verifiedOn": "2026-09-14"
+}
