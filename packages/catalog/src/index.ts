@@ -15,7 +15,7 @@ import type { CatalogEntry } from './types';
 export * from './types';
 export { validateEntry } from './validate';
 export { feeOn, isStale, termsOn } from './lookup';
-export { type CatalogPlan, planCatalogApply, type PlannedBonus, type PlannedPartner, type PlannedRule } from './plan';
+export { type AppliedCategoryChoice, type CatalogPlan, planCatalogApply, type PlannedBonus, type PlannedPartner, type PlannedRule } from './plan';
 export { diffCatalogEntries } from './diff';
 export { describeEntry } from './describe';
 export { type BundledMerchant, MERCHANTS, type MerchantList, validateMerchants } from './merchants';

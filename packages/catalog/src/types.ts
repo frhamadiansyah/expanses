@@ -27,6 +27,11 @@ export interface CatalogRule {
   minTransactionMinor?: number | null;
   /** Levels this rule earns at. Absent means every level, which is how an untiered card is written. */
   memberLevels?: string[];
+  /**
+   * Key of the program's category choice. The rule earns only on the option the holder is running, and the
+   * option's match is merged into this rule's own. Absent means the rule does not depend on a choice.
+   */
+  categoryChoice?: string;
 }
 
 export interface CatalogCycleBonus {
@@ -79,6 +84,19 @@ export interface CatalogMemberLevel {
   condition: string;
 }
 
+/**
+ * A category the holder picks from a menu the bank publishes, which then earns at a better rate — Jenius lets
+ * one of four run at a time, changeable once a billing cycle. Which one is running is the holder's, not the
+ * card's, and it is dated: a cycle that closed keeps the category that was running while it ran.
+ */
+export interface CatalogCategoryChoice {
+  key: string;
+  name: string;
+  /** How often it may be changed, in words, for the screen to repeat. */
+  changeable: string;
+  options: { key: string; name: string; match: CatalogMatch }[];
+}
+
 export interface CatalogProgram {
   unit: 'points' | 'miles' | 'cashback';
   name: string;
@@ -89,6 +107,8 @@ export interface CatalogProgram {
   crediting?: 'per_transaction' | 'per_statement';
   /** Set when earning or conversion depends on the holder's standing with the bank. */
   memberLevels?: CatalogMemberLevel[];
+  /** Set when the holder picks one category from a published menu to earn at a better rate. */
+  categoryChoice?: CatalogCategoryChoice;
 }
 
 export interface CatalogEntry {

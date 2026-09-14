@@ -16,6 +16,7 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
   const add = (path: string, message: string) => errors.push(`${path}: ${message}`);
   if (!isObj(entry)) return ['entry: must be an object'];
   const declaredLevels = new Set<string>();
+  let declaredChoiceKey: string | null = null;
 
   if (typeof entry.id !== 'string' || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(entry.id)) add('id', 'must be lowercase kebab-case');
   if (!isPositiveInt(entry.entryVersion)) add('entryVersion', 'must be a positive integer');
@@ -103,6 +104,38 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
     }
   };
 
+  if (isObj(program) && program.categoryChoice !== undefined) {
+    const choice = program.categoryChoice;
+    if (!isObj(choice)) add('program.categoryChoice', 'must be an object');
+    else {
+      if (!isText(choice.key)) add('program.categoryChoice.key', 'is required');
+      else declaredChoiceKey = choice.key;
+      if (!isText(choice.name)) add('program.categoryChoice.name', 'is required');
+      if (!isText(choice.changeable)) add('program.categoryChoice.changeable', 'is required, so the screen can say how often it may change');
+      if (!Array.isArray(choice.options) || choice.options.length < 2) add('program.categoryChoice.options', 'must offer at least two options');
+      else {
+        const seen = new Set<string>();
+        choice.options.forEach((option, i) => {
+          const path = `program.categoryChoice.options[${i}]`;
+          if (!isObj(option)) return add(path, 'must be an object');
+          if (!isText(option.key)) add(`${path}.key`, 'is required');
+          else if (seen.has(option.key)) add(`${path}.key`, `duplicate key "${option.key}"`);
+          else seen.add(option.key);
+          if (!isText(option.name)) add(`${path}.name`, 'is required');
+          checkMatch(`${path}.match`, option.match);
+        });
+      }
+    }
+  }
+
+  /** A rule may earn only on the holder's chosen option; it must name the choice the program declares. */
+  const checkCategoryChoice = (path: string, key: unknown) => {
+    if (key === undefined) return;
+    if (!isText(key)) return add(`${path}.categoryChoice`, 'must be the key of the program category choice');
+    if (declaredChoiceKey === null) return add(`${path}.categoryChoice`, 'the program declares no category choice');
+    if (key !== declaredChoiceKey) add(`${path}.categoryChoice`, `unknown category choice "${key}"`);
+  };
+
   /** A row may name the levels it applies at; absent means every level. */
   const checkMemberLevels = (path: string, levels: unknown) => {
     if (levels === undefined) return;
@@ -147,6 +180,7 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
           if (rule[cap] !== undefined && rule[cap] !== null && !isNonNegativeInt(rule[cap])) add(`${path}.${cap}`, 'must be a non-negative integer or null');
         }
         checkMemberLevels(path, rule.memberLevels);
+        checkCategoryChoice(path, rule.categoryChoice);
         checkMatch(`${path}.match`, rule.match);
       });
       bonuses.forEach((bonus, b) => {

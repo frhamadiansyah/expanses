@@ -2,6 +2,7 @@ import { CURRENCIES, type CycleBonus, displayAmount, type EarnRule, explainCycle
 import type { CatalogEntry } from '@expanses/catalog';
 import {
   applyCatalogEntry,
+  setCatalogCategoryChoice,
   archiveEarnRule,
   createProgram,
   deleteRedemptionOption,
@@ -254,11 +255,13 @@ export function CardDetailPage() {
     // Some issuers close every cardholder's statement on the same day.
     if (!hasTerms && entry.program.fixedStatementDay && !statementDay) setStatementDay(String(entry.program.fixedStatementDay));
   };
-  const applyEntry = (entry: CatalogEntry, memberLevel: string | null = null) => {
+  const applyEntry = (entry: CatalogEntry, memberLevel: string | null = null, categoryOption: string | null = null) => {
     const manual = cp.rules.length;
     if (manual > 0 && !window.confirm(`Replace your ${manual} earn rule${manual === 1 ? '' : 's'} with the catalogue terms for ${entry.name}?`)) return;
     void run(async () => {
-      await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today, replaceManual: manual > 0, memberLevel });
+      const { programId } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today, replaceManual: manual > 0, memberLevel });
+      // The first pick runs from the start of the card, so every cycle already recorded is covered by it.
+      if (categoryOption) await setCatalogCategoryChoice(database, ws, programId, categoryOption, today, today);
       setBrowsingCatalog(false);
     }).then((applied) => {
       // The catalogue writes the published annual fee onto the card terms, so the form has to read them again —

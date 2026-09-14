@@ -17,18 +17,20 @@ export function CatalogPicker({
   today: string;
   selectedId: string | null;
   onSelect: (entry: CatalogEntry) => void;
-  onApply?: (entry: CatalogEntry, memberLevel: string | null) => void;
+  onApply?: (entry: CatalogEntry, memberLevel: string | null, categoryOption: string | null) => void;
   applyHint?: string;
 }) {
   const { database, ws } = useApp();
   const [query, setQuery] = useState('');
   const [memberLevel, setMemberLevel] = useState<string | null>(null);
+  const [categoryOption, setCategoryOption] = useState<string | null>(null);
   const categoryKeys = useQuery({ queryKey: ['category-keys', ws.workspaceId], queryFn: () => categoryIdsByKey(database, ws) });
   const matches = searchCatalog(CATALOG, query);
   const selected = CATALOG.find((entry) => entry.id === selectedId);
   const preview = selected ? describeEntry(selected, today) : null;
   const unmapped = selected && categoryKeys.data ? planCatalogApply(selected, categoryKeys.data, today, memberLevel).unmappedKeys : [];
   const levels = selected ? memberLevelsOf(selected) : [];
+  const choice = selected?.program.categoryChoice;
   const ready = !!selected && canApplyEntry(selected, memberLevel);
 
   return (
@@ -45,6 +47,7 @@ export function CatalogPicker({
                 aria-pressed={entry.id === selectedId}
                 onClick={() => {
                   setMemberLevel(null);
+                  setCategoryOption(null);
                   onSelect(entry);
                 }}
                 className={cx('w-full px-3 py-2 text-left text-sm hover:bg-slate-50', entry.id === selectedId && 'bg-emerald-50 font-medium')}
@@ -97,8 +100,22 @@ export function CatalogPicker({
               </Field>
             </div>
           )}
+          {choice && (
+            <div className="space-y-1 rounded border border-slate-200 bg-slate-50 p-3">
+              <Field label={`Your ${choice.name}`} hint={`Pick the one you are running now — you can change it ${choice.changeable}, and past cycles keep what was running then.`}>
+                <Select id="category-choice" value={categoryOption ?? ''} onChange={(e) => setCategoryOption(e.target.value || null)}>
+                  <option value="">Choose later</option>
+                  {choice.options.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          )}
           {onApply ? (
-            <Button disabled={!ready} onClick={() => onApply(selected, memberLevel)}>
+            <Button disabled={!ready} onClick={() => onApply(selected, memberLevel, categoryOption)}>
               Use these terms
             </Button>
           ) : (

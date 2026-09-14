@@ -227,12 +227,44 @@ describe('Kartu Kredit Jenius', () => {
     expect(at('seed-plant').map((partner) => partner.points)).toEqual([50_000]);
   });
 
-  it('Double Yay abroad stacks on the base rule, so a foreign purchase earns at half the spend', () => {
+  it('Double Yay abroad replaces the base rate rather than adding to it', () => {
     const rules = planCatalogApply(jenius(), {}, NEW, 'seed-plant').rules.filter((rule) => rule.validFrom === NEW);
     const double = rules.find((rule) => rule.name === 'Double Yay abroad')!;
-    expect(double.stackable).toBe(true);
+    const base = rules.find((rule) => rule.name === 'Base')!;
+    expect(double.stackable).toBe(false);
     expect(double.match.origin).toBe('foreign');
-    expect(double.rateDen).toBe(12_000);
+    // Rp 6.000 per Yay at Seed and Plant, against Rp 12.000 at base: double, not triple.
+    expect(double.rateDen).toBe(6_000);
+    expect(base.rateDen).toBe(12_000);
+    expect(double.priority).toBeGreaterThan(base.priority);
+  });
+
+  it('a foreign purchase in the chosen category earns double once, not four times', () => {
+    const rules = planCatalogApply(jenius(), { 'food.dining': 'c-dining', 'food.coffee': 'c-coffee' }, NEW, 'grow-plus', [
+      { optionKey: 'food-beverages', from: null, to: null },
+    ]).rules.filter((rule) => rule.validFrom === NEW);
+
+    const abroad = rules.find((rule) => rule.name === 'Double Yay abroad')!;
+    const category = rules.find((rule) => rule.name.startsWith('Double Yay category'))!;
+    // Same priority and neither stacks, so the engine's cascade gives the spend to one of them and no more.
+    expect([abroad.stackable, category.stackable]).toEqual([false, false]);
+    expect(abroad.priority).toBe(category.priority);
+    expect(category.rateDen).toBe(5_000);
+  });
+
+  it('offers the four Jenius categories, one at a time, changeable each cycle', () => {
+    const choice = jenius().program.categoryChoice!;
+    expect(choice.options.map((option) => option.name)).toEqual(['Beauty & Fashion', 'Food & Beverages', 'Travel & Leisure', 'Groceries']);
+    expect(choice.changeable).toBe('once a billing cycle');
+  });
+
+  it('offers the same four whatever the Club status', () => {
+    const names = (level: string) =>
+      planCatalogApply(jenius(), { 'food.groceries': 'c-groceries' }, NEW, level, [{ optionKey: 'groceries', from: null, to: null }]).rules
+        .filter((rule) => rule.name.startsWith('Double Yay category') && rule.validFrom === NEW)
+        .map((rule) => rule.name);
+    expect(names('grow-plus')).toEqual(['Double Yay category: Groceries']);
+    expect(names('seed-plant')).toEqual(['Double Yay category: Groceries']);
   });
 
   it('GarudaMiles was not devalued, so one ratio covers both levels and both periods', () => {

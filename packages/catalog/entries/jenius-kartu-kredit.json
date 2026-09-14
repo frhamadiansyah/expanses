@@ -1,6 +1,6 @@
 {
   "id": "jenius-kartu-kredit",
-  "entryVersion": 1,
+  "entryVersion": 2,
   "bank": "Bank SMBC Indonesia",
   "name": "Kartu Kredit Jenius",
   "network": "visa",
@@ -20,7 +20,53 @@
         "name": "Seed or Plant",
         "condition": "average monthly balance below Rp 10.000.000"
       }
-    ]
+    ],
+    "categoryChoice": {
+      "key": "double-yay",
+      "name": "Double Yay category",
+      "changeable": "once a billing cycle",
+      "options": [
+        {
+          "key": "beauty-fashion",
+          "name": "Beauty & Fashion",
+          "match": {
+            "categoryKeys": [
+              "shopping.clothing",
+              "personal_care"
+            ]
+          }
+        },
+        {
+          "key": "food-beverages",
+          "name": "Food & Beverages",
+          "match": {
+            "categoryKeys": [
+              "food.dining",
+              "food.coffee"
+            ]
+          }
+        },
+        {
+          "key": "travel-leisure",
+          "name": "Travel & Leisure",
+          "match": {
+            "categoryKeys": [
+              "travel",
+              "entertainment"
+            ]
+          }
+        },
+        {
+          "key": "groceries",
+          "name": "Groceries",
+          "match": {
+            "categoryKeys": [
+              "food.groceries"
+            ]
+          }
+        }
+      ]
+    }
   },
   "fees": [
     {
@@ -36,26 +82,37 @@
       "effectiveTo": "2026-07-31",
       "rules": [
         {
-          "key": "base",
-          "name": "Base",
-          "rateNum": 1,
-          "rateDen": 10000,
-          "rounding": "per_increment",
-          "priority": 0,
-          "stackable": false,
-          "match": {}
-        },
-        {
-          "key": "double-yay",
+          "key": "double-yay-abroad",
           "name": "Double Yay abroad",
-          "rateNum": 1,
-          "rateDen": 10000,
           "rounding": "per_increment",
-          "priority": 0,
-          "stackable": true,
+          "rateNum": 1,
+          "rateDen": 5000,
+          "priority": 10,
+          "stackable": false,
           "match": {
             "origin": "foreign"
           }
+        },
+        {
+          "key": "double-yay-category",
+          "name": "Double Yay category",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 5000,
+          "priority": 10,
+          "stackable": false,
+          "match": {},
+          "categoryChoice": "double-yay"
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "priority": 0,
+          "stackable": false,
+          "match": {}
         }
       ],
       "cycleBonuses": []
@@ -65,26 +122,13 @@
       "effectiveTo": null,
       "rules": [
         {
-          "key": "base-grow",
-          "name": "Base",
-          "rateNum": 1,
-          "rateDen": 10000,
-          "rounding": "per_increment",
-          "priority": 0,
-          "stackable": false,
-          "match": {},
-          "memberLevels": [
-            "grow-plus"
-          ]
-        },
-        {
-          "key": "double-yay-grow",
+          "key": "double-yay-abroad-grow",
           "name": "Double Yay abroad",
-          "rateNum": 1,
-          "rateDen": 10000,
           "rounding": "per_increment",
-          "priority": 0,
-          "stackable": true,
+          "rateNum": 1,
+          "rateDen": 5000,
+          "priority": 10,
+          "stackable": false,
           "match": {
             "origin": "foreign"
           },
@@ -93,29 +137,70 @@
           ]
         },
         {
-          "key": "base-seed-plant",
-          "name": "Base",
-          "rateNum": 1,
-          "rateDen": 12000,
+          "key": "double-yay-category-grow",
+          "name": "Double Yay category",
           "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 5000,
+          "priority": 10,
+          "stackable": false,
+          "match": {},
+          "categoryChoice": "double-yay",
+          "memberLevels": [
+            "grow-plus"
+          ]
+        },
+        {
+          "key": "base-grow",
+          "name": "Base",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 10000,
           "priority": 0,
           "stackable": false,
           "match": {},
+          "memberLevels": [
+            "grow-plus"
+          ]
+        },
+        {
+          "key": "double-yay-abroad-seed-plant",
+          "name": "Double Yay abroad",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 6000,
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "origin": "foreign"
+          },
           "memberLevels": [
             "seed-plant"
           ]
         },
         {
-          "key": "double-yay-seed-plant",
-          "name": "Double Yay abroad",
+          "key": "double-yay-category-seed-plant",
+          "name": "Double Yay category",
+          "rounding": "per_increment",
+          "rateNum": 1,
+          "rateDen": 6000,
+          "priority": 10,
+          "stackable": false,
+          "match": {},
+          "categoryChoice": "double-yay",
+          "memberLevels": [
+            "seed-plant"
+          ]
+        },
+        {
+          "key": "base-seed-plant",
+          "name": "Base",
+          "rounding": "per_increment",
           "rateNum": 1,
           "rateDen": 12000,
-          "rounding": "per_increment",
           "priority": 0,
-          "stackable": true,
-          "match": {
-            "origin": "foreign"
-          },
+          "stackable": false,
+          "match": {},
           "memberLevels": [
             "seed-plant"
           ]
@@ -172,7 +257,8 @@
   "welcomeBonus": null,
   "notes": [
     "From 1 August 2026 earning and KrisFlyer conversion follow the Jenius Club status set by average monthly balance: Grow and above keep the old terms, Seed and Plant earn less and convert worse.",
-    "Double Yay covers foreign transactions and selected categories. Only the foreign half is estimated here: the list of selected categories was not in the sources, so a domestic purchase in one of them will be underestimated.",
+    "Double Yay pays double on foreign transactions and on one category the holder picks from four, changeable once a billing cycle. It replaces the base rate rather than adding to it: a Food & Beverages purchase in US dollars earns double once, not four times, so both rules sit above the base rule at the same priority.",
+    "Jenius decides the four categories by merchant category code; they are mapped here onto this workspace's categories (Beauty & Fashion to clothing and personal care, Food & Beverages to dining and coffee, Travel & Leisure to travel and entertainment, Groceries to groceries). A merchant the bank counts differently will not match.",
     "Seed and Plant: the source quotes Double Yay at about Rp 8.000 per KrisFlyer mile, but Rp 6.000 per Yay at the stated 50.000 Yay = 30.000 miles is Rp 10.000 per mile. Rp 8.000 only holds at the old 40.000 = 30.000 ratio, so it reads as a figure carried over and not updated. The published ratio is encoded; check this one against the Jenius app.",
     "The GarudaMiles ratio is derived, not published: Rp 6.250 per mile at Rp 5.000 per Yay (Grow) and Rp 7.500 at Rp 6.000 (Seed and Plant) both give 0,8 miles per Yay, so GarudaMiles was not devalued. The step of 40.000 Yay is an assumption; the real minimum may differ.",
     "From 1 August 2026 a purchase converted to a 0% instalment, including Split Pay 0% at a merchant or in the app, earns no Yay Points. An interest-bearing instalment still earns. Estimates cannot see instalment status, so a 0% instalment will be overestimated.",

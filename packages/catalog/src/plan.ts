@@ -2,6 +2,20 @@ import type { CycleBonus, EarnRule, RuleMatch, TransferPartner } from '@expanses
 import { feeOn } from './lookup';
 import type { CatalogEntry, CatalogMatch } from './types';
 
+/** A stretch of time the holder ran one option of the program's category choice. `to` null means it still runs. */
+export interface AppliedCategoryChoice {
+  optionKey: string;
+  from: string | null;
+  to: string | null;
+}
+
+/** The later of two starts, and the earlier of two ends, with null meaning open. Null when they do not overlap. */
+function overlap(a: { from: string | null; to: string | null }, b: { from: string | null; to: string | null }) {
+  const from = a.from === null ? b.from : b.from === null ? a.from : a.from > b.from ? a.from : b.from;
+  const to = a.to === null ? b.to : b.to === null ? a.to : a.to < b.to ? a.to : b.to;
+  return from !== null && to !== null && from > to ? null : { from, to };
+}
+
 export interface PlannedRule extends Omit<EarnRule, 'id'> {
   catalogKey: string;
 }
@@ -29,6 +43,8 @@ export interface CatalogPlan {
   requiresMemberLevel: boolean;
   /** The level this plan was expanded at, or null when none was chosen. */
   memberLevel: string | null;
+  /** True when the entry publishes a category choice, so the card must record which option is running. */
+  requiresCategoryChoice: boolean;
 }
 
 /**
@@ -41,6 +57,7 @@ export function planCatalogApply(
   categoryIdsByKey: Record<string, string>,
   today: string,
   memberLevel?: string | null,
+  categoryChoices: readonly AppliedCategoryChoice[] = [],
 ): CatalogPlan {
   const unmapped = new Set<string>();
   /** A row with no levels applies at every level; one that names levels needs the chosen level among them. */
@@ -75,20 +92,48 @@ export function planCatalogApply(
     const start = period.effectiveFrom ?? 'start';
     for (const rule of period.rules) {
       if (!atLevel(rule.memberLevels)) continue;
-      const match = toMatch(rule.match);
-      if (!match) continue;
-      rules.push({
-        catalogKey: `${start}:${rule.key}`,
+      const shape = {
         name: rule.name,
         priority: rule.priority,
         stackable: rule.stackable,
-        match,
         rateNum: rule.rateNum,
         rateDen: rule.rateDen,
         rounding: rule.rounding,
         capSpendMinor: rule.capSpendMinor ?? null,
         capPoints: rule.capPoints ?? null,
         minTransactionMinor: rule.minTransactionMinor ?? null,
+      };
+
+      // A rule tied to the category choice becomes one dated row per stretch the holder ran an option, so a
+      // cycle that closed keeps the category that was running while it ran.
+      if (rule.categoryChoice) {
+        const choice = entry.program.categoryChoice;
+        if (!choice || choice.key !== rule.categoryChoice) continue;
+        for (const applied of categoryChoices) {
+          const option = choice.options.find((candidate) => candidate.key === applied.optionKey);
+          if (!option) continue;
+          const window = overlap({ from: period.effectiveFrom, to: period.effectiveTo }, { from: applied.from, to: applied.to });
+          if (!window) continue;
+          const match = toMatch({ ...rule.match, ...option.match });
+          if (!match) continue;
+          rules.push({
+            ...shape,
+            catalogKey: `${start}:${rule.key}:${option.key}:${applied.from ?? 'start'}`,
+            name: `${rule.name}: ${option.name}`,
+            match,
+            validFrom: window.from,
+            validTo: window.to,
+          });
+        }
+        continue;
+      }
+
+      const match = toMatch(rule.match);
+      if (!match) continue;
+      rules.push({
+        ...shape,
+        catalogKey: `${start}:${rule.key}`,
+        match,
         validFrom: period.effectiveFrom,
         validTo: period.effectiveTo,
       });
@@ -129,5 +174,6 @@ export function planCatalogApply(
     unmappedKeys: [...unmapped].sort(),
     requiresMemberLevel: (entry.program.memberLevels?.length ?? 0) > 0,
     memberLevel: memberLevel ?? null,
+    requiresCategoryChoice: !!entry.program.categoryChoice,
   };
 }

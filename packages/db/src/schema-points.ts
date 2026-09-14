@@ -125,3 +125,14 @@ export const transactionPointActuals = sqliteTable('transaction_point_actuals', 
   editedAfterCheck: integer('edited_after_check').notNull(),
   recordedAt: text('recorded_at').notNull(),
 });
+
+/** Stretches of time the holder ran one option of a program's published category choice. */
+export const catalogCategoryChoices = sqliteTable('catalog_category_choices', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  programId: text('program_id').notNull(),
+  optionKey: text('option_key').notNull(),
+  validFrom: text('valid_from'),
+  validTo: text('valid_to'),
+  createdAt: text('created_at').notNull(),
+});
