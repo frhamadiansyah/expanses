@@ -74,6 +74,21 @@ describe('guessing a category from history', () => {
     expect(await guessCategoryFromHistory(t.database, t.ws, 'superindo kebayoran')).toBe(t.key('household.supplies'));
   });
 
+  it('matches a shop named shorter or longer than before, but an exact name comes first', async () => {
+    const t = await workspace();
+    const bank = (await createAccount(t.database, t.ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    await spend(t, bank, '2026-08-01', 'SUPERINDO KEBAYORAN 0801', 'household.groceries');
+    await spend(t, bank, '2026-08-02', 'Grab Food', 'food_beverage.takeaways');
+
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Superindo')).toBe(t.key('household.groceries'));
+    // A whole word has to match: Grabcar is not Grab.
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'Grabcar')).toBeNull();
+
+    await spend(t, bank, '2026-08-03', 'Superindo', 'household.supplies');
+    await spend(t, bank, '2026-09-01', 'Superindo Pondok', 'food_beverage.takeaways');
+    expect(await guessCategoryFromHistory(t.database, t.ws, 'superindo')).toBe(t.key('household.supplies'));
+  });
+
   it('knows nothing about a merchant never seen', async () => {
     const t = await workspace();
     expect(await guessCategoryFromHistory(t.database, t.ws, 'Toko Bangunan Jaya')).toBeNull();

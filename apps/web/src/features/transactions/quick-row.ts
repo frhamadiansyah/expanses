@@ -128,3 +128,29 @@ export function paymentOptions(accounts: readonly AccountRow[], cards: readonly 
 }
 
 export const paymentKey = (accountId: string, cardId: string | null | undefined) => (cardId ? `${accountId}:${cardId}` : accountId);
+
+/**
+ * Rows pasted from a spreadsheet, as cells. Text with no tab and no line break is an ordinary paste
+ * into one cell and gives nothing back. Columns are read in the table's order: date, description,
+ * amount, paid with, category; a row that is blank throughout is skipped.
+ */
+export function parsePastedRows(text: string): string[][] {
+  if (!/[\t\n]/.test(text.trim())) return [];
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.split('\t').map((cell) => cell.trim()))
+    .filter((cells) => cells.some(Boolean));
+}
+
+/** Cells as pasted, into row values: a date read where it can be, the account and category matched by name. */
+export function valuesFromCells(
+  cells: readonly string[],
+  resolve: { paid: (text: string) => string | null; category: (text: string) => string | null },
+  today: string,
+): QuickValues {
+  const [date = '', description = '', amount = '', paid = '', category = ''] = cells;
+  const iso = parseLooseDate(date, today);
+  const [accountId = '', cardId = ''] = (resolve.paid(paid) ?? '').split(':');
+  return { date: iso ? shortDate(iso, today) : date, description, amount, accountId, cardId, categoryId: resolve.category(category) ?? '' };
+}

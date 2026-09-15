@@ -1,8 +1,8 @@
 import { categoryPath, formatMinor, isoDate, monthOf, monthRange, parseLooseAmount, parseLooseDate, parseUnits } from '@expanses/core';
-import { confirmDraft, convertToPurchase, dismissDraft, editDraft, listTransactions, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
+import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactions, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { CalendarX2, CircleAlert, Pencil, Search, X } from 'lucide-react';
+import { CalendarX2, CircleAlert, List, Pencil, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -15,8 +15,9 @@ import { useDrafts } from '../review/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { isEditable } from './draft';
-import { QuickRowEditor } from './QuickRowEditor';
-import { isQuickEditable, quickFromDraft, quickFromTransaction, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
+import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
+import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
+import { type TableHandlers, TransactionsTable } from './TransactionsTable';
 import { buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
@@ -25,6 +26,18 @@ import { BillsDue } from './BillsDue';
 import { TransactionForm } from './TransactionForm';
 
 const route = getRouteApi('/transactions');
+
+type View = 'list' | 'table';
+const VIEW_KEY = 'expanses.transactions.view';
+
+/** Which view was used last, on this browser. A convenience only: losing it just opens the list. */
+function rememberedView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'list';
+  } catch {
+    return 'list';
+  }
+}
 
 /** Turns an expense already recorded into the purchase it really was, keeping its date and amount. */
 function ConvertForm({
@@ -175,6 +188,15 @@ export function TransactionsPage() {
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
   const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' });
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<View>(rememberedView);
+  const chooseView = (next: View) => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // Private windows can refuse storage; the view still switches for this visit.
+    }
+  };
   /** The full form, for a transaction too involved to edit as a row. */
   const [editingId, setEditingId] = useState<string | null>(null);
   /** A row being edited in place. */
@@ -211,6 +233,7 @@ export function TransactionsPage() {
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
 
+  const rowOptions = buildRowOptions(accounts, cards);
   const money = accounts.filter(isMoneyAccount);
   const cardsOf = (accountId: string) => cards.filter((card) => card.accountId === accountId);
   const paidOptions: ChipOption[] = [
@@ -243,14 +266,16 @@ export function TransactionsPage() {
     setSearch({ month: undefined, account: undefined });
   }
 
-  async function run(id: string, work: () => Promise<unknown>) {
+  async function run(id: string, work: () => Promise<unknown>): Promise<boolean> {
     setError(null);
     setBusy(id);
     try {
       await work();
       await invalidate();
+      return true;
     } catch (e) {
       setError(e);
+      return false;
     } finally {
       setBusy(null);
     }
@@ -284,30 +309,50 @@ export function TransactionsPage() {
     setArmed(null);
   }
 
-  async function saveRecorded(id: string, values: QuickValues) {
+  async function saveRecorded(id: string, values: QuickValues): Promise<boolean> {
     const { read } = readQuick(values, accounts, today, ws.baseCurrency);
-    if (!read) return;
-    await run(id, async () => {
-      const foreign = read.currency === ws.baseCurrency ? [] : [read.currency];
-      const rates = await resolveRates(foreign, read.occurredOn);
-      if (rates.missing.length > 0) throw new Error(`No ${rates.missing[0]}→${ws.baseCurrency} rate for ${read.occurredOn}. Open it in the form to enter one.`);
-      await replaceTransaction(database, ws, id, { ...quickToInput(read, accounts), ratesToBase: rates.rates });
+    if (!read) return false;
+    return run(id, async () => {
+      await replaceTransaction(database, ws, id, { ...quickToInput(read, accounts), ratesToBase: await ratesFor(read) });
       close();
     });
   }
 
-  async function saveDraft(id: string, values: QuickValues, record: boolean) {
+  async function ratesFor(read: QuickRead) {
+    const rates = await resolveRates(read.currency === ws.baseCurrency ? [] : [read.currency], read.occurredOn);
+    if (rates.missing.length > 0) throw new Error(`No ${rates.missing[0]}→${ws.baseCurrency} rate for ${read.occurredOn}. Use Add transaction to enter one.`);
+    return rates.rates;
+  }
+
+  /** A row's cells as a draft: whatever could be read, the rest left for the owner to finish. */
+  function draftFields(values: QuickValues) {
     const currency = accounts.find((a) => a.id === values.accountId)?.currency ?? ws.baseCurrency;
-    await run(id, async () => {
-      await editDraft(database, ws, id, {
-        occurredOn: parseLooseDate(values.date, today) ?? values.date.trim(),
-        description: values.description.trim(),
-        amountMinor: parseLooseAmount(values.amount, currency) ?? 0,
-        currency,
-        accountId: values.accountId || null,
-        cardId: values.cardId || null,
-        categoryAccountId: values.categoryId || null,
-      });
+    return {
+      occurredOn: parseLooseDate(values.date, today) ?? values.date.trim(),
+      description: values.description.trim(),
+      amountMinor: parseLooseAmount(values.amount, currency) ?? 0,
+      currency,
+      accountId: values.accountId || null,
+      cardId: values.cardId || null,
+      categoryAccountId: values.categoryId || null,
+    };
+  }
+
+  async function recordTyped(values: QuickValues) {
+    const { read } = readQuick(values, accounts, today, ws.baseCurrency);
+    if (!read) return false;
+    return run('typing', async () => postTransaction(database, ws, { ...quickToInput(read, accounts), ratesToBase: await ratesFor(read) }));
+  }
+
+  const keepTyped = (values: QuickValues) => run('typing', () => createDraft(database, ws, { source: 'manual', ...draftFields(values) }));
+  const keepPasted = (pasted: QuickValues[]) =>
+    run('typing', async () => {
+      for (const values of pasted) await createDraft(database, ws, { source: 'manual', ...draftFields(values) });
+    });
+
+  async function saveDraft(id: string, values: QuickValues, record: boolean): Promise<boolean> {
+    return run(id, async () => {
+      await editDraft(database, ws, id, draftFields(values));
       if (record) await confirmDraft(database, ws, id);
       close();
     });
@@ -319,10 +364,13 @@ export function TransactionsPage() {
       <button
         type="button"
         disabled={busy === id}
-        onClick={() => (armed === id ? void run(id, async () => {
-          await work();
-          close();
-        }) : setArmed(id))}
+        onClick={() => {
+          if (armed !== id) setArmed(id);
+          else void run(id, async () => {
+            await work();
+            close();
+          });
+        }}
         className={cx('rounded-lg px-2 py-1 text-xs font-medium', armed === id ? 'bg-red-700 text-white' : 'text-red-700 hover:bg-red-50')}
       >
         {armed === id ? armedLabel : label}
@@ -349,8 +397,7 @@ export function TransactionsPage() {
             values={values}
             onChange={(patch) => setEditing({ ...editing, values: { ...values, ...patch } })}
             needs={needs}
-            accounts={accounts}
-            cards={cards}
+            options={rowOptions}
             currency={accounts.find((a) => a.id === values.accountId)?.currency ?? ws.baseCurrency}
             autoFocus
             onSubmit={() => void saveDraft(row.id, values, needs.length === 0)}
@@ -431,7 +478,13 @@ export function TransactionsPage() {
   function recordedRow(row: ListRow, withDate: boolean) {
     const tx = row.tx!;
     const purchaseButton = tx.status === 'posted' && row.type === 'expense' && holdings.length > 0 && (
-      <button type="button" onClick={() => { close(); setConverting(tx.id); }} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
+      <button
+        type="button"
+        onClick={() => {
+          close();
+          setConverting(tx.id);
+        }}
+        className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
         This was a purchase
       </button>
     );
@@ -445,8 +498,7 @@ export function TransactionsPage() {
             values={values}
             onChange={(patch) => setEditing({ ...editing, values: { ...values, ...patch } })}
             needs={needs}
-            accounts={accounts}
-            cards={cards}
+            options={rowOptions}
             currency={accounts.find((a) => a.id === values.accountId)?.currency ?? ws.baseCurrency}
             autoFocus
             onSubmit={() => void saveRecorded(tx.id, values)}
@@ -467,7 +519,13 @@ export function TransactionsPage() {
               Editing in place · <kbd>Enter</kbd> saves · <kbd>Esc</kbd> cancels · the original stays under Show deleted
             </>,
             <>
-              <button type="button" onClick={() => { setEditing(null); setEditingId(tx.id); }} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(null);
+                  setEditingId(tx.id);
+                }}
+                className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
                 Open in form
               </button>
               {purchaseButton}
@@ -563,22 +621,60 @@ export function TransactionsPage() {
     );
   }
 
+  const tableHandlers: TableHandlers = {
+    busy,
+    recordTyped,
+    keepTyped,
+    keepPasted,
+    guessCategory: (description) => guessCategoryFromHistory(database, ws, description),
+    saveRecorded,
+    saveDraft,
+    dismissDraft: (id) => run(id, () => dismissDraft(database, ws, id)),
+    deleteRecorded: (id) => run(id, () => voidTransaction(database, ws, id)),
+    renderForm: (tx, onDone) => <TransactionForm initial={tx} onDone={onDone} />,
+    tradeIds: new Set(tradeByTransaction.keys()),
+  };
+
   const rowView = (row: ListRow, withDate = false) => (row.kind === 'draft' ? draftRow(row) : recordedRow(row, withDate));
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Transactions" action={
-          !adding && (
-            <Button
-              onClick={() => {
-                close();
-                setAdding(true);
-              }}
-            >
-              Add transaction
-            </Button>
-          )
-        } />
+      <PageHeader
+        title="Transactions"
+        action={
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div role="group" aria-label="View" className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
+              {(
+                [
+                  ['list', 'List', List],
+                  ['table', 'Table', Table2],
+                ] as const
+              ).map(([value, text, Icon]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={view === value}
+                  onClick={() => chooseView(value)}
+                  className={cx('inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium', view === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900')}
+                >
+                  <Icon size={16} aria-hidden />
+                  {text}
+                </button>
+              ))}
+            </div>
+            {!adding && (
+              <Button
+                onClick={() => {
+                  close();
+                  setAdding(true);
+                }}
+              >
+                Add transaction
+              </Button>
+            )}
+          </div>
+        }
+      />
       {adding && <TransactionForm onDone={() => setAdding(false)} />}
       <BillsDue />
 
@@ -701,37 +797,51 @@ export function TransactionsPage() {
       </div>
 
       <ErrorBox error={error ?? list.error ?? drafts.error} />
-      {list.isSuccess && shown.length === 0 &&
-        (rows.length === 0 ? (
-          <Empty>No transactions in this period.</Empty>
-        ) : (
-          <Empty>
-            Nothing matches{filters.q && ` “${filters.q}”`}.{' '}
-            <button type="button" onClick={clearAll} className="underline">
-              Clear search and filters
-            </button>
-          </Empty>
-        ))}
-
-      {sort.key === 'amount' && shown.length > 0 ? (
-        <>
-          <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 py-0.5 pr-1 pl-3 text-xs text-slate-700">
-            Sorted by amount, {sort.dir === 'asc' ? 'smallest' : 'largest'} first
-            <button type="button" onClick={() => setSort({ key: 'date', dir: 'desc' })} className="rounded-full bg-white px-2 py-0.5 ring-1 ring-slate-300 hover:bg-slate-900 hover:text-white">
-              Back to dates
-            </button>
-          </div>
-          <Card>
-            <ul className="divide-y divide-slate-100">{shown.map((row) => rowView(row, true))}</ul>
-          </Card>
-        </>
+      {view === 'table' ? (
+        <TransactionsTable
+          rows={shown}
+          options={rowOptions}
+          accounts={accounts}
+          today={today}
+          baseCurrency={ws.baseCurrency}
+          handlers={tableHandlers}
+          empty={rows.length === 0 ? 'No transactions in this period yet. Type the first one above.' : 'Nothing matches the search and filters.'}
+        />
       ) : (
-        groupByDay(shown).map((day) => (
-          <Card key={day.date || 'undated'}>
-            <DayHeader date={day.date} net={dayTotal(day.rows)} currency={ws.baseCurrency} />
-            <ul className="divide-y divide-slate-100">{day.rows.map((row) => rowView(row))}</ul>
-          </Card>
-        ))
+        <>
+          {list.isSuccess && shown.length === 0 &&
+            (rows.length === 0 ? (
+              <Empty>No transactions in this period.</Empty>
+            ) : (
+              <Empty>
+                Nothing matches{filters.q && ` “${filters.q}”`}.{' '}
+                <button type="button" onClick={clearAll} className="underline">
+                  Clear search and filters
+                </button>
+              </Empty>
+            ))}
+
+          {sort.key === 'amount' && shown.length > 0 ? (
+            <>
+              <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 py-0.5 pr-1 pl-3 text-xs text-slate-700">
+                Sorted by amount, {sort.dir === 'asc' ? 'smallest' : 'largest'} first
+                <button type="button" onClick={() => setSort({ key: 'date', dir: 'desc' })} className="rounded-full bg-white px-2 py-0.5 ring-1 ring-slate-300 hover:bg-slate-900 hover:text-white">
+                  Back to dates
+                </button>
+              </div>
+              <Card>
+                <ul className="divide-y divide-slate-100">{shown.map((row) => rowView(row, true))}</ul>
+              </Card>
+            </>
+          ) : (
+            groupByDay(shown).map((day) => (
+              <Card key={day.date || 'undated'}>
+                <DayHeader date={day.date} net={dayTotal(day.rows)} currency={ws.baseCurrency} />
+                <ul className="divide-y divide-slate-100">{day.rows.map((row) => rowView(row))}</ul>
+              </Card>
+            ))
+          )}
+        </>
       )}
       <BillList />
     </div>

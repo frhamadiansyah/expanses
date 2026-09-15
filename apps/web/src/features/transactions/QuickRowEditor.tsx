@@ -8,12 +8,15 @@ import { CellCombo, type ComboOption } from './CellCombo';
 import { paymentKey, paymentOptions, type QuickValues } from './quick-row';
 
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
-export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_auto] items-center gap-px';
+export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
 
 const CELL = 'h-9 w-full rounded-md bg-transparent px-2 text-sm focus:bg-white focus:outline-2 focus:outline-slate-900';
 const MISSING = 'bg-amber-50 ring-1 ring-amber-400 ring-inset';
 
-export function useRowOptions(accounts: readonly AccountRow[], cards: readonly CardRow[]) {
+export type RowOptions = ReturnType<typeof buildRowOptions>;
+
+/** The choices for the paid-with and category cells. Built once per list, not once per row. */
+export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly CardRow[]) {
   const money = accounts.filter(isMoneyAccount);
   const payments = paymentOptions(money, cards);
   const paid: ComboOption[] = payments.map((option) => ({
@@ -28,7 +31,7 @@ export function useRowOptions(accounts: readonly AccountRow[], cards: readonly C
     .map((a) => ({
       value: a.id,
       label: a.name,
-      meta: a.parentId ? byId.get(a.parentId)?.name : undefined,
+      detail: a.parentId ? byId.get(a.parentId)?.name : undefined,
       keywords: categoryPath([...accounts], a.id),
       icon: <CategoryIcon categoryId={a.id} accounts={accounts} size="xs" />,
     }))
@@ -49,30 +52,38 @@ export function QuickRowEditor({
   values,
   onChange,
   needs,
-  accounts,
-  cards,
+  options,
   actions,
   onSubmit,
   onCancel,
   currency,
   autoFocus = false,
+  className,
+  onDescriptionBlur,
+  onPaste,
 }: {
   values: QuickValues;
   onChange: (patch: Partial<QuickValues>) => void;
   needs: readonly string[];
-  accounts: readonly AccountRow[];
-  cards: readonly CardRow[];
+  options: RowOptions;
   actions: ReactNode;
   onSubmit: () => void;
   onCancel: () => void;
   currency: string;
   autoFocus?: boolean;
+  /** Replaces the editing frame, for a row that sits among others in the table. */
+  className?: string;
+  onDescriptionBlur?: () => void;
+  /** Handed text pasted into the date or description cell; return true when it was taken as rows. */
+  onPaste?: (text: string) => boolean;
 }) {
-  const options = useRowOptions(accounts, cards);
+  const paste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    if (onPaste?.(event.clipboardData.getData('text/plain'))) event.preventDefault();
+  };
   const missing = (cell: string) => needs.includes(cell);
   return (
     <div
-      className={cx(ROW_GRID, 'rounded-lg bg-white p-0.5 ring-2 ring-slate-900')}
+      className={cx(ROW_GRID, className ?? 'rounded-lg bg-white p-0.5 ring-2 ring-slate-900')}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && (event.target as HTMLElement).tagName === 'INPUT') {
           event.preventDefault();
@@ -88,6 +99,7 @@ export function QuickRowEditor({
         autoComplete="off"
         placeholder="15 Sep"
         value={values.date}
+        onPaste={paste}
         onChange={(event) => onChange({ date: event.target.value })}
         className={cx(CELL, 'tabular', missing('date') && MISSING)}
       />
@@ -97,6 +109,8 @@ export function QuickRowEditor({
         autoFocus={autoFocus}
         placeholder="Description"
         value={values.description}
+        onPaste={paste}
+        onBlur={onDescriptionBlur}
         onChange={(event) => onChange({ description: event.target.value })}
         className={cx(CELL, missing('description') && MISSING)}
       />
@@ -130,7 +144,7 @@ export function QuickRowEditor({
         invalid={missing('category')}
         onChange={(categoryId) => onChange({ categoryId })}
       />
-      <div className="flex items-center gap-1 pl-1">{actions}</div>
+      <div className="flex items-center justify-end gap-1 pl-1">{actions}</div>
     </div>
   );
 }

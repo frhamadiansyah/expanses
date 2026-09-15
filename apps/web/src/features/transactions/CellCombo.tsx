@@ -5,8 +5,10 @@ import { cx } from '../../ui';
 export interface ComboOption {
   value: string;
   label: string;
-  /** Shown beside the label, and searched: a card's digits, a category's parent. */
+  /** Shown beside the label in the cell and the list, and searched: a card's last four digits. */
   meta?: string;
+  /** Shown only in the list, and searched: a category's parent. */
+  detail?: string;
   icon?: ReactNode;
   keywords?: string;
 }
@@ -43,7 +45,7 @@ export function CellCombo({
 
   const tokens = searchTokens(query ?? '');
   const matching = options.filter((option) => {
-    const text = `${option.label} ${option.meta ?? ''} ${option.keywords ?? ''}`.toLowerCase();
+    const text = `${option.label} ${option.meta ?? ''} ${option.detail ?? ''} ${option.keywords ?? ''}`.toLowerCase();
     return tokens.every((token) => text.includes(token));
   });
 
@@ -136,7 +138,7 @@ export function CellCombo({
             >
               {option.icon}
               <span className="min-w-0 truncate">{option.label}</span>
-              {option.meta && <span className="tabular ml-auto whitespace-nowrap text-xs text-slate-500">{option.meta}</span>}
+              {(option.meta ?? option.detail) && <span className="tabular ml-auto whitespace-nowrap text-xs text-slate-500">{option.meta ?? option.detail}</span>}
             </li>
           ))}
         </ul>

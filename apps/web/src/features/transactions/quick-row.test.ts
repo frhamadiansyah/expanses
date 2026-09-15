@@ -1,6 +1,6 @@
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { isQuickEditable, paymentOptions, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate } from './quick-row';
+import { isQuickEditable, parsePastedRows, paymentOptions, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells } from './quick-row';
 
 const TODAY = '2026-09-15';
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
@@ -83,5 +83,24 @@ describe('paymentOptions', () => {
     const options = paymentOptions(accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability'), cards);
     expect(options.filter((o) => o.accountId === 'bonvoy').map((o) => o.last4)).toEqual(['1467', '8802']);
     expect(options.filter((o) => o.accountId === 'bca')).toHaveLength(1);
+  });
+});
+
+describe('pasting rows', () => {
+  const resolve = { paid: (text: string) => (text.includes('8802') ? 'bonvoy:c2' : null), category: (text: string) => (text === 'Groceries' ? 'groceries' : null) };
+
+  it('leaves an ordinary one-cell paste alone', () => {
+    expect(parsePastedRows('Superindo Kebayoran')).toEqual([]);
+    expect(parsePastedRows('Superindo\n')).toEqual([]);
+  });
+
+  it('reads spreadsheet rows in column order, skipping blank ones', () => {
+    const rows = parsePastedRows('12/9\tSuperindo\t450.000\tBonvoy 8802\tGroceries\r\n\t\t\n13 Sep\tGrab\t32000\n');
+    expect(rows).toEqual([
+      ['12/9', 'Superindo', '450.000', 'Bonvoy 8802', 'Groceries'],
+      ['13 Sep', 'Grab', '32000'],
+    ]);
+    expect(valuesFromCells(rows[0]!, resolve, TODAY)).toEqual({ date: '12 Sep', description: 'Superindo', amount: '450.000', accountId: 'bonvoy', cardId: 'c2', categoryId: 'groceries' });
+    expect(valuesFromCells(rows[1]!, resolve, TODAY)).toMatchObject({ date: '13 Sep', accountId: '', categoryId: '' });
   });
 });

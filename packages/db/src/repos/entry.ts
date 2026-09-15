@@ -33,10 +33,17 @@ export async function guessCategoryFromHistory(database: Database, ws: Workspace
     seen.categories.add(row.categoryId);
     perTransaction.set(row.transactionId, seen);
   }
-  // Map keeps insertion order, and rows arrived newest first.
+  // Map keeps insertion order, and rows arrived newest first. The same name is the best evidence; failing
+  // that, one name that begins with the other's words ("Superindo" and "Superindo Kebayoran").
+  const words = key.split(' ');
+  const startsWith = (longer: string[], shorter: string[]) => shorter.every((word, i) => longer[i] === word);
+  let near: string | null = null;
   for (const { description: seenDescription, categories } of perTransaction.values()) {
     if (categories.size !== 1) continue;
-    if (merchantKey(seenDescription) === key) return [...categories][0]!;
+    const seen = merchantKey(seenDescription);
+    if (seen === key) return [...categories][0]!;
+    const seenWords = seen.split(' ');
+    if (near === null && seen && (startsWith(seenWords, words) || startsWith(words, seenWords))) near = [...categories][0]!;
   }
-  return null;
+  return near;
 }
