@@ -94,6 +94,15 @@ describe('CIMB Niaga World Cathay', () => {
     expect(await earn(t, [line(travel, 500_000, { description: 'GARUDA INDONESIA' })])).toBe(40);
   });
 
+  it('recognises Cathay by merchant code as well as by name', async () => {
+    const t = await withCard('cimb-niaga-world-cathay');
+    const travel = await idOf(t, 'travel');
+    // A statement line that does not say Cathay still earns the better rate on code 3077.
+    expect(await earn(t, [line(travel, 500_000, { description: 'TIKET PENERBANGAN', mcc: '3077', mccSource: 'typed' })])).toBe(150);
+    // Another airline's code does not.
+    expect(await earn(t, [line(travel, 500_000, { description: 'TIKET PENERBANGAN', mcc: '3103', mccSource: 'typed' })])).toBe(40);
+  });
+
   it('earns Asia Miles directly, so there is nothing to transfer', async () => {
     const t = await withCard('cimb-niaga-world-cathay');
     expect(findEntry('cimb-niaga-world-cathay')!.program.name).toBe('Asia Miles');
