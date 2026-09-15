@@ -159,5 +159,19 @@
       "url": "https://www.ocbc.id/individu/kartu-transaksi/kartu-kredit/ocbc-nisp-90n"
     }
   ],
-  "verifiedOn": "2026-09-14"
+  "verifiedOn": "2026-09-14",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#0d101c", "#2d5b84", "#0c2237"],
+    "angle": 160,
+    "finish": "glossy",
+    "pattern": "glow",
+    "patternColour": "#dce8faaa",
+    "motif": "horizon",
+    "motifColour": "#dce8fa",
+    "ink": "light",
+    "wordmark": "90°N",
+    "bankMark": "OCBC",
+    "chip": "silver"
+  }
 }

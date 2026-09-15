@@ -290,5 +290,18 @@
       "url": "https://www.maybank.co.id/NewsAndAnnouncement/NewsAndAnnouncements/2026/07/29/06/43/Pembaruan-Informasi-Perolehan-Maybank-TREATS-pada-Maybank-Kartu-Kredit"
     }
   ],
-  "verifiedOn": "2026-09-11"
+  "verifiedOn": "2026-09-11",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#5a3a30", "#7fa24a", "#2f2c2b"],
+    "angle": 180,
+    "finish": "glossy",
+    "pattern": "none",
+    "motif": "stadium",
+    "motifColour": "#00000033",
+    "ink": "light",
+    "wordmark": "Manchester United",
+    "bankMark": "Maybank",
+    "chip": "silver"
+  }
 }

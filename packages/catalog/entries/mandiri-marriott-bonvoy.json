@@ -291,5 +291,19 @@
       "url": "https://www.mandirikartukredit.com/artikel/syarat-dan-ketentuan-marriott-bonvoy-mandiri-kartu-kredit"
     }
   ],
-  "verifiedOn": "2026-09-11"
+  "verifiedOn": "2026-09-11",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#001d47", "#001635"],
+    "angle": 160,
+    "finish": "matte",
+    "pattern": "dots",
+    "patternColour": "#3a5a8a80",
+    "motif": "rosette-tile",
+    "motifColour": "#4a6aa04d",
+    "ink": "light",
+    "wordmark": "Marriott Bonvoy",
+    "bankMark": "mandiri",
+    "chip": "silver"
+  }
 }

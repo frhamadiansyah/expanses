@@ -143,6 +143,36 @@ export interface CatalogProgram {
   categoryChoice?: CatalogCategoryChoice;
 }
 
+/**
+ * How to draw the front of the card: redrawn from the bank's official picture, never the artwork itself.
+ * Cosmetic only, so a change here is not a catalogue update to announce.
+ */
+/** The illustrations a card face can be drawn with, each in the manner of a real card's artwork. */
+export const CARD_MOTIFS = ['batik-floral', 'big-letter', 'rosette-tile', 'chrome-curves', 'ikat-diamonds', 'engraved-frame', 'portrait-oval', 'split-waves', 'colour-blocks', 'halftone-vortex', 'centre-ring', 'wing-bars', 'stadium', 'skyline', 'faceted-ribbon', 'horizon', 'swirl-edges', 'flight-line'] as const;
+export type CardMotif = (typeof CARD_MOTIFS)[number];
+
+export interface CatalogCardLook {
+  orientation: 'landscape' | 'portrait';
+  /** One to three background colours, in order across the face. */
+  colours: string[];
+  /** Direction of the gradient in degrees, when there is more than one colour. */
+  angle?: number;
+  finish: 'matte' | 'glossy' | 'metallic';
+  /** A simple repeating texture, for a card whose artwork is mostly colour. */
+  pattern: 'none' | 'diagonal-lines' | 'waves' | 'arcs' | 'dots' | 'grid' | 'stripe' | 'glow';
+  patternColour?: string;
+  /** A drawn illustration in the manner of the card's own artwork, used instead of the pattern when set. */
+  motif?: CardMotif;
+  motifColour?: string;
+  /** Whether the printing on the card is light or dark. */
+  ink: 'light' | 'dark';
+  /** The card's name as printed, such as KrisFlyer, top right; null to print the catalogue name. */
+  wordmark: string | null;
+  /** The bank's name as printed, top left, when it differs from the catalogue's; null when the front carries none. */
+  bankMark?: string | null;
+  chip: 'gold' | 'silver' | 'none';
+}
+
 export interface CatalogEntry {
   id: string;
   entryVersion: number;
@@ -159,4 +189,5 @@ export interface CatalogEntry {
   notes: string[];
   sources: { title: string; url: string }[];
   verifiedOn: string;
+  look?: CatalogCardLook;
 }

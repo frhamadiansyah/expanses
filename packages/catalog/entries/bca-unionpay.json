@@ -121,5 +121,19 @@
       "url": "https://www.bca.co.id/id/Individu/produk/Reward-BCA"
     }
   ],
-  "verifiedOn": "2026-09-11"
+  "verifiedOn": "2026-09-11",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#1c5975", "#217fa4", "#09192f"],
+    "angle": 135,
+    "finish": "glossy",
+    "pattern": "arcs",
+    "patternColour": "#c8d0d6cc",
+    "motif": "chrome-curves",
+    "motifColour": "#c8d0d6aa",
+    "ink": "light",
+    "wordmark": "Travel Mate Asia",
+    "bankMark": "BCA",
+    "chip": "silver"
+  }
 }

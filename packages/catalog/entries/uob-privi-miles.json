@@ -143,5 +143,19 @@
       "url": "https://www.uob.co.id/personal/kartu-kredit/uob-privi-miles/apply-now.html"
     }
   ],
-  "verifiedOn": "2026-09-14"
+  "verifiedOn": "2026-09-14",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#020207", "#1d2124", "#393d40"],
+    "angle": 180,
+    "finish": "metallic",
+    "pattern": "stripe",
+    "patternColour": "#ffffff55",
+    "motif": "flight-line",
+    "motifColour": "#ffffffcc",
+    "ink": "light",
+    "wordmark": "PRIVIMILES",
+    "bankMark": "UOB",
+    "chip": "silver"
+  }
 }

@@ -27,7 +27,8 @@ import { InstallmentList } from '../loans/InstallmentList';
 import { BonusForm } from './BonusForm';
 import { BonusProgress } from './BonusProgress';
 import { CatalogPanel } from './CatalogPanel';
-import { useCards } from './card-queries';
+import { CardFace } from './CardFace';
+import { useCardIdentities, useCards } from './card-queries';
 import { CatalogPicker } from './CatalogPicker';
 import { ruleQualifiers } from './rule-summary';
 import { describeSuggestion } from './hint-text';
@@ -215,6 +216,7 @@ export function CardDetailPage() {
   const all = accounts.data ?? [];
   const card = all.find((a) => a.id === cardId);
   const plastic = useCards(card?.id).data ?? [];
+  const identities = useCardIdentities().data ?? {};
   const [newLast4, setNewLast4] = useState('');
   const [newHolder, setNewHolder] = useState('');
   const today = isoDate();
@@ -343,14 +345,16 @@ export function CardDetailPage() {
           account, so recording its last four digits is what tells whose spending is whose.
         </p>
         {plastic.length > 0 && (
-          <ul className="mb-3 divide-y divide-slate-100">
-            {plastic.map((piece) => (
-              <li key={piece.id} data-testid="card-on-account" className="flex items-center gap-3 py-1.5 text-sm">
-                <span className="tabular">···· {piece.last4 ?? '????'}</span>
-                <span className="flex-1 text-slate-600">{piece.holderName ?? (piece.isPrimary ? 'Primary' : 'Supplementary')}</span>
-                <Button variant="ghost" aria-label={`Remove card ending ${piece.last4 ?? 'unknown'}`} onClick={() => void run(() => archiveCard(database, ws, piece.id))}>
-                  Remove
-                </Button>
+          <ul className="mb-4 flex flex-wrap gap-4">
+            {[...plastic].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary)).map((piece) => (
+              <li key={piece.id} data-testid="card-on-account" className="space-y-1.5">
+                <CardFace issuer={identities[card.id]?.issuer ?? null} name={card.name} last4={piece.last4} holderName={piece.holderName} network={cp.catalog.entry?.network} look={cp.catalog.entry?.look} />
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-slate-600">{piece.holderName ?? (piece.isPrimary ? 'Primary' : 'Supplementary')}</span>
+                  <Button variant="ghost" className="px-2 py-1" aria-label={`Remove card ending ${piece.last4 ?? 'unknown'}`} onClick={() => void run(() => archiveCard(database, ws, piece.id))}>
+                    Remove
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>

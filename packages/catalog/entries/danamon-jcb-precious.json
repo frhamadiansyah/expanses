@@ -364,5 +364,19 @@
       "url": "https://www.danamon.co.id/id/Personal/Promo/Promo-Kartu-Danamon/Promo-Traveling/Bonus-80-persen-AirAsia-points"
     }
   ],
-  "verifiedOn": "2026-09-14"
+  "verifiedOn": "2026-09-14",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#221e21", "#383839"],
+    "angle": 70,
+    "finish": "glossy",
+    "pattern": "waves",
+    "patternColour": "#f5a623cc",
+    "motif": "split-waves",
+    "motifColour": "#f59e0bcc",
+    "ink": "light",
+    "wordmark": "JCB PRECIOUS",
+    "bankMark": "Danamon",
+    "chip": "silver"
+  }
 }

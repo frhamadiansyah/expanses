@@ -213,5 +213,19 @@
       "url": "https://www.bca.co.id/id/Individu/produk/Reward-BCA"
     }
   ],
-  "verifiedOn": "2026-09-11"
+  "verifiedOn": "2026-09-11",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#202525", "#192022"],
+    "angle": 135,
+    "finish": "matte",
+    "pattern": "dots",
+    "patternColour": "#8a735acc",
+    "motif": "batik-floral",
+    "motifColour": "#9c8163b3",
+    "ink": "light",
+    "wordmark": "KrisFlyer",
+    "bankMark": "BCA",
+    "chip": "silver"
+  }
 }

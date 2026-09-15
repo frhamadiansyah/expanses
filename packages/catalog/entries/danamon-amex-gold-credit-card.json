@@ -103,5 +103,19 @@
       "url": "https://tuwaga.id/produk/kartu-kredit/bank-danamon-gold-credit-card-amex/"
     }
   ],
-  "verifiedOn": "2026-09-14"
+  "verifiedOn": "2026-09-14",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#8e753d", "#bd9a54"],
+    "angle": 90,
+    "finish": "metallic",
+    "pattern": "arcs",
+    "patternColour": "#6f5c2e66",
+    "motif": "portrait-oval",
+    "motifColour": "#6f5c2e44",
+    "ink": "dark",
+    "wordmark": "AMERICAN EXPRESS",
+    "bankMark": null,
+    "chip": "silver"
+  }
 }

@@ -125,5 +125,19 @@
       "url": "https://www.americanexpress.com/id/network/credit-cards/danamon/gold-card.html"
     }
   ],
-  "verifiedOn": "2026-09-14"
+  "verifiedOn": "2026-09-14",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#bfab68", "#b5a463"],
+    "angle": 135,
+    "finish": "metallic",
+    "pattern": "waves",
+    "patternColour": "#6c623a40",
+    "motif": "engraved-frame",
+    "motifColour": "#5c522c55",
+    "ink": "dark",
+    "wordmark": "AMERICAN EXPRESS",
+    "bankMark": null,
+    "chip": "silver"
+  }
 }

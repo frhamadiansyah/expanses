@@ -237,5 +237,19 @@
       "url": "https://www.cimbniaga.co.id/content/dam/cimb/kartu-kredit/MC%20WORLD%20ACCOR%20REV.pdf"
     }
   ],
-  "verifiedOn": "2026-09-11"
+  "verifiedOn": "2026-09-11",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#26221f", "#4a4644", "#26221f"],
+    "angle": 120,
+    "finish": "metallic",
+    "pattern": "stripe",
+    "patternColour": "#ffffff14",
+    "motif": "big-letter",
+    "motifColour": "#ffffff14",
+    "ink": "light",
+    "wordmark": "ALL Accor",
+    "bankMark": "CIMB NIAGA",
+    "chip": "silver"
+  }
 }

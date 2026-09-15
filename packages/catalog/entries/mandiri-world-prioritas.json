@@ -322,5 +322,19 @@
       "url": "https://pinterpoin.com/mandiri-menambahkan-ana-mileage-club-sebagai-transfer-partner-kartu-kredit/"
     }
   ],
-  "verifiedOn": "2026-09-14"
+  "verifiedOn": "2026-09-14",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#050707", "#2e2e2e", "#050707"],
+    "angle": 90,
+    "finish": "glossy",
+    "pattern": "dots",
+    "patternColour": "#9a9a9a40",
+    "motif": "halftone-vortex",
+    "motifColour": "#9a9a9a66",
+    "ink": "light",
+    "wordmark": "WORLD",
+    "bankMark": "mandiri prioritas",
+    "chip": "silver"
+  }
 }

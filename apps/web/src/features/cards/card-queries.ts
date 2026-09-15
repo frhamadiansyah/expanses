@@ -31,11 +31,3 @@ export function useWorkspaceIssuers() {
 export function issuerChoices(workspaceIssuers: readonly string[]): string[] {
   return [...new Set([...CATALOG.map((entry) => entry.bank), ...workspaceIssuers])].sort((a, b) => a.localeCompare(b));
 }
-
-/** A stable colour per issuer, so a card is recognisable before you read it. */
-export function issuerColour(issuer: string | null): string {
-  if (!issuer) return 'hsl(215 16% 47%)';
-  let hash = 0;
-  for (const char of issuer) hash = (hash * 31 + char.charCodeAt(0)) % 360;
-  return `hsl(${hash} 42% 38%)`;
-}

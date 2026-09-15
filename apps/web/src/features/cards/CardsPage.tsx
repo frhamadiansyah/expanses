@@ -3,9 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
-import { issuerColour, useCardIdentities, useCards } from './card-queries';
+import { CardFace } from './CardFace';
+import { useCardIdentities, useCards } from './card-queries';
 import { Card, Empty, Money, PageHeader } from '../../ui';
 import { formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
+
+/** How far each supplementary card peeks out from behind the one in front. */
+const STACK_OFFSET = 26;
 
 export function CardsPage() {
   const { database, ws } = useApp();
@@ -14,6 +18,12 @@ export function CardsPage() {
   const cards = all.filter((a) => a.subtype === 'credit_card' && a.archivedAt === null);
   const identities = useCardIdentities().data ?? {};
   const plastic = useCards().data ?? [];
+  /** The cards on an account, back to front; an account with none recorded still gets one face. */
+  const stackOf = (accountId: string) => {
+    // Supplementary cards first, so the primary card is drawn last and sits in front.
+    const own = plastic.filter((card) => card.accountId === accountId).sort((a, b) => Number(a.isPrimary) - Number(b.isPrimary));
+    return own.length > 0 ? own : [null];
+  };
   const today = isoDate();
   const data = useQuery({
     // Distinct from the card page's key: this query caches an array, that one a single CardPoints.
@@ -51,27 +61,54 @@ export function CardsPage() {
         const value = pointsValue(points, cp.best);
         return (
           <Card key={cp.card.id}>
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <span
-                  aria-hidden
-                  className="mr-2 inline-block h-4 w-6 shrink-0 rounded-sm align-[-2px]"
-                  style={{ background: issuerColour(identities[cp.card.id]?.issuer ?? null) }}
-                />
+            <div className="flex flex-wrap items-center gap-5">
+              {/* The plastic, not the account: one statement can carry a supplementary card too, stacked behind. */}
+              <Link
+                to="/cards/$cardId"
+                params={{ cardId: cp.card.id }}
+                // A shortcut for the mouse; the name beside it is the link for keyboards and screen readers.
+                aria-hidden
+                tabIndex={-1}
+                className="relative block shrink-0"
+                style={{
+                  width: `calc(15rem + ${(stackOf(cp.card.id).length - 1) * STACK_OFFSET}px)`,
+                  height: `calc(15rem / 1.586 + ${(stackOf(cp.card.id).length - 1) * STACK_OFFSET * 0.5}px)`,
+                }}
+              >
+                {stackOf(cp.card.id).map((piece, index, stack) => (
+                  <div
+                    key={piece?.id ?? 'account'}
+                    className="absolute"
+                    // The front card sits top-left; each card behind it shows a strip down its right and bottom edges.
+                    style={{ left: (stack.length - 1 - index) * STACK_OFFSET, top: (stack.length - 1 - index) * STACK_OFFSET * 0.5, zIndex: index }}
+                  >
+                    <CardFace
+                      issuer={identities[cp.card.id]?.issuer ?? null}
+                      name={cp.card.name}
+                      last4={piece?.last4 ?? null}
+                      holderName={piece?.holderName}
+                      network={cp.catalog.entry?.network}
+                      look={cp.catalog.entry?.look}
+                      behind={index < stack.length - 1}
+                    />
+                  </div>
+                ))}
+              </Link>
+              <div className="min-w-0 flex-1">
                 <Link to="/cards/$cardId" params={{ cardId: cp.card.id }} className="font-medium hover:underline">
                   {cp.card.name}
                 </Link>
-                {/* The plastic, not the account: one statement can carry a supplementary card too. */}
-                {plastic
-                  .filter((card) => card.accountId === cp.card.id && card.last4 !== null)
-                  .map((card) => (
-                    <span key={card.id} data-testid="card-last4" className="ml-2 text-xs tabular text-slate-500">
-                      ···· {card.last4}
-                      {card.holderName ? ` ${card.holderName}` : ''}
-                    </span>
-                  ))}
-                {cp.catalog.entry && <span className="ml-2 text-xs uppercase tracking-wide text-slate-400">{cp.catalog.entry.network}</span>}
-                <div className="text-xs text-slate-500">
+                <div className="mt-0.5 flex flex-wrap gap-x-3">
+                  {plastic
+                    .filter((card) => card.accountId === cp.card.id && card.last4 !== null)
+                    .map((card) => (
+                      <span key={card.id} data-testid="card-last4" className="text-xs tabular text-slate-500">
+                        ···· {card.last4}
+                        {card.holderName ? ` ${card.holderName}` : ''}
+                      </span>
+                    ))}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
                   {!cp.terms ? 'Add statement day to see points' : cp.current ? `This cycle ${shortDate(cp.current.cycle.start)} – ${shortDate(cp.current.cycle.end)}` : 'Rewards not set up'}
                 </div>
               </div>

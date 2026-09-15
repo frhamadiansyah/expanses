@@ -88,3 +88,27 @@ describe('validateEntry', () => {
     expect(errors.some((message) => pattern.test(message)), errors.join(' | ')).toBe(true);
   });
 });
+
+describe('card look', () => {
+  const look = {
+    orientation: 'landscape',
+    colours: ['#0b2545', '#13315c'],
+    angle: 135,
+    finish: 'metallic',
+    pattern: 'arcs',
+    patternColour: '#ffffff22',
+    ink: 'light',
+    wordmark: 'KrisFlyer',
+    chip: 'gold',
+  } as const;
+
+  it('accepts a described card face, and an entry without one', () => {
+    expect(validateEntry({ ...valid(), look }, new Set(DEFAULT_CATEGORY_KEYS))).toEqual([]);
+    expect(validateEntry(valid(), new Set(DEFAULT_CATEGORY_KEYS))).toEqual([]);
+  });
+
+  it('names what is wrong with a look', () => {
+    const errors = validateEntry({ ...valid(), look: { ...look, colours: ['navy'], pattern: 'tartan', wordmark: '', motif: 'paisley' } }, new Set(DEFAULT_CATEGORY_KEYS));
+    expect(errors).toEqual(expect.arrayContaining([expect.stringMatching(/^look.colours/), expect.stringMatching(/^look.pattern/), expect.stringMatching(/^look.wordmark/), expect.stringMatching(/^look.motif/)]));
+  });
+});

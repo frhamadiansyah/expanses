@@ -172,5 +172,19 @@
       "url": "https://www.garuda-indonesia.com/static/id/garudamiles/tentang-garudamiles/co-brand-uob.html"
     }
   ],
-  "verifiedOn": "2026-09-14"
+  "verifiedOn": "2026-09-14",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#0d0d0d", "#242424", "#090909"],
+    "angle": 180,
+    "finish": "metallic",
+    "pattern": "waves",
+    "patternColour": "#9a9a9a99",
+    "motif": "swirl-edges",
+    "motifColour": "#9a9a9a77",
+    "ink": "light",
+    "wordmark": "Garuda Indonesia",
+    "bankMark": "UOB",
+    "chip": "silver"
+  }
 }

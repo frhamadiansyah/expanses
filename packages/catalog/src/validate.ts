@@ -1,4 +1,5 @@
 import { isMccSpec, isSupportedCurrency } from '@expanses/core';
+import { CARD_MOTIFS } from './types';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ROUNDINGS = new Set(['per_transaction_floor', 'per_cycle_sum', 'per_increment']);
@@ -257,5 +258,29 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
     add('cashValue', 'must be null or positive valueMinor and perPoints with a supported currency');
   }
 
+  if (entry.look !== undefined) {
+    const look = entry.look;
+    const oneOf = (field: string, values: readonly string[]) => {
+      if (!isObj(look) || !values.includes(look[field] as string)) add(`look.${field}`, `must be one of ${values.join(', ')}`);
+    };
+    const HEX = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i;
+    if (!isObj(look)) add('look', 'must be an object');
+    else {
+      oneOf('orientation', ['landscape', 'portrait']);
+      oneOf('finish', ['matte', 'glossy', 'metallic']);
+      oneOf('pattern', ['none', 'diagonal-lines', 'waves', 'arcs', 'dots', 'grid', 'stripe', 'glow']);
+      oneOf('ink', ['light', 'dark']);
+      if (look.bankMark !== undefined && look.bankMark !== null && !isText(look.bankMark)) add('look.bankMark', 'must be text or null');
+      oneOf('chip', ['gold', 'silver', 'none']);
+      if (look.motif !== undefined) oneOf('motif', CARD_MOTIFS);
+      if (look.motifColour !== undefined && (typeof look.motifColour !== 'string' || !HEX.test(look.motifColour))) add('look.motifColour', 'must be a #rrggbb or #rrggbbaa colour');
+      if (!Array.isArray(look.colours) || look.colours.length < 1 || look.colours.length > 3 || look.colours.some((c) => typeof c !== 'string' || !HEX.test(c))) {
+        add('look.colours', 'must be one to three #rrggbb colours');
+      }
+      if (look.angle !== undefined && typeof look.angle !== 'number') add('look.angle', 'must be a number of degrees');
+      if (look.patternColour !== undefined && (typeof look.patternColour !== 'string' || !HEX.test(look.patternColour))) add('look.patternColour', 'must be a #rrggbb or #rrggbbaa colour');
+      if (look.wordmark !== null && !isText(look.wordmark)) add('look.wordmark', 'must be text or null');
+    }
+  }
   return errors;
 }

@@ -324,5 +324,19 @@
       "url": "https://www.maybank.co.id/NewsAndAnnouncement/NewsAndAnnouncements/2026/07/29/06/43/Pembaruan-Informasi-Perolehan-Maybank-TREATS-pada-Maybank-Kartu-Kredit"
     }
   ],
-  "verifiedOn": "2026-09-11"
+  "verifiedOn": "2026-09-11",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#585756", "#262625", "#191a19"],
+    "angle": 160,
+    "finish": "metallic",
+    "pattern": "stripe",
+    "patternColour": "#0a0a0acc",
+    "motif": "wing-bars",
+    "motifColour": "#0a0a0a99",
+    "ink": "light",
+    "wordmark": "MINI",
+    "bankMark": "Maybank",
+    "chip": "silver"
+  }
 }

@@ -68,5 +68,19 @@
       "url": "https://www.bni.co.id/creditcard/id-id/produk/produkkartukreditbni/garudabnicard"
     }
   ],
-  "verifiedOn": "2026-09-14"
+  "verifiedOn": "2026-09-14",
+  "look": {
+    "orientation": "landscape",
+    "colours": ["#060404", "#831e19", "#060404"],
+    "angle": 180,
+    "finish": "glossy",
+    "pattern": "glow",
+    "patternColour": "#a83026aa",
+    "motif": "ikat-diamonds",
+    "motifColour": "#c0392b88",
+    "ink": "light",
+    "wordmark": "Garuda Indonesia",
+    "bankMark": "BNI",
+    "chip": "silver"
+  }
 }
