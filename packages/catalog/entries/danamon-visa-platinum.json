@@ -102,7 +102,8 @@
   ],
   "notes": [
     "One D-Point per Rp 2.500, the same base rate as the JCB Precious, and the same D-Point currency, so the mileage ratios are the ones that card publishes.",
-    "The card’s headline benefits are cashback, not points: 10% back on weekend spending, up to Rp 200.000 a month and only with five transactions of at least Rp 100.000 each, and 5% back on bill payments up to Rp 100.000 a month. Neither is written as a rule — a rule cannot match a day of the week, and a program earns in one unit, which here is points.",
+    "The card’s headline benefits are cashback, not points: 10% back on weekend spending, up to Rp 200.000 a month and only with five transactions of at least Rp 100.000 each, and 5% back on bill payments up to Rp 100.000 a month. Neither is written as a rule.",
+    "Two things stopped the weekend rule, and one of them is now gone. A rule can match a day of the week as of this entry version — the purchase date is on every line and daysOfWeek reads Saturday and Sunday off it. What is left is the unit: D-Point and rupiah are different currencies, a card carries one reward program here, and this one earns points. The five-transactions-of-Rp-100.000 condition has no field either; there is a minimum per purchase and a minimum per cycle, but no count.",
     "The annual fee is Rp 600.000 and the bank waives it on conditions it does not publish in one place. Set what you are actually charged on the card terms.",
     "Transfer ratios are copied from the Danamon JCB Precious, since both cards spend the same D-Point balance. If Danamon prices conversions differently by card, this is wrong; nothing found suggests it does."
   ],
@@ -137,7 +138,7 @@
     "bankMark": "Danamon",
     "chip": "silver"
   },
-  "entryVersion": 1,
+  "entryVersion": 2,
   "currency": "IDR",
   "cashValue": null,
   "welcomeBonus": null,

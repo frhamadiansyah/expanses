@@ -66,6 +66,7 @@ export {
   type EarnRule,
   type Rounding,
   type RuleMatch,
+  dayOfWeek,
   matchesSpend,
   nextBonusTier,
   ruleMatches,

@@ -51,7 +51,7 @@
   "notes": [
     "One BNI Reward Point per Rp 10.000, doubled on MyPertamina transactions.",
     "The doubled rule wants both a Pertamina merchant name and a fuel code (MCC 5541 or 5542), because the two together are what a fill-up looks like. A MyPertamina payment that reaches the statement under some other code will estimate at the base rate.",
-    "The card’s headline is 8% back on fuel bought through the MyPertamina app on at least Rp 250.000, and that is not estimated: a program earns in one unit and this one earns points. Whatever ceiling the bank puts on that cashback was not retrieved either.",
+    "The card’s headline is 8% back on fuel bought through the MyPertamina app on at least Rp 250.000. The matching is already here — the doubled rule above finds exactly those purchases, and a Rp 250.000 floor is a field that exists — so what stops it is only the unit: BNI Reward Points and rupiah are different currencies and a card carries one reward program. Whatever ceiling the bank puts on that cashback was not retrieved either.",
     "The annual fee is not recorded — no published figure was found, and bni.co.id is unreachable from here. Enter it on the card terms yourself.",
     "The card launched on 21 December 2024, replacing the earlier BNI-Pertamina card, which is where the terms start.",
     "Transfer partners are not recorded, as on the other BNI cards here."
@@ -87,7 +87,7 @@
     "bankMark": "BNI",
     "chip": "silver"
   },
-  "entryVersion": 1,
+  "entryVersion": 2,
   "currency": "IDR",
   "cashValue": null,
   "welcomeBonus": null,

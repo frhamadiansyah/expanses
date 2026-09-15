@@ -11,6 +11,8 @@ export interface CatalogMatch {
   /** Merchant category codes or ranges such as 3000-3299. */
   mccs?: string[];
   excludeMccs?: string[];
+  /** Days the purchase must fall on, 0 for Sunday through 6 for Saturday, which is how a weekend offer is written. */
+  daysOfWeek?: number[];
 }
 
 export interface CatalogRule {

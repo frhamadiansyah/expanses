@@ -108,6 +108,10 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
         add(`${path}.${field}`, 'must list four-digit MCCs or ranges like 3000-3299');
       }
     }
+    const days = match.daysOfWeek;
+    if (days !== undefined && (!Array.isArray(days) || days.length === 0 || days.some((d) => !Number.isInteger(d) || (d as number) < 0 || (d as number) > 6))) {
+      add(`${path}.daysOfWeek`, 'must list days 0 (Sunday) to 6 (Saturday)');
+    }
   };
 
   if (isObj(program) && program.categoryChoice !== undefined) {

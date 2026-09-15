@@ -2,7 +2,7 @@
   "id": "cimb-niaga-octo-card",
   "bank": "CIMB Niaga",
   "name": "CIMB Niaga OCTO Card",
-  "network": "mastercard",
+  "network": "visa",
   "program": {
     "unit": "points",
     "name": "Poin Xtra",
@@ -39,7 +39,10 @@
   "notes": [
     "25 Poin Xtra for every whole Rp 50.000 of retail spending, which is a point per Rp 2.000. Poin Xtra pay for retail transactions and bills rather than converting to miles.",
     "There is no annual fee at all, on the primary card or a supplementary one.",
-    "The card also pays 10% back on online transactions outside hotels, airlines and travel agents, capped at Rp 50.000 a transaction and Rp 100.000 a month. A program earns in one unit here and this one earns points, so that cashback is not estimated.",
+    "The card also pays 10% back, and that cashback comes in two halves. On a QRIS scan it is capped at Rp 10.000 a transaction; on an online purchase it was capped at Rp 50.000 a transaction and did not apply to hotels, airlines or travel agents. Both share one ceiling of Rp 100.000 a billing period on the main card.",
+    "The online half was discontinued on 1 April 2026 for the Visa and JCB OCTO Card, so what survives today is the QRIS half. The QRIS half is matchable — a QRIS payment reaches the statement carrying the name — but a rule cannot pay it, because a program earns in one unit and this one earns points. See the note below.",
+    "What stops the cashback being written as a rule is the unit, not the matching: Poin Xtra and rupiah are different currencies and a card carries one reward program here. Whichever were written, the other would be lost.",
+    "CIMB issues the OCTO Card on Visa and on JCB. This entry is written as the Visa; the JCB earns the same way, and the 1 April 2026 change named both.",
     "Nothing earns on instalments, cash withdrawals, Cash Plus, other cashback programmes, the catalogue, membership fees, recurring transactions, fees or interest. Those exclusions are not written as rules, because the app does not see most of them as spending in the first place.",
     "Transfer partners are not recorded: Poin Xtra are a statement-credit currency, not a mileage one."
   ],
@@ -51,6 +54,10 @@
     {
       "title": "PinterPoin — Review: Kartu Kredit CIMB Niaga OCTO Card",
       "url": "https://pinterpoin.com/review-kartu-kredit-cimb-niaga-octo-card/"
+    },
+    {
+      "title": "CIMB Niaga — OCTO Card Syariah",
+      "url": "https://www.cimbniaga.co.id/id/syariah-personal/kartu-syariah/octo-card-syariah"
     }
   ],
   "look": {
@@ -70,7 +77,7 @@
     "bankMark": "CIMB Niaga",
     "chip": "gold"
   },
-  "entryVersion": 1,
+  "entryVersion": 2,
   "currency": "IDR",
   "cashValue": null,
   "welcomeBonus": null,
