@@ -37,6 +37,7 @@ import redemptionCaps from '../migrations/0035_redemption_caps.sql?raw';
 import transferMinimum from '../migrations/0036_transfer_minimum.sql?raw';
 import draftCard from '../migrations/0037_draft_card.sql?raw';
 import cardStatements from '../migrations/0038_card_statements.sql?raw';
+import jeniusEntryId from '../migrations/0039_jenius_entry_id.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -84,6 +85,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 36, name: 'transfer_minimum', sql: transferMinimum },
   { version: 37, name: 'draft_card', sql: draftCard },
   { version: 38, name: 'card_statements', sql: cardStatements },
+  { version: 39, name: 'jenius_entry_id', sql: jeniusEntryId },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

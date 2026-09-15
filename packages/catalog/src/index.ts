@@ -1,5 +1,5 @@
 import infinite from '../entries/bca-sq-krisflyer-visa-infinite.json';
-import jenius from '../entries/jenius-kartu-kredit.json';
+import jenius from '../entries/jenius-platinum.json';
 import signature from '../entries/bca-sq-krisflyer-visa-signature.json';
 import unionpay from '../entries/bca-unionpay.json';
 import bniGarudaSignature from '../entries/bni-garuda-visa-signature.json';

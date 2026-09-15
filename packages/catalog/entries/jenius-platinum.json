@@ -1,8 +1,8 @@
 {
-  "id": "jenius-kartu-kredit",
+  "id": "jenius-platinum",
   "entryVersion": 11,
   "bank": "Bank SMBC Indonesia",
-  "name": "Kartu Kredit Jenius",
+  "name": "Jenius Platinum",
   "network": "visa",
   "currency": "IDR",
   "program": {

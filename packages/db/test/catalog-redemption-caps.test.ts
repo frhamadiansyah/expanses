@@ -41,7 +41,7 @@ describe('redemption caps survive a round trip through the database', () => {
   });
 
   it('keeps Jenius’s ceilings in partner units, each partner on its own', async () => {
-    const partners = await partnersOf('jenius-kartu-kredit', 'grow-plus');
+    const partners = await partnersOf('jenius-platinum', 'grow-plus');
     expect(byKey(partners, 'krisflyer-grow').cap).toMatchObject({ capPartnerUnits: 30_000, capPoints: null, shared: false });
     expect(byKey(partners, 'garudamiles').cap).toMatchObject({ capPartnerUnits: 20_000, shared: false });
     // Only KrisFlyer and GarudaMiles are limited; the other three are not.
@@ -78,7 +78,7 @@ describe('what the ceilings do to an estimate', () => {
   });
 
   it('holds a Jenius balance to one KrisFlyer conversion, the 30.000 miles it allows', async () => {
-    const partners = await partnersOf('jenius-kartu-kredit', 'grow-plus');
+    const partners = await partnersOf('jenius-platinum', 'grow-plus');
     expect(convertPoints(200_000, byKey(partners, 'krisflyer-grow'))).toBe(30_000);
     // Traveloka has no ceiling, so a large balance still moves in full.
     expect(convertPoints(25_000, byKey(partners, 'traveloka'))).toBe(1_000_000);
