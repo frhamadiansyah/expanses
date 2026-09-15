@@ -1,6 +1,21 @@
 export { uuidv7 } from './ids';
 export { DEFAULT_CATEGORIES, DEFAULT_CATEGORY_KEYS, DEFAULT_CATEGORY_MCCS, type DefaultCategory, type DefaultCategoryChild } from './categories/defaults';
 export { MCC_NAMES, mccName } from './mcc/codes';
+export { CATEGORY_COLOURS, CATEGORY_ICONS, categoryVisual, TRANSFER_VISUAL, UNKNOWN_VISUAL } from './categories/visuals';
+export {
+  type CategoryOption,
+  type DayRow,
+  dayNet,
+  matchCategory,
+  matchesSearch,
+  matchPayment,
+  merchantKey,
+  parseLooseAmount,
+  parseLooseDate,
+  type PaymentOption,
+  type Searchable,
+  searchTokens,
+} from './entry/quick-entry';
 export { categoryDefaultMcc, isMcc, isMccSpec, type MccSource, type MccSources, mccInRange, type MerchantMcc, resolveMcc } from './mcc/resolve';
 export { CURRENCIES, currencyInfo, isSupportedCurrency, UnknownCurrencyError, type CurrencyInfo } from './money/currencies';
 export {
