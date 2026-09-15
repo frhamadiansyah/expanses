@@ -386,22 +386,28 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
               return <path key={i} d={`M52 ${y}q104 -11 208 0t208 0t208 0`} />;
             })}
           </g>
-          <g transform={`translate(${w / 2} ${h / 2}) rotate(-17)`}>
-            <defs>
-              <clipPath id={`${id}oval`}>
-                <ellipse rx="112" ry="146" />
-              </clipPath>
-            </defs>
-            {/* Stripes behind, the head knocked out of them, outlines over the top: the modernist mark. */}
-            <g clipPath={`url(#${id}oval)`}>
-              <g stroke={c} strokeWidth="7" opacity="0.9">
-                {Array.from({ length: 16 }, (_, i) => {
-                  const y = -146 + i * 19;
-                  return <path key={i} d={`M-120 ${y}h240`} />;
-                })}
-              </g>
+          <g transform={`translate(${w / 2} ${h / 2})`}>
+            <circle r="140" fill={c} opacity="0.1" />
+            <circle r="140" fill="none" stroke={c} strokeWidth="9" opacity="0.95" />
+            <circle r="126" fill="none" stroke={c} strokeWidth="13" strokeDasharray="7 11" opacity="0.8" />
+            {/* A crested helmet in profile, built from solid shapes so it holds when the card shrinks. */}
+            <g transform="translate(-120 -152)" fill={c}>
+              <path d="M142 30c-4 18-12 32-24 42-24 16-42 42-50 74-8 32-6 64 4 94-12-10-22-24-28-42-12-34-12-70 2-104 8-22 22-42 44-42 16-18 32-10 52-22z" />
+              <ellipse cx="124" cy="116" rx="66" ry="58" transform="rotate(-8 124 116)" />
+              <path d="M170 92l48 48-42 10-20-36z" />
+              <path d="M104 154c-4 30 2 56 16 74l28-8c-14-18-22-42-20-66z" />
+              <path d="M158 122l40 36c5 6 0 11-8 12-4 8 0 14-8 19 6 10-2 20-16 24l-14 4c-10-16-16-38-14-58z" />
+              <path d="M128 222l-6 32c32 6 62 20 78 46H92c4-30 14-60 26-78z" />
             </g>
-            <ellipse rx="112" ry="146" fill="none" stroke={c} strokeWidth="10" opacity="0.95" />
+            <g transform="translate(-120 -152)" fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" opacity="0.8">
+              <path d="M96 84c-16 22-24 52-24 82 0 22 4 42 10 58" />
+              <path d="M120 58c-12 16-26 28-34 44" />
+              <path d="M170 92l-14 30" />
+              <path d="M104 154l44-12" />
+              <path d="M176 150l-12 10M180 176l-14 6" />
+            </g>
+            <circle cx="12" cy="-14" r="19" fill="none" stroke="#ffffff" strokeWidth="9" opacity="0.9" />
+            <circle cx="12" cy="-14" r="9" fill={c} />
           </g>
         </g>,
       );
