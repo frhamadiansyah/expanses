@@ -27,6 +27,7 @@ const ADDED = [
   'danamon-visa-platinum',
   'bni-tzu-chi',
   'bni-mypertamina',
+  'dbs-live-fresh-visa',
 ];
 
 async function withCard(entryId: string, memberLevel?: string) {
@@ -63,7 +64,7 @@ async function earned(t: Awaited<ReturnType<typeof withCard>>) {
   return computeCycleEarn(lines, rules, ancestors, { bonuses, cycleEnd: TO }).totalPoints;
 }
 
-describe('the eight cards as a set', () => {
+describe('the cards added as a set', () => {
   it('are all in the catalogue, all credit cards, all on a statement cycle', () => {
     for (const id of ADDED) {
       const entry = findEntry(id);
@@ -74,13 +75,41 @@ describe('the eight cards as a set', () => {
     }
   });
 
-  it('each earn something on an ordinary purchase', async () => {
+  it('each earn something on the purchase the card is for', async () => {
+    // Live Fresh earns on online spending alone, so it is the one card a plain shop purchase pays nothing on.
+    const online = { description: 'Tokopedia' };
     for (const id of ADDED) {
       const levels = findEntry(id)!.program.memberLevels;
       const t = await withCard(id, levels?.[0]?.key);
-      await spend(t, 1_000_000);
+      await spend(t, 1_000_000, id === 'dbs-live-fresh-visa' ? online : {});
       expect(await earned(t), id).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('DBS Live Fresh, which pays nothing unless you claim it', () => {
+  it('pays 5% on online spending once the month is claimed', async () => {
+    const t = await withCard('dbs-live-fresh-visa', 'claimed');
+    await spend(t, 1_000_000, { description: 'Shopee belanja bulanan' });
+    expect(await earned(t)).toBe(50_000);
+  });
+
+  it('pays nothing at all when the five transactions or the SMS are missed', async () => {
+    const t = await withCard('dbs-live-fresh-visa', 'unclaimed');
+    await spend(t, 1_000_000, { description: 'Shopee belanja bulanan' });
+    expect(await earned(t)).toBe(0);
+  });
+
+  it('pays nothing offline either way, because the five offline purchases are a hurdle, not a rate', async () => {
+    const t = await withCard('dbs-live-fresh-visa', 'claimed');
+    await spend(t, 1_000_000, { category: 'household.groceries', description: 'Superindo Bintaro', mcc: '5411' });
+    expect(await earned(t)).toBe(0);
+  });
+
+  it('stops at Rp 300.000 a month, the main card ceiling', async () => {
+    const t = await withCard('dbs-live-fresh-visa', 'claimed');
+    await spend(t, 20_000_000, { description: 'Tokopedia' });
+    expect(await earned(t)).toBe(300_000);
   });
 });
 

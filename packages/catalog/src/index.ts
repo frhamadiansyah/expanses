@@ -1,5 +1,6 @@
 import infinite from '../entries/bca-sq-krisflyer-visa-infinite.json';
 import bluGaruda from '../entries/blu-garuda-debit.json';
+import dbsLiveFresh from '../entries/dbs-live-fresh-visa.json';
 import maybankJcbPlatinum from '../entries/maybank-jcb-platinum.json';
 import uobTmrw from '../entries/uob-tmrw.json';
 import permataShopping from '../entries/permata-shopping-card.json';
@@ -65,6 +66,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   danamonVisaPlatinum,
   bniTzuChi,
   bniMyPertamina,
+  dbsLiveFresh,
   danamonJcb,
   danamonAmexGoldCharge,
   ocbc90n,
