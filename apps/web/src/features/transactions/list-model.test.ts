@@ -1,0 +1,135 @@
+import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
+import { describe, expect, it } from 'vitest';
+import { buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, sortRows, totals } from './list-model';
+
+const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
+  id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
+});
+
+const accounts = [
+  account('bca', 'asset', 'bank', { name: 'BCA Tahapan' }),
+  account('octo', 'liability', 'credit_card', { name: 'CIMB Octo' }),
+  account('friend', 'asset', 'receivable', { name: 'Dina' }),
+  account('food', 'expense', 'category', { name: 'Food & Beverage', systemKey: 'food_beverage' }),
+  account('groceries', 'expense', 'category', { name: 'Groceries', parentId: 'food', systemKey: 'groceries' }),
+  account('salary', 'income', 'category', { name: 'Salary', systemKey: 'salary' }),
+];
+const byId = new Map(accounts.map((a) => [a.id, a]));
+const cards: CardRow[] = [
+  { id: 'c1', accountId: 'octo', last4: '1467', holderName: 'Fandrian', isPrimary: true },
+  { id: 'c2', accountId: 'octo', last4: '8802', holderName: 'Aisyah', isPrimary: false },
+];
+
+let seq = 0;
+function tx(date: string, description: string, lines: [string, number, number?][], extra: Partial<TransactionView> = {}): TransactionView {
+  seq += 1;
+  return {
+    id: `t${seq}`, occurredOn: date, description, source: 'manual', status: 'posted', externalRef: null, originalCurrency: null, originalAmountMinor: null, mcc: null, cardId: null, goalId: null,
+    createdAt: `2026-09-01T00:00:${String(seq).padStart(2, '0')}Z`,
+    entries: lines.map(([accountId, amountMinor, base], i) => ({
+      id: `t${seq}e${i}`, accountId, accountName: byId.get(accountId)!.name, accountKind: byId.get(accountId)!.kind, amountMinor, currency: 'IDR', fxRateToBase: 1, amountBaseMinor: base ?? amountMinor, memo: null, spendCategoryId: null,
+    })),
+    ...extra,
+  };
+}
+
+function draft(extra: Partial<DraftRow>): DraftRow {
+  return {
+    id: 'd1', source: 'csv', status: 'pending', rawPayload: null, occurredOn: '2026-09-12', description: 'APOTEK K24', amountMinor: 8500000, currency: 'IDR', accountId: 'octo', categoryAccountId: null, cardId: null, confidence: null, externalRef: null, transactionId: null,
+    ...extra,
+  };
+}
+
+const superindo = tx('2026-09-12', 'Superindo Kebayoran', [['groceries', 45000000], ['octo', -45000000]], { cardId: 'c2' });
+const salary = tx('2026-09-12', 'September salary', [['bca', 2000000000], ['salary', -2000000000]]);
+const pay = tx('2026-09-11', 'Pay the card', [['octo', 45000000], ['bca', -45000000]]);
+const lend = tx('2026-09-10', 'Lent to Dina', [['friend', 10000000], ['bca', -10000000]]);
+const voided = tx('2026-09-10', 'Typo', [['groceries', 100], ['bca', -100]], { status: 'void' });
+const august = tx('2026-08-30', 'Warung Steak', [['groceries', 30000000], ['bca', -30000000]]);
+
+const rows = buildRows([superindo, salary, pay, lend, voided, august], [draft({})], accounts, cards);
+const find = (id: string) => rows.find((row) => row.id === id)!;
+
+describe('buildRows', () => {
+  it('reads a purchase with its category, parent and the card it was made on', () => {
+    expect(find(superindo.id)).toMatchObject({ kind: 'tx', type: 'expense', amountMinor: 45000000, baseMinor: 45000000, categoryName: 'Groceries', parentName: 'Food & Beverage', accountLabel: 'CIMB Octo', last4: '8802', holderName: 'Aisyah' });
+  });
+
+  it('calls money lent to a person lending, not a transfer, and gives it no base amount', () => {
+    expect(find(lend.id)).toMatchObject({ type: 'debt', baseMinor: 0 });
+    expect(find(pay.id)).toMatchObject({ type: 'transfer', accountLabel: 'CIMB Octo → BCA Tahapan' });
+  });
+
+  it('carries a draft with what it still needs', () => {
+    expect(find('d1')).toMatchObject({ kind: 'draft', needs: ['category'], baseMinor: 0, accountLabel: 'CIMB Octo' });
+  });
+});
+
+describe('draftNeeds', () => {
+  it('lists every missing piece in the order a row is filled in', () => {
+    expect(draftNeeds(draft({ occurredOn: '12/9', description: ' ', amountMinor: 0, accountId: null }))).toEqual(['date', 'description', 'amount', 'paid with', 'category']);
+    expect(draftNeeds(draft({ categoryAccountId: 'groceries' }))).toEqual([]);
+  });
+});
+
+describe('filterRows', () => {
+  const ids = (f: Partial<typeof EMPTY_FILTERS>) => filterRows(rows, { ...EMPTY_FILTERS, ...f }, accounts).map((row) => row.id);
+
+  it('hides deleted rows until asked', () => {
+    expect(ids({})).not.toContain(voided.id);
+    expect(ids({ showDeleted: true })).toContain(voided.id);
+  });
+
+  it('keeps a month, but never hides an undated draft or the not-recorded list', () => {
+    expect(ids({ month: '2026-08' })).toEqual([august.id]);
+    const undated = buildRows([august], [draft({ occurredOn: 'yesterday' })], accounts, cards);
+    expect(filterRows(undated, { ...EMPTY_FILTERS, month: '2026-08' }, accounts)).toHaveLength(2);
+    expect(ids({ month: '2026-08', onlyDrafts: true })).toEqual(['d1']);
+  });
+
+  it('matches a category with everything filed under it', () => {
+    expect(ids({ cat: 'food' })).toEqual(expect.arrayContaining([superindo.id, august.id]));
+    expect(ids({ cat: 'food' })).not.toContain(salary.id);
+  });
+
+  it('tells one card from the account it belongs to', () => {
+    expect(ids({ paid: 'card:c2' })).toEqual([superindo.id]);
+    expect(ids({ paid: 'acct:octo' })).toEqual(expect.arrayContaining(['d1', superindo.id, pay.id]));
+  });
+
+  it('files lending with transfers', () => {
+    expect(ids({ type: 'transfer' })).toEqual(expect.arrayContaining([pay.id, lend.id]));
+    expect(ids({ type: 'income' })).toEqual([salary.id]);
+  });
+
+  it('searches words, parents, card digits and amounts', () => {
+    expect(ids({ q: 'food' })).toEqual(expect.arrayContaining([superindo.id, august.id]));
+    expect(ids({ q: '8802' })).toEqual([superindo.id]);
+    expect(ids({ q: 'aisyah super' })).toEqual([superindo.id]);
+  });
+});
+
+describe('sorting and days', () => {
+  it('puts newest first, drafts ahead of recorded rows on the same day, and undated drafts on top', () => {
+    const undated = buildRows([superindo], [draft({ id: 'd2', occurredOn: '' }), draft({})], accounts, cards);
+    expect(sortRows(undated, { key: 'date', dir: 'desc' }).map((row) => row.id)).toEqual(['d2', 'd1', superindo.id]);
+  });
+
+  it('sorts by amount across days', () => {
+    const sorted = sortRows(filterRows(rows, EMPTY_FILTERS, accounts), { key: 'amount', dir: 'desc' });
+    expect(sorted[0]!.id).toBe(salary.id);
+  });
+
+  it('groups by day and nets a day without drafts, transfers or deleted rows', () => {
+    const days = groupByDay(sortRows(filterRows(rows, { ...EMPTY_FILTERS, showDeleted: true }, accounts), { key: 'date', dir: 'desc' }));
+    expect(days.map((day) => day.date)).toEqual(['2026-09-12', '2026-09-11', '2026-09-10', '2026-08-30']);
+    expect(dayTotal(days[0]!.rows)).toBe(2000000000 - 45000000);
+    expect(dayTotal(days[1]!.rows)).toBe(0);
+    expect(dayTotal(days[2]!.rows)).toBe(0);
+  });
+
+  it('adds a foreign purchase in the workspace currency', () => {
+    const baht = buildRows([tx('2026-09-12', 'Bangkok taxi', [['groceries', 50000, 2250000], ['octo', -50000, -2250000]])], [], accounts, cards);
+    expect(totals(baht)).toEqual({ count: 1, spentMinor: 2250000, incomeMinor: 0 });
+  });
+});
