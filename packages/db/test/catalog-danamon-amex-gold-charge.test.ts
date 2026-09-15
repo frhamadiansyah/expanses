@@ -125,3 +125,14 @@ describe('what the charge card uplift does to the cost of a mile', () => {
     expect(ratio('danamon-amex-gold-charge')).toEqual(ratio('danamon-amex-gold-credit-card'));
   });
 });
+
+describe('the hotels, which were given as figures rather than screens', () => {
+  it('still moves in whole blocks, unlike the airlines', () => {
+    const partners = findEntry('danamon-amex-gold-charge')!.transferPartners;
+    const hotels = partners.filter((p) => ['Hilton Honors', 'Marriott Bonvoy'].includes(p.program));
+    expect(hotels.map((p) => p.incrementPoints)).toEqual([7_000, 6_250]);
+    // No minimum of their own: the block is the floor, which is the conservative reading.
+    expect(hotels.every((p) => p.minimumPoints === undefined)).toBe(true);
+    expect(findEntry('danamon-amex-gold-charge')!.notes.some((n) => n.includes('a hotel conversion here is understated'))).toBe(true);
+  });
+});

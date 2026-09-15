@@ -110,18 +110,33 @@ describe('Danamon American Express Gold conversion', () => {
     expect(at('Marriott Bonvoy', 6_250)).toBe(990);
   });
 
-  it('converts in whole blocks, so a balance short of one moves nothing', async () => {
+  it('holds a balance to the minimum, then converts any number of miles above it', async () => {
     const t = await withCard();
     const krisflyer = (await listTransferPartners(t.database, t.ws, t.programId)).find((p) => p.program === 'KrisFlyer')!;
     expect(convertPoints(5_999, krisflyer)).toBe(0);
-    expect(convertPoints(11_999, krisflyer)).toBe(1_000);
-    expect(convertPoints(12_000, krisflyer)).toBe(2_000);
+    expect(convertPoints(6_000, krisflyer)).toBe(1_000);
+    // The screens read "kelipatan: 0", so there is no block past the minimum: 25.700 points make 4.283 miles,
+    // not the 4.000 a 6.000 block would allow.
+    expect(convertPoints(25_700, krisflyer)).toBe(4_283);
+    // Six points a mile is still the granularity, so a remainder under six waits.
+    expect(convertPoints(6_005, krisflyer)).toBe(1_000);
+    expect(convertPoints(6_006, krisflyer)).toBe(1_001);
   });
 
-  it('says the ratios come from the charge card and that only minimums are known', () => {
+  it('keeps each airline to its own minimum, Enrich being much the highest', async () => {
+    const t = await withCard();
+    const partners = await listTransferPartners(t.database, t.ws, t.programId);
+    const minimums = Object.fromEntries(partners.filter((p) => p.minimumPoints).map((p) => [p.program, p.minimumPoints]));
+    expect(minimums).toEqual({ KrisFlyer: 6_000, 'Asia Miles': 9_000, GarudaMiles: 4_500, Enrich: 50_000 });
+    // A 25.700 balance clears three of the four and falls well short of Enrich.
+    const at = (program: string) => convertPoints(25_700, partners.find((p) => p.program === program)!);
+    expect([at('KrisFlyer'), at('GarudaMiles'), at('Asia Miles'), at('Enrich')]).toEqual([4_283, 2_855, 2_855, 0]);
+  });
+
+  it('says the ratios come from the charge card, and that the hotels are the unconfirmed pair', () => {
     const notes = findEntry('danamon-amex-gold-credit-card')!.notes;
-    expect(notes.some((note) => note.includes("charge card's Frequent Traveller Option screens"))).toBe(true);
-    expect(notes.some((note) => note.includes('the step past the minimum is not known'))).toBe(true);
+    expect(notes.some((note) => note.includes("charge card's redemption screens"))).toBe(true);
+    expect(notes.some((note) => note.includes('only their minimums are known'))).toBe(true);
   });
 });
 

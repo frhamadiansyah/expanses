@@ -1,6 +1,6 @@
 {
   "id": "danamon-amex-gold-credit-card",
-  "entryVersion": 2,
+  "entryVersion": 3,
   "bank": "Bank Danamon",
   "name": "Kartu Kredit Danamon American Express Gold",
   "network": "amex",
@@ -52,10 +52,10 @@
     }
   ],
   "transferPartners": [
-    { "key": "krisflyer", "program": "KrisFlyer", "points": 6, "partnerUnits": 1, "incrementPoints": 6000, "incrementPartnerUnits": 1000, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "asia-miles", "program": "Asia Miles", "points": 9, "partnerUnits": 1, "incrementPoints": 9000, "incrementPartnerUnits": 1000, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "garudamiles", "program": "GarudaMiles", "points": 9, "partnerUnits": 1, "incrementPoints": 4500, "incrementPartnerUnits": 500, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "enrich", "program": "Enrich", "points": 10, "partnerUnits": 1, "incrementPoints": 50000, "incrementPartnerUnits": 5000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "krisflyer", "program": "KrisFlyer", "points": 6, "partnerUnits": 1, "incrementPoints": 6, "incrementPartnerUnits": 1, "minimumPoints": 6000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "asia-miles", "program": "Asia Miles", "points": 9, "partnerUnits": 1, "incrementPoints": 9, "incrementPartnerUnits": 1, "minimumPoints": 9000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "garudamiles", "program": "GarudaMiles", "points": 9, "partnerUnits": 1, "incrementPoints": 9, "incrementPartnerUnits": 1, "minimumPoints": 4500, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "enrich", "program": "Enrich", "points": 10, "partnerUnits": 1, "incrementPoints": 10, "incrementPartnerUnits": 1, "minimumPoints": 50000, "effectiveFrom": null, "effectiveTo": null },
     { "key": "hilton", "program": "Hilton Honors", "points": 28, "partnerUnits": 5, "incrementPoints": 7000, "incrementPartnerUnits": 1250, "effectiveFrom": null, "effectiveTo": null },
     { "key": "bonvoy", "program": "Marriott Bonvoy", "points": 625, "partnerUnits": 99, "incrementPoints": 6250, "incrementPartnerUnits": 990, "effectiveFrom": null, "effectiveTo": null }
   ],
@@ -71,8 +71,10 @@
     "Six conversions are recorded: 6.000 points for 1.000 KrisFlyer miles, 9.000 for 1.000 Asia Miles, 4.500 for 500 GarudaMiles, 50.000 for 5.000 Enrich miles, 7.000 for 1.250 Hilton Honors points and 6.250 for 990 Marriott Bonvoy points. They were read off the charge card's Frequent Traveller Option screens rather than this card's, and are carried over because the two share one Membership Rewards balance and one subscription. If Danamon converts a credit card's points at a worse rate, this entry is too generous.",
     "At 1 point per Rp 2.500 that makes a KrisFlyer mile Rp 15.000, a GarudaMile or Asia Mile Rp 22.500, an Enrich mile Rp 25.000, a Hilton point Rp 14.000 and a Bonvoy point Rp 15.783. This card earns one rate throughout, so those figures hold for every purchase.",
     "These replace ratios of 8 points a KrisFlyer mile and 12 an Asia Mile, which an earlier version of this entry derived from reported per-mile rupiah figures of Rp 20.000 and Rp 30.000. The derivation was wrong; a KrisFlyer mile costs Rp 15.000, not Rp 20.000.",
-    "The figures given are minimums, and the step past the minimum is not known. The entry treats each minimum as the step too, so a balance converts in whole blocks and a remainder waits. If the bank in fact allows finer increments past the minimum, a conversion is understated.",
-    "AirAsia BIG points are the one Frequent Traveller Option partner left without a ratio, so an estimate for them shows nothing."
+    "AirAsia BIG points are the one Frequent Traveller Option partner left without a ratio, so an estimate for them shows nothing.",
+    "The four airline conversions are confirmed against the charge card's redemption screens, which show 1.000 KrisFlyer miles for 6.000 points, 500 GarudaMiles for 4.500, 5.000 Enrich miles for 50.000 and 1.000 Asia Miles for 9.000.",
+    "Those screens also read \"Min: X dan kelipatan: 0\": there is a minimum but no step past it, so any number of miles above the minimum converts. The entry records a minimum with a one-mile step, which matters a great deal — a 25.700 point balance makes 4.283 KrisFlyer miles rather than the 4.000 a block-sized step would allow.",
+    "The two hotel conversions were given as figures rather than screens, so only their minimums are known: 7.000 points for 1.250 Hilton Honors points and 6.250 for 990 Marriott Bonvoy. They are recorded as whole blocks for want of the \"kelipatan\" line the airline screens carry. If the hotels behave like the airlines, which the shared screen suggests, a hotel conversion here is understated."
   ],
   "sources": [
     {
