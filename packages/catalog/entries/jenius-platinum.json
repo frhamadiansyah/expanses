@@ -1,8 +1,8 @@
 {
-  "id": "jenius-kartu-kredit",
-  "entryVersion": 9,
+  "id": "jenius-platinum",
+  "entryVersion": 11,
   "bank": "Bank SMBC Indonesia",
-  "name": "Kartu Kredit Jenius",
+  "name": "Jenius Platinum",
   "network": "visa",
   "currency": "IDR",
   "program": {
@@ -419,8 +419,11 @@
   ],
   "verifiedOn": "2026-09-14",
   "look": {
-    "orientation": "portrait",
-    "colours": ["#013a41", "#02515a"],
+    "orientation": "landscape",
+    "colours": [
+      "#013a41",
+      "#02515a"
+    ],
     "angle": 180,
     "finish": "matte",
     "pattern": "stripe",
@@ -428,8 +431,8 @@
     "motif": "colour-blocks",
     "motifColour": "#04d88b",
     "ink": "light",
-    "wordmark": "jenius",
-    "bankMark": null,
+    "wordmark": "Platinum",
+    "bankMark": "Jenius",
     "chip": "silver"
   }
 }

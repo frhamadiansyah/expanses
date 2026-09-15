@@ -1,0 +1,130 @@
+{
+  "id": "dbs-vantage-visa-infinite",
+  "entryVersion": 1,
+  "bank": "Bank DBS Indonesia",
+  "name": "DBS Vantage Visa Infinite",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "miles",
+    "name": "digibank Mileage",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 5000000,
+      "supplementaryFeeMinor": null,
+      "condition": "Rp 4.000.000 for a DBS Treasures customer; it cannot be waived by spending, only by redeeming 100.000 or 125.000 miles depending on standing"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 7500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "miscellaneous.fees_charges"
+            ]
+          },
+          "capSpendAtCreditLimit": true
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 5000,
+      "incrementPartnerUnits": 5000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 5000,
+      "incrementPartnerUnits": 5000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 5000,
+      "incrementPartnerUnits": 5000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": null,
+  "welcomeBonus": null,
+  "notes": [
+    "A mile costs Rp 7.500, at one rate everywhere: there is no better rate abroad on this card.",
+    "digibank Mileage are airline miles already, so a transfer to KrisFlyer, Asia Miles or GarudaMiles is one for one and the only question is the step.",
+    "Converting moves 5.000 miles at a time, so a balance short of 5.000 converts to nothing and a remainder above a multiple waits.",
+    "Qantas was added as a redemption partner and is left out here because its ratio could not be pinned down; an estimate for it shows nothing.",
+    "DBS publishes a list of transaction categories that earn no points, and tightened it further. The list could not be read from here, so only card fees and charges are excluded and other non-earning spend is overestimated.",
+    "DBS changed point earning and airport benefits across its cards on 1 April 2026. What that did to this card's rate specifically was not published in anything reachable from here, so the entry runs one rate throughout and a cycle after that date may be wrong.",
+    "From 1 October 2025 DBS limits how much can be redeemed. The limit was not given in a form that could be recorded, so no ceiling is applied to estimates.",
+    "Points do not expire while the card is active, but DBS forfeits them on a card left inactive.",
+    "No source could be read directly. DBS's own site and RIPLAY, PinterPoin and IndoMiles are all unreachable from here, so every figure comes from search summaries.",
+    "Earning stops at one times the card limit a month, which is read from the card's own terms when the entry is applied. Set the credit limit before relying on the estimate, or the cap will not bite and a large month is overstated.",
+    "The annual fee of Rp 5.000.000 cannot be waived by spending, which is unusual: only redeeming 100.000 miles clears it, or 125.000 depending on standing. A DBS Treasures customer pays Rp 4.000.000 instead, which the schema cannot hold as a second figure, so the fee condition records it.",
+    "Not modelled: twelve DragonPass lounge visits a year for the holder and a guest, the Starbucks airport vouchers, and the yearly medical check-up in Singapore. None of them pays miles."
+  ],
+  "sources": [
+    {
+      "title": "PinterPoin — Review: Kartu Kredit DBS Vantage Visa Infinite",
+      "url": "https://pinterpoin.com/review-kartu-kredit-dbs-vantage-visa-infinite/"
+    },
+    {
+      "title": "PinterPoin — Devaluasi: DBS membatasi perolehan poin sebesar limit kartu kredit",
+      "url": "https://pinterpoin.com/devaluasi-dbs-membatasi-perolehan-poin-sebesar-limit-kartu-kredit/"
+    },
+    {
+      "title": "PinterPoin — Berubah serentak: devaluasi perolehan poin dan manfaat bandara kartu kredit DBS pada 1 April 2026",
+      "url": "https://pinterpoin.com/berubah-serentak-devaluasi-perolehan-poin-dan-manfaat-bandara-kartu-kredit-dbs-pada-1-april-2026/"
+    },
+    {
+      "title": "Bank DBS Indonesia — Poin Rewards / Mileage digibank",
+      "url": "https://www.dbs.id/digibank/id/id/kartu/kartu-kredit/poin-rewards-mileage-digibank.page"
+    }
+  ],
+  "verifiedOn": "2026-09-15",
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#26232a",
+      "#3a343e",
+      "#131116"
+    ],
+    "angle": 160,
+    "finish": "metallic",
+    "pattern": "none",
+    "ink": "light",
+    "wordmark": "Vantage",
+    "bankMark": "DBS",
+    "chip": "silver",
+    "motif": "sparse-diagonals",
+    "motifColour": "#e8b5a4"
+  }
+}

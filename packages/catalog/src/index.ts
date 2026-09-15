@@ -1,12 +1,10 @@
 import infinite from '../entries/bca-sq-krisflyer-visa-infinite.json';
-import jenius from '../entries/jenius-kartu-kredit.json';
+import jenius from '../entries/jenius-platinum.json';
 import signature from '../entries/bca-sq-krisflyer-visa-signature.json';
 import unionpay from '../entries/bca-unionpay.json';
-import bniGarudaPlatinum from '../entries/bni-garuda-visa-platinum.json';
 import bniGarudaSignature from '../entries/bni-garuda-visa-signature.json';
 import cimbAccor from '../entries/cimb-niaga-world-all-accor.json';
 import danamonAmexGoldCharge from '../entries/danamon-amex-gold-charge.json';
-import danamonAmexGold from '../entries/danamon-amex-gold-credit-card.json';
 import danamonJcb from '../entries/danamon-jcb-precious.json';
 import marriott from '../entries/mandiri-marriott-bonvoy.json';
 import ocbc90n from '../entries/ocbc-90n.json';
@@ -18,6 +16,11 @@ import maybankInfinite from '../entries/maybank-visa-infinite.json';
 import maybankManchesterUnited from '../entries/maybank-manchester-united.json';
 import maybankMini from '../entries/maybank-mini.json';
 import maybankPlatinum from '../entries/maybank-visa-platinum.json';
+import bcaAmexPlatinum from '../entries/bca-amex-platinum.json';
+import cimbCathay from '../entries/cimb-niaga-world-cathay.json';
+import dbsTravel from '../entries/dbs-travel-visa-signature.json';
+import dbsVantage from '../entries/dbs-vantage-visa-infinite.json';
+import uobZenith from '../entries/uob-zenith.json';
 import type { CatalogEntry } from './types';
 
 export * from './types';
@@ -43,13 +46,16 @@ export const CATALOG: readonly CatalogEntry[] = [
   maybankManchesterUnited,
   jenius,
   danamonJcb,
-  danamonAmexGold,
   danamonAmexGoldCharge,
   ocbc90n,
   bniGarudaSignature,
-  bniGarudaPlatinum,
   uobPriviMiles,
   uobGaruda,
+  uobZenith,
+  dbsTravel,
+  dbsVantage,
+  cimbCathay,
+  bcaAmexPlatinum,
 ] as unknown as CatalogEntry[];
 
 export function findEntry(id: string): CatalogEntry | undefined {

@@ -1,0 +1,117 @@
+{
+  "id": "cimb-niaga-world-cathay",
+  "entryVersion": 2,
+  "bank": "CIMB Niaga",
+  "name": "Kartu Kredit CIMB Niaga World Cathay",
+  "network": "mastercard",
+  "currency": "IDR",
+  "program": {
+    "unit": "miles",
+    "name": "Asia Miles",
+    "cycleAnchor": "statement"
+  },
+  "fees": [],
+  "terms": [
+    {
+      "effectiveFrom": "2025-07-31",
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "cathay",
+          "name": "Cathay Pacific, Cathay Holidays and Asia Miles",
+          "rateNum": 15,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "merchantPatterns": [
+              "cathay",
+              "asia miles"
+            ],
+            "excludeCategoryKeys": [
+              "miscellaneous.fees_charges"
+            ]
+          }
+        },
+        {
+          "key": "cathay-mcc",
+          "name": "Cathay Pacific by merchant code",
+          "rateNum": 15,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "mccs": [
+              "3077"
+            ],
+            "excludeCategoryKeys": [
+              "miscellaneous.fees_charges"
+            ]
+          }
+        },
+        {
+          "key": "base",
+          "name": "Everything else",
+          "rateNum": 4,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "miscellaneous.fees_charges"
+            ]
+          }
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [],
+  "cashValue": null,
+  "welcomeBonus": null,
+  "notes": [
+    "The card earns Asia Miles directly, so there is nothing to transfer and no conversion step to clear.",
+    "Spending at Cathay Pacific, Cathay Holidays or on Asia Miles itself earns 15 miles per Rp 50.000, a mile for Rp 3.333. Everything else earns 4 per Rp 50.000, a mile for Rp 12.500, which is poor for a card at this tier. The card is worth holding for Cathay spending and little else.",
+    "Cathay spending is recognised from the description, so a purchase whose statement line does not say Cathay earns the ordinary rate instead.",
+    "Cathay spending is recognised two ways, either of which pays the better rate: a description containing Cathay, or merchant code 3077, which is Cathay Pacific's own airline code. The two rules sit at the same priority so whichever matches takes the spend, the same shape UOB Garuda uses for code 3103. A ticket bought through an agent still earns the ordinary rate, since the agent's code is not Cathay's.",
+    "The card launched on 31 July 2025, which is where the entry's terms begin. A cycle before that date earns nothing here, which is correct.",
+    "The annual fee is not recorded because it could not be found. The app will show no fee for this card, which is not the same as the fee being nothing.",
+    "Not modelled: the foreign-currency promotions CIMB Niaga has run on this card, including a 100% bonus over December 2025 and January 2026, and the spending-reward campaigns paying Asia Miles and Accor points. A cycle during one of those is understated.",
+    "No source could be read directly. CIMB Niaga's own site and PinterPoin are unreachable from here, so every figure comes from search summaries."
+  ],
+  "sources": [
+    {
+      "title": "PinterPoin — Review: Kartu Kredit CIMB Niaga World Cathay",
+      "url": "https://pinterpoin.com/review-kartu-kredit-cimb-niaga-world-cathay/"
+    },
+    {
+      "title": "PinterPoin — (Sedikit) lebih menarik: CIMB Niaga merilis informasi terbaru kartu kredit World Cathay Card",
+      "url": "https://pinterpoin.com/sedikit-lebih-menarik-cimb-niaga-merilis-informasi-terbaru-kartu-kredit-world-cathay-card/"
+    },
+    {
+      "title": "PinterPoin — Promo: bonus 100% Asia Miles CIMB Niaga Cathay World untuk transaksi mata uang asing",
+      "url": "https://pinterpoin.com/promo-bonus-100-perolehan-asia-miles-cimb-niaga-cathay-world-untuk-transaksi-mata-uang-asing-desember-2025-januari-2026/"
+    }
+  ],
+  "verifiedOn": "2026-09-15",
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#1d5a4c",
+      "#2b7a65",
+      "#0d3830"
+    ],
+    "angle": 150,
+    "finish": "metallic",
+    "pattern": "none",
+    "motif": "fine-contours",
+    "motifColour": "#a8e0d0",
+    "ink": "light",
+    "wordmark": "Cathay",
+    "bankMark": "CIMB Niaga",
+    "chip": "silver"
+  }
+}

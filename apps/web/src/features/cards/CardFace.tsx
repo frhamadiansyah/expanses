@@ -22,7 +22,7 @@ function NetworkMark({ network }: { network: string | null }) {
         </span>
       );
     case 'amex':
-      return <span className="rounded-sm border border-current px-1 text-[0.9em] leading-tight font-bold tracking-wider">AMEX</span>;
+      return <span className="text-[1.15em] leading-none font-black tracking-wide">AMEX</span>;
     case 'jcb':
       return <span className="text-[1.2em] leading-none font-black tracking-wide">JCB</span>;
     case 'unionpay':
@@ -319,6 +319,85 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
           <path d="M430 272H880" stroke={c} strokeWidth="2.5" />
           <path d="M412 272l-40-10-6-28-12 2 4 26-32-8-8-14-8 2 4 30-4 30 8 2 8-14 32-8-4 26 12 2 6-28z" fill={c} />
         </>,
+      );
+    case 'sparse-diagonals':
+      // A plain face cut by a few long thin strokes, the way a metal card carries a single accent.
+      return svg(
+        <g stroke={c} fill="none" strokeLinecap="round">
+          <path d="M486 -20L206 560" strokeWidth="5" />
+          <path d="M700 -20L912 430" strokeWidth="5" />
+          <path d="M524 -20L300 560" strokeWidth="1.8" opacity="0.55" />
+          <path d="M742 -20L946 400" strokeWidth="1.8" opacity="0.55" />
+        </g>,
+      );
+    case 'contour-lines':
+      // Wavy lines packed edge to edge, like the contours on a map, covering the whole face.
+      return svg(
+        <g fill="none" stroke={c} strokeLinecap="round">
+          {Array.from({ length: 15 }, (_, i) => {
+            const y = -30 + i * 42;
+            return <path key={i} d={`M-40 ${y}q110 -46 220 0t220 0t220 0t220 0`} strokeWidth="11" opacity="0.55" />;
+          })}
+          {Array.from({ length: 15 }, (_, i) => {
+            const y = -10 + i * 42;
+            return <path key={`t${i}`} d={`M-40 ${y}q110 -46 220 0t220 0t220 0t220 0`} strokeWidth="3" opacity="0.8" />;
+          })}
+        </g>,
+      );
+    case 'meridians':
+      // The curved grid of a globe, with a small aeroplane crossing it.
+      return svg(
+        <>
+          <g fill="none" stroke={c} strokeWidth="2">
+            {Array.from({ length: 10 }, (_, i) => {
+              const x = -140 + i * 128;
+              return <path key={`m${i}`} d={`M${x} -40C${x + 150} 170 ${x + 150} 370 ${x} 580`} />;
+            })}
+            {Array.from({ length: 8 }, (_, i) => {
+              const y = -40 + i * 96;
+              return <path key={`p${i}`} d={`M-40 ${y}C240 ${y + 74} 620 ${y + 74} 900 ${y}`} />;
+            })}
+          </g>
+          <g transform="translate(672 214) rotate(48) scale(0.62) translate(-50 -64)" fill="#f0a92e">
+            <path d="M50 0c6 0 10 9 10 22v26l38 26v14l-38-12v26l14 16v10l-24-8-24 8v-10l14-16V76L2 88V74l38-26V22C40 9 44 0 50 0z" />
+          </g>
+        </>,
+      );
+    case 'fine-contours':
+      // Close-set contour lines running the whole width, for a face that is all texture.
+      return svg(
+        <g fill="none" stroke={c} strokeWidth="2.2" opacity="0.5">
+          {Array.from({ length: 30 }, (_, i) => {
+            const y = -12 + i * 20;
+            return <path key={i} d={`M-30 ${y}q112 -16 224 0t224 0t224 0t224 0`} />;
+          })}
+        </g>,
+      );
+    case 'guilloche-crest':
+      // Engine-turned lines inside a double engraved border, with a portrait oval at the centre.
+      return svg(
+        <g fill="none" stroke={c}>
+          <rect x="14" y="14" width={w - 28} height={h - 28} rx="26" strokeWidth="10" opacity="0.85" />
+          <rect x="30" y="30" width={w - 60} height={h - 60} rx="20" strokeWidth="3" opacity="0.7" />
+          <rect x="40" y="40" width={w - 80} height={h - 80} rx="16" strokeWidth="6" strokeDasharray="3 9" opacity="0.6" />
+          <g strokeWidth="2" opacity="0.55">
+            {Array.from({ length: 40 }, (_, i) => {
+              const y = -8 + i * 15;
+              return <path key={i} d={`M-30 ${y}q104 -11 208 0t208 0t208 0t208 0t208 0`} />;
+            })}
+          </g>
+          <g transform={`translate(${w / 2} ${h / 2})`}>
+            <ellipse rx="120" ry="146" fill={c} opacity="0.1" />
+            <ellipse rx="120" ry="146" fill="none" strokeWidth="9" opacity="0.9" />
+            <ellipse rx="106" ry="132" fill="none" strokeWidth="2.5" opacity="0.65" />
+            {/* A Spartan helmet in side profile: the crest is seven segments of one arc, computed. */}
+            <g transform="scale(0.58) translate(-121 -167)" fill={c} opacity="0.42">
+              <path d="M10.9 208.4A122 122 0 0 1 -3.9 154.8L46.1 152.8A72 72 0 0 0 54.8 184.5ZM-4.0 148.8A122 122 0 0 1 9.2 94.8L53.8 117.4A72 72 0 0 0 46.0 149.3ZM12.0 89.6A122 122 0 0 1 49.8 48.8L77.8 90.3A72 72 0 0 0 55.4 114.3ZM54.9 45.6A122 122 0 0 1 107.7 28.4L111.9 78.3A72 72 0 0 0 80.7 88.4ZM113.7 28.1A122 122 0 0 1 168.2 38.8L147.6 84.4A72 72 0 0 0 115.5 78.0ZM173.6 41.4A122 122 0 0 1 216.0 77.4L175.8 107.1A72 72 0 0 0 150.8 85.9ZM219.4 82.2A122 122 0 0 1 239.0 134.3L189.4 140.7A72 72 0 0 0 177.9 110.0Z" />
+              <path d="M59.5 176.0A64 64 0 1 1 182.0 147.8L170.0 148.2A52 52 0 1 0 70.5 171.2Z" />
+              <path fillRule="evenodd" d="M75.7 165.4A45 45 0 1 1 163.0 150.0L212 98L222 112L210 204L246 306L98 262L86 220L52 250L46 192ZM108 182L182 182L182 208L152 208L152 194L108 194ZM188 214L202 214L202 258L188 258Z" />
+            </g>
+          </g>
+        </g>,
       );
     default:
       return null;

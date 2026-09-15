@@ -1,0 +1,104 @@
+{
+  "id": "uob-zenith",
+  "entryVersion": 1,
+  "bank": "UOB Indonesia",
+  "name": "Kartu Kredit UOB Zenith",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "UOB Points",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 3500000,
+      "supplementaryFeeMinor": null,
+      "condition": "cannot be waived, by spending or otherwise"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 1500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "miscellaneous.fees_charges"
+            ]
+          }
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 5,
+      "partnerUnits": 1,
+      "incrementPoints": 5,
+      "effectiveFrom": null,
+      "effectiveTo": "2026-01-08"
+    },
+    {
+      "key": "krisflyer-2026",
+      "program": "KrisFlyer",
+      "points": 587,
+      "partnerUnits": 100,
+      "incrementPoints": 587,
+      "effectiveFrom": "2026-01-09",
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": null,
+  "welcomeBonus": "58.700 UOB Points, worth 10.000 miles at the current ratio, for Rp 15.000.000 spent over 3 months.",
+  "notes": [
+    "Earning is 1 UOB Point per Rp 1.500 and did not change on 9 January 2026. What changed that day was the conversion: 5 points bought a mile before it and 5,87 after, a cut of about 17%. A mile went from Rp 7.500 to Rp 8.800 without the earning rate moving at all, which is the shape these UOB changes usually take.",
+    "The 5,87 is recorded as 587 points for 100 miles, which is the same ratio in whole numbers and is why the transfer step is 587 rather than something rounder.",
+    "The card has no ceiling on earning and none on converting, which is unusual in Indonesia and is most of the reason to hold it.",
+    "Only KrisFlyer is recorded. UOB converts to other programmes, but no ratio for them on this card could be pinned down, so an estimate for them shows nothing.",
+    "The annual fee of Rp 3.500.000 cannot be waived by any amount of spending.",
+    "Not modelled: the airport limousine transfer and lounge access, neither of which pays points.",
+    "No source could be read directly. UOB's own site and PinterPoin are unreachable from here, so every figure comes from search summaries."
+  ],
+  "sources": [
+    {
+      "title": "PinterPoin — Review: Kartu Kredit UOB Zenith",
+      "url": "https://pinterpoin.com/review-kartu-kredit-uob-zenith/"
+    },
+    {
+      "title": "PinterPoin — Devaluasi: earning rate kartu kredit UOB Zenith pada 9 Januari 2026",
+      "url": "https://pinterpoin.com/devaluasi-earning-rate-kartu-kredit-uob-zenith-pada-9-januari-2026/"
+    }
+  ],
+  "verifiedOn": "2026-09-15",
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#171d23",
+      "#212b33",
+      "#0b0f13"
+    ],
+    "angle": 150,
+    "finish": "metallic",
+    "pattern": "none",
+    "ink": "light",
+    "wordmark": "Zenith",
+    "bankMark": "UOB",
+    "chip": "silver",
+    "motif": "contour-lines",
+    "motifColour": "#5f7180"
+  }
+}

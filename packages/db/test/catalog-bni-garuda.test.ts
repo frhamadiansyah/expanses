@@ -55,30 +55,19 @@ describe('BNI Garuda Indonesia Visa Signature', () => {
   });
 });
 
-describe('BNI Garuda Indonesia Visa Platinum', () => {
-  it('earns a mile per Rp 50.000, a quarter of the Signature', async () => {
-    const t = await withCard('bni-garuda-visa-platinum');
-    expect(await earn(t, 1_000_000, '2026-09-10', '2026-09-30')).toBe(20);
-  });
-
-  it('runs one rate throughout, since the earlier one was never published', async () => {
-    expect(findEntry('bni-garuda-visa-platinum')!.terms).toHaveLength(1);
+describe('the BNI Garuda Signature', () => {
+  it('keeps both rates, one on each side of the change', () => {
     expect(findEntry('bni-garuda-visa-signature')!.terms).toHaveLength(2);
   });
-});
 
-describe('both BNI Garuda cards', () => {
-  it('earn GarudaMiles directly, so there is nothing to transfer', () => {
-    for (const id of ['bni-garuda-visa-signature', 'bni-garuda-visa-platinum']) {
-      const entry = findEntry(id)!;
-      expect(entry.program.name).toBe('GarudaMiles');
-      expect(entry.program.unit).toBe('miles');
-      expect(entry.transferPartners).toEqual([]);
-    }
+  it('earns GarudaMiles directly, so there is nothing to transfer', () => {
+    const entry = findEntry('bni-garuda-visa-signature')!;
+    expect(entry.program.name).toBe('GarudaMiles');
+    expect(entry.program.unit).toBe('miles');
+    expect(entry.transferPartners).toEqual([]);
   });
 
-  it('charge Rp 800.000 and Rp 600.000 a year', () => {
+  it('charges Rp 800.000 a year', () => {
     expect(findEntry('bni-garuda-visa-signature')!.fees[0]!.annualFeeMinor).toBe(800_000);
-    expect(findEntry('bni-garuda-visa-platinum')!.fees[0]!.annualFeeMinor).toBe(600_000);
   });
 });

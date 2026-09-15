@@ -205,7 +205,7 @@ describe('member levels: the preview', () => {
 });
 
 describe('Kartu Kredit Jenius', () => {
-  const jenius = () => findEntry('jenius-kartu-kredit')!;
+  const jenius = () => findEntry('jenius-platinum')!;
   const OLD = '2026-07-31';
   const NEW = '2026-08-01';
 
@@ -296,20 +296,20 @@ describe('Kartu Kredit Jenius', () => {
 
 describe('Kartu Kredit Jenius: the annual fee', () => {
   it('charges Rp 500.000 a year, with no end date', () => {
-    const fee = feeOn(findEntry('jenius-kartu-kredit')!, '2026-09-13')!;
+    const fee = feeOn(findEntry('jenius-platinum')!, '2026-09-13')!;
     expect(fee.annualFeeMinor).toBe(500_000);
     expect(fee.effectiveTo).toBeNull();
   });
 
   it('applies the fee to the card whatever level the holder is on', () => {
-    const at = (level: string) => planCatalogApply(findEntry('jenius-kartu-kredit')!, {}, '2026-09-13', level).annualFeeMinor;
+    const at = (level: string) => planCatalogApply(findEntry('jenius-platinum')!, {}, '2026-09-13', level).annualFeeMinor;
     expect(at('grow-plus')).toBe(500_000);
     expect(at('seed-plant')).toBe(500_000);
   });
 });
 
 describe('Kartu Kredit Jenius: how points are credited', () => {
-  const jenius = () => findEntry('jenius-kartu-kredit')!;
+  const jenius = () => findEntry('jenius-platinum')!;
 
   it('credits per transaction, so each purchase can be checked against the app', () => {
     expect(jenius().program.crediting).toBe('per_transaction');
@@ -326,7 +326,7 @@ describe('Kartu Kredit Jenius: how points are credited', () => {
 });
 
 describe('Kartu Kredit Jenius: the Double Yay categories are the bank\u2019s own MCC lists', () => {
-  const choice = () => findEntry('jenius-kartu-kredit')!.program.categoryChoice!;
+  const choice = () => findEntry('jenius-platinum')!.program.categoryChoice!;
   const mccsOf = (key: string) => choice().options.find((option) => option.key === key)!.match.mccs!;
 
   it('matches on merchant category codes, not on this workspace\u2019s categories', () => {
@@ -374,7 +374,7 @@ describe('Kartu Kredit Jenius: the Double Yay categories are the bank\u2019s own
 });
 
 describe('Kartu Kredit Jenius: only KrisFlyer follows Club status', () => {
-  const jenius = () => findEntry('jenius-kartu-kredit')!;
+  const jenius = () => findEntry('jenius-platinum')!;
 
   it('gives Grow and Seed the same ratio at every partner except KrisFlyer', () => {
     const at = (level: string) =>
@@ -408,9 +408,9 @@ describe('Kartu Kredit Jenius: only KrisFlyer follows Club status', () => {
 describe('Kartu Kredit Jenius: the published effective earn tables', () => {
   const NEW = '2026-08-01';
   const rateDen = (level: string, rule: 'Base' | 'Double Yay abroad') =>
-    planCatalogApply(findEntry('jenius-kartu-kredit')!, {}, NEW, level).rules.find((row) => row.name === rule && row.validFrom === NEW)!.rateDen;
+    planCatalogApply(findEntry('jenius-platinum')!, {}, NEW, level).rules.find((row) => row.name === rule && row.validFrom === NEW)!.rateDen;
   const milesPerYay = (level: string, program: string) => {
-    const partner = planCatalogApply(findEntry('jenius-kartu-kredit')!, {}, NEW, level).transferPartners.find(
+    const partner = planCatalogApply(findEntry('jenius-platinum')!, {}, NEW, level).transferPartners.find(
       (row) => row.program === program && row.validTo === null,
     )!;
     return partner.partnerUnits / partner.points;
@@ -455,7 +455,7 @@ describe('Kartu Kredit Jenius: the published effective earn tables', () => {
 
 describe('Kartu Kredit Jenius: which Club each level covers', () => {
   it('groups Grow, Nurture and Bloom, and names Sinaya Prioritas with them', () => {
-    const levels = findEntry('jenius-kartu-kredit')!.program.memberLevels!;
+    const levels = findEntry('jenius-platinum')!.program.memberLevels!;
     const grow = levels.find((level) => level.key === 'grow-plus')!;
     expect(grow.condition).toContain('Nurture');
     expect(grow.condition).toContain('Bloom');
@@ -466,7 +466,7 @@ describe('Kartu Kredit Jenius: which Club each level covers', () => {
 
 describe('rounding, per full increment', () => {
   it('every Jenius and Danamon rule rounds per increment, not per transaction', () => {
-    for (const id of ['jenius-kartu-kredit', 'danamon-jcb-precious']) {
+    for (const id of ['jenius-platinum', 'danamon-jcb-precious']) {
       for (const period of findEntry(id)!.terms) {
         for (const rule of period.rules) expect(rule.rounding, `${id}/${rule.key}`).toBe('per_increment');
       }
