@@ -22,7 +22,7 @@ function NetworkMark({ network }: { network: string | null }) {
         </span>
       );
     case 'amex':
-      return <span className="rounded-sm border border-current px-1 text-[0.9em] leading-tight font-bold tracking-wider">AMEX</span>;
+      return <span className="text-[1.15em] leading-none font-black tracking-wide">AMEX</span>;
     case 'jcb':
       return <span className="text-[1.2em] leading-none font-black tracking-wide">JCB</span>;
     case 'unionpay':
