@@ -1,5 +1,7 @@
 import infinite from '../entries/bca-sq-krisflyer-visa-infinite.json';
+import bluGaruda from '../entries/blu-garuda-debit.json';
 import jenius from '../entries/jenius-platinum.json';
+import maybankU from '../entries/maybank-u-debit.json';
 import signature from '../entries/bca-sq-krisflyer-visa-signature.json';
 import unionpay from '../entries/bca-unionpay.json';
 import bniGarudaSignature from '../entries/bni-garuda-visa-signature.json';
@@ -45,6 +47,8 @@ export const CATALOG: readonly CatalogEntry[] = [
   maybankMini,
   maybankManchesterUnited,
   jenius,
+  bluGaruda,
+  maybankU,
   danamonJcb,
   danamonAmexGoldCharge,
   ocbc90n,

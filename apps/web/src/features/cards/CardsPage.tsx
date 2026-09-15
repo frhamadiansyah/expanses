@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { CardFace } from './CardFace';
-import { useCardIdentities, useCards } from './card-queries';
+import { useCardIdentities, useCards, useProgramAccounts } from './card-queries';
 import { Card, Empty, Money, PageHeader } from '../../ui';
 import { formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
 
@@ -15,7 +15,11 @@ export function CardsPage() {
   const { database, ws } = useApp();
   const accounts = useAccounts();
   const all = accounts.data ?? [];
-  const cards = all.filter((a) => a.subtype === 'credit_card' && a.archivedAt === null);
+  // A debit card is a bank account that earns, so it joins the credit cards once its terms are applied.
+  const earning = useProgramAccounts().data ?? new Set<string>();
+  const cards = all.filter((a) => a.archivedAt === null && (a.subtype === 'credit_card' || earning.has(a.id)));
+  // Bank accounts that could carry a debit card but have no rewards yet: without these there is no way in.
+  const spendable = all.filter((a) => a.archivedAt === null && ['bank', 'savings'].includes(a.subtype) && !earning.has(a.id));
   const identities = useCardIdentities().data ?? {};
   const plastic = useCards().data ?? [];
   /** The cards on an account, back to front; an account with none recorded still gets one face. */
@@ -109,7 +113,11 @@ export function CardsPage() {
                     ))}
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
-                  {!cp.terms ? 'Add statement day to see points' : cp.current ? `This cycle ${shortDate(cp.current.cycle.start)} – ${shortDate(cp.current.cycle.end)}` : 'Rewards not set up'}
+                  {!cp.terms && cp.card.subtype === 'credit_card'
+                    ? 'Add statement day to see points'
+                    : cp.current
+                      ? `This cycle ${shortDate(cp.current.cycle.start)} – ${shortDate(cp.current.cycle.end)}`
+                      : 'Rewards not set up'}
                 </div>
               </div>
               {cp.current ? (
@@ -132,6 +140,22 @@ export function CardsPage() {
           </Card>
         );
       })}
+      {spendable.length > 0 && (
+        <Card>
+          <div className="text-sm font-medium">Earning on a debit card?</div>
+          <p className="mt-1 text-sm text-slate-600">
+            A debit card earns on the account it spends from, so pick that account and apply its card's terms. It joins
+            the cards above once it does.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+            {spendable.map((account) => (
+              <Link key={account.id} to="/cards/$cardId" params={{ cardId: account.id }} className="text-sm underline">
+                {account.name}
+              </Link>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

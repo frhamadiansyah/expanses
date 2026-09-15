@@ -23,6 +23,11 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
   if (!isPositiveInt(entry.entryVersion)) add('entryVersion', 'must be a positive integer');
   for (const field of ['bank', 'name', 'network'] as const) if (!isText(entry[field])) add(field, 'is required');
   if (typeof entry.currency !== 'string' || !isSupportedCurrency(entry.currency)) add('currency', 'must be a supported currency');
+  if (entry.cardType !== undefined && !['credit', 'debit'].includes(entry.cardType as string)) add('cardType', 'must be credit or debit');
+  // A debit card has no statement to anchor a cycle to, and nothing to charge a yearly fee against.
+  if (entry.cardType === 'debit' && isObj(entry.program) && entry.program.cycleAnchor !== 'calendar') {
+    add('program.cycleAnchor', 'must be calendar on a debit card, which has no statement');
+  }
   if (typeof entry.verifiedOn !== 'string' || !DATE.test(entry.verifiedOn)) add('verifiedOn', 'must be a YYYY-MM-DD date');
   if (!Array.isArray(entry.sources) || entry.sources.length === 0) add('sources', 'at least one source is required');
   else entry.sources.forEach((s, i) => {

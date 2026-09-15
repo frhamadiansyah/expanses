@@ -259,7 +259,9 @@ export function CardDetailPage() {
   const navigate = useNavigate({ from: '/cards/$cardId' });
   const setChosenTab = (tab: CardTab) => void navigate({ search: { tab }, replace: true });
   // Reaching a new setup step while on the page brings that step's tab forward; finishing setup leaves it be.
-  const setupStep = data.data ? (!data.data.terms ? 1 : !data.data.program ? 2 : data.data.rules.length === 0 ? 3 : null) : undefined;
+  // A debit card has no statement day to ask for, so its setup starts at the program.
+  const isDebit = card?.subtype !== undefined && card.subtype !== 'credit_card';
+  const setupStep = data.data ? (!isDebit && !data.data.terms ? 1 : !data.data.program ? 2 : data.data.rules.length === 0 ? 3 : null) : undefined;
   const seenStep = useRef(setupStep);
   useEffect(() => {
     const before = seenStep.current;
@@ -282,14 +284,14 @@ export function CardDetailPage() {
     setProgramName(`${card.name} rewards`);
   }
 
-  const owed = displayAmount('liability', balances.data?.[card.id] ?? 0);
+  const owed = isDebit ? 0 : displayAmount('liability', balances.data?.[card.id] ?? 0);
   const optionalMinor = (v: string) => (v.trim() ? parseMajor(v, currency) : null);
   // Setup is ordered: the statement day defines cycles, a program holds rules, and rules produce points.
   const hasTerms = !!cp.terms;
-  const step = !hasTerms ? 1 : !cp.program ? 2 : cp.rules.length === 0 ? 3 : null;
+  const step = !isDebit && !hasTerms ? 1 : !cp.program ? 2 : cp.rules.length === 0 ? 3 : null;
   const canUseCatalog = !cp.program || cp.catalog.status === null;
   // A card with no statement day opens on its terms; any other card opens on its statement, since rewards are optional.
-  const active: CardTab = chosenTab ?? (step === 1 ? 'card' : 'statement');
+  const active: CardTab = chosenTab ?? (step === 1 ? 'card' : isDebit ? 'points' : 'statement');
   const on = (tab: CardTab) => active === tab;
   const openTab = (tab: CardTab, focusId?: string) => {
     setChosenTab(tab);
@@ -342,15 +344,16 @@ export function CardDetailPage() {
         plastic={plastic}
         issuer={identities[card.id]?.issuer ?? null}
         owedMinor={owed}
+        debit={isDebit}
         pointsBalance={ledger.data ? { total: ledger.data.balance.total, posted: ledger.data.balance.postedTotal, estimated: ledger.data.balance.projectedTotal } : null}
         today={today}
         onTab={openTab}
-        tabs={<CardTabs active={active} onChange={(tab) => setChosenTab(tab)} />}
+        tabs={<CardTabs active={active} onChange={(tab) => setChosenTab(tab)} debit={isDebit} />}
       />
       <ErrorBox error={error} />
       {on('rules') && cp.catalog.entryId && <CatalogPanel cp={cp} today={today} run={run} />}
 
-      {on('card') && (
+      {on('card') && !isDebit && (
       <Section title="Card terms" step={step === 1 ? 'Step 1 of 3' : undefined}>
         {step === 1 && (
           <p className="mb-3 text-sm text-slate-600">
@@ -438,14 +441,14 @@ export function CardDetailPage() {
 
       {on('card') && step === 1 && (
         <Section title="Is your card in the catalogue?">
-          <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} applyHint="Save the card terms above, then use these terms in the next step." />
+          <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} debit={isDebit} applyHint="Save the card terms above, then use these terms in the next step." />
         </Section>
       )}
 
       {on('rules') && hasTerms && !cp.program && (
         <Section title="Rewards program" step="Step 2 of 3">
           <h3 className="mb-2 text-sm font-medium">Choose from catalogue</h3>
-          <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} onApply={applyEntry} />
+          <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} onApply={applyEntry} debit={isDebit} />
           <h3 className="mb-2 mt-6 text-sm font-medium">Or set up manually</h3>
           <form
             className="grid gap-3 md:grid-cols-3"
@@ -652,7 +655,7 @@ export function CardDetailPage() {
           >
             {browsingCatalog && canUseCatalog && (
               <div className="mb-4 rounded border border-slate-200 p-3">
-                <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} onApply={applyEntry} />
+                <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} onApply={applyEntry} debit={isDebit} />
               </div>
             )}
             {editingRule === 'new' && (

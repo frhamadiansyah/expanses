@@ -36,12 +36,32 @@ export interface PointsWriteOptions {
   fromCatalog?: boolean;
 }
 
-async function requireCard(db: Db, ws: WorkspaceContext, accountId: string) {
+async function accountOf(db: Db, ws: WorkspaceContext, accountId: string) {
   const [card] = await db
     .select()
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
+  return card;
+}
+
+/** A statement day, a due day and a credit limit are a credit card's, and only a credit card's. */
+async function requireCard(db: Db, ws: WorkspaceContext, accountId: string) {
+  const card = await accountOf(db, ws, accountId);
   if (!card || card.subtype !== 'credit_card') throw new PointsError('Account is not a credit card in this workspace');
+  return card;
+}
+
+/**
+ * An account that can earn: a credit card, or the bank account a debit card spends from.
+ *
+ * The rules run on the spend, not on the plastic, so a debit card earns the same way — it simply has no
+ * terms to go with it.
+ */
+async function requireEarningCard(db: Db, ws: WorkspaceContext, accountId: string) {
+  const card = await accountOf(db, ws, accountId);
+  if (!card || !['credit_card', 'bank', 'savings'].includes(card.subtype)) {
+    throw new PointsError('Account is not a card or a bank account in this workspace');
+  }
   return card;
 }
 
@@ -124,7 +144,7 @@ export async function createProgram(
   if (!name) throw new PointsError('Program name is required');
   const row: RewardProgramRow = { id: uuidv7(), workspaceId: ws.workspaceId, cardAccountId: input.cardAccountId, name, unit: input.unit, cycleAnchor: input.cycleAnchor, catalogEntryId: null, catalogEntryVersion: null, catalogStatus: null, catalogMemberLevel: null, catalogDismissedVersion: null, catalogSnapshotJson: null, crediting: 'per_statement', expiryPolicy: 'none', expiryMonths: null, archivedAt: null, createdAt: new Date().toISOString() };
   await database.transaction(async (tx) => {
-    await requireCard(tx, ws, input.cardAccountId);
+    await requireEarningCard(tx, ws, input.cardAccountId);
     await tx.insert(rewardPrograms).values(row);
   });
   return row;

@@ -180,6 +180,12 @@ export interface CatalogEntry {
   name: string;
   network: string;
   currency: string;
+  /**
+   * A debit card spends the account's own money, so it has no statement, no credit limit and nothing
+   * to pay off. It is applied to a bank or savings account rather than a credit card, and its cycle is
+   * the calendar month. Absent means a credit card, which is what nearly every entry is.
+   */
+  cardType?: 'credit' | 'debit';
   program: CatalogProgram;
   fees: CatalogFeePeriod[];
   terms: CatalogTermsPeriod[];

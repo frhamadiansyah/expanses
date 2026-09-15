@@ -109,6 +109,7 @@ export function CardHero({
   plastic,
   issuer,
   owedMinor,
+  debit = false,
   pointsBalance,
   today,
   onTab,
@@ -119,6 +120,8 @@ export function CardHero({
   plastic: readonly CardRow[];
   issuer: string | null;
   owedMinor: number;
+  /** A debit card spends money the account already holds: nothing is owed, nothing is due, nothing to pay. */
+  debit?: boolean;
   pointsBalance: { total: number; posted: number; estimated: number } | null;
   today: string;
   onTab: (tab: CardTab, focusId?: string) => void;
@@ -197,10 +200,12 @@ export function CardHero({
             )}
           </div>
         )}
-        <div className="mt-1 text-xs text-slate-500" data-testid="card-owed">
-          Used {formatMinor(usage.usedMinor, currency)}
-          {usage.usedPct !== null ? ` · ${usage.usedPct}%` : ''}
-        </div>
+        {!debit && (
+          <div className="mt-1 text-xs text-slate-500" data-testid="card-owed">
+            Used {formatMinor(usage.usedMinor, currency)}
+            {usage.usedPct !== null ? ` · ${usage.usedPct}%` : ''}
+          </div>
+        )}
         {usage.heldMinor > 0 && (
           <div
             className="relative text-xs text-slate-500"
@@ -237,7 +242,8 @@ export function CardHero({
 
       {/* What is left to pay and the points, then the tabs directly under them, so the whole block sits beside the card. */}
       <div className="flex min-w-0 flex-col gap-3">
-        <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <div className={cx('grid min-w-0 flex-1 gap-3', !debit && 'md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
+          {!debit && (
           <Tile
             label="Left to pay"
             testId="tile-left-to-pay"
@@ -283,6 +289,7 @@ export function CardHero({
               </div>
             )}
           </Tile>
+          )}
 
           <Tile
             label={unit === 'miles' ? 'Miles' : unit === 'cashback' ? 'Cashback' : 'Points'}
@@ -347,10 +354,12 @@ export function CardHero({
   );
 }
 
-export function CardTabs({ active, onChange }: { active: CardTab; onChange: (tab: CardTab) => void }) {
+export function CardTabs({ active, onChange, debit = false }: { active: CardTab; onChange: (tab: CardTab) => void; debit?: boolean }) {
+  // A debit card has no statement: its spending settles against the account as it happens.
+  const shown = debit ? CARD_TABS.filter((tab) => tab.key !== 'statement') : CARD_TABS;
   return (
     <div role="tablist" aria-label="Card sections" className="flex gap-1 overflow-x-auto border-b border-slate-200">
-      {CARD_TABS.map((tab) => (
+      {shown.map((tab) => (
         <button
           key={tab.key}
           type="button"
