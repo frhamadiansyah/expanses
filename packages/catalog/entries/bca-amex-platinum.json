@@ -101,15 +101,16 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#c9ced3",
-      "#eaecee",
-      "#b4babf"
+      "#c1c8cf",
+      "#ecEEf0",
+      "#a7aeb5"
     ],
     "angle": 155,
     "finish": "metallic",
-    "pattern": "none",
+    "pattern": "waves",
+    "patternColour": "#6b737a55",
     "motif": "engraved-frame",
-    "motifColour": "#6b737a",
+    "motifColour": "#4d555c",
     "ink": "dark",
     "wordmark": "Platinum",
     "bankMark": "BCA",

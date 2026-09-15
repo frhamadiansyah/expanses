@@ -113,14 +113,14 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#1a1a1d",
-      "#2b2b30",
-      "#121214"
+      "#26232a",
+      "#3a343e",
+      "#131116"
     ],
     "angle": 160,
-    "finish": "matte",
+    "finish": "metallic",
     "pattern": "diagonal-lines",
-    "patternColour": "#e0a59645",
+    "patternColour": "#e6b3a27a",
     "ink": "light",
     "wordmark": "Vantage",
     "bankMark": "DBS",

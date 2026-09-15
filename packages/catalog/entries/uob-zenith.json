@@ -87,14 +87,14 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#212a30",
-      "#2d383f",
-      "#161d21"
+      "#26313a",
+      "#36454f",
+      "#141b21"
     ],
     "angle": 150,
-    "finish": "matte",
+    "finish": "metallic",
     "pattern": "waves",
-    "patternColour": "#9fb0bc99",
+    "patternColour": "#a9bcc9cc",
     "ink": "light",
     "wordmark": "Zenith",
     "bankMark": "UOB",

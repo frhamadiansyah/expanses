@@ -100,19 +100,19 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#1c5347",
-      "#23675a",
-      "#103a31"
+      "#1d5a4c",
+      "#2b7a65",
+      "#0d3830"
     ],
     "angle": 150,
-    "finish": "matte",
+    "finish": "metallic",
     "pattern": "waves",
-    "patternColour": "#9fd8c877",
+    "patternColour": "#a8e0d0aa",
+    "motif": "wing-bars",
+    "motifColour": "#ffffff",
     "ink": "light",
     "wordmark": "Cathay",
     "bankMark": "CIMB Niaga",
-    "chip": "silver",
-    "motif": "wing-bars",
-    "motifColour": "#ffffffcc"
+    "chip": "silver"
   }
 }
