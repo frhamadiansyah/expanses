@@ -1,5 +1,5 @@
 import { categoryAncestors, computeCycleEarn, type Cycle, cycleFor } from '@expanses/core';
-import { type AccountRow, cardSpendLines, type Database, getCardTerms, listCycleBonuses, listEarnRules, listPrograms, type TransactionView, type WorkspaceContext } from '@expanses/db';
+import { type AccountRow, cardSpendLines, type Database, getCardTerms, listCycleBonuses, listEarnRules, listPrograms, postingDates, type TransactionView, type WorkspaceContext } from '@expanses/db';
 
 export interface PurchasePoints {
   points: number;
@@ -20,11 +20,13 @@ export function cyclesCovering(dates: readonly string[], anchor: 'statement' | '
 /** Estimated points for each listed card purchase, computed within the purchase's own cycle so caps and bonuses apply. */
 export async function loadPurchasePoints(database: Database, ws: WorkspaceContext, transactions: readonly TransactionView[], accounts: readonly AccountRow[]): Promise<Record<string, PurchasePoints>> {
   const cards = new Set(accounts.filter((a) => a.subtype === 'credit_card').map((a) => a.id));
+  const onCard = transactions.filter((tx) => tx.status === 'posted' && tx.entries.some((e) => e.accountKind === 'expense') && tx.entries.some((e) => cards.has(e.accountId)));
+  // A purchase the bank posted late earns in the cycle it was billed in, so that is the cycle to compute.
+  const posted = await postingDates(database, ws, onCard.map((tx) => tx.id));
   const datesByCard = new Map<string, string[]>();
-  for (const tx of transactions) {
-    if (tx.status !== 'posted' || !tx.entries.some((e) => e.accountKind === 'expense')) continue;
-    const card = tx.entries.find((e) => cards.has(e.accountId));
-    if (card) datesByCard.set(card.accountId, [...(datesByCard.get(card.accountId) ?? []), tx.occurredOn]);
+  for (const tx of onCard) {
+    const card = tx.entries.find((e) => cards.has(e.accountId))!;
+    datesByCard.set(card.accountId, [...(datesByCard.get(card.accountId) ?? []), posted.get(tx.id) ?? tx.occurredOn]);
   }
   if (datesByCard.size === 0) return {};
 

@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { cycleFor, previousCycle, statementCycleFor } from '../src/points/cycles';
+import { cycleFor, nextStatementStart, previousCycle, statementCycleFor } from '../src/points/cycles';
 import { computeCycleEarn, type EarnRule, type SpendLine } from '../src/points/earn';
 import { recommendCards } from '../src/points/recommend';
 
@@ -43,6 +43,12 @@ describe('statement cycles', () => {
   it('supports calendar anchors and previous cycles', () => {
     expect(cycleFor('2026-09-11', 'calendar', 25)).toEqual({ start: '2026-09-01', end: '2026-09-30' });
     expect(previousCycle({ start: '2026-08-26', end: '2026-09-25' }, 'statement', 25)).toEqual({ start: '2026-07-26', end: '2026-08-25' });
+  });
+  it('gives the first day of the next statement, for a purchase the bank billed late', () => {
+    // Bought on the 19th, statement on the 20th, posted on the 21st: the September statement.
+    expect(nextStatementStart('2026-08-19', 20)).toBe('2026-08-21');
+    expect(nextStatementStart('2026-08-20', 20)).toBe('2026-08-21');
+    expect(nextStatementStart('2026-12-31', 31)).toBe('2027-01-01');
   });
 });
 

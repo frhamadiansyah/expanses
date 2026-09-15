@@ -18,3 +18,17 @@ export const cards = sqliteTable('cards', {
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
 });
+
+/** The date the bank posted a card purchase, when it differs from the purchase date. See migration 0038. */
+export const cardPostings = sqliteTable('card_postings', {
+  transactionId: text('transaction_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  postedOn: text('posted_on').notNull(),
+});
+
+/** Which purchases a payment to the card was for. */
+export const cardSettlements = sqliteTable('card_settlements', {
+  purchaseTransactionId: text('purchase_transaction_id').primaryKey(),
+  paymentTransactionId: text('payment_transaction_id').notNull(),
+  workspaceId: text('workspace_id').notNull(),
+});

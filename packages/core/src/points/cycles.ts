@@ -48,3 +48,11 @@ export function cycleFor(date: string, anchor: CycleAnchor, statementDay: number
 export function previousCycle(cycle: Cycle, anchor: CycleAnchor, statementDay: number): Cycle {
   return cycleFor(addDays(cycle.start, -1), anchor, statementDay);
 }
+
+/**
+ * The first day of the statement after the one a date falls in: the posting date that puts a purchase the
+ * bank billed late onto the next statement.
+ */
+export function nextStatementStart(date: string, statementDay: number): string {
+  return addDays(statementCycleFor(date, statementDay).end, 1);
+}

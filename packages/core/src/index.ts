@@ -55,7 +55,7 @@ export {
   categoryTree,
   type CategoryTreeNode,
 } from './reports/spending';
-export { calendarCycleFor, type Cycle, type CycleAnchor, cycleFor, previousCycle, statementCycleFor } from './points/cycles';
+export { calendarCycleFor, type Cycle, type CycleAnchor, cycleFor, nextStatementStart, previousCycle, statementCycleFor } from './points/cycles';
 export {
   type BonusTier,
   computeCycleEarn,

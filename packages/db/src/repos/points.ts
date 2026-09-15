@@ -470,7 +470,8 @@ export async function listCycleActuals(database: Database, ws: WorkspaceContext,
 }
 
 /**
- * Expense entries of posted transactions charged to or refunded onto the card within [from, to], each with its
+ * Expense entries of posted transactions charged to or refunded onto the card within [from, to] — by the bank's
+ * posting date when one was given, so a purchase billed late counts in the cycle it was billed in — each with its
  * effective MCC. A refund is a negative line. Statement payments have no expense entries and never appear.
  */
 export async function cardSpendLines(database: Database, ws: WorkspaceContext, cardAccountId: string, from: string, to: string): Promise<SpendLine[]> {
@@ -479,10 +480,11 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
     JOIN accounts a ON a.id = e.account_id
+    LEFT JOIN card_postings p ON p.transaction_id = t.id
     WHERE e.workspace_id = ${ws.workspaceId}
       AND t.status = 'posted'
       AND a.kind = 'expense'
-      AND t.occurred_on BETWEEN ${from} AND ${to}
+      AND COALESCE(p.posted_on, t.occurred_on) BETWEEN ${from} AND ${to}
       AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${cardAccountId})
     ORDER BY t.occurred_on, t.id, e.id
   `);
@@ -491,12 +493,13 @@ export async function cardSpendLines(database: Database, ws: WorkspaceContext, c
     SELECT t.id, e.id, t.occurred_on, e.spend_category_id, t.description, -e.amount_minor, e.currency, t.original_currency, t.mcc
     FROM entries e
     JOIN transactions t ON t.id = e.transaction_id
+    LEFT JOIN card_postings p ON p.transaction_id = t.id
     WHERE e.workspace_id = ${ws.workspaceId}
       AND t.status = 'posted'
       AND e.account_id = ${cardAccountId}
       AND e.spend_category_id IS NOT NULL
       AND e.amount_minor < 0
-      AND t.occurred_on BETWEEN ${from} AND ${to}
+      AND COALESCE(p.posted_on, t.occurred_on) BETWEEN ${from} AND ${to}
     ORDER BY t.occurred_on, t.id, e.id
   `);
   const sources = await mccSourcesFor(database.db, ws);

@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
+import { cardPostings, cardSettlements } from '../schema-cards';
 import { transactionPointActuals } from '../schema-points';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
@@ -181,6 +182,11 @@ export function replaceTransaction(
     if (original?.eventId) {
       await tx.update(transactions).set({ eventId: original.eventId }).where(eq(transactions.id, replacement));
     }
+    // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
+    // facts about the same money: they follow the correction.
+    await tx.update(cardPostings).set({ transactionId: replacement }).where(and(eq(cardPostings.transactionId, id), eq(cardPostings.workspaceId, ws.workspaceId)));
+    await tx.update(cardSettlements).set({ purchaseTransactionId: replacement }).where(and(eq(cardSettlements.purchaseTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
+    await tx.update(cardSettlements).set({ paymentTransactionId: replacement }).where(and(eq(cardSettlements.paymentTransactionId, id), eq(cardSettlements.workspaceId, ws.workspaceId)));
     // Points already checked against the bank follow the edited purchase, flagged so the user can check the edit.
     await tx
       .update(transactionPointActuals)
