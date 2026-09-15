@@ -1,6 +1,6 @@
 {
   "id": "danamon-amex-gold-charge",
-  "entryVersion": 5,
+  "entryVersion": 6,
   "bank": "Bank Danamon",
   "name": "Kartu Charge Danamon American Express Gold",
   "network": "amex",
@@ -198,8 +198,8 @@
     "motif": "guilloche-crest",
     "motifColour": "#6b5b2c",
     "ink": "dark",
-    "wordmark": "AMERICAN EXPRESS",
-    "bankMark": null,
+    "wordmark": "Gold",
+    "bankMark": "Danamon",
     "chip": "silver"
   }
 }
