@@ -10,6 +10,8 @@ import {
   payCardPurchases,
   postTransaction,
   replaceTransaction,
+  saveInstallment,
+  deleteInstallment,
   saveCardTerms,
   setPostedOn,
   StatementError,
@@ -137,5 +139,42 @@ describe('paying purchases before the statement', () => {
     const usd = await createAccount(h.database, h.ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
     const superindo = await h.buy('2026-08-22', 'Superindo', 450_000);
     await expect(payCardPurchases(h.database, h.ws, { cardAccountId: h.card.id, fromAccountId: usd.id, occurredOn: '2026-08-25', purchaseTransactionIds: [superindo] })).rejects.toMatchObject({ code: 'CURRENCY' });
+  });
+});
+
+describe('a purchase converted to instalments', () => {
+  it('stays on its statement counting nothing, and bills one instalment a month after', async () => {
+    const h = await household();
+    const phone = await h.buy('2026-07-06', 'iBox iPhone 16 Pro', 12_000_000);
+    await saveInstallment(h.database, h.ws, { cardAccountId: h.card.id, description: 'iBox iPhone 16 Pro', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-08', transactionId: phone });
+
+    const JULY = statementCycleFor('2026-07-20', 20);
+    const july = await cardStatement(h.database, h.ws, h.card.id, JULY, '2026-09-01');
+    expect(july.chargesMinor).toBe(0);
+    expect(july.lines).toEqual([expect.objectContaining({ transactionId: phone, owedMinor: 12_000_000, countedMinor: 0, convertedTo: expect.objectContaining({ months: 12 }) })]);
+
+    const august = await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01');
+    expect(august.lines).toEqual([expect.objectContaining({ statementOn: '2026-08-20', countedMinor: 1_000_000, instalment: expect.objectContaining({ number: 1, of: 12 }) })]);
+    expect(august).toMatchObject({ openingMinor: 0, chargesMinor: 1_000_000, closingMinor: 1_000_000, leftToPayMinor: 1_000_000 });
+
+    const september = await cardStatement(h.database, h.ws, h.card.id, SEPTEMBER, '2026-09-01');
+    expect(september).toMatchObject({ openingMinor: 1_000_000, chargesMinor: 1_000_000, closingMinor: 2_000_000 });
+  });
+
+  it('counts the full purchase again once the plan is removed', async () => {
+    const h = await household();
+    const phone = await h.buy('2026-07-06', 'iBox iPhone 16 Pro', 12_000_000);
+    const plan = await saveInstallment(h.database, h.ws, { cardAccountId: h.card.id, description: 'iBox iPhone 16 Pro', totalMinor: 12_000_000, months: 12, firstBilledMonth: '2026-08', transactionId: phone });
+    await deleteInstallment(h.database, h.ws, plan);
+
+    const july = await cardStatement(h.database, h.ws, h.card.id, statementCycleFor('2026-07-20', 20), '2026-09-01');
+    expect(july.chargesMinor).toBe(12_000_000);
+    expect((await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01')).lines).toEqual([]);
+  });
+
+  it('leaves a plan with no purchase on this card out of the statement', async () => {
+    const h = await household();
+    await saveInstallment(h.database, h.ws, { cardAccountId: h.card.id, description: 'Old plan', totalMinor: 6_000_000, months: 6, firstBilledMonth: '2026-08' });
+    expect((await cardStatement(h.database, h.ws, h.card.id, AUGUST, '2026-09-01')).lines).toEqual([]);
   });
 });

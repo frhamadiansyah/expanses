@@ -26,6 +26,10 @@ import { SpendingPage } from '../features/spending/SpendingPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { Layout } from './Layout';
 
+export interface CardSearch {
+  tab?: 'statement' | 'points' | 'rules' | 'card';
+}
+
 export interface TransactionsSearch {
   account?: string;
   month?: string;
@@ -53,7 +57,14 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/cards/$cardId', component: CardDetailPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/cards/$cardId',
+    component: CardDetailPage,
+    validateSearch: (search: Record<string, unknown>): CardSearch => ({
+      tab: typeof search.tab === 'string' && ['statement', 'points', 'rules', 'card'].includes(search.tab) ? (search.tab as CardSearch['tab']) : undefined,
+    }),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),

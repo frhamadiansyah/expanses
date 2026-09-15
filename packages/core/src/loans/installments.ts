@@ -61,3 +61,30 @@ export function installmentSplit(installment: CardInstallment, onDate: string): 
     lastMonth: addMonthsTo(installment.firstBilledMonth, installment.months - 1),
   };
 }
+
+export interface InstallmentBilling {
+  /** 1 for the first instalment. */
+  number: number;
+  /** The statement date it is billed on. */
+  statementOn: string;
+  amountMinor: number;
+}
+
+/**
+ * Each instalment of a plan and the statement it is billed on: the statement that closes in its month, on the
+ * card's statement day (the month's last day when that day does not exist). The last instalment carries the
+ * rounding, so the parts add back to the total.
+ */
+export function installmentSchedule(installment: CardInstallment, statementDay: number): InstallmentBilling[] {
+  return Array.from({ length: installment.months }, (_, index) => {
+    const month = addMonthsTo(installment.firstBilledMonth, index);
+    const [year, monthNumber] = month.split('-').map(Number) as [number, number];
+    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    const last = index === installment.months - 1;
+    return {
+      number: index + 1,
+      statementOn: `${month}-${String(Math.min(statementDay, lastDay)).padStart(2, '0')}`,
+      amountMinor: last ? installment.totalMinor - installment.monthlyMinor * (installment.months - 1) : installment.monthlyMinor,
+    };
+  });
+}

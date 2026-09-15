@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CardInstallment, installmentSplit } from '../src/index';
+import { type CardInstallment, installmentSchedule, installmentSplit } from '../src/index';
 
 /** A Rp 12.000.000 phone over 12 months, first billed in September 2026. */
 const phone: CardInstallment = {
@@ -85,5 +85,22 @@ describe('a plan with a fee and a rate', () => {
 
     // The fee is a charge of its own on the statement, not part of what is still owed.
     expect(split.billedMinor + split.unbilledMinor).toBe(12_000_000);
+  });
+});
+
+describe('installmentSchedule', () => {
+  const plan = { totalMinor: 20_999_000, months: 12, monthlyMinor: 1_749_917, firstBilledMonth: '2026-08', rateBps: 0, conversionFeeMinor: 0, earnsPoints: false };
+
+  it('bills one instalment on each statement from the first month, the last carrying the rounding', () => {
+    const schedule = installmentSchedule(plan, 20);
+    expect(schedule).toHaveLength(12);
+    expect(schedule[0]).toEqual({ number: 1, statementOn: '2026-08-20', amountMinor: 1_749_917 });
+    expect(schedule[5]).toEqual({ number: 6, statementOn: '2027-01-20', amountMinor: 1_749_917 });
+    expect(schedule[11]).toEqual({ number: 12, statementOn: '2027-07-20', amountMinor: 20_999_000 - 1_749_917 * 11 });
+    expect(schedule.reduce((sum, row) => sum + row.amountMinor, 0)).toBe(20_999_000);
+  });
+
+  it('falls back to the last day of a short month', () => {
+    expect(installmentSchedule({ ...plan, months: 2, firstBilledMonth: '2027-01' }, 31).map((row) => row.statementOn)).toEqual(['2027-01-31', '2027-02-28']);
   });
 });

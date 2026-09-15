@@ -57,8 +57,12 @@ export function Field({ label, hint, children, className }: { label: string; hin
   );
 }
 
-export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cx('rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200', className)}>{children}</section>;
+export function Card({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {
+  return (
+    <section id={id} className={cx('rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200', className)}>
+      {children}
+    </section>
+  );
 }
 
 export function PageHeader({ title, action }: { title: string; action?: ReactNode }) {

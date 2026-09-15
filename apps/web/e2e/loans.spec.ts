@@ -119,4 +119,10 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await expect(page.getByText('iBox Grand Indonesia')).toBeVisible();
   await expect(page.getByText('earns no points')).toBeVisible();
   await expect(page.getByText(/1\.000\.000 a month/)).toBeVisible();
+
+  // The unbilled part is shown as held inside what the card owes, with the plan behind it on hover.
+  const held = page.getByTestId('card-instalments');
+  await expect(held).toContainText(/Instalments hold Rp\s[\d.]+/);
+  await held.getByText(/Instalments hold/).hover();
+  await expect(held.getByRole('tooltip')).toContainText('iBox Grand Indonesia');
 });

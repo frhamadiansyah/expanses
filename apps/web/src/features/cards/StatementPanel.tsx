@@ -1,12 +1,21 @@
 import { formatMinor } from '@expanses/core';
 import { type AccountRow, billOnNextStatement, cardStatement, type CardRow, payCardPurchases, setPostedOn, type StatementLine } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarArrowUp, ChevronLeft, ChevronRight, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, ErrorBox, Field, Input, Select } from '../../ui';
-import { cycleBack, dueDateAfter } from './statement-dates';
+import { cycleBack } from './statement-dates';
+import { formatPoints } from './useCardPoints';
+
+/** Points worked out for one purchase, with its merchant category code, for the statement's points column. */
+export interface StatementPoints {
+  points: number;
+  approximate: boolean;
+  mcc: string | null;
+  cardFee: boolean;
+}
 
 const day = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const dayYear = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -18,17 +27,20 @@ const dayYear = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateStrin
 export function StatementPanel({
   card,
   statementDay,
-  dueDay,
   accounts,
   plastic,
   today,
+  points,
+  unit = 'points',
 }: {
   card: AccountRow;
   statementDay: number;
-  dueDay: number;
   accounts: readonly AccountRow[];
   plastic: readonly CardRow[];
   today: string;
+  /** Points per purchase, when the card has rewards; purchases outside the worked-out cycles show none. */
+  points?: Readonly<Record<string, StatementPoints>>;
+  unit?: string;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -41,20 +53,16 @@ export function StatementPanel({
   const [busy, setBusy] = useState(false);
 
   const cycle = cycleBack(today, statementDay, back);
-  const lastClosed = cycleBack(today, statementDay, 1);
   const statement = useQuery({
     queryKey: ['card-statement', ws.workspaceId, card.id, cycle.start, today],
     queryFn: () => cardStatement(database, ws, card.id, cycle, today),
-  });
-  const last = useQuery({
-    queryKey: ['card-statement', ws.workspaceId, card.id, lastClosed.start, today],
-    queryFn: () => cardStatement(database, ws, card.id, lastClosed, today),
   });
 
   const currency = card.currency ?? ws.baseCurrency;
   const money = (minor: number) => formatMinor(minor, currency);
   const last4 = (cardId: string | null) => plastic.find((piece) => piece.id === cardId)?.last4;
-  const payable = (line: StatementLine) => line.owedMinor > 0 && line.spending && !line.paidBy;
+  // A plan's instalments and the purchase it replaced are paid through the plan, not ticked off here.
+  const payable = (line: StatementLine) => line.owedMinor > 0 && line.spending && !line.paidBy && !line.instalment && !line.convertedTo;
   const lines = statement.data?.lines ?? [];
   const chosen = lines.filter((line) => selected.has(line.transactionId) && payable(line));
   const chosenMinor = chosen.reduce((sum, line) => sum + line.owedMinor, 0);
@@ -98,28 +106,6 @@ export function StatementPanel({
         </div>
       </div>
 
-      {last.data && last.data.closingMinor > 0 && (
-        <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700" data-testid="left-to-pay">
-          Statement of {day(lastClosed.end)}: <b className="tabular">{money(last.data.closingMinor)}</b>
-          {last.data.paidSinceMinor > 0 && (
-            <>
-              {' · '}
-              <span title="Every payment since the statement date, early ones for newer purchases too: the bank counts them against the amount due first">
-                paid since <span className="tabular">{money(last.data.paidSinceMinor)}</span>
-              </span>
-            </>
-          )}
-          {' · '}
-          {last.data.leftToPayMinor ? (
-            <>
-              left to pay <b className="tabular">{money(last.data.leftToPayMinor)}</b> by {day(dueDateAfter(lastClosed.end, dueDay))}
-            </>
-          ) : (
-            <b className="text-emerald-700">paid in full</b>
-          )}
-        </p>
-      )}
-
       {s && (
         <dl className="mb-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
           {(
@@ -145,44 +131,62 @@ export function StatementPanel({
           {lines.map((line) => {
             const late = line.postedOn !== null && line.occurredOn < cycle.start;
             return (
-              <li key={line.transactionId} data-testid="statement-line" className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+              <li key={line.key} data-testid="statement-line" className={cx('flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm', line.convertedTo && 'text-slate-400')}>
+                {/* A purchase already paid stays ticked and cannot be unticked; deleting its payment frees it again. */}
                 <input
                   type="checkbox"
-                  className={cx(!payable(line) && 'invisible')}
+                  className={cx(!payable(line) && !line.paidBy && 'invisible', line.paidBy && 'accent-emerald-600')}
                   disabled={!payable(line)}
-                  checked={selected.has(line.transactionId)}
+                  checked={line.paidBy !== null || selected.has(line.transactionId)}
                   onChange={() => toggle(line.transactionId)}
-                  aria-label={`Pay ${line.description}`}
+                  title={line.paidBy ? `Paid on ${day(line.paidBy.paidOn)}` : undefined}
+                  aria-label={line.paidBy ? `${line.description}, paid on ${day(line.paidBy.paidOn)}` : `Pay ${line.description}`}
                 />
                 <span className="tabular w-14 text-slate-500">{day(line.occurredOn)}</span>
                 <span className="min-w-0 flex-1 truncate">
                   {line.description}
-                  {last4(line.cardId) && <span className="tabular ml-1.5 text-xs font-semibold text-slate-500">···· {last4(line.cardId)}</span>}
-                  {line.postedOn && (
-                    <span className={cx('ml-2 rounded-full px-1.5 text-[11px] font-semibold', late ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600')}>
-                      {late ? `Billed late · posted ${day(line.postedOn)}` : `Posted ${day(line.postedOn)}`}
+                  {line.instalment && (
+                    <span className="ml-1.5 text-xs text-slate-500">
+                      · instalment {line.instalment.number} of {line.instalment.of}
                     </span>
                   )}
-                  {line.paidBy && <span className="ml-2 rounded-full bg-emerald-50 px-1.5 text-[11px] font-semibold text-emerald-700">Paid {day(line.paidBy.paidOn)}</span>}
+                  {line.convertedTo && <span className="ml-1.5 text-xs">· converted to {line.convertedTo.months} months, billed monthly</span>}
+                  {last4(line.cardId) && <span className="tabular ml-1.5 text-xs font-semibold text-slate-500">···· {last4(line.cardId)}</span>}
+                  {!line.instalment && !line.convertedTo && points?.[line.transactionId] && (
+                    <span className="ml-2 text-[11px] text-slate-500">{points[line.transactionId]!.cardFee ? 'Card fee' : points[line.transactionId]!.mcc ? `MCC ${points[line.transactionId]!.mcc}` : 'No MCC'}</span>
+                  )}
                 </span>
-                <span className={cx('tabular whitespace-nowrap', line.owedMinor < 0 && 'text-emerald-700')}>
+                {points && (
+                  <span className="tabular w-20 text-right text-xs text-emerald-700" data-testid="statement-points">
+                    {!line.instalment && points[line.transactionId] ? `${points[line.transactionId]!.approximate ? '≈ ' : ''}${formatPoints(points[line.transactionId]!.points)} ${unit}` : ''}
+                  </span>
+                )}
+                <span className={cx('tabular w-28 text-right whitespace-nowrap', line.owedMinor < 0 && 'text-emerald-700', line.convertedTo && 'line-through')}>
                   {line.owedMinor < 0 ? `−${money(-line.owedMinor)}` : money(line.owedMinor)}
                 </span>
-                <span className="flex w-44 justify-end">
-                  {line.spending && line.owedMinor > 0 && !late && (
+                <span className="flex w-16 justify-end gap-0.5">
+                  {line.spending && line.owedMinor > 0 && !late && !line.instalment && !line.convertedTo && (
                     <button
                       type="button"
                       disabled={busy}
-                      title="The bank posted it after the statement date, so it is billed on the next one"
+                      aria-label="Billed next statement"
+                      title="Billed next statement: the bank posted it after the statement date"
                       onClick={() => void run(() => billOnNextStatement(database, ws, card.id, line.transactionId))}
-                      className="rounded px-1.5 py-0.5 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-900"
+                      className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
                     >
-                      Billed next statement
+                      <CalendarArrowUp size={16} aria-hidden />
                     </button>
                   )}
                   {line.postedOn && (
-                    <button type="button" disabled={busy} onClick={() => void run(() => setPostedOn(database, ws, line.transactionId, null))} className="rounded px-1.5 py-0.5 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-900">
-                      Use purchase date
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-label="Use purchase date"
+                      title={`${late ? 'Billed late' : 'Posted'} on ${day(line.postedOn)}. Use purchase date instead`}
+                      onClick={() => void run(() => setPostedOn(database, ws, line.transactionId, null))}
+                      className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                    >
+                      <Undo2 size={16} aria-hidden />
                     </button>
                   )}
                 </span>

@@ -39,6 +39,7 @@ async function cardWithAPurchase(page: Page, on?: string) {
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'CIMB Octo' }).click();
+  await page.getByRole('tab', { name: 'Points' }).click();
 }
 
 test('a balance says how much of it the app only worked out', async ({ page }) => {

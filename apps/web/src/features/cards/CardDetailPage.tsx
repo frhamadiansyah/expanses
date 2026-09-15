@@ -18,8 +18,8 @@ import {
   saveRedemptionOption,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi, Link } from '@tanstack/react-router';
-import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
@@ -35,7 +35,9 @@ import { describeSuggestion } from './hint-text';
 import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { activeDuring } from './catalog-panel';
 import { RuleForm } from './RuleForm';
-import { StatementPanel } from './StatementPanel';
+import { StatementPanel, type StatementPoints } from './StatementPanel';
+import { CardHero, type CardTab, CardTabs } from './CardHero';
+import { purchasesOf } from './hint-text';
 import { TransferEstimates } from './TransferEstimates';
 import { useCardLedger } from './useCardLedger';
 import { type CycleResult, formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
@@ -59,9 +61,9 @@ function useAction() {
   return { error, run };
 }
 
-function Section({ title, step, children, action }: { title: string; step?: string; children: ReactNode; action?: ReactNode }) {
+function Section({ title, step, children, action, id }: { title: string; step?: string; children: ReactNode; action?: ReactNode; id?: string }) {
   return (
-    <Card>
+    <Card className="scroll-mt-4" id={id}>
       <div className="mb-3 flex items-center justify-between">
         <div>
           {step && <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{step}</div>}
@@ -251,6 +253,20 @@ export function CardDetailPage() {
   const [redeemValue, setRedeemValue] = useState('');
   const [redeemCurrency, setRedeemCurrency] = useState(ws.baseCurrency);
   const [loadedTermsFor, setLoadedTermsFor] = useState<string | null>(null);
+  /** The tab the owner picked; until then the page opens where the card needs attention. */
+  // Kept in the address, so a reload, the back button and a shared link all land on the same tab.
+  const chosenTab: CardTab | null = route.useSearch().tab ?? null;
+  const navigate = useNavigate({ from: '/cards/$cardId' });
+  const setChosenTab = (tab: CardTab) => void navigate({ search: { tab }, replace: true });
+  // Reaching a new setup step while on the page brings that step's tab forward; finishing setup leaves it be.
+  const setupStep = data.data ? (!data.data.terms ? 1 : !data.data.program ? 2 : data.data.rules.length === 0 ? 3 : null) : undefined;
+  const seenStep = useRef(setupStep);
+  useEffect(() => {
+    const before = seenStep.current;
+    seenStep.current = setupStep;
+    if (before === undefined || setupStep === undefined || before === setupStep || setupStep === null) return;
+    void navigate({ search: { tab: setupStep === 1 ? 'card' : 'rules' }, replace: true });
+  }, [setupStep, navigate]);
 
   if (accounts.isSuccess && !card) return <Empty>Card not found.</Empty>;
   if (!card || !data.data) return <p className="text-sm text-slate-500">Loading…</p>;
@@ -272,6 +288,27 @@ export function CardDetailPage() {
   const hasTerms = !!cp.terms;
   const step = !hasTerms ? 1 : !cp.program ? 2 : cp.rules.length === 0 ? 3 : null;
   const canUseCatalog = !cp.program || cp.catalog.status === null;
+  // A card with no statement day opens on its terms; any other card opens on its statement, since rewards are optional.
+  const active: CardTab = chosenTab ?? (step === 1 ? 'card' : 'statement');
+  const on = (tab: CardTab) => active === tab;
+  const openTab = (tab: CardTab, focusId?: string) => {
+    setChosenTab(tab);
+    if (focusId) window.setTimeout(() => document.getElementById(focusId)?.scrollIntoView({ block: 'start' }), 0);
+  };
+  // Points for each purchase in the two cycles the page has worked out, shown beside the statement's own lines.
+  const statementPoints: Record<string, StatementPoints> = {};
+  for (const result of [cp.previous, cp.current]) {
+    if (!result) continue;
+    const approximate = new Set(result.earn.approximateTransactionIds);
+    for (const purchase of purchasesOf(result.lines)) {
+      statementPoints[purchase.transactionId] = {
+        points: result.earn.pointsByTransaction[purchase.transactionId] ?? 0,
+        approximate: approximate.has(purchase.transactionId),
+        mcc: purchase.cardFee ? null : purchase.mcc,
+        cardFee: purchase.cardFee,
+      };
+    }
+  }
   const confirmCustomise = () =>
     cp.catalog.status !== 'linked' ||
     window.confirm(`${card.name} follows the catalogue. Changing it makes it customised: catalogue updates stop applying automatically and wait for your review. Continue?`);
@@ -299,9 +336,21 @@ export function CardDetailPage() {
   return (
     <div className="space-y-4">
       <PageHeader title={card.name} action={<Link to="/cards" className="text-sm underline">All cards</Link>} />
+      <CardHero
+        cp={cp}
+        accounts={all}
+        plastic={plastic}
+        issuer={identities[card.id]?.issuer ?? null}
+        owedMinor={owed}
+        pointsBalance={ledger.data ? { total: ledger.data.balance.total, posted: ledger.data.balance.postedTotal, estimated: ledger.data.balance.projectedTotal } : null}
+        today={today}
+        onTab={openTab}
+        tabs={<CardTabs active={active} onChange={(tab) => setChosenTab(tab)} />}
+      />
       <ErrorBox error={error} />
-      {cp.catalog.entryId && <CatalogPanel cp={cp} today={today} run={run} />}
+      {on('rules') && cp.catalog.entryId && <CatalogPanel cp={cp} today={today} run={run} />}
 
+      {on('card') && (
       <Section title="Card terms" step={step === 1 ? 'Step 1 of 3' : undefined}>
         {step === 1 && (
           <p className="mb-3 text-sm text-slate-600">
@@ -336,9 +385,11 @@ export function CardDetailPage() {
           </div>
         </form>
       </Section>
+      )}
 
-      {cp.terms && <StatementPanel card={card} statementDay={cp.terms.statementDay} dueDay={cp.terms.dueDay} accounts={all} plastic={plastic} today={today} />}
+      {on('statement') && cp.terms && <StatementPanel card={card} statementDay={cp.terms.statementDay} accounts={all} plastic={plastic} today={today} points={cp.program && cp.rules.length > 0 ? statementPoints : undefined} unit={cp.program?.unit} />}
 
+      {on('card') && (
       <Section title="Cards on this account">
         <p className="mb-3 text-sm text-slate-600">
           One statement, one limit — and sometimes more than one card. A supplementary card spends against this same
@@ -383,14 +434,15 @@ export function CardDetailPage() {
           </div>
         </form>
       </Section>
+      )}
 
-      {step === 1 && (
+      {on('card') && step === 1 && (
         <Section title="Is your card in the catalogue?">
           <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} applyHint="Save the card terms above, then use these terms in the next step." />
         </Section>
       )}
 
-      {hasTerms && !cp.program && (
+      {on('rules') && hasTerms && !cp.program && (
         <Section title="Rewards program" step="Step 2 of 3">
           <h3 className="mb-2 text-sm font-medium">Choose from catalogue</h3>
           <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} onApply={applyEntry} />
@@ -427,7 +479,13 @@ export function CardDetailPage() {
 
       {hasTerms && cp.program && (
         <>
-          {ledger.data && (
+          {/* What this cycle is earning comes first: it is what the Points tab is opened for. */}
+          {on('points') && cp.current && cp.rules.length > 0 && (
+            <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} bonuses={cp.bonuses} partners={cp.transferPartners} unit={cp.program.unit} currency={currency} best={cp.best} today={today} />
+          )}
+          {on('points') && cp.current && cp.rules.length > 0 && <PurchaseList cp={cp} run={run} currency={currency} />}
+          {on('points') && cp.previous && cp.rules.length > 0 && <ActualForm program={cp.program} result={cp.previous} unit={cp.program.unit} currency={currency} crediting={cp.crediting} />}
+          {on('points') && ledger.data && (
             <Section title="Points balance">
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <div className="text-2xl font-semibold" data-testid="points-balance">
@@ -478,8 +536,8 @@ export function CardDetailPage() {
               </form>
             </Section>
           )}
-          {ledger.data && cp.rules.length > 0 && (
-            <Section title="Spend points">
+          {on('points') && ledger.data && cp.rules.length > 0 && (
+            <Section title="Spend points" id="spend-points">
               <form
                 className="grid gap-3 md:grid-cols-5 md:items-end"
                 onSubmit={(event) => {
@@ -524,7 +582,7 @@ export function CardDetailPage() {
             </Section>
           )}
 
-          {ledger.data && (
+          {on('points') && ledger.data && (
             <Section title="What the annual fee bought">
               <div className="grid gap-3 sm:grid-cols-4" data-testid="card-year-roi">
                 <div>
@@ -572,12 +630,8 @@ export function CardDetailPage() {
             </Section>
           )}
 
-          {cp.current && cp.rules.length > 0 && (
-            <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} bonuses={cp.bonuses} partners={cp.transferPartners} unit={cp.program.unit} currency={currency} best={cp.best} today={today} />
-          )}
-          {cp.current && cp.rules.length > 0 && <PurchaseList cp={cp} run={run} currency={currency} />}
-          {cp.previous && cp.rules.length > 0 && <ActualForm program={cp.program} result={cp.previous} unit={cp.program.unit} currency={currency} crediting={cp.crediting} />}
 
+          {on('rules') && (
           <Section
             title="Earn rules"
             step={step === 3 ? 'Step 3 of 3' : undefined}
@@ -641,8 +695,9 @@ export function CardDetailPage() {
               )}
             </ul>
           </Section>
+          )}
 
-          {cp.rules.length > 0 && (
+          {on('rules') && cp.rules.length > 0 && (
             <Section
               title="Spend bonuses"
               action={
@@ -713,7 +768,7 @@ export function CardDetailPage() {
             </Section>
           )}
 
-          {cp.rules.length > 0 && (
+          {on('rules') && cp.rules.length > 0 && (
             <Section title="What points are worth">
               <ul className="mb-3 divide-y divide-slate-100">
                 {cp.redemptions.map((r) => (
@@ -769,7 +824,7 @@ export function CardDetailPage() {
         </>
       )}
 
-      <InstallmentList cardAccountId={card.id} currency={currency} />
+      {on('card') && <InstallmentList cardAccountId={card.id} currency={currency} />}
     </div>
   );
 }

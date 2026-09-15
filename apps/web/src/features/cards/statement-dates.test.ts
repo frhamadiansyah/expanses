@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cycleBack, dueDateAfter } from './statement-dates';
+import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
 
 describe('statement dates', () => {
   it('steps back through statements from the one today is in', () => {
@@ -14,5 +14,16 @@ describe('statement dates', () => {
     expect(dueDateAfter('2026-01-20', 30)).toBe('2026-01-30');
     expect(dueDateAfter('2026-01-31', 30)).toBe('2026-02-28');
     expect(dueDateAfter('2026-12-20', 10)).toBe('2027-01-10');
+  });
+});
+
+describe('dueIn', () => {
+  it('counts down to the due date and says when it has passed', () => {
+    expect(dueIn('2026-09-01', '2026-09-05')).toEqual({ text: 'in 4 days', tone: 'calm' });
+    expect(dueIn('2026-09-02', '2026-09-05')).toEqual({ text: 'in 3 days', tone: 'soon' });
+    expect(dueIn('2026-09-04', '2026-09-05')).toEqual({ text: 'tomorrow', tone: 'soon' });
+    expect(dueIn('2026-09-05', '2026-09-05')).toEqual({ text: 'today', tone: 'soon' });
+    expect(dueIn('2026-09-06', '2026-09-05')).toEqual({ text: '1 day late', tone: 'late' });
+    expect(dueIn('2026-10-01', '2026-09-05')).toEqual({ text: '26 days late', tone: 'late' });
   });
 });

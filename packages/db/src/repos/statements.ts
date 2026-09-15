@@ -1,10 +1,11 @@
-import { type Cycle, nextStatementStart, transferLines } from '@expanses/core';
+import { type Cycle, installmentSchedule, nextStatementStart, transferLines } from '@expanses/core';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, transactions } from '../schema';
 import { cardPostings, cardSettlements } from '../schema-cards';
 import { cardTerms } from '../schema-points';
+import { listInstallments } from './installments';
 import { postTransactionTx } from './ledger';
 
 export class StatementError extends Error {
@@ -17,8 +18,11 @@ export class StatementError extends Error {
   }
 }
 
-/** One transaction as a card statement sees it. */
+/** One row of a card statement: a transaction, or one month of an instalment plan. */
 export interface StatementLine {
+  /** Unique within the statement: the transaction's id, or the plan's id and instalment number. */
+  key: string;
+  /** The transaction, or for an instalment the purchase it was converted from. */
   transactionId: string;
   occurredOn: string;
   /** The bank's posting date, when the owner gave one. */
@@ -27,8 +31,17 @@ export interface StatementLine {
   statementOn: string;
   description: string;
   cardId: string | null;
-  /** What it added to the balance owed: positive for a charge, negative for a payment or refund. */
+  /** What it added to the card's ledger balance: positive for a charge, negative for a payment or refund. */
   owedMinor: number;
+  /**
+   * What it adds to the statement. A purchase converted to instalments counts nothing here; its instalments
+   * count instead, one a month, the way the bank bills it. Everything else counts what it added to the balance.
+   */
+  countedMinor: number;
+  /** For an instalment row: which plan, and which of its months. */
+  instalment: { planId: string; number: number; of: number } | null;
+  /** For a purchase converted to instalments: the plan it became. */
+  convertedTo: { planId: string; months: number } | null;
   /** A purchase or refund, as opposed to money moved onto the card. */
   spending: boolean;
   /** The payment that was made for this purchase, while that payment stands. */
@@ -78,11 +91,56 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
       statementOn: postedOn ?? occurredOn,
       description,
       cardId,
+      key: transactionId,
       owedMinor: Number(owed),
+      countedMinor: Number(owed),
+      instalment: null,
+      convertedTo: null,
       spending: Boolean(spending),
       paidBy: paymentId && paidOn ? { transactionId: paymentId, paidOn } : null,
     }))
     .sort((a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId));
+}
+
+/**
+ * The card's lines as the bank bills them: a purchase converted to a plan stays in its place but counts nothing,
+ * and each instalment is a row on the statement it is billed on. Plans not tied to a purchase on this card are
+ * left out, since there is no purchase here for them to replace.
+ */
+async function billedLines(database: Database, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
+  const lines = await cardLines(database.db, ws, cardAccountId);
+  const [terms] = await database.db
+    .select({ statementDay: cardTerms.statementDay })
+    .from(cardTerms)
+    .where(and(eq(cardTerms.accountId, cardAccountId), eq(cardTerms.workspaceId, ws.workspaceId)));
+  const byTransaction = new Map(lines.map((line) => [line.transactionId, line]));
+  const instalments: StatementLine[] = [];
+  for (const plan of await listInstallments(database, ws, cardAccountId)) {
+    const purchase = plan.transactionId ? byTransaction.get(plan.transactionId) : undefined;
+    if (!purchase) continue;
+    purchase.convertedTo = { planId: plan.id, months: plan.months };
+    purchase.countedMinor = 0;
+    for (const bill of installmentSchedule(plan, terms?.statementDay ?? 1)) {
+      instalments.push({
+        key: `${plan.id}#${bill.number}`,
+        transactionId: purchase.transactionId,
+        occurredOn: bill.statementOn,
+        postedOn: null,
+        statementOn: bill.statementOn,
+        description: plan.description,
+        cardId: purchase.cardId,
+        owedMinor: bill.amountMinor,
+        countedMinor: bill.amountMinor,
+        instalment: { planId: plan.id, number: bill.number, of: plan.months },
+        convertedTo: null,
+        spending: true,
+        paidBy: null,
+      });
+    }
+  }
+  return [...lines, ...instalments].sort(
+    (a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.key.localeCompare(b.key),
+  );
 }
 
 /**
@@ -95,16 +153,17 @@ export async function cardStatement(database: Database, ws: WorkspaceContext, ca
     .from(accounts)
     .where(and(eq(accounts.id, cardAccountId), eq(accounts.workspaceId, ws.workspaceId)));
   if (!card) throw new StatementError('NOT_FOUND', 'That card is not in this workspace');
-  const all = await cardLines(database.db, ws, cardAccountId);
-  const sum = (lines: StatementLine[]) => lines.reduce((total, line) => total + line.owedMinor, 0);
+  const all = await billedLines(database, ws, cardAccountId);
+  // Everything here is in billed terms: an instalment plan counts a month at a time, not its whole price at once.
+  const sum = (lines: StatementLine[]) => lines.reduce((total, line) => total + line.countedMinor, 0);
 
   const openingMinor = sum(all.filter((line) => line.statementOn < cycle.start));
   const lines = all.filter((line) => line.statementOn >= cycle.start && line.statementOn <= cycle.end);
-  const chargesMinor = sum(lines.filter((line) => line.owedMinor > 0));
-  const creditsMinor = -sum(lines.filter((line) => line.owedMinor < 0));
+  const chargesMinor = sum(lines.filter((line) => line.countedMinor > 0));
+  const creditsMinor = -sum(lines.filter((line) => line.countedMinor < 0));
   const closingMinor = openingMinor + chargesMinor - creditsMinor;
   const closed = cycle.end < today;
-  const paidSinceMinor = closed ? -sum(all.filter((line) => line.owedMinor < 0 && line.statementOn > cycle.end && line.statementOn <= today)) : 0;
+  const paidSinceMinor = closed ? -sum(all.filter((line) => line.countedMinor < 0 && line.statementOn > cycle.end && line.statementOn <= today)) : 0;
   return {
     cycle,
     currency: card.currency ?? ws.baseCurrency,

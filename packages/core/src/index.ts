@@ -217,7 +217,7 @@ export {
   PAYOFF_TOLERANCE_MONTHS,
   payoffMismatchMonths,
 } from './loans/effects';
-export { type CardInstallment, type InstallmentSplit, installmentSplit } from './loans/installments';
+export { type CardInstallment, type InstallmentBilling, installmentSchedule, type InstallmentSplit, installmentSplit } from './loans/installments';
 export {
   type CoretaxCode,
   coretaxCodeFor,

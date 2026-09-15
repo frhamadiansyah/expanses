@@ -25,3 +25,12 @@ export function dueDateAfter(statementOn: string, dueDay: number): string {
   }
   return `${y}-${pad(m)}-${pad(Math.min(dueDay, daysInMonth(y, m)))}`;
 }
+
+/** How near a due date is, in words, and whether it needs attention: soon within three days, late once passed. */
+export function dueIn(today: string, dueOn: string): { text: string; tone: 'calm' | 'soon' | 'late' } {
+  const days = Math.round((Date.parse(`${dueOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  if (days < 0) return { text: days === -1 ? '1 day late' : `${-days} days late`, tone: 'late' };
+  if (days === 0) return { text: 'today', tone: 'soon' };
+  if (days === 1) return { text: 'tomorrow', tone: 'soon' };
+  return { text: `in ${days} days`, tone: days <= 3 ? 'soon' : 'calm' };
+}

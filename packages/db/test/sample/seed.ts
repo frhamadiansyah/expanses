@@ -355,6 +355,7 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
     for (let cycle = statementCycleFor(start, card.statementDay); cycle.end < current.start; cycle = statementCycleFor(addDays(cycle.end, 1), card.statementDay)) {
       const dueOn = firstDueAfter(cycle.end, card.dueDay);
       if (dueOn > today) continue;
+      // Statements bill an instalment plan a month at a time, so this is what the bank would ask for.
       const { closingMinor } = await cardStatement(database, ws, card.id, cycle, dueOn);
       if (closingMinor <= 0) continue;
       // Paid in full on the due day, except the Bonvoy card's latest statement, paid in part so something is left to pay.
