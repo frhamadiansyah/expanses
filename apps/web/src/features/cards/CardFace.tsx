@@ -15,11 +15,13 @@ function NetworkMark({ network }: { network: string | null }) {
     case 'visa':
       return <span className="text-[1.45em] leading-none font-black italic tracking-tight">VISA</span>;
     case 'mastercard':
+      // Three shapes, not two blended: the red disc, the amber disc, and the darker lens where they meet.
       return (
-        <span className="relative inline-flex h-[1.6em] w-[2.6em]" aria-label="Mastercard">
-          <span className="absolute left-0 h-[1.6em] w-[1.6em] rounded-full bg-[#eb001b]" />
-          <span className="absolute right-0 h-[1.6em] w-[1.6em] rounded-full bg-[#f79e1b]/90 mix-blend-screen" />
-        </span>
+        <svg role="img" aria-label="Mastercard" viewBox="-28 -17 56 34" className="h-[1.7em] w-[2.8em]">
+          <circle cx="-11" cy="0" r="16" fill="#eb001b" />
+          <circle cx="11" cy="0" r="16" fill="#f79e1b" />
+          <path d="M0-11.6A16 16 0 0 1 0 11.6A16 16 0 0 1 0-11.6Z" fill="#ff5f00" />
+        </svg>
       );
     case 'amex':
       return <span className="text-[1.15em] leading-none font-black tracking-wide">AMEX</span>;
@@ -404,11 +406,11 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
               <path key={i} d={`M18 ${y0}C250 ${y0 - 8} 520 ${y0 - 58} 856 ${y1}`} stroke={c} strokeOpacity={o} strokeWidth={w} />
             ))}
           </g>
-          <g fill={c} transform="translate(556 190) rotate(58)">
+          <g fill={c} transform="translate(556 190) rotate(32) scale(0.8)">
             {/* Airliner from above: fuselage, swept wings, tailplane. */}
-            <path d="M0-62c9 16 12 46 10 88l-2 18h-16l-2-18c-2-42 1-72 10-88z" />
-            <path d="M7-10 78 26v12L7 20zM-7-10-78 26v12L-7 20z" />
-            <path d="M5 40l26 16v8L5 54zM-5 40l-26 16v8l26-10z" />
+            <path d="M0-66C6-54 9-40 9-26V20c0 12-2 26-4 34H-5c-2-8-4-22-4-34V-26C-9-40-6-54 0-66Z" />
+            <path d="M9-8 76 26v10L9 16ZM-9-8-76 26v10L-9 16Z" />
+            <path d="M7 34 30 50v7L7 48ZM-7 34-30 50v7L-7 48Z" />
           </g>
         </>,
       );
