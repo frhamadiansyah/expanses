@@ -381,12 +381,15 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
           <rect x="30" y="30" width={w - 60} height={h - 60} rx="20" strokeWidth="3" opacity="0.7" />
           <rect x="40" y="40" width={w - 80} height={h - 80} rx="16" strokeWidth="6" strokeDasharray="3 9" opacity="0.6" />
           <g strokeWidth="2" opacity="0.55">
-            {Array.from({ length: 30 }, (_, i) => {
-              const y = 52 + i * 15;
-              return <path key={i} d={`M52 ${y}q104 -11 208 0t208 0t208 0`} />;
+            {Array.from({ length: 40 }, (_, i) => {
+              const y = -8 + i * 15;
+              return <path key={i} d={`M-30 ${y}q104 -11 208 0t208 0t208 0t208 0t208 0`} />;
             })}
           </g>
           <g transform={`translate(${w / 2} ${h / 2})`}>
+            <ellipse rx="120" ry="146" fill={c} opacity="0.1" />
+            <ellipse rx="120" ry="146" fill="none" strokeWidth="9" opacity="0.9" />
+            <ellipse rx="106" ry="132" fill="none" strokeWidth="2.5" opacity="0.65" />
             {/* A Spartan helmet in side profile: the crest is seven segments of one arc, computed. */}
             <g transform="scale(0.74) translate(-140 -168)" fill={c}>
               <path d="M10.9 208.4A122 122 0 0 1 -3.9 154.8L46.1 152.8A72 72 0 0 0 54.8 184.5ZM-4.0 148.8A122 122 0 0 1 9.2 94.8L53.8 117.4A72 72 0 0 0 46.0 149.3ZM12.0 89.6A122 122 0 0 1 49.8 48.8L77.8 90.3A72 72 0 0 0 55.4 114.3ZM54.9 45.6A122 122 0 0 1 107.7 28.4L111.9 78.3A72 72 0 0 0 80.7 88.4ZM113.7 28.1A122 122 0 0 1 168.2 38.8L147.6 84.4A72 72 0 0 0 115.5 78.0ZM173.6 41.4A122 122 0 0 1 216.0 77.4L175.8 107.1A72 72 0 0 0 150.8 85.9ZM219.4 82.2A122 122 0 0 1 239.0 134.3L189.4 140.7A72 72 0 0 0 177.9 110.0Z" />
