@@ -87,9 +87,9 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#26313a",
-      "#36454f",
-      "#141b21"
+      "#171d23",
+      "#212b33",
+      "#0b0f13"
     ],
     "angle": 150,
     "finish": "metallic",
@@ -99,6 +99,6 @@
     "bankMark": "UOB",
     "chip": "silver",
     "motif": "contour-lines",
-    "motifColour": "#a9bcc9"
+    "motifColour": "#5f7180"
   }
 }

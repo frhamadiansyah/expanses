@@ -358,24 +358,20 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
               return <path key={`p${i}`} d={`M-40 ${y}C240 ${y + 74} 620 ${y + 74} 900 ${y}`} />;
             })}
           </g>
-          <path d="M690 214l-46-12-7-32-14 2 5 30-37-9-9-16-9 2 5 35-5 35 9 2 9-16 37-9-5 30 14 2 7-32z" fill="#f0a92e" />
+          <g transform="translate(672 214) rotate(48) scale(0.62) translate(-50 -64)" fill="#f0a92e">
+            <path d="M50 0c6 0 10 9 10 22v26l38 26v14l-38-12v26l14 16v10l-24-8-24 8v-10l14-16V76L2 88V74l38-26V22C40 9 44 0 50 0z" />
+          </g>
         </>,
       );
-    case 'brushwing':
-      // Fine contours across the face with one sweeping wing laid over them.
+    case 'fine-contours':
+      // Close-set contour lines running the whole width, for a face that is all texture.
       return svg(
-        <>
-          <g fill="none" stroke={c} strokeWidth="2" opacity="0.45">
-            {Array.from({ length: 24 }, (_, i) => {
-              const y = -12 + i * 25;
-              return <path key={i} d={`M-30 ${y}q112 -14 224 0t224 0t224 0t224 0`} />;
-            })}
-          </g>
-          <g transform="translate(286 196) scale(1.05)">
-            <path d="M0 96c72-18 148-54 226-112-30 62-78 108-140 138-22 11-44 14-62 9-14-4-22-14-24-35z" fill={c} />
-            <path d="M226-16c34-26 74-46 118-58-30 32-66 58-106 80-12 6-18 2-18-9 0-5 3-10 6-13z" fill={c} opacity="0.85" />
-          </g>
-        </>,
+        <g fill="none" stroke={c} strokeWidth="2.2" opacity="0.5">
+          {Array.from({ length: 30 }, (_, i) => {
+            const y = -12 + i * 20;
+            return <path key={i} d={`M-30 ${y}q112 -16 224 0t224 0t224 0t224 0`} />;
+          })}
+        </g>,
       );
     case 'guilloche-crest':
       // Engine-turned lines inside a double engraved border, with a portrait oval at the centre.
