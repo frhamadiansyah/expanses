@@ -390,29 +390,21 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
         </>,
       );
     case 'garuda-contrails':
-      // The airline's five-feather mark, a climbing airliner, and the four contrails it drags across the card.
+      // A climbing airliner and the four trails it drags across the lower half of the card.
       return svg(
         <>
-          <g fill={c} transform="translate(292 214) scale(1.15)">
-            {/* Five swept feathers, each a little shorter and steeper than the one below it. */}
-            {[0, 1, 2, 3, 4].map((i) => {
-              const len = 132 - i * 16;
-              const rise = 30 + i * 9;
-              return <path key={i} d={`M${-92 + i * 9} ${16 - i * 15}c${len * 0.45} ${-6 - i * 3} ${len * 0.8} ${-rise * 0.55} ${len} ${-rise}c${-len * 0.36} ${rise * 0.34} ${-len * 0.72} ${rise * 0.5} ${-len} ${rise * 0.62}z`} />;
-            })}
-          </g>
-          {/* Contrails: the outer pair muted, the inner pair in the airline's cyan. */}
+          {/* The inner pair in the airline's cyan, the outer pair muted, as on the card. */}
           <g fill="none" strokeLinecap="round">
             {([
-              [694, 430, 0.85, 7],
-              [742, 486, 0.3, 6],
-              [790, 540, 0.75, 7],
-              [838, 598, 0.22, 6],
+              [286, 158, 0.85, 7],
+              [316, 192, 0.3, 6],
+              [346, 226, 0.75, 7],
+              [376, 260, 0.22, 6],
             ] as const).map(([y0, y1, o, w], i) => (
-              <path key={i} d={`M40 ${y0}C190 ${y0 - 18} 380 ${(y0 + y1) / 2 - 40} 540 ${y1}`} stroke={c} strokeOpacity={o} strokeWidth={w} />
+              <path key={i} d={`M18 ${y0}C250 ${y0 - 8} 520 ${y0 - 58} 856 ${y1}`} stroke={c} strokeOpacity={o} strokeWidth={w} />
             ))}
           </g>
-          <g fill={c} transform="translate(330 568) rotate(38)">
+          <g fill={c} transform="translate(556 190) rotate(58)">
             {/* Airliner from above: fuselage, swept wings, tailplane. */}
             <path d="M0-62c9 16 12 46 10 88l-2 18h-16l-2-18c-2-42 1-72 10-88z" />
             <path d="M7-10 78 26v12L7 20zM-7-10-78 26v12L-7 20z" />
@@ -424,7 +416,7 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
       // One letter, drawn thin and open at the top, which is the whole of this card's artwork.
       return svg(
         <path
-          d="M176 318v182a94 94 0 0 0 188 0V318"
+          d="M348 118v148a80 80 0 0 0 160 0V118"
           fill="none"
           stroke={c}
           strokeWidth="15"
@@ -444,9 +436,9 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
             </radialGradient>
           </defs>
           {/* A wide, very faint sheen across the matte black, the way the plastic catches light. */}
-          <path d="M-60 300L600 20v120L-60 420z" fill={c} opacity="0.5" />
-          <circle cx="404" cy="322" r="27" fill={`url(#${id}holo)`} />
-          <circle cx="404" cy="322" r="27" fill="none" stroke="#ffffff" strokeOpacity="0.22" strokeWidth="1.5" />
+          <path d="M-60 210L720 30v104L-60 314z" fill={c} opacity="0.5" />
+          <circle cx="628" cy="196" r="27" fill={`url(#${id}holo)`} />
+          <circle cx="628" cy="196" r="27" fill="none" stroke="#ffffff" strokeOpacity="0.22" strokeWidth="1.5" />
         </>,
       );
     case 'foil-sheen':
@@ -459,15 +451,15 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
             </filter>
           </defs>
           <g filter={`url(#${id}blur)`} opacity="0.18">
-            <ellipse cx="120" cy="150" rx="230" ry="150" fill="#ffd9f2" opacity="0.65" />
-            <ellipse cx="470" cy="330" rx="200" ry="170" fill="#ffe9a8" opacity="0.6" />
-            <ellipse cx="90" cy="560" rx="210" ry="160" fill="#9fe8ff" opacity="0.6" />
-            <ellipse cx="430" cy="760" rx="240" ry="150" fill="#ffc2e6" opacity="0.55" />
-            <ellipse cx="300" cy="430" rx="130" ry="95" fill="#ffffff" opacity="0.22" />
+            <ellipse cx="150" cy="110" rx="260" ry="140" fill="#ffd9f2" opacity="0.65" />
+            <ellipse cx="560" cy="170" rx="240" ry="150" fill="#ffe9a8" opacity="0.6" />
+            <ellipse cx="130" cy="430" rx="250" ry="150" fill="#9fe8ff" opacity="0.6" />
+            <ellipse cx="660" cy="470" rx="270" ry="140" fill="#ffc2e6" opacity="0.55" />
+            <ellipse cx="420" cy="290" rx="150" ry="95" fill="#ffffff" opacity="0.22" />
           </g>
           {/* Two hard streaks, where foil creases catch the light. */}
-          <path d="M0 300L540 96v34L0 334z" fill="#ffffff" opacity="0.14" />
-          <path d="M0 640L540 470v26L0 666z" fill="#ffffff" opacity="0.1" />
+          <path d="M0 214L856 62v34L0 248z" fill="#ffffff" opacity="0.14" />
+          <path d="M0 424L856 300v26L0 450z" fill="#ffffff" opacity="0.1" />
         </>,
       );
     case 'low-poly-facets':
