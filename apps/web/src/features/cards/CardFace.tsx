@@ -396,7 +396,7 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
               <ellipse cx="124" cy="116" rx="66" ry="58" transform="rotate(-8 124 116)" />
               <path d="M170 92l48 48-42 10-20-36z" />
               <path d="M104 154c-4 30 2 56 16 74l28-8c-14-18-22-42-20-66z" />
-              <path d="M158 122l40 36c5 6 0 11-8 12-4 8 0 14-8 19 6 10-2 20-16 24l-14 4c-10-16-16-38-14-58z" />
+              <path d="M150 116l50 44-18 6 12 11-19 8 13 10-17 12 11 9-21 15-19 3-8-38 4-48z" />
               <path d="M128 222l-6 32c32 6 62 20 78 46H92c4-30 14-60 26-78z" />
             </g>
             <g transform="translate(-120 -152)" fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" opacity="0.8">
@@ -404,7 +404,7 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
               <path d="M120 58c-12 16-26 28-34 44" />
               <path d="M170 92l-14 30" />
               <path d="M104 154l44-12" />
-              <path d="M176 150l-12 10M180 176l-14 6" />
+              <path d="M178 166l-14 7M182 186l-15 7M172 206l-13 8" />
             </g>
             <circle cx="12" cy="-14" r="19" fill="none" stroke="#ffffff" strokeWidth="9" opacity="0.9" />
             <circle cx="12" cy="-14" r="9" fill={c} />
