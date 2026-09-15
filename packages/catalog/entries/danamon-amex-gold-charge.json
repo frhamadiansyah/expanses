@@ -1,6 +1,6 @@
 {
   "id": "danamon-amex-gold-charge",
-  "entryVersion": 4,
+  "entryVersion": 5,
   "bank": "Bank Danamon",
   "name": "Kartu Charge Danamon American Express Gold",
   "network": "amex",
@@ -76,12 +76,72 @@
     }
   ],
   "transferPartners": [
-    { "key": "krisflyer", "program": "KrisFlyer", "points": 6, "partnerUnits": 1, "incrementPoints": 6, "incrementPartnerUnits": 1, "minimumPoints": 6000, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "asia-miles", "program": "Asia Miles", "points": 9, "partnerUnits": 1, "incrementPoints": 9, "incrementPartnerUnits": 1, "minimumPoints": 9000, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "garudamiles", "program": "GarudaMiles", "points": 9, "partnerUnits": 1, "incrementPoints": 9, "incrementPartnerUnits": 1, "minimumPoints": 4500, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "enrich", "program": "Enrich", "points": 10, "partnerUnits": 1, "incrementPoints": 10, "incrementPartnerUnits": 1, "minimumPoints": 50000, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "hilton", "program": "Hilton Honors", "points": 28, "partnerUnits": 5, "incrementPoints": 28, "incrementPartnerUnits": 5, "minimumPoints": 7000, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "bonvoy", "program": "Marriott Bonvoy", "points": 625, "partnerUnits": 99, "incrementPoints": 625, "incrementPartnerUnits": 99, "minimumPoints": 6250, "effectiveFrom": null, "effectiveTo": null }
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 6,
+      "partnerUnits": 1,
+      "incrementPoints": 6,
+      "incrementPartnerUnits": 1,
+      "minimumPoints": 6000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 9,
+      "partnerUnits": 1,
+      "incrementPoints": 9,
+      "incrementPartnerUnits": 1,
+      "minimumPoints": 9000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 9,
+      "partnerUnits": 1,
+      "incrementPoints": 9,
+      "incrementPartnerUnits": 1,
+      "minimumPoints": 4500,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "enrich",
+      "program": "Enrich",
+      "points": 10,
+      "partnerUnits": 1,
+      "incrementPoints": 10,
+      "incrementPartnerUnits": 1,
+      "minimumPoints": 50000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "hilton",
+      "program": "Hilton Honors",
+      "points": 28,
+      "partnerUnits": 5,
+      "incrementPoints": 28,
+      "incrementPartnerUnits": 5,
+      "minimumPoints": 7000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "bonvoy",
+      "program": "Marriott Bonvoy",
+      "points": 625,
+      "partnerUnits": 99,
+      "incrementPoints": 625,
+      "incrementPartnerUnits": 99,
+      "minimumPoints": 6250,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
   ],
   "cashValue": null,
   "welcomeBonus": "Up to 210.000 Membership Rewards points has been offered on this card. The amount and the conditions move between campaigns, so nothing is modelled.",
@@ -128,13 +188,15 @@
   "verifiedOn": "2026-09-14",
   "look": {
     "orientation": "landscape",
-    "colours": ["#bfab68", "#b5a463"],
+    "colours": [
+      "#bfab68",
+      "#b5a463"
+    ],
     "angle": 135,
     "finish": "metallic",
-    "pattern": "waves",
-    "patternColour": "#6c623a40",
-    "motif": "engraved-frame",
-    "motifColour": "#5c522c55",
+    "pattern": "none",
+    "motif": "guilloche-crest",
+    "motifColour": "#6b5b2c",
     "ink": "dark",
     "wordmark": "AMERICAN EXPRESS",
     "bankMark": null,
