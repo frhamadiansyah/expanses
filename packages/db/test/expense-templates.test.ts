@@ -6,6 +6,7 @@ import {
   dueExpenseTemplates,
   listExpenseTemplates,
   postTransaction,
+  replaceTransaction,
   saveExpenseTemplate,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -165,6 +166,22 @@ describe('dueExpenseTemplates', () => {
     const context = await household();
     const id = await bill(context, 20);
     await pay(context, { categoryId: context.phone.id, walletId: context.bca.id, occurredOn: `${MONTH}-21`, amountMinor: 150_000, templateId: id });
+
+    expect(await dueExpenseTemplates(context.database, context.ws, `${MONTH}-25`)).toEqual([]);
+  });
+
+  it('stays settled when the payment is corrected afterwards', async () => {
+    const context = await household();
+    const id = await bill(context, 20);
+    const paid = await pay(context, { categoryId: context.phone.id, walletId: context.bca.id, occurredOn: `${MONTH}-21`, amountMinor: 150_000, templateId: id });
+    await replaceTransaction(context.database, context.ws, paid, {
+      occurredOn: `${MONTH}-21`,
+      description: 'Phone bill',
+      lines: [
+        { accountId: context.phone.id, amountMinor: 175_000, currency: 'IDR' },
+        { accountId: context.bca.id, amountMinor: -175_000, currency: 'IDR' },
+      ],
+    });
 
     expect(await dueExpenseTemplates(context.database, context.ws, `${MONTH}-25`)).toEqual([]);
   });

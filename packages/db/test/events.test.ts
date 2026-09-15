@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetSheetFor, createAccount, deleteEvent, eventSheetFor, finishEvent, listEventBudgets, listEvents, postTransaction, saveBudget, saveEvent, setEventBudget, suggestForEvent, tagTransaction } from '../src/index';
+import { budgetSheetFor, createAccount, deleteEvent, eventSheetFor, finishEvent, listEventBudgets, listEvents, postTransaction, replaceTransaction, saveBudget, saveEvent, setEventBudget, suggestForEvent, tagTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 const MONTH = '2026-09';
@@ -192,5 +192,26 @@ describe('the monthly budget', () => {
     expect(after.overCount).toBe(0);
     expect(after.eventSpendingMinor).toBe(5_000_000);
     expect(after.leftOverActualMinor).toBe(before.leftOverActualMinor);
+  });
+});
+
+describe('editing tagged spending', () => {
+  it('keeps the event tag when a purchase is corrected', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    await setEventBudget(context.database, context.ws, id, { categoryAccountId: context.gifts.id, plannedMinor: 3_000_000 });
+    const transactionId = await spend(context, context.gifts.id, `${MONTH}-20`, 1_500_000);
+    await tagTransaction(context.database, context.ws, transactionId, id);
+
+    await replaceTransaction(context.database, context.ws, transactionId, {
+      occurredOn: `${MONTH}-21`,
+      description: 'Hampers, corrected',
+      lines: [
+        { accountId: context.gifts.id, amountMinor: 1_800_000, currency: 'IDR' },
+        { accountId: context.bca.id, amountMinor: -1_800_000, currency: 'IDR' },
+      ],
+    });
+
+    expect((await eventSheetFor(context.database, context.ws, id)).actualMinor).toBe(1_800_000);
   });
 });

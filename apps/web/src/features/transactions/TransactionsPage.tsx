@@ -1,13 +1,13 @@
-import { categoryPath, formatMinor, isoDate, monthOf, monthRange, parseUnits } from '@expanses/core';
-import { confirmDraft, convertToPurchase, listTransactions, type TransactionView, voidTransaction } from '@expanses/db';
+import { categoryPath, formatMinor, isoDate, monthOf, monthRange, parseLooseAmount, parseLooseDate, parseUnits } from '@expanses/core';
+import { confirmDraft, convertToPurchase, dismissDraft, editDraft, listTransactions, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { CircleAlert, CalendarX2, Search, X } from 'lucide-react';
+import { CalendarX2, CircleAlert, Pencil, Search, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { loadPurchasePoints } from '../../lib/purchase-points';
-import { isCategoryOf, isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { isCategoryOf, isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
@@ -15,6 +15,8 @@ import { useDrafts } from '../review/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { isEditable } from './draft';
+import { QuickRowEditor } from './QuickRowEditor';
+import { isQuickEditable, quickFromDraft, quickFromTransaction, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
@@ -173,7 +175,13 @@ export function TransactionsPage() {
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
   const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' });
   const [adding, setAdding] = useState(false);
+  /** The full form, for a transaction too involved to edit as a row. */
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** A row being edited in place. */
+  const [editing, setEditing] = useState<{ kind: 'tx' | 'draft'; id: string; values: QuickValues } | null>(null);
+  const [armed, setArmed] = useState<string | null>(null);
+  const resolveRates = useResolveRates();
+  const today = isoDate();
   const trades = useTrades();
   const goals = useGoals();
   const values = useAssetValues();
@@ -248,15 +256,141 @@ export function TransactionsPage() {
     }
   }
 
-  async function onVoid(tx: TransactionView) {
-    if (!window.confirm(`Delete "${tx.description || 'transaction'}"? It is kept as voided history.`)) return;
-    await run(tx.id, () => voidTransaction(database, ws, tx.id));
+  function open(row: ListRow) {
+    if (busy) return;
+    setAdding(false);
+    setArmed(null);
+    setError(null);
+    setConverting(null);
+    if (row.kind === 'draft') {
+      setEditingId(null);
+      setEditing({ kind: 'draft', id: row.id, values: quickFromDraft(row.draft!, today) });
+      return;
+    }
+    const tx = row.tx!;
+    if (tradeByTransaction.has(tx.id) || !isEditable(tx)) return;
+    if (isQuickEditable(tx)) {
+      setEditingId(null);
+      setEditing({ kind: 'tx', id: tx.id, values: quickFromTransaction(tx, today) });
+    } else {
+      setEditing(null);
+      setEditingId(tx.id);
+    }
+  }
+
+  function close() {
+    setEditing(null);
+    setEditingId(null);
+    setArmed(null);
+  }
+
+  async function saveRecorded(id: string, values: QuickValues) {
+    const { read } = readQuick(values, accounts, today, ws.baseCurrency);
+    if (!read) return;
+    await run(id, async () => {
+      const foreign = read.currency === ws.baseCurrency ? [] : [read.currency];
+      const rates = await resolveRates(foreign, read.occurredOn);
+      if (rates.missing.length > 0) throw new Error(`No ${rates.missing[0]}→${ws.baseCurrency} rate for ${read.occurredOn}. Open it in the form to enter one.`);
+      await replaceTransaction(database, ws, id, { ...quickToInput(read, accounts), ratesToBase: rates.rates });
+      close();
+    });
+  }
+
+  async function saveDraft(id: string, values: QuickValues, record: boolean) {
+    const currency = accounts.find((a) => a.id === values.accountId)?.currency ?? ws.baseCurrency;
+    await run(id, async () => {
+      await editDraft(database, ws, id, {
+        occurredOn: parseLooseDate(values.date, today) ?? values.date.trim(),
+        description: values.description.trim(),
+        amountMinor: parseLooseAmount(values.amount, currency) ?? 0,
+        currency,
+        accountId: values.accountId || null,
+        cardId: values.cardId || null,
+        categoryAccountId: values.categoryId || null,
+      });
+      if (record) await confirmDraft(database, ws, id);
+      close();
+    });
+  }
+
+  /** Deleting asks twice, in place: the first press arms the button, the second deletes. */
+  function twoTap(id: string, label: string, armedLabel: string, work: () => Promise<unknown>) {
+    return (
+      <button
+        type="button"
+        disabled={busy === id}
+        onClick={() => (armed === id ? void run(id, async () => {
+          await work();
+          close();
+        }) : setArmed(id))}
+        className={cx('rounded-lg px-2 py-1 text-xs font-medium', armed === id ? 'bg-red-700 text-white' : 'text-red-700 hover:bg-red-50')}
+      >
+        {armed === id ? armedLabel : label}
+      </button>
+    );
+  }
+
+  function editHint(children: ReactNode, actions: ReactNode) {
+    return (
+      <p className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-0.5 text-xs text-slate-500">
+        <span>{children}</span>
+        <span className="flex flex-wrap items-center gap-1">{actions}</span>
+      </p>
+    );
   }
 
   function draftRow(row: ListRow) {
+    if (editing?.kind === 'draft' && editing.id === row.id) {
+      const { needs } = readQuick(editing.values, accounts, today, ws.baseCurrency);
+      const values = editing.values;
+      return (
+        <li key={row.id} data-testid="not-recorded-row" className="py-2">
+          <QuickRowEditor
+            values={values}
+            onChange={(patch) => setEditing({ ...editing, values: { ...values, ...patch } })}
+            needs={needs}
+            accounts={accounts}
+            cards={cards}
+            currency={accounts.find((a) => a.id === values.accountId)?.currency ?? ws.baseCurrency}
+            autoFocus
+            onSubmit={() => void saveDraft(row.id, values, needs.length === 0)}
+            onCancel={close}
+            actions={
+              <>
+                <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy === row.id} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Record this row'} onClick={() => void saveDraft(row.id, values, true)}>
+                  Record
+                </Button>
+                <Button variant="ghost" className="px-2 py-1.5" aria-label="Close without saving" title="Close without saving" onClick={close}>
+                  <X size={16} aria-hidden />
+                </Button>
+              </>
+            }
+          />
+          {editHint(
+            <>
+              Not recorded yet · fill what is amber, then <b className="text-slate-700">Record</b> · <kbd>Enter</kbd> records when complete · <kbd>Esc</kbd> closes
+            </>,
+            <>
+              <button type="button" disabled={busy === row.id} onClick={() => void saveDraft(row.id, values, false)} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                Save for later
+              </button>
+              {twoTap(row.id, 'Discard this row', 'Click again to discard', () => dismissDraft(database, ws, row.id))}
+            </>,
+          )}
+        </li>
+      );
+    }
     const complete = row.needs.length === 0;
     return (
-      <li key={row.id} data-testid="not-recorded-row" className="-mx-2 flex items-center gap-3 rounded-lg bg-amber-50 px-2 py-2 shadow-[inset_3px_0_0_#f59e0b]">
+      <li
+        key={row.id}
+        data-testid="not-recorded-row"
+        tabIndex={0}
+        title="Click to finish"
+        onClick={() => open(row)}
+        onKeyDown={(event) => event.target === event.currentTarget && event.key === 'Enter' && open(row)}
+        className="group -mx-2 flex cursor-pointer items-center gap-3 rounded-lg bg-amber-50 px-2 py-2 shadow-[inset_3px_0_0_#f59e0b] hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-slate-900"
+      >
         {row.categoryId ? (
           <CategoryIcon categoryId={row.categoryId} accounts={accounts} />
         ) : (
@@ -280,14 +414,15 @@ export function TransactionsPage() {
             className="py-1.5"
             disabled={busy === row.id}
             aria-label={`Record ${row.description}`}
-            onClick={() => void run(row.id, () => confirmDraft(database, ws, row.id))}
+            onClick={(event) => {
+              event.stopPropagation();
+              void run(row.id, () => confirmDraft(database, ws, row.id));
+            }}
           >
             Record
           </Button>
         ) : (
-          <Link to="/review" className="rounded-lg px-2 py-1.5 text-sm font-medium text-slate-700 underline hover:bg-amber-100">
-            Finish
-          </Link>
+          <Pencil size={16} className="text-slate-400 opacity-0 group-hover:opacity-100" aria-hidden />
         )}
       </li>
     );
@@ -295,10 +430,58 @@ export function TransactionsPage() {
 
   function recordedRow(row: ListRow, withDate: boolean) {
     const tx = row.tx!;
+    const purchaseButton = tx.status === 'posted' && row.type === 'expense' && holdings.length > 0 && (
+      <button type="button" onClick={() => { close(); setConverting(tx.id); }} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
+        This was a purchase
+      </button>
+    );
+    const deleteButton = twoTap(tx.id, 'Delete this transaction', 'Click again to delete', () => voidTransaction(database, ws, tx.id));
+    if (editing?.kind === 'tx' && editing.id === tx.id) {
+      const { needs } = readQuick(editing.values, accounts, today, ws.baseCurrency);
+      const values = editing.values;
+      return (
+        <li key={tx.id} className="py-2">
+          <QuickRowEditor
+            values={values}
+            onChange={(patch) => setEditing({ ...editing, values: { ...values, ...patch } })}
+            needs={needs}
+            accounts={accounts}
+            cards={cards}
+            currency={accounts.find((a) => a.id === values.accountId)?.currency ?? ws.baseCurrency}
+            autoFocus
+            onSubmit={() => void saveRecorded(tx.id, values)}
+            onCancel={close}
+            actions={
+              <>
+                <Button className="px-2.5 py-1.5" disabled={needs.length > 0 || busy === tx.id} title={needs.length ? `Needs ${needs.join(' & ')}` : 'Save the change'} onClick={() => void saveRecorded(tx.id, values)}>
+                  Save
+                </Button>
+                <Button variant="ghost" className="px-2 py-1.5" aria-label="Cancel editing" title="Cancel" onClick={close}>
+                  <X size={16} aria-hidden />
+                </Button>
+              </>
+            }
+          />
+          {editHint(
+            <>
+              Editing in place · <kbd>Enter</kbd> saves · <kbd>Esc</kbd> cancels · the original stays under Show deleted
+            </>,
+            <>
+              <button type="button" onClick={() => { setEditing(null); setEditingId(tx.id); }} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                Open in form
+              </button>
+              {purchaseButton}
+              {deleteButton}
+            </>,
+          )}
+        </li>
+      );
+    }
     if (editingId === tx.id) {
       return (
         <li key={tx.id} className="py-2">
-          <TransactionForm initial={tx} onDone={() => setEditingId(null)} />
+          <TransactionForm initial={tx} onDone={close} />
+          {editHint(<>The original stays under Show deleted</>, <>{purchaseButton}{deleteButton}</>)}
         </li>
       );
     }
@@ -321,18 +504,31 @@ export function TransactionsPage() {
           ? 'Transfer'
           : row.type === 'opening'
             ? 'Opening balance'
-            : (row.tx!.entries.filter((e) => e.accountKind === row.type).map((e) => categoryPath(accounts, e.accountId)).join(', '));
+            : tx.entries.filter((e) => e.accountKind === row.type).map((e) => categoryPath(accounts, e.accountId)).join(', ');
     const sign = row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
     const goal = goalName(tradeByTransaction.get(tx.id)?.goalId ?? tx.goalId ?? null);
     const points = purchasePoints.data?.[tx.id];
+    const trade = tradeByTransaction.has(tx.id);
+    const clickable = !trade && isEditable(tx);
     return (
-      <li key={tx.id} className={cx('flex items-center gap-3 py-2', row.deleted && 'opacity-50 line-through')}>
+      <li
+        key={tx.id}
+        tabIndex={clickable ? 0 : undefined}
+        title={clickable ? 'Click to edit' : undefined}
+        onClick={clickable ? () => open(row) : undefined}
+        onKeyDown={clickable ? (event) => event.target === event.currentTarget && event.key === 'Enter' && open(row) : undefined}
+        className={cx(
+          'group flex items-center gap-3 py-2',
+          row.deleted && 'opacity-50 line-through',
+          clickable && '-mx-2 cursor-pointer rounded-lg px-2 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-slate-900',
+        )}
+      >
         <span className={cx(row.deleted && 'grayscale')}>
           <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={row.type !== 'expense' && row.type !== 'income'} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium">
-            {withDate && <span className="tabular mr-2 font-normal text-slate-500">{new Date(`${row.date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+            {withDate && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {tx.description || label}
           </div>
           <div className="truncate text-xs text-slate-500">
@@ -356,28 +552,12 @@ export function TransactionsPage() {
             <div className="tabular whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</div>
           )}
         </div>
-        {tradeByTransaction.has(tx.id) ? (
+        {trade ? (
           <Link to="/net-worth/trades" className="text-sm font-medium text-slate-600 underline" title="Edit this on Buy & sell so units stay in step">
             Buy &amp; sell
           </Link>
         ) : (
-          <>
-            {isEditable(tx) && (
-              <Button variant="ghost" onClick={() => setEditingId(tx.id)}>
-                Edit
-              </Button>
-            )}
-            {tx.status === 'posted' && row.type === 'expense' && holdings.length > 0 && (
-              <Button variant="ghost" onClick={() => setConverting(tx.id)}>
-                This was a purchase
-              </Button>
-            )}
-            {tx.status === 'posted' && (
-              <Button variant="ghost" disabled={busy === tx.id} onClick={() => void onVoid(tx)}>
-                Delete
-              </Button>
-            )}
-          </>
+          clickable && <Pencil size={16} className="text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />
         )}
       </li>
     );
@@ -387,7 +567,18 @@ export function TransactionsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Transactions" action={!adding && <Button onClick={() => setAdding(true)}>Add transaction</Button>} />
+      <PageHeader title="Transactions" action={
+          !adding && (
+            <Button
+              onClick={() => {
+                close();
+                setAdding(true);
+              }}
+            >
+              Add transaction
+            </Button>
+          )
+        } />
       {adding && <TransactionForm onDone={() => setAdding(false)} />}
       <BillsDue />
 

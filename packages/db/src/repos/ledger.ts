@@ -155,6 +155,9 @@ export function replaceTransaction(
         originalCurrency: transactions.originalCurrency,
         originalAmountMinor: transactions.originalAmountMinor,
         mcc: transactions.mcc,
+        cardId: transactions.cardId,
+        eventId: transactions.eventId,
+        templateId: transactions.templateId,
       })
       .from(transactions)
       .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
@@ -170,7 +173,14 @@ export function replaceTransaction(
         ? { originalCurrency: original?.originalCurrency ?? null, originalAmountMinor: original?.originalAmountMinor ?? null }
         : {}),
       ...(input.mcc === undefined ? { mcc: original?.mcc ?? null } : {}),
+      ...(input.cardId === undefined ? { cardId: original?.cardId ?? null } : {}),
+      // Correcting a bill payment must not make the bill ask to be paid again.
+      ...(input.templateId === undefined ? { templateId: original?.templateId ?? null } : {}),
     });
+    // A correction is still the same spending, so it stays with the event it was tagged to.
+    if (original?.eventId) {
+      await tx.update(transactions).set({ eventId: original.eventId }).where(eq(transactions.id, replacement));
+    }
     // Points already checked against the bank follow the edited purchase, flagged so the user can check the edit.
     await tx
       .update(transactionPointActuals)

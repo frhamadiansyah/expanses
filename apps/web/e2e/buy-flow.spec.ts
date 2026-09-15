@@ -107,8 +107,9 @@ test('turns an expense already recorded into the purchase it really was', async 
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('UBS Gold Store')).toBeVisible();
 
-  const row = page.locator('li', { hasText: 'UBS Gold Store' }).last();
-  await row.getByRole('button', { name: 'This was a purchase' }).click();
+  // The row opens where it is; turning it into a purchase is one of the things it offers there.
+  await page.locator('li', { hasText: 'UBS Gold Store' }).last().click();
+  await page.getByRole('button', { name: 'This was a purchase' }).click();
   await page.getByLabel('Units, shares or grams').fill('2');
   await page.getByRole('button', { name: 'Save as a purchase' }).click();
 
