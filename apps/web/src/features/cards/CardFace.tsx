@@ -390,24 +390,15 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
             <circle r="140" fill={c} opacity="0.1" />
             <circle r="140" fill="none" stroke={c} strokeWidth="9" opacity="0.95" />
             <circle r="126" fill="none" stroke={c} strokeWidth="13" strokeDasharray="7 11" opacity="0.8" />
-            {/* A crested helmet in profile, built from solid shapes so it holds when the card shrinks. */}
-            <g transform="translate(-120 -152)" fill={c}>
-              <path d="M142 30c-4 18-12 32-24 42-24 16-42 42-50 74-8 32-6 64 4 94-12-10-22-24-28-42-12-34-12-70 2-104 8-22 22-42 44-42 16-18 32-10 52-22z" />
-              <ellipse cx="124" cy="116" rx="66" ry="58" transform="rotate(-8 124 116)" />
-              <path d="M170 92l48 48-42 10-20-36z" />
-              <path d="M104 154c-4 30 2 56 16 74l28-8c-14-18-22-42-20-66z" />
-              <path d="M150 116l50 44-18 6 12 11-19 8 13 10-17 12 11 9-21 15-19 3-8-38 4-48z" />
-              <path d="M128 222l-6 32c32 6 62 20 78 46H92c4-30 14-60 26-78z" />
+            {/* A crested helmet in profile as a flat glyph: solid fills, detail cut out as negative space. */}
+            <g transform="translate(-120 -156)" fill={c}>
+              <path d="M92 76C96 20 152-6 194 20c24 16 34 44 28 74-18-34-50-52-86-46-16 3-30 12-44 28z" />
+              <path d="M92 76c-27 23-44 58-48 98-5 43 6 82 28 110-14-38-17-80-7-119 6-25 15-53 27-89z" />
+              <path
+                fillRule="evenodd"
+                d="M146 44c40 4 62 40 58 78l12 14-20 8 22 30-20 8 8 14-18 10 8 12-24 14-24 4-4 26c34 8 60 22 70 44H70c4-30 16-56 30-74l-4-36c-22-16-32-44-28-72 4-36 40-64 78-58zm-16 86c-12 28-10 60 6 84l20-8c-14-22-16-50-8-74zm42 12l-14 8 4 14 14-8z"
+              />
             </g>
-            <g transform="translate(-120 -152)" fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" opacity="0.8">
-              <path d="M96 84c-16 22-24 52-24 82 0 22 4 42 10 58" />
-              <path d="M120 58c-12 16-26 28-34 44" />
-              <path d="M170 92l-14 30" />
-              <path d="M104 154l44-12" />
-              <path d="M178 166l-14 7M182 186l-15 7M172 206l-13 8" />
-            </g>
-            <circle cx="12" cy="-14" r="19" fill="none" stroke="#ffffff" strokeWidth="9" opacity="0.9" />
-            <circle cx="12" cy="-14" r="9" fill={c} />
           </g>
         </g>,
       );
