@@ -1,5 +1,5 @@
 import { findEntry } from '@expanses/catalog';
-import { computeCycleEarn, expenseLines } from '@expanses/core';
+import { computeCycleEarn, convertPoints, expenseLines } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   applyCatalogEntry,
@@ -8,6 +8,7 @@ import {
   listAccounts,
   listCycleBonuses,
   listEarnRules,
+  listTransferPartners,
   postTransaction,
   saveCardTerms,
 } from '../src/index';
@@ -126,13 +127,39 @@ describe('what the charge card uplift does to the cost of a mile', () => {
   });
 });
 
-describe('the hotels, which were given as figures rather than screens', () => {
-  it('still moves in whole blocks, unlike the airlines', () => {
-    const partners = findEntry('danamon-amex-gold-charge')!.transferPartners;
-    const hotels = partners.filter((p) => ['Hilton Honors', 'Marriott Bonvoy'].includes(p.program));
-    expect(hotels.map((p) => p.incrementPoints)).toEqual([7_000, 6_250]);
-    // No minimum of their own: the block is the floor, which is the conservative reading.
-    expect(hotels.every((p) => p.minimumPoints === undefined)).toBe(true);
-    expect(findEntry('danamon-amex-gold-charge')!.notes.some((n) => n.includes('a hotel conversion here is understated'))).toBe(true);
+describe('the hotels, whose units do not cost a whole number of points', () => {
+  const hotelsOf = (id: string) =>
+    findEntry(id)!.transferPartners.filter((p) => ['Hilton Honors', 'Marriott Bonvoy'].includes(p.program));
+
+  it('keeps the published minimum and steps in the smallest block that is whole on both sides', () => {
+    const [hilton, bonvoy] = hotelsOf('danamon-amex-gold-charge');
+    // 1.250 Hilton for 7.000 points, stepping 5 for 28; 990 Bonvoy for 6.250, stepping 99 for 625.
+    expect([hilton!.minimumPoints, hilton!.incrementPartnerUnits, hilton!.incrementPoints]).toEqual([7_000, 5, 28]);
+    expect([bonvoy!.minimumPoints, bonvoy!.incrementPartnerUnits, bonvoy!.incrementPoints]).toEqual([6_250, 99, 625]);
+  });
+
+  it('has minimums that are whole numbers of those blocks', () => {
+    for (const hotel of hotelsOf('danamon-amex-gold-charge')) {
+      expect(hotel.minimumPoints! % hotel.incrementPoints, hotel.program).toBe(0);
+    }
+  });
+
+  it('converts a balance past the minimum without wasting most of it', async () => {
+    const t = await withCard();
+    const partners = await listTransferPartners(t.database, t.ws, t.programId);
+    const at = (program: string, points: number) => convertPoints(points, partners.find((p) => p.program === program)!);
+    expect(at('Hilton Honors', 7_000)).toBe(1_250);
+    expect(at('Marriott Bonvoy', 6_250)).toBe(990);
+    // Below the minimum nothing moves at all.
+    expect(at('Hilton Honors', 6_999)).toBe(0);
+    expect(at('Marriott Bonvoy', 6_249)).toBe(0);
+    // A 25.700 balance: the fine step gets most of it out, where a whole-minimum block would have left a third behind.
+    expect(at('Hilton Honors', 25_700)).toBe(4_585);
+    expect(at('Marriott Bonvoy', 25_700)).toBe(4_059);
+  });
+
+  it('carries the same hotel ratios on the credit card', () => {
+    const shape = (id: string) => hotelsOf(id).map((p) => [p.program, p.points, p.partnerUnits, p.incrementPoints, p.minimumPoints]);
+    expect(shape('danamon-amex-gold-charge')).toEqual(shape('danamon-amex-gold-credit-card'));
   });
 });

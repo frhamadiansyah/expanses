@@ -126,17 +126,20 @@ describe('Danamon American Express Gold conversion', () => {
   it('keeps each airline to its own minimum, Enrich being much the highest', async () => {
     const t = await withCard();
     const partners = await listTransferPartners(t.database, t.ws, t.programId);
-    const minimums = Object.fromEntries(partners.filter((p) => p.minimumPoints).map((p) => [p.program, p.minimumPoints]));
+    const airlines = ['KrisFlyer', 'Asia Miles', 'GarudaMiles', 'Enrich'];
+    const minimums = Object.fromEntries(partners.filter((p) => airlines.includes(p.program)).map((p) => [p.program, p.minimumPoints]));
     expect(minimums).toEqual({ KrisFlyer: 6_000, 'Asia Miles': 9_000, GarudaMiles: 4_500, Enrich: 50_000 });
     // A 25.700 balance clears three of the four and falls well short of Enrich.
     const at = (program: string) => convertPoints(25_700, partners.find((p) => p.program === program)!);
     expect([at('KrisFlyer'), at('GarudaMiles'), at('Asia Miles'), at('Enrich')]).toEqual([4_283, 2_855, 2_855, 0]);
   });
 
-  it('says the ratios come from the charge card, and that the hotels are the unconfirmed pair', () => {
+  it('says the ratios come from the charge card, every one of them now confirmed on a screen', () => {
     const notes = findEntry('danamon-amex-gold-credit-card')!.notes;
     expect(notes.some((note) => note.includes("charge card's redemption screens"))).toBe(true);
-    expect(notes.some((note) => note.includes('only their minimums are known'))).toBe(true);
+    expect(notes.some((note) => note.includes("hotel conversions are confirmed against the cardholder's screens"))).toBe(true);
+    // Nothing on either card is left resting on a derived figure.
+    expect(notes.some((note) => note.includes('only their minimums are known'))).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 {
   "id": "danamon-amex-gold-credit-card",
-  "entryVersion": 3,
+  "entryVersion": 4,
   "bank": "Bank Danamon",
   "name": "Kartu Kredit Danamon American Express Gold",
   "network": "amex",
@@ -56,8 +56,8 @@
     { "key": "asia-miles", "program": "Asia Miles", "points": 9, "partnerUnits": 1, "incrementPoints": 9, "incrementPartnerUnits": 1, "minimumPoints": 9000, "effectiveFrom": null, "effectiveTo": null },
     { "key": "garudamiles", "program": "GarudaMiles", "points": 9, "partnerUnits": 1, "incrementPoints": 9, "incrementPartnerUnits": 1, "minimumPoints": 4500, "effectiveFrom": null, "effectiveTo": null },
     { "key": "enrich", "program": "Enrich", "points": 10, "partnerUnits": 1, "incrementPoints": 10, "incrementPartnerUnits": 1, "minimumPoints": 50000, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "hilton", "program": "Hilton Honors", "points": 28, "partnerUnits": 5, "incrementPoints": 7000, "incrementPartnerUnits": 1250, "effectiveFrom": null, "effectiveTo": null },
-    { "key": "bonvoy", "program": "Marriott Bonvoy", "points": 625, "partnerUnits": 99, "incrementPoints": 6250, "incrementPartnerUnits": 990, "effectiveFrom": null, "effectiveTo": null }
+    { "key": "hilton", "program": "Hilton Honors", "points": 28, "partnerUnits": 5, "incrementPoints": 28, "incrementPartnerUnits": 5, "minimumPoints": 7000, "effectiveFrom": null, "effectiveTo": null },
+    { "key": "bonvoy", "program": "Marriott Bonvoy", "points": 625, "partnerUnits": 99, "incrementPoints": 625, "incrementPartnerUnits": 99, "minimumPoints": 6250, "effectiveFrom": null, "effectiveTo": null }
   ],
   "cashValue": null,
   "welcomeBonus": "Danamon has run a bonus of up to 210.000 Membership Rewards points on the Amex Gold charge card. Whether the credit card shares it is not settled here, so nothing is claimed for this entry.",
@@ -74,7 +74,8 @@
     "AirAsia BIG points are the one Frequent Traveller Option partner left without a ratio, so an estimate for them shows nothing.",
     "The four airline conversions are confirmed against the charge card's redemption screens, which show 1.000 KrisFlyer miles for 6.000 points, 500 GarudaMiles for 4.500, 5.000 Enrich miles for 50.000 and 1.000 Asia Miles for 9.000.",
     "Those screens also read \"Min: X dan kelipatan: 0\": there is a minimum but no step past it, so any number of miles above the minimum converts. The entry records a minimum with a one-mile step, which matters a great deal — a 25.700 point balance makes 4.283 KrisFlyer miles rather than the 4.000 a block-sized step would allow.",
-    "The two hotel conversions were given as figures rather than screens, so only their minimums are known: 7.000 points for 1.250 Hilton Honors points and 6.250 for 990 Marriott Bonvoy. They are recorded as whole blocks for want of the \"kelipatan\" line the airline screens carry. If the hotels behave like the airlines, which the shared screen suggests, a hotel conversion here is understated."
+    "The two hotel conversions are confirmed against the cardholder's screens as well: 1.250 Hilton Honors points for 7.000 Membership Rewards and 990 Marriott Bonvoy for 6.250, which is 28:5 and 625:99.",
+    "The hotel screens are shaped differently from the airline ones. They ask for a number of loyalty points with the minimum in the field label — \"minimal 1.250\", \"minimal 990\" — and carry no \"kelipatan\" line at all, so only the minimum is stated. Neither hotel unit costs a whole number of points, a Hilton point being 5,6 and a Bonvoy point 6,3131, so the entry steps in the smallest block that is whole on both sides: 5 Hilton points for 28, and 99 Bonvoy for 625. The published minimums are whole numbers of those blocks, 250 and 10 of them, which is what makes the reading hold together."
   ],
   "sources": [
     {
