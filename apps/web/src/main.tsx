@@ -22,6 +22,14 @@ async function start() {
   root.render(<Message title="Opening your data…" body="Starting the local database on this device." />);
   try {
     const app = await bootstrap();
+    if (import.meta.env.DEV) {
+      const { loadSample, wantsSample } = await import('./db/dev-sample');
+      if (wantsSample()) {
+        root.render(<Message title="Loading sample data…" body="Replacing the data in this browser with the sample household." />);
+        await loadSample(app.database);
+        return;
+      }
+    }
     root.render(
       <StrictMode>
         <App app={app} />
