@@ -93,11 +93,12 @@
     ],
     "angle": 150,
     "finish": "metallic",
-    "pattern": "waves",
-    "patternColour": "#a9bcc9cc",
+    "pattern": "none",
     "ink": "light",
     "wordmark": "Zenith",
     "bankMark": "UOB",
-    "chip": "silver"
+    "chip": "silver",
+    "motif": "contour-lines",
+    "motifColour": "#a9bcc9"
   }
 }

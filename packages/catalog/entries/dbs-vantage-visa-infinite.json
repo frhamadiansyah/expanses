@@ -119,11 +119,12 @@
     ],
     "angle": 160,
     "finish": "metallic",
-    "pattern": "diagonal-lines",
-    "patternColour": "#e6b3a27a",
+    "pattern": "none",
     "ink": "light",
     "wordmark": "Vantage",
     "bankMark": "DBS",
-    "chip": "silver"
+    "chip": "silver",
+    "motif": "sparse-diagonals",
+    "motifColour": "#e8b5a4"
   }
 }

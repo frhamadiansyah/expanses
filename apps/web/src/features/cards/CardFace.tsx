@@ -320,6 +320,87 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
           <path d="M412 272l-40-10-6-28-12 2 4 26-32-8-8-14-8 2 4 30-4 30 8 2 8-14 32-8-4 26 12 2 6-28z" fill={c} />
         </>,
       );
+    case 'sparse-diagonals':
+      // A plain face cut by a few long thin strokes, the way a metal card carries a single accent.
+      return svg(
+        <g stroke={c} fill="none" strokeLinecap="round">
+          <path d="M486 -20L206 560" strokeWidth="5" />
+          <path d="M700 -20L912 430" strokeWidth="5" />
+          <path d="M524 -20L300 560" strokeWidth="1.8" opacity="0.55" />
+          <path d="M742 -20L946 400" strokeWidth="1.8" opacity="0.55" />
+        </g>,
+      );
+    case 'contour-lines':
+      // Wavy lines packed edge to edge, like the contours on a map, covering the whole face.
+      return svg(
+        <g fill="none" stroke={c} strokeLinecap="round">
+          {Array.from({ length: 15 }, (_, i) => {
+            const y = -30 + i * 42;
+            return <path key={i} d={`M-40 ${y}q110 -46 220 0t220 0t220 0t220 0`} strokeWidth="11" opacity="0.55" />;
+          })}
+          {Array.from({ length: 15 }, (_, i) => {
+            const y = -10 + i * 42;
+            return <path key={`t${i}`} d={`M-40 ${y}q110 -46 220 0t220 0t220 0t220 0`} strokeWidth="3" opacity="0.8" />;
+          })}
+        </g>,
+      );
+    case 'meridians':
+      // The curved grid of a globe, with a small aeroplane crossing it.
+      return svg(
+        <>
+          <g fill="none" stroke={c} strokeWidth="2">
+            {Array.from({ length: 10 }, (_, i) => {
+              const x = -140 + i * 128;
+              return <path key={`m${i}`} d={`M${x} -40C${x + 150} 170 ${x + 150} 370 ${x} 580`} />;
+            })}
+            {Array.from({ length: 8 }, (_, i) => {
+              const y = -40 + i * 96;
+              return <path key={`p${i}`} d={`M-40 ${y}C240 ${y + 74} 620 ${y + 74} 900 ${y}`} />;
+            })}
+          </g>
+          <path d="M690 214l-46-12-7-32-14 2 5 30-37-9-9-16-9 2 5 35-5 35 9 2 9-16 37-9-5 30 14 2 7-32z" fill="#f0a92e" />
+        </>,
+      );
+    case 'brushwing':
+      // Fine contours across the face with one sweeping wing laid over them.
+      return svg(
+        <>
+          <g fill="none" stroke={c} strokeWidth="2" opacity="0.45">
+            {Array.from({ length: 24 }, (_, i) => {
+              const y = -12 + i * 25;
+              return <path key={i} d={`M-30 ${y}q112 -14 224 0t224 0t224 0t224 0`} />;
+            })}
+          </g>
+          <g transform="translate(286 196) scale(1.05)">
+            <path d="M0 96c72-18 148-54 226-112-30 62-78 108-140 138-22 11-44 14-62 9-14-4-22-14-24-35z" fill={c} />
+            <path d="M226-16c34-26 74-46 118-58-30 32-66 58-106 80-12 6-18 2-18-9 0-5 3-10 6-13z" fill={c} opacity="0.85" />
+          </g>
+        </>,
+      );
+    case 'guilloche-crest':
+      // Engine-turned lines inside a double engraved border, with a portrait oval at the centre.
+      return svg(
+        <g fill="none" stroke={c}>
+          <rect x="14" y="14" width={w - 28} height={h - 28} rx="26" strokeWidth="10" opacity="0.85" />
+          <rect x="30" y="30" width={w - 60} height={h - 60} rx="20" strokeWidth="3" opacity="0.7" />
+          <rect x="40" y="40" width={w - 80} height={h - 80} rx="16" strokeWidth="6" strokeDasharray="3 9" opacity="0.6" />
+          <g strokeWidth="2" opacity="0.55">
+            {Array.from({ length: 30 }, (_, i) => {
+              const y = 52 + i * 15;
+              return <path key={i} d={`M52 ${y}q104 -11 208 0t208 0t208 0`} />;
+            })}
+          </g>
+          <ellipse cx={w / 2} cy={h / 2} rx="104" ry="138" fill={c} opacity="0.2" />
+          <ellipse cx={w / 2} cy={h / 2} rx="104" ry="138" strokeWidth="9" opacity="0.9" />
+          <ellipse cx={w / 2} cy={h / 2} rx="88" ry="120" strokeWidth="2.5" opacity="0.7" />
+          <g strokeWidth="2.4" opacity="0.65">
+            {Array.from({ length: 11 }, (_, i) => {
+              const y = h / 2 - 100 + i * 20;
+              return <path key={`f${i}`} d={`M${w / 2 - 70} ${y}q70 -13 140 0`} />;
+            })}
+          </g>
+        </g>,
+      );
     default:
       return null;
   }
