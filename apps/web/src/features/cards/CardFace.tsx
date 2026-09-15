@@ -386,22 +386,14 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
               return <path key={i} d={`M52 ${y}q104 -11 208 0t208 0t208 0`} />;
             })}
           </g>
-          <ellipse cx={w / 2} cy={h / 2} rx="104" ry="138" fill={c} opacity="0.12" />
+          <ellipse cx={w / 2} cy={h / 2} rx="104" ry="138" fill={c} opacity="0.2" />
           <ellipse cx={w / 2} cy={h / 2} rx="104" ry="138" strokeWidth="9" opacity="0.9" />
           <ellipse cx={w / 2} cy={h / 2} rx="88" ry="120" strokeWidth="2.5" opacity="0.7" />
-          <g transform={`translate(${w / 2} ${h / 2}) scale(0.9) translate(-100 -132)`}>
-            {/* A crested helmet in profile facing right, the plume falling behind the neck. */}
-            <path d="M58 44C22 58 4 100 14 150c8 26 20 40 28 44-14-32-18-74-8-108 5-18 14-32 24-42z" fill={c} opacity="0.75" />
-            <path
-              d="M52 60c6-32 42-52 78-38 20 8 28 24 26 42l-2 10 6 8-8 8c2 8 0 14-4 20l14 22c3 6-1 11-8 11h-10c3 8 0 15-8 19 5 9 1 18-9 23-7 4-9 10-18 13-10 4-20 3-28 0l-4 30c24 5 46 14 58 28l10 38H32l10-40c-7-28-3-53 7-72-8-30-4-73 3-102z"
-              fill={c}
-            />
-            <path d="M62 50C84 16 126 10 150 32" fill="none" stroke={c} strokeWidth="13" strokeLinecap="round" />
-            <path d="M50 78c24-18 64-24 100-14" fill="none" stroke="#00000055" strokeWidth="6" />
-            <path d="M56 96c22-12 56-16 88-10" fill="none" stroke="#00000033" strokeWidth="4" />
-            <ellipse cx="128" cy="104" rx="7" ry="5" fill="#00000077" />
-            <path d="M92 168c18 6 34 6 48 0" fill="none" stroke="#00000033" strokeWidth="5" />
-            <path d="M54 240h100" fill="none" stroke="#00000044" strokeWidth="7" />
+          <g strokeWidth="2.4" opacity="0.65">
+            {Array.from({ length: 11 }, (_, i) => {
+              const y = h / 2 - 100 + i * 20;
+              return <path key={`f${i}`} d={`M${w / 2 - 70} ${y}q70 -13 140 0`} />;
+            })}
           </g>
         </g>,
       );
