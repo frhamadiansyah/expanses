@@ -1,6 +1,6 @@
 {
   "id": "jenius-kartu-kredit",
-  "entryVersion": 9,
+  "entryVersion": 10,
   "bank": "Bank SMBC Indonesia",
   "name": "Kartu Kredit Jenius",
   "network": "visa",
@@ -419,8 +419,11 @@
   ],
   "verifiedOn": "2026-09-14",
   "look": {
-    "orientation": "portrait",
-    "colours": ["#013a41", "#02515a"],
+    "orientation": "landscape",
+    "colours": [
+      "#013a41",
+      "#02515a"
+    ],
     "angle": 180,
     "finish": "matte",
     "pattern": "stripe",

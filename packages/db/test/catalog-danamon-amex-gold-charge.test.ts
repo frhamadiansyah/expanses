@@ -90,24 +90,18 @@ describe('Danamon Amex Gold charge card earning', () => {
   });
 });
 
-describe('the charge card against the credit card', () => {
-  it('costs Rp 1.200.000 a year where the credit card costs Rp 350.000', () => {
+describe('the charge card on its own', () => {
+  it('costs Rp 1.200.000 a year', () => {
     expect(findEntry('danamon-amex-gold-charge')!.fees[0]!.annualFeeMinor).toBe(1_200_000);
-    expect(findEntry('danamon-amex-gold-credit-card')!.fees[0]!.annualFeeMinor).toBe(350_000);
   });
 
-  it('earns half a point more under the limit, where the credit card earns one rate throughout', () => {
+  it('earns on two rules, the base and the half point above it', () => {
     expect(findEntry('danamon-amex-gold-charge')!.terms[0]!.rules).toHaveLength(2);
-    expect(findEntry('danamon-amex-gold-credit-card')!.terms[0]!.rules).toHaveLength(1);
   });
 
-  it('shares the Membership Rewards programme, and says the ratios are carried over', () => {
-    for (const id of ['danamon-amex-gold-charge', 'danamon-amex-gold-credit-card']) {
-      expect(findEntry(id)!.program.name, id).toBe('Membership Rewards');
-    }
-    // The ratios were read off this card's own screens, and the credit card borrows them rather than the other way about.
+  it('runs on Membership Rewards, and says where its ratios were read', () => {
+    expect(findEntry('danamon-amex-gold-charge')!.program.name).toBe('Membership Rewards');
     expect(findEntry('danamon-amex-gold-charge')!.notes.some((n) => n.includes("cardholder's own Frequent Traveller Option screens"))).toBe(true);
-    expect(findEntry('danamon-amex-gold-credit-card')!.notes.some((n) => n.includes('carried over because the two share one Membership Rewards balance'))).toBe(true);
   });
 });
 
@@ -118,12 +112,6 @@ describe('what the charge card uplift does to the cost of a mile', () => {
     expect(perMileAtBase).toBe(15_000);
     // The uplift earns 1,5 points for the same rupiah, so a mile costs two thirds of that.
     expect((perMileAtBase * 2) / 3).toBe(10_000);
-  });
-
-  it('carries the same six ratios as the credit card, the balance being shared', () => {
-    const ratio = (id: string) =>
-      Object.fromEntries(findEntry(id)!.transferPartners.map((p) => [p.program, [p.points, p.partnerUnits]]));
-    expect(ratio('danamon-amex-gold-charge')).toEqual(ratio('danamon-amex-gold-credit-card'));
   });
 });
 
@@ -156,10 +144,5 @@ describe('the hotels, whose units do not cost a whole number of points', () => {
     // A 25.700 balance: the fine step gets most of it out, where a whole-minimum block would have left a third behind.
     expect(at('Hilton Honors', 25_700)).toBe(4_585);
     expect(at('Marriott Bonvoy', 25_700)).toBe(4_059);
-  });
-
-  it('carries the same hotel ratios on the credit card', () => {
-    const shape = (id: string) => hotelsOf(id).map((p) => [p.program, p.points, p.partnerUnits, p.incrementPoints, p.minimumPoints]);
-    expect(shape('danamon-amex-gold-charge')).toEqual(shape('danamon-amex-gold-credit-card'));
   });
 });
