@@ -130,18 +130,17 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#0b1f3a",
-      "#123d63",
-      "#0b1f3a"
+      "#0b0b0c",
+      "#18191b",
+      "#08080a"
     ],
     "angle": 150,
-    "finish": "glossy",
-    "pattern": "none",
-    "motif": "flight-line",
-    "motifColour": "#8fc4ee",
+    "finish": "matte",
+    "pattern": "arcs",
+    "patternColour": "#ffffff3d",
     "ink": "light",
     "wordmark": "Travel",
     "bankMark": "digibank by DBS",
-    "chip": "gold"
+    "chip": "silver"
   }
 }

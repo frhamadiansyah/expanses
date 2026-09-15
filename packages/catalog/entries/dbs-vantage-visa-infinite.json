@@ -111,20 +111,19 @@
   ],
   "verifiedOn": "2026-09-15",
   "look": {
-    "orientation": "portrait",
+    "orientation": "landscape",
     "colours": [
-      "#141414",
-      "#2e2b27",
-      "#0a0a0a"
+      "#1a1a1d",
+      "#2b2b30",
+      "#121214"
     ],
-    "angle": 200,
-    "finish": "metallic",
-    "pattern": "none",
-    "motif": "chrome-curves",
-    "motifColour": "#b9a071",
+    "angle": 160,
+    "finish": "matte",
+    "pattern": "diagonal-lines",
+    "patternColour": "#e0a59638",
     "ink": "light",
     "wordmark": "Vantage",
     "bankMark": "DBS",
-    "chip": "gold"
+    "chip": "silver"
   }
 }

@@ -85,20 +85,19 @@
   ],
   "verifiedOn": "2026-09-15",
   "look": {
-    "orientation": "portrait",
+    "orientation": "landscape",
     "colours": [
-      "#0a0a0c",
-      "#1c1a26",
-      "#000000"
+      "#212a30",
+      "#2d383f",
+      "#161d21"
     ],
-    "angle": 190,
-    "finish": "metallic",
-    "pattern": "none",
-    "motif": "centre-ring",
-    "motifColour": "#b99a5b",
+    "angle": 150,
+    "finish": "matte",
+    "pattern": "waves",
+    "patternColour": "#9fb0bc99",
     "ink": "light",
     "wordmark": "Zenith",
     "bankMark": "UOB",
-    "chip": "gold"
+    "chip": "silver"
   }
 }
