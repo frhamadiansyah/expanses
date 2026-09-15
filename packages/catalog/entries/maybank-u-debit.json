@@ -244,20 +244,18 @@
   ],
   "verifiedOn": "2026-09-15",
   "look": {
-    "orientation": "landscape",
+    "orientation": "portrait",
     "colours": [
-      "#f7b500",
-      "#ffd447",
-      "#e8a200"
+      "#8ed3d0"
     ],
-    "angle": 135,
+    "angle": 0,
     "finish": "matte",
     "pattern": "none",
-    "motif": "big-letter",
-    "motifColour": "#00000018",
+    "motif": "outline-u",
+    "motifColour": "#ffffffcc",
     "ink": "dark",
     "wordmark": "U",
     "bankMark": "Maybank",
-    "chip": "gold"
+    "chip": "silver"
   }
 }

@@ -283,8 +283,9 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
       oneOf('chip', ['gold', 'silver', 'none']);
       if (look.motif !== undefined) oneOf('motif', CARD_MOTIFS);
       if (look.motifColour !== undefined && (typeof look.motifColour !== 'string' || !HEX.test(look.motifColour))) add('look.motifColour', 'must be a #rrggbb or #rrggbbaa colour');
-      if (!Array.isArray(look.colours) || look.colours.length < 1 || look.colours.length > 3 || look.colours.some((c) => typeof c !== 'string' || !HEX.test(c))) {
-        add('look.colours', 'must be one to three #rrggbb colours');
+      // Up to six, because a holographic card runs through more colours than a plain one has.
+      if (!Array.isArray(look.colours) || look.colours.length < 1 || look.colours.length > 6 || look.colours.some((c) => typeof c !== 'string' || !HEX.test(c))) {
+        add('look.colours', 'must be one to six #rrggbb colours');
       }
       if (look.angle !== undefined && typeof look.angle !== 'number') add('look.angle', 'must be a number of degrees');
       if (look.patternColour !== undefined && (typeof look.patternColour !== 'string' || !HEX.test(look.patternColour))) add('look.patternColour', 'must be a #rrggbb or #rrggbbaa colour');

@@ -175,21 +175,21 @@
     }
   ],
   "look": {
-    "orientation": "landscape",
+    "orientation": "portrait",
     "colours": [
-      "#0d1b2a",
-      "#1f3a52",
-      "#0a1420"
+      "#0c0c0e",
+      "#141417",
+      "#08080a"
     ],
-    "angle": 130,
-    "finish": "metallic",
+    "angle": 155,
+    "finish": "matte",
     "pattern": "none",
-    "motif": "faceted-ribbon",
-    "motifColour": "#9fc4e838",
+    "motif": "hologram-disc",
+    "motifColour": "#ffffff0f",
     "ink": "light",
     "wordmark": "Platinum",
     "bankMark": "Maybank",
-    "chip": "gold"
+    "chip": "silver"
   },
   "entryVersion": 1,
   "currency": "IDR",

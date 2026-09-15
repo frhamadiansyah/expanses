@@ -83,19 +83,19 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#0b5c3e",
-      "#1a8f63",
-      "#083f2b"
+      "#b6a785",
+      "#a2926f",
+      "#c6b997"
     ],
-    "angle": 135,
-    "finish": "glossy",
+    "angle": 125,
+    "finish": "metallic",
     "pattern": "none",
-    "motif": "sparse-diagonals",
-    "motifColour": "#a8e6c955",
+    "motif": "low-poly-facets",
+    "motifColour": "#ffffff",
     "ink": "light",
-    "wordmark": "Shopping",
+    "wordmark": "Shopping Card",
     "bankMark": "Permata",
-    "chip": "gold"
+    "chip": "silver"
   },
   "entryVersion": 2,
   "currency": "IDR",

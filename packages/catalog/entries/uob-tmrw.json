@@ -156,17 +156,19 @@
     }
   ],
   "look": {
-    "orientation": "landscape",
+    "orientation": "portrait",
     "colours": [
-      "#062b36",
-      "#0e6b7a",
-      "#03202a"
+      "#ff2b96",
+      "#ff6f2c",
+      "#ffd83d",
+      "#27c2ee",
+      "#a936e0"
     ],
-    "angle": 140,
-    "finish": "matte",
+    "angle": 165,
+    "finish": "glossy",
     "pattern": "none",
-    "motif": "split-waves",
-    "motifColour": "#5ee0c855",
+    "motif": "foil-sheen",
+    "motifColour": "#ffffff",
     "ink": "light",
     "wordmark": "TMRW",
     "bankMark": "UOB",

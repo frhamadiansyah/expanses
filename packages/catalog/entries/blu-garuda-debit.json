@@ -26,7 +26,11 @@
           "rounding": "per_increment",
           "priority": 20,
           "stackable": false,
-          "match": { "mccs": ["3103"] }
+          "match": {
+            "mccs": [
+              "3103"
+            ]
+          }
         },
         {
           "key": "garuda-merchant",
@@ -36,7 +40,14 @@
           "rounding": "per_increment",
           "priority": 20,
           "stackable": false,
-          "match": { "merchantPatterns": ["garuda indonesia", "garuda", "fly garuda", "flygaruda"] }
+          "match": {
+            "merchantPatterns": [
+              "garuda indonesia",
+              "garuda",
+              "fly garuda",
+              "flygaruda"
+            ]
+          }
         },
         {
           "key": "base",
@@ -64,20 +75,36 @@
     "Miles land in the GarudaMiles account linked when the card is requested, so they expire on GarudaMiles' own terms rather than the bank's."
   ],
   "sources": [
-    { "title": "blu by BCA Digital — Garuda x bluDebit Card FAQ", "url": "https://blubybcadigital.id/info/faq/garuda-x-blu-debit-card" },
-    { "title": "blu by BCA Digital — Garuda x bluDebit Card features", "url": "https://blubybcadigital.id/fitur/kartu/garuda-x-bludebit-card" },
-    { "title": "Garuda Indonesia — GarudaMiles co-brand blu", "url": "https://www.garuda-indonesia.com/static/id/garudamiles/tentang-garudamiles/co-brand-blu.html" },
-    { "title": "PinterPoin — Garuda x bluDebit Card: Sebuah Perspektif PinterPoin", "url": "https://pinterpoin.com/garuda-x-bludebit-card-sebuah-perspektif-pinterpoin/" }
+    {
+      "title": "blu by BCA Digital — Garuda x bluDebit Card FAQ",
+      "url": "https://blubybcadigital.id/info/faq/garuda-x-blu-debit-card"
+    },
+    {
+      "title": "blu by BCA Digital — Garuda x bluDebit Card features",
+      "url": "https://blubybcadigital.id/fitur/kartu/garuda-x-bludebit-card"
+    },
+    {
+      "title": "Garuda Indonesia — GarudaMiles co-brand blu",
+      "url": "https://www.garuda-indonesia.com/static/id/garudamiles/tentang-garudamiles/co-brand-blu.html"
+    },
+    {
+      "title": "PinterPoin — Garuda x bluDebit Card: Sebuah Perspektif PinterPoin",
+      "url": "https://pinterpoin.com/garuda-x-bludebit-card-sebuah-perspektif-pinterpoin/"
+    }
   ],
   "verifiedOn": "2026-09-15",
   "look": {
-    "orientation": "landscape",
-    "colours": ["#0b3f7a", "#1565b8", "#0a3466"],
-    "angle": 125,
-    "finish": "glossy",
+    "orientation": "portrait",
+    "colours": [
+      "#414956",
+      "#39404c",
+      "#2f353f"
+    ],
+    "angle": 160,
+    "finish": "matte",
     "pattern": "none",
-    "motif": "flight-line",
-    "motifColour": "#ffffff5c",
+    "motif": "garuda-contrails",
+    "motifColour": "#4cc6d6",
     "ink": "light",
     "wordmark": "Garuda",
     "bankMark": "blu",

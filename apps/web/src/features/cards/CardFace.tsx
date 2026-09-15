@@ -62,6 +62,26 @@ function Contactless({ md }: { md: boolean }) {
 }
 
 /** A drawn illustration in the manner of a card's artwork. Coordinates are the card in tenths of a millimetre. */
+/** Facets for the low-poly card face, laid out on a jittered grid so no two catch the light alike. */
+const LOW_POLY: [string, number][] = [
+  ['M0 0L118 0L81 136Z', 0.18], ['M0 0L81 136L0 120Z', 0.27], ['M118 0L236 0L81 136Z', 0.23],
+  ['M236 0L221 128L81 136Z', 0.11], ['M236 0L449 0L368 90Z', 0.29], ['M236 0L368 90L221 128Z', 0.07],
+  ['M449 0L511 0L368 90Z', 0.15], ['M511 0L560 171L368 90Z', 0.24], ['M511 0L718 0L661 105Z', 0.08],
+  ['M511 0L661 105L560 171Z', 0.17], ['M718 0L856 0L661 105Z', 0.05], ['M856 0L856 149L661 105Z', 0.21],
+  ['M0 120L81 136L0 319Z', 0.24], ['M81 136L153 259L0 319Z', 0.19], ['M81 136L221 128L352 220Z', 0.27],
+  ['M81 136L352 220L153 259Z', 0.12], ['M221 128L368 90L352 220Z', 0.22], ['M368 90L478 247L352 220Z', 0.19],
+  ['M368 90L560 171L521 228Z', 0.19], ['M368 90L521 228L478 247Z', 0.16], ['M560 171L661 105L521 228Z', 0.26],
+  ['M661 105L687 305L521 228Z', 0.29], ['M661 105L856 149L856 235Z', 0.16], ['M661 105L856 235L687 305Z', 0.21],
+  ['M0 319L153 259L162 391Z', 0.06], ['M0 319L162 391L0 414Z', 0.22], ['M153 259L352 220L162 391Z', 0.21],
+  ['M352 220L292 357L162 391Z', 0.3], ['M352 220L478 247L366 373Z', 0.25], ['M352 220L366 373L292 357Z', 0.11],
+  ['M478 247L521 228L366 373Z', 0.14], ['M521 228L596 397L366 373Z', 0.21], ['M521 228L687 305L687 414Z', 0.05],
+  ['M521 228L687 414L596 397Z', 0.16], ['M687 305L856 235L687 414Z', 0.08], ['M856 235L856 400L687 414Z', 0.07],
+  ['M0 414L162 391L0 540Z', 0.06], ['M162 391L115 540L0 540Z', 0.24], ['M162 391L292 357L327 540Z', 0.07],
+  ['M162 391L327 540L115 540Z', 0.1], ['M292 357L366 373L327 540Z', 0.14], ['M366 373L456 540L327 540Z', 0.27],
+  ['M366 373L596 397L535 540Z', 0.06], ['M366 373L535 540L456 540Z', 0.16], ['M596 397L687 414L535 540Z', 0.18],
+  ['M687 414L724 540L535 540Z', 0.27], ['M687 414L856 400L856 540Z', 0.25], ['M687 414L856 540L724 540Z', 0.26],
+];
+
 function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
   const c = look.motifColour ?? (look.ink === 'light' ? '#ffffff26' : '#00000020');
   const portrait = look.orientation === 'portrait';
@@ -320,6 +340,96 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
           <path d="M412 272l-40-10-6-28-12 2 4 26-32-8-8-14-8 2 4 30-4 30 8 2 8-14 32-8-4 26 12 2 6-28z" fill={c} />
         </>,
       );
+    case 'garuda-contrails':
+      // The airline's five-feather mark, a climbing airliner, and the four contrails it drags across the card.
+      return svg(
+        <>
+          <g fill={c} transform="translate(292 214) scale(1.15)">
+            {/* Five swept feathers, each a little shorter and steeper than the one below it. */}
+            {[0, 1, 2, 3, 4].map((i) => {
+              const len = 132 - i * 16;
+              const rise = 30 + i * 9;
+              return <path key={i} d={`M${-92 + i * 9} ${16 - i * 15}c${len * 0.45} ${-6 - i * 3} ${len * 0.8} ${-rise * 0.55} ${len} ${-rise}c${-len * 0.36} ${rise * 0.34} ${-len * 0.72} ${rise * 0.5} ${-len} ${rise * 0.62}z`} />;
+            })}
+          </g>
+          {/* Contrails: the outer pair muted, the inner pair in the airline's cyan. */}
+          <g fill="none" strokeLinecap="round">
+            {([
+              [694, 430, 0.85, 7],
+              [742, 486, 0.3, 6],
+              [790, 540, 0.75, 7],
+              [838, 598, 0.22, 6],
+            ] as const).map(([y0, y1, o, w], i) => (
+              <path key={i} d={`M40 ${y0}C190 ${y0 - 18} 380 ${(y0 + y1) / 2 - 40} 540 ${y1}`} stroke={c} strokeOpacity={o} strokeWidth={w} />
+            ))}
+          </g>
+          <g fill={c} transform="translate(330 568) rotate(38)">
+            {/* Airliner from above: fuselage, swept wings, tailplane. */}
+            <path d="M0-62c9 16 12 46 10 88l-2 18h-16l-2-18c-2-42 1-72 10-88z" />
+            <path d="M7-10 78 26v12L7 20zM-7-10-78 26v12L-7 20z" />
+            <path d="M5 40l26 16v8L5 54zM-5 40l-26 16v8l26-10z" />
+          </g>
+        </>,
+      );
+    case 'outline-u':
+      // One letter, drawn thin and open at the top, which is the whole of this card's artwork.
+      return svg(
+        <path
+          d="M176 318v182a94 94 0 0 0 188 0V318"
+          fill="none"
+          stroke={c}
+          strokeWidth="15"
+          strokeLinecap="butt"
+        />,
+      );
+    case 'hologram-disc':
+      // A plain black card whose only ornament is the issuer's hologram, so that is what is drawn.
+      return svg(
+        <>
+          <defs>
+            <radialGradient id={`${id}holo`} cx="38%" cy="32%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+              <stop offset="42%" stopColor="#dfe5ec" stopOpacity="0.8" />
+              <stop offset="75%" stopColor="#aab3bf" stopOpacity="0.62" />
+              <stop offset="100%" stopColor="#7c8490" stopOpacity="0.5" />
+            </radialGradient>
+          </defs>
+          {/* A wide, very faint sheen across the matte black, the way the plastic catches light. */}
+          <path d="M-60 300L600 20v120L-60 420z" fill={c} opacity="0.5" />
+          <circle cx="404" cy="322" r="27" fill={`url(#${id}holo)`} />
+          <circle cx="404" cy="322" r="27" fill="none" stroke="#ffffff" strokeOpacity="0.22" strokeWidth="1.5" />
+        </>,
+      );
+    case 'foil-sheen':
+      // Holographic foil: broad soft bands of colour bleeding into one another over the card's own gradient.
+      return svg(
+        <>
+          <defs>
+            <filter id={`${id}blur`} x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="52" />
+            </filter>
+          </defs>
+          <g filter={`url(#${id}blur)`} opacity="0.18">
+            <ellipse cx="120" cy="150" rx="230" ry="150" fill="#ffd9f2" opacity="0.65" />
+            <ellipse cx="470" cy="330" rx="200" ry="170" fill="#ffe9a8" opacity="0.6" />
+            <ellipse cx="90" cy="560" rx="210" ry="160" fill="#9fe8ff" opacity="0.6" />
+            <ellipse cx="430" cy="760" rx="240" ry="150" fill="#ffc2e6" opacity="0.55" />
+            <ellipse cx="300" cy="430" rx="130" ry="95" fill="#ffffff" opacity="0.22" />
+          </g>
+          {/* Two hard streaks, where foil creases catch the light. */}
+          <path d="M0 300L540 96v34L0 334z" fill="#ffffff" opacity="0.14" />
+          <path d="M0 640L540 470v26L0 666z" fill="#ffffff" opacity="0.1" />
+        </>,
+      );
+    case 'low-poly-facets':
+      // A field of large facets, each catching the light differently, like the card's crumpled-foil print.
+      return svg(
+        <g fill={c}>
+          {LOW_POLY.map(([d, o], i) => (
+            <path key={i} d={d} opacity={o} />
+          ))}
+        </g>,
+      );
     case 'sparse-diagonals':
       // A plain face cut by a few long thin strokes, the way a metal card carries a single accent.
       return svg(
@@ -535,7 +645,13 @@ export function CardFace({
         <>
           <div className="absolute flex items-start justify-between gap-2" style={{ top: inset - 2, left: inset, right: inset }}>
             <div className="min-w-0 truncate font-bold tracking-wide">{bank}</div>
-            <div className={cx('min-w-0 truncate text-right leading-tight font-semibold tracking-tight', md ? (cardName.length > 14 ? 'text-[13px]' : 'text-[15px]') : 'text-[10px]')}>
+            <div
+              className={cx(
+                'min-w-0 truncate text-right leading-tight font-semibold tracking-tight',
+                // A portrait card is barely half as wide, so its name steps down a size much sooner.
+                md ? (cardName.length > (portrait ? 7 : 14) ? (cardName.length > (portrait ? 12 : 22) ? 'text-[11px]' : 'text-[13px]') : 'text-[15px]') : 'text-[10px]',
+              )}
+            >
               {cardName}
             </div>
           </div>
