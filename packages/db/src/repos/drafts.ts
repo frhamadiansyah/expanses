@@ -28,6 +28,7 @@ export interface DraftRow {
   currency: string;
   accountId: string | null;
   categoryAccountId: string | null;
+  cardId: string | null;
   confidence: number | null;
   externalRef: string | null;
   transactionId: string | null;
@@ -41,6 +42,7 @@ export interface NewDraft {
   currency: string;
   accountId?: string | null;
   categoryAccountId?: string | null;
+  cardId?: string | null;
   confidence?: number | null;
   externalRef?: string | null;
   rawPayload?: string | null;
@@ -66,10 +68,42 @@ const toRow = (row: typeof draftTransactions.$inferSelect): DraftRow => ({
   currency: row.currency,
   accountId: row.accountId,
   categoryAccountId: row.categoryAccountId,
+  cardId: row.cardId,
   confidence: row.confidence,
   externalRef: row.externalRef,
   transactionId: row.transactionId,
 });
+
+/**
+ * One draft typed into the transactions table, returning its id so the row can keep being filled in.
+ *
+ * Unlike a capture there is nothing to deduplicate: a person typing a row means it, even if it looks
+ * like one already there.
+ */
+export async function createDraft(database: Database, ws: WorkspaceContext, draft: NewDraft): Promise<string> {
+  const id = uuidv7();
+  await database.db.insert(draftTransactions).values({
+    id,
+    workspaceId: ws.workspaceId,
+    source: draft.source,
+    status: 'pending',
+    rawPayload: draft.rawPayload ?? null,
+    rawPurgeAfter: null,
+    occurredOn: draft.occurredOn,
+    description: draft.description,
+    amountMinor: draft.amountMinor,
+    currency: draft.currency,
+    accountId: draft.accountId ?? null,
+    categoryAccountId: draft.categoryAccountId ?? null,
+    cardId: draft.cardId ?? null,
+    confidence: draft.confidence ?? null,
+    externalRef: draft.externalRef ?? null,
+    transactionId: null,
+    createdAt: new Date().toISOString(),
+    resolvedAt: null,
+  });
+  return id;
+}
 
 /**
  * Takes captured rows into the queue, skipping any already posted or already queued.
@@ -114,6 +148,7 @@ export async function captureDrafts(
       currency: draft.currency,
       accountId: draft.accountId ?? null,
       categoryAccountId: draft.categoryAccountId ?? null,
+      cardId: draft.cardId ?? null,
       confidence: draft.confidence ?? null,
       externalRef: draft.externalRef ?? null,
       transactionId: null,
@@ -148,7 +183,7 @@ export async function editDraft(
   database: Database,
   ws: WorkspaceContext,
   id: string,
-  patch: Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'accountId' | 'categoryAccountId'>>,
+  patch: Partial<Pick<NewDraft, 'occurredOn' | 'description' | 'amountMinor' | 'currency' | 'accountId' | 'categoryAccountId' | 'cardId'>>,
 ): Promise<void> {
   await database.db
     .update(draftTransactions)
@@ -179,6 +214,7 @@ export async function confirmDraft(database: Database, ws: WorkspaceContext, id:
       description: draft.description,
       source: draft.source,
       externalRef: draft.externalRef,
+      cardId: draft.cardId,
       lines: [
         { accountId: draft.categoryAccountId!, amountMinor: draft.amountMinor, currency: draft.currency },
         { accountId: draft.accountId!, amountMinor: -draft.amountMinor, currency: draft.currency },

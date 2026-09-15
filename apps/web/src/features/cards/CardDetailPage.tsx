@@ -34,6 +34,7 @@ import { describeSuggestion } from './hint-text';
 import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { activeDuring } from './catalog-panel';
 import { RuleForm } from './RuleForm';
+import { StatementPanel } from './StatementPanel';
 import { TransferEstimates } from './TransferEstimates';
 import { useCardLedger } from './useCardLedger';
 import { type CycleResult, formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
@@ -333,6 +334,8 @@ export function CardDetailPage() {
           </div>
         </form>
       </Section>
+
+      {cp.terms && <StatementPanel card={card} statementDay={cp.terms.statementDay} dueDay={cp.terms.dueDay} accounts={all} plastic={plastic} today={today} />}
 
       <Section title="Cards on this account">
         <p className="mb-3 text-sm text-slate-600">

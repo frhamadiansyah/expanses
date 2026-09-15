@@ -15,6 +15,8 @@ export const draftTransactions = sqliteTable('draft_transactions', {
   currency: text('currency').notNull(),
   accountId: text('account_id'),
   categoryAccountId: text('category_account_id'),
+  /** The card it was made on, when the account carries more than one. */
+  cardId: text('card_id'),
   /** How sure the extractor was, 0 to 100. Null when it does not say. */
   confidence: integer('confidence'),
   externalRef: text('external_ref'),

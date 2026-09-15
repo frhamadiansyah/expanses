@@ -41,7 +41,7 @@ const routeTree = rootRoute.addChildren([
     component: TransactionsPage,
     validateSearch: (search: Record<string, unknown>): TransactionsSearch => ({
       account: typeof search.account === 'string' ? search.account : undefined,
-      month: typeof search.month === 'string' && /^\d{4}-\d{2}$/.test(search.month) ? search.month : undefined,
+      month: typeof search.month === 'string' && /^(\d{4}-\d{2}|all)$/.test(search.month) ? search.month : undefined,
     }),
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/spending', component: SpendingPage }),

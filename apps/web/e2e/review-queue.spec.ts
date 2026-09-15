@@ -31,9 +31,12 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
   await page.getByRole('button', { name: /Send \d+ to review/ }).click();
   await expect(page.getByText(/Nothing is recorded until you confirm it there/)).toBeVisible();
 
-  // Not money yet: the ledger has not been touched.
+  // Not money yet: the list shows it, marked as not recorded, whichever month is open.
   await page.goto('/transactions');
-  await expect(page.getByText('SUPERINDO KEBAYORAN')).toHaveCount(0);
+  await page.getByRole('button', { name: '2 not recorded' }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
+  // The import already guessed a category, so it can be recorded from here as it stands.
+  await expect(page.getByTestId('not-recorded-row').filter({ hasText: 'SUPERINDO KEBAYORAN' }).getByRole('button', { name: 'Record SUPERINDO KEBAYORAN' })).toBeVisible();
 
   await page.goto('/review');
   await expect(page.getByTestId('draft-row')).toHaveCount(2);
@@ -46,7 +49,9 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
   await page.goto('/transactions');
   await expect(page.getByText('SUPERINDO KEBAYORAN')).toBeVisible();
   // The one still waiting stayed waiting.
-  await expect(page.getByText('APOTEK K24')).toHaveCount(0);
+  await page.getByRole('button', { name: '1 not recorded' }).click();
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+  await expect(page.getByTestId('not-recorded-row')).toContainText('APOTEK K24');
 });
 
 test('a discarded capture is not offered again, and never reaches the ledger', async ({ page }) => {
@@ -69,4 +74,23 @@ test('a discarded capture is not offered again, and never reaches the ledger', a
 
   await page.goto('/transactions');
   await expect(page.getByText('APOTEK K24')).toHaveCount(0);
+});
+
+test('a capture is finished and recorded from the transactions list itself', async ({ page }) => {
+  await addAccount(page);
+  await loadCsv(page);
+  await page.getByRole('button', { name: /Send \d+ to review/ }).click();
+  await expect(page.getByText(/Sent \d+ rows to Review/)).toBeVisible();
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: '2 not recorded' }).click();
+  await page.getByTestId('not-recorded-row').filter({ hasText: 'APOTEK K24' }).click();
+  await page.getByLabel('Row amount (IDR)').fill('80.000');
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
+
+  // Pressing the chip again shows everything: the recorded row, and the one still waiting beside it.
+  await page.getByRole('button', { name: '1 not recorded' }).click();
+  await expect(page.locator('li', { hasText: 'APOTEK K24' })).toContainText('80.000');
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
+  await expect(page.getByTestId('not-recorded-row')).toContainText('SUPERINDO KEBAYORAN');
 });

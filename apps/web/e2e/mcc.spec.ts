@@ -62,7 +62,8 @@ async function buy(page: Page, p: Purchase) {
 }
 
 const thisCycle = (page: Page) => page.locator('section', { has: page.getByRole('heading', { name: /^This cycle:/ }) });
-const purchaseRow = (page: Page, description: string) => page.locator('li', { hasText: description });
+// The statements panel lists the same purchases; these tests are about the points list.
+const purchaseRow = (page: Page, description: string) => page.locator('li:not([data-testid="statement-line"])', { hasText: description });
 
 /** A date in the statement cycle before the current one, for a card whose statement closes on day 25. */
 function lastCycleDate(): string {

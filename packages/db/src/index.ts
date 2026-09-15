@@ -57,5 +57,7 @@ export * as categorySetsSchema from './schema-category-sets';
 export * from './repos/category-sets';
 export * as draftsSchema from './schema-drafts';
 export * from './repos/drafts';
+export * from './repos/entry';
+export * from './repos/statements';
 export * as cardsSchema from './schema-cards';
 export * from './repos/cards';
