@@ -4,8 +4,8 @@
   "name": "CIMB Niaga OCTO Card",
   "network": "visa",
   "program": {
-    "unit": "points",
-    "name": "Poin Xtra",
+    "unit": "cashback",
+    "name": "OCTO Cashback",
     "cycleAnchor": "statement"
   },
   "fees": [
@@ -20,31 +20,94 @@
   "terms": [
     {
       "effectiveFrom": null,
+      "effectiveTo": "2026-03-31",
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "qris",
+          "name": "QRIS at 10%",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "merchantPatterns": [
+              "qris",
+              "qr"
+            ]
+          },
+          "capPoints": 100000
+        },
+        {
+          "key": "online",
+          "name": "Online at 10%",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "merchantPatterns": [
+              "tokopedia",
+              "shopee",
+              "lazada",
+              "blibli",
+              "tiktok shop",
+              "bukalapak",
+              "zalora",
+              "amazon",
+              "netflix",
+              "spotify",
+              "steam",
+              "google play",
+              "apple.com"
+            ],
+            "excludeMccs": [
+              "3000-3299",
+              "3500-3999",
+              "4511",
+              "4722",
+              "7011"
+            ]
+          },
+          "capPoints": 100000
+        }
+      ]
+    },
+    {
+      "effectiveFrom": "2026-04-01",
       "effectiveTo": null,
       "cycleBonuses": [],
       "rules": [
         {
-          "key": "base",
-          "name": "Base",
-          "rateNum": 25,
-          "rateDen": 50000,
+          "key": "qris",
+          "name": "QRIS at 10%",
+          "rateNum": 1,
+          "rateDen": 10,
           "rounding": "per_increment",
-          "priority": 0,
+          "priority": 20,
           "stackable": false,
-          "match": {}
+          "match": {
+            "merchantPatterns": [
+              "qris",
+              "qr"
+            ]
+          },
+          "capPoints": 100000
         }
       ]
     }
   ],
   "notes": [
-    "25 Poin Xtra for every whole Rp 50.000 of retail spending, which is a point per Rp 2.000. Poin Xtra pay for retail transactions and bills rather than converting to miles.",
+    "This card is written as a cashback card, because that is what it is worth holding for. It does earn Poin Xtra, 25 for every whole Rp 50.000, which is a point per Rp 2.000 — and a Poin Xtra is statement credit worth about a rupiah, so the points are roughly 0,05% back against a cashback rate of 10%. A card carries one reward program here, so the points are the half given up.",
+    "The 10% came in two halves. On a QRIS scan it is capped at Rp 10.000 a transaction; on an online purchase it was capped at Rp 50.000 and never applied to hotels, airlines or travel agents. Both share one ceiling of Rp 100.000 a billing period on the main card.",
+    "The online half was discontinued on 1 April 2026 for the Visa and JCB OCTO Card, which is why the terms are written in two periods. A cycle before that date still earns it; a cycle after does not.",
+    "The per-transaction ceilings, Rp 10.000 on QRIS and Rp 50.000 online, are not applied: a cap here is per cycle, not per purchase. One large QRIS payment is therefore overestimated, though the Rp 100.000 monthly ceiling still holds the month down.",
+    "A QRIS payment is recognised by the word QRIS or QR in the description, which is how these statements read. The online half was matched by merchant name, from the marketplaces and subscriptions people here actually use, so an online shop outside that list earned nothing in the estimate.",
     "There is no annual fee at all, on the primary card or a supplementary one.",
-    "The card also pays 10% back, and that cashback comes in two halves. On a QRIS scan it is capped at Rp 10.000 a transaction; on an online purchase it was capped at Rp 50.000 a transaction and did not apply to hotels, airlines or travel agents. Both share one ceiling of Rp 100.000 a billing period on the main card.",
-    "The online half was discontinued on 1 April 2026 for the Visa and JCB OCTO Card, so what survives today is the QRIS half. The QRIS half is matchable — a QRIS payment reaches the statement carrying the name — but a rule cannot pay it, because a program earns in one unit and this one earns points. See the note below.",
-    "What stops the cashback being written as a rule is the unit, not the matching: Poin Xtra and rupiah are different currencies and a card carries one reward program here. Whichever were written, the other would be lost.",
     "CIMB issues the OCTO Card on Visa and on JCB. This entry is written as the Visa; the JCB earns the same way, and the 1 April 2026 change named both.",
-    "Nothing earns on instalments, cash withdrawals, Cash Plus, other cashback programmes, the catalogue, membership fees, recurring transactions, fees or interest. Those exclusions are not written as rules, because the app does not see most of them as spending in the first place.",
-    "Transfer partners are not recorded: Poin Xtra are a statement-credit currency, not a mileage one."
+    "Nothing earns on instalments, cash withdrawals, Cash Plus, other cashback programmes, the catalogue, membership fees, recurring transactions, fees or interest. Those exclusions are not written as rules, because the app does not see most of them as spending in the first place."
   ],
   "sources": [
     {
@@ -77,9 +140,13 @@
     "bankMark": "CIMB Niaga",
     "chip": "gold"
   },
-  "entryVersion": 2,
+  "entryVersion": 3,
   "currency": "IDR",
-  "cashValue": null,
+  "cashValue": {
+    "valueMinor": 1,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
   "welcomeBonus": null,
   "verifiedOn": "2026-09-15",
   "transferPartners": []

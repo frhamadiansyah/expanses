@@ -44,11 +44,11 @@ async function withCard(entryId: string, memberLevel?: string) {
   return { ...t, card, programId };
 }
 
-async function spend(t: Awaited<ReturnType<typeof withCard>>, amountMinor: number, opts: { category?: string; description?: string; mcc?: string } = {}) {
+async function spend(t: Awaited<ReturnType<typeof withCard>>, amountMinor: number, opts: { category?: string; description?: string; mcc?: string; on?: string } = {}) {
   const all = await listAccounts(t.database, t.ws);
   const categoryAccountId = all.find((a) => a.systemKey === (opts.category ?? 'shopping'))!.id;
   await postTransaction(t.database, t.ws, {
-    occurredOn: '2026-09-10',
+    occurredOn: opts.on ?? '2026-09-10',
     description: opts.description ?? 'Belanja',
     mcc: opts.mcc,
     lines: expenseLines({ categoryAccountId, paymentAccountId: t.card.id, amountMinor, currency: 'IDR' }),
@@ -65,23 +65,35 @@ async function earned(t: Awaited<ReturnType<typeof withCard>>) {
 }
 
 describe('the cards added as a set', () => {
-  it('are all in the catalogue, all credit cards, all on a statement cycle', () => {
+  it('are all in the catalogue, all credit cards, all sourced', () => {
     for (const id of ADDED) {
       const entry = findEntry(id);
       expect(entry, id).toBeDefined();
       expect(entry!.cardType ?? 'credit', id).toBe('credit');
-      expect(entry!.program.cycleAnchor, id).toBe('statement');
       expect(entry!.sources.length, id).toBeGreaterThan(0);
     }
   });
 
+  it('count their cycles the way each issuer writes the cap', () => {
+    // Danamon caps its cashback "per bulan", so its cycle is the calendar month rather than the statement.
+    for (const id of ADDED) {
+      const expected = id === 'danamon-visa-platinum' ? 'calendar' : 'statement';
+      expect(findEntry(id)!.program.cycleAnchor, id).toBe(expected);
+    }
+  });
+
   it('each earn something on the purchase the card is for', async () => {
-    // Live Fresh earns on online spending alone, so it is the one card a plain shop purchase pays nothing on.
-    const online = { description: 'Tokopedia' };
+    // Four cards earn on one kind of purchase only, so each gets the purchase its own rules are written for.
+    const only: Record<string, Parameters<typeof spend>[2]> = {
+      'dbs-live-fresh-visa': { description: 'Tokopedia' },
+      'cimb-niaga-octo-card': { description: 'QRIS Warung Tegal' },
+      'danamon-visa-platinum': { on: '2026-09-19' },
+      'bni-mypertamina': { category: 'transportation.fuel_cost', description: 'MyPertamina top up', mcc: '5541' },
+    };
     for (const id of ADDED) {
       const levels = findEntry(id)!.program.memberLevels;
       const t = await withCard(id, levels?.[0]?.key);
-      await spend(t, 1_000_000, id === 'dbs-live-fresh-visa' ? online : {});
+      await spend(t, 1_000_000, only[id] ?? {});
       expect(await earned(t), id).toBeGreaterThan(0);
     }
   });
@@ -195,26 +207,6 @@ describe('the two Permata cards', () => {
 });
 
 describe('the three that earn a flat rate', () => {
-  it('gives the OCTO Card 25 points a block of Rp 50.000, and charges nothing for it', async () => {
-    const t = await withCard('cimb-niaga-octo-card');
-    await spend(t, 1_000_000);
-    expect(await earned(t)).toBe(500);
-    // A part-block earns nothing, which is what "kelipatan Rp 50.000" means.
-    const part = await withCard('cimb-niaga-octo-card');
-    await spend(part, 49_999);
-    expect(await earned(part)).toBe(0);
-    expect(findEntry('cimb-niaga-octo-card')!.fees[0]!.annualFeeMinor).toBe(0);
-  });
-
-  it('gives the Danamon Visa Platinum the same D-Point rate and ratios as the JCB Precious', async () => {
-    const t = await withCard('danamon-visa-platinum');
-    await spend(t, 1_000_000);
-    expect(await earned(t)).toBe(400);
-    const partners = await listTransferPartners(t.database, t.ws, t.programId);
-    expect(convertPoints(7_500, partners.find((p) => p.program === 'GarudaMiles')!)).toBe(500);
-    expect(findEntry('danamon-visa-platinum')!.transferPartners).toEqual(findEntry('danamon-jcb-precious')!.transferPartners);
-  });
-
   it('gives BNI Tzu Chi the ordinary BNI rate, its donation costing the holder nothing', async () => {
     const t = await withCard('bni-tzu-chi');
     await spend(t, 1_000_000);
@@ -223,16 +215,98 @@ describe('the three that earn a flat rate', () => {
   });
 });
 
-describe('BNI MyPertamina at the pump', () => {
-  it('doubles only when the name and the fuel code agree', async () => {
-    const t = await withCard('bni-mypertamina');
-    await spend(t, 1_000_000, { category: 'transportation.fuel_cost', description: 'MyPertamina top up', mcc: '5541' });
-    expect(await earned(t)).toBe(200);
+describe('the three cards kept as cashback, because their points are not worth having', () => {
+  const CASHBACK = ['danamon-visa-platinum', 'cimb-niaga-octo-card', 'bni-mypertamina'];
+
+  it('earn in rupiah, and say in their notes which points were given up', () => {
+    for (const id of CASHBACK) {
+      const entry = findEntry(id)!;
+      expect(entry.program.unit, id).toBe('cashback');
+      expect(entry.cashValue, id).toEqual({ valueMinor: 1, perPoints: 1, currency: 'IDR' });
+      expect(entry.transferPartners, id).toEqual([]);
+      expect(entry.notes[0], id).toContain('given up');
+    }
   });
 
-  it('falls back to the base rate at a filling station that is not Pertamina', async () => {
+  it('leaves the Danamon JCB Precious on points, whose uplift is worth four times its sibling', () => {
+    const precious = findEntry('danamon-jcb-precious')!;
+    expect(precious.program.unit).toBe('points');
+    expect(precious.transferPartners.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Danamon Visa Platinum, now paid at the weekend', () => {
+  // 19 September 2026 is a Saturday, 16 September a Wednesday.
+  const SATURDAY = '2026-09-19';
+  const WEDNESDAY = '2026-09-16';
+
+  it('pays 10% on a Saturday purchase and nothing on a Wednesday one', async () => {
+    const sat = await withCard('danamon-visa-platinum');
+    await spend(sat, 1_000_000, { on: SATURDAY });
+    expect(await earned(sat)).toBe(100_000);
+
+    const wed = await withCard('danamon-visa-platinum');
+    await spend(wed, 1_000_000, { on: WEDNESDAY });
+    expect(await earned(wed)).toBe(0);
+  });
+
+  it('ignores a weekend purchase below Rp 100.000, which does not qualify', async () => {
+    const t = await withCard('danamon-visa-platinum');
+    await spend(t, 99_999, { on: SATURDAY });
+    expect(await earned(t)).toBe(0);
+  });
+
+  it('stops the weekend at Rp 200.000 and the bills at Rp 100.000, separately', async () => {
+    const t = await withCard('danamon-visa-platinum');
+    await spend(t, 30_000_000, { on: SATURDAY });
+    await spend(t, 30_000_000, { category: 'utilities.electricity', description: 'Token listrik PLN', on: WEDNESDAY });
+    expect(await earned(t)).toBe(300_000);
+  });
+});
+
+describe('CIMB Niaga OCTO, whose online half ended on 1 April 2026', () => {
+  it('pays 10% on a QRIS payment', async () => {
+    const t = await withCard('cimb-niaga-octo-card');
+    await spend(t, 500_000, { description: 'QRIS Warung Tegal' });
+    expect(await earned(t)).toBe(50_000);
+  });
+
+  it('pays nothing on an online purchase now, where it once paid 10%', () => {
+    const [before, after] = findEntry('cimb-niaga-octo-card')!.terms;
+    expect(before!.effectiveTo).toBe('2026-03-31');
+    expect(before!.rules.map((r) => r.key)).toEqual(['qris', 'online']);
+    expect(after!.effectiveFrom).toBe('2026-04-01');
+    expect(after!.rules.map((r) => r.key)).toEqual(['qris']);
+  });
+
+  it('stops at Rp 100.000 a cycle', async () => {
+    const t = await withCard('cimb-niaga-octo-card');
+    await spend(t, 5_000_000, { description: 'QRIS Warung Tegal' });
+    expect(await earned(t)).toBe(100_000);
+  });
+});
+
+describe('BNI MyPertamina at the pump', () => {
+  it('pays 8% when the name and the fuel code agree', async () => {
     const t = await withCard('bni-mypertamina');
-    await spend(t, 1_000_000, { category: 'transportation.fuel_cost', description: 'Shell Kemang', mcc: '5541' });
-    expect(await earned(t)).toBe(100);
+    await spend(t, 1_000_000, { category: 'transportation.fuel_cost', description: 'MyPertamina top up', mcc: '5541' });
+    expect(await earned(t)).toBe(80_000);
+  });
+
+  it('pays nothing at a filling station that is not Pertamina, nor below Rp 250.000', async () => {
+    const other = await withCard('bni-mypertamina');
+    await spend(other, 1_000_000, { category: 'transportation.fuel_cost', description: 'Shell Kemang', mcc: '5541' });
+    expect(await earned(other)).toBe(0);
+
+    const small = await withCard('bni-mypertamina');
+    await spend(small, 249_999, { category: 'transportation.fuel_cost', description: 'MyPertamina top up', mcc: '5541' });
+    expect(await earned(small)).toBe(0);
+  });
+
+  it('runs uncapped, which overstates a heavy month until the real ceiling is known', async () => {
+    const t = await withCard('bni-mypertamina');
+    await spend(t, 50_000_000, { category: 'transportation.fuel_cost', description: 'MyPertamina top up', mcc: '5541' });
+    expect(await earned(t)).toBe(4_000_000);
+    expect(findEntry('bni-mypertamina')!.terms[0]!.rules[0]!.capPoints ?? null).toBeNull();
   });
 });

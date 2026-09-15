@@ -4,8 +4,8 @@
   "name": "BNI MyPertamina",
   "network": "mastercard",
   "program": {
-    "unit": "points",
-    "name": "BNI Reward Point",
+    "unit": "cashback",
+    "name": "MyPertamina Cashback",
     "cycleAnchor": "statement"
   },
   "fees": [],
@@ -16,10 +16,10 @@
       "cycleBonuses": [],
       "rules": [
         {
-          "key": "mypertamina",
-          "name": "Double points at Pertamina",
+          "key": "fuel",
+          "name": "Fuel through the MyPertamina app at 8%",
           "rateNum": 2,
-          "rateDen": 10000,
+          "rateDen": 25,
           "rounding": "per_increment",
           "priority": 20,
           "stackable": false,
@@ -33,28 +33,20 @@
               "5541",
               "5542"
             ]
-          }
-        },
-        {
-          "key": "base",
-          "name": "Base",
-          "rateNum": 1,
-          "rateDen": 10000,
-          "rounding": "per_increment",
-          "priority": 0,
-          "stackable": false,
-          "match": {}
+          },
+          "minTransactionMinor": 250000
         }
       ]
     }
   ],
   "notes": [
-    "One BNI Reward Point per Rp 10.000, doubled on MyPertamina transactions.",
-    "The doubled rule wants both a Pertamina merchant name and a fuel code (MCC 5541 or 5542), because the two together are what a fill-up looks like. A MyPertamina payment that reaches the statement under some other code will estimate at the base rate.",
-    "The card’s headline is 8% back on fuel bought through the MyPertamina app on at least Rp 250.000. The matching is already here — the doubled rule above finds exactly those purchases, and a Rp 250.000 floor is a field that exists — so what stops it is only the unit: BNI Reward Points and rupiah are different currencies and a card carries one reward program. Whatever ceiling the bank puts on that cashback was not retrieved either.",
+    "This card is written as a cashback card, because that is what it is for. It does earn BNI Reward Points, one per Rp 10.000 and two at Pertamina, but no redemption value for them could be found at all, while the fuel cashback is 8%. A card carries one reward program here, so the points are the half given up.",
+    "8% back on fuel bought through the MyPertamina app, on a transaction of at least Rp 250.000. The Rp 250.000 is written as a minimum per purchase, so a smaller fill-up earns nothing.",
+    "The rule wants both a Pertamina merchant name and a fuel code (MCC 5541 or 5542), because the two together are what a fill-up through the app looks like. A payment that reaches the statement under some other code earns nothing in the estimate.",
+    "No monthly ceiling is applied, and that is the entry’s weakest point: whatever cap BNI puts on this cashback is not published anywhere reachable from here, and inventing a figure would read as fact. A heavy fuel month is therefore overestimated, without limit. If you know the cap, put it on this rule as a points cap and the estimate becomes right.",
+    "Nothing is written for spending away from the pump, because the 8% is the card’s only cashback.",
     "The annual fee is not recorded — no published figure was found, and bni.co.id is unreachable from here. Enter it on the card terms yourself.",
-    "The card launched on 21 December 2024, replacing the earlier BNI-Pertamina card, which is where the terms start.",
-    "Transfer partners are not recorded, as on the other BNI cards here."
+    "The card launched on 21 December 2024, replacing the earlier BNI-Pertamina card, which is where the terms start."
   ],
   "sources": [
     {
@@ -87,9 +79,13 @@
     "bankMark": "BNI",
     "chip": "silver"
   },
-  "entryVersion": 2,
+  "entryVersion": 3,
   "currency": "IDR",
-  "cashValue": null,
+  "cashValue": {
+    "valueMinor": 1,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
   "welcomeBonus": null,
   "verifiedOn": "2026-09-15",
   "transferPartners": []
