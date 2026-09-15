@@ -59,19 +59,19 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#0b4f63",
-      "#11788f",
-      "#083a49"
+      "#0a0c0b",
+      "#121614",
+      "#070908"
     ],
-    "angle": 135,
+    "angle": 140,
     "finish": "matte",
     "pattern": "none",
-    "motif": "rosette-tile",
-    "motifColour": "#bfe9f21c",
+    "motif": "lotus-watermark",
+    "motifColour": "#1f7a4d66",
     "ink": "light",
     "wordmark": "Tzu Chi",
     "bankMark": "BNI",
-    "chip": "gold"
+    "chip": "silver"
   },
   "entryVersion": 1,
   "currency": "IDR",

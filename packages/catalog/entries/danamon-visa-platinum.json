@@ -88,17 +88,17 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#0a2a4a",
-      "#1d5c94",
-      "#071e36"
+      "#2a1b16",
+      "#4a332a",
+      "#20140f"
     ],
-    "angle": 125,
+    "angle": 130,
     "finish": "metallic",
     "pattern": "none",
-    "motif": "chrome-curves",
-    "motifColour": "#cfe4f733",
+    "motif": "copper-ribbon",
+    "motifColour": "#e08b45",
     "ink": "light",
-    "wordmark": "Platinum",
+    "wordmark": "platinum",
     "bankMark": "Danamon",
     "chip": "silver"
   },

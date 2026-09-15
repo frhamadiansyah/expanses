@@ -88,15 +88,15 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#111111",
-      "#2e2a24",
-      "#0a0a0a"
+      "#17399a",
+      "#1b3f9c",
+      "#122f7e"
     ],
-    "angle": 120,
-    "finish": "metallic",
+    "angle": 135,
+    "finish": "glossy",
     "pattern": "none",
-    "motif": "engraved-frame",
-    "motifColour": "#d9b96a4d",
+    "motif": "sakura-branch",
+    "motifColour": "#ffffff",
     "ink": "light",
     "wordmark": "Ultimate",
     "bankMark": "Permata",

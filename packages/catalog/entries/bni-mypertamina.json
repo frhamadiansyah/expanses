@@ -65,15 +65,16 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#101214",
-      "#24282d",
-      "#0a0c0e"
+      "#b5121b",
+      "#3a1230",
+      "#11245e",
+      "#0a1430"
     ],
-    "angle": 150,
-    "finish": "matte",
+    "angle": 100,
+    "finish": "glossy",
     "pattern": "none",
-    "motif": "swirl-edges",
-    "motifColour": "#2ec16a4d",
+    "motif": "light-streaks",
+    "motifColour": "#9fd4ff",
     "ink": "light",
     "wordmark": "MyPertamina",
     "bankMark": "BNI",

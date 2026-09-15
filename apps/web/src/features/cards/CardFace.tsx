@@ -62,6 +62,39 @@ function Contactless({ md }: { md: boolean }) {
 }
 
 /** A drawn illustration in the manner of a card's artwork. Coordinates are the card in tenths of a millimetre. */
+/** Cherry blossoms strung along two branches: x, y, radius, rotation. */
+const SAKURA: [number, number, number, number][] = [
+  [-4, 153, 24.9, 36.8], [5, 201, 20.5, 10.7], [27, 136, 21.2, 19.3], [47, 163, 20.9, 41], [89, 150, 18.8, 39.1],
+  [140, 242, 30.3, 29.8], [146, 254, 29.4, 28.5], [231, 215, 32.4, 60], [276, 299, 19.4, 39.3], [302, 288, 22.4, 10],
+  [325, 212, 28.4, 0.5], [341, 258, 17.3, 34.6], [377, 246, 32, 62.4], [444, 230, 15.5, 27.1], [404, 279, 20, 9.2],
+  [450, 239, 29, 33.2], [502, 171, 15.9, 15.1], [560, 189, 16.9, 4.8], [566, 187, 15.3, 31.4], [568, 127, 18.3, 20.6],
+  [609, 136, 26.8, 63.3], [652, 135, 27.3, 45.6], [614, 175, 27.4, 68.4], [722, 198, 26.2, 69], [680, 191, 16.2, 55.8],
+  [745, 155, 18.7, 37.7], [779, 143, 21.1, 36.9], [758, 226, 28.8, 68.8], [818, 197, 20.4, 36.3], [823, 166, 16.2, 61.2],
+  [823, 155, 32.7, 36.9], [914, 122, 23.9, 27.3],
+];
+/** Buds and fallen petals scattered between the branches. */
+const SAKURA_BUDS: [number, number, number][] = [
+  [285, 193, 6.2], [707, 410, 4.5], [565, 250, 6.1], [53, 190, 5.6], [320, 274, 5.8], [261, 159, 8.9], [340, 410, 4.8],
+  [562, 260, 7.5], [440, 375, 6.9], [58, 306, 7.1], [220, 323, 8.2], [246, 113, 5.4], [501, 220, 4.4], [387, 257, 6.9],
+  [309, 343, 7.4], [231, 185, 8.6], [200, 221, 5.5], [496, 346, 4.6], [175, 83, 4.6], [445, 236, 8.7], [390, 249, 4.1],
+  [204, 171, 5.2],
+];
+/** Light trails converging on a point off the right edge: x1, y1, x2, y2, width, opacity. */
+const STREAKS: [number, number, number, number, number, number][] = [
+  [620, 271, 462, 244, 3, 0.25], [584, 339, 443, 365, 3.8, 0.44], [582, 356, 181, 464, 3.7, 0.7], [658, 264, 403, 194, 3.7, 0.41],
+  [632, 254, 520, 221, 1.5, 0.43], [599, 358, 198, 480, 4.4, 0.79], [667, 318, 527, 339, 4.4, 0.17], [583, 355, 184, 460, 3, 0.19],
+  [558, 367, 245, 459, 2.3, 0.79], [672, 315, 235, 371, 1.4, 0.39], [578, 341, 308, 392, 2.1, 0.56], [518, 365, 164, 450, 1.9, 0.54],
+  [585, 327, 365, 357, 1.9, 0.47], [521, 371, 172, 464, 2, 0.54], [672, 323, 436, 369, 3.6, 0.19], [662, 265, 504, 223, 2.9, 0.74],
+  [588, 310, 134, 332, 3, 0.38], [601, 335, 284, 394, 3.2, 0.28], [535, 379, 226, 474, 4.1, 0.7], [661, 306, 215, 325, 4.2, 0.19],
+  [597, 285, 470, 276, 3.1, 0.57], [647, 304, 226, 317, 3.5, 0.33], [521, 256, 279, 216, 3.1, 0.21], [541, 355, 129, 447, 4.4, 0.25],
+  [621, 280, 433, 258, 4.2, 0.21], [642, 338, 488, 378, 2.5, 0.56], [507, 297, 222, 295, 1.7, 0.51], [589, 360, 437, 406, 2.9, 0.43],
+  [685, 272, 490, 220, 2.3, 0.49], [496, 319, 64, 348, 4.4, 0.59], [594, 266, 414, 234, 1.8, 0.27], [568, 265, 442, 245, 2.2, 0.2],
+  [628, 298, 344, 294, 2.5, 0.41], [535, 307, 392, 311, 3.8, 0.53], [673, 280, 465, 244, 4.3, 0.77], [626, 322, 398, 352, 2.3, 0.77],
+  [611, 300, 183, 299, 3.4, 0.76], [609, 284, 464, 272, 2.9, 0.49], [524, 282, 282, 265, 3.1, 0.69], [556, 234, 369, 182, 4, 0.59],
+  [588, 322, 205, 363, 3.9, 0.31], [561, 302, 382, 303, 3.8, 0.66], [500, 286, 274, 276, 2.1, 0.78], [699, 294, 434, 276, 2.3, 0.69],
+  [686, 269, 377, 177, 4.1, 0.22], [693, 303, 453, 311, 3.2, 0.61],
+];
+
 /** Facets for the low-poly card face, laid out on a jittered grid so no two catch the light alike. */
 const LOW_POLY: [string, number][] = [
   ['M0 0L118 0L81 136Z', 0.18], ['M0 0L81 136L0 120Z', 0.27], ['M118 0L236 0L81 136Z', 0.23],
@@ -429,6 +462,96 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
             <path key={i} d={d} opacity={o} />
           ))}
         </g>,
+      );
+    case 'sakura-branch':
+      // Cherry blossom over deep blue: two branches of five-petal flowers, with buds and fallen petals between.
+      return svg(
+        <g fill={c} transform="translate(0 46)">
+          {/* The branches the flowers hang from, drawn thin so the blossom carries the card. */}
+          <g fill="none" stroke={c} strokeOpacity="0.5" strokeWidth="3" strokeLinecap="round">
+            <path d="M-20 120Q240 300 470 250" />
+            <path d="M520 150Q690 230 880 150" />
+            <path d="M120 196q60 44 132 40M300 262q56-26 104-20M640 156q44 26 96 18" />
+          </g>
+          {SAKURA.map(([x, y, r, rot], i) => (
+            <g key={i} transform={`translate(${x} ${y}) rotate(${rot})`}>
+              {[0, 72, 144, 216, 288].map((a) => (
+                <path key={a} d={`M0 0C${r * 0.5} ${-r * 0.4} ${r * 0.52} ${-r} 0 ${-r}C${-r * 0.52} ${-r} ${-r * 0.5} ${-r * 0.4} 0 0Z`} transform={`rotate(${a})`} />
+              ))}
+              <circle r={r * 0.14} fillOpacity="0.55" />
+            </g>
+          ))}
+          {SAKURA_BUDS.map(([x, y, r], i) => (
+            <circle key={i} cx={x} cy={y} r={r} fillOpacity="0.8" />
+          ))}
+        </g>,
+      );
+    case 'octo-rings':
+      // The card is flat red and its one device is the ring cut out of the O; this draws it large and faint.
+      return svg(
+        <>
+          <g fill="none" stroke={c} strokeLinecap="round">
+            <path d="M604 128a148 148 0 1 1-104 43" strokeWidth="34" />
+            <path d="M604 202a74 74 0 1 1-52 22" strokeWidth="18" strokeOpacity="0.6" />
+          </g>
+          {/* A broad sheen off the top-left corner, the way the plastic catches light. */}
+          <path d="M-40 0L430 0 60 400-40 330z" fill={c} opacity="0.35" />
+        </>,
+      );
+    case 'copper-ribbon':
+      // A bundle of fine copper threads swept across the card, over two broad pale waves.
+      return svg(
+        <>
+          <g fill={c} opacity="0.13">
+            <path d="M0 250C180 150 300 330 520 268s250-150 336-118v92C760 214 640 372 470 350S180 268 0 342z" />
+            <path d="M0 400C200 320 320 452 540 392s230-118 316-92v70C770 348 650 470 470 452S170 420 0 452z" opacity="0.6" />
+          </g>
+          <g fill="none" stroke={c} strokeWidth="1.4" strokeLinecap="round">
+            {Array.from({ length: 22 }, (_, i) => {
+              const d = i * 7;
+              return <path key={i} d={`M0 ${262 + d}C170 ${170 + d * 0.7} 300 ${346 + d * 0.9} 520 ${284 + d}s250 ${-150 + d * 0.3} 336 ${-118 + d * 0.5}`} strokeOpacity={0.15 + (i % 5) * 0.14} />;
+            })}
+          </g>
+        </>,
+      );
+    case 'lotus-watermark':
+      // A lotus standing open, printed dark on black the way the real card ghosts it.
+      return svg(
+        <g fill={c}>
+          <g transform="translate(470 264)" opacity="0.5">
+            {[-72, -48, -24, 0, 24, 48, 72].map((a, i) => {
+              const h = 190 - Math.abs(a) * 0.9;
+              return (
+                <path
+                  key={a}
+                  transform={`rotate(${a})`}
+                  d={`M0 0C${h * 0.34} ${-h * 0.34} ${h * 0.3} ${-h * 0.82} 0 ${-h}C${-h * 0.3} ${-h * 0.82} ${-h * 0.34} ${-h * 0.34} 0 0Z`}
+                  fillOpacity={0.5 + (i % 2) * 0.35}
+                />
+              );
+            })}
+            {/* The boat the lotus sits in, from the charity's own emblem. */}
+            <path d="M-118 16C-70 62 70 62 118 16 78 40-78 40-118 16Z" fillOpacity="0.8" />
+          </g>
+        </g>,
+      );
+    case 'light-streaks':
+      // Long-exposure light trails running off toward a point beyond the right edge.
+      return svg(
+        <>
+          <defs>
+            <filter id={`${id}trail`} x="-20%" y="-40%" width="140%" height="180%">
+              <feGaussianBlur stdDeviation="2.4" />
+            </filter>
+          </defs>
+          <g stroke={c} strokeLinecap="round" filter={`url(#${id}trail)`}>
+            {STREAKS.map(([x1, y1, x2, y2, w, o], i) => (
+              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={w} strokeOpacity={o} />
+            ))}
+          </g>
+          {/* The glow they all run toward. */}
+          <ellipse cx="770" cy="300" rx="130" ry="80" fill={c} opacity="0.2" filter={`url(#${id}trail)`} />
+        </>,
       );
     case 'sparse-diagonals':
       // A plain face cut by a few long thin strokes, the way a metal card carries a single accent.
