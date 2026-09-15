@@ -389,14 +389,12 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
           <g transform={`translate(${w / 2} ${h / 2})`}>
             <circle r="140" fill={c} opacity="0.1" />
             <circle r="140" fill="none" stroke={c} strokeWidth="9" opacity="0.95" />
-            <circle r="126" fill="none" stroke={c} strokeWidth="13" strokeDasharray="7 11" opacity="0.8" />
-            {/* A crested helmet in profile as a flat glyph: solid fills, detail cut out as negative space. */}
-            <g transform="translate(-120 -156)" fill={c}>
-              <path d="M92 76C96 20 152-6 194 20c24 16 34 44 28 74-18-34-50-52-86-46-16 3-30 12-44 28z" />
-              <path d="M92 76c-27 23-44 58-48 98-5 43 6 82 28 110-14-38-17-80-7-119 6-25 15-53 27-89z" />
+            {/* A centurion in side profile, flat: two solid fills, the rest cut out as negative space. */}
+            <g transform="translate(-120 -150)" fill={c}>
+              <path d="M68 80C84 16 178-2 196 72l-20 6C162 28 96 40 86 86z" />
               <path
                 fillRule="evenodd"
-                d="M146 44c40 4 62 40 58 78l12 14-20 8 22 30-20 8 8 14-18 10 8 12-24 14-24 4-4 26c34 8 60 22 70 44H70c4-30 16-56 30-74l-4-36c-22-16-32-44-28-72 4-36 40-64 78-58zm-16 86c-12 28-10 60 6 84l20-8c-14-22-16-50-8-74zm42 12l-14 8 4 14 14-8z"
+                d="M128 48c40 0 70 34 70 76l8 10-18 6 22 30-18 8 6 12-16 8 8 10-22 14-24 4-4 26c36 6 62 24 72 48H58c4-26 12-48 24-64l-18-26c-18-26-22-60-12-90 10-30 42-52 76-52zm8 86c-12 30-10 62 6 88l16-6c-14-24-16-56-8-80zm42 10l-18 9 6 16 18-9z"
               />
             </g>
           </g>
