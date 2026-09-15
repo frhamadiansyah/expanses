@@ -391,7 +391,7 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
             <ellipse rx="120" ry="146" fill="none" strokeWidth="9" opacity="0.9" />
             <ellipse rx="106" ry="132" fill="none" strokeWidth="2.5" opacity="0.65" />
             {/* A Spartan helmet in side profile: the crest is seven segments of one arc, computed. */}
-            <g transform="scale(0.74) translate(-140 -168)" fill={c}>
+            <g transform="scale(0.58) translate(-121 -167)" fill={c} opacity="0.42">
               <path d="M10.9 208.4A122 122 0 0 1 -3.9 154.8L46.1 152.8A72 72 0 0 0 54.8 184.5ZM-4.0 148.8A122 122 0 0 1 9.2 94.8L53.8 117.4A72 72 0 0 0 46.0 149.3ZM12.0 89.6A122 122 0 0 1 49.8 48.8L77.8 90.3A72 72 0 0 0 55.4 114.3ZM54.9 45.6A122 122 0 0 1 107.7 28.4L111.9 78.3A72 72 0 0 0 80.7 88.4ZM113.7 28.1A122 122 0 0 1 168.2 38.8L147.6 84.4A72 72 0 0 0 115.5 78.0ZM173.6 41.4A122 122 0 0 1 216.0 77.4L175.8 107.1A72 72 0 0 0 150.8 85.9ZM219.4 82.2A122 122 0 0 1 239.0 134.3L189.4 140.7A72 72 0 0 0 177.9 110.0Z" />
               <path d="M59.5 176.0A64 64 0 1 1 182.0 147.8L170.0 148.2A52 52 0 1 0 70.5 171.2Z" />
               <path fillRule="evenodd" d="M75.7 165.4A45 45 0 1 1 163.0 150.0L212 98L222 112L210 204L246 306L98 262L86 220L52 250L46 192ZM108 182L182 182L182 208L152 208L152 194L108 194ZM188 214L202 214L202 258L188 258Z" />
