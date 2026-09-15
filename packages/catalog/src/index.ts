@@ -1,5 +1,13 @@
 import infinite from '../entries/bca-sq-krisflyer-visa-infinite.json';
 import bluGaruda from '../entries/blu-garuda-debit.json';
+import maybankJcbPlatinum from '../entries/maybank-jcb-platinum.json';
+import uobTmrw from '../entries/uob-tmrw.json';
+import permataShopping from '../entries/permata-shopping-card.json';
+import permataJcbUltimate from '../entries/permata-jcb-ultimate.json';
+import cimbOctoCard from '../entries/cimb-niaga-octo-card.json';
+import danamonVisaPlatinum from '../entries/danamon-visa-platinum.json';
+import bniTzuChi from '../entries/bni-tzu-chi.json';
+import bniMyPertamina from '../entries/bni-mypertamina.json';
 import jenius from '../entries/jenius-platinum.json';
 import maybankU from '../entries/maybank-u-debit.json';
 import signature from '../entries/bca-sq-krisflyer-visa-signature.json';
@@ -49,6 +57,14 @@ export const CATALOG: readonly CatalogEntry[] = [
   jenius,
   bluGaruda,
   maybankU,
+  maybankJcbPlatinum,
+  uobTmrw,
+  permataShopping,
+  permataJcbUltimate,
+  cimbOctoCard,
+  danamonVisaPlatinum,
+  bniTzuChi,
+  bniMyPertamina,
   danamonJcb,
   danamonAmexGoldCharge,
   ocbc90n,

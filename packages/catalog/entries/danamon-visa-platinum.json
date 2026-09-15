@@ -1,0 +1,145 @@
+{
+  "id": "danamon-visa-platinum",
+  "bank": "Danamon",
+  "name": "Danamon Visa Platinum",
+  "network": "visa",
+  "program": {
+    "unit": "points",
+    "name": "D-Point",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 600000,
+      "supplementaryFeeMinor": null,
+      "condition": "waived on conditions the bank sets"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 2500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {}
+        }
+      ]
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 15,
+      "partnerUnits": 1,
+      "incrementPoints": 7500,
+      "incrementPartnerUnits": 500,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "enrich",
+      "program": "Enrich",
+      "points": 15,
+      "partnerUnits": 1,
+      "incrementPoints": 7500,
+      "incrementPartnerUnits": 500,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 20,
+      "partnerUnits": 1,
+      "incrementPoints": 10000,
+      "incrementPartnerUnits": 500,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 20,
+      "partnerUnits": 1,
+      "incrementPoints": 10000,
+      "incrementPartnerUnits": 500,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "jal",
+      "program": "JAL Mileage Bank",
+      "points": 32,
+      "partnerUnits": 1,
+      "incrementPoints": 16000,
+      "incrementPartnerUnits": 500,
+      "minimumPoints": 32000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "airasia",
+      "program": "AirAsia rewards",
+      "points": 10,
+      "partnerUnits": 1,
+      "incrementPoints": 5000,
+      "incrementPartnerUnits": 500,
+      "minimumPoints": 10000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
+  ],
+  "notes": [
+    "One D-Point per Rp 2.500, the same base rate as the JCB Precious, and the same D-Point currency, so the mileage ratios are the ones that card publishes.",
+    "The card’s headline benefits are cashback, not points: 10% back on weekend spending, up to Rp 200.000 a month and only with five transactions of at least Rp 100.000 each, and 5% back on bill payments up to Rp 100.000 a month. Neither is written as a rule — a rule cannot match a day of the week, and a program earns in one unit, which here is points.",
+    "The annual fee is Rp 600.000 and the bank waives it on conditions it does not publish in one place. Set what you are actually charged on the card terms.",
+    "Transfer ratios are copied from the Danamon JCB Precious, since both cards spend the same D-Point balance. If Danamon prices conversions differently by card, this is wrong; nothing found suggests it does."
+  ],
+  "sources": [
+    {
+      "title": "Bank Danamon — Kartu Kredit Danamon Visa Platinum",
+      "url": "https://www.danamon.co.id/Personal/KartuTransaksi/Kartu-Kredit/1-Menit-Bisa-Kartu-Kredit-Danamon-Visa-Platinum"
+    },
+    {
+      "title": "Bank Danamon — RIPLAY Kartu Kredit Danamon Visa Platinum",
+      "url": "https://www.danamon.co.id/-/media/ALL-CONTENT-PERSONAL-BANKING/Kartu-Kredit/RIPLAY/newRiplay/RIPLAY-Kartu-Kredit-Danamon-Visa-Platinum.pdf"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit Danamon Visa Platinum",
+      "url": "https://pinterpoin.com/review-kartu-kredit-danamon-visa-platinum/"
+    }
+  ],
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#0a2a4a",
+      "#1d5c94",
+      "#071e36"
+    ],
+    "angle": 125,
+    "finish": "metallic",
+    "pattern": "none",
+    "motif": "chrome-curves",
+    "motifColour": "#cfe4f733",
+    "ink": "light",
+    "wordmark": "Platinum",
+    "bankMark": "Danamon",
+    "chip": "silver"
+  },
+  "entryVersion": 1,
+  "currency": "IDR",
+  "cashValue": null,
+  "welcomeBonus": null,
+  "verifiedOn": "2026-09-15"
+}

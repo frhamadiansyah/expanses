@@ -1,0 +1,109 @@
+{
+  "id": "permata-jcb-ultimate",
+  "bank": "Permata",
+  "name": "Permata JCB Ultimate",
+  "network": "jcb",
+  "program": {
+    "unit": "points",
+    "name": "PermataPoin",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": "2024-08-30",
+      "effectiveTo": null,
+      "annualFeeMinor": 3000000,
+      "supplementaryFeeMinor": null,
+      "condition": "waived while a PermataBank Priority customer, which needs Rp 500.000.000 under management"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": "2024-08-30",
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "dining",
+          "name": "At restaurants",
+          "rateNum": 1,
+          "rateDen": 5000,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "mccs": [
+              "5812",
+              "5813"
+            ]
+          }
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {}
+        }
+      ]
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 1,
+      "effectiveFrom": "2024-08-30",
+      "effectiveTo": null
+    }
+  ],
+  "welcomeBonus": "20.000 PermataPoin on approval, worth 20.000 KrisFlyer miles.",
+  "notes": [
+    "A point per Rp 10.000, and a point per Rp 5.000 at restaurants. A point transfers one for one, so a mile costs Rp 10.000 on ordinary spending and Rp 5.000 when eating out.",
+    "Restaurants are matched by MCC 5812 and 5813. Fast food (5814) is not included, which may be stricter than the bank is.",
+    "The annual fee is Rp 3.000.000, waived while you are a PermataBank Priority customer. That threshold, Rp 500.000.000 under management, is really what the card costs.",
+    "Only the KrisFlyer transfer is recorded, at one for one, because that is the ratio the welcome bonus is quoted in. Whether the card transfers to other airlines, and at what ratio, was not retrieved — permatabank.com is unreachable from here.",
+    "Lounge access is generous — eight JCB visits a year in Japan and Hawaii, eight more on LoungeKey elsewhere — and none of it is earning, so none of it is a rule.",
+    "The card launched on 30 August 2024, which is where the terms start."
+  ],
+  "sources": [
+    {
+      "title": "JCB — JCB and Permata Launch the Permata JCB Ultimate Card",
+      "url": "https://www.global.jcb/en/press/2024/202408301300_services.html"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit PermataUltimate Card",
+      "url": "https://pinterpoin.com/review-kartu-kredit-permataultimate-card/"
+    },
+    {
+      "title": "PermataBank — Poin Reward Permata Ultimate Card, merchant list",
+      "url": "https://www.permatabank.com/sites/default/files/2025-10/List%20Merchant%20Poin%20Reward%20Ultimate_Ver.07.2025_IND.pdf"
+    }
+  ],
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#111111",
+      "#2e2a24",
+      "#0a0a0a"
+    ],
+    "angle": 120,
+    "finish": "metallic",
+    "pattern": "none",
+    "motif": "engraved-frame",
+    "motifColour": "#d9b96a4d",
+    "ink": "light",
+    "wordmark": "Ultimate",
+    "bankMark": "Permata",
+    "chip": "gold"
+  },
+  "entryVersion": 1,
+  "currency": "IDR",
+  "cashValue": null,
+  "verifiedOn": "2026-09-15"
+}

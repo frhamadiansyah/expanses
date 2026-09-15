@@ -1,0 +1,106 @@
+{
+  "id": "permata-shopping-card",
+  "bank": "Permata",
+  "name": "PermataShoppingCard",
+  "network": "visa",
+  "program": {
+    "unit": "points",
+    "name": "PermataPoin",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 200000,
+      "supplementaryFeeMinor": null,
+      "condition": "Classic; waived for the first year, and afterwards on Rp 12.500.000 of yearly spending"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "shops",
+          "name": "3x at supermarkets and department stores",
+          "rateNum": 3,
+          "rateDen": 2000,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "mccs": [
+              "5300",
+              "5311",
+              "5331",
+              "5399",
+              "5411",
+              "5422",
+              "5441",
+              "5451",
+              "5462",
+              "5499"
+            ]
+          }
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 2000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {}
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "One PermataPoin per Rp 2.000 of retail spending, and three per Rp 2.000 at supermarkets and department stores, which is the card’s whole point.",
+    "The tripled categories are matched by MCC: grocery stores and supermarkets, and department and variety stores. A shop the bank counts but the code does not will estimate at 1x.",
+    "The card also pays 5% back on online transactions, up to Rp 200.000 a month and only in a cycle with Rp 5.000.000 of spending. A program earns in one unit here and this one earns points, so that cashback is not estimated at all.",
+    "The annual fee written here is the Classic one. Titanium is waived on Rp 40.000.000 of yearly spending and Platinum on Rp 70.000.000; the first year is free on every tier, for the primary card and five supplementaries. Set your own on the card terms if you hold a higher tier.",
+    "Transfer partners are not recorded. PermataPoin redeem against vouchers, statement credit and airline rewards, but the ratios were not retrieved — permatabank.com is unreachable from here."
+  ],
+  "sources": [
+    {
+      "title": "PermataBank — PermataShopping Card",
+      "url": "https://permatabank.com/id/kartu-kredit-retail/permatashopping-card"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit Permata Shopping Card",
+      "url": "https://pinterpoin.com/review-kartu-kredit-permata-shopping-card/"
+    },
+    {
+      "title": "Cermati — Kartu Kredit PermataShoppingCard Titanium",
+      "url": "https://www.cermati.com/kartu-kredit/permatashoppingcard-titanium"
+    }
+  ],
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#0b5c3e",
+      "#1a8f63",
+      "#083f2b"
+    ],
+    "angle": 135,
+    "finish": "glossy",
+    "pattern": "none",
+    "motif": "sparse-diagonals",
+    "motifColour": "#a8e6c955",
+    "ink": "light",
+    "wordmark": "Shopping",
+    "bankMark": "Permata",
+    "chip": "gold"
+  },
+  "entryVersion": 1,
+  "currency": "IDR",
+  "cashValue": null,
+  "welcomeBonus": null,
+  "verifiedOn": "2026-09-15",
+  "transferPartners": []
+}

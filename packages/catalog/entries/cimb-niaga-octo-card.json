@@ -1,0 +1,79 @@
+{
+  "id": "cimb-niaga-octo-card",
+  "bank": "CIMB Niaga",
+  "name": "CIMB Niaga OCTO Card",
+  "network": "mastercard",
+  "program": {
+    "unit": "points",
+    "name": "Poin Xtra",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 0,
+      "supplementaryFeeMinor": 0,
+      "condition": "no annual fee"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 25,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {}
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "25 Poin Xtra for every whole Rp 50.000 of retail spending, which is a point per Rp 2.000. Poin Xtra pay for retail transactions and bills rather than converting to miles.",
+    "There is no annual fee at all, on the primary card or a supplementary one.",
+    "The card also pays 10% back on online transactions outside hotels, airlines and travel agents, capped at Rp 50.000 a transaction and Rp 100.000 a month. A program earns in one unit here and this one earns points, so that cashback is not estimated.",
+    "Nothing earns on instalments, cash withdrawals, Cash Plus, other cashback programmes, the catalogue, membership fees, recurring transactions, fees or interest. Those exclusions are not written as rules, because the app does not see most of them as spending in the first place.",
+    "Transfer partners are not recorded: Poin Xtra are a statement-credit currency, not a mileage one."
+  ],
+  "sources": [
+    {
+      "title": "CIMB Niaga — OCTO Card",
+      "url": "https://www.cimbniaga.co.id/id/personal/kartu-kredit/octo-card"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit CIMB Niaga OCTO Card",
+      "url": "https://pinterpoin.com/review-kartu-kredit-cimb-niaga-octo-card/"
+    }
+  ],
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#7a0f1e",
+      "#b81c2d",
+      "#5c0a16"
+    ],
+    "angle": 135,
+    "finish": "glossy",
+    "pattern": "none",
+    "motif": "big-letter",
+    "motifColour": "#ffffff1f",
+    "ink": "light",
+    "wordmark": "OCTO",
+    "bankMark": "CIMB Niaga",
+    "chip": "gold"
+  },
+  "entryVersion": 1,
+  "currency": "IDR",
+  "cashValue": null,
+  "welcomeBonus": null,
+  "verifiedOn": "2026-09-15",
+  "transferPartners": []
+}

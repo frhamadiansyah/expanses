@@ -1,0 +1,197 @@
+{
+  "id": "maybank-jcb-platinum",
+  "bank": "Maybank",
+  "name": "Maybank Kartu Kredit JCB Platinum",
+  "network": "jcb",
+  "program": {
+    "unit": "points",
+    "name": "Maybank TREATS Points",
+    "cycleAnchor": "statement",
+    "crediting": "per_transaction"
+  },
+  "fees": [],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "utilities-over-10m",
+          "name": "Utility bills above Rp 10.000.000",
+          "rateNum": 0,
+          "rateDen": 10000,
+          "rounding": "per_increment",
+          "priority": 100,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "xbill",
+              "x-bill",
+              "xcash",
+              "balance conversion",
+              "qris",
+              "qr"
+            ],
+            "excludeMccs": [
+              "5814",
+              "9211",
+              "9222",
+              "9311",
+              "9399"
+            ],
+            "mccs": [
+              "4900"
+            ]
+          },
+          "minTransactionMinor": 10000001
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeMerchantPatterns": [
+              "xbill",
+              "x-bill",
+              "xcash",
+              "balance conversion",
+              "qris",
+              "qr"
+            ],
+            "excludeMccs": [
+              "5814",
+              "9211",
+              "9222",
+              "9311",
+              "9399"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 20000,
+      "partnerUnits": 20000,
+      "incrementPoints": 20000,
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cap": {
+        "window": "year",
+        "capPoints": 200000,
+        "shared": true,
+        "beyondPoints": 20000,
+        "beyondPartnerUnits": 6666
+      }
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 20000,
+      "partnerUnits": 20000,
+      "incrementPoints": 20000,
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cap": {
+        "window": "year",
+        "capPoints": 200000,
+        "shared": true,
+        "beyondPoints": 20000,
+        "beyondPartnerUnits": 6666
+      }
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 20000,
+      "partnerUnits": 20000,
+      "incrementPoints": 20000,
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cap": {
+        "window": "year",
+        "capPoints": 200000,
+        "shared": true,
+        "beyondPoints": 20000,
+        "beyondPartnerUnits": 6666
+      }
+    },
+    {
+      "key": "airasia",
+      "program": "AirAsia points",
+      "points": 5000,
+      "partnerUnits": 5000,
+      "incrementPoints": 5000,
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cap": {
+        "window": "year",
+        "capPoints": 200000,
+        "shared": true,
+        "beyondPoints": 5000,
+        "beyondPartnerUnits": 1666
+      }
+    }
+  ],
+  "cashValue": {
+    "valueMinor": 100000,
+    "perPoints": 1500,
+    "currency": "IDR"
+  },
+  "welcomeBonus": "5.000 TREATS Points for spending anywhere in the first three months.",
+  "notes": [
+    "The miles card of the Maybank range: 1 TREATS Point per Rp 10.000, twice what the Visa Platinum earns, and a TREATS Point transfers one for one. That makes a mile cost Rp 10.000 here against Rp 20.000 there.",
+    "The exclusions are the ones Maybank applies across its credit cards from 10 September 2026: no TREATS on XBill, XCash, balance conversion, QR payments, taxes and government services (MCC 9211, 9222, 9311, 9399), fast food (MCC 5814), or utility payments (MCC 4900) above Rp 10.000.000. The terms set that limit per card; estimates apply it per purchase.",
+    "Transfers are the shared TREATS ratios: 20.000 TREATS for 20.000 KrisFlyer, GarudaMiles or Asia Miles, and 5.000 for 5.000 AirAsia points, until 200.000 TREATS are converted in twelve months; past that 20.000 give 6.666. The ceiling covers every partner together. Each mileage conversion costs Rp 20.000, which estimates do not subtract.",
+    "TREATS Points expire one year after they are earned.",
+    "Free JCB Airport Lounge and JCB Plaza access, and LoungeKey visits — worth having, but none of it is earning, so none is a rule.",
+    "The annual fee is not recorded: maybank.co.id cannot be reached from here and no reliable figure turned up in search. Enter it on the card terms yourself.",
+    "A published source states the 200.000-a-year mileage ceiling was lifted on 1 February 2025. The Maybank TREATS page dated January 2026 still carries it, and the sibling Visa Platinum entry was built from the RIPLAY, so the ceiling is kept here. Worth re-checking against the current RIPLAY."
+  ],
+  "sources": [
+    {
+      "title": "Maybank — JCB Platinum Credit Card",
+      "url": "https://www.maybank.co.id/creditcard/maybank-jcb-platinum-credit-card"
+    },
+    {
+      "title": "Maybank TREATS Points",
+      "url": "https://www.maybank.co.id/id/creditcard/treatspoint-jan-2026"
+    },
+    {
+      "title": "Maybank — TREATS update effective 10 September 2026",
+      "url": "https://www.maybank.co.id/NewsAndAnnouncement/NewsAndAnnouncements/2026/07/29/06/43/Pembaruan-Informasi-Perolehan-Maybank-TREATS-pada-Maybank-Kartu-Kredit"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit Maybank JCB Platinum",
+      "url": "https://pinterpoin.com/review-kartu-kredit-maybank-jcb-platinum/"
+    }
+  ],
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#0d1b2a",
+      "#1f3a52",
+      "#0a1420"
+    ],
+    "angle": 130,
+    "finish": "metallic",
+    "pattern": "none",
+    "motif": "faceted-ribbon",
+    "motifColour": "#9fc4e838",
+    "ink": "light",
+    "wordmark": "Platinum",
+    "bankMark": "Maybank",
+    "chip": "gold"
+  },
+  "entryVersion": 1,
+  "currency": "IDR",
+  "verifiedOn": "2026-09-15"
+}

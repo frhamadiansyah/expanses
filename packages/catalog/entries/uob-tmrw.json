@@ -1,0 +1,180 @@
+{
+  "id": "uob-tmrw",
+  "bank": "UOB",
+  "name": "UOB TMRW",
+  "network": "mastercard",
+  "program": {
+    "unit": "cashback",
+    "name": "TMRW Cashback",
+    "cycleAnchor": "statement",
+    "memberLevels": [
+      {
+        "key": "qualified",
+        "name": "Conditions met last month",
+        "condition": "Two bill payments and two transfers made from the TMRW Everyday account last month, which earns 6% this month"
+      },
+      {
+        "key": "standard",
+        "name": "Conditions not met",
+        "condition": "The two bill payments and two transfers were not made last month, so the chosen categories earn 1%"
+      }
+    ]
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 300000,
+      "supplementaryFeeMinor": null,
+      "condition": "waived for the first year"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "chosen-6",
+          "name": "Chosen categories at 6%",
+          "rateNum": 3,
+          "rateDen": 50,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "mccs": [
+              "4111",
+              "4121",
+              "4131",
+              "4789",
+              "5411",
+              "5422",
+              "5441",
+              "5451",
+              "5462",
+              "5499",
+              "5541",
+              "5542",
+              "5812",
+              "5813"
+            ]
+          },
+          "capPoints": 200000,
+          "memberLevels": [
+            "qualified"
+          ]
+        },
+        {
+          "key": "chosen-1",
+          "name": "Chosen categories at 1%",
+          "rateNum": 1,
+          "rateDen": 100,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "mccs": [
+              "4111",
+              "4121",
+              "4131",
+              "4789",
+              "5411",
+              "5422",
+              "5441",
+              "5451",
+              "5462",
+              "5499",
+              "5541",
+              "5542",
+              "5812",
+              "5813"
+            ]
+          },
+          "capPoints": 200000,
+          "memberLevels": [
+            "standard"
+          ]
+        },
+        {
+          "key": "base",
+          "name": "Everything else",
+          "rateNum": 1,
+          "rateDen": 500,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeMccs": [
+              "4111",
+              "4121",
+              "4131",
+              "4789",
+              "5411",
+              "5422",
+              "5441",
+              "5451",
+              "5462",
+              "5499",
+              "5541",
+              "5542",
+              "5812",
+              "5813"
+            ]
+          },
+          "capPoints": 200000
+        }
+      ]
+    }
+  ],
+  "cashValue": {
+    "valueMinor": 1,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
+  "notes": [
+    "The 6% is conditional and the condition is about last month, not this one: two bill payments and two transfers from the TMRW Everyday account earn you the 6% for the following month. Miss them and the same categories pay 1%. That is the choice of member level here, and it has to be set month by month.",
+    "Everything outside the chosen categories earns 0,2%, which is what the base rule pays.",
+    "The card lets you choose three categories out of eight, changed in the TMRW app. The app follows one set of categories, not three of eight, so this entry earns the bonus rate across dining, supermarkets and minimarts, and transport — the three the bank itself sets by default. If you have chosen differently, the estimate is wrong in both directions and the rules are worth editing by hand.",
+    "The full list of eight categories could not be retrieved: uob.co.id and tmrwbyuob.com are both unreachable from here, and search did not name them all.",
+    "Cashback is capped at Rp 200.000 a month across the card. That one ceiling is written onto each rule separately, so a month that earns from more than one rule can be estimated above the true cap.",
+    "Cashback is only paid on a card in good standing and inside its limit at the time of posting."
+  ],
+  "sources": [
+    {
+      "title": "UOB Indonesia — Kartu Kredit TMRW",
+      "url": "https://www.uob.co.id/personal-en/tmrw/product/credit-card.page"
+    },
+    {
+      "title": "UOB Indonesia — Kartu Debit & Kredit TMRW",
+      "url": "https://www.uob.co.id/personal/tmrw/help/using-credit-and-debit-card.page"
+    },
+    {
+      "title": "TMRW — Ketentuan Khusus untuk Kartu Kredit TMRW",
+      "url": "https://tmrwbyuob.com/content/dam/tmrwbyuob/id/tncs/id/id-T_C_Credit_Card.pdf"
+    }
+  ],
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#062b36",
+      "#0e6b7a",
+      "#03202a"
+    ],
+    "angle": 140,
+    "finish": "matte",
+    "pattern": "none",
+    "motif": "split-waves",
+    "motifColour": "#5ee0c855",
+    "ink": "light",
+    "wordmark": "TMRW",
+    "bankMark": "UOB",
+    "chip": "silver"
+  },
+  "entryVersion": 1,
+  "currency": "IDR",
+  "welcomeBonus": null,
+  "verifiedOn": "2026-09-15",
+  "transferPartners": []
+}
