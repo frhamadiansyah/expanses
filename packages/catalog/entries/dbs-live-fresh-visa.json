@@ -1,6 +1,6 @@
 {
   "id": "dbs-live-fresh-visa",
-  "entryVersion": 1,
+  "entryVersion": 2,
   "bank": "DBS",
   "name": "digibank Live Fresh",
   "network": "visa",
@@ -89,7 +89,8 @@
     "\"Online\" is matched by merchant name, from a list of the marketplaces, travel sites, ride-hailing apps and subscriptions people in Indonesia actually use. It is a guess at a category the statement does not label, so an online shop outside the list earns nothing in the estimate, and a bricks-and-mortar branch of a listed name earns when it should not.",
     "The annual fee is Rp 400.000, free for the first year.",
     "DBS changed earning and benefits across its cards on 1 April 2026. What that did to this card was not published in anything reachable from here, so the entry runs one set of terms throughout and a later cycle may be wrong.",
-    "No source could be read directly: dbs.id, its RIPLAY and PinterPoin are all unreachable from here, so every figure comes from search summaries. The Rp 300.000 ceiling and the five-transaction rule are corroborated by two independent ones."
+    "No source could be read directly: dbs.id, its RIPLAY and PinterPoin are all unreachable from here, so every figure comes from search summaries. The Rp 300.000 ceiling and the five-transaction rule are corroborated by two independent ones.",
+    "The face is the Mr Sabotage print the card is sold with: torn black and red ribbons over amber. It is redrawn here, not copied."
   ],
   "sources": [
     {
@@ -113,17 +114,17 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#b3164a",
-      "#e8447c",
-      "#8c0f39"
+      "#eebb4f",
+      "#e5ad3f",
+      "#f2c563"
     ],
-    "angle": 140,
+    "angle": 135,
     "finish": "glossy",
     "pattern": "none",
-    "motif": "swirl-edges",
-    "motifColour": "#ffd16680",
+    "motif": "torn-ribbons",
+    "motifColour": "#d93425",
     "ink": "light",
-    "wordmark": "Live Fresh",
+    "wordmark": "live fresh",
     "bankMark": "DBS",
     "chip": "silver"
   }

@@ -150,7 +150,7 @@ export interface CatalogProgram {
  * Cosmetic only, so a change here is not a catalogue update to announce.
  */
 /** The illustrations a card face can be drawn with, each in the manner of a real card's artwork. */
-export const CARD_MOTIFS = ['batik-floral', 'big-letter', 'rosette-tile', 'chrome-curves', 'ikat-diamonds', 'engraved-frame', 'portrait-oval', 'split-waves', 'colour-blocks', 'halftone-vortex', 'centre-ring', 'wing-bars', 'stadium', 'skyline', 'faceted-ribbon', 'horizon', 'swirl-edges', 'flight-line', 'sparse-diagonals', 'contour-lines', 'meridians', 'fine-contours', 'guilloche-crest', 'garuda-contrails', 'outline-u', 'hologram-disc', 'foil-sheen', 'low-poly-facets', 'sakura-branch', 'octo-rings', 'copper-ribbon', 'lotus-watermark', 'light-streaks'] as const;
+export const CARD_MOTIFS = ['batik-floral', 'big-letter', 'rosette-tile', 'chrome-curves', 'ikat-diamonds', 'engraved-frame', 'portrait-oval', 'split-waves', 'colour-blocks', 'halftone-vortex', 'centre-ring', 'wing-bars', 'stadium', 'skyline', 'faceted-ribbon', 'horizon', 'swirl-edges', 'flight-line', 'sparse-diagonals', 'contour-lines', 'meridians', 'fine-contours', 'guilloche-crest', 'garuda-contrails', 'outline-u', 'hologram-disc', 'foil-sheen', 'low-poly-facets', 'sakura-branch', 'octo-rings', 'copper-ribbon', 'lotus-watermark', 'light-streaks', 'torn-ribbons'] as const;
 export type CardMotif = (typeof CARD_MOTIFS)[number];
 
 export interface CatalogCardLook {
