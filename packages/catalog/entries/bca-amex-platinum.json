@@ -1,0 +1,118 @@
+{
+  "id": "bca-amex-platinum",
+  "entryVersion": 1,
+  "bank": "BCA",
+  "name": "BCA American Express Platinum Card",
+  "network": "amex",
+  "currency": "IDR",
+  "program": {
+    "unit": "points",
+    "name": "Membership Rewards",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 12000000,
+      "supplementaryFeeMinor": null,
+      "condition": "waived in the first year for Rp 300.000.000 spent within 3 months of activation, and waived outright for a BCA Prioritas or BCA Solitaire customer"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 5,
+          "rateDen": 1000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "miscellaneous.fees_charges"
+            ]
+          }
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 75,
+      "partnerUnits": 2,
+      "incrementPoints": 75,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 75,
+      "partnerUnits": 2,
+      "incrementPoints": 75,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": {
+    "valueMinor": 1,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
+  "welcomeBonus": null,
+  "notes": [
+    "Earning looks generous and is not: 5 Membership Rewards per Rp 1.000 sounds like a lot, but 750.000 points buy only 20.000 miles. That is 37,5 points a mile, which works out at Rp 7.500 a mile — middling, and the two figures agree exactly, which is what confirms the reading.",
+    "The published 750.000 for 20.000 reduces to 75 points for 2 miles, which is what the entry records and why the transfer step is 75.",
+    "A point is also worth Rp 1 as cashback at partner merchants, credited on the next bill. That is recorded as the cash value, so the app can compare converting against spending the points outright.",
+    "Converting is limited to 40.000 miles every three months. The schema holds a ceiling that resets monthly or yearly, and three months is neither, so no ceiling is applied and a large balance is shown converting in full.",
+    "Only KrisFlyer and GarudaMiles are recorded. Hilton Honors is sometimes listed as a partner for this card but no ratio for it could be pinned down, so an estimate for it shows nothing.",
+    "The annual fee of Rp 12.000.000 is the highest in this catalogue, and the first-year waiver asks for Rp 300.000.000 of spending. A BCA Prioritas or Solitaire customer pays nothing.",
+    "Not modelled: the point multiplier campaigns BCA runs, which carry low ceilings and often require a supplementary card, and the lounge and travel benefits. None of them is simple enough to record from what could be read.",
+    "This is the Platinum charge card. BCA issues other American Express cards, and if the card in hand is one of those, this entry is wrong throughout.",
+    "No source could be read directly. BCA's own site, americanexpress.com, PinterPoin and IndoMiles are unreachable from here, so every figure comes from search summaries."
+  ],
+  "sources": [
+    {
+      "title": "PinterPoin — Review: Kartu BCA American Express (Amex) Platinum",
+      "url": "https://pinterpoin.com/review-bca-american-express-platinum-amex/"
+    },
+    {
+      "title": "IndoMiles — Review Kartu Kredit BCA American Express Platinum",
+      "url": "https://indomiles.com/review-kartu-kredit-bca-american-express-platinum/"
+    },
+    {
+      "title": "American Express Indonesia — BCA Platinum Card",
+      "url": "https://www.americanexpress.com/id/network/credit-cards/bca/platinum-card.html"
+    },
+    {
+      "title": "BCA — American Express",
+      "url": "https://www.bca.co.id/en/Individu/produk/Kartu-Kredit/American-Express"
+    }
+  ],
+  "verifiedOn": "2026-09-15",
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#9ea4a8",
+      "#d7dbde",
+      "#7c8388"
+    ],
+    "angle": 160,
+    "finish": "metallic",
+    "pattern": "none",
+    "motif": "engraved-frame",
+    "motifColour": "#4a5055",
+    "ink": "dark",
+    "wordmark": "Platinum",
+    "bankMark": "BCA",
+    "chip": "silver"
+  }
+}

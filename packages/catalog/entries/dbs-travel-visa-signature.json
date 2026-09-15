@@ -1,0 +1,147 @@
+{
+  "id": "dbs-travel-visa-signature",
+  "entryVersion": 1,
+  "bank": "Bank DBS Indonesia",
+  "name": "digibank Visa Travel Signature",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "miles",
+    "name": "digibank Mileage",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 1000000,
+      "supplementaryFeeMinor": 500000,
+      "condition": "waived in the first year by transacting within 60 days of approval, and afterwards by redeeming 25.000 digibank Mileage for the main card or 12.500 for a supplementary"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "foreign",
+          "name": "Spent abroad",
+          "rateNum": 1,
+          "rateDen": 6000,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "origin": "foreign",
+            "excludeCategoryKeys": [
+              "miscellaneous.fees_charges"
+            ]
+          }
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 9000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "miscellaneous.fees_charges"
+            ]
+          }
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [
+    {
+      "key": "krisflyer",
+      "program": "KrisFlyer",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 5000,
+      "incrementPartnerUnits": 5000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "asia-miles",
+      "program": "Asia Miles",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 5000,
+      "incrementPartnerUnits": 5000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    },
+    {
+      "key": "garudamiles",
+      "program": "GarudaMiles",
+      "points": 1,
+      "partnerUnits": 1,
+      "incrementPoints": 5000,
+      "incrementPartnerUnits": 5000,
+      "effectiveFrom": null,
+      "effectiveTo": null
+    }
+  ],
+  "cashValue": null,
+  "welcomeBonus": "2.500 miles and Rp 50.000 cashback for Rp 750.000 spent within 60 days of approval.",
+  "notes": [
+    "A mile costs Rp 9.000 at home and Rp 6.000 abroad, so spending abroad is half again as rewarding.",
+    "digibank Mileage are airline miles already, so a transfer to KrisFlyer, Asia Miles or GarudaMiles is one for one and the only question is the step.",
+    "Converting moves 5.000 miles at a time, so a balance short of 5.000 converts to nothing and a remainder above a multiple waits.",
+    "Qantas was added as a redemption partner and is left out here because its ratio could not be pinned down; an estimate for it shows nothing.",
+    "DBS publishes a list of transaction categories that earn no points, and tightened it further. The list could not be read from here, so only card fees and charges are excluded and other non-earning spend is overestimated.",
+    "DBS changed point earning and airport benefits across its cards on 1 April 2026. What that did to this card's rate specifically was not published in anything reachable from here, so the entry runs one rate throughout and a cycle after that date may be wrong.",
+    "From 1 October 2025 DBS limits how much can be redeemed. The limit was not given in a form that could be recorded, so no ceiling is applied to estimates.",
+    "Points do not expire while the card is active, but DBS forfeits them on a card left inactive.",
+    "No source could be read directly. DBS's own site and RIPLAY, PinterPoin and IndoMiles are all unreachable from here, so every figure comes from search summaries.",
+    "DBS cut this card's earning rate on 13 October 2023. The entry records only the rate since then; a cycle before that date is understated.",
+    "Not modelled: one lounge visit a year for the holder and a guest, and the Starbucks airport vouchers, which were cut to one item a redemption on 1 April 2026. Neither pays miles."
+  ],
+  "sources": [
+    {
+      "title": "PinterPoin — Review: Kartu Kredit DBS Travel Visa Signature",
+      "url": "https://pinterpoin.com/review-kartu-kredit-dbs-travel-visa-signature/"
+    },
+    {
+      "title": "PinterPoin — Devaluasi: DBS Travel Card menurunkan earning rate efektif 13 Oktober 2023",
+      "url": "https://pinterpoin.com/devaluasi-dbs-travel-card-menurunkan-earning-rate/"
+    },
+    {
+      "title": "PinterPoin — Berubah serentak: devaluasi perolehan poin dan manfaat bandara kartu kredit DBS pada 1 April 2026",
+      "url": "https://pinterpoin.com/berubah-serentak-devaluasi-perolehan-poin-dan-manfaat-bandara-kartu-kredit-dbs-pada-1-april-2026/"
+    },
+    {
+      "title": "Bank DBS Indonesia — RIPLAY digibank Visa Travel Signature",
+      "url": "https://www.dbs.id/id/iwov-resources/pdf/RIPLAY_digibank_Visa_Travel_Signature_Personal_v2.pdf"
+    },
+    {
+      "title": "Bank DBS Indonesia — Poin Rewards / Mileage digibank",
+      "url": "https://www.dbs.id/digibank/id/id/kartu/kartu-kredit/poin-rewards-mileage-digibank.page"
+    }
+  ],
+  "verifiedOn": "2026-09-15",
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#0b1f3a",
+      "#123d63",
+      "#0b1f3a"
+    ],
+    "angle": 150,
+    "finish": "glossy",
+    "pattern": "none",
+    "motif": "flight-line",
+    "motifColour": "#8fc4ee",
+    "ink": "light",
+    "wordmark": "Travel",
+    "bankMark": "digibank by DBS",
+    "chip": "gold"
+  }
+}

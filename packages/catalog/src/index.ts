@@ -18,6 +18,11 @@ import maybankInfinite from '../entries/maybank-visa-infinite.json';
 import maybankManchesterUnited from '../entries/maybank-manchester-united.json';
 import maybankMini from '../entries/maybank-mini.json';
 import maybankPlatinum from '../entries/maybank-visa-platinum.json';
+import bcaAmexPlatinum from '../entries/bca-amex-platinum.json';
+import cimbCathay from '../entries/cimb-niaga-world-cathay.json';
+import dbsTravel from '../entries/dbs-travel-visa-signature.json';
+import dbsVantage from '../entries/dbs-vantage-visa-infinite.json';
+import uobZenith from '../entries/uob-zenith.json';
 import type { CatalogEntry } from './types';
 
 export * from './types';
@@ -50,6 +55,11 @@ export const CATALOG: readonly CatalogEntry[] = [
   bniGarudaPlatinum,
   uobPriviMiles,
   uobGaruda,
+  uobZenith,
+  dbsTravel,
+  dbsVantage,
+  cimbCathay,
+  bcaAmexPlatinum,
 ] as unknown as CatalogEntry[];
 
 export function findEntry(id: string): CatalogEntry | undefined {
