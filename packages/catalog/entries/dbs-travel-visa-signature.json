@@ -141,6 +141,8 @@
     "ink": "light",
     "wordmark": "Travel",
     "bankMark": "digibank by DBS",
-    "chip": "silver"
+    "chip": "silver",
+    "motif": "flight-line",
+    "motifColour": "#e8a33d"
   }
 }

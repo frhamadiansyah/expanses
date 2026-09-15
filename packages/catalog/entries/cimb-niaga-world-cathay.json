@@ -111,6 +111,8 @@
     "ink": "light",
     "wordmark": "Cathay",
     "bankMark": "CIMB Niaga",
-    "chip": "silver"
+    "chip": "silver",
+    "motif": "wing-bars",
+    "motifColour": "#ffffffcc"
   }
 }
