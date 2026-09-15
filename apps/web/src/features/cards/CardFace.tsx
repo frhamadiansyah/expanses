@@ -386,14 +386,22 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
               return <path key={i} d={`M52 ${y}q104 -11 208 0t208 0t208 0`} />;
             })}
           </g>
-          <ellipse cx={w / 2} cy={h / 2} rx="104" ry="138" fill={c} opacity="0.2" />
-          <ellipse cx={w / 2} cy={h / 2} rx="104" ry="138" strokeWidth="9" opacity="0.9" />
-          <ellipse cx={w / 2} cy={h / 2} rx="88" ry="120" strokeWidth="2.5" opacity="0.7" />
-          <g strokeWidth="2.4" opacity="0.65">
-            {Array.from({ length: 11 }, (_, i) => {
-              const y = h / 2 - 100 + i * 20;
-              return <path key={`f${i}`} d={`M${w / 2 - 70} ${y}q70 -13 140 0`} />;
-            })}
+          <g transform={`translate(${w / 2} ${h / 2}) rotate(-17)`}>
+            <defs>
+              <clipPath id={`${id}oval`}>
+                <ellipse rx="112" ry="146" />
+              </clipPath>
+            </defs>
+            {/* Stripes behind, the head knocked out of them, outlines over the top: the modernist mark. */}
+            <g clipPath={`url(#${id}oval)`}>
+              <g stroke={c} strokeWidth="7" opacity="0.9">
+                {Array.from({ length: 16 }, (_, i) => {
+                  const y = -146 + i * 19;
+                  return <path key={i} d={`M-120 ${y}h240`} />;
+                })}
+              </g>
+            </g>
+            <ellipse rx="112" ry="146" fill="none" stroke={c} strokeWidth="10" opacity="0.95" />
           </g>
         </g>,
       );
