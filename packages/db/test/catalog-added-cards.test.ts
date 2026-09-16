@@ -86,6 +86,7 @@ describe('the cards added as a set', () => {
     // Four cards earn on one kind of purchase only, so each gets the purchase its own rules are written for.
     const only: Record<string, Parameters<typeof spend>[2]> = {
       'dbs-live-fresh-visa': { description: 'Tokopedia' },
+      'permata-shopping-card': { description: 'Tokopedia' },
       'cimb-niaga-octo-card': { description: 'QRIS Warung Tegal' },
       'danamon-visa-platinum': { on: '2026-09-19' },
       'bni-mypertamina': { category: 'transportation.fuel_cost', description: 'MyPertamina top up', mcc: '5541' },
@@ -93,7 +94,8 @@ describe('the cards added as a set', () => {
     for (const id of ADDED) {
       const levels = findEntry(id)!.program.memberLevels;
       const t = await withCard(id, levels?.[0]?.key);
-      await spend(t, 1_000_000, only[id] ?? {});
+      // The Shopping Card pays nothing until the cycle reaches Rp 5.000.000, so every card is given that much.
+      await spend(t, 6_000_000, only[id] ?? {});
       expect(await earned(t), id).toBeGreaterThan(0);
     }
   });
@@ -179,14 +181,27 @@ describe('UOB TMRW, whose rate depends on what you did last month', () => {
 });
 
 describe('the two Permata cards', () => {
-  it('triples the Shopping Card at a supermarket, and not elsewhere', async () => {
+  it('pays the Shopping Card 5% online and 5% elsewhere, on separate ceilings', async () => {
     const t = await withCard('permata-shopping-card');
-    await spend(t, 1_000_000, { category: 'household.groceries', mcc: '5411' });
-    expect(await earned(t)).toBe(1_500);
+    await spend(t, 6_000_000, { description: 'Tokopedia' });
+    expect(await earned(t)).toBe(200_000);
 
-    const other = await withCard('permata-shopping-card');
-    await spend(other, 1_000_000, { mcc: '5944' });
-    expect(await earned(other)).toBe(500);
+    const offline = await withCard('permata-shopping-card');
+    await spend(offline, 6_000_000, { category: 'household.groceries', description: 'Superindo', mcc: '5411' });
+    expect(await earned(offline)).toBe(100_000);
+  });
+
+  it('pays the Shopping Card nothing below the cycle floor', async () => {
+    const t = await withCard('permata-shopping-card');
+    await spend(t, 4_999_999, { description: 'Tokopedia' });
+    expect(await earned(t)).toBe(0);
+  });
+
+  it('earns no points on the Shopping Card, which the bank no longer gives it', () => {
+    const entry = findEntry('permata-shopping-card')!;
+    expect(entry.program.unit).toBe('cashback');
+    expect(entry.transferPartners).toEqual([]);
+    expect(entry.terms[0]!.rules.map((r) => r.key)).toEqual(['online', 'other']);
   });
 
   it('halves the cost of a mile on the JCB Ultimate when eating out', async () => {
