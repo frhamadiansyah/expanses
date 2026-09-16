@@ -23,6 +23,11 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
   if (!isPositiveInt(entry.entryVersion)) add('entryVersion', 'must be a positive integer');
   for (const field of ['bank', 'name', 'network'] as const) if (!isText(entry[field])) add(field, 'is required');
   if (typeof entry.currency !== 'string' || !isSupportedCurrency(entry.currency)) add('currency', 'must be a supported currency');
+  if (entry.cardType !== undefined && !['credit', 'debit'].includes(entry.cardType as string)) add('cardType', 'must be credit or debit');
+  // A debit card has no statement to anchor a cycle to, and nothing to charge a yearly fee against.
+  if (entry.cardType === 'debit' && isObj(entry.program) && entry.program.cycleAnchor !== 'calendar') {
+    add('program.cycleAnchor', 'must be calendar on a debit card, which has no statement');
+  }
   if (typeof entry.verifiedOn !== 'string' || !DATE.test(entry.verifiedOn)) add('verifiedOn', 'must be a YYYY-MM-DD date');
   if (!Array.isArray(entry.sources) || entry.sources.length === 0) add('sources', 'at least one source is required');
   else entry.sources.forEach((s, i) => {
@@ -102,6 +107,10 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
       if (specs !== undefined && (!Array.isArray(specs) || specs.some((spec) => typeof spec !== 'string' || !isMccSpec(spec)))) {
         add(`${path}.${field}`, 'must list four-digit MCCs or ranges like 3000-3299');
       }
+    }
+    const days = match.daysOfWeek;
+    if (days !== undefined && (!Array.isArray(days) || days.length === 0 || days.some((d) => !Number.isInteger(d) || (d as number) < 0 || (d as number) > 6))) {
+      add(`${path}.daysOfWeek`, 'must list days 0 (Sunday) to 6 (Saturday)');
     }
   };
 
@@ -274,8 +283,9 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
       oneOf('chip', ['gold', 'silver', 'none']);
       if (look.motif !== undefined) oneOf('motif', CARD_MOTIFS);
       if (look.motifColour !== undefined && (typeof look.motifColour !== 'string' || !HEX.test(look.motifColour))) add('look.motifColour', 'must be a #rrggbb or #rrggbbaa colour');
-      if (!Array.isArray(look.colours) || look.colours.length < 1 || look.colours.length > 3 || look.colours.some((c) => typeof c !== 'string' || !HEX.test(c))) {
-        add('look.colours', 'must be one to three #rrggbb colours');
+      // Up to six, because a holographic card runs through more colours than a plain one has.
+      if (!Array.isArray(look.colours) || look.colours.length < 1 || look.colours.length > 6 || look.colours.some((c) => typeof c !== 'string' || !HEX.test(c))) {
+        add('look.colours', 'must be one to six #rrggbb colours');
       }
       if (look.angle !== undefined && typeof look.angle !== 'number') add('look.angle', 'must be a number of degrees');
       if (look.patternColour !== undefined && (typeof look.patternColour !== 'string' || !HEX.test(look.patternColour))) add('look.patternColour', 'must be a #rrggbb or #rrggbbaa colour');

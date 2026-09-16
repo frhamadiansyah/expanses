@@ -15,11 +15,13 @@ function NetworkMark({ network }: { network: string | null }) {
     case 'visa':
       return <span className="text-[1.45em] leading-none font-black italic tracking-tight">VISA</span>;
     case 'mastercard':
+      // Three shapes, not two blended: the red disc, the amber disc, and the darker lens where they meet.
       return (
-        <span className="relative inline-flex h-[1.6em] w-[2.6em]" aria-label="Mastercard">
-          <span className="absolute left-0 h-[1.6em] w-[1.6em] rounded-full bg-[#eb001b]" />
-          <span className="absolute right-0 h-[1.6em] w-[1.6em] rounded-full bg-[#f79e1b]/90 mix-blend-screen" />
-        </span>
+        <svg role="img" aria-label="Mastercard" viewBox="-28 -17 56 34" className="h-[1.7em] w-[2.8em]">
+          <circle cx="-11" cy="0" r="16" fill="#eb001b" />
+          <circle cx="11" cy="0" r="16" fill="#f79e1b" />
+          <path d="M0-11.6A16 16 0 0 1 0 11.6A16 16 0 0 1 0-11.6Z" fill="#ff5f00" />
+        </svg>
       );
     case 'amex':
       return <span className="text-[1.15em] leading-none font-black tracking-wide">AMEX</span>;
@@ -62,6 +64,83 @@ function Contactless({ md }: { md: boolean }) {
 }
 
 /** A drawn illustration in the manner of a card's artwork. Coordinates are the card in tenths of a millimetre. */
+/** Torn ribbons of the street-art print: an outer shape in black and an inner one in the card's red. */
+const SABOTAGE: [string, string][] = [
+  [
+    'M-50 15C-41 25 -13 70 6 73C25 76 44 32 62 33C81 34 100 84 119 82C137 79 156 29 175 20C194 11 212 26 231 29C250 31 269 25 287 35C306 45 325 86 344 88C362 91 381 46 400 49C419 53 437 97 456 108C475 120 494 113 512 118C531 123 550 131 569 137C587 143 606 150 625 155C644 161 662 172 681 172C700 171 719 152 737 151C756 149 775 150 794 163C812 176 831 215 850 229C869 242 897 240 906 242L906 251C897 250 869 250 850 247C831 244 812 237 794 231C775 226 756 218 737 213C719 208 700 206 681 202C662 198 644 194 625 189C606 185 587 172 569 177C550 181 531 218 512 215C494 212 475 170 456 160C437 149 419 147 400 154C381 161 362 195 344 203C325 212 306 211 287 203C269 196 250 167 231 159C212 151 194 154 175 154C156 155 137 163 119 164C100 164 81 158 62 157C44 156 25 160 6 158C-13 155 -41 145 -50 142Z',
+    'M-50 102C-41 102 -13 106 6 102C25 99 44 83 62 82C81 82 100 96 119 98C137 101 156 95 175 97C194 100 212 113 231 112C250 111 269 94 287 91C306 88 325 87 344 94C362 100 381 122 400 128C419 135 437 130 456 134C475 137 494 148 512 149C531 150 550 135 569 141C587 146 606 172 625 181C644 189 662 190 681 192C700 194 719 185 737 191C756 198 775 223 794 231C812 240 831 240 850 244C869 247 897 251 906 253L906 283C897 279 869 263 850 255C831 248 812 242 794 237C775 231 756 223 737 221C719 219 700 231 681 225C662 219 644 193 625 185C606 178 587 186 569 183C550 180 531 173 512 169C494 165 475 158 456 158C437 158 419 171 400 168C381 166 362 147 344 144C325 140 306 148 287 148C269 147 250 140 231 139C212 138 194 137 175 140C156 144 137 157 119 159C100 162 81 157 62 157C44 157 25 162 6 157C-13 151 -41 131 -50 125Z',
+  ],
+  [
+    'M-50 175C-41 170 -13 142 6 145C25 147 44 187 62 191C81 194 100 167 119 164C137 161 156 161 175 173C194 184 212 229 231 234C250 238 269 198 287 202C306 206 325 251 344 257C362 263 381 233 400 240C419 246 437 286 456 296C475 306 494 298 512 301C531 303 550 312 569 313C587 315 606 309 625 309C644 309 662 311 681 312C700 312 719 321 737 315C756 308 775 276 794 270C812 263 831 274 850 274C869 275 897 273 906 272L906 369C897 363 869 337 850 330C831 323 812 328 794 328C775 328 756 323 737 330C719 337 700 369 681 370C662 370 644 338 625 334C606 330 587 343 569 344C550 344 531 331 512 337C494 342 475 381 456 379C437 376 419 327 400 324C381 321 362 363 344 360C325 357 306 316 287 305C269 294 250 288 231 292C212 296 194 325 175 329C156 334 137 330 119 319C100 308 81 267 62 263C44 259 25 299 6 294C-13 289 -41 244 -50 234Z',
+    'M-50 186C-41 190 -13 208 6 211C25 215 44 203 62 207C81 210 100 226 119 230C137 235 156 231 175 233C194 235 212 240 231 245C250 250 269 257 287 261C306 266 325 266 344 272C362 278 381 293 400 297C419 300 437 291 456 294C475 297 494 311 512 315C531 320 550 324 569 322C587 321 606 306 625 306C644 305 662 319 681 320C700 320 719 308 737 309C756 309 775 320 794 322C812 324 831 319 850 318C869 317 897 316 906 316L906 346C897 343 869 329 850 329C831 330 812 344 794 346C775 349 756 346 737 344C719 341 700 334 681 332C662 331 644 334 625 334C606 335 587 332 569 334C550 337 531 350 512 348C494 347 475 329 456 325C437 320 419 322 400 321C381 320 362 316 344 317C325 317 306 327 287 324C269 321 250 304 231 297C212 290 194 284 175 280C156 276 137 277 119 272C100 267 81 255 62 250C44 245 25 244 6 240C-13 236 -41 229 -50 226Z',
+  ],
+  [
+    'M-50 335C-41 337 -13 350 6 349C25 348 44 331 62 329C81 327 100 331 119 336C137 340 156 352 175 355C194 359 212 356 231 357C250 357 269 359 287 358C306 357 325 353 344 351C362 349 381 347 400 347C419 347 437 351 456 352C475 352 494 355 512 350C531 345 550 323 569 323C587 322 606 344 625 349C644 354 662 350 681 351C700 352 719 353 737 355C756 356 775 361 794 360C812 358 831 346 850 346C869 345 897 355 906 357L906 398C897 399 869 408 850 405C831 401 812 385 794 378C775 371 756 361 737 361C719 362 700 383 681 383C662 382 644 360 625 357C606 355 587 361 569 366C550 371 531 382 512 387C494 392 475 396 456 395C437 393 419 380 400 377C381 374 362 377 344 379C325 381 306 386 287 388C269 391 250 396 231 396C212 396 194 390 175 390C156 389 137 390 119 394C100 398 81 418 62 415C44 413 25 386 6 379C-13 371 -41 370 -50 369Z',
+    'M-50 364C-41 365 -13 371 6 370C25 370 44 361 62 363C81 364 100 375 119 378C137 380 156 378 175 376C194 375 212 370 231 370C250 369 269 375 287 373C306 372 325 364 344 362C362 360 381 362 400 361C419 360 437 355 456 355C475 355 494 363 512 362C531 361 550 348 569 347C587 345 606 350 625 353C644 355 662 357 681 361C700 364 719 373 737 374C756 375 775 366 794 367C812 367 831 372 850 376C869 381 897 392 906 395L906 394C897 394 869 398 850 395C831 392 812 377 794 375C775 374 756 385 737 385C719 384 700 374 681 370C662 366 644 362 625 361C606 360 587 363 569 365C550 368 531 372 512 375C494 378 475 381 456 381C437 380 419 372 400 373C381 373 362 382 344 383C325 385 306 381 287 381C269 381 250 382 231 385C212 389 194 401 175 402C156 403 137 391 119 391C100 390 81 399 62 399C44 399 25 395 6 390C-13 386 -41 376 -50 373Z',
+  ],
+];
+
+/** Cherry blossoms strung along two branches: x, y, radius, rotation. */
+const SAKURA: [number, number, number, number][] = [
+  [-4, 153, 24.9, 36.8], [5, 201, 20.5, 10.7], [27, 136, 21.2, 19.3], [47, 163, 20.9, 41], [89, 150, 18.8, 39.1],
+  [140, 242, 30.3, 29.8], [146, 254, 29.4, 28.5], [231, 215, 32.4, 60], [276, 299, 19.4, 39.3], [302, 288, 22.4, 10],
+  [325, 212, 28.4, 0.5], [341, 258, 17.3, 34.6], [377, 246, 32, 62.4], [444, 230, 15.5, 27.1], [404, 279, 20, 9.2],
+  [450, 239, 29, 33.2], [502, 171, 15.9, 15.1], [560, 189, 16.9, 4.8], [566, 187, 15.3, 31.4], [568, 127, 18.3, 20.6],
+  [609, 136, 26.8, 63.3], [652, 135, 27.3, 45.6], [614, 175, 27.4, 68.4], [722, 198, 26.2, 69], [680, 191, 16.2, 55.8],
+  [745, 155, 18.7, 37.7], [779, 143, 21.1, 36.9], [758, 226, 28.8, 68.8], [818, 197, 20.4, 36.3], [823, 166, 16.2, 61.2],
+  [823, 155, 32.7, 36.9], [914, 122, 23.9, 27.3],
+];
+/** Buds and fallen petals scattered between the branches. */
+const SAKURA_BUDS: [number, number, number][] = [
+  [285, 193, 6.2], [707, 410, 4.5], [565, 250, 6.1], [53, 190, 5.6], [320, 274, 5.8], [261, 159, 8.9], [340, 410, 4.8],
+  [562, 260, 7.5], [440, 375, 6.9], [58, 306, 7.1], [220, 323, 8.2], [246, 113, 5.4], [501, 220, 4.4], [387, 257, 6.9],
+  [309, 343, 7.4], [231, 185, 8.6], [200, 221, 5.5], [496, 346, 4.6], [175, 83, 4.6], [445, 236, 8.7], [390, 249, 4.1],
+  [204, 171, 5.2],
+];
+/** Light trails converging on a point off the right edge: x1, y1, x2, y2, width, opacity. */
+const STREAKS: [number, number, number, number, number, number][] = [
+  [529, 337, 447, 344, 1.1, 0.11], [841, 248, 669, 198, 1.6, 0.11], [486, 211, 347, 189, 0.7, 0.14], [835, 266, 611, 227, 1.5, 0.15],
+  [550, 320, 338, 331, 1.5, 0.16], [656, 283, 549, 279, 1.0, 0.16], [664, 392, 164, 531, 1.1, 0.16], [543, 261, 403, 251, 1.5, 0.17],
+  [656, 205, 469, 158, 1.1, 0.18], [414, 415, 274, 443, 0.8, 0.19], [589, 400, 286, 474, 0.8, 0.19], [596, 392, 450, 426, 1.5, 0.2],
+  [747, 352, 347, 438, 0.8, 0.21], [532, 302, 389, 303, 1.4, 0.21], [409, 144, 189, 88, 1.3, 0.21], [574, 180, 326, 114, 1.5, 0.22],
+  [415, 157, 12, 63, 1.6, 0.22], [687, 378, 427, 444, 0.9, 0.25], [467, 447, 175, 528, 1.3, 0.25], [512, 389, -80, 509, 1.0, 0.25],
+  [839, 262, 554, 206, 1.3, 0.27], [494, 326, 365, 334, 1.6, 0.27], [493, 216, 241, 177, 1.2, 0.27], [468, 432, -80, 576, 0.6, 0.28],
+  [407, 269, -5, 250, 0.8, 0.28], [569, 385, 476, 403, 1.2, 0.29], [824, 336, 690, 365, 1.0, 0.3], [512, 150, 458, 135, 1.2, 0.31],
+  [741, 268, 183, 211, 0.7, 0.31], [621, 239, 405, 207, 1.2, 0.32], [809, 275, 462, 239, 1.1, 0.33], [602, 416, 488, 449, 1.3, 0.33],
+  [792, 249, 578, 203, 0.8, 0.33], [635, 226, 382, 179, 0.9, 0.34], [620, 333, 483, 346, 1.5, 0.34], [703, 263, 610, 254, 0.7, 0.35],
+  [504, 295, 332, 294, 1.1, 0.36], [490, 218, 375, 201, 1.0, 0.37], [757, 260, 595, 237, 0.6, 0.37], [863, 301, 469, 313, 0.8, 0.38],
+  [628, 371, -22, 499, 1.3, 0.39], [788, 362, 631, 409, 1.6, 0.4], [484, 282, 230, 276, 0.6, 0.4], [669, 283, 299, 268, 0.7, 0.4],
+  [830, 340, 649, 384, 1.2, 0.4], [549, 412, 212, 496, 0.7, 0.41], [740, 330, 400, 373, 0.7, 0.41], [408, 375, -21, 431, 1.1, 0.42],
+  [632, 196, 541, 171, 1.3, 0.42], [522, 299, 138, 302, 0.6, 0.42], [610, 234, 477, 213, 0.7, 0.42], [535, 357, 453, 367, 1.4, 0.42],
+  [840, 311, 537, 337, 1.5, 0.42], [414, 343, 332, 350, 0.8, 0.43], [454, 248, 385, 241, 0.7, 0.43], [531, 232, 178, 184, 1.1, 0.45],
+  [595, 351, 181, 406, 0.9, 0.46], [721, 348, 315, 422, 1.0, 0.46], [861, 304, 573, 320, 0.8, 0.47], [858, 290, 515, 278, 0.7, 0.47],
+  [838, 276, 514, 239, 1.2, 0.47], [480, 230, 328, 212, 1.2, 0.48], [562, 272, 275, 257, 1.5, 0.49], [848, 263, 333, 159, 1.0, 0.49],
+  [878, 332, 678, 385, 0.7, 0.49], [782, 306, 516, 318, 1.2, 0.49], [422, 304, 339, 305, 1.2, 0.5], [540, 205, 144, 128, 2.1, 0.57],
+  [413, 154, 295, 126, 2.2, 0.59], [664, 243, 579, 230, 2.2, 0.61], [434, 148, 249, 100, 2.0, 0.68], [600, 332, 202, 366, 2.2, 0.71],
+  [405, 351, 204, 370, 1.9, 0.74], [542, 236, 375, 215, 2.8, 0.76], [531, 310, 417, 314, 2.7, 0.81], [570, 328, 533, 331, 2.6, 0.82],
+  [859, 275, 746, 259, 2.1, 0.85], [684, 266, 481, 247, 2.8, 0.86],
+];
+
+/** Facets for the low-poly card face, laid out on a jittered grid so no two catch the light alike. */
+const LOW_POLY: [string, number][] = [
+  ['M0 0L118 0L81 136Z', 0.18], ['M0 0L81 136L0 120Z', 0.27], ['M118 0L236 0L81 136Z', 0.23],
+  ['M236 0L221 128L81 136Z', 0.11], ['M236 0L449 0L368 90Z', 0.29], ['M236 0L368 90L221 128Z', 0.07],
+  ['M449 0L511 0L368 90Z', 0.15], ['M511 0L560 171L368 90Z', 0.24], ['M511 0L718 0L661 105Z', 0.08],
+  ['M511 0L661 105L560 171Z', 0.17], ['M718 0L856 0L661 105Z', 0.05], ['M856 0L856 149L661 105Z', 0.21],
+  ['M0 120L81 136L0 319Z', 0.24], ['M81 136L153 259L0 319Z', 0.19], ['M81 136L221 128L352 220Z', 0.27],
+  ['M81 136L352 220L153 259Z', 0.12], ['M221 128L368 90L352 220Z', 0.22], ['M368 90L478 247L352 220Z', 0.19],
+  ['M368 90L560 171L521 228Z', 0.19], ['M368 90L521 228L478 247Z', 0.16], ['M560 171L661 105L521 228Z', 0.26],
+  ['M661 105L687 305L521 228Z', 0.29], ['M661 105L856 149L856 235Z', 0.16], ['M661 105L856 235L687 305Z', 0.21],
+  ['M0 319L153 259L162 391Z', 0.06], ['M0 319L162 391L0 414Z', 0.22], ['M153 259L352 220L162 391Z', 0.21],
+  ['M352 220L292 357L162 391Z', 0.3], ['M352 220L478 247L366 373Z', 0.25], ['M352 220L366 373L292 357Z', 0.11],
+  ['M478 247L521 228L366 373Z', 0.14], ['M521 228L596 397L366 373Z', 0.21], ['M521 228L687 305L687 414Z', 0.05],
+  ['M521 228L687 414L596 397Z', 0.16], ['M687 305L856 235L687 414Z', 0.08], ['M856 235L856 400L687 414Z', 0.07],
+  ['M0 414L162 391L0 540Z', 0.06], ['M162 391L115 540L0 540Z', 0.24], ['M162 391L292 357L327 540Z', 0.07],
+  ['M162 391L327 540L115 540Z', 0.1], ['M292 357L366 373L327 540Z', 0.14], ['M366 373L456 540L327 540Z', 0.27],
+  ['M366 373L596 397L535 540Z', 0.06], ['M366 373L535 540L456 540Z', 0.16], ['M596 397L687 414L535 540Z', 0.18],
+  ['M687 414L724 540L535 540Z', 0.27], ['M687 414L856 400L856 540Z', 0.25], ['M687 414L856 540L724 540Z', 0.26],
+];
+
 function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
   const c = look.motifColour ?? (look.ink === 'light' ? '#ffffff26' : '#00000020');
   const portrait = look.orientation === 'portrait';
@@ -320,6 +399,196 @@ function Motif({ look, id }: { look: CatalogCardLook; id: string }) {
           <path d="M412 272l-40-10-6-28-12 2 4 26-32-8-8-14-8 2 4 30-4 30 8 2 8-14 32-8-4 26 12 2 6-28z" fill={c} />
         </>,
       );
+    case 'garuda-contrails':
+      // A climbing airliner and the four trails it drags across the lower half of the card.
+      return svg(
+        <>
+          {/* The inner pair in the airline's cyan, the outer pair muted, as on the card. */}
+          <g fill="none" strokeLinecap="round">
+            {([
+              [286, 158, 0.85, 7],
+              [316, 192, 0.3, 6],
+              [346, 226, 0.75, 7],
+              [376, 260, 0.22, 6],
+            ] as const).map(([y0, y1, o, w], i) => (
+              <path key={i} d={`M18 ${y0}C250 ${y0 - 8} 520 ${y0 - 58} 856 ${y1}`} stroke={c} strokeOpacity={o} strokeWidth={w} />
+            ))}
+          </g>
+          <g fill={c} transform="translate(556 190) rotate(32) scale(0.8)">
+            {/* Airliner from above: fuselage, swept wings, tailplane. */}
+            <path d="M0-66C6-54 9-40 9-26V20c0 12-2 26-4 34H-5c-2-8-4-22-4-34V-26C-9-40-6-54 0-66Z" />
+            <path d="M9-8 76 26v10L9 16ZM-9-8-76 26v10L-9 16Z" />
+            <path d="M7 34 30 50v7L7 48ZM-7 34-30 50v7L-7 48Z" />
+          </g>
+        </>,
+      );
+    case 'outline-u':
+      // One letter, drawn thin and open at the top, which is the whole of this card's artwork.
+      return svg(
+        <path
+          d="M348 118v148a80 80 0 0 0 160 0V118"
+          fill="none"
+          stroke={c}
+          strokeWidth="15"
+          strokeLinecap="butt"
+        />,
+      );
+    case 'hologram-disc':
+      // A plain black card whose only ornament is the issuer's hologram, so that is what is drawn.
+      return svg(
+        <>
+          <defs>
+            <radialGradient id={`${id}holo`} cx="38%" cy="32%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+              <stop offset="42%" stopColor="#dfe5ec" stopOpacity="0.8" />
+              <stop offset="75%" stopColor="#aab3bf" stopOpacity="0.62" />
+              <stop offset="100%" stopColor="#7c8490" stopOpacity="0.5" />
+            </radialGradient>
+          </defs>
+          {/* A wide, very faint sheen across the matte black, the way the plastic catches light. */}
+          <path d="M-60 210L720 30v104L-60 314z" fill={c} opacity="0.5" />
+          <circle cx="628" cy="196" r="27" fill={`url(#${id}holo)`} />
+          <circle cx="628" cy="196" r="27" fill="none" stroke="#ffffff" strokeOpacity="0.22" strokeWidth="1.5" />
+        </>,
+      );
+    case 'foil-sheen':
+      // Holographic foil: broad soft bands of colour bleeding into one another over the card's own gradient.
+      return svg(
+        <>
+          <defs>
+            <filter id={`${id}blur`} x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="52" />
+            </filter>
+          </defs>
+          <g filter={`url(#${id}blur)`} opacity="0.18">
+            <ellipse cx="150" cy="110" rx="260" ry="140" fill="#ffd9f2" opacity="0.65" />
+            <ellipse cx="560" cy="170" rx="240" ry="150" fill="#ffe9a8" opacity="0.6" />
+            <ellipse cx="130" cy="430" rx="250" ry="150" fill="#9fe8ff" opacity="0.6" />
+            <ellipse cx="660" cy="470" rx="270" ry="140" fill="#ffc2e6" opacity="0.55" />
+            <ellipse cx="420" cy="290" rx="150" ry="95" fill="#ffffff" opacity="0.22" />
+          </g>
+          {/* Two hard streaks, where foil creases catch the light. */}
+          <path d="M0 214L856 62v34L0 248z" fill="#ffffff" opacity="0.14" />
+          <path d="M0 424L856 300v26L0 450z" fill="#ffffff" opacity="0.1" />
+        </>,
+      );
+    case 'low-poly-facets':
+      // A field of large facets, each catching the light differently, like the card's crumpled-foil print.
+      return svg(
+        <g fill={c}>
+          {LOW_POLY.map(([d, o], i) => (
+            <path key={i} d={d} opacity={o} />
+          ))}
+        </g>,
+      );
+    case 'torn-ribbons':
+      // Street-art print: black ribbons torn across the card, each carrying a red one inside, outlined in white.
+      return svg(
+        <g>
+          {SABOTAGE.map(([outer, inner], i) => (
+            <g key={i}>
+              <path d={outer} fill="#15100c" stroke="#ffffff" strokeWidth="5" strokeLinejoin="round" />
+              <path d={inner} fill={c} stroke="#ffffff" strokeWidth="3" strokeLinejoin="round" strokeOpacity="0.75" />
+            </g>
+          ))}
+        </g>,
+      );
+    case 'sakura-branch':
+      // Cherry blossom over deep blue: two branches of five-petal flowers, with buds and fallen petals between.
+      return svg(
+        <g fill={c} transform="translate(0 46)">
+          {/* The branches the flowers hang from, drawn thin so the blossom carries the card. */}
+          <g fill="none" stroke={c} strokeOpacity="0.5" strokeWidth="3" strokeLinecap="round">
+            <path d="M-20 120Q240 300 470 250" />
+            <path d="M520 150Q690 230 880 150" />
+            <path d="M120 196q60 44 132 40M300 262q56-26 104-20M640 156q44 26 96 18" />
+          </g>
+          {SAKURA.map(([x, y, r, rot], i) => (
+            <g key={i} transform={`translate(${x} ${y}) rotate(${rot})`}>
+              {[0, 72, 144, 216, 288].map((a) => (
+                <path key={a} d={`M0 0C${r * 0.5} ${-r * 0.4} ${r * 0.52} ${-r} 0 ${-r}C${-r * 0.52} ${-r} ${-r * 0.5} ${-r * 0.4} 0 0Z`} transform={`rotate(${a})`} />
+              ))}
+              <circle r={r * 0.14} fillOpacity="0.55" />
+            </g>
+          ))}
+          {SAKURA_BUDS.map(([x, y, r], i) => (
+            <circle key={i} cx={x} cy={y} r={r} fillOpacity="0.8" />
+          ))}
+        </g>,
+      );
+    case 'octo-rings':
+      // The card is flat red and its one device is the ring cut out of the O; this draws it large and faint.
+      return svg(
+        <>
+          <g fill="none" stroke={c} strokeLinecap="round">
+            <path d="M604 128a148 148 0 1 1-104 43" strokeWidth="34" />
+            <path d="M604 202a74 74 0 1 1-52 22" strokeWidth="18" strokeOpacity="0.6" />
+          </g>
+          {/* A broad sheen off the top-left corner, the way the plastic catches light. */}
+          <path d="M-40 0L430 0 60 400-40 330z" fill={c} opacity="0.35" />
+        </>,
+      );
+    case 'copper-ribbon':
+      // A bundle of fine copper threads swept across the card, over two broad pale waves.
+      return svg(
+        <>
+          <g fill={c} opacity="0.13">
+            <path d="M0 250C180 150 300 330 520 268s250-150 336-118v92C760 214 640 372 470 350S180 268 0 342z" />
+            <path d="M0 400C200 320 320 452 540 392s230-118 316-92v70C770 348 650 470 470 452S170 420 0 452z" opacity="0.6" />
+          </g>
+          <g fill="none" stroke={c} strokeWidth="1.4" strokeLinecap="round">
+            {Array.from({ length: 22 }, (_, i) => {
+              const d = i * 7;
+              return <path key={i} d={`M0 ${262 + d}C170 ${170 + d * 0.7} 300 ${346 + d * 0.9} 520 ${284 + d}s250 ${-150 + d * 0.3} 336 ${-118 + d * 0.5}`} strokeOpacity={0.15 + (i % 5) * 0.14} />;
+            })}
+          </g>
+        </>,
+      );
+    case 'lotus-watermark':
+      // A lotus standing open, printed dark on black the way the real card ghosts it.
+      return svg(
+        <g fill={c}>
+          <g transform="translate(470 264)" opacity="0.5">
+            {[-72, -48, -24, 0, 24, 48, 72].map((a, i) => {
+              const h = 190 - Math.abs(a) * 0.9;
+              return (
+                <path
+                  key={a}
+                  transform={`rotate(${a})`}
+                  d={`M0 0C${h * 0.34} ${-h * 0.34} ${h * 0.3} ${-h * 0.82} 0 ${-h}C${-h * 0.3} ${-h * 0.82} ${-h * 0.34} ${-h * 0.34} 0 0Z`}
+                  fillOpacity={0.5 + (i % 2) * 0.35}
+                />
+              );
+            })}
+            {/* The boat the lotus sits in, from the charity's own emblem. */}
+            <path d="M-118 16C-70 62 70 62 118 16 78 40-78 40-118 16Z" fillOpacity="0.8" />
+          </g>
+        </g>,
+      );
+    case 'light-streaks':
+      // Long-exposure light trails, drawn twice: a soft bloom under a finer, harder core.
+      return svg(
+        <>
+          <defs>
+            <filter id={`${id}bloom`} x="-20%" y="-40%" width="140%" height="180%">
+              <feGaussianBlur stdDeviation="7" />
+            </filter>
+            <filter id={`${id}trail`} x="-20%" y="-40%" width="140%" height="180%">
+              <feGaussianBlur stdDeviation="1.1" />
+            </filter>
+          </defs>
+          <g stroke={c} strokeLinecap="round" filter={`url(#${id}bloom)`} opacity="0.5">
+            {STREAKS.map(([x1, y1, x2, y2, w, o], i) => (
+              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={w * 2.4} strokeOpacity={o * 0.7} />
+            ))}
+          </g>
+          <g stroke={c} strokeLinecap="round" filter={`url(#${id}trail)`}>
+            {STREAKS.map(([x1, y1, x2, y2, w, o], i) => (
+              <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={w} strokeOpacity={o} />
+            ))}
+          </g>
+        </>,
+      );
     case 'sparse-diagonals':
       // A plain face cut by a few long thin strokes, the way a metal card carries a single accent.
       return svg(
@@ -535,7 +804,13 @@ export function CardFace({
         <>
           <div className="absolute flex items-start justify-between gap-2" style={{ top: inset - 2, left: inset, right: inset }}>
             <div className="min-w-0 truncate font-bold tracking-wide">{bank}</div>
-            <div className={cx('min-w-0 truncate text-right leading-tight font-semibold tracking-tight', md ? (cardName.length > 14 ? 'text-[13px]' : 'text-[15px]') : 'text-[10px]')}>
+            <div
+              className={cx(
+                'min-w-0 truncate text-right leading-tight font-semibold tracking-tight',
+                // A portrait card is barely half as wide, so its name steps down a size much sooner.
+                md ? (cardName.length > (portrait ? 7 : 14) ? (cardName.length > (portrait ? 12 : 22) ? 'text-[11px]' : 'text-[13px]') : 'text-[15px]') : 'text-[10px]',
+              )}
+            >
               {cardName}
             </div>
           </div>

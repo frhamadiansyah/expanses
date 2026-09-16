@@ -1,0 +1,131 @@
+{
+  "id": "dbs-live-fresh-visa",
+  "entryVersion": 2,
+  "bank": "DBS",
+  "name": "digibank Live Fresh",
+  "network": "visa",
+  "currency": "IDR",
+  "program": {
+    "unit": "cashback",
+    "name": "Live Fresh Cashback",
+    "cycleAnchor": "statement",
+    "memberLevels": [
+      {
+        "key": "claimed",
+        "name": "Qualified and claimed",
+        "condition": "Five offline transactions made this month, of any size, and the monthly claim sent by SMS to 99333"
+      },
+      {
+        "key": "unclaimed",
+        "name": "Not qualified or not claimed",
+        "condition": "Fewer than five offline transactions, or the SMS claim not sent, so the month pays nothing"
+      }
+    ]
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 400000,
+      "supplementaryFeeMinor": null,
+      "condition": "waived for the first year"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "online",
+          "name": "Online spending at 5%",
+          "rateNum": 1,
+          "rateDen": 20,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "merchantPatterns": [
+              "tokopedia",
+              "shopee",
+              "lazada",
+              "blibli",
+              "tiktok shop",
+              "bukalapak",
+              "zalora",
+              "amazon",
+              "traveloka",
+              "tiket.com",
+              "grab",
+              "gojek",
+              "netflix",
+              "spotify",
+              "agoda",
+              "steam",
+              "google play",
+              "apple.com"
+            ]
+          },
+          "capPoints": 300000,
+          "memberLevels": [
+            "claimed"
+          ]
+        }
+      ]
+    }
+  ],
+  "transferPartners": [],
+  "cashValue": {
+    "valueMinor": 1,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
+  "welcomeBonus": "Paid for spending at least Rp 1.000.000 within 60 days of approval.",
+  "notes": [
+    "Five per cent back on online spending, capped at Rp 300.000 a month on the main card and Rp 200.000 on a supplementary one. Only the main card’s ceiling is written here; a household running both should raise it by hand.",
+    "The cashback has to be earned twice over. Five offline transactions of any size in the month, and then a claim sent by SMS to 99333 as DBS Livefresh#DDMMYY#last four digits. Forget either and the month pays nothing at all, which is why the two states are member levels rather than a footnote. Set the level for the month you are looking at.",
+    "Nothing is written for offline spending, because offline spending earns nothing: the five transactions are a hurdle, not a rate.",
+    "\"Online\" is matched by merchant name, from a list of the marketplaces, travel sites, ride-hailing apps and subscriptions people in Indonesia actually use. It is a guess at a category the statement does not label, so an online shop outside the list earns nothing in the estimate, and a bricks-and-mortar branch of a listed name earns when it should not.",
+    "The annual fee is Rp 400.000, free for the first year.",
+    "DBS changed earning and benefits across its cards on 1 April 2026. What that did to this card was not published in anything reachable from here, so the entry runs one set of terms throughout and a later cycle may be wrong.",
+    "No source could be read directly: dbs.id, its RIPLAY and PinterPoin are all unreachable from here, so every figure comes from search summaries. The Rp 300.000 ceiling and the five-transaction rule are corroborated by two independent ones.",
+    "The face is the Mr Sabotage print the card is sold with: torn black and red ribbons over amber. It is redrawn here, not copied."
+  ],
+  "sources": [
+    {
+      "title": "DBS Indonesia — Kartu Kredit digibank Live Fresh",
+      "url": "https://www.dbs.id/digibank/id/id/kartu/kartu-digibank/digibank-live-fresh"
+    },
+    {
+      "title": "DBS Indonesia — Syarat dan Ketentuan Cashback Live Fresh",
+      "url": "https://www.dbs.id/id/iwov-resources/pdf/Syarat-dan-Ketentuan-Cashback-Live-Fresh-new21.pdf"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit DBS Live Fresh",
+      "url": "https://pinterpoin.com/review-kartu-kredit-dbs-live-fresh/"
+    },
+    {
+      "title": "Cermati — Kartu Kredit Digibank Live Fresh",
+      "url": "https://www.cermati.com/kartu-kredit/digibank-live-fresh"
+    }
+  ],
+  "verifiedOn": "2026-09-15",
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#eebb4f",
+      "#e5ad3f",
+      "#f2c563"
+    ],
+    "angle": 135,
+    "finish": "glossy",
+    "pattern": "none",
+    "motif": "torn-ribbons",
+    "motifColour": "#d93425",
+    "ink": "light",
+    "wordmark": "live fresh",
+    "bankMark": "DBS",
+    "chip": "silver"
+  }
+}

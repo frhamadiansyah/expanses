@@ -22,6 +22,11 @@ export interface RuleMatch {
   mccs?: string[];
   /** Merchant category codes or ranges that never earn under this rule. A purchase without an MCC is not excluded. */
   excludeMccs?: string[];
+  /**
+   * Days the purchase must fall on, 0 for Sunday through 6 for Saturday, which is how a weekend offer is written.
+   * The day is the date the purchase happened, read in the machine's own zone, not the date it was posted.
+   */
+  daysOfWeek?: number[];
 }
 
 export interface EarnRule {
@@ -124,6 +129,11 @@ const TENTHS = 10;
 const rateTenths = (rule: EarnRule) => Math.round(rule.rateNum * TENTHS);
 
 /** Category, merchant, currency, and origin conditions shared by earn rules and cycle bonuses. */
+/** 0 for Sunday through 6 for Saturday. Parsed as a plain date, so it does not shift with the zone. */
+export function dayOfWeek(isoDate: string): number {
+  return new Date(`${isoDate}T00:00:00Z`).getUTCDay();
+}
+
 export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Record<string, string[]>, billingCurrency = 'IDR'): boolean {
   if (line.cardFee) return false;
   const chain = [line.categoryId, ...(ancestors[line.categoryId] ?? [])];
@@ -139,6 +149,7 @@ export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Recor
   if (match.currencies?.length && !match.currencies.includes(spentIn)) return false;
   if (match.origin === 'foreign' && spentIn === billingCurrency) return false;
   if (match.origin === 'domestic' && spentIn !== billingCurrency) return false;
+  if (match.daysOfWeek?.length && !match.daysOfWeek.includes(dayOfWeek(line.occurredOn))) return false;
   return true;
 }
 

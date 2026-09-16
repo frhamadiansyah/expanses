@@ -1,0 +1,153 @@
+{
+  "id": "cimb-niaga-octo-card",
+  "bank": "CIMB Niaga",
+  "name": "CIMB Niaga OCTO Card",
+  "network": "mastercard",
+  "program": {
+    "unit": "cashback",
+    "name": "OCTO Cashback",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 0,
+      "supplementaryFeeMinor": 0,
+      "condition": "no annual fee"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": "2026-03-31",
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "qris",
+          "name": "QRIS at 10%",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "merchantPatterns": [
+              "qris",
+              "qr"
+            ]
+          },
+          "capPoints": 100000
+        },
+        {
+          "key": "online",
+          "name": "Online at 10%",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "merchantPatterns": [
+              "tokopedia",
+              "shopee",
+              "lazada",
+              "blibli",
+              "tiktok shop",
+              "bukalapak",
+              "zalora",
+              "amazon",
+              "netflix",
+              "spotify",
+              "steam",
+              "google play",
+              "apple.com"
+            ],
+            "excludeMccs": [
+              "3000-3299",
+              "3500-3999",
+              "4511",
+              "4722",
+              "7011"
+            ]
+          },
+          "capPoints": 100000
+        }
+      ]
+    },
+    {
+      "effectiveFrom": "2026-04-01",
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "qris",
+          "name": "QRIS at 10%",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "merchantPatterns": [
+              "qris",
+              "qr"
+            ]
+          },
+          "capPoints": 100000
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "This card is written as a cashback card, because that is what it is worth holding for. It does earn Poin Xtra, 25 for every whole Rp 50.000, which is a point per Rp 2.000 — and a Poin Xtra is statement credit worth about a rupiah, so the points are roughly 0,05% back against a cashback rate of 10%. A card carries one reward program here, so the points are the half given up.",
+    "The 10% came in two halves. On a QRIS scan it is capped at Rp 10.000 a transaction; on an online purchase it was capped at Rp 50.000 and never applied to hotels, airlines or travel agents. Both share one ceiling of Rp 100.000 a billing period on the main card.",
+    "The online half was discontinued on 1 April 2026 for the Visa and JCB OCTO Card, which is why the terms are written in two periods. A cycle before that date still earns it; a cycle after does not.",
+    "The per-transaction ceilings, Rp 10.000 on QRIS and Rp 50.000 online, are not applied: a cap here is per cycle, not per purchase. One large QRIS payment is therefore overestimated, though the Rp 100.000 monthly ceiling still holds the month down.",
+    "A QRIS payment is recognised by the word QRIS or QR in the description, which is how these statements read. The online half was matched by merchant name, from the marketplaces and subscriptions people here actually use, so an online shop outside that list earned nothing in the estimate.",
+    "There is no annual fee at all, on the primary card or a supplementary one.",
+    "The OCTO Card runs on Mastercard now. It was issued on Visa and on JCB before, and the 1 April 2026 notice that ended the online cashback named those two; the card earns the same way on either network.",
+    "Nothing earns on instalments, cash withdrawals, Cash Plus, other cashback programmes, the catalogue, membership fees, recurring transactions, fees or interest. Those exclusions are not written as rules, because the app does not see most of them as spending in the first place."
+  ],
+  "sources": [
+    {
+      "title": "CIMB Niaga — OCTO Card",
+      "url": "https://www.cimbniaga.co.id/id/personal/kartu-kredit/octo-card"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit CIMB Niaga OCTO Card",
+      "url": "https://pinterpoin.com/review-kartu-kredit-cimb-niaga-octo-card/"
+    },
+    {
+      "title": "CIMB Niaga — OCTO Card Syariah",
+      "url": "https://www.cimbniaga.co.id/id/syariah-personal/kartu-syariah/octo-card-syariah"
+    }
+  ],
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#d3141d",
+      "#ec2029",
+      "#a80f16"
+    ],
+    "angle": 130,
+    "finish": "glossy",
+    "pattern": "none",
+    "motif": "octo-rings",
+    "motifColour": "#ffffff28",
+    "ink": "light",
+    "wordmark": "OCTO Card",
+    "bankMark": "CIMB Niaga",
+    "chip": "gold"
+  },
+  "entryVersion": 4,
+  "currency": "IDR",
+  "cashValue": {
+    "valueMinor": 1,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
+  "welcomeBonus": null,
+  "verifiedOn": "2026-09-15",
+  "transferPartners": []
+}

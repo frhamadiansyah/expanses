@@ -1,0 +1,114 @@
+{
+  "id": "danamon-visa-platinum",
+  "bank": "Danamon",
+  "name": "Danamon Visa Platinum",
+  "network": "visa",
+  "program": {
+    "unit": "cashback",
+    "name": "Danamon Cashback",
+    "cycleAnchor": "calendar"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 600000,
+      "supplementaryFeeMinor": null,
+      "condition": "waived on conditions the bank sets"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "weekend",
+          "name": "Weekends at 10%",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "daysOfWeek": [
+              0,
+              6
+            ]
+          },
+          "capPoints": 200000,
+          "minTransactionMinor": 100000
+        },
+        {
+          "key": "bills",
+          "name": "Bill payments at 5%",
+          "rateNum": 1,
+          "rateDen": 20,
+          "rounding": "per_increment",
+          "priority": 10,
+          "stackable": false,
+          "match": {
+            "categoryKeys": [
+              "utilities.electricity",
+              "utilities.water_sanitation",
+              "utilities.mobile_phone",
+              "utilities.internet_provider"
+            ]
+          },
+          "capPoints": 100000
+        }
+      ]
+    }
+  ],
+  "transferPartners": [],
+  "notes": [
+    "This card is written as a cashback card, because that is what it is. It does earn D-Point, one per Rp 2.500, but a D-Point buys a GarudaMile at fifteen to one — Rp 37.500 a mile, the worst rate in this catalogue — while the cashback is worth up to Rp 300.000 a month. A card carries one reward program here, so the points are the half given up.",
+    "10% back on weekend spending, capped at Rp 200.000 a month, and 5% back on bill payments, capped at Rp 100.000 a month. The two ceilings are separate.",
+    "The weekend rule reads Saturday and Sunday off the purchase date. That is the date the purchase happened, not the date the bank posted it, so a late-Sunday purchase posted on Monday still counts here and may not at the bank.",
+    "The weekend cashback also needs five transactions of at least Rp 100.000 in the month. The Rp 100.000 is written as a minimum per purchase, so smaller weekend purchases earn nothing. The count of five has no field — there is a minimum per purchase and a minimum per cycle, but nothing counts purchases — so a month with four qualifying purchases is estimated as if it paid, and overstates.",
+    "Bills are matched by category: electricity, water, mobile phone and internet provider. There is no cable-TV category, so it reads the internet provider one.",
+    "The annual fee is Rp 600.000 and the bank waives it on conditions it does not publish in one place. Set what you are actually charged on the card terms.",
+    "D-Point transfer partners are no longer recorded here. They have not gone away on the card; they are on the Danamon JCB Precious entry, which keeps points because its uplift brings a GarudaMile down to about Rp 8.333."
+  ],
+  "sources": [
+    {
+      "title": "Bank Danamon — Kartu Kredit Danamon Visa Platinum",
+      "url": "https://www.danamon.co.id/Personal/KartuTransaksi/Kartu-Kredit/1-Menit-Bisa-Kartu-Kredit-Danamon-Visa-Platinum"
+    },
+    {
+      "title": "Bank Danamon — RIPLAY Kartu Kredit Danamon Visa Platinum",
+      "url": "https://www.danamon.co.id/-/media/ALL-CONTENT-PERSONAL-BANKING/Kartu-Kredit/RIPLAY/newRiplay/RIPLAY-Kartu-Kredit-Danamon-Visa-Platinum.pdf"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit Danamon Visa Platinum",
+      "url": "https://pinterpoin.com/review-kartu-kredit-danamon-visa-platinum/"
+    }
+  ],
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#2a1b16",
+      "#4a332a",
+      "#20140f"
+    ],
+    "angle": 130,
+    "finish": "metallic",
+    "pattern": "none",
+    "motif": "copper-ribbon",
+    "motifColour": "#e08b45",
+    "ink": "light",
+    "wordmark": "platinum",
+    "bankMark": "Danamon",
+    "chip": "silver"
+  },
+  "entryVersion": 3,
+  "currency": "IDR",
+  "cashValue": {
+    "valueMinor": 1,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
+  "welcomeBonus": null,
+  "verifiedOn": "2026-09-15"
+}

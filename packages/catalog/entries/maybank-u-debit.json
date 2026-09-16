@@ -1,0 +1,261 @@
+{
+  "id": "maybank-u-debit",
+  "entryVersion": 1,
+  "bank": "Maybank",
+  "name": "Maybank U",
+  "network": "mastercard",
+  "cardType": "debit",
+  "currency": "IDR",
+  "program": {
+    "unit": "cashback",
+    "name": "Smart Spending",
+    "cycleAnchor": "calendar",
+    "crediting": "per_statement",
+    "memberLevels": [
+      {
+        "key": "avg-10m-plus",
+        "name": "Rp 10 juta or more",
+        "condition": "Average monthly balance Rp 10.000.000 or more"
+      },
+      {
+        "key": "avg-5m",
+        "name": "Rp 5 juta to under Rp 10 juta",
+        "condition": "Average monthly balance Rp 5.000.000 to under Rp 10.000.000"
+      },
+      {
+        "key": "avg-2m",
+        "name": "Rp 2 juta to under Rp 5 juta",
+        "condition": "Average monthly balance Rp 2.000.000 to under Rp 5.000.000"
+      },
+      {
+        "key": "avg-500k",
+        "name": "Rp 500 ribu to under Rp 2 juta",
+        "condition": "Average monthly balance Rp 500.000 to under Rp 2.000.000"
+      }
+    ]
+  },
+  "fees": [],
+  "terms": [
+    {
+      "effectiveFrom": "2026-04-01",
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "bills-avg-10m-plus",
+          "name": "Bills paid in M2U ID — Rp 10 juta or more",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "categoryKeys": [
+              "utilities.electricity",
+              "utilities.water_sanitation",
+              "utilities.mobile_phone",
+              "utilities.internet_provider"
+            ]
+          },
+          "capPoints": 50000,
+          "memberLevels": [
+            "avg-10m-plus"
+          ]
+        },
+        {
+          "key": "bills-avg-5m",
+          "name": "Bills paid in M2U ID — Rp 5 juta to under Rp 10 juta",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "categoryKeys": [
+              "utilities.electricity",
+              "utilities.water_sanitation",
+              "utilities.mobile_phone",
+              "utilities.internet_provider"
+            ]
+          },
+          "capPoints": 50000,
+          "memberLevels": [
+            "avg-5m"
+          ]
+        },
+        {
+          "key": "bills-avg-2m",
+          "name": "Bills paid in M2U ID — Rp 2 juta to under Rp 5 juta",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "categoryKeys": [
+              "utilities.electricity",
+              "utilities.water_sanitation",
+              "utilities.mobile_phone",
+              "utilities.internet_provider"
+            ]
+          },
+          "capPoints": 25000,
+          "memberLevels": [
+            "avg-2m"
+          ]
+        },
+        {
+          "key": "bills-avg-500k",
+          "name": "Bills paid in M2U ID — Rp 500 ribu to under Rp 2 juta",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "categoryKeys": [
+              "utilities.electricity",
+              "utilities.water_sanitation",
+              "utilities.mobile_phone",
+              "utilities.internet_provider"
+            ]
+          },
+          "capPoints": 10000,
+          "memberLevels": [
+            "avg-500k"
+          ]
+        },
+        {
+          "key": "spend-avg-10m-plus",
+          "name": "Card and QR Pay spending — Rp 10 juta or more",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "utilities.electricity",
+              "utilities.water_sanitation",
+              "utilities.mobile_phone",
+              "utilities.internet_provider"
+            ]
+          },
+          "capPoints": 200000,
+          "memberLevels": [
+            "avg-10m-plus"
+          ]
+        },
+        {
+          "key": "spend-avg-5m",
+          "name": "Card and QR Pay spending — Rp 5 juta to under Rp 10 juta",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "utilities.electricity",
+              "utilities.water_sanitation",
+              "utilities.mobile_phone",
+              "utilities.internet_provider"
+            ]
+          },
+          "capPoints": 100000,
+          "memberLevels": [
+            "avg-5m"
+          ]
+        },
+        {
+          "key": "spend-avg-2m",
+          "name": "Card and QR Pay spending — Rp 2 juta to under Rp 5 juta",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "utilities.electricity",
+              "utilities.water_sanitation",
+              "utilities.mobile_phone",
+              "utilities.internet_provider"
+            ]
+          },
+          "capPoints": 50000,
+          "memberLevels": [
+            "avg-2m"
+          ]
+        },
+        {
+          "key": "spend-avg-500k",
+          "name": "Card and QR Pay spending — Rp 500 ribu to under Rp 2 juta",
+          "rateNum": 1,
+          "rateDen": 10,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {
+            "excludeCategoryKeys": [
+              "utilities.electricity",
+              "utilities.water_sanitation",
+              "utilities.mobile_phone",
+              "utilities.internet_provider"
+            ]
+          },
+          "capPoints": 25000,
+          "memberLevels": [
+            "avg-500k"
+          ]
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [],
+  "cashValue": {
+    "valueMinor": 1,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
+  "welcomeBonus": null,
+  "notes": [
+    "A debit card: it spends the Tabungan U account’s own money, so there is no statement, no limit and nothing to pay off. Apply it to the savings account you spend from.",
+    "Smart Spending pays 10% back, but the monthly ceiling depends on the average balance you keep, so the entry publishes those bands as member levels. Choose the band you are actually in — at the wrong one the cap is wrong, and the rate is not.",
+    "The two ceilings are separate, not shared: card and QR Pay spending on one, bills paid through M2U ID App on the other. At the top band that is Rp 200.000 and Rp 50.000, which is where the advertised “up to Rp 250.000 a month” comes from.",
+    "Qualifying bills are electricity, water, telephone and cable TV paid in M2U ID App. This entry matches them by category; there is no cable-TV category, so it reads the internet provider one, and a landline reads as the mobile phone one. A bill paid any other way earns at the card rate instead, which is how the app treats it here.",
+    "Cashback needs an active U Goal Saver or U Goal Saver iB account, and is paid into it. The balance that counts excludes any balance blocked by the programme itself.",
+    "These are the terms as changed on 1 April 2026. The earlier regime is not written here, so cycles before that date earn nothing in this entry rather than earning the old way.",
+    "Not read first-hand: maybank.co.id cannot be reached from here, so the band table comes from search results rather than the announcement itself. Worth checking against the RIPLAY before trusting the caps."
+  ],
+  "sources": [
+    {
+      "title": "Maybank Indonesia — Maybank ATM/Debit Card U",
+      "url": "https://www.maybank.co.id/en/savings/Maybank-Kartu-ATM-Debit/Debit-Tabungan-U"
+    },
+    {
+      "title": "Maybank Indonesia — Tabungan U",
+      "url": "https://www.maybank.co.id/savings/savingsaccount/tabungan-u"
+    },
+    {
+      "title": "Maybank Indonesia — Perubahan Ketentuan Fitur Smart Spending (effective 1 April 2026)",
+      "url": "https://www.maybank.co.id/NewsAndAnnouncement/NewsAndAnnouncements/2026/02/09/07/29/Perubahan-Ketentuan-Fitur-Smart-Spending-dari-Maybank-Tabungan-U-dan-Payroll-One"
+    }
+  ],
+  "verifiedOn": "2026-09-15",
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#8ed3d0"
+    ],
+    "angle": 0,
+    "finish": "matte",
+    "pattern": "none",
+    "motif": "outline-u",
+    "motifColour": "#ffffffcc",
+    "ink": "dark",
+    "wordmark": "U",
+    "bankMark": "Maybank",
+    "chip": "silver"
+  }
+}

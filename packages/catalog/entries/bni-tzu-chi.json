@@ -1,0 +1,82 @@
+{
+  "id": "bni-tzu-chi",
+  "bank": "BNI",
+  "name": "BNI Buddha Tzu Chi",
+  "network": "visa",
+  "program": {
+    "unit": "points",
+    "name": "BNI Reward Point",
+    "cycleAnchor": "statement"
+  },
+  "fees": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "annualFeeMinor": 0,
+      "supplementaryFeeMinor": 0,
+      "condition": "waived for life while the card stays active; from the third year the waiver needs Rp 21.000.000 of yearly retail spending on Gold and Rp 50.000.000 on Platinum"
+    }
+  ],
+  "terms": [
+    {
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "cycleBonuses": [],
+      "rules": [
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 10000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {}
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "One BNI Reward Point per Rp 10.000, the ordinary BNI rate. The card earns no faster than its siblings.",
+    "What distinguishes it is that BNI donates 0,3% of every transaction to Yayasan Buddha Tzu Chi Indonesia. The bank pays that, not the cardholder: nothing is deducted from the card, and nothing is deducted from the points, so it changes no rule here.",
+    "The fee is written as nil, which is how the card is sold — free for life while it stays active. The bank also publishes spending thresholds for the waiver from the third year, Rp 21.000.000 on Gold and Rp 50.000.000 on Platinum. Those two statements do not sit together comfortably; if you are charged, record it on the card terms.",
+    "Transfer partners are not recorded. BNI Reward Points redeem against vouchers and statement credit; no mileage ratio was retrieved."
+  ],
+  "sources": [
+    {
+      "title": "BNI — Buddha Tzu Chi",
+      "url": "https://www.bni.co.id/creditcard/id-id/produk/produk-kartu-kredit-bni/buddha-tzu-chi"
+    },
+    {
+      "title": "BNI — BNI Rewards Point",
+      "url": "https://www.bni.co.id/creditcard/en-us/servicesfacilities/services/bnirewardpoints"
+    },
+    {
+      "title": "PinterPoin — Review: Kartu Kredit BNI Buddha Tzu Chi",
+      "url": "https://pinterpoin.com/review-kartu-kredit-bni-buddha-tzu-chi/"
+    }
+  ],
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#0a0c0b",
+      "#121614",
+      "#070908"
+    ],
+    "angle": 140,
+    "finish": "matte",
+    "pattern": "none",
+    "motif": "lotus-watermark",
+    "motifColour": "#1f7a4d66",
+    "ink": "light",
+    "wordmark": "Tzu Chi",
+    "bankMark": "BNI",
+    "chip": "silver"
+  },
+  "entryVersion": 1,
+  "currency": "IDR",
+  "cashValue": null,
+  "welcomeBonus": null,
+  "verifiedOn": "2026-09-15",
+  "transferPartners": []
+}

@@ -11,6 +11,8 @@ export interface CatalogMatch {
   /** Merchant category codes or ranges such as 3000-3299. */
   mccs?: string[];
   excludeMccs?: string[];
+  /** Days the purchase must fall on, 0 for Sunday through 6 for Saturday, which is how a weekend offer is written. */
+  daysOfWeek?: number[];
 }
 
 export interface CatalogRule {
@@ -148,7 +150,7 @@ export interface CatalogProgram {
  * Cosmetic only, so a change here is not a catalogue update to announce.
  */
 /** The illustrations a card face can be drawn with, each in the manner of a real card's artwork. */
-export const CARD_MOTIFS = ['batik-floral', 'big-letter', 'rosette-tile', 'chrome-curves', 'ikat-diamonds', 'engraved-frame', 'portrait-oval', 'split-waves', 'colour-blocks', 'halftone-vortex', 'centre-ring', 'wing-bars', 'stadium', 'skyline', 'faceted-ribbon', 'horizon', 'swirl-edges', 'flight-line', 'sparse-diagonals', 'contour-lines', 'meridians', 'fine-contours', 'guilloche-crest'] as const;
+export const CARD_MOTIFS = ['batik-floral', 'big-letter', 'rosette-tile', 'chrome-curves', 'ikat-diamonds', 'engraved-frame', 'portrait-oval', 'split-waves', 'colour-blocks', 'halftone-vortex', 'centre-ring', 'wing-bars', 'stadium', 'skyline', 'faceted-ribbon', 'horizon', 'swirl-edges', 'flight-line', 'sparse-diagonals', 'contour-lines', 'meridians', 'fine-contours', 'guilloche-crest', 'garuda-contrails', 'outline-u', 'hologram-disc', 'foil-sheen', 'low-poly-facets', 'sakura-branch', 'octo-rings', 'copper-ribbon', 'lotus-watermark', 'light-streaks', 'torn-ribbons'] as const;
 export type CardMotif = (typeof CARD_MOTIFS)[number];
 
 export interface CatalogCardLook {
@@ -180,6 +182,12 @@ export interface CatalogEntry {
   name: string;
   network: string;
   currency: string;
+  /**
+   * A debit card spends the account's own money, so it has no statement, no credit limit and nothing
+   * to pay off. It is applied to a bank or savings account rather than a credit card, and its cycle is
+   * the calendar month. Absent means a credit card, which is what nearly every entry is.
+   */
+  cardType?: 'credit' | 'debit';
   program: CatalogProgram;
   fees: CatalogFeePeriod[];
   terms: CatalogTermsPeriod[];

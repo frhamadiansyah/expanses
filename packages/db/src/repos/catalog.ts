@@ -169,7 +169,13 @@ export function applyCatalogEntry(
       .select({ subtype: accounts.subtype })
       .from(accounts)
       .where(and(eq(accounts.id, input.cardAccountId), eq(accounts.workspaceId, ws.workspaceId)));
-    if (card?.subtype !== 'credit_card') throw new CatalogError('Account is not a credit card in this workspace');
+    // The entry says which kind of plastic it is, so a debit card's terms cannot land on a credit card.
+    if (!card) throw new CatalogError('That account is not in this workspace');
+    if (input.entry.cardType === 'debit') {
+      if (card.subtype !== 'bank' && card.subtype !== 'savings') throw new CatalogError('A debit card earns on the bank account it spends from');
+    } else if (card.subtype !== 'credit_card') {
+      throw new CatalogError('Account is not a credit card in this workspace');
+    }
 
     // The entry knows which bank issued it, so applying one fills the bank in rather than asking.
     await tx

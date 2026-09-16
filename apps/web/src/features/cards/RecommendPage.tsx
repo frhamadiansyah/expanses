@@ -6,6 +6,7 @@ import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { CategoryOptions } from './options';
+import { useProgramAccounts } from './card-queries';
 import { compareTargets } from './recommend-targets';
 import { expenseAncestors, formatPoints, loadCardPoints } from './useCardPoints';
 
@@ -24,7 +25,9 @@ export function RecommendPage() {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  const cards = all.filter((a) => a.subtype === 'credit_card' && a.archivedAt === null);
+  // An earning debit card competes for the same purchase, so it belongs in the comparison too.
+  const earning = useProgramAccounts().data ?? new Set<string>();
+  const cards = all.filter((a) => a.archivedAt === null && (a.subtype === 'credit_card' || earning.has(a.id)));
   const loadAll = (onDate: string) => Promise.all(cards.map((card) => loadCardPoints(database, ws, card, all, onDate)));
   const targets = useQuery({
     queryKey: ['recommend-targets', ws.workspaceId, cards.map((c) => c.id).join(',')],

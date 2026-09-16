@@ -1,5 +1,5 @@
 import { CATALOG } from '@expanses/catalog';
-import { listCardIdentities, listCards, listIssuers } from '@expanses/db';
+import { listCardIdentities, listCards, listIssuers, listPrograms } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -30,4 +30,18 @@ export function useWorkspaceIssuers() {
  */
 export function issuerChoices(workspaceIssuers: readonly string[]): string[] {
   return [...new Set([...CATALOG.map((entry) => entry.bank), ...workspaceIssuers])].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Accounts that carry a reward program, so the Cards page can show a debit card.
+ *
+ * A credit card belongs there whether or not it earns anything; a bank account only belongs there
+ * once a card's terms have been applied to it, or every savings account would turn up as a card.
+ */
+export function useProgramAccounts() {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['program-accounts', ws.workspaceId],
+    queryFn: async () => new Set((await listPrograms(database, ws)).filter((p) => p.archivedAt === null).map((p) => p.cardAccountId)),
+  });
 }

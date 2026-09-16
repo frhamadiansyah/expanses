@@ -13,19 +13,23 @@ export function CatalogPicker({
   onSelect,
   onApply,
   applyHint,
+  debit = false,
 }: {
   today: string;
   selectedId: string | null;
   onSelect: (entry: CatalogEntry) => void;
   onApply?: (entry: CatalogEntry, memberLevel: string | null, categoryOption: string | null) => void;
   applyHint?: string;
+  /** Debit cards for a bank account, credit cards for a credit card: applying the wrong one is refused anyway. */
+  debit?: boolean;
 }) {
   const { database, ws } = useApp();
   const [query, setQuery] = useState('');
   const [memberLevel, setMemberLevel] = useState<string | null>(null);
   const [categoryOption, setCategoryOption] = useState<string | null>(null);
   const categoryKeys = useQuery({ queryKey: ['category-keys', ws.workspaceId], queryFn: () => categoryIdsByKey(database, ws) });
-  const matches = searchCatalog(CATALOG, query);
+  const forThisCard = CATALOG.filter((entry) => (entry.cardType === 'debit') === debit);
+  const matches = searchCatalog(forThisCard, query);
   const selected = CATALOG.find((entry) => entry.id === selectedId);
   const preview = selected ? describeEntry(selected, today) : null;
   const unmapped = selected && categoryKeys.data ? planCatalogApply(selected, categoryKeys.data, today, memberLevel).unmappedKeys : [];

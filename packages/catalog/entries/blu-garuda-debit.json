@@ -1,0 +1,113 @@
+{
+  "id": "blu-garuda-debit",
+  "entryVersion": 1,
+  "bank": "blu by BCA Digital",
+  "name": "Garuda x bluDebit Card",
+  "network": "mastercard",
+  "cardType": "debit",
+  "currency": "IDR",
+  "program": {
+    "unit": "miles",
+    "name": "GarudaMiles",
+    "cycleAnchor": "calendar",
+    "crediting": "per_transaction"
+  },
+  "fees": [],
+  "terms": [
+    {
+      "effectiveFrom": "2024-12-10",
+      "effectiveTo": null,
+      "rules": [
+        {
+          "key": "garuda-mcc",
+          "name": "At Garuda Indonesia",
+          "rateNum": 1,
+          "rateDen": 40000,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "mccs": [
+              "3103"
+            ]
+          }
+        },
+        {
+          "key": "garuda-merchant",
+          "name": "At Garuda Indonesia",
+          "rateNum": 1,
+          "rateDen": 40000,
+          "rounding": "per_increment",
+          "priority": 20,
+          "stackable": false,
+          "match": {
+            "merchantPatterns": [
+              "garuda indonesia",
+              "garuda",
+              "fly garuda",
+              "flygaruda"
+            ]
+          }
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "rateNum": 1,
+          "rateDen": 50000,
+          "rounding": "per_increment",
+          "priority": 0,
+          "stackable": false,
+          "match": {}
+        }
+      ],
+      "cycleBonuses": []
+    }
+  ],
+  "transferPartners": [],
+  "cashValue": null,
+  "welcomeBonus": "600 GarudaMiles after the first transaction, with further miles for cumulative spending and for keeping an average balance.",
+  "notes": [
+    "A debit card: it spends the blu account's own money, so there is no statement, no limit and nothing to pay off. Apply it to the blu savings account you spend from.",
+    "1 GarudaMiles per Rp 50.000 on ordinary spending, and 1 per Rp 40.000 on Garuda Indonesia tickets and add-ons bought through Garuda's own site or app. The better rate is written here as both an MCC rule (3103, Garuda Indonesia) and a merchant-name rule, because a debit transaction does not always carry the code.",
+    "The card costs Rp 50.000 to request, once, and is free to request at bluRoyal level. There is no monthly admin fee, so the entry carries no yearly fee at all.",
+    "bluRoyal is blu's top bluLoyalty tier, reached with a placement of Rp 500.000.000. It brings Garuda Executive Lounge access five times a year, a 50% discount on Garuda Priority Service, and birthday miles equal to the year. None of that is earning, so none of it is modelled as a rule.",
+    "Not yet confirmed: whether miles earning is capped per month, and whether the earning rate itself varies by bluLoyalty tier. The rates above are the published ones and are written as applying at every tier.",
+    "Miles land in the GarudaMiles account linked when the card is requested, so they expire on GarudaMiles' own terms rather than the bank's."
+  ],
+  "sources": [
+    {
+      "title": "blu by BCA Digital — Garuda x bluDebit Card FAQ",
+      "url": "https://blubybcadigital.id/info/faq/garuda-x-blu-debit-card"
+    },
+    {
+      "title": "blu by BCA Digital — Garuda x bluDebit Card features",
+      "url": "https://blubybcadigital.id/fitur/kartu/garuda-x-bludebit-card"
+    },
+    {
+      "title": "Garuda Indonesia — GarudaMiles co-brand blu",
+      "url": "https://www.garuda-indonesia.com/static/id/garudamiles/tentang-garudamiles/co-brand-blu.html"
+    },
+    {
+      "title": "PinterPoin — Garuda x bluDebit Card: Sebuah Perspektif PinterPoin",
+      "url": "https://pinterpoin.com/garuda-x-bludebit-card-sebuah-perspektif-pinterpoin/"
+    }
+  ],
+  "verifiedOn": "2026-09-15",
+  "look": {
+    "orientation": "landscape",
+    "colours": [
+      "#414956",
+      "#39404c",
+      "#2f353f"
+    ],
+    "angle": 160,
+    "finish": "matte",
+    "pattern": "none",
+    "motif": "garuda-contrails",
+    "motifColour": "#4cc6d6",
+    "ink": "light",
+    "wordmark": "Garuda",
+    "bankMark": "blu",
+    "chip": "silver"
+  }
+}
