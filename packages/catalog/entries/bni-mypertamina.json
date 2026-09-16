@@ -65,12 +65,13 @@
   "look": {
     "orientation": "landscape",
     "colours": [
-      "#b5121b",
-      "#3a1230",
-      "#11245e",
-      "#0a1430"
+      "#c7141c",
+      "#8e1730",
+      "#2a2059",
+      "#16224f",
+      "#0d1738"
     ],
-    "angle": 100,
+    "angle": 96,
     "finish": "glossy",
     "pattern": "none",
     "motif": "light-streaks",
