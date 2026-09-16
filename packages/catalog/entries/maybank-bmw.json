@@ -1,6 +1,6 @@
 {
   "id": "maybank-bmw",
-  "entryVersion": 2,
+  "entryVersion": 3,
   "bank": "Maybank",
   "name": "BMW Maybank Kartu Kredit",
   "network": "visa",
@@ -229,10 +229,10 @@
       "effectiveTo": null,
       "cap": {
         "window": "year",
-        "capPoints": 200000,
-        "shared": true,
-        "beyondPoints": 20000,
-        "beyondPartnerUnits": 6666
+        "capPartnerUnits": 200000,
+        "shared": false,
+        "beyondPoints": 3,
+        "beyondPartnerUnits": 1
       }
     },
     {
@@ -245,10 +245,10 @@
       "effectiveTo": null,
       "cap": {
         "window": "year",
-        "capPoints": 200000,
-        "shared": true,
-        "beyondPoints": 20000,
-        "beyondPartnerUnits": 6666
+        "capPartnerUnits": 200000,
+        "shared": false,
+        "beyondPoints": 3,
+        "beyondPartnerUnits": 1
       }
     },
     {
@@ -261,10 +261,10 @@
       "effectiveTo": null,
       "cap": {
         "window": "year",
-        "capPoints": 200000,
-        "shared": true,
-        "beyondPoints": 20000,
-        "beyondPartnerUnits": 6666
+        "capPartnerUnits": 200000,
+        "shared": false,
+        "beyondPoints": 3,
+        "beyondPartnerUnits": 1
       }
     },
     {
@@ -277,10 +277,10 @@
       "effectiveTo": null,
       "cap": {
         "window": "year",
-        "capPoints": 200000,
-        "shared": true,
-        "beyondPoints": 5000,
-        "beyondPartnerUnits": 1666
+        "capPartnerUnits": 200000,
+        "shared": false,
+        "beyondPoints": 3,
+        "beyondPartnerUnits": 1
       }
     }
   ],
@@ -296,9 +296,10 @@
     "Spend beyond a category cap is estimated at the next matching rate; the terms do not say.",
     "TREATS Points are credited as purchases post, with category extras credited separately, so the app checks this card per purchase.",
     "From 10 September 2026 no TREATS on Maybank XBill, XCash, balance conversion, QR payments, taxes and government services (MCC 9211, 9222, 9311, 9399), fast food (MCC 5814), or utility payments (MCC 4900) above Rp 10.000.000. The terms set that limit per card; estimates apply it per purchase. The exclusion list before that date was not retrieved.",
-    "Transfers to KrisFlyer, GarudaMiles, and Asia Miles are 20.000 TREATS for 20.000 miles, and to AirAsia points 5.000 for 5.000, until 200.000 TREATS are converted in 12 months; after that 20.000 give 6.666 (AirAsia 5.000 give 1.666). Each mileage conversion costs Rp 20.000. The ceiling and the reduced rate are applied to transfer estimates; the Rp 20.000 fee is not. The 200.000 covers every partner together, so an estimate showing one airline assumes nothing has gone to the others that year.",
+    "Transfers move one for one — 20.000 TREATS for 20.000 KrisFlyer, GarudaMiles or Asia Miles, and 5.000 for 5.000 AirAsia points — until 200.000 miles have been taken in that programme in the twelve months to the transfer. The ceiling is per airline and is not pooled, so KrisFlyer, GarudaMiles and Asia Miles each carry their own and a heavy year can move 600.000 miles across the three. Past a programme’s ceiling the rest converts at 3 TREATS to 1 mile. Each mileage conversion costs Rp 20.000, which estimates do not subtract.",
     "TREATS Points expire one year after they are earned.",
-    "A transfer estimate now applies the ceiling. It is spent in whole transfer steps, so a step straddling the ceiling waits for the next window rather than being split, which the issuer's own screens may not do."
+    "A transfer estimate now applies the ceiling. It is spent in whole transfer steps, so a step straddling the ceiling waits for the next window rather than being split, which the issuer's own screens may not do.",
+    "The ceiling and the 3:1 beyond it are the terms Maybank set on 1 January 2026. AirAsia points are written the same way; the published change named KrisFlyer, GarudaMiles and Asia Miles, so AirAsia is an assumption."
   ],
   "sources": [
     {
@@ -322,10 +323,14 @@
       "url": "https://www.maybank.co.id/NewsAndAnnouncement/NewsAndAnnouncements/2026/07/29/06/43/Pembaruan-Informasi-Perolehan-Maybank-TREATS-pada-Maybank-Kartu-Kredit"
     }
   ],
-  "verifiedOn": "2026-09-11",
+  "verifiedOn": "2026-09-16",
   "look": {
     "orientation": "landscape",
-    "colours": ["#484949", "#141515", "#0b0c0d"],
+    "colours": [
+      "#484949",
+      "#141515",
+      "#0b0c0d"
+    ],
     "angle": 180,
     "finish": "matte",
     "pattern": "glow",

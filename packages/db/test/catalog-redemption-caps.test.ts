@@ -49,11 +49,16 @@ describe('redemption caps survive a round trip through the database', () => {
     expect(byKey(partners, 'traveloka').cap).toBeNull();
   });
 
-  it('keeps Maybank’s ceiling on a year rather than a month', async () => {
+  it('keeps Maybank’s ceiling on a year, counted in miles and not pooled between airlines', async () => {
     const partners = await partnersOf('maybank-visa-infinite');
-    expect(byKey(partners, 'krisflyer').cap).toMatchObject({ window: 'year', capPoints: 200_000, beyond: { points: 20_000, partnerUnits: 6_666 } });
-    // AirAsia moves in 5.000 steps, so its reduced ratio is written against 5.000 too.
-    expect(byKey(partners, 'airasia').cap?.beyond).toEqual({ points: 5000, partnerUnits: 1666 });
+    for (const key of ['krisflyer', 'garudamiles', 'asia-miles', 'airasia']) {
+      expect(byKey(partners, key).cap, key).toMatchObject({
+        window: 'year',
+        capPartnerUnits: 200_000,
+        shared: false,
+        beyond: { points: 3, partnerUnits: 1 },
+      });
+    }
   });
 
   it('leaves a card without a published ceiling uncapped', async () => {
@@ -84,10 +89,18 @@ describe('what the ceilings do to an estimate', () => {
     expect(convertPoints(25_000, byKey(partners, 'traveloka'))).toBe(1_000_000);
   });
 
-  it('drops a Maybank balance to a third once 200.000 TREATS have gone in the year', async () => {
+  it('drops a Maybank balance to a third once 200.000 miles have gone to that airline in the year', async () => {
     const krisflyer = byKey(await partnersOf('maybank-bmw'), 'krisflyer');
     expect(convertPoints(200_000, krisflyer)).toBe(200_000);
-    // The next 100.000 give 5 steps of 6.666.
-    expect(convertPoints(300_000, krisflyer)).toBe(200_000 + 5 * 6_666);
+    // The next 100.000 TREATS convert at three to one.
+    expect(convertPoints(300_000, krisflyer)).toBe(200_000 + 100_000 / 3 - (100_000 / 3) % 1);
+  });
+
+  it('gives each Maybank airline its own 200.000, so the ceilings do not eat one another', async () => {
+    const partners = await partnersOf('maybank-bmw');
+    // The same balance converts the same way whichever airline it goes to, because nothing is pooled.
+    for (const key of ['krisflyer', 'garudamiles', 'asia-miles']) {
+      expect(convertPoints(200_000, byKey(partners, key)), key).toBe(200_000);
+    }
   });
 });

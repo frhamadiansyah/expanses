@@ -1,20 +1,20 @@
 {
   "id": "permata-shopping-card",
   "bank": "Permata",
-  "name": "PermataShoppingCard",
-  "network": "visa",
+  "name": "Permata Shopping Card",
+  "network": "mastercard",
   "program": {
-    "unit": "points",
-    "name": "PermataPoin",
+    "unit": "cashback",
+    "name": "Shopping Card Cashback",
     "cycleAnchor": "statement"
   },
   "fees": [
     {
       "effectiveFrom": null,
       "effectiveTo": null,
-      "annualFeeMinor": 200000,
-      "supplementaryFeeMinor": null,
-      "condition": "Classic; waived for the first year, and afterwards on Rp 12.500.000 of yearly spending"
+      "annualFeeMinor": 350000,
+      "supplementaryFeeMinor": 200000,
+      "condition": "Gold and Titanium, waived on Rp 40.000.000 of yearly spending; Platinum is Rp 600.000 waived on Rp 70.000.000, with a Rp 300.000 supplementary. Free for the first year on the main card and five supplementaries."
     }
   ],
   "terms": [
@@ -24,60 +24,95 @@
       "cycleBonuses": [],
       "rules": [
         {
-          "key": "shops",
-          "name": "3x at supermarkets and department stores",
-          "rateNum": 3,
-          "rateDen": 2000,
+          "key": "online",
+          "name": "Online at 5%",
+          "rateNum": 1,
+          "rateDen": 20,
           "rounding": "per_increment",
           "priority": 20,
           "stackable": false,
           "match": {
-            "mccs": [
-              "5300",
-              "5311",
-              "5331",
-              "5399",
-              "5411",
-              "5422",
-              "5441",
-              "5451",
-              "5462",
-              "5499"
+            "merchantPatterns": [
+              "tokopedia",
+              "shopee",
+              "lazada",
+              "blibli",
+              "tiktok shop",
+              "bukalapak",
+              "zalora",
+              "amazon",
+              "traveloka",
+              "tiket.com",
+              "grab",
+              "gojek",
+              "netflix",
+              "spotify",
+              "agoda",
+              "steam",
+              "google play",
+              "apple.com"
             ]
-          }
+          },
+          "capPoints": 200000,
+          "minCycleTotalMinor": 5000000
         },
         {
-          "key": "base",
-          "name": "Base",
+          "key": "other",
+          "name": "Everything else at 5%",
           "rateNum": 1,
-          "rateDen": 2000,
+          "rateDen": 20,
           "rounding": "per_increment",
           "priority": 0,
           "stackable": false,
-          "match": {}
+          "match": {
+            "excludeMerchantPatterns": [
+              "tokopedia",
+              "shopee",
+              "lazada",
+              "blibli",
+              "tiktok shop",
+              "bukalapak",
+              "zalora",
+              "amazon",
+              "traveloka",
+              "tiket.com",
+              "grab",
+              "gojek",
+              "netflix",
+              "spotify",
+              "agoda",
+              "steam",
+              "google play",
+              "apple.com"
+            ]
+          },
+          "capPoints": 100000,
+          "minCycleTotalMinor": 5000000
         }
       ]
     }
   ],
   "notes": [
-    "One PermataPoin per Rp 2.000 of retail spending, and three per Rp 2.000 at supermarkets and department stores, which is the card’s whole point.",
-    "The tripled categories are matched by MCC: grocery stores and supermarkets, and department and variety stores. A shop the bank counts but the code does not will estimate at 1x.",
-    "The card also pays 5% back on online transactions, up to Rp 200.000 a month and only in a cycle with Rp 5.000.000 of spending. The matching would work — online shops are recognised by name elsewhere in this catalogue, and a cycle minimum is a field that exists — but the unit is not: PermataPoin and rupiah are different currencies and a card carries one reward program here.",
-    "The annual fee written here is the Classic one. Titanium is waived on Rp 40.000.000 of yearly spending and Platinum on Rp 70.000.000; the first year is free on every tier, for the primary card and five supplementaries. Set your own on the card terms if you hold a higher tier.",
-    "Transfer partners are not recorded. PermataPoin redeem against vouchers, statement credit and airline rewards, but the ratios were not retrieved — permatabank.com is unreachable from here."
+    "This card earns cashback and nothing else. An earlier version of this entry gave it PermataPoin, one per Rp 2.000 and three at supermarkets and department stores, on the strength of comparison sites and the bank’s own older pages. The cardholder checked the product page on 16 September 2026 and it lists no reward points at all — the benefits are cashback, merchant discounts, Simple Pay, the fee waiver and app features. The points rules are removed.",
+    "Five per cent back, in two streams with separate ceilings: Rp 200.000 a month on online transactions and Rp 100.000 a month on everything else. That is the \"double cashback\" the bank markets, up to Rp 300.000 a month.",
+    "Both streams need Rp 5.000.000 of retail spending accumulated in the billing cycle, online and offline together, and that is exactly what the entry asks: the floor is measured against everything the card earned on in the cycle, not against each stream separately. A month of Rp 3.000.000 online and Rp 3.000.000 offline qualifies, as it does at the bank.",
+    "\"Online\" is matched by merchant name, from the marketplaces, travel sites, ride-hailing apps and subscriptions people in Indonesia actually use. It is a guess at a category the statement does not label, so an online shop outside the list falls to the second rule instead of the first, and earns against the smaller ceiling.",
+    "The annual fee is Rp 350.000 on Gold and Titanium, waived on Rp 40.000.000 of yearly spending, and Rp 600.000 on Platinum, waived on Rp 70.000.000. The first year is free on the main card and five supplementaries. There is no Classic tier on the current page; an earlier version of this entry had one.",
+    "Interest runs at 1,75% a month, or 21% a year.",
+    "Read from a capture of the bank’s own product page, which is the first source for this card that was not second-hand."
   ],
   "sources": [
     {
-      "title": "PermataBank — PermataShopping Card",
-      "url": "https://permatabank.com/id/kartu-kredit-retail/permatashopping-card"
+      "title": "PermataBank — Permata Shopping Card (product page, captured 16 September 2026)",
+      "url": "https://www.permatabank.com/en/kartu-kredit-consumer/permatashopping-card"
     },
     {
-      "title": "PinterPoin — Review: Kartu Kredit Permata Shopping Card",
-      "url": "https://pinterpoin.com/review-kartu-kredit-permata-shopping-card/"
+      "title": "PermataBank — Terms and Conditions Cashback of Permata Shopping Card",
+      "url": "https://www.permatabank.com/id/promotions/transaksi-online-permatashoppingcard"
     },
     {
-      "title": "Cermati — Kartu Kredit PermataShoppingCard Titanium",
-      "url": "https://www.cermati.com/kartu-kredit/permatashoppingcard-titanium"
+      "title": "PermataBank — PermataShoppingCard welcome pack",
+      "url": "https://www.permatabank.com/id/welcomepack/permatashoppingcard"
     }
   ],
   "look": {
@@ -97,10 +132,14 @@
     "bankMark": "Permata",
     "chip": "silver"
   },
-  "entryVersion": 2,
+  "entryVersion": 4,
   "currency": "IDR",
-  "cashValue": null,
+  "cashValue": {
+    "valueMinor": 1,
+    "perPoints": 1,
+    "currency": "IDR"
+  },
   "welcomeBonus": null,
-  "verifiedOn": "2026-09-15",
+  "verifiedOn": "2026-09-16",
   "transferPartners": []
 }

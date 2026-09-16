@@ -86,14 +86,17 @@ describe('the cards added as a set', () => {
     // Four cards earn on one kind of purchase only, so each gets the purchase its own rules are written for.
     const only: Record<string, Parameters<typeof spend>[2]> = {
       'dbs-live-fresh-visa': { description: 'Tokopedia' },
+      'permata-shopping-card': { description: 'Tokopedia' },
       'cimb-niaga-octo-card': { description: 'QRIS Warung Tegal' },
-      'danamon-visa-platinum': { on: '2026-09-19' },
+      'danamon-visa-platinum': { on: '2026-09-19' },  // a Saturday; the five-purchase gate is handled below
       'bni-mypertamina': { category: 'transportation.fuel_cost', description: 'MyPertamina top up', mcc: '5541' },
     };
     for (const id of ADDED) {
       const levels = findEntry(id)!.program.memberLevels;
       const t = await withCard(id, levels?.[0]?.key);
-      await spend(t, 1_000_000, only[id] ?? {});
+      // The Shopping Card needs Rp 5.000.000 in the cycle and the Danamon five purchases of Rp 100.000, so
+      // every card is given six purchases of Rp 1.000.000, which satisfies both.
+      for (let i = 0; i < 6; i += 1) await spend(t, 1_000_000, only[id] ?? {});
       expect(await earned(t), id).toBeGreaterThan(0);
     }
   });
@@ -126,7 +129,7 @@ describe('DBS Live Fresh, which pays nothing unless you claim it', () => {
 });
 
 describe('Maybank JCB Platinum, the miles card of the range', () => {
-  it('earns a point per Rp 10.000, twice what the Visa Platinum earns', async () => {
+  it('earns a point per Rp 10.000, twice what the Visa Platinum earns, as the bank states', async () => {
     const t = await withCard('maybank-jcb-platinum');
     await spend(t, 1_000_000);
     expect(await earned(t)).toBe(100);
@@ -141,7 +144,7 @@ describe('Maybank JCB Platinum, the miles card of the range', () => {
     expect(await earned(t)).toBe(0);
   });
 
-  it('transfers one for one, on the shared TREATS ceiling', async () => {
+  it('makes a mile cost Rp 10.000, which is the bank\u2019s own "Rp10 ribu untuk 1 airline miles"', async () => {
     const t = await withCard('maybank-jcb-platinum');
     const partners = await listTransferPartners(t.database, t.ws, t.programId);
     expect(convertPoints(20_000, partners.find((p) => p.program === 'KrisFlyer')!)).toBe(20_000);
@@ -179,14 +182,36 @@ describe('UOB TMRW, whose rate depends on what you did last month', () => {
 });
 
 describe('the two Permata cards', () => {
-  it('triples the Shopping Card at a supermarket, and not elsewhere', async () => {
+  it('pays the Shopping Card 5% online and 5% elsewhere, on separate ceilings', async () => {
     const t = await withCard('permata-shopping-card');
-    await spend(t, 1_000_000, { category: 'household.groceries', mcc: '5411' });
-    expect(await earned(t)).toBe(1_500);
+    await spend(t, 6_000_000, { description: 'Tokopedia' });
+    expect(await earned(t)).toBe(200_000);
 
-    const other = await withCard('permata-shopping-card');
-    await spend(other, 1_000_000, { mcc: '5944' });
-    expect(await earned(other)).toBe(500);
+    const offline = await withCard('permata-shopping-card');
+    await spend(offline, 6_000_000, { category: 'household.groceries', description: 'Superindo', mcc: '5411' });
+    expect(await earned(offline)).toBe(100_000);
+  });
+
+  it('pays the Shopping Card nothing below the cycle floor', async () => {
+    const t = await withCard('permata-shopping-card');
+    await spend(t, 4_999_999, { description: 'Tokopedia' });
+    expect(await earned(t)).toBe(0);
+  });
+
+  it('counts the Shopping Card floor across online and offline together, as the bank does', async () => {
+    const t = await withCard('permata-shopping-card');
+    await spend(t, 3_000_000, { description: 'Tokopedia' });
+    await spend(t, 3_000_000, { category: 'household.groceries', description: 'Superindo', mcc: '5411' });
+    // Neither half reaches Rp 5.000.000 on its own; the cycle does, so both streams pay:
+    // Rp 150.000 online, under its Rp 200.000 ceiling, and Rp 100.000 offline, which is its ceiling.
+    expect(await earned(t)).toBe(250_000);
+  });
+
+  it('earns no points on the Shopping Card, which the bank no longer gives it', () => {
+    const entry = findEntry('permata-shopping-card')!;
+    expect(entry.program.unit).toBe('cashback');
+    expect(entry.transferPartners).toEqual([]);
+    expect(entry.terms[0]!.rules.map((r) => r.key)).toEqual(['online', 'other']);
   });
 
   it('halves the cost of a mile on the JCB Ultimate when eating out', async () => {
@@ -240,27 +265,72 @@ describe('Danamon Visa Platinum, now paid at the weekend', () => {
   const SATURDAY = '2026-09-19';
   const WEDNESDAY = '2026-09-16';
 
+  /** Five purchases of Rp 100.000 or more, which the weekend rule needs before it pays anything. */
+  async function qualify(t: Awaited<ReturnType<typeof withCard>>, on: string) {
+    for (let i = 0; i < 5; i += 1) await spend(t, 200_000, { on });
+  }
+
   it('pays 10% on a Saturday purchase and nothing on a Wednesday one', async () => {
     const sat = await withCard('danamon-visa-platinum');
+    await qualify(sat, WEDNESDAY);
     await spend(sat, 1_000_000, { on: SATURDAY });
     expect(await earned(sat)).toBe(100_000);
 
     const wed = await withCard('danamon-visa-platinum');
+    await qualify(wed, WEDNESDAY);
     await spend(wed, 1_000_000, { on: WEDNESDAY });
     expect(await earned(wed)).toBe(0);
   });
 
-  it('ignores a weekend purchase below Rp 100.000, which does not qualify', async () => {
+  it('pays a small weekend purchase once the month has qualified, the Rp 100.000 being the count’s and not the rule’s', async () => {
     const t = await withCard('danamon-visa-platinum');
-    await spend(t, 99_999, { on: SATURDAY });
+    await qualify(t, WEDNESDAY);
+    await spend(t, 50_000, { on: SATURDAY });
+    expect(await earned(t)).toBe(5_000);
+  });
+
+  it('pays nothing on that same purchase when the month has not qualified', async () => {
+    const t = await withCard('danamon-visa-platinum');
+    await spend(t, 50_000, { on: SATURDAY });
     expect(await earned(t)).toBe(0);
   });
 
-  it('stops the weekend at Rp 200.000 and the bills at Rp 100.000, separately', async () => {
+  it('needs five purchases of Rp 100.000 before the weekend rule pays at all', async () => {
+    const short = await withCard('danamon-visa-platinum');
+    for (let i = 0; i < 4; i += 1) await spend(short, 200_000, { on: SATURDAY });
+    expect(await earned(short)).toBe(0);
+
+    const met = await withCard('danamon-visa-platinum');
+    for (let i = 0; i < 5; i += 1) await spend(met, 200_000, { on: SATURDAY });
+    expect(await earned(met)).toBe(100_000);
+  });
+
+  it('counts those five anywhere in the month, not only at the weekend', async () => {
     const t = await withCard('danamon-visa-platinum');
-    await spend(t, 30_000_000, { on: SATURDAY });
-    await spend(t, 30_000_000, { category: 'utilities.electricity', description: 'Token listrik PLN', on: WEDNESDAY });
-    expect(await earned(t)).toBe(300_000);
+    await spend(t, 200_000, { on: SATURDAY });
+    for (let i = 0; i < 4; i += 1) await spend(t, 200_000, { on: WEDNESDAY });
+    // The one Saturday purchase of Rp 200.000 earns, because the four weekday ones carried the count.
+    expect(await earned(t)).toBe(20_000);
+  });
+
+  it('pays nothing on a bill, which is not a benefit this card has', async () => {
+    const t = await withCard('danamon-visa-platinum');
+    await qualify(t, WEDNESDAY);
+    await spend(t, 400_000, { category: 'utilities.electricity', description: 'Token listrik PLN', on: WEDNESDAY });
+    expect(await earned(t)).toBe(0);
+    expect(findEntry('danamon-visa-platinum')!.terms[0]!.rules.map((r) => r.key)).toEqual(['weekend']);
+  });
+
+  it('stops at Rp 200.000, which is the whole card\u2019s monthly maximum', async () => {
+    const t = await withCard('danamon-visa-platinum');
+    for (let i = 0; i < 5; i += 1) await spend(t, 6_000_000, { on: SATURDAY });
+    expect(await earned(t)).toBe(200_000);
+  });
+
+  it('works the cashback out from the month\u2019s weekend total, not purchase by purchase', () => {
+    expect(findEntry('danamon-visa-platinum')!.terms[0]!.rules[0]!.rounding).toBe('per_cycle_sum');
+    // Danamon counts the calendar month, the 1st to the last day, rather than the statement.
+    expect(findEntry('danamon-visa-platinum')!.program.cycleAnchor).toBe('calendar');
   });
 });
 
