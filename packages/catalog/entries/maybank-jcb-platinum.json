@@ -148,17 +148,18 @@
   },
   "welcomeBonus": "5.000 TREATS Points for spending anywhere in the first three months.",
   "notes": [
-    "The miles card of the Maybank range: 1 TREATS Point per Rp 10.000, twice what the Visa Platinum earns, and a TREATS Point transfers one for one. That makes a mile cost Rp 10.000 here against Rp 20.000 there.",
+    "The miles card of the Maybank range: 1 TREATS Point per Rp 10.000, twice what the Visa Platinum earns. Maybank puts it as \"belanja Rp10 ribu untuk mendapatkan 1 airline miles\" on the card’s own page, which both fixes the rate and says a point is a mile, so a mile costs Rp 10.000 here against Rp 20.000 there.",
     "The exclusions are the ones Maybank applies across its credit cards from 10 September 2026: no TREATS on XBill, XCash, balance conversion, QR payments, taxes and government services (MCC 9211, 9222, 9311, 9399), fast food (MCC 5814), or utility payments (MCC 4900) above Rp 10.000.000. The terms set that limit per card; estimates apply it per purchase.",
     "Transfers are the shared TREATS ratios: 20.000 TREATS for 20.000 KrisFlyer, GarudaMiles or Asia Miles, and 5.000 for 5.000 AirAsia points, until 200.000 TREATS are converted in twelve months; past that 20.000 give 6.666. The ceiling covers every partner together. Each mileage conversion costs Rp 20.000, which estimates do not subtract.",
     "TREATS Points expire one year after they are earned.",
-    "Free JCB Airport Lounge and JCB Plaza access, and LoungeKey visits — worth having, but none of it is earning, so none is a rule.",
-    "The annual fee is not recorded: maybank.co.id cannot be reached from here and no reliable figure turned up in search. Enter it on the card terms yourself.",
-    "A published source states the 200.000-a-year mileage ceiling was lifted on 1 February 2025. The Maybank TREATS page dated January 2026 still carries it, and the sibling Visa Platinum entry was built from the RIPLAY, so the ceiling is kept here. Worth re-checking against the current RIPLAY."
+    "Points redeem against travel e-vouchers as well as airline miles, and the card carries free JCB Airport Lounge and JCB Plaza access. None of that is earning, so none of it is a rule.",
+    "The annual fee is still not recorded. The benefits page does not carry it and no reliable figure turned up elsewhere; enter what you are charged on the card terms.",
+    "A published source states the 200.000-a-year mileage ceiling was lifted on 1 February 2025. The Maybank TREATS page dated January 2026 still carries it, and the sibling Visa Platinum entry was built from the RIPLAY, so the ceiling is kept here. Worth re-checking against the current RIPLAY.",
+    "The rate and the one-for-one mile are read from the bank’s own benefits page. The transfer ceiling below is not — it is carried over from the sibling Visa Platinum entry, which was built from the RIPLAY."
   ],
   "sources": [
     {
-      "title": "Maybank — JCB Platinum Credit Card",
+      "title": "Maybank — Maybank JCB Platinum Card, Keuntungan (captured 16 September 2026)",
       "url": "https://www.maybank.co.id/creditcard/maybank-jcb-platinum-credit-card"
     },
     {
@@ -168,10 +169,6 @@
     {
       "title": "Maybank — TREATS update effective 10 September 2026",
       "url": "https://www.maybank.co.id/NewsAndAnnouncement/NewsAndAnnouncements/2026/07/29/06/43/Pembaruan-Informasi-Perolehan-Maybank-TREATS-pada-Maybank-Kartu-Kredit"
-    },
-    {
-      "title": "PinterPoin — Review: Kartu Kredit Maybank JCB Platinum",
-      "url": "https://pinterpoin.com/review-kartu-kredit-maybank-jcb-platinum/"
     }
   ],
   "look": {
@@ -191,7 +188,7 @@
     "bankMark": "Maybank",
     "chip": "silver"
   },
-  "entryVersion": 1,
+  "entryVersion": 2,
   "currency": "IDR",
-  "verifiedOn": "2026-09-15"
+  "verifiedOn": "2026-09-16"
 }

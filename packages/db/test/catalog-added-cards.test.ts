@@ -129,7 +129,7 @@ describe('DBS Live Fresh, which pays nothing unless you claim it', () => {
 });
 
 describe('Maybank JCB Platinum, the miles card of the range', () => {
-  it('earns a point per Rp 10.000, twice what the Visa Platinum earns', async () => {
+  it('earns a point per Rp 10.000, twice what the Visa Platinum earns, as the bank states', async () => {
     const t = await withCard('maybank-jcb-platinum');
     await spend(t, 1_000_000);
     expect(await earned(t)).toBe(100);
@@ -144,7 +144,7 @@ describe('Maybank JCB Platinum, the miles card of the range', () => {
     expect(await earned(t)).toBe(0);
   });
 
-  it('transfers one for one, on the shared TREATS ceiling', async () => {
+  it('makes a mile cost Rp 10.000, which is the bank\u2019s own "Rp10 ribu untuk 1 airline miles"', async () => {
     const t = await withCard('maybank-jcb-platinum');
     const partners = await listTransferPartners(t.database, t.ws, t.programId);
     expect(convertPoints(20_000, partners.find((p) => p.program === 'KrisFlyer')!)).toBe(20_000);
