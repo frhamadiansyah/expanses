@@ -28,7 +28,7 @@
           "name": "Weekends at 10%",
           "rateNum": 1,
           "rateDen": 10,
-          "rounding": "per_increment",
+          "rounding": "per_cycle_sum",
           "priority": 20,
           "stackable": false,
           "match": {
@@ -40,51 +40,31 @@
           "capPoints": 200000,
           "minCyclePurchases": 5,
           "minCyclePurchaseMinor": 100000
-        },
-        {
-          "key": "bills",
-          "name": "Bill payments at 5%",
-          "rateNum": 1,
-          "rateDen": 20,
-          "rounding": "per_increment",
-          "priority": 10,
-          "stackable": false,
-          "match": {
-            "categoryKeys": [
-              "utilities.electricity",
-              "utilities.water_sanitation",
-              "utilities.mobile_phone",
-              "utilities.internet_provider"
-            ]
-          },
-          "capPoints": 100000
         }
       ]
     }
   ],
   "transferPartners": [],
   "notes": [
-    "This card is written as a cashback card, because that is what it is. It does earn D-Point, one per Rp 2.500, but a D-Point buys a GarudaMile at fifteen to one — Rp 37.500 a mile, the worst rate in this catalogue — while the cashback is worth up to Rp 300.000 a month. A card carries one reward program here, so the points are the half given up.",
-    "10% back on weekend spending, capped at Rp 200.000 a month, and 5% back on bill payments, capped at Rp 100.000 a month. The two ceilings are separate.",
-    "The weekend rule reads Saturday and Sunday off the purchase date. That is the date the purchase happened, not the date the bank posted it, so a late-Sunday purchase posted on Monday still counts here and may not at the bank.",
-    "The weekend cashback needs five transactions of at least Rp 100.000 in the month, and that is the whole of the condition: five purchases of that size anywhere in the cycle, weekend or not. Once the month qualifies, the bank pays 10% on every weekend transaction, so no floor is put on the earning purchases themselves — a Rp 50.000 Saturday coffee earns Rp 5.000. An earlier version of this entry asked for Rp 100.000 twice, as the qualifying size and again per earning purchase, and paid nothing on small weekend spending.",
-    "Bills are matched by category: electricity, water, mobile phone and internet provider. There is no cable-TV category, so it reads the internet provider one.",
+    "This card is written as a cashback card, because that is what it is. It does earn D-Point, one per Rp 2.500, but a D-Point buys a GarudaMile at fifteen to one — Rp 37.500 a mile, the worst rate in this catalogue — while the cashback is worth up to Rp 200.000 a month. A card carries one reward program here, so the points are the half given up.",
+    "10% back on retail spending at the weekend, Saturday and Sunday, capped at Rp 200.000 a month. That is the card’s whole cashback: Danamon publishes one programme with one monthly maximum.",
+    "An earlier version of this entry also paid 5% back on bill payments, capped at Rp 100.000 a month, on the strength of a card comparison site. The bank’s own page has no such benefit, so it is removed.",
+    "The month is the calendar month, the 1st to the last day, which the bank states outright. The cashback is credited the following month and shows on the statement after that, so it lands later than the cycle it belongs to.",
+    "To earn at all the month needs five retail purchases of Rp 100.000 or more. They can fall on any day, not only the weekend, and that is how the rule is written. Once the month qualifies the bank pays 10% on every weekend transaction, so no floor sits on the earning purchases themselves — a Rp 50.000 Saturday coffee earns Rp 5.000.",
+    "The cashback is worked out from the month’s weekend total rather than purchase by purchase, so the entry rounds over the cycle and not over each line.",
+    "Not modelled: purchases made on the same day at the same merchant by the main and supplementary cards count as one transaction toward the five. Here they count separately, so a household running two cards can qualify a month the bank would not.",
+    "The five must be retail purchases. The app does not treat a cash advance or an instalment as spending anyway, so the difference rarely shows.",
     "The annual fee is Rp 600.000 and the bank waives it on conditions it does not publish in one place. Set what you are actually charged on the card terms.",
-    "D-Point transfer partners are no longer recorded here. They have not gone away on the card; they are on the Danamon JCB Precious entry, which keeps points because its uplift brings a GarudaMile down to about Rp 8.333.",
-    "The terms here come from a card comparison site, not from Danamon. The 10% weekend rate, the Rp 200.000 and Rp 100.000 ceilings, whether those two ceilings are separate or share one, and the five-purchase condition are all second-hand; danamon.co.id cannot be reached from here. The RIPLAY is the thing to check them against."
+    "D-Point transfer partners are no longer recorded here. They have not gone away on the card; they are on the Danamon JCB Precious entry, which keeps points because its uplift brings a GarudaMile down to about Rp 8.333."
   ],
   "sources": [
     {
-      "title": "Bank Danamon — Kartu Kredit Danamon Visa Platinum",
+      "title": "Bank Danamon — Kartu Kredit Danamon Visa Platinum, Fitur & Manfaat Unggulan (captured 16 September 2026)",
       "url": "https://www.danamon.co.id/Personal/KartuTransaksi/Kartu-Kredit/1-Menit-Bisa-Kartu-Kredit-Danamon-Visa-Platinum"
     },
     {
       "title": "Bank Danamon — RIPLAY Kartu Kredit Danamon Visa Platinum",
       "url": "https://www.danamon.co.id/-/media/ALL-CONTENT-PERSONAL-BANKING/Kartu-Kredit/RIPLAY/newRiplay/RIPLAY-Kartu-Kredit-Danamon-Visa-Platinum.pdf"
-    },
-    {
-      "title": "PinterPoin — Review: Kartu Kredit Danamon Visa Platinum",
-      "url": "https://pinterpoin.com/review-kartu-kredit-danamon-visa-platinum/"
     }
   ],
   "look": {
@@ -104,7 +84,7 @@
     "bankMark": "Danamon",
     "chip": "silver"
   },
-  "entryVersion": 5,
+  "entryVersion": 6,
   "currency": "IDR",
   "cashValue": {
     "valueMinor": 1,
@@ -112,5 +92,5 @@
     "currency": "IDR"
   },
   "welcomeBonus": null,
-  "verifiedOn": "2026-09-15"
+  "verifiedOn": "2026-09-16"
 }

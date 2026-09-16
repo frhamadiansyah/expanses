@@ -313,17 +313,24 @@ describe('Danamon Visa Platinum, now paid at the weekend', () => {
     expect(await earned(t)).toBe(20_000);
   });
 
-  it('leaves the bills rule ungated, since only the weekend cashback asks for the five', async () => {
+  it('pays nothing on a bill, which is not a benefit this card has', async () => {
     const t = await withCard('danamon-visa-platinum');
+    await qualify(t, WEDNESDAY);
     await spend(t, 400_000, { category: 'utilities.electricity', description: 'Token listrik PLN', on: WEDNESDAY });
-    expect(await earned(t)).toBe(20_000);
+    expect(await earned(t)).toBe(0);
+    expect(findEntry('danamon-visa-platinum')!.terms[0]!.rules.map((r) => r.key)).toEqual(['weekend']);
   });
 
-  it('stops the weekend at Rp 200.000 and the bills at Rp 100.000, separately', async () => {
+  it('stops at Rp 200.000, which is the whole card\u2019s monthly maximum', async () => {
     const t = await withCard('danamon-visa-platinum');
     for (let i = 0; i < 5; i += 1) await spend(t, 6_000_000, { on: SATURDAY });
-    await spend(t, 30_000_000, { category: 'utilities.electricity', description: 'Token listrik PLN', on: WEDNESDAY });
-    expect(await earned(t)).toBe(300_000);
+    expect(await earned(t)).toBe(200_000);
+  });
+
+  it('works the cashback out from the month\u2019s weekend total, not purchase by purchase', () => {
+    expect(findEntry('danamon-visa-platinum')!.terms[0]!.rules[0]!.rounding).toBe('per_cycle_sum');
+    // Danamon counts the calendar month, the 1st to the last day, rather than the statement.
+    expect(findEntry('danamon-visa-platinum')!.program.cycleAnchor).toBe('calendar');
   });
 });
 
