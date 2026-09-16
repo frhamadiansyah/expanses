@@ -38,7 +38,9 @@
             ]
           },
           "capPoints": 200000,
-          "minTransactionMinor": 100000
+          "minTransactionMinor": 100000,
+          "minCyclePurchases": 5,
+          "minCyclePurchaseMinor": 100000
         },
         {
           "key": "bills",
@@ -66,7 +68,7 @@
     "This card is written as a cashback card, because that is what it is. It does earn D-Point, one per Rp 2.500, but a D-Point buys a GarudaMile at fifteen to one — Rp 37.500 a mile, the worst rate in this catalogue — while the cashback is worth up to Rp 300.000 a month. A card carries one reward program here, so the points are the half given up.",
     "10% back on weekend spending, capped at Rp 200.000 a month, and 5% back on bill payments, capped at Rp 100.000 a month. The two ceilings are separate.",
     "The weekend rule reads Saturday and Sunday off the purchase date. That is the date the purchase happened, not the date the bank posted it, so a late-Sunday purchase posted on Monday still counts here and may not at the bank.",
-    "The weekend cashback also needs five transactions of at least Rp 100.000 in the month. The Rp 100.000 is written as a minimum per purchase, so smaller weekend purchases earn nothing. The count of five has no field — there is a minimum per purchase and a minimum per cycle, but nothing counts purchases — so a month with four qualifying purchases is estimated as if it paid, and overstates.",
+    "The weekend cashback also needs five transactions of at least Rp 100.000 in the month, and that is now written as it stands: five purchases of that size anywhere in the cycle, not five weekend ones, which is what the bank asks. The Rp 100.000 minimum per weekend purchase stays on top of it, so a smaller weekend purchase still earns nothing.",
     "Bills are matched by category: electricity, water, mobile phone and internet provider. There is no cable-TV category, so it reads the internet provider one.",
     "The annual fee is Rp 600.000 and the bank waives it on conditions it does not publish in one place. Set what you are actually charged on the card terms.",
     "D-Point transfer partners are no longer recorded here. They have not gone away on the card; they are on the Danamon JCB Precious entry, which keeps points because its uplift brings a GarudaMile down to about Rp 8.333."
@@ -102,7 +104,7 @@
     "bankMark": "Danamon",
     "chip": "silver"
   },
-  "entryVersion": 3,
+  "entryVersion": 4,
   "currency": "IDR",
   "cashValue": {
     "valueMinor": 1,

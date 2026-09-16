@@ -119,6 +119,9 @@ export function planCatalogApply(
         capPoints: rule.capPoints ?? null,
         minTransactionMinor: rule.minTransactionMinor ?? null,
         minCycleSpendMinor: rule.minCycleSpendMinor ?? null,
+        minCycleTotalMinor: rule.minCycleTotalMinor ?? null,
+        minCyclePurchases: rule.minCyclePurchases ?? null,
+        minCyclePurchaseMinor: rule.minCyclePurchaseMinor ?? null,
         ...(rule.capSpendAtCreditLimit ? { capSpendAtCreditLimit: true } : {}),
       };
 

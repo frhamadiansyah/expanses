@@ -27,8 +27,17 @@ export interface CatalogRule {
   capSpendMinor?: number | null;
   capPoints?: number | null;
   minTransactionMinor?: number | null;
-  /** Spend the cycle must reach, net of refunds, before this rule earns at all. */
+  /** Spend the cycle must reach, net of refunds, before this rule earns at all. Counts only matching spend. */
   minCycleSpendMinor?: number | null;
+  /**
+   * Spend the whole cycle must reach before this rule earns, counting every earning purchase on the card and not
+   * only the ones this rule matches — an issuer's "spend Rp 5.000.000 in a cycle to earn cashback".
+   */
+  minCycleTotalMinor?: number | null;
+  /** Purchases the cycle must contain before this rule earns, each of at least minCyclePurchaseMinor. */
+  minCyclePurchases?: number | null;
+  /** How large a purchase must be to count toward minCyclePurchases. Absent means any purchase counts. */
+  minCyclePurchaseMinor?: number | null;
   /**
    * Caps this rule's spend at the card's own credit limit, which the catalogue cannot know. Combined with
    * capSpendMinor the smaller of the two wins, the way an issuer writes "one times your limit, at most Rp X".

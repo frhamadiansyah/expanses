@@ -54,7 +54,7 @@
             ]
           },
           "capPoints": 200000,
-          "minCycleSpendMinor": 5000000
+          "minCycleTotalMinor": 5000000
         },
         {
           "key": "other",
@@ -87,7 +87,7 @@
             ]
           },
           "capPoints": 100000,
-          "minCycleSpendMinor": 5000000
+          "minCycleTotalMinor": 5000000
         }
       ]
     }
@@ -95,7 +95,7 @@
   "notes": [
     "This card earns cashback and nothing else. An earlier version of this entry gave it PermataPoin, one per Rp 2.000 and three at supermarkets and department stores, on the strength of comparison sites and the bank’s own older pages. The cardholder checked the product page on 16 September 2026 and it lists no reward points at all — the benefits are cashback, merchant discounts, Simple Pay, the fee waiver and app features. The points rules are removed.",
     "Five per cent back, in two streams with separate ceilings: Rp 200.000 a month on online transactions and Rp 100.000 a month on everything else. That is the \"double cashback\" the bank markets, up to Rp 300.000 a month.",
-    "Both streams need Rp 5.000.000 of retail spending accumulated in the billing cycle, online and offline together. A cycle floor here counts only the spending its own rule matches, so this entry asks each stream for Rp 5.000.000 of its own kind. A month of Rp 3.000.000 online and Rp 3.000.000 offline qualifies at the bank and earns nothing here. If your spending is mixed, clear the floor on both rules by hand.",
+    "Both streams need Rp 5.000.000 of retail spending accumulated in the billing cycle, online and offline together, and that is exactly what the entry asks: the floor is measured against everything the card earned on in the cycle, not against each stream separately. A month of Rp 3.000.000 online and Rp 3.000.000 offline qualifies, as it does at the bank.",
     "\"Online\" is matched by merchant name, from the marketplaces, travel sites, ride-hailing apps and subscriptions people in Indonesia actually use. It is a guess at a category the statement does not label, so an online shop outside the list falls to the second rule instead of the first, and earns against the smaller ceiling.",
     "The annual fee is Rp 350.000 on Gold and Titanium, waived on Rp 40.000.000 of yearly spending, and Rp 600.000 on Platinum, waived on Rp 70.000.000. The first year is free on the main card and five supplementaries. There is no Classic tier on the current page; an earlier version of this entry had one.",
     "Interest runs at 1,75% a month, or 21% a year.",
@@ -132,7 +132,7 @@
     "bankMark": "Permata",
     "chip": "silver"
   },
-  "entryVersion": 3,
+  "entryVersion": 4,
   "currency": "IDR",
   "cashValue": {
     "valueMinor": 1,

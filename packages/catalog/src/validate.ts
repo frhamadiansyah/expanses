@@ -189,8 +189,12 @@ export function validateEntry(entry: unknown, knownCategoryKeys: ReadonlySet<str
         if (rule.capSpendAtCreditLimit !== undefined && typeof rule.capSpendAtCreditLimit !== 'boolean') {
           add(`${path}.capSpendAtCreditLimit`, 'must be true or false');
         }
-        for (const cap of ['capSpendMinor', 'capPoints', 'minTransactionMinor', 'minCycleSpendMinor'] as const) {
+        for (const cap of ['capSpendMinor', 'capPoints', 'minTransactionMinor', 'minCycleSpendMinor', 'minCycleTotalMinor', 'minCyclePurchases', 'minCyclePurchaseMinor'] as const) {
           if (rule[cap] !== undefined && rule[cap] !== null && !isNonNegativeInt(rule[cap])) add(`${path}.${cap}`, 'must be a non-negative integer or null');
+        }
+        // A size on its own asks nothing of the cycle, so it only means something beside a count.
+        if (rule.minCyclePurchaseMinor != null && rule.minCyclePurchases == null) {
+          add(`${path}.minCyclePurchaseMinor`, 'needs minCyclePurchases beside it, or it asks nothing');
         }
         checkMemberLevels(path, rule.memberLevels);
         checkCategoryChoice(path, rule.categoryChoice);

@@ -47,6 +47,10 @@ export const earnRules = sqliteTable('earn_rules', {
   minTransactionMinor: integer('min_transaction_minor'),
   /** Spend the whole cycle must reach, net of refunds, before this rule earns at all. */
   minCycleSpendMinor: integer('min_cycle_spend_minor'),
+  /** Floors measured against the cycle as a whole rather than the rule's own spend. See migration 0040. */
+  minCycleTotalMinor: integer('min_cycle_total_minor'),
+  minCyclePurchases: integer('min_cycle_purchases'),
+  minCyclePurchaseMinor: integer('min_cycle_purchase_minor'),
   validFrom: text('valid_from'),
   validTo: text('valid_to'),
   catalogKey: text('catalog_key'),

@@ -51,6 +51,16 @@ export interface EarnRule {
    * including the ones made before the floor was crossed.
    */
   minCycleSpendMinor?: number | null;
+  /**
+   * Spend the whole cycle must reach before this rule earns, counting every earning purchase on the card rather
+   * than only the ones this rule matches. That is how an issuer writes "spend Rp 5.000.000 in a cycle to earn
+   * cashback", where the qualifying spend and the rewarded spend are not the same thing.
+   */
+  minCycleTotalMinor?: number | null;
+  /** Purchases the cycle must contain before this rule earns, each of at least minCyclePurchaseMinor. */
+  minCyclePurchases?: number | null;
+  /** How large a purchase has to be to count toward minCyclePurchases. Absent means any purchase counts. */
+  minCyclePurchaseMinor?: number | null;
   validFrom: string | null;
   validTo: string | null;
 }
@@ -189,8 +199,19 @@ export function computeCycleEarn(lines: SpendLine[], rules: EarnRule[], ancestor
   const purchaseTotals = new Map<string, number>();
   for (const l of sorted) purchaseTotals.set(l.transactionId, (purchaseTotals.get(l.transactionId) ?? 0) + l.amountMinor);
 
+  // What the cycle as a whole came to, and how big each purchase in it was: the two things a qualifying
+  // condition is written against, neither of which depends on the rule being qualified.
+  const cardFee = (l: SpendLine) => l.cardFee;
+  const cycleTotalMinor = Math.max(
+    0,
+    sorted.filter((l) => !cardFee(l)).reduce((s, l) => s + l.amountMinor, 0) + refunds.filter((l) => !cardFee(l)).reduce((s, l) => s + l.amountMinor, 0),
+  );
+  const purchasesAtLeast = (minor: number) => [...purchaseTotals.values()].filter((total) => total >= minor).length;
+
   // A rule with a cycle floor is in or out for the whole cycle, so it is settled before any spend is allocated.
   const reachesCycleFloor = (rule: EarnRule) => {
+    if (rule.minCycleTotalMinor != null && cycleTotalMinor < rule.minCycleTotalMinor) return false;
+    if (rule.minCyclePurchases != null && purchasesAtLeast(rule.minCyclePurchaseMinor ?? 1) < rule.minCyclePurchases) return false;
     const floor = rule.minCycleSpendMinor ?? null;
     if (floor === null) return true;
     const counts = (l: SpendLine) => ruleMatches(rule, l, ancestors, purchaseTotals.get(l.transactionId) ?? l.amountMinor, billingCurrency);
