@@ -22,8 +22,8 @@ async function openCard(page: Page, name: string) {
 /** Saves statement and due days, then applies the catalogue entry found by `search`. */
 async function applyCatalogue(page: Page, card: string, search: string, entryName: string) {
   await openCard(page, card);
-  await page.getByLabel('Statement day').fill('25');
-  await page.getByLabel('Payment due day').fill('12');
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
   await page.getByLabel('Search catalogue').fill(search);
@@ -127,13 +127,13 @@ test('Mandiri World Prioritas earns per Rp 20.000 multiple, and a CNY taxi earns
   await expect(cycle).toContainText(/Overseas transactions\s*Rp\s0 → 0 points/);
 });
 
-test('CIMB Niaga World ALL Accor pre-fills statement day 22 and earns 2,5 points on Rp 60.000', async ({ page }) => {
+test('CIMB Niaga World ALL Accor pre-fills billing date 22 and earns 2,5 points on Rp 60.000', async ({ page }) => {
   await addCard(page, 'CIMB Accor');
   await openCard(page, 'CIMB Accor');
   await page.getByLabel('Search catalogue').fill('accor');
   await page.getByRole('button', { name: 'CIMB Niaga World ALL Accor Live Limitless', exact: true }).click();
-  await expect(page.getByLabel('Statement day')).toHaveValue('22');
-  await page.getByLabel('Payment due day').fill('12');
+  await expect(page.getByLabel('Billing date')).toHaveValue('22');
+  await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await page.getByRole('button', { name: 'Use these terms' }).click();
   await expect(page.getByText('From catalogue · Linked')).toBeVisible();

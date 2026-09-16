@@ -44,8 +44,13 @@ export interface StatementLine {
   convertedTo: { planId: string; months: number } | null;
   /** A purchase or refund, as opposed to money moved onto the card. */
   spending: boolean;
+  /** The currency and amount the merchant charged, when the card converted it. */
+  originalCurrency: string | null;
+  originalAmountMinor: number | null;
   /** The payment that was made for this purchase, while that payment stands. */
   paidBy: { transactionId: string; paidOn: string } | null;
+  /** For a payment: how many purchases were ticked off when it was made. Zero for everything else. */
+  settles: number;
 }
 
 export interface CardStatement {
@@ -69,12 +74,13 @@ export interface CardStatement {
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
-  const rows = await db.values<[string, string, string | null, string, string | null, number, number, string | null, string | null]>(sql`
+  const rows = await db.values<[string, string, string | null, string, string | null, number, number, string | null, string | null, string | null, number | null, number]>(sql`
     SELECT t.id, t.occurred_on, p.posted_on, t.description, t.card_id,
       -SUM(e.amount_minor),
       EXISTS (SELECT 1 FROM entries x JOIN accounts xa ON xa.id = x.account_id WHERE x.transaction_id = t.id AND xa.kind IN ('expense', 'income'))
         OR EXISTS (SELECT 1 FROM entries y WHERE y.transaction_id = t.id AND y.spend_category_id IS NOT NULL),
-      pay.id, pay.occurred_on
+      pay.id, pay.occurred_on, t.original_currency, t.original_amount_minor,
+      (SELECT COUNT(*) FROM card_settlements cs WHERE cs.payment_transaction_id = t.id)
     FROM transactions t
     JOIN entries e ON e.transaction_id = t.id AND e.account_id = ${cardAccountId}
     LEFT JOIN card_postings p ON p.transaction_id = t.id
@@ -84,7 +90,7 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
     GROUP BY t.id
   `);
   return rows
-    .map(([transactionId, occurredOn, postedOn, description, cardId, owed, spending, paymentId, paidOn]) => ({
+    .map(([transactionId, occurredOn, postedOn, description, cardId, owed, spending, paymentId, paidOn, originalCurrency, originalAmount, settles]) => ({
       transactionId,
       occurredOn,
       postedOn,
@@ -97,7 +103,10 @@ async function cardLines(db: Db, ws: WorkspaceContext, cardAccountId: string): P
       instalment: null,
       convertedTo: null,
       spending: Boolean(spending),
+      originalCurrency,
+      originalAmountMinor: originalAmount === null ? null : Number(originalAmount),
       paidBy: paymentId && paidOn ? { transactionId: paymentId, paidOn } : null,
+      settles: Number(settles),
     }))
     .sort((a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.transactionId.localeCompare(b.transactionId));
 }
@@ -134,13 +143,21 @@ async function billedLines(database: Database, ws: WorkspaceContext, cardAccount
         instalment: { planId: plan.id, number: bill.number, of: plan.months },
         convertedTo: null,
         spending: true,
+        originalCurrency: null,
+        originalAmountMinor: null,
         paidBy: null,
+        settles: 0,
       });
     }
   }
   return [...lines, ...instalments].sort(
     (a, b) => a.statementOn.localeCompare(b.statementOn) || a.occurredOn.localeCompare(b.occurredOn) || a.key.localeCompare(b.key),
   );
+}
+
+/** Every line the card has ever had, as statements bill them, for searching across statements. */
+export function cardStatementLines(database: Database, ws: WorkspaceContext, cardAccountId: string): Promise<StatementLine[]> {
+  return billedLines(database, ws, cardAccountId);
 }
 
 /**
@@ -253,7 +270,8 @@ export async function payCardPurchases(
 
     const paymentId = await postTransactionTx(tx, ws, {
       occurredOn: input.occurredOn,
-      description: input.description?.trim() || `${card.name} payment, ${ids.length} purchase${ids.length === 1 ? '' : 's'}`,
+      // How many purchases it settled is kept in the settlements themselves, so the description stays plain.
+      description: input.description?.trim() || `${card.name} payment`,
       lines: transferLines({ fromAccountId: from.id, toAccountId: card.id, amountMinor: totalMinor, currency: card.currency }),
     });
     for (const id of ids) {

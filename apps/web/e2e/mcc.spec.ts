@@ -20,8 +20,8 @@ async function openCard(page: Page, name: string) {
 
 async function applyCatalogue(page: Page, card: string, search: string, entryName: string) {
   await openCard(page, card);
-  await page.getByLabel('Statement day').fill('25');
-  await page.getByLabel('Payment due day').fill('12');
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await page.getByLabel('Search catalogue').fill(search);
   await page.getByRole('button', { name: entryName, exact: true }).click();

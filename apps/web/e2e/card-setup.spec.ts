@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('card setup guides statement day, then rewards, then a suggested base rule', async ({ page }) => {
+test('card setup guides billing date, then rewards, then a suggested base rule', async ({ page }) => {
   await page.goto('/accounts');
   await page.getByLabel('Name', { exact: true }).fill('Step Card');
   await page.getByLabel('Type').selectOption('credit_card');
@@ -9,18 +9,18 @@ test('card setup guides statement day, then rewards, then a suggested base rule'
   const accountRow = page.locator('li', { has: page.getByRole('link', { name: 'Step Card', exact: true }) });
   await accountRow.getByRole('link', { name: 'Set up points' }).click();
 
-  // Step 1: only card terms until the statement day exists.
+  // Step 1: only card terms until the billing date exists.
   await expect(page.getByText('Step 1 of 3')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set up rewards' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Add rule' })).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Cards', exact: true }).click();
   const cardRow = page.locator('section', { has: page.getByRole('link', { name: 'Step Card', exact: true }) });
-  await expect(cardRow).toContainText('Add statement day to see points');
+  await expect(cardRow).toContainText('Add billing date to see points');
   await cardRow.getByRole('link', { name: 'Step Card', exact: true }).click();
 
-  await page.getByLabel('Statement day').fill('25');
-  await page.getByLabel('Payment due day').fill('12');
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
 
   // Step 2: rewards program.

@@ -29,8 +29,8 @@ test('menu navigation between a card page and the cards list keeps working', asy
   await expect(page.getByRole('link', { name: 'Only Card' }).first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Only Card' }).first().click();
-  await page.getByLabel('Statement day').fill('25');
-  await page.getByLabel('Payment due day').fill('12');
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await page.getByRole('button', { name: 'Set up rewards' }).click();
   await expect(page.getByRole('button', { name: 'Add rule' })).toBeVisible();
