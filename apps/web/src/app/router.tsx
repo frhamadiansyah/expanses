@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router';
 import { AccountsPage } from '../features/accounts/AccountsPage';
 import { BackupPage } from '../features/backup/BackupPage';
 import { EventDetailPage } from '../features/events/EventDetailPage';
@@ -22,7 +22,6 @@ import { LoansPage } from '../features/loans/LoansPage';
 import { CoretaxPage } from '../features/coretax/CoretaxPage';
 import { OverviewPage } from '../features/networth/OverviewPage';
 import { TradesPage } from '../features/networth/TradesPage';
-import { SpendingPage } from '../features/spending/SpendingPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { Layout } from './Layout';
 
@@ -33,6 +32,8 @@ export interface CardSearch {
 export interface TransactionsSearch {
   account?: string;
   month?: string;
+  /** Which way the same month is shown: the list, which carries the chart, or the table. */
+  view?: 'list' | 'table';
 }
 
 const rootRoute = createRootRoute({ component: Layout });
@@ -46,9 +47,17 @@ const routeTree = rootRoute.addChildren([
     validateSearch: (search: Record<string, unknown>): TransactionsSearch => ({
       account: typeof search.account === 'string' ? search.account : undefined,
       month: typeof search.month === 'string' && /^(\d{4}-\d{2}|all)$/.test(search.month) ? search.month : undefined,
+      view: search.view === 'table' || search.view === 'list' ? search.view : undefined,
     }),
   }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/spending', component: SpendingPage }),
+  // Spending was its own page; the chart it held now leads the transactions it adds up.
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/spending',
+    beforeLoad: () => {
+      throw redirect({ to: '/transactions', search: { view: 'list' } });
+    },
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/budget', component: BudgetPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage }),

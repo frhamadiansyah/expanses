@@ -2,7 +2,7 @@ import { categoryPath, formatMinor, isoDate, monthOf, monthRange, parseLooseAmou
 import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactions, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { CalendarX2, CircleAlert, List, Pencil, Search, Table2, X } from 'lucide-react';
+import { CalendarX2, ChevronLeft, CircleAlert, Ellipsis, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -12,7 +12,7 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
 import { useDrafts } from '../review/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, Field, Input, PageHeader, RoundButton, Select } from '../../ui';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { isEditable } from './draft';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
@@ -23,6 +23,7 @@ import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { BillList } from './BillList';
 import { BillsDue } from './BillsDue';
+import { SpendingReport } from './SpendingReport';
 import { TransactionForm } from './TransactionForm';
 
 const route = getRouteApi('/transactions');
@@ -149,7 +150,7 @@ function monthOptions(current: string): ChipOption[] {
 function DayHeader({ date, net, currency }: { date: string; net: number; currency: string }) {
   if (!date) {
     return (
-      <div className="flex items-center gap-2.5 border-b border-slate-200 pb-2">
+      <div className="-mx-2 flex items-center gap-2.5 border-b border-slate-200 px-2 pb-2">
         <CalendarX2 size={22} className="text-amber-700" aria-hidden />
         <span className="flex flex-col text-xs leading-tight text-slate-500">
           <b className="font-semibold text-slate-700">No date yet</b>
@@ -160,14 +161,15 @@ function DayHeader({ date, net, currency }: { date: string; net: number; currenc
   }
   const d = new Date(`${date}T00:00:00`);
   return (
-    <div className="flex items-center gap-2.5 border-b border-slate-200 pb-2">
+    <div className="-mx-2 flex items-center gap-2.5 border-b border-slate-200 px-2 pb-2">
       <span className="tabular min-w-8 text-2xl font-semibold leading-none">{d.getDate()}</span>
       <span className="flex flex-col text-xs leading-tight text-slate-500">
         <b className="font-semibold text-slate-700">{d.toLocaleDateString('en-GB', { weekday: 'long' })}</b>
         {d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
       </span>
+      {/* From md a row ends with room for its edit pencil, so the day's total leaves the same room. */}
       {net !== 0 && (
-        <span className={cx('tabular ml-auto text-sm font-semibold', net < 0 ? 'text-red-700' : 'text-emerald-700')}>
+        <span className={cx('tabular ml-auto text-sm font-semibold md:pr-7', net < 0 ? 'text-red-700' : 'text-emerald-700')}>
           {net < 0 ? '−' : '+'}
           {formatMinor(Math.abs(net), currency)}
         </span>
@@ -188,9 +190,14 @@ export function TransactionsPage() {
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
   const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' });
   const [adding, setAdding] = useState(false);
-  const [view, setView] = useState<View>(rememberedView);
+  // On a phone the search field and the filters are behind their buttons; a wide screen shows both.
+  const [showSearch, setShowSearch] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  // A view asked for in the URL wins, so /spending and a shared link both open where they meant to.
+  const [view, setView] = useState<View>(() => search.view ?? rememberedView());
   const chooseView = (next: View) => {
     setView(next);
+    void navigate({ search: (was: TransactionsSearch) => ({ ...was, view: next }), replace: true });
     try {
       localStorage.setItem(VIEW_KEY, next);
     } catch {
@@ -217,9 +224,20 @@ export function TransactionsPage() {
   const setSearch = (patch: Partial<TransactionsSearch>) => void navigate({ search: (s: TransactionsSearch) => ({ ...s, ...patch }) });
 
   const range = month === 'all' ? {} : monthRange(month);
+  const scope = search.account ? accounts.find((a) => a.id === search.account) : undefined;
+  const inCategory = scope !== undefined && (scope.kind === 'expense' || scope.kind === 'income');
+  /** A category and everything under it: opening Property must show the rent booked to its child. */
+  const scopeIds = (() => {
+    if (!scope) return undefined;
+    const ids = [scope.id];
+    for (let i = 0; i < ids.length; i += 1) {
+      for (const account of accounts) if (account.parentId === ids[i] && !ids.includes(account.id)) ids.push(account.id);
+    }
+    return ids;
+  })();
   const list = useQuery({
-    queryKey: ['transactions', ws.workspaceId, search.account ?? 'all', month, filters.showDeleted],
-    queryFn: () => listTransactions(database, ws, { accountId: search.account, ...range, includeVoid: filters.showDeleted, limit: month === 'all' ? ALL_TIME_LIMIT : undefined }),
+    queryKey: ['transactions', ws.workspaceId, scopeIds?.join(',') ?? 'all', month, filters.showDeleted],
+    queryFn: () => listTransactions(database, ws, { accountIds: scopeIds, ...range, includeVoid: filters.showDeleted, limit: month === 'all' ? ALL_TIME_LIMIT : undefined }),
   });
   const purchasePoints = useQuery({
     queryKey: ['purchase-points', ws.workspaceId, (list.data ?? []).map((tx) => tx.id).join(',')],
@@ -228,7 +246,9 @@ export function TransactionsPage() {
   });
 
   // A page opened for one account or category shows only the drafts that touch it.
-  const pending = (drafts.data ?? []).filter((draft) => !search.account || draft.accountId === search.account || draft.categoryAccountId === search.account);
+  const pending = (drafts.data ?? []).filter(
+    (draft) => !scopeIds || (draft.accountId !== null && scopeIds.includes(draft.accountId)) || (draft.categoryAccountId !== null && scopeIds.includes(draft.categoryAccountId)),
+  );
   const rows = buildRows(list.data ?? [], pending, accounts, cards);
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
@@ -256,7 +276,10 @@ export function TransactionsPage() {
       .sort((x, y) => x.label.localeCompare(y.label)),
   ];
   const paidPicked = paidOptions.find((option) => option.value === filters.paid && option.value);
-  const scope = search.account ? accounts.find((a) => a.id === search.account) : undefined;
+  // A category opens as its own screen: its ring, its transactions, and a way back to the month.
+
+  // The chart carries the month's total and its count, so the line that used to say them is left off.
+  const chartShown = view === 'list' && !filters.onlyDrafts;
   const sortValue = `${sort.key}:${sort.dir}`;
   const narrowed = filters.q || filters.paid || filters.cat || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account;
 
@@ -415,7 +438,7 @@ export function TransactionsPage() {
           />
           {editHint(
             <>
-              Not recorded yet · fill what is amber, then <b className="text-slate-700">Record</b> · <kbd>Enter</kbd> records when complete · <kbd>Esc</kbd> closes
+              Not recorded yet · fill what is missing, then <b className="text-slate-700">Record</b> · <kbd>Enter</kbd> records when complete · <kbd>Esc</kbd> closes
             </>,
             <>
               <button type="button" disabled={busy === row.id} onClick={() => void saveDraft(row.id, values, false)} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
@@ -427,7 +450,8 @@ export function TransactionsPage() {
         </li>
       );
     }
-    const complete = row.needs.length === 0;
+    // A row that is not recorded yet is the same row, faded: nothing is wrong with it, it is simply
+    // not counted in any total. One fade over the whole row, so nothing inside is dimmed twice.
     return (
       <li
         key={row.id}
@@ -436,41 +460,24 @@ export function TransactionsPage() {
         title="Click to finish"
         onClick={() => open(row)}
         onKeyDown={(event) => event.target === event.currentTarget && event.key === 'Enter' && open(row)}
-        className="group -mx-2 flex cursor-pointer items-center gap-3 rounded-lg bg-amber-50 px-2 py-2 shadow-[inset_3px_0_0_#f59e0b] hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-slate-900"
+        className="group -mx-2 flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 opacity-55 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-slate-900"
       >
-        {row.categoryId ? (
-          <CategoryIcon categoryId={row.categoryId} accounts={accounts} />
-        ) : (
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700" aria-hidden>
-            <CircleAlert size={20} />
-          </span>
-        )}
+        <CategoryIcon categoryId={row.categoryId} accounts={accounts} />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">{row.description || 'No description yet'}</div>
+          {/* The first line is the category, as on every other row; without one it says so. */}
+          <div className="truncate font-medium">{row.categoryName || 'Uncategorised'}</div>
           <div className="truncate text-xs text-slate-500">
-            <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-800">Not recorded</span>
-            {!complete && <span className="text-amber-800"> needs {row.needs.join(' & ')}</span>}
-            {row.categoryName && ` · ${row.categoryName}`}
+            {row.description || 'No description yet'}
             {row.accountLabel && ` · ${row.accountLabel}`}
             {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
+            {/* The row already shows what it is missing: "Uncategorised", "—" for the amount, no description,
+                no date in its own group. Only the account it was paid with has nowhere else to show. */}
+            {row.needs.includes('paid with') && ' · needs an account'}
           </div>
         </div>
-        <div className="tabular whitespace-nowrap text-right font-medium text-slate-500">{row.amountMinor > 0 ? formatMinor(row.amountMinor, row.currency) : '—'}</div>
-        {complete ? (
-          <Button
-            className="py-1.5"
-            disabled={busy === row.id}
-            aria-label={`Record ${row.description}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              void run(row.id, () => confirmDraft(database, ws, row.id));
-            }}
-          >
-            Record
-          </Button>
-        ) : (
-          <Pencil size={16} className="text-slate-400 opacity-0 group-hover:opacity-100" aria-hidden />
-        )}
+        <div className={cx('tabular text-sm font-semibold whitespace-nowrap', row.type === 'income' ? 'text-emerald-700' : 'text-red-700')}>
+          {row.amountMinor > 0 ? formatMinor(row.amountMinor, row.currency) : '—'}
+        </div>
       </li>
     );
   }
@@ -562,7 +569,11 @@ export function TransactionsPage() {
           ? 'Transfer'
           : row.type === 'opening'
             ? 'Opening balance'
-            : tx.entries.filter((e) => e.accountKind === row.type).map((e) => categoryPath(accounts, e.accountId)).join(', ');
+            : tx.entries
+                .filter((e) => e.accountKind === row.type)
+                // The subcategory alone: "Parking & tolls" says Transportation without repeating it.
+                .map((e) => accounts.find((a) => a.id === e.accountId)?.name ?? categoryPath(accounts, e.accountId))
+                .join(', ');
     const sign = row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
     const goal = goalName(tradeByTransaction.get(tx.id)?.goalId ?? tx.goalId ?? null);
     const points = purchasePoints.data?.[tx.id];
@@ -587,17 +598,18 @@ export function TransactionsPage() {
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium">
             {withDate && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
-            {tx.description || label}
+            {label}
           </div>
           <div className="truncate text-xs text-slate-500">
-            {label} · {row.accountLabel}
+            {tx.description ? `${tx.description} · ` : ''}
+            {row.accountLabel}
             {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
             {goal && ` · for ${goal}`}
           </div>
         </div>
         <div className="text-right">
-          <div className={cx('tabular whitespace-nowrap font-medium', sign < 0 && 'text-red-700', sign > 0 && 'text-emerald-700')}>
-            {sign < 0 ? '−' : sign > 0 ? '+' : ''}
+          {/* The colour says which way the money went, so the sign would only say it twice. */}
+          <div className={cx('tabular text-sm font-semibold whitespace-nowrap', sign < 0 && 'text-red-700', sign > 0 && 'text-emerald-700')}>
             {formatMinor(row.amountMinor, row.currency)}
           </div>
           {points && (
@@ -615,7 +627,7 @@ export function TransactionsPage() {
             Buy &amp; sell
           </Link>
         ) : (
-          clickable && <Pencil size={16} className="text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />
+          clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
         )}
       </li>
     );
@@ -635,33 +647,75 @@ export function TransactionsPage() {
     tradeIds: new Set(tradeByTransaction.keys()),
   };
 
+  /**
+   * List, Table or Summary — three ways to read the same month.
+   *
+   * It sits in the header on a wide screen and under it on a phone, where the header's room goes to the
+   * round buttons instead. Wherever it is, it is the same control.
+   */
+  const viewSwitcher = (
+    <div role="group" aria-label="View" className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
+      {(
+        [
+          ['list', 'List', List],
+          ['table', 'Table', Table2],
+        ] as const
+      ).map(([value, text, Icon]) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={view === value}
+          aria-label={text}
+          onClick={() => chooseView(value)}
+          className={cx(
+            'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium sm:px-3',
+            view === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
+          )}
+        >
+          <Icon size={16} aria-hidden />
+          <span className="hidden sm:inline">{text}</span>
+        </button>
+      ))}
+    </div>
+  );
+
   const rowView = (row: ListRow, withDate = false) => (row.kind === 'draft' ? draftRow(row) : recordedRow(row, withDate));
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Transactions"
+        title={inCategory ? scope!.name : 'Transactions'}
+        controls={
+          <>
+            <RoundButton label="Add a transaction" onClick={() => { close(); setAdding(true); }}>
+              <Plus size={22} aria-hidden />
+            </RoundButton>
+            {/* Searching and filtering are about what is already here, so they share one pill. */}
+            <span className="flex items-center rounded-full bg-white shadow-sm ring-1 ring-slate-200/70">
+              <button
+                type="button"
+                aria-label="Search"
+                aria-pressed={showSearch}
+                onClick={() => setShowSearch((was) => !was)}
+                className={cx('flex h-11 w-11 items-center justify-center rounded-full', showSearch && 'bg-slate-900 text-white')}
+              >
+                <Search size={19} aria-hidden />
+              </button>
+              <button
+                type="button"
+                aria-label="Filters"
+                aria-pressed={showFilters}
+                onClick={() => setShowFilters((was) => !was)}
+                className={cx('-ml-1 flex h-11 w-11 items-center justify-center rounded-full', showFilters && 'bg-slate-900 text-white')}
+              >
+                <Ellipsis size={19} aria-hidden />
+              </button>
+            </span>
+          </>
+        }
         action={
           <div className="flex flex-wrap items-center gap-2.5">
-            <div role="group" aria-label="View" className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
-              {(
-                [
-                  ['list', 'List', List],
-                  ['table', 'Table', Table2],
-                ] as const
-              ).map(([value, text, Icon]) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={view === value}
-                  onClick={() => chooseView(value)}
-                  className={cx('inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium', view === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900')}
-                >
-                  <Icon size={16} aria-hidden />
-                  {text}
-                </button>
-              ))}
-            </div>
+            {viewSwitcher}
             {!adding && (
               <Button
                 onClick={() => {
@@ -675,12 +729,18 @@ export function TransactionsPage() {
           </div>
         }
       />
+      {inCategory && (
+        <button type="button" onClick={() => setSearch({ account: undefined })} className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
+          <ChevronLeft size={16} aria-hidden />
+          All transactions
+        </button>
+      )}
       {adding && <TransactionForm onDone={() => setAdding(false)} />}
-      <BillsDue />
+      {!inCategory && <BillsDue />}
 
       <div className="space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="relative min-w-52 flex-[1_1_280px]">
+        <div className={cx('flex flex-wrap items-center gap-2', !showSearch && !showFilters && 'hidden md:flex')}>
+          <label className={cx('relative min-w-52 flex-[1_1_280px]', !showSearch && 'hidden md:block')}>
             <Search size={16} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" aria-hidden />
             <input
               type="search"
@@ -689,95 +749,99 @@ export function TransactionsPage() {
               placeholder="Search description, category, card digits or amount"
               aria-label="Search transactions"
               autoComplete="off"
-              className="h-9 w-full rounded-lg border border-slate-300 bg-white pr-2.5 pl-8 text-sm focus:border-slate-900 focus:outline-none"
+              className="h-9 w-full rounded-lg border border-slate-300 bg-white pr-2.5 pl-8 text-base md:text-sm focus:border-slate-900 focus:outline-none"
             />
           </label>
-          {pending.length > 0 && (
-            <button
-              type="button"
-              aria-pressed={filters.onlyDrafts}
-              title={filters.onlyDrafts ? 'Show everything again' : 'Show only rows not recorded yet'}
-              onClick={() => setFilter('onlyDrafts', !filters.onlyDrafts)}
-              className={cx(
-                'inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold ring-1',
-                filters.onlyDrafts ? 'bg-amber-700 text-white ring-amber-700' : 'bg-amber-50 text-amber-800 ring-amber-300 hover:bg-amber-100',
-              )}
-            >
-              <CircleAlert size={16} aria-hidden />
-              {pending.length} not recorded
-            </button>
-          )}
-          {scope && (
-            <span className="inline-flex h-9 items-center gap-1 rounded-lg bg-slate-900 pr-1 pl-2.5 text-sm text-slate-300">
-              Only <b className="font-semibold text-white">{scope.subtype === 'category' ? categoryPath(accounts, scope.id) : scope.name}</b>
-              <button type="button" aria-label="Show every account" onClick={() => setSearch({ account: undefined })} className="rounded p-1 hover:bg-slate-700">
-                <X size={14} aria-hidden />
+          {/* The filters sit behind the ⋯ button on a phone, and are simply there on a wide screen. */}
+          <div className={cx('flex flex-wrap items-center gap-2', !showFilters && 'hidden md:flex')}>
+            {pending.length > 0 && (
+              <button
+                type="button"
+                aria-pressed={filters.onlyDrafts}
+                title={filters.onlyDrafts ? 'Show everything again' : 'Show only rows not recorded yet'}
+                onClick={() => setFilter('onlyDrafts', !filters.onlyDrafts)}
+                className={cx(
+                  'inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold ring-1',
+                  filters.onlyDrafts ? 'bg-amber-700 text-white ring-amber-700' : 'bg-amber-50 text-amber-800 ring-amber-300 hover:bg-amber-100',
+                )}
+              >
+                <CircleAlert size={16} aria-hidden />
+                {pending.length} not recorded
               </button>
-            </span>
-          )}
-          <ChipMenu
-            name="Month"
-            value={month}
-            active={false}
-            options={monthOptions(month)}
-            onPick={(value) => setSearch({ month: value === monthOf(isoDate()) ? undefined : value })}
-            shown={
-              <>
-                Month <b className="font-semibold text-slate-900">{month === 'all' ? 'All time' : monthLabel(month)}</b>
-              </>
-            }
-          />
-          <ChipMenu
-            name="Paid with"
-            value={filters.paid}
-            active={Boolean(paidPicked)}
-            searchable
-            options={paidOptions}
-            onPick={(value) => setFilter('paid', value)}
-            shown={paidPicked && <b className="truncate font-semibold text-white">{`${paidPicked.label}${paidPicked.meta && paidPicked.meta !== 'all cards' ? ` ${paidPicked.meta}` : ''}`}</b>}
-          />
-          <ChipMenu
-            name="Category"
-            value={filters.cat}
-            active={Boolean(filters.cat)}
-            searchable
-            options={categoryOptions}
-            onPick={(value) => setFilter('cat', value)}
-            shown={filters.cat && <b className="truncate font-semibold text-white">{accounts.find((a) => a.id === filters.cat)?.name}</b>}
-          />
-          <ChipMenu
-            name="Type"
-            value={filters.type}
-            active={filters.type !== 'all'}
-            options={TYPES}
-            onPick={(value) => setFilter('type', value as ListFilters['type'])}
-            shown={filters.type !== 'all' && <b className="font-semibold text-white">{TYPES.find((t) => t.value === filters.type)?.label}</b>}
-          />
-          <ChipMenu
-            name="Sort"
-            value={sortValue}
-            active={sortValue !== 'date:desc'}
-            options={SORTS}
-            onPick={(value) => {
-              const [key, dir] = value.split(':') as [Sort['key'], Sort['dir']];
-              setSort({ key, dir });
-            }}
-            shown={
-              <>
-                Sort <b className={cx('font-semibold', sortValue !== 'date:desc' ? 'text-white' : 'text-slate-900')}>{SORTS.find((s) => s.value === sortValue)?.short}</b>
-              </>
-            }
-          />
-          <label className="inline-flex items-center gap-1.5 px-1 text-sm text-slate-700">
-            <input type="checkbox" checked={filters.showDeleted} onChange={(event) => setFilter('showDeleted', event.target.checked)} />
-            Show deleted
-          </label>
-          {narrowed && (
-            <button type="button" onClick={clearAll} className="px-1.5 py-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-900">
-              Clear
-            </button>
-          )}
+            )}
+            {scope && (
+              <span className="inline-flex h-9 items-center gap-1 rounded-lg bg-slate-900 pr-1 pl-2.5 text-sm text-slate-300">
+                Only <b className="font-semibold text-white">{scope.subtype === 'category' ? categoryPath(accounts, scope.id) : scope.name}</b>
+                <button type="button" aria-label="Show every account" onClick={() => setSearch({ account: undefined })} className="rounded p-1 hover:bg-slate-700">
+                  <X size={14} aria-hidden />
+                </button>
+              </span>
+            )}
+            <ChipMenu
+              name="Month"
+              value={month}
+              active={false}
+              options={monthOptions(month)}
+              onPick={(value) => setSearch({ month: value === monthOf(isoDate()) ? undefined : value })}
+              shown={
+                <>
+                  Month <b className="font-semibold text-slate-900">{month === 'all' ? 'All time' : monthLabel(month)}</b>
+                </>
+              }
+            />
+            <ChipMenu
+              name="Paid with"
+              value={filters.paid}
+              active={Boolean(paidPicked)}
+              searchable
+              options={paidOptions}
+              onPick={(value) => setFilter('paid', value)}
+              shown={paidPicked && <b className="truncate font-semibold text-white">{`${paidPicked.label}${paidPicked.meta && paidPicked.meta !== 'all cards' ? ` ${paidPicked.meta}` : ''}`}</b>}
+            />
+            <ChipMenu
+              name="Category"
+              value={filters.cat}
+              active={Boolean(filters.cat)}
+              searchable
+              options={categoryOptions}
+              onPick={(value) => setFilter('cat', value)}
+              shown={filters.cat && <b className="truncate font-semibold text-white">{accounts.find((a) => a.id === filters.cat)?.name}</b>}
+            />
+            <ChipMenu
+              name="Type"
+              value={filters.type}
+              active={filters.type !== 'all'}
+              options={TYPES}
+              onPick={(value) => setFilter('type', value as ListFilters['type'])}
+              shown={filters.type !== 'all' && <b className="font-semibold text-white">{TYPES.find((t) => t.value === filters.type)?.label}</b>}
+            />
+            <ChipMenu
+              name="Sort"
+              value={sortValue}
+              active={sortValue !== 'date:desc'}
+              options={SORTS}
+              onPick={(value) => {
+                const [key, dir] = value.split(':') as [Sort['key'], Sort['dir']];
+                setSort({ key, dir });
+              }}
+              shown={
+                <>
+                  Sort <b className={cx('font-semibold', sortValue !== 'date:desc' ? 'text-white' : 'text-slate-900')}>{SORTS.find((s) => s.value === sortValue)?.short}</b>
+                </>
+              }
+            />
+            <label className="inline-flex items-center gap-1.5 px-1 text-sm text-slate-700">
+              <input type="checkbox" checked={filters.showDeleted} onChange={(event) => setFilter('showDeleted', event.target.checked)} />
+              Show deleted
+            </label>
+            {narrowed && (
+              <button type="button" onClick={clearAll} className="px-1.5 py-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-900">
+                Clear
+              </button>
+            )}
+          </div>
         </div>
+{!chartShown && (
         <p className="px-0.5 text-xs text-slate-500" aria-live="polite">
           <b className="font-semibold text-slate-900">{sum.count}</b> transaction{sum.count === 1 ? '' : 's'}
           {sum.spentMinor > 0 && (
@@ -794,7 +858,18 @@ export function TransactionsPage() {
           )}
           {month === 'all' && (list.data?.length ?? 0) >= ALL_TIME_LIMIT && ` · the newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only`}
         </p>
+        )}
       </div>
+
+      {/* The month's chart leads the list. All time does not add up to a month, so it shows the one we are in. */}
+      {chartShown && (
+        <SpendingReport
+          month={month === 'all' ? monthOf(today) : month}
+          categoryId={scope?.kind === 'expense' || scope?.kind === 'income' ? scope.id : undefined}
+          onPick={(id) => setSearch({ account: id })}
+          onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
+        />
+      )}
 
       <ErrorBox error={error ?? list.error ?? drafts.error} />
       {view === 'table' ? (

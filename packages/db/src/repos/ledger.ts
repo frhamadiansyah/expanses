@@ -245,7 +245,7 @@ export interface TransactionView {
 export async function listTransactions(
   database: Database,
   ws: WorkspaceContext,
-  opts: { accountId?: string; from?: string; to?: string; includeVoid?: boolean; limit?: number } = {},
+  opts: { accountId?: string; accountIds?: readonly string[]; from?: string; to?: string; includeVoid?: boolean; limit?: number } = {},
 ): Promise<TransactionView[]> {
   const conds: SQL[] = [eq(transactions.workspaceId, ws.workspaceId)];
   if (!opts.includeVoid) conds.push(eq(transactions.status, 'posted'));
@@ -253,6 +253,10 @@ export async function listTransactions(
   if (opts.to) conds.push(lte(transactions.occurredOn, opts.to));
   if (opts.accountId) {
     conds.push(sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id = ${opts.accountId})`);
+  }
+  // A parent category stands for everything under it, so its children are asked for by id as well.
+  if (opts.accountIds && opts.accountIds.length > 0) {
+    conds.push(sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id IN ${opts.accountIds})`);
   }
   const txs = await database.db
     .select()

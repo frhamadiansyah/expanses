@@ -19,9 +19,14 @@ export async function categoryTotalsBetween(
   from: string,
   to: string,
   opts: { excludeEvents?: boolean } = {},
-): Promise<{ accountId: string; amountBaseMinor: number }[]> {
+): Promise<{ accountId: string; amountBaseMinor: number; transactions: number }[]> {
   const rows = await database.db
-    .select({ accountId: entries.accountId, total: sql<number>`sum(${entries.amountBaseMinor})` })
+    .select({
+      accountId: entries.accountId,
+      total: sql<number>`sum(${entries.amountBaseMinor})`,
+      // How many transactions made up the total, for a report that says "14 transactions", not just a sum.
+      count: sql<number>`count(distinct ${transactions.id})`,
+    })
     .from(entries)
     .innerJoin(transactions, eq(entries.transactionId, transactions.id))
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
@@ -37,7 +42,7 @@ export async function categoryTotalsBetween(
     )
     .groupBy(entries.accountId);
   return rows
-    .map((r) => ({ accountId: r.accountId, amountBaseMinor: displayAmount(kind, Number(r.total)) }))
+    .map((r) => ({ accountId: r.accountId, amountBaseMinor: displayAmount(kind, Number(r.total)), transactions: Number(r.count) }))
     .filter((r) => r.amountBaseMinor !== 0);
 }
 
