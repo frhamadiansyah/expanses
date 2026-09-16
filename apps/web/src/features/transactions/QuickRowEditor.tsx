@@ -10,7 +10,7 @@ import { paymentKey, paymentOptions, type QuickValues } from './quick-row';
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
 
-const CELL = 'h-9 w-full rounded-md bg-transparent px-2 text-sm focus:bg-white focus:outline-2 focus:outline-slate-900';
+const CELL = 'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900';
 const MISSING = 'bg-amber-50 ring-1 ring-amber-400 ring-inset';
 
 export type RowOptions = ReturnType<typeof buildRowOptions>;

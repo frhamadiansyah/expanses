@@ -34,10 +34,20 @@ export function Button({
   );
 }
 
-const FIELD = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-900 focus:outline-none';
+// Below md the text is 16px: iOS zooms the whole page when a field smaller than that takes focus.
+const FIELD = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base md:text-sm focus:border-slate-900 focus:outline-none';
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cx(FIELD, className)} {...props} />;
+/** A text field; `leading` puts a short unit such as a currency code inside the field, before what is typed. */
+export function Input({ className, leading, ...props }: InputHTMLAttributes<HTMLInputElement> & { leading?: string }) {
+  if (!leading) return <input className={cx(FIELD, className)} {...props} />;
+  return (
+    <div className="relative">
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-500">
+        {leading}
+      </span>
+      <input className={cx(FIELD, className)} style={{ paddingLeft: `calc(${leading.length}ch + 1.25rem)` }} {...props} />
+    </div>
+  );
 }
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
@@ -65,12 +75,32 @@ export function Card({ children, className, id }: { children: ReactNode; classNa
   );
 }
 
-export function PageHeader({ title, action }: { title: string; action?: ReactNode }) {
+export function PageHeader({ title, action, controls }: { title: string; action?: ReactNode; controls?: ReactNode }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-3">
-      <h1 className="text-xl font-semibold">{title}</h1>
-      {action}
+      {/* A phone gives the title room and puts its actions in round buttons beside it, as iOS does. */}
+      <h1 className={cx('font-semibold', controls ? 'text-3xl tracking-tight md:text-xl' : 'text-xl')}>{title}</h1>
+      {controls && <span className="flex items-center gap-2 md:hidden">{controls}</span>}
+      {action && <span className={cx(Boolean(controls) && 'hidden md:flex')}>{action}</span>}
     </div>
+  );
+}
+
+/** A round button for the phone header: one action, no label, 44px of target. */
+export function RoundButton({ label, onClick, children, pressed }: { label: string; onClick: () => void; children: ReactNode; pressed?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={pressed}
+      className={cx(
+        'flex h-11 w-11 items-center justify-center rounded-full shadow-sm ring-1 ring-slate-200/70',
+        pressed ? 'bg-slate-900 text-white' : 'bg-white text-slate-900',
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

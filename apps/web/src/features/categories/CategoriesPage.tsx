@@ -79,8 +79,9 @@ export function CategoriesPage() {
 
   const Row = ({ c, depth }: { c: AccountRow; depth: number }) => (
     <li>
-      <div className={cx('flex items-center gap-2 py-1.5', depth > 0 && 'pl-6')}>
-        <span className={cx('flex-1', depth === 0 && 'font-medium')}>{c.name}</span>
+      {/* Name, code and four buttons do not fit a phone in one line, so the buttons wrap under the name. */}
+      <div className={cx('flex flex-wrap items-center gap-2 py-1.5', depth > 0 && 'pl-6')}>
+        <span className={cx('min-w-0 flex-1 basis-full sm:basis-auto', depth === 0 && 'font-medium')}>{c.name}</span>
         {kind === 'expense' && (() => {
           const card = categoryMcc(c, allCategories, overrides.data ?? {});
           return (
@@ -175,8 +176,8 @@ export function CategoriesPage() {
                   </div>
                   <ul className="divide-y divide-slate-100">
                     {inSet.map((category) => (
-                      <li key={category.id} className="flex items-center gap-2 py-1.5 pl-6">
-                        <span className="flex-1">{category.name}</span>
+                      <li key={category.id} className="flex flex-wrap items-center gap-2 py-1.5 pl-6">
+                        <span className="min-w-0 flex-1 basis-full sm:basis-auto">{category.name}</span>
                         {(() => {
                           // A set category has no key and no parent, so an MCC here is always one you set.
                           const card = categoryMcc(category, allCategories, overrides.data ?? {});
