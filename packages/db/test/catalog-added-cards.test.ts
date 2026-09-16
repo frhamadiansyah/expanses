@@ -282,10 +282,16 @@ describe('Danamon Visa Platinum, now paid at the weekend', () => {
     expect(await earned(wed)).toBe(0);
   });
 
-  it('ignores a weekend purchase below Rp 100.000, which does not qualify', async () => {
+  it('pays a small weekend purchase once the month has qualified, the Rp 100.000 being the count’s and not the rule’s', async () => {
     const t = await withCard('danamon-visa-platinum');
     await qualify(t, WEDNESDAY);
-    await spend(t, 99_999, { on: SATURDAY });
+    await spend(t, 50_000, { on: SATURDAY });
+    expect(await earned(t)).toBe(5_000);
+  });
+
+  it('pays nothing on that same purchase when the month has not qualified', async () => {
+    const t = await withCard('danamon-visa-platinum');
+    await spend(t, 50_000, { on: SATURDAY });
     expect(await earned(t)).toBe(0);
   });
 
