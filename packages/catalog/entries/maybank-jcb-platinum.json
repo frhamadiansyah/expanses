@@ -86,10 +86,10 @@
       "effectiveTo": null,
       "cap": {
         "window": "year",
-        "capPoints": 200000,
-        "shared": true,
-        "beyondPoints": 20000,
-        "beyondPartnerUnits": 6666
+        "capPartnerUnits": 200000,
+        "shared": false,
+        "beyondPoints": 3,
+        "beyondPartnerUnits": 1
       }
     },
     {
@@ -102,10 +102,10 @@
       "effectiveTo": null,
       "cap": {
         "window": "year",
-        "capPoints": 200000,
-        "shared": true,
-        "beyondPoints": 20000,
-        "beyondPartnerUnits": 6666
+        "capPartnerUnits": 200000,
+        "shared": false,
+        "beyondPoints": 3,
+        "beyondPartnerUnits": 1
       }
     },
     {
@@ -118,10 +118,10 @@
       "effectiveTo": null,
       "cap": {
         "window": "year",
-        "capPoints": 200000,
-        "shared": true,
-        "beyondPoints": 20000,
-        "beyondPartnerUnits": 6666
+        "capPartnerUnits": 200000,
+        "shared": false,
+        "beyondPoints": 3,
+        "beyondPartnerUnits": 1
       }
     },
     {
@@ -134,10 +134,10 @@
       "effectiveTo": null,
       "cap": {
         "window": "year",
-        "capPoints": 200000,
-        "shared": true,
-        "beyondPoints": 5000,
-        "beyondPartnerUnits": 1666
+        "capPartnerUnits": 200000,
+        "shared": false,
+        "beyondPoints": 3,
+        "beyondPartnerUnits": 1
       }
     }
   ],
@@ -150,12 +150,12 @@
   "notes": [
     "The miles card of the Maybank range: 1 TREATS Point per Rp 10.000, twice what the Visa Platinum earns. Maybank puts it as \"belanja Rp10 ribu untuk mendapatkan 1 airline miles\" on the card’s own page, which both fixes the rate and says a point is a mile, so a mile costs Rp 10.000 here against Rp 20.000 there.",
     "The exclusions are the ones Maybank applies across its credit cards from 10 September 2026: no TREATS on XBill, XCash, balance conversion, QR payments, taxes and government services (MCC 9211, 9222, 9311, 9399), fast food (MCC 5814), or utility payments (MCC 4900) above Rp 10.000.000. The terms set that limit per card; estimates apply it per purchase.",
-    "Transfers are the shared TREATS ratios: 20.000 TREATS for 20.000 KrisFlyer, GarudaMiles or Asia Miles, and 5.000 for 5.000 AirAsia points, until 200.000 TREATS are converted in twelve months; past that 20.000 give 6.666. The ceiling covers every partner together. Each mileage conversion costs Rp 20.000, which estimates do not subtract.",
+    "Transfers move one for one — 20.000 TREATS for 20.000 KrisFlyer, GarudaMiles or Asia Miles, and 5.000 for 5.000 AirAsia points — until 200.000 miles have been taken in that programme in the twelve months to the transfer. The ceiling is per airline and is not pooled, so KrisFlyer, GarudaMiles and Asia Miles each carry their own and a heavy year can move 600.000 miles across the three. Past a programme’s ceiling the rest converts at 3 TREATS to 1 mile. Each mileage conversion costs Rp 20.000, which estimates do not subtract.",
     "TREATS Points expire one year after they are earned.",
     "Points redeem against travel e-vouchers as well as airline miles, and the card carries free JCB Airport Lounge and JCB Plaza access. None of that is earning, so none of it is a rule.",
     "The annual fee is still not recorded. The benefits page does not carry it and no reliable figure turned up elsewhere; enter what you are charged on the card terms.",
-    "A published source states the 200.000-a-year mileage ceiling was lifted on 1 February 2025. The Maybank TREATS page dated January 2026 still carries it, and the sibling Visa Platinum entry was built from the RIPLAY, so the ceiling is kept here. Worth re-checking against the current RIPLAY.",
-    "The rate and the one-for-one mile are read from the bank’s own benefits page. The transfer ceiling below is not — it is carried over from the sibling Visa Platinum entry, which was built from the RIPLAY."
+    "The rate and the one-for-one mile are read from the bank’s own benefits page. The transfer ceiling below is not — it is carried over from the sibling Visa Platinum entry, which was built from the RIPLAY.",
+    "The ceiling and the 3:1 beyond it are the terms Maybank set on 1 January 2026. AirAsia points are written the same way; the published change named KrisFlyer, GarudaMiles and Asia Miles, so AirAsia is an assumption."
   ],
   "sources": [
     {
@@ -188,7 +188,7 @@
     "bankMark": "Maybank",
     "chip": "silver"
   },
-  "entryVersion": 2,
+  "entryVersion": 3,
   "currency": "IDR",
   "verifiedOn": "2026-09-16"
 }
