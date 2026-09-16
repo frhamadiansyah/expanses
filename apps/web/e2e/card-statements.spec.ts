@@ -22,8 +22,8 @@ async function setUp(page: Page) {
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
-  await page.getByLabel('Statement day').fill('31');
-  await page.getByLabel('Payment due day').fill('15');
+  await page.getByLabel('Billing date').fill('31');
+  await page.getByLabel('Due date').fill('15');
   await page.getByRole('button', { name: 'Save terms' }).click();
   // Saving terms moves the page on to setting up rewards; the statement is one tab away.
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
@@ -96,7 +96,39 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   await expect(page.getByLabel('Pay Superindo')).not.toBeChecked();
 });
 
-test('the last statement is paid from the card’s Left to pay tile', async ({ page }) => {
+test('the totals band splits the previous bill from what is unbilled, and names the batch paid ahead', async ({ page }) => {
+  await setUp(page);
+  await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
+  await buy(page, 'Superindo', '450000', TODAY);
+  await openCard(page);
+
+  // Nothing paid yet: the previous bill stands whole beside what this cycle has gathered.
+  const band = page.getByTestId('statement-band');
+  await expect(band).toContainText('Previous bill');
+  await expect(band).toContainText('2.000.000');
+  await expect(band).toContainText('Unbilled');
+  await expect(band).toContainText('450.000');
+  await expect(page.getByTestId('statement-total')).toContainText('Upcoming bill');
+  await expect(page.getByTestId('statement-total')).toContainText('2.450.000');
+
+  // Tick this cycle's purchase and pay it: the bank clears the older bill first, so that is where it lands.
+  await page.getByLabel('Pay Superindo').check();
+  await page.getByRole('button', { name: /^Pay Rp/ }).click();
+  await expect(page.getByTestId('statement-line').filter({ hasText: 'Superindo' })).toContainText(/paid ahead \d+ \w+/);
+  await expect(page.getByTestId('statement-line').filter({ hasText: 'payment' })).toContainText('for 1 purchase');
+  // Rp 450.000 of the Rp 2.000.000 previous bill is settled, and the upcoming bill drops by the same.
+  await expect(band).toContainText('1.550.000');
+  await expect(page.getByTestId('statement-total')).toContainText('2.000.000');
+
+  // The closed statement it paid down says what is left of that bill, not what is unbilled.
+  await page.getByRole('button', { name: 'Earlier statement' }).click();
+  await expect(band).toContainText('Paid');
+  await expect(band).toContainText('Still to pay');
+  await expect(band).toContainText('1.550.000');
+  await expect(page.getByTestId('statement-total')).toContainText('Total bill');
+});
+
+test('the last statement is paid from the card’s Current bill tile', async ({ page }) => {
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await openCard(page);
@@ -120,4 +152,20 @@ test('the tab you chose survives a reload', async ({ page }) => {
   await page.reload();
   await expect(page.getByRole('tab', { name: 'Card & plans' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('button', { name: 'Save terms' })).toBeVisible();
+});
+
+test('searching finds a purchase on an earlier statement and opens that statement', async ({ page }) => {
+  await setUp(page);
+  await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
+  await buy(page, 'Superindo', '450000', TODAY);
+  await openCard(page);
+
+  await page.getByLabel('Search statements').fill('mulia');
+  const results = page.getByTestId('statement-search-results');
+  await expect(results.getByRole('button')).toHaveCount(1);
+  await results.getByRole('button', { name: /Hotel Mulia/ }).click();
+
+  await expect(page.getByLabel('Search statements')).toHaveValue('');
+  await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' })).toBeVisible();
+  await expect(page.getByTestId('statement-line').filter({ hasText: 'Superindo' })).toHaveCount(0);
 });

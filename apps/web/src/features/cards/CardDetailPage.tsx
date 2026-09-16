@@ -1,7 +1,9 @@
-import { CURRENCIES, type CycleBonus, displayAmount, type EarnRule, explainCycle, formatMinor, isoDate, minorToMajorString, parseMajor, type Redemption, type TransferPartner } from '@expanses/core';
+import { CURRENCIES, type CycleBonus, cycleFor, displayAmount, type EarnRule, explainCycle, formatMinor, isoDate, minorToMajorString, parseMajor, previousCycle, type Redemption, type TransferPartner } from '@expanses/core';
 import type { CatalogEntry } from '@expanses/catalog';
 import {
+  type AccountRow,
   applyCatalogEntry,
+  listCycleActuals,
   addCard,
   archiveCard,
   archiveCycleBonus,
@@ -39,8 +41,9 @@ import { StatementPanel, type StatementPoints } from './StatementPanel';
 import { CardHero, type CardTab, CardTabs } from './CardHero';
 import { purchasesOf } from './hint-text';
 import { TransferEstimates } from './TransferEstimates';
-import { useCardLedger } from './useCardLedger';
-import { type CycleResult, formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
+import { refreshLedger, useCardLedger } from './useCardLedger';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { type CardPoints, type CycleResult, formatPoints, loadCardPoints, loadCycleResult, pointsValue, shortDate } from './useCardPoints';
 
 const route = getRouteApi('/cards/$cardId');
 
@@ -157,9 +160,97 @@ function CycleSummary({
   );
 }
 
-function ActualForm({ program, result, unit, currency, crediting }: { program: RewardProgramRow; result: CycleResult; unit: string; currency: string; crediting: 'per_transaction' | 'per_statement' }) {
+/**
+ * Checks one statement's points against what the bank gave: the last statement to begin with, and any earlier
+ * one on request, so a statement left unchecked can still be caught up. Earlier statements not checked yet are
+ * listed, to jump straight to them.
+ */
+function StatementCheck({ cp, accounts, unit, currency, today }: { cp: CardPoints; accounts: AccountRow[]; unit: string; currency: string; today: string }) {
   const { database, ws } = useApp();
   const { error, run } = useAction();
+  const program = cp.program!;
+  const statementDay = cp.terms?.statementDay ?? 1;
+  // 1 is the statement just closed; the cycle still open has no statement to check yet.
+  const [back, setBack] = useState(1);
+  const cycleAt = (steps: number) => {
+    let cycle = cycleFor(today, program.cycleAnchor, statementDay);
+    for (let i = 0; i < steps; i += 1) cycle = previousCycle(cycle, program.cycleAnchor, statementDay);
+    return cycle;
+  };
+  const cycle = cycleAt(back);
+  const result = useQuery({
+    queryKey: ['statement-check', ws.workspaceId, program.id, cycle.start, cp.rules.length, cp.bonuses.length],
+    queryFn: () => loadCycleResult(database, ws, cp, accounts, cycle),
+  });
+  const actuals = useQuery({ queryKey: ['cycle-actuals', ws.workspaceId, program.id], queryFn: () => listCycleActuals(database, ws, program.id) });
+  const checked = new Set((actuals.data ?? []).map((row) => row.cycleStart));
+  const unchecked = [1, 2, 3, 4, 5, 6].map(cycleAt).filter((c) => !checked.has(c.start));
+  return (
+    <Section
+      title={`${cp.crediting === 'per_transaction' ? 'Bonus points credited' : 'Check against statement'}: ${shortDate(cycle.start)} – ${shortDate(cycle.end)}`}
+      action={
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" className="px-2 py-1" aria-label="Earlier statement to check" onClick={() => setBack((b) => b + 1)}>
+            <ChevronLeft size={16} aria-hidden />
+          </Button>
+          <Button variant="ghost" className="px-2 py-1" aria-label="Later statement to check" disabled={back <= 1} onClick={() => setBack((b) => Math.max(1, b - 1))}>
+            <ChevronRight size={16} aria-hidden />
+          </Button>
+        </div>
+      }
+    >
+      {unchecked.length > 0 && (
+        <p className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500" data-testid="unchecked-statements">
+          Not checked yet:
+          {unchecked.map((c) => (
+            <button
+              key={c.start}
+              type="button"
+              onClick={() => setBack([1, 2, 3, 4, 5, 6].find((steps) => cycleAt(steps).start === c.start) ?? 1)}
+              className={cx('rounded-full px-2 py-0.5 ring-1', c.start === cycle.start ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-100')}
+            >
+              {shortDate(c.end)}
+            </button>
+          ))}
+        </p>
+      )}
+      {result.data ? (
+        <ActualForm
+          key={`${cycle.start}:${result.data.actual ?? ''}`}
+          result={result.data}
+          unit={unit}
+          currency={currency}
+          crediting={cp.crediting}
+          save={(actualPoints) =>
+            run(async () => {
+              await recordCycleActual(database, ws, { programId: program.id, cycleStart: cycle.start, actualPoints });
+              // The ledger for this cycle is rebuilt now, since the page only derives the two cycles it shows.
+              await refreshLedger(database, ws, program.id, [cycle], today);
+            })
+          }
+        />
+      ) : (
+        <p className="text-sm text-slate-500">Working out this statement…</p>
+      )}
+      <ErrorBox error={error} />
+    </Section>
+  );
+}
+
+function ActualForm({
+  result,
+  unit,
+  currency,
+  crediting,
+  save,
+}: {
+  result: CycleResult;
+  unit: string;
+  currency: string;
+  crediting: 'per_transaction' | 'per_statement';
+  save: (actualPoints: number) => Promise<boolean>;
+}) {
+  const { run } = useAction();
   const [value, setValue] = useState(result.actual === null ? '' : String(result.actual));
   const perPurchase = crediting === 'per_transaction';
   const diff = result.actual === null ? null : result.actual - result.earn.totalPoints;
@@ -168,13 +259,12 @@ function ActualForm({ program, result, unit, currency, crediting }: { program: R
   const dates = Object.fromEntries(result.lines.map((line) => [line.transactionId, line.occurredOn]));
   const descriptions = Object.fromEntries(result.lines.map((line) => [line.transactionId, line.description]));
   const estimatedBonus = Object.values(result.earn.bonusById).reduce((sum, points) => sum + points, 0);
-  const range = `${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}`;
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    void run(() => recordCycleActual(database, ws, { programId: program.id, cycleStart: result.cycle.start, actualPoints: Number(value.trim().replace(',', '.')) }));
+    void save(Number(value.trim().replace(',', '.')));
   };
   return (
-    <Section title={perPurchase ? `Bonus points credited: ${range}` : `Check against statement: ${range}`}>
+    <>
       {perPurchase ? (
         <p className="text-sm text-slate-600">
           Points your bank credited outside individual purchases, such as cycle bonuses. Estimated <span className="tabular font-medium">{formatPoints(estimatedBonus)}</span> {unit}.
@@ -205,8 +295,7 @@ function ActualForm({ program, result, unit, currency, crediting }: { program: R
         </Field>
         <Button type="submit">Save</Button>
       </form>
-      <ErrorBox error={error} />
-    </Section>
+    </>
   );
 }
 
@@ -236,6 +325,7 @@ export function CardDetailPage() {
   const [spendNote, setSpendNote] = useState('');
   const [spendValue, setSpendValue] = useState('');
   const [spendKind, setSpendKind] = useState<'redeem' | 'transfer'>('redeem');
+  const [spendChoice, setSpendChoice] = useState('');
   const [editingRule, setEditingRule] = useState<EarnRule | 'new' | null>(null);
   const [editingBonus, setEditingBonus] = useState<CycleBonus | 'new' | null>(null);
   const [catalogId, setCatalogId] = useState<string | null>(null);
@@ -290,6 +380,11 @@ export function CardDetailPage() {
   const hasTerms = !!cp.terms;
   const step = !isDebit && !hasTerms ? 1 : !cp.program ? 2 : cp.rules.length === 0 ? 3 : null;
   const canUseCatalog = !cp.program || cp.catalog.status === null;
+  // What points can go to on this card: its transfer partners and its redemption options, catalogue or typed.
+  const spendChoices: { key: string; label: string; kind: 'redeem' | 'transfer' }[] = [
+    ...cp.transferPartners.map((partner) => ({ key: `partner:${partner.id}`, label: partner.program, kind: 'transfer' as const })),
+    ...cp.redemptions.map((option) => ({ key: `option:${option.id}`, label: option.name, kind: option.type === 'miles_transfer' ? ('transfer' as const) : ('redeem' as const) })),
+  ].filter((choice, index, all) => all.findIndex((other) => other.label === choice.label) === index);
   // A card with no statement day opens on its terms; any other card opens on its statement, since rewards are optional.
   const active: CardTab = chosenTab ?? (step === 1 ? 'card' : isDebit ? 'points' : 'statement');
   const on = (tab: CardTab) => active === tab;
@@ -303,10 +398,12 @@ export function CardDetailPage() {
     if (!result) continue;
     const approximate = new Set(result.earn.approximateTransactionIds);
     for (const purchase of purchasesOf(result.lines)) {
+      // Only an MCC the owner set is worth printing on the statement; a guessed one is checked in the Points tab.
+      const known = purchase.mccSource === 'typed' || purchase.mccSource === 'memory';
       statementPoints[purchase.transactionId] = {
         points: result.earn.pointsByTransaction[purchase.transactionId] ?? 0,
         approximate: approximate.has(purchase.transactionId),
-        mcc: purchase.cardFee ? null : purchase.mcc,
+        mcc: purchase.cardFee || !known ? null : purchase.mcc,
         cardFee: purchase.cardFee,
       };
     }
@@ -357,7 +454,7 @@ export function CardDetailPage() {
       <Section title="Card terms" step={step === 1 ? 'Step 1 of 3' : undefined}>
         {step === 1 && (
           <p className="mb-3 text-sm text-slate-600">
-            Start with your statement day. It decides which purchases count toward each points cycle and when bonus caps reset.
+            Start with your billing date. It decides which purchases count toward each points cycle and when bonus caps reset.
           </p>
         )}
         <form
@@ -367,22 +464,22 @@ export function CardDetailPage() {
             void run(() => saveCardTerms(database, ws, { accountId: card.id, statementDay: Number(statementDay), dueDay: Number(dueDay), creditLimitMinor: optionalMinor(limit), annualFeeMinor: optionalMinor(fee) }));
           }}
         >
-          <Field label="Statement day">
+          <Field label="Billing date" hint="Day of the month">
             <Input value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required />
           </Field>
-          <Field label="Payment due day">
+          <Field label="Due date" hint="Day of the month">
             <Input value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="12" required />
           </Field>
-          <Field label={`Credit limit (${currency})`}>
-            <Input value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />
+          <Field label="Credit limit">
+            <Input leading={currency} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />
           </Field>
-          <Field label={`Annual fee (${currency})`}>
-            <Input value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />
+          <Field label="Annual fee">
+            <Input leading={currency} value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />
           </Field>
           <div className="flex items-center gap-4 md:col-span-4">
             <Button type="submit">Save terms</Button>
             <span className="text-sm text-slate-600">
-              Owed now <Money minor={owed} currency={currency} />
+              Current balance <Money minor={owed} currency={currency} />
               {cp.terms?.creditLimitMinor ? ` · ${Math.round((owed / cp.terms.creditLimitMinor) * 100)}% of limit` : ''}
             </span>
           </div>
@@ -487,7 +584,7 @@ export function CardDetailPage() {
             <CycleSummary title="This cycle" result={cp.current} rules={cp.rules} bonuses={cp.bonuses} partners={cp.transferPartners} unit={cp.program.unit} currency={currency} best={cp.best} today={today} />
           )}
           {on('points') && cp.current && cp.rules.length > 0 && <PurchaseList cp={cp} run={run} currency={currency} />}
-          {on('points') && cp.previous && cp.rules.length > 0 && <ActualForm program={cp.program} result={cp.previous} unit={cp.program.unit} currency={currency} crediting={cp.crediting} />}
+          {on('points') && cp.previous && cp.rules.length > 0 && <StatementCheck cp={cp} accounts={all} unit={cp.program.unit} currency={currency} today={today} />}
           {on('points') && ledger.data && (
             <Section title="Points balance">
               <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -557,24 +654,64 @@ export function CardDetailPage() {
                     setSpendPoints('');
                     setSpendNote('');
                     setSpendValue('');
+                    setSpendChoice('');
                   });
                 }}
               >
                 <Field label={`${cp.program.unit === 'miles' ? 'Miles' : 'Points'} spent`}>
                   <Input value={spendPoints} onChange={(event) => setSpendPoints(event.target.value)} inputMode="decimal" required />
                 </Field>
-                <Field label="What for">
-                  <Input value={spendNote} onChange={(event) => setSpendNote(event.target.value)} placeholder="Statement credit" />
-                </Field>
+                {spendChoices.length > 0 ? (
+                  <Field label="What for">
+                    <Select
+                      value={spendChoice}
+                      onChange={(event) => {
+                        const choice = spendChoices.find((option) => option.key === event.target.value);
+                        setSpendChoice(event.target.value);
+                        // A partner means the points moved to an airline or hotel; anything else was spent here.
+                        if (choice) setSpendKind(choice.kind);
+                        setSpendNote(choice ? choice.label : '');
+                      }}
+                    >
+                      <option value="">Choose…</option>
+                      {spendChoices.some((option) => option.kind === 'transfer') && (
+                        <optgroup label="Move to a partner">
+                          {spendChoices.filter((option) => option.kind === 'transfer').map((option) => (
+                            <option key={option.key} value={option.key}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {spendChoices.some((option) => option.kind === 'redeem') && (
+                        <optgroup label="Redeem">
+                          {spendChoices.filter((option) => option.kind === 'redeem').map((option) => (
+                            <option key={option.key} value={option.key}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <option value="other">Something else…</option>
+                    </Select>
+                  </Field>
+                ) : null}
+                {(spendChoices.length === 0 || spendChoice === 'other') && (
+                  <Field label={spendChoices.length === 0 ? 'What for' : 'Describe it'}>
+                    <Input value={spendNote} onChange={(event) => setSpendNote(event.target.value)} placeholder="Statement credit" />
+                  </Field>
+                )}
                 <Field label={`What it fetched (${currency})`} hint="Leave empty if it had no cash value.">
                   <Input value={spendValue} onChange={(event) => setSpendValue(event.target.value)} inputMode="decimal" />
                 </Field>
-                <Field label="Kind">
-                  <Select value={spendKind} onChange={(event) => setSpendKind(event.target.value as 'redeem' | 'transfer')}>
-                    <option value="redeem">Redeemed</option>
-                    <option value="transfer">Moved to a partner</option>
-                  </Select>
-                </Field>
+                {(spendChoices.length === 0 || spendChoice === 'other') && (
+                  <Field label="Kind">
+                    <Select value={spendKind} onChange={(event) => setSpendKind(event.target.value as 'redeem' | 'transfer')}>
+                      <option value="redeem">Redeemed</option>
+                      <option value="transfer">Moved to a partner</option>
+                    </Select>
+                  </Field>
+                )}
                 <div className="pb-1">
                   <Button type="submit" variant="secondary">
                     Spend points

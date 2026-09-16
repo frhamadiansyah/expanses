@@ -35,8 +35,14 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
   await page.goto('/transactions');
   await page.getByRole('button', { name: '2 not recorded' }).click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
-  // The import already guessed a category, so it can be recorded from here as it stands.
-  await expect(page.getByTestId('not-recorded-row').filter({ hasText: 'SUPERINDO KEBAYORAN' }).getByRole('button', { name: 'Record SUPERINDO KEBAYORAN' })).toBeVisible();
+  // The import already guessed a category, so the row names it and can be recorded as it stands.
+  const superindo = page.getByTestId('not-recorded-row').filter({ hasText: 'SUPERINDO KEBAYORAN' });
+  // The parser guessed Miscellaneous, which is a category, so the row is complete enough to record.
+  await expect(superindo).toContainText('Miscellaneous');
+  await superindo.click();
+  const editor = page.getByTestId('not-recorded-row').filter({ has: page.getByRole('button', { name: 'Close without saving' }) });
+  await expect(editor.getByRole('button', { name: 'Record', exact: true })).toBeEnabled();
+  await editor.getByRole('button', { name: 'Close without saving' }).click();
 
   await page.goto('/review');
   await expect(page.getByTestId('draft-row')).toHaveCount(2);

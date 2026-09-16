@@ -114,7 +114,7 @@ export function CardsPage() {
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
                   {!cp.terms && cp.card.subtype === 'credit_card'
-                    ? 'Add statement day to see points'
+                    ? 'Add billing date to see points'
                     : cp.current
                       ? `This cycle ${shortDate(cp.current.cycle.start)} – ${shortDate(cp.current.cycle.end)}`
                       : 'Rewards not set up'}

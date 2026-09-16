@@ -1,14 +1,19 @@
 import { Link, Outlet } from '@tanstack/react-router';
+import { useState } from 'react';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
 import { usePendingDraftCount } from '../features/review/queries';
+import { TransactionForm } from '../features/transactions/TransactionForm';
 import { useApp } from './context';
+import { AccountSheet } from './AccountSheet';
+import { Sheet } from './Sheet';
+import { TabBar } from './TabBar';
+import { usePhone } from './use-phone';
 
 const NAV = [
   { to: '/', label: 'Dashboard' },
   { to: '/transactions', label: 'Transactions' },
   { to: '/cards', label: 'Cards' },
-  { to: '/spending', label: 'Spending' },
   { to: '/budget', label: 'Budget' },
   { to: '/events', label: 'Events' },
   { to: '/goals', label: 'Goals' },
@@ -45,8 +50,14 @@ function ReviewLink() {
 
 export function Layout() {
   const { workspaceName, ws } = useApp();
+  const [more, setMore] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const phone = usePhone();
   return (
-    <div className="min-h-dvh md:flex">
+    <div
+      className="min-h-dvh md:flex"
+      style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+    >
       <aside className="hidden w-56 shrink-0 border-r border-slate-200 bg-white p-4 md:block">
         <div className="mb-6 px-3">
           <div className="text-lg font-semibold">Expanses</div>
@@ -76,29 +87,25 @@ export function Layout() {
           ))}
         </div>
       </aside>
-      <main className="flex-1 pb-24 md:pb-8">
+      {/* The phone draws under the status bar and the home indicator, so the shell gives both back. */}
+      <main className="flex-1 pb-32 md:pb-8" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="mx-auto max-w-4xl p-4 md:p-8">
           <InstallHint />
           <BackupBanner />
           <Outlet />
         </div>
       </main>
-      <nav
-        className="fixed inset-x-0 bottom-0 z-10 flex border-t border-slate-200 bg-white md:hidden"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
-        {NAV.map((item) => (
-          <Link
-            key={item.to}
-            to={item.to}
-            className="flex-1 py-3 text-center text-[11px] text-slate-600"
-            activeProps={{ className: 'font-semibold text-slate-900' }}
-            activeOptions={{ exact: item.to === '/' }}
-          >
-            {item.label}
-          </Link>
-        ))}
-      </nav>
+      {phone && (
+        <>
+          <TabBar onAdd={() => setAdding(true)} onAccount={() => setMore(true)} accountOpen={more} />
+          {more && <AccountSheet onClose={() => setMore(false)} />}
+          {adding && (
+            <Sheet title="Add a transaction" onClose={() => setAdding(false)}>
+              <TransactionForm onDone={() => setAdding(false)} />
+            </Sheet>
+          )}
+        </>
+      )}
     </div>
   );
 }

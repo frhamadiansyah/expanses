@@ -111,7 +111,7 @@ export function CellCombo({
         onKeyDown={onKeyDown}
         onBlur={settle}
         className={cx(
-          'h-9 w-full rounded-md bg-transparent px-2 text-sm focus:bg-white focus:outline-2 focus:outline-slate-900',
+          'h-9 w-full rounded-md bg-transparent px-2 text-base md:text-sm focus:bg-white focus:outline-2 focus:outline-slate-900',
           Boolean(selected?.icon) && query === null && 'pl-9',
           Boolean(selected?.meta) && query === null && 'pr-12',
           invalid && 'bg-amber-50 ring-1 ring-amber-400 ring-inset',

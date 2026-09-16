@@ -9,6 +9,7 @@ import { CardFace } from './CardFace';
 import { bonusStanding, activeDuring } from './catalog-panel';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
 import { limitUsage } from './limit-usage';
+import { pointsSummary } from './points-summary';
 import { useInstallments } from '../loans/queries';
 import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 
@@ -101,7 +102,7 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
 
 /**
  * The top of a card's page: the card itself with how much of the limit is used, then what the page is usually
- * opened for — what is left to pay, and the points: the balance beside what this cycle is adding.
+ * opened for — the current bill, and the points: the balance beside what this cycle is adding.
  */
 export function CardHero({
   cp,
@@ -150,7 +151,6 @@ export function CardHero({
 
   const unit = cp.program?.unit ?? 'points';
   const result = cp.current;
-  const spend = result ? result.lines.reduce((sum, line) => sum + Math.max(0, line.amountMinor), 0) : 0;
   const bonus = result ? cp.bonuses.find((b) => activeDuring(b, result.cycle.end, result.cycle.end)) : undefined;
   const standing = bonus && result ? bonusStanding(bonus, result.earn.eligibleSpendByBonus[bonus.id] ?? 0, result.earn.bonusById[bonus.id] ?? 0) : null;
 
@@ -240,12 +240,12 @@ export function CardHero({
         )}
       </div>
 
-      {/* What is left to pay and the points, then the tabs directly under them, so the whole block sits beside the card. */}
+      {/* The current bill and the points, then the tabs directly under them, so the whole block sits beside the card. */}
       <div className="flex min-w-0 flex-col gap-3">
         <div className={cx('grid min-w-0 flex-1 gap-3', !debit && 'md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
           {!debit && (
           <Tile
-            label="Left to pay"
+            label="Current bill"
             testId="tile-left-to-pay"
             action={
               cp.terms && lastCycle ? (
@@ -254,7 +254,7 @@ export function CardHero({
                 </Button>
               ) : (
                 <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => onTab('card')}>
-                  Enter statement day
+                  Enter billing date
                 </Button>
               )
             }
@@ -281,7 +281,7 @@ export function CardHero({
                 )}
               </>
             ) : (
-              <div className="mt-1 text-xs text-slate-600">Add the statement day to see statements.</div>
+              <div className="mt-1 text-xs text-slate-600">Add the billing date to see statements.</div>
             )}
             {paying && (
               <div className="absolute top-full right-0 left-0 z-20 mt-2 rounded-xl bg-white p-3 shadow-lg ring-1 ring-slate-200 md:left-auto md:w-80">
@@ -316,33 +316,29 @@ export function CardHero({
             }
           >
             {cp.program ? (
-              <div className="mt-1 grid grid-cols-2 gap-3">
-                {/* The balance you have, beside what this cycle is adding to it. */}
-                <div className="min-w-0" data-testid="tile-points-balance">
-                  <div className="truncate text-xl font-semibold tabular">
-                    {formatPoints(pointsBalance?.total ?? 0)} {unit}
-                  </div>
-                  <div className="mt-0.5 text-xs leading-snug text-slate-500">
-                    Balance · {formatPoints(pointsBalance?.posted ?? 0)} posted, {formatPoints(pointsBalance?.estimated ?? 0)} estimated
-                  </div>
+              <>
+                <div className="mt-1 truncate text-xl font-semibold tabular" data-testid="tile-points-balance">
+                  {formatPoints(pointsBalance?.total ?? 0)} {unit}
                 </div>
-                <div className="min-w-0" data-testid="tile-this-cycle">
-                  <div className="truncate text-xl font-semibold text-emerald-700 tabular">
-                    +{formatPoints(result?.earn.totalPoints ?? 0)}
-                  </div>
-                  <div className="mt-0.5 text-xs leading-snug text-slate-500">
-                    {result ? `This cycle · ${formatMinor(spend, currency)} · ${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}` : 'This cycle · add a statement day'}
-                  </div>
-                  {standing && standing.next && (
-                    <div className="mt-1.5 flex items-center gap-2" title={`${bonus!.name}: ${formatMinor(standing.remainingMinor, currency)} to go`}>
-                      <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-200">
-                        <div className="h-full rounded-full bg-emerald-600" style={{ width: `${Math.round(standing.fraction * 100)}%` }} />
-                      </div>
-                      <span className="shrink-0 text-[11px] text-slate-500 tabular">{formatMinor(standing.remainingMinor, currency)} to bonus</span>
+                {/* Posted, then what this cycle is adding; the cycle's dates are on hover, the spend is in the Points tab. */}
+                <div
+                  className="mt-0.5 text-xs text-slate-500"
+                  data-testid="tile-this-cycle"
+                  title={result ? `This cycle: ${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}` : undefined}
+                >
+                  {pointsSummary(pointsBalance?.posted ?? 0, pointsBalance?.estimated ?? 0, result ? result.earn.totalPoints : null)}
+                </div>
+                {standing && standing.next && (
+                  <div className="mt-2 flex items-center gap-2" title={`${bonus!.name}: ${formatMinor(standing.eligibleSpendMinor, currency)} of ${formatMinor(standing.next.minSpendMinor, currency)}`}>
+                    <div className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-full rounded-full bg-emerald-600" style={{ width: `${Math.round(standing.fraction * 100)}%` }} />
                     </div>
-                  )}
-                </div>
-              </div>
+                    <span className="min-w-0 truncate text-xs text-slate-500 tabular">
+                      {formatMinor(standing.remainingMinor, currency)} more for +{formatPoints(standing.next.bonus)} bonus
+                    </span>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="mt-1 text-xs text-slate-600">Rewards are not set up for this card.</div>
             )}

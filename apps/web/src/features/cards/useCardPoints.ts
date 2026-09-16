@@ -119,3 +119,21 @@ export async function loadCardPoints(
 
 export const shortDate = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 export const formatPoints = (n: number) => n.toLocaleString('id-ID');
+
+/**
+ * Earn for any one cycle of a card whose setup is already loaded, with the actual recorded for it. Used to check a
+ * statement further back than the two cycles the page works out on its own.
+ */
+export async function loadCycleResult(database: Database, ws: WorkspaceContext, cp: CardPoints, accounts: AccountRow[], cycle: Cycle): Promise<CycleResult> {
+  const lines = await cardSpendLines(database, ws, cp.card.id, cycle.start, cycle.end);
+  const options = { bonuses: cp.bonuses, cycleEnd: cycle.end, billingCurrency: cp.card.currency ?? 'IDR' };
+  const actuals = cp.program ? await listCycleActuals(database, ws, cp.program.id) : [];
+  const ancestors = expenseAncestors(accounts);
+  return {
+    cycle,
+    lines,
+    earn: computeCycleEarn(lines, cp.rules, ancestors, options),
+    actual: actuals.find((a) => a.cycleStart === cycle.start)?.actualPoints ?? null,
+    context: { lines, rules: cp.rules, ancestors, options },
+  };
+}

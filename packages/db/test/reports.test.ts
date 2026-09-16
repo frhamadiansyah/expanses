@@ -36,7 +36,10 @@ describe('categoryTotalsBetween', () => {
     ]);
 
     expect(await categoryTotalsBetween(database, ws, 'income', '2026-09-01', '2026-09-30')).toEqual([
-      { accountId: id('Salary'), amountBaseMinor: 10_000_000 },
+      { accountId: id('Salary'), amountBaseMinor: 10_000_000, transactions: 1 },
     ]);
+
+    // A category says how many transactions made it up, and a voided one is not among them.
+    expect(spending.map((row) => row.transactions)).toEqual([1, 1]);
   });
 });

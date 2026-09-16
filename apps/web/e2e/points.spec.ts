@@ -14,8 +14,8 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'CIMB Octo' }).click();
-  await page.getByLabel('Statement day').fill('25');
-  await page.getByLabel('Payment due day').fill('12');
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await page.getByRole('button', { name: 'Set up rewards' }).click();
 
