@@ -95,8 +95,13 @@ test('the phone header adds, searches and filters from three round buttons', asy
   await expect(page.getByLabel('Search transactions')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Cashflow' })).toBeVisible();
 
+  // ⋯ is a short menu on a phone: the chart already chooses the period and the category.
   await page.getByRole('button', { name: 'Filters' }).click();
-  await expect(page.getByRole('button', { name: /^Month/ })).toBeVisible();
+  const menu = page.getByTestId('filters-menu');
+  await expect(menu.getByRole('menuitem', { name: /Paid with/ })).toBeVisible();
+  await expect(menu.getByRole('menuitemcheckbox', { name: /Show deleted/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Month/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close filters' }).click();
 
   // The header's + opens the same form the tab bar's does.
   await page.getByRole('button', { name: 'Add a transaction' }).first().click();
@@ -129,11 +134,11 @@ test('the month’s chart leads the list, and a category opens as its own screen
 
   // The month is moved from the chart itself, and the list follows it.
   const thisMonth = await chart.getByTestId('chart-month').textContent();
-  await chart.getByRole('button', { name: 'Earlier month' }).click();
+  await chart.getByRole('button', { name: 'Earlier period' }).click();
   await expect(chart.getByTestId('chart-month')).not.toHaveText(thisMonth ?? '');
   await expect(page).toHaveURL(/month=/);
   await expect(chart.getByTestId('chart-month')).toBeVisible();
-  await chart.getByRole('button', { name: 'Later month' }).click({ force: true });
+  await chart.getByRole('button', { name: 'Later period' }).click({ force: true });
   await expect(chart.getByTestId('chart-month')).toHaveText(thisMonth ?? '');
   await expect(page.getByTestId('statement-line')).toHaveCount(0);
 

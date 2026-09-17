@@ -48,5 +48,4 @@ test('the budget page puts the budget first and says what is left or over under 
   const transport = page.getByTestId('report-row').filter({ hasText: 'Transportation' });
   await expect(transport).toContainText('no budget');
   await expect(transport).not.toContainText('%');
-  await page.getByTestId('spending-report').screenshot({ path: 'shot-k2.png' });
 });

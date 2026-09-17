@@ -1,3 +1,4 @@
+import { parsePeriod } from '@expanses/core';
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router';
 import { AccountsPage } from '../features/accounts/AccountsPage';
 import { BackupPage } from '../features/backup/BackupPage';
@@ -32,6 +33,7 @@ export interface CardSearch {
 
 export interface TransactionsSearch {
   account?: string;
+  /** The period on show, despite the name: a month, `2026-W38`, `2026-Q3`, `2026`, `all`, or `from..to`. */
   month?: string;
   /** Which way the same month is shown: the list, which carries the chart, or the table. */
   view?: 'list' | 'table';
@@ -47,7 +49,8 @@ const routeTree = rootRoute.addChildren([
     component: TransactionsPage,
     validateSearch: (search: Record<string, unknown>): TransactionsSearch => ({
       account: typeof search.account === 'string' ? search.account : undefined,
-      month: typeof search.month === 'string' && /^(\d{4}-\d{2}|all)$/.test(search.month) ? search.month : undefined,
+      // Any period: a month as before, or a week, quarter, year, all time or two dates.
+      month: typeof search.month === 'string' && parsePeriod(search.month) ? search.month : undefined,
       view: search.view === 'table' || search.view === 'list' ? search.view : undefined,
     }),
   }),

@@ -1,8 +1,8 @@
-import { addMonths, type BudgetLine, categoryTree, type CategoryTreeNode, formatMinor, isoDate, monthRange } from '@expanses/core';
-import { budgetSheetFor, categoryTotalsBetween } from '@expanses/db';
+import { type BudgetLine, categoryTree, type CategoryTreeNode, formatMinor, isoDate, parsePeriod, periodLabel, stepPeriod } from '@expanses/core';
+import { budgetSheetFor, categoryTotalsBetween, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -14,11 +14,9 @@ import { categoryColour, OTHER_COLOUR, ringSlices, shade } from './category-colo
 import { CapLine, ShareLine } from './CategoryLines';
 import { Deck } from './Deck';
 import { Donut, type DonutSlice } from './Donut';
+import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { IncomeFlow } from './IncomeFlow';
 
-function monthLabel(month: string) {
-  return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-}
 
 /** The node for a category anywhere in the tree, so a page showing one can draw it. */
 function findNode(nodes: readonly CategoryTreeNode[], id: string): CategoryTreeNode | undefined {
@@ -227,7 +225,14 @@ export function SpendingReport({
   const [showAll, setShowAll] = useState(false);
   // Which of the two charts the card is turned to. The rows follow it, so one denominator is on screen at a time.
   const [page, setPage] = useState(0);
-  const { from, to } = monthRange(month);
+  const [picking, setPicking] = useState(false);
+  // "month" is whatever period the page shows. All time is asked for as the widest possible stretch.
+  const period = parsePeriod(month);
+  const from = period?.from ?? '0000-01-01';
+  const to = period?.to ?? '9999-12-31';
+  // Budgets are monthly, so the budget page only exists when a single month is showing.
+  const isMonth = period?.kind === 'month';
+  const first = useQuery({ queryKey: ['first-transaction', ws.workspaceId], queryFn: () => firstTransactionDate(database, ws), enabled: picking });
 
   const totals = useQuery({
     queryKey: ['category-totals', ws.workspaceId, kind, month, 'without-events'],
@@ -236,12 +241,12 @@ export function SpendingReport({
   });
   const budgets = useQuery({
     queryKey: ['budget-sheet', ws.workspaceId, month],
-    enabled: kind === 'expense',
+    enabled: kind === 'expense' && isMonth,
     queryFn: () => budgetSheetFor(database, ws, month),
   });
   const progress = budgetProgress(budgets.data?.lines ?? []);
   // The budget page exists only where there is a budget to measure, and only for money going out.
-  const hasBudgets = kind === 'expense' && progress.any;
+  const hasBudgets = kind === 'expense' && isMonth && progress.any;
   const onBudgets = hasBudgets && page === 1;
   const caps: Record<string, number> = {};
   /** A category's budget, or what its children were budgeted between them: a parent row measures the lot. */
@@ -277,16 +282,35 @@ export function SpendingReport({
     <div className="mb-1">
       {onMonth && (
         <div className="flex items-center justify-between">
-          <Button variant="ghost" className="px-2 py-1" aria-label="Earlier month" onClick={() => onMonth(addMonths(month, -1))}>
-            <ChevronLeft size={18} aria-hidden />
-          </Button>
-          <span className="text-sm font-semibold" data-testid="chart-month">
-            {monthLabel(month)}
-          </span>
-          <Button variant="ghost" className="px-2 py-1" aria-label="Later month" onClick={() => onMonth(addMonths(month, 1))}>
-            <ChevronRight size={18} aria-hidden />
-          </Button>
+          {/* Arrows step by whatever the period is — a week, a month, a quarter, a year. All time and two chosen dates have no neighbours. */}
+          {stepPeriod(month, -1) ? (
+            <Button variant="ghost" className="px-2 py-1" aria-label="Earlier period" onClick={() => onMonth(stepPeriod(month, -1)!)}>
+              <ChevronLeft size={18} aria-hidden />
+            </Button>
+          ) : (
+            <span className="w-9" />
+          )}
+          <button
+            type="button"
+            onClick={() => setPicking(true)}
+            className="inline-flex min-h-9 items-center gap-1 rounded-full bg-slate-100 px-3 text-sm font-semibold"
+            data-testid="chart-month"
+            aria-label={`${periodLabel(month)}, choose a period`}
+          >
+            {periodLabel(month)}
+            <ChevronDown size={14} aria-hidden className="text-slate-500" />
+          </button>
+          {stepPeriod(month, 1) ? (
+            <Button variant="ghost" className="px-2 py-1" aria-label="Later period" onClick={() => onMonth(stepPeriod(month, 1)!)}>
+              <ChevronRight size={18} aria-hidden />
+            </Button>
+          ) : (
+            <span className="w-9" />
+          )}
         </div>
+      )}
+      {picking && onMonth && (
+        <PeriodPicker value={month} years={yearsSince(first.data ?? null)} onPick={onMonth} onClose={() => setPicking(false)} />
       )}
       <div className="mt-3 flex gap-1.5">
         {(['expense', 'income'] as const).map((k) => (
@@ -326,7 +350,7 @@ export function SpendingReport({
           {totals.isSuccess && tree.length === 0 && setGroups.length === 0 ? (
             <Card>
               {header}
-              <Empty>Nothing recorded for {monthLabel(month)}.</Empty>
+              <Empty>Nothing recorded for {periodLabel(month)}.</Empty>
             </Card>
           ) : (
             <Ring

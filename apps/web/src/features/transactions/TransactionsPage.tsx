@@ -1,8 +1,8 @@
-import { categoryPath, formatMinor, isoDate, monthOf, monthRange, parseLooseAmount, parseLooseDate, parseUnits } from '@expanses/core';
+import { categoryPath, formatMinor, isoDate, monthOf, parseLooseAmount, parseLooseDate, parseUnits, parsePeriod, periodLabel } from '@expanses/core';
 import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactions, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, CalendarX2, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, LayoutGrid, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, CalendarX2, Check, ChevronDown, ChevronLeft, CircleAlert, CreditCard, Ellipsis, Trash2, LayoutGrid, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -23,6 +23,7 @@ import { buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupB
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { Recurring } from './Recurring';
+import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionForm } from './TransactionForm';
 
@@ -145,7 +146,20 @@ function monthOptions(current: string): ChipOption[] {
   const months: string[] = [];
   for (let i = 0; i < 24; i += 1) months.push(monthOf(isoDate(new Date(today.getFullYear(), today.getMonth() - i, 1))));
   if (current !== 'all' && !months.includes(current)) months.push(current);
-  return [{ value: 'all', label: 'All time' }, ...months.map((month) => ({ value: month, label: monthLabel(month) }))];
+  // Any period chosen from the chart's picker stays on the list, under its own name.
+  return [{ value: 'all', label: 'All time' }, ...months.map((month) => ({ value: month, label: periodLabel(month) }))];
+}
+
+/** One active filter, said in words, with ✕ to take it off. */
+function FilterChip({ label, clearLabel, onClear }: { label: ReactNode; clearLabel?: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-slate-900 py-1 pr-1 pl-3 text-sm text-white">
+      {label}
+      <button type="button" aria-label={clearLabel ?? `Clear ${typeof label === 'string' ? label.toLowerCase() : 'filter'}`} onClick={onClear} className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+        <X size={14} aria-hidden />
+      </button>
+    </span>
+  );
 }
 
 function DayHeader({ date, net, currency }: { date: string; net: number; currency: string }) {
@@ -244,7 +258,11 @@ export function TransactionsPage() {
   const setFilter = <K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) => setFilters((f) => ({ ...f, [key]: value }));
   const setSearch = (patch: Partial<TransactionsSearch>) => void navigate({ search: (s: TransactionsSearch) => ({ ...s, ...patch }) });
 
-  const range = month === 'all' ? {} : monthRange(month);
+  const period = parsePeriod(month);
+  const range = period?.from ? { from: period.from, to: period.to! } : {};
+  // A day on its own only names a date when a single month is showing.
+  const singleMonth = period?.kind === 'month';
+  const [paying, setPaying] = useState(false);
   const scope = search.account ? accounts.find((a) => a.id === search.account) : undefined;
   const inCategory = scope !== undefined && (scope.kind === 'expense' || scope.kind === 'income');
   /** A category and everything under it: opening Property must show the rent booked to its child. */
@@ -619,13 +637,13 @@ export function TransactionsPage() {
             categoryId={row.categoryId}
             accounts={accounts}
             transfer={row.type !== 'expense' && row.type !== 'income'}
-            label={withDate && grouping === 'category' && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
+            label={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
           />
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">
             {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}
-            {withDate && (month === 'all' || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
+            {withDate && (!singleMonth || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {label}
           </div>
           <div className="truncate text-xs text-slate-500">
@@ -710,7 +728,8 @@ export function TransactionsPage() {
   const rowView = (row: ListRow, withDate = false) => (row.kind === 'draft' ? draftRow(row) : recordedRow(row, withDate));
 
   return (
-    <div className="space-y-4">
+    // Relative, so the ⋯ menu hangs from the header it opens from.
+    <div className="relative space-y-4">
       {/* On a phone, searching takes the whole header: the title and its buttons give way to one field and a way out. */}
       {phone && showSearch ? (
         <div className="flex h-12 items-center gap-2.5 rounded-full bg-white px-4 shadow-sm ring-1 ring-slate-200/70">
@@ -760,9 +779,13 @@ export function TransactionsPage() {
               <button
                 type="button"
                 aria-label="Filters"
-                aria-pressed={showFilters}
+                aria-pressed={showFilters || filters.onlyDrafts || Boolean(filters.paid) || filters.showDeleted}
+                aria-expanded={showFilters}
                 onClick={() => setShowFilters((was) => !was)}
-                className={cx('-ml-1 flex h-11 w-11 items-center justify-center rounded-full', showFilters && 'bg-slate-900 text-white')}
+                className={cx(
+                  '-ml-1 flex h-11 w-11 items-center justify-center rounded-full',
+                  (showFilters || filters.onlyDrafts || filters.paid || filters.showDeleted) && 'bg-slate-900 text-white',
+                )}
               >
                 <Ellipsis size={19} aria-hidden />
               </button>
@@ -786,6 +809,78 @@ export function TransactionsPage() {
         }
       />
       )}
+      {phone && showFilters && (
+        <>
+          {/* Taps outside the menu close it, the way a pull-down menu behaves on iOS. */}
+          <button type="button" aria-label="Close filters" className="fixed inset-0 z-20 cursor-default" onClick={() => setShowFilters(false)} />
+          <div role="menu" className="absolute top-16 right-4 z-30 w-60 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200" data-testid="filters-menu">
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={filters.onlyDrafts}
+              disabled={pending.length === 0 && !filters.onlyDrafts}
+              onClick={() => {
+                setFilter('onlyDrafts', !filters.onlyDrafts);
+                setShowFilters(false);
+              }}
+              className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm disabled:opacity-40"
+            >
+              <CircleAlert size={17} aria-hidden className="text-amber-700" />
+              <span className="flex-1">Not recorded</span>
+              {filters.onlyDrafts ? <Check size={16} aria-hidden /> : pending.length > 0 && <b className="tabular font-semibold text-amber-700">{pending.length}</b>}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setShowFilters(false);
+                setPaying(true);
+              }}
+              className="flex min-h-12 w-full items-center gap-3 border-t border-slate-100 px-4 text-left text-sm"
+            >
+              <CreditCard size={17} aria-hidden className="text-slate-500" />
+              <span className="flex-1">Paid with</span>
+              <span className="max-w-24 truncate text-xs text-slate-500">{paidPicked ? paidPicked.label : 'All'} ›</span>
+            </button>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={filters.showDeleted}
+              onClick={() => {
+                setFilter('showDeleted', !filters.showDeleted);
+                setShowFilters(false);
+              }}
+              className="flex min-h-12 w-full items-center gap-3 border-t border-slate-100 px-4 text-left text-sm"
+            >
+              <Trash2 size={17} aria-hidden className="text-slate-500" />
+              <span className="flex-1">Show deleted</span>
+              {filters.showDeleted && <Check size={16} aria-hidden />}
+            </button>
+          </div>
+        </>
+      )}
+      {paying && (
+        <Sheet title="Paid with" onClose={() => setPaying(false)}>
+          <div className="divide-y divide-slate-100" data-testid="paid-with-sheet">
+            {paidOptions.map((option) => (
+              <button
+                key={option.value || 'any'}
+                type="button"
+                aria-pressed={filters.paid === option.value}
+                onClick={() => {
+                  setFilter('paid', option.value);
+                  setPaying(false);
+                }}
+                className={cx('flex min-h-12 w-full items-center gap-2 text-left text-sm', option.indent && 'pl-5')}
+              >
+                <span className="min-w-0 flex-1 truncate">{option.value ? option.label : 'Everything'}</span>
+                {option.meta && <span className="tabular text-xs text-slate-500">{option.meta}</span>}
+                {filters.paid === option.value && <Check size={16} aria-hidden className="text-emerald-700" />}
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
       {inCategory && (
         <button type="button" onClick={() => setSearch({ account: undefined })} className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
           <ChevronLeft size={16} aria-hidden />
@@ -795,7 +890,8 @@ export function TransactionsPage() {
       {adding && <TransactionForm onDone={() => setAdding(false)} />}
 
       <div className="space-y-1">
-        <div className={cx('flex flex-wrap items-center gap-2', !showFilters && 'hidden md:flex')}>
+        {/* On a phone the filters are the ⋯ menu below; the row of chips is a wide screen's. */}
+        <div className={cx('flex flex-wrap items-center gap-2', (phone || !showFilters) && 'hidden md:flex')}>
           {!phone && (
           <label className="relative min-w-52 flex-[1_1_280px]">
             <Search size={16} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" aria-hidden />
@@ -843,7 +939,7 @@ export function TransactionsPage() {
               onPick={(value) => setSearch({ month: value === monthOf(isoDate()) ? undefined : value })}
               shown={
                 <>
-                  Month <b className="font-semibold text-slate-900">{month === 'all' ? 'All time' : monthLabel(month)}</b>
+                  Month <b className="font-semibold text-slate-900">{periodLabel(month)}</b>
                 </>
               }
             />
@@ -904,10 +1000,10 @@ export function TransactionsPage() {
         )}
       </div>
 
-      {/* The month's chart leads the list. All time does not add up to a month, so it shows the one we are in. */}
+      {/* The chart leads the list, over whatever period is chosen. */}
       {chartShown && (
         <SpendingReport
-          month={month === 'all' ? monthOf(today) : month}
+          month={month}
           kind={kind}
           onKind={setKind}
           categoryId={scope?.kind === 'expense' || scope?.kind === 'income' ? scope.id : undefined}
@@ -943,6 +1039,18 @@ export function TransactionsPage() {
               </Empty>
             ))}
 
+          {/* What ⋯ has narrowed the list to, each with its own way out. */}
+          {phone && (filters.onlyDrafts || filters.paid || filters.showDeleted) && (
+            <div className="flex flex-wrap gap-2" data-testid="active-filters">
+              {filters.onlyDrafts && (
+                <FilterChip label="Not recorded" onClear={() => setFilter('onlyDrafts', false)} />
+              )}
+              {paidPicked && (
+                <FilterChip label={<>Paid with <b className="font-semibold">{paidPicked.label}</b></>} clearLabel="Clear paid with" onClear={() => setFilter('paid', '')} />
+              )}
+              {filters.showDeleted && <FilterChip label="Showing deleted" onClear={() => setFilter('showDeleted', false)} />}
+            </div>
+          )}
           {shown.length > 0 && (
             <div className="flex items-center justify-end gap-2">
               {/* Names the list under the chart, and fills the row the two controls would otherwise leave empty. */}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetSheetFor, createAccount, deleteEvent, eventSheetFor, finishEvent, listEventBudgets, listEvents, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, setEventBudget, suggestForEvent, tagTransaction } from '../src/index';
+import { budgetSheetFor, createAccount, deleteEvent, eventSheetFor, finishEvent, firstTransactionDate, listEventBudgets, listEvents, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, setEventBudget, suggestForEvent, tagTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 const MONTH = '2026-09';
@@ -226,5 +226,15 @@ describe('an event\'s history', () => {
 
     const history = await listTransactions(context.database, context.ws, { eventId: id });
     expect(history.map((row) => row.description)).toEqual(['Hampers']);
+  });
+});
+
+describe('firstTransactionDate', () => {
+  it('is the oldest recorded day, and nothing before anything is recorded', async () => {
+    const context = await household();
+    expect(await firstTransactionDate(context.database, context.ws)).toBeNull();
+    await spend(context, context.food.id, `${MONTH}-20`, 85_000);
+    await spend(context, context.food.id, '2025-03-02', 40_000);
+    expect(await firstTransactionDate(context.database, context.ws)).toBe('2025-03-02');
   });
 });

@@ -242,6 +242,15 @@ export interface TransactionView {
   entries: TransactionEntryView[];
 }
 
+/** The day of the oldest recorded transaction, or null when nothing is recorded: where a year picker starts. */
+export async function firstTransactionDate(database: Database, ws: WorkspaceContext): Promise<string | null> {
+  const [row] = await database.db
+    .select({ first: sql<string | null>`min(${transactions.occurredOn})` })
+    .from(transactions)
+    .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.status, 'posted')));
+  return row?.first ?? null;
+}
+
 export async function listTransactions(
   database: Database,
   ws: WorkspaceContext,
