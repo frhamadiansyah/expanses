@@ -3,6 +3,7 @@ import { and, eq, gte, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
+import { attributedOn, billTablesExist } from './bill-months';
 
 /**
  * Per-category totals in base currency for posted transactions in [from, to], sign-normalized so
@@ -11,6 +12,8 @@ import { accounts, entries, transactions } from '../schema';
  * `excludeEvents` leaves out anything tagged to an event. Only the monthly budget asks for that:
  * a wedding would otherwise read as every category blown at once, when the money was always meant to
  * go. Everywhere else the spending is real and is shown.
+ *
+ * `billMonths` counts a bill payment in the month whose bill it settled (see the recurring bills spec, decision A).
  */
 export async function categoryTotalsBetween(
   database: Database,
@@ -18,8 +21,17 @@ export async function categoryTotalsBetween(
   kind: 'expense' | 'income',
   from: string,
   to: string,
-  opts: { excludeEvents?: boolean } = {},
+  opts: { excludeEvents?: boolean; billMonths?: boolean } = {},
 ): Promise<{ accountId: string; amountBaseMinor: number; transactions: number }[]> {
+  // The budget and Cashflow ask for bills in the month they came out; every other reader keeps the day paid.
+  const byBillMonth = opts.billMonths === true && (await billTablesExist(database.db));
+  const inPeriod = byBillMonth
+    ? [
+        // The first test keeps the date index in play; the second moves a bill paid in another month onto its own.
+        sql`(${transactions.occurredOn} BETWEEN ${from} AND ${to} OR ${transactions.id} IN (SELECT transaction_id FROM bill_payments WHERE bill_month BETWEEN ${from.slice(0, 7)} AND ${to.slice(0, 7)}))`,
+        sql`${attributedOn()} BETWEEN ${from} AND ${to}`,
+      ]
+    : [gte(transactions.occurredOn, from), lte(transactions.occurredOn, to)];
   const rows = await database.db
     .select({
       accountId: entries.accountId,
@@ -35,8 +47,7 @@ export async function categoryTotalsBetween(
         eq(entries.workspaceId, ws.workspaceId),
         eq(transactions.status, 'posted'),
         eq(accounts.kind, kind),
-        gte(transactions.occurredOn, from),
-        lte(transactions.occurredOn, to),
+        ...inPeriod,
         ...(opts.excludeEvents ? [isNull(transactions.eventId)] : []),
         // Narrowed to one book when the context names one; the whole workspace otherwise. Set categories are filed in
         // book_categories too (into their set's book), so this one path covers them.

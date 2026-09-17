@@ -238,7 +238,7 @@ export function SpendingReport({
   const totals = useQuery({
     queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, 'without-events'],
     // An event is read on its own: a week in Singapore would otherwise swallow the shape of an ordinary month.
-    queryFn: () => categoryTotalsBetween(database, ws, kind, from, to, { excludeEvents: true }),
+    queryFn: () => categoryTotalsBetween(database, ws, kind, from, to, { excludeEvents: true, billMonths: true }),
   });
   const budgets = useQuery({
     queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month],

@@ -54,9 +54,9 @@ export function DashboardPage() {
       // The dashboard speaks for the owner: every book's spending and income together.
       const owner = ownerScope(ws);
       return {
-        spending: sum(await categoryTotalsBetween(database, owner, 'expense', cur.from, cur.to)),
+        spending: sum(await categoryTotalsBetween(database, owner, 'expense', cur.from, cur.to, { billMonths: true })),
         income: sum(await categoryTotalsBetween(database, owner, 'income', cur.from, cur.to)),
-        lastSpending: sum(await categoryTotalsBetween(database, owner, 'expense', prev.from, prev.to)),
+        lastSpending: sum(await categoryTotalsBetween(database, owner, 'expense', prev.from, prev.to, { billMonths: true })),
       };
     },
   });
