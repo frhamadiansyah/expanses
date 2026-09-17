@@ -288,6 +288,10 @@ export async function listTransactions(
   if (opts.accountIds && opts.accountIds.length > 0) {
     conds.push(sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id IN ${opts.accountIds})`);
   }
+  // A book's list: what was filed in it, and what was filed nowhere — moving your own money shows in every book.
+  if (ws.bookId) {
+    conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM book_transactions WHERE book_id <> ${ws.bookId})`);
+  }
   const txs = await database.db
     .select()
     .from(transactions)

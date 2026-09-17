@@ -1,17 +1,18 @@
-import { eventSheetFor, listEventBudgets, listEvents, listTransactions, suggestForEvent } from '@expanses/db';
+import { eventSheetFor, listEventBudgets, listEvents, listTransactions, ownerScope, suggestForEvent } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
+// An event spans books (a trip touches Personal and Business alike), so every read here is owner-level.
 export function useEvents() {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['events', ws.workspaceId], queryFn: () => listEvents(database, ws) });
+  return useQuery({ queryKey: ['events', ws.workspaceId], queryFn: () => listEvents(database, ownerScope(ws)) });
 }
 
 export function useEventBudgets(eventId: string | null) {
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['event-budgets', ws.workspaceId, eventId],
-    queryFn: () => listEventBudgets(database, ws, eventId!),
+    queryFn: () => listEventBudgets(database, ownerScope(ws), eventId!),
     enabled: eventId !== null,
   });
 }
@@ -21,7 +22,7 @@ export function useEventSheet(eventId: string | null) {
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['event-sheet', ws.workspaceId, eventId],
-    queryFn: () => eventSheetFor(database, ws, eventId!),
+    queryFn: () => eventSheetFor(database, ownerScope(ws), eventId!),
     enabled: eventId !== null,
   });
 }
@@ -31,7 +32,7 @@ export function useEventSuggestions(eventId: string | null) {
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['event-suggestions', ws.workspaceId, eventId],
-    queryFn: () => suggestForEvent(database, ws, eventId!),
+    queryFn: () => suggestForEvent(database, ownerScope(ws), eventId!),
     enabled: eventId !== null,
   });
 }
@@ -41,7 +42,7 @@ export function useEventHistory(eventId: string | null) {
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['event-history', ws.workspaceId, eventId],
-    queryFn: () => listTransactions(database, ws, { eventId: eventId! }),
+    queryFn: () => listTransactions(database, ownerScope(ws), { eventId: eventId! }),
     enabled: eventId !== null,
   });
 }

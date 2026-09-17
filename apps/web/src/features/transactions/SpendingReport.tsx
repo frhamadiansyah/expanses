@@ -241,7 +241,7 @@ export function SpendingReport({
     queryFn: () => categoryTotalsBetween(database, ws, kind, from, to, { excludeEvents: true }),
   });
   const budgets = useQuery({
-    queryKey: ['budget-sheet', ws.workspaceId, month],
+    queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month],
     enabled: kind === 'expense' && isMonth,
     queryFn: () => budgetSheetFor(database, ws, month),
   });

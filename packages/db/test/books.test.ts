@@ -21,6 +21,7 @@ import {
   getBudgetIncome,
   listBudgets,
   listExpenseTemplates,
+  listTransactions,
   ownerScope,
   personalBook,
   postTransaction,
@@ -320,6 +321,23 @@ describe('reading one book', () => {
     expect((await ensureCategoryKeys(database, ws)).created).toContain('utilities.gas_energy');
     const [[recreated]] = (await database.db.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND system_key = 'utilities.gas_energy'`)) as [[string]];
     expect(await categoryIdsOfBook(database, personal)).toContain(recreated);
+  });
+
+  it('lists the book’s transactions and every transfer, never another book’s spending', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const meals = await createAccount(database, inBook(ws, business), { name: 'Client meals', kind: 'expense', subtype: 'category', currency: null });
+    const post = (description: string, a: string, b: string) =>
+      postTransaction(database, ws, { occurredOn: '2026-08-15', description, lines: [{ accountId: a, amountMinor: 1000, currency: 'IDR' }, { accountId: b, amountMinor: -1000, currency: 'IDR' }] });
+    await post('Supplier dinner', meals.id, card.id);
+    await post('Card bill', card.id, bank.id);
+
+    const names = async (bookId: string) => (await listTransactions(database, inBook(ws, bookId))).map((t) => t.description).sort();
+    expect(await names(business)).toEqual(['Card bill', 'Supplier dinner']);
+    expect(await names(personal)).toEqual(['Card bill']);
   });
 });
 

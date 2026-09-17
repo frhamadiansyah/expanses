@@ -20,7 +20,7 @@ function lateness(bill: MonthlyBill, today: string): string {
 
 function useBills(today: string) {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['monthly-bills', ws.workspaceId, today], queryFn: () => monthlyBills(database, ws, today) });
+  return useQuery({ queryKey: ['monthly-bills', ws.workspaceId, ws.bookId ?? null, today], queryFn: () => monthlyBills(database, ws, today) });
 }
 
 /**

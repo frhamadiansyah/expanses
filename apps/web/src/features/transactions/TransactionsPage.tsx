@@ -277,7 +277,7 @@ export function TransactionsPage() {
     return ids;
   })();
   const list = useQuery({
-    queryKey: ['transactions', ws.workspaceId, scopeIds?.join(',') ?? 'all', month, filters.showDeleted],
+    queryKey: ['transactions', ws.workspaceId, ws.bookId ?? null, scopeIds?.join(',') ?? 'all', month, filters.showDeleted],
     queryFn: () => listTransactions(database, ws, { accountIds: scopeIds, ...range, includeVoid: filters.showDeleted, limit: month === 'all' ? ALL_TIME_LIMIT : undefined }),
   });
   const purchasePoints = useQuery({
