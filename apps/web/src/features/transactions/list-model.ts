@@ -1,4 +1,4 @@
-import { dayNet, matchesSearch, parsePeriod } from '@expanses/core';
+import { dayNet, matchesSearch, monthName, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { classify } from './classify';
 
@@ -6,6 +6,14 @@ import { classify } from './classify';
  * The transactions list as data: recorded transactions and drafts not yet recorded, in one shape, so
  * search, filters, sorting, days and totals treat both the same way and can be tested without a page.
  */
+
+/**
+ * "Aug bill" on a bill payment made in another month than the bill it settles. The list keeps the day it was paid;
+ * the budget and the chart count it in its bill month, and the tag is what says why.
+ */
+export function billTagOf(tx: Pick<TransactionView, 'occurredOn' | 'billMonth'>): string | null {
+  return tx.billMonth && tx.billMonth !== tx.occurredOn.slice(0, 7) ? `${monthName(tx.billMonth, 'short')} bill` : null;
+}
 
 export type RowType = 'expense' | 'income' | 'transfer' | 'opening' | 'debt';
 

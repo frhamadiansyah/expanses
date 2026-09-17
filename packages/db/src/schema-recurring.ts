@@ -23,3 +23,19 @@ export const billSkips = sqliteTable('bill_skips', {
   month: text('month').notNull(),
   createdAt: text('created_at').notNull(),
 });
+
+/** A bill's pay-by day and the first month it is tracked for. One row per bill. */
+export const billWindows = sqliteTable('bill_windows', {
+  templateId: text('template_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  payByDay: integer('pay_by_day'),
+  startsMonth: text('starts_month').notNull(),
+});
+
+/** The month a bill payment settles. */
+export const billPayments = sqliteTable('bill_payments', {
+  transactionId: text('transaction_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  templateId: text('template_id').notNull(),
+  billMonth: text('bill_month').notNull(),
+});

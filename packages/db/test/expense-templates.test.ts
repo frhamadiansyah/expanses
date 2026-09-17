@@ -1,3 +1,5 @@
+import { isoDate } from '@expanses/core';
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   committedByCategory,
@@ -243,5 +245,46 @@ describe('committedByCategory', () => {
     });
 
     expect(await committedByCategory(context.database, context.ws)).toEqual({});
+  });
+});
+
+describe('pay-by day', () => {
+  const internet = (context: Household, extra: { id?: string; payByDay?: number | null; startsMonth?: string } = {}) =>
+    saveExpenseTemplate(context.database, context.ws, {
+      name: 'Internet',
+      categoryAccountId: context.phone.id,
+      moneyAccountId: context.bca.id,
+      amountMinor: 450_000,
+      dayOfMonth: 28,
+      ...extra,
+    });
+
+  it('saves a pay-by day, and starts tracking the bill this month', async () => {
+    const context = await household();
+    await internet(context, { payByDay: 5 });
+    const [bill] = await listExpenseTemplates(context.database, context.ws);
+    expect(bill).toMatchObject({ dayOfMonth: 28, payByDay: 5, startsMonth: isoDate().slice(0, 7) });
+  });
+
+  it('an edit changes the pay-by day but not the month the bill started', async () => {
+    const context = await household();
+    const id = await internet(context, { payByDay: 5, startsMonth: '2026-01' });
+    await internet(context, { id, payByDay: null, startsMonth: '2026-06' });
+    expect((await listExpenseTemplates(context.database, context.ws))[0]).toMatchObject({ payByDay: null, startsMonth: '2026-01' });
+    expect(await context.database.db.values(sql`SELECT count(*) FROM bill_windows`)).toEqual([[1]]);
+  });
+
+  it('writes the bill and its window together, or neither', async () => {
+    const context = await household();
+    // A window that cannot be written must not leave a bill behind with no pay-by day and no first month.
+    await context.database.execScript(`CREATE TRIGGER no_windows BEFORE INSERT ON bill_windows BEGIN SELECT RAISE(ABORT, 'windows refused'); END`);
+    await expect(internet(context, { payByDay: 5 })).rejects.toThrow();
+    expect(await context.database.db.values(sql`SELECT count(*) FROM expense_templates`)).toEqual([[0]]);
+  });
+
+  it('refuses a pay-by day outside a month', async () => {
+    const context = await household();
+    await expect(internet(context, { payByDay: 0 })).rejects.toMatchObject({ code: 'PAY_BY_RANGE' });
+    await expect(internet(context, { payByDay: 32 })).rejects.toMatchObject({ code: 'PAY_BY_RANGE' });
   });
 });

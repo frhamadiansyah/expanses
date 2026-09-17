@@ -20,7 +20,7 @@ export function IncomeFlow({ month }: { month: string }) {
   const { from, to } = monthRange(month);
   const spending = useQuery({
     queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, 'expense', month],
-    queryFn: () => categoryTotalsBetween(database, ws, 'expense', from, to),
+    queryFn: () => categoryTotalsBetween(database, ws, 'expense', from, to, { billMonths: true }),
   });
   const income = useQuery({
     queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, 'income', month],

@@ -6,11 +6,13 @@ import { accounts, auditLog, entries, transactions } from '../schema';
 import { bookTransactions } from '../schema-books';
 import { cardPostings, cardSettlements } from '../schema-cards';
 import { transactionPointActuals } from '../schema-points';
+import { billPayments, expenseTemplates } from '../schema-recurring';
+import { BILL_MONTH, billTablesExist } from './bill-months';
 import { bookOfCategory, hasBooks } from './books';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'INVALID_BILL_MONTH';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -39,6 +41,8 @@ export interface PostTransactionInput {
   cardId?: string | null;
   /** The recurring bill this settles, so the month stops being asked for. */
   templateId?: string | null;
+  /** YYYY-MM: the month whose bill a template payment settles. Defaults to the month of occurredOn. */
+  billMonth?: string | null;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -73,6 +77,9 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   }
   const mcc = input.mcc ?? null;
   if (mcc !== null && !isMcc(mcc)) throw new LedgerError('INVALID_MCC', `An MCC is four digits, got "${mcc}"`);
+  if (input.billMonth != null && !BILL_MONTH.test(input.billMonth)) {
+    throw new LedgerError('INVALID_BILL_MONTH', `A bill month is YYYY-MM, got "${input.billMonth}"`);
+  }
   const ids = [...new Set(input.lines.map((l) => l.accountId))];
   const found = ids.length
     ? await tx
@@ -136,6 +143,21 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     })),
   );
   if (bookId) await tx.insert(bookTransactions).values({ transactionId: id, workspaceId: ws.workspaceId, bookId });
+  // A payment against a bill says which month's bill it settles, which is not always the month it was paid in.
+  if (input.templateId && (await billTablesExist(tx))) {
+    const [bill] = await tx
+      .select({ id: expenseTemplates.id })
+      .from(expenseTemplates)
+      .where(and(eq(expenseTemplates.id, input.templateId), eq(expenseTemplates.workspaceId, ws.workspaceId)));
+    if (bill) {
+      await tx.insert(billPayments).values({
+        transactionId: id,
+        workspaceId: ws.workspaceId,
+        templateId: bill.id,
+        billMonth: input.billMonth ?? input.occurredOn.slice(0, 7),
+      });
+    }
+  }
   await audit(tx, ws, 'post', id, input);
   return id;
 }
@@ -181,6 +203,9 @@ export function replaceTransaction(
       })
       .from(transactions)
       .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
+    const [settles] = (await billTablesExist(tx))
+      ? await tx.select({ billMonth: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, id))
+      : [];
     await voidTransactionTx(tx, ws, id);
     // Keep import identity so re-importing the same statement still recognises the row.
     const replacement = await postTransactionTx(tx, ws, {
@@ -196,6 +221,8 @@ export function replaceTransaction(
       ...(input.cardId === undefined ? { cardId: original?.cardId ?? null } : {}),
       // Correcting a bill payment must not make the bill ask to be paid again.
       ...(input.templateId === undefined ? { templateId: original?.templateId ?? null } : {}),
+      // …nor change which month's bill it settled.
+      ...(input.billMonth === undefined && settles ? { billMonth: settles.billMonth } : {}),
     });
     // A correction is still the same spending, so it stays with the event it was tagged to.
     if (original?.eventId) {
@@ -257,6 +284,11 @@ export interface TransactionView {
   cardId: string | null;
   /** Goal a tagged transfer funds. Ordinary payments never carry one. */
   goalId: string | null;
+  /**
+   * YYYY-MM: the month's bill a bill payment settles, which can differ from the month it was paid in. Null for
+   * anything else, and on a database without bill_payments. Optional so a view built by hand need not name it.
+   */
+  billMonth?: string | null;
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -318,6 +350,18 @@ export async function listTransactions(
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
     .where(inArray(entries.transactionId, txs.map((t) => t.id)));
 
+  // Bill months come from their own table, keyed by transaction, so a list without bills pays one small query.
+  const billMonths = (await billTablesExist(database.db))
+    ? new Map(
+        (
+          await database.db
+            .select({ transactionId: billPayments.transactionId, billMonth: billPayments.billMonth })
+            .from(billPayments)
+            .where(inArray(billPayments.transactionId, txs.map((t) => t.id)))
+        ).map((row) => [row.transactionId, row.billMonth]),
+      )
+    : new Map<string, string>();
+
   const byTx = new Map<string, TransactionEntryView[]>();
   for (const { transactionId, ...entry } of rows) {
     const list = byTx.get(transactionId) ?? [];
@@ -336,6 +380,7 @@ export async function listTransactions(
     mcc: t.mcc,
     cardId: t.cardId,
     goalId: t.goalId,
+    billMonth: billMonths.get(t.id) ?? null,
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));

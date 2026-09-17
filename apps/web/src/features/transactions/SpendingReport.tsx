@@ -196,7 +196,8 @@ function Ring({
 }
 
 /**
- * Where a month's money went, by category: the same transactions the list shows, added up.
+ * Where a month's money went, by category: the list's transactions added up, except that a bill paid in another
+ * month counts in the month of its bill (so August's internet paid on 3 September adds to August).
  *
  * It reads the month the page is already on, so switching between the list and this is a change of
  * view rather than a change of subject. A category with children opens into its own ring; one without
@@ -238,7 +239,7 @@ export function SpendingReport({
   const totals = useQuery({
     queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, 'without-events'],
     // An event is read on its own: a week in Singapore would otherwise swallow the shape of an ordinary month.
-    queryFn: () => categoryTotalsBetween(database, ws, kind, from, to, { excludeEvents: true }),
+    queryFn: () => categoryTotalsBetween(database, ws, kind, from, to, { excludeEvents: true, billMonths: true }),
   });
   const budgets = useQuery({
     queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month],
