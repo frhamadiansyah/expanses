@@ -57,12 +57,15 @@ export function CategoryIcon({
   transfer = false,
   size = 'md',
   title,
+  label,
 }: {
   categoryId: string | null;
   accounts: readonly AccountRow[];
   transfer?: boolean;
   size?: keyof typeof SIZES;
   title?: string;
+  /** Written in the circle instead of the glyph, keeping the category's tint — a day number, say. */
+  label?: string;
 }) {
   const { key, rootKey } = categoryKeys(categoryId, accounts);
   const visual = transfer ? TRANSFER_VISUAL : categoryId ? categoryVisual(key, rootKey) : UNKNOWN_VISUAL;
@@ -75,7 +78,7 @@ export function CategoryIcon({
       title={title}
       aria-hidden={title ? undefined : true}
     >
-      <Glyph size={glyph} strokeWidth={2.2} />
+      {label ? <span className="tabular text-sm font-semibold">{label}</span> : <Glyph size={glyph} strokeWidth={2.2} />}
     </span>
   );
 }

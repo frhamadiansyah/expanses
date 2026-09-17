@@ -2,27 +2,27 @@ import { categoryPath, formatMinor, isoDate, monthOf, monthRange, parseLooseAmou
 import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactions, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { CalendarX2, ChevronLeft, CircleAlert, Ellipsis, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, CalendarX2, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, LayoutGrid, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone } from '../../app/use-phone';
 import { loadPurchasePoints } from '../../lib/purchase-points';
 import { isCategoryOf, isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
 import { useDrafts } from '../review/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Input, PageHeader, RoundButton, Select } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { isEditable } from './draft';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
+import { buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
-import { BillList } from './BillList';
-import { BillsDue } from './BillsDue';
+import { Recurring } from './Recurring';
 import { SpendingReport } from './SpendingReport';
 import { TransactionForm } from './TransactionForm';
 
@@ -30,6 +30,7 @@ const route = getRouteApi('/transactions');
 
 type View = 'list' | 'table';
 const VIEW_KEY = 'expanses.transactions.view';
+const GROUP_KEY = 'expanses.transactions.group';
 
 /** Which view was used last, on this browser. A convenience only: losing it just opens the list. */
 function rememberedView(): View {
@@ -150,7 +151,7 @@ function monthOptions(current: string): ChipOption[] {
 function DayHeader({ date, net, currency }: { date: string; net: number; currency: string }) {
   if (!date) {
     return (
-      <div className="-mx-2 flex items-center gap-2.5 border-b border-slate-200 px-2 pb-2">
+      <div className="-mx-2 flex items-center gap-3 border-b border-slate-200 px-2 pb-2">
         <CalendarX2 size={22} className="text-amber-700" aria-hidden />
         <span className="flex flex-col text-xs leading-tight text-slate-500">
           <b className="font-semibold text-slate-700">No date yet</b>
@@ -161,16 +162,16 @@ function DayHeader({ date, net, currency }: { date: string; net: number; currenc
   }
   const d = new Date(`${date}T00:00:00`);
   return (
-    <div className="-mx-2 flex items-center gap-2.5 border-b border-slate-200 px-2 pb-2">
-      <span className="tabular min-w-8 text-2xl font-semibold leading-none">{d.getDate()}</span>
+    <div className="-mx-2 flex items-center gap-3 border-b border-slate-200 px-2 pb-2">
+      <span className="tabular w-9 shrink-0 text-2xl leading-none font-semibold">{d.getDate()}</span>
       <span className="flex flex-col text-xs leading-tight text-slate-500">
         <b className="font-semibold text-slate-700">{d.toLocaleDateString('en-GB', { weekday: 'long' })}</b>
         {d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
       </span>
       {/* From md a row ends with room for its edit pencil, so the day's total leaves the same room. */}
+      {/* No sign and no red: the day's total sums the rows below it rather than adding anything to them. */}
       {net !== 0 && (
-        <span className={cx('tabular ml-auto text-sm font-semibold md:pr-7', net < 0 ? 'text-red-700' : 'text-emerald-700')}>
-          {net < 0 ? '−' : '+'}
+        <span className={cx('tabular ml-auto text-sm font-semibold md:pr-7', net > 0 ? 'text-emerald-700' : 'text-slate-600')}>
           {formatMinor(Math.abs(net), currency)}
         </span>
       )}
@@ -192,7 +193,27 @@ export function TransactionsPage() {
   const [adding, setAdding] = useState(false);
   // On a phone the search field and the filters are behind their buttons; a wide screen shows both.
   const [showSearch, setShowSearch] = useState(false);
+  const phone = usePhone();
   const [showFilters, setShowFilters] = useState(false);
+  // By day, as a diary, or by category, as a bill of what the month went on.
+  const [grouping, setGrouping] = useState<'date' | 'category'>(() => {
+    try {
+      return localStorage.getItem(GROUP_KEY) === 'category' ? 'category' : 'date';
+    } catch {
+      return 'date';
+    }
+  });
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
+  // Money out or money in: the chart shows one at a time, and the categories under it follow.
+  const [kind, setKind] = useState<'expense' | 'income'>('expense');
+  function chooseGrouping(next: 'date' | 'category') {
+    setGrouping(next);
+    try {
+      localStorage.setItem(GROUP_KEY, next);
+    } catch {
+      // Private windows can refuse storage; the grouping still holds for this visit.
+    }
+  }
   // A view asked for in the URL wins, so /spending and a shared link both open where they meant to.
   const [view, setView] = useState<View>(() => search.view ?? rememberedView());
   const chooseView = (next: View) => {
@@ -465,7 +486,7 @@ export function TransactionsPage() {
         <CategoryIcon categoryId={row.categoryId} accounts={accounts} />
         <div className="min-w-0 flex-1">
           {/* The first line is the category, as on every other row; without one it says so. */}
-          <div className="truncate font-medium">{row.categoryName || 'Uncategorised'}</div>
+          <div className="truncate text-sm font-medium">{row.categoryName || 'Uncategorised'}</div>
           <div className="truncate text-xs text-slate-500">
             {row.description || 'No description yet'}
             {row.accountLabel && ` · ${row.accountLabel}`}
@@ -593,11 +614,18 @@ export function TransactionsPage() {
         )}
       >
         <span className={cx(row.deleted && 'grayscale')}>
-          <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={row.type !== 'expense' && row.type !== 'income'} />
+          {/* Under a category the group already shows the icon, so each row's circle carries its day instead. */}
+          <CategoryIcon
+            categoryId={row.categoryId}
+            accounts={accounts}
+            transfer={row.type !== 'expense' && row.type !== 'income'}
+            label={withDate && grouping === 'category' && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
+          />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">
-            {withDate && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
+          <div className="truncate text-sm font-medium">
+            {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}
+            {withDate && (month === 'all' || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {label}
           </div>
           <div className="truncate text-xs text-slate-500">
@@ -683,8 +711,36 @@ export function TransactionsPage() {
 
   return (
     <div className="space-y-4">
+      {/* On a phone, searching takes the whole header: the title and its buttons give way to one field and a way out. */}
+      {phone && showSearch ? (
+        <div className="flex h-12 items-center gap-2.5 rounded-full bg-white px-4 shadow-sm ring-1 ring-slate-200/70">
+          <Search size={18} className="shrink-0 text-slate-400" aria-hidden />
+          <input
+            // biome-ignore lint/a11y/noAutofocus: the field was asked for by tapping search, so it should be ready to type in
+            autoFocus
+            type="search"
+            value={filters.q}
+            onChange={(event) => setFilter('q', event.target.value)}
+            placeholder="Search transactions…"
+            aria-label="Search transactions"
+            autoComplete="off"
+            className="min-w-0 flex-1 bg-transparent text-base focus:outline-none"
+          />
+          <button
+            type="button"
+            aria-label="Close search"
+            onClick={() => {
+              setFilter('q', '');
+              setShowSearch(false);
+            }}
+            className="-mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500"
+          >
+            <X size={18} aria-hidden />
+          </button>
+        </div>
+      ) : (
       <PageHeader
-        title={inCategory ? scope!.name : 'Transactions'}
+        title={inCategory ? scope!.name : 'Cashflow'}
         controls={
           <>
             <RoundButton label="Add a transaction" onClick={() => { close(); setAdding(true); }}>
@@ -729,6 +785,7 @@ export function TransactionsPage() {
           </div>
         }
       />
+      )}
       {inCategory && (
         <button type="button" onClick={() => setSearch({ account: undefined })} className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
           <ChevronLeft size={16} aria-hidden />
@@ -736,11 +793,11 @@ export function TransactionsPage() {
         </button>
       )}
       {adding && <TransactionForm onDone={() => setAdding(false)} />}
-      {!inCategory && <BillsDue />}
 
       <div className="space-y-1">
-        <div className={cx('flex flex-wrap items-center gap-2', !showSearch && !showFilters && 'hidden md:flex')}>
-          <label className={cx('relative min-w-52 flex-[1_1_280px]', !showSearch && 'hidden md:block')}>
+        <div className={cx('flex flex-wrap items-center gap-2', !showFilters && 'hidden md:flex')}>
+          {!phone && (
+          <label className="relative min-w-52 flex-[1_1_280px]">
             <Search size={16} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" aria-hidden />
             <input
               type="search"
@@ -752,6 +809,7 @@ export function TransactionsPage() {
               className="h-9 w-full rounded-lg border border-slate-300 bg-white pr-2.5 pl-8 text-base md:text-sm focus:border-slate-900 focus:outline-none"
             />
           </label>
+          )}
           {/* The filters sit behind the ⋯ button on a phone, and are simply there on a wide screen. */}
           <div className={cx('flex flex-wrap items-center gap-2', !showFilters && 'hidden md:flex')}>
             {pending.length > 0 && (
@@ -815,21 +873,6 @@ export function TransactionsPage() {
               onPick={(value) => setFilter('type', value as ListFilters['type'])}
               shown={filters.type !== 'all' && <b className="font-semibold text-white">{TYPES.find((t) => t.value === filters.type)?.label}</b>}
             />
-            <ChipMenu
-              name="Sort"
-              value={sortValue}
-              active={sortValue !== 'date:desc'}
-              options={SORTS}
-              onPick={(value) => {
-                const [key, dir] = value.split(':') as [Sort['key'], Sort['dir']];
-                setSort({ key, dir });
-              }}
-              shown={
-                <>
-                  Sort <b className={cx('font-semibold', sortValue !== 'date:desc' ? 'text-white' : 'text-slate-900')}>{SORTS.find((s) => s.value === sortValue)?.short}</b>
-                </>
-              }
-            />
             <label className="inline-flex items-center gap-1.5 px-1 text-sm text-slate-700">
               <input type="checkbox" checked={filters.showDeleted} onChange={(event) => setFilter('showDeleted', event.target.checked)} />
               Show deleted
@@ -865,14 +908,17 @@ export function TransactionsPage() {
       {chartShown && (
         <SpendingReport
           month={month === 'all' ? monthOf(today) : month}
+          kind={kind}
+          onKind={setKind}
           categoryId={scope?.kind === 'expense' || scope?.kind === 'income' ? scope.id : undefined}
           onPick={(id) => setSearch({ account: id })}
           onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
         />
       )}
-
       <ErrorBox error={error ?? list.error ?? drafts.error} />
       {view === 'table' ? (
+        <>
+        {!inCategory && chartShown && <Recurring today={today} />}
         <TransactionsTable
           rows={shown}
           options={rowOptions}
@@ -882,6 +928,7 @@ export function TransactionsPage() {
           handlers={tableHandlers}
           empty={rows.length === 0 ? 'No transactions in this period yet. Type the first one above.' : 'Nothing matches the search and filters.'}
         />
+        </>
       ) : (
         <>
           {list.isSuccess && shown.length === 0 &&
@@ -896,7 +943,54 @@ export function TransactionsPage() {
               </Empty>
             ))}
 
-          {sort.key === 'amount' && shown.length > 0 ? (
+          {shown.length > 0 && (
+            <div className="flex items-center justify-end gap-2">
+              {/* Names the list under the chart, and fills the row the two controls would otherwise leave empty. */}
+              <h2 className="mr-auto text-base font-semibold">Transaction history</h2>
+              <div role="group" aria-label="Group by">
+              <div className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
+                {(
+                  [
+                    // "Categories", not "By category": the form on this page has a field called Category.
+                    ['date', 'Days', CalendarDays],
+                    ['category', 'Categories', LayoutGrid],
+                  ] as const
+                ).map(([value, label, Icon]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-label={label}
+                    aria-pressed={grouping === value}
+                    onClick={() => chooseGrouping(value)}
+                    className={cx(
+                      'flex h-7 w-8 items-center justify-center rounded-md',
+                      grouping === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
+                    )}
+                  >
+                    <Icon size={15} aria-hidden />
+                  </button>
+                ))}
+                </div>
+              </div>
+              {/* Sorting says itself with an arrow rather than a word, so the two controls read as a pair. */}
+              <ChipMenu
+                name="Sort"
+                value={sortValue}
+                active={sortValue !== 'date:desc'}
+                options={SORTS}
+                onPick={(value) => {
+                  const [key, dir] = value.split(':') as [Sort['key'], Sort['dir']];
+                  setSort({ key, dir });
+                }}
+                shown={<ArrowUpDown size={15} aria-hidden />}
+                iconOnly
+              />
+            </div>
+          )}
+          {/* The month's recurring bills sit with the list they are part of, under its controls. */}
+          {!inCategory && chartShown && <Recurring today={today} />}
+
+          {sort.key === 'amount' && grouping === 'date' && shown.length > 0 ? (
             <>
               <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 py-0.5 pr-1 pl-3 text-xs text-slate-700">
                 Sorted by amount, {sort.dir === 'asc' ? 'smallest' : 'largest'} first
@@ -909,16 +1003,55 @@ export function TransactionsPage() {
               </Card>
             </>
           ) : (
-            groupByDay(shown).map((day) => (
-              <Card key={day.date || 'undated'}>
-                <DayHeader date={day.date} net={dayTotal(day.rows)} currency={ws.baseCurrency} />
-                <ul className="divide-y divide-slate-100">{day.rows.map((row) => rowView(row))}</ul>
-              </Card>
-            ))
+            grouping === 'category' ? (
+              (() => {
+                // Gathering by category answers "what did the money go on", so it answers it for one
+                // direction at a time: the chart's own choice of money out or money in.
+                const groups = groupByCategory(shown.filter((row) => row.type === kind));
+                const whole = groups.reduce((sum, group) => sum + Math.abs(group.totalMinor), 0);
+                return groups.map((group) => {
+                  const key = group.id ?? group.name;
+                  const open = openCategory === key;
+                  return (
+                    <Card key={key}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenCategory(open ? null : key)}
+                        aria-expanded={open}
+                        className="flex w-full items-center gap-3 text-left"
+                        data-testid="category-group"
+                      >
+                        <CategoryIcon categoryId={group.id} accounts={accounts} transfer={group.id === null} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{group.name}</span>
+                          <span className="block text-xs text-slate-500">
+                            {group.rows.length} transaction{group.rows.length === 1 ? '' : 's'}
+                          </span>
+                        </span>
+                        <span className="text-right">
+                          <Money minor={Math.abs(group.totalMinor)} currency={ws.baseCurrency} className="block text-sm font-semibold" />
+                          {whole > 0 && group.totalMinor !== 0 && (
+                            <span className="block text-xs text-slate-500">{Math.round((Math.abs(group.totalMinor) / whole) * 100)}%</span>
+                          )}
+                        </span>
+                        <ChevronDown size={16} aria-hidden className={cx('shrink-0 text-slate-400 transition-transform', open && 'rotate-180')} />
+                      </button>
+                      {open && <ul className="mt-1 divide-y divide-slate-100 border-t border-slate-100">{group.rows.map((row) => rowView(row, true))}</ul>}
+                    </Card>
+                  );
+                });
+              })()
+            ) : (
+              groupByDay(shown).map((day) => (
+                <Card key={day.date || 'undated'}>
+                  <DayHeader date={day.date} net={dayTotal(day.rows)} currency={ws.baseCurrency} />
+                  <ul className="divide-y divide-slate-100">{day.rows.map((row) => rowView(row))}</ul>
+                </Card>
+              ))
+            )
           )}
         </>
       )}
-      <BillList />
     </div>
   );
 }

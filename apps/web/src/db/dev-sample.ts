@@ -1,4 +1,5 @@
-import type { Database } from '@expanses/db';
+import { type BudgetLine, isoDate } from '@expanses/core';
+import { budgetSheetFor, type Database, setBudgetOverride, type WorkspaceContext } from '@expanses/db';
 
 /**
  * Development only: `?load-sample` replaces this browser's data with dev-data/sample.sqlite3, built by
@@ -17,4 +18,31 @@ export async function loadSample(database: Database): Promise<void> {
   await database.importBytes(new Uint8Array(await response.arrayBuffer()));
   window.history.replaceState(null, '', window.location.pathname);
   window.location.reload();
+}
+
+/**
+ * Development only: `?over-budget` pushes this month past two of its budgets, so the over-budget rows can be seen.
+ *
+ * It sets a one-month override at 70% of what each category has already spent, so the standing budgets are
+ * untouched and the override can be cleared from the budget screen like any other.
+ */
+export const wantsOverBudget = () => new URLSearchParams(window.location.search).has('over-budget');
+
+export async function pushOverBudget(database: Database, ws: WorkspaceContext): Promise<void> {
+  const month = isoDate().slice(0, 7);
+  const sheet = await budgetSheetFor(database, ws, month);
+  const spent: BudgetLine[] = [];
+  const walk = (lines: readonly BudgetLine[]) => {
+    for (const line of lines) {
+      if (line.capMinor !== null && line.totalMinor > 0 && line.overMinor === 0) spent.push(line);
+      walk(line.children);
+    }
+  };
+  walk(sheet.lines);
+  // The two biggest spenders make the clearest over-budget rows.
+  for (const line of spent.sort((a, b) => b.totalMinor - a.totalMinor).slice(0, 2)) {
+    const amountMinor = Math.max(50_000, Math.round((line.totalMinor * 0.7) / 50_000) * 50_000);
+    await setBudgetOverride(database, ws, { categoryAccountId: line.id, month, amountMinor });
+  }
+  window.history.replaceState(null, '', window.location.pathname);
 }

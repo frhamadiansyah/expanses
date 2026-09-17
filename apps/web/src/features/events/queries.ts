@@ -1,4 +1,4 @@
-import { eventSheetFor, listEventBudgets, listEvents, suggestForEvent } from '@expanses/db';
+import { eventSheetFor, listEventBudgets, listEvents, listTransactions, suggestForEvent } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -32,6 +32,16 @@ export function useEventSuggestions(eventId: string | null) {
   return useQuery({
     queryKey: ['event-suggestions', ws.workspaceId, eventId],
     queryFn: () => suggestForEvent(database, ws, eventId!),
+    enabled: eventId !== null,
+  });
+}
+
+/** What was tagged to the event, newest first: its own transaction history. */
+export function useEventHistory(eventId: string | null) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['event-history', ws.workspaceId, eventId],
+    queryFn: () => listTransactions(database, ws, { eventId: eventId! }),
     enabled: eventId !== null,
   });
 }

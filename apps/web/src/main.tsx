@@ -23,12 +23,13 @@ async function start() {
   try {
     const app = await bootstrap();
     if (import.meta.env.DEV) {
-      const { loadSample, wantsSample } = await import('./db/dev-sample');
+      const { loadSample, pushOverBudget, wantsOverBudget, wantsSample } = await import('./db/dev-sample');
       if (wantsSample()) {
         root.render(<Message title="Loading sample data…" body="Replacing the data in this browser with the sample household." />);
         await loadSample(app.database);
         return;
       }
+      if (wantsOverBudget()) await pushOverBudget(app.database, app.ws);
     }
     root.render(
       <StrictMode>

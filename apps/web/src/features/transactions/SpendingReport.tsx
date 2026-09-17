@@ -1,22 +1,24 @@
-import { addMonths, categoryTree, type CategoryTreeNode, formatMinor, monthRange } from '@expanses/core';
-import { categoryTotalsBetween } from '@expanses/db';
+import { addMonths, type BudgetLine, categoryTree, type CategoryTreeNode, formatMinor, isoDate, monthRange } from '@expanses/core';
+import { budgetSheetFor, categoryTotalsBetween } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Button, Card, cx, Empty, Money } from '../../ui';
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
+import { budgetProgress } from './budget-progress';
+import { BudgetGauge } from './BudgetGauge';
 import { categoryColour, OTHER_COLOUR, ringSlices, shade } from './category-colours';
+import { CapLine, ShareLine } from './CategoryLines';
+import { Deck } from './Deck';
 import { Donut, type DonutSlice } from './Donut';
 import { IncomeFlow } from './IncomeFlow';
 
 function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
-
-const share = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 
 /** The node for a category anywhere in the tree, so a page showing one can draw it. */
 function findNode(nodes: readonly CategoryTreeNode[], id: string): CategoryTreeNode | undefined {
@@ -32,42 +34,37 @@ function findNode(nodes: readonly CategoryTreeNode[], id: string): CategoryTreeN
 function Row({
   node,
   colour,
-  widest,
   totalMinor,
   month,
+  capMinor,
+  against = 'month',
   onOpen,
 }: {
   node: CategoryTreeNode;
   colour: string;
-  widest: number;
   totalMinor: number;
   month: string;
+  /** What this category was budgeted this month, if anything. The bar measures the month against it. */
+  capMinor?: number | null;
+  /** What the row is being read against, which is whichever chart the card is showing. */
+  against?: 'month' | 'budget';
   onOpen?: () => void;
 }) {
   const { ws } = useApp();
-  const inside = (
-    <>
-      <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: colour }} aria-hidden />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{node.name}</span>
-        <span className="text-xs text-slate-500">{share(node.totalMinor, totalMinor)}% of the month</span>
-        <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-slate-100">
-          <span className="block h-1 rounded-full" style={{ width: `${widest > 0 ? (node.totalMinor / widest) * 100 : 0}%`, background: colour }} />
-        </span>
-      </span>
-      <Money minor={node.totalMinor} currency={ws.baseCurrency} className="shrink-0 text-sm font-semibold" />
-    </>
-  );
+  const inside =
+    against === 'budget' ? (
+      <CapLine colour={colour} name={node.name} amountMinor={node.totalMinor} capMinor={capMinor} currency={ws.baseCurrency} />
+    ) : (
+      <ShareLine colour={colour} name={node.name} amountMinor={node.totalMinor} wholeMinor={totalMinor} currency={ws.baseCurrency} />
+    );
   // A category with children opens into them; one without goes straight to its transactions.
   return onOpen ? (
-    <button type="button" onClick={onOpen} className="flex w-full min-h-12 items-start gap-3 py-2.5 text-left" data-testid="report-row">
+    <button type="button" onClick={onOpen} className="flex min-h-12 w-full flex-col py-2.5 text-left" data-testid="report-row">
       {inside}
-      <ChevronRight size={16} aria-hidden className="mt-2 shrink-0 text-slate-300" />
     </button>
   ) : (
-    <Link to="/transactions" search={{ account: node.id, month }} className="flex min-h-12 items-start gap-3 py-2.5" data-testid="report-row">
+    <Link to="/transactions" search={{ account: node.id, month }} className="flex min-h-12 flex-col py-2.5" data-testid="report-row">
       {inside}
-      <ChevronRight size={16} aria-hidden className="mt-2 shrink-0 text-slate-300" />
     </Link>
   );
 }
@@ -80,7 +77,13 @@ function Ring({
   month,
   colourOf,
   transactions,
+  caps,
   showRows,
+  header,
+  extra = [],
+  second,
+  page = 0,
+  onPage,
   onOpen,
   onAsk,
   onFold,
@@ -92,14 +95,27 @@ function Ring({
   /** How a child ring tints its slices. The month's own ring takes the palette, clashes resolved. */
   colourOf?: (node: CategoryTreeNode, index: number) => string;
   transactions: number;
+  /** What each category was budgeted this month, by category id. */
+  caps?: Record<string, number>;
   /** Rows under the ring. The month folds them away until asked; a category always shows its own. */
   showRows?: boolean;
+  /** Drawn inside the card above the ring, so the month and the kind travel with the chart. */
+  header?: ReactNode;
+  /** Slices with no row of their own here — a category set, listed in its own card below — so the ring still adds up. */
+  extra?: readonly { key: string; label: string; totalMinor: number }[];
+  /** A second chart, shown by swiping the card sideways. Given, the card grows a pair of dots. */
+  second?: ReactNode;
+  /** Which chart is showing. The rows measure themselves against the same thing it does. */
+  page?: number;
+  onPage?: (page: number) => void;
   onOpen?: (node: CategoryTreeNode) => void;
-  /** Unfolds the rows. Given together with onFold, the pair is how the list opens and closes. */
+  /** Unfolds the rows. Given together with onFold, the pair is how the chart opens and closes the list. */
   onAsk?: () => void;
   onFold?: () => void;
 }) {
   const { ws } = useApp();
+  // One tap on the chart, whichever way the list is at the time.
+  const fold = showRows ? onFold : onAsk;
   const ordered = [...nodes].sort((a, b) => b.totalMinor - a.totalMinor);
   const { shown, rest } = ringSlices(ordered.map((node) => ({ id: node.id, totalMinor: node.totalMinor })));
   const byId = new Map(ordered.map((node) => [node.id, node]));
@@ -112,55 +128,70 @@ function Ring({
   const colourById = new Map(slices.map((slice) => [slice.key, slice.colour]));
   const restMinor = rest.reduce((sum, item) => sum + item.totalMinor, 0);
   if (restMinor > 0) slices.push({ key: 'other', label: `${rest.length} smaller categories`, totalMinor: restMinor, colour: OTHER_COLOUR });
-  const widest = ordered[0]?.totalMinor ?? 0;
+  for (const slice of extra) if (slice.totalMinor > 0) slices.push({ ...slice, colour: categoryColour(slice.key) });
+
+  const donut = (
+    <Donut
+      slices={slices}
+      totalMinor={totalMinor}
+      middle={formatMinor(totalMinor, ws.baseCurrency)}
+      label={middleLabel}
+      under={transactions > 0 ? `${transactions} transaction${transactions === 1 ? '' : 's'}` : undefined}
+      onPick={fold ? undefined : onOpen ? (key) => { const node = byId.get(key); if (node) onOpen(node); } : undefined}
+    />
+  );
+  // A div rather than a button: the deck inside it scrolls sideways, which a button's content will not do on iOS.
+  const frame = (content: ReactNode) =>
+    fold ? (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={fold}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            fold();
+          }
+        }}
+        aria-expanded={showRows}
+        aria-label={showRows ? 'Hide categories' : 'See all categories'}
+        data-testid={showRows ? 'hide-categories' : 'see-categories'}
+        className="block w-full cursor-pointer"
+      >
+        {content}
+      </div>
+    ) : (
+      content
+    );
+  const chart = second ? (
+    <Deck page={page} onPage={onPage} labels={['Where the month went', 'Against budget']} frame={frame}>
+      {donut}
+      {second}
+    </Deck>
+  ) : (
+    frame(donut)
+  );
 
   return (
     <Card>
-      <Donut
-        slices={slices}
-        totalMinor={totalMinor}
-        middle={formatMinor(totalMinor, ws.baseCurrency)}
-        label={middleLabel}
-        under={transactions > 0 ? `${transactions} transaction${transactions === 1 ? '' : 's'}` : undefined}
-        onPick={onOpen ? (key) => { const node = byId.get(key); if (node) onOpen(node); } : undefined}
-      />
-      {!showRows && (
-        <ul className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1.5 text-xs text-slate-600">
-          {slices.map((slice) => (
-            <li key={slice.key} className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: slice.colour }} aria-hidden />
-              {slice.label} {share(slice.totalMinor, totalMinor)}%
-            </li>
-          ))}
-        </ul>
-      )}
-      {showRows ? (
-        <>
+      {header}
+      {/* No legend: the ring writes each name against its own slice, and the rows below name the rest. */}
+      {chart}
+      {showRows && (
         <div className="mt-2 divide-y divide-slate-100 border-t border-slate-100">
           {ordered.map((node, index) => (
             <Row
               key={node.id}
               node={node}
               colour={colourById.get(node.id) ?? (colourOf ? colourOf(node, index) : categoryColour(node.id))}
-              widest={widest}
               totalMinor={totalMinor}
               month={month}
+              capMinor={caps?.[node.id]}
+              against={caps ? 'budget' : 'month'}
               onOpen={onOpen && node.children.length > 0 ? () => onOpen(node) : undefined}
             />
           ))}
         </div>
-        {onFold && (
-          <button type="button" onClick={onFold} className="mt-1 min-h-11 w-full text-sm font-medium text-slate-500" data-testid="hide-categories">
-            Hide categories
-          </button>
-        )}
-        </>
-      ) : (
-        onAsk && (
-          <button type="button" onClick={onAsk} className="mt-1 min-h-11 w-full text-sm font-medium text-emerald-800" data-testid="see-categories">
-            See all categories ›
-          </button>
-        )
       )}
     </Card>
   );
@@ -176,26 +207,51 @@ function Ring({
 export function SpendingReport({
   month,
   categoryId,
+  kind,
+  onKind,
   onPick,
   onMonth,
 }: {
   month: string;
   categoryId?: string;
+  /** Money out or money in. The page holds it, so its list can be filtered to the same side. */
+  kind: 'expense' | 'income';
+  onKind: (kind: 'expense' | 'income') => void;
   onPick?: (id: string) => void;
   /** Given, the chart carries the month itself: the arrows step through them. */
   onMonth?: (month: string) => void;
 }) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
-  const [kind, setKind] = useState<'expense' | 'income'>('expense');
   // The categories are folded away until asked for: the list underneath is what most days are about.
   const [showAll, setShowAll] = useState(false);
+  // Which of the two charts the card is turned to. The rows follow it, so one denominator is on screen at a time.
+  const [page, setPage] = useState(0);
   const { from, to } = monthRange(month);
 
   const totals = useQuery({
-    queryKey: ['category-totals', ws.workspaceId, kind, month],
-    queryFn: () => categoryTotalsBetween(database, ws, kind, from, to),
+    queryKey: ['category-totals', ws.workspaceId, kind, month, 'without-events'],
+    // An event is read on its own: a week in Singapore would otherwise swallow the shape of an ordinary month.
+    queryFn: () => categoryTotalsBetween(database, ws, kind, from, to, { excludeEvents: true }),
   });
+  const budgets = useQuery({
+    queryKey: ['budget-sheet', ws.workspaceId, month],
+    enabled: kind === 'expense',
+    queryFn: () => budgetSheetFor(database, ws, month),
+  });
+  const progress = budgetProgress(budgets.data?.lines ?? []);
+  // The budget page exists only where there is a budget to measure, and only for money going out.
+  const hasBudgets = kind === 'expense' && progress.any;
+  const onBudgets = hasBudgets && page === 1;
+  const caps: Record<string, number> = {};
+  /** A category's budget, or what its children were budgeted between them: a parent row measures the lot. */
+  const readCaps = (line: BudgetLine): number => {
+    const under = line.children.reduce((sum, child) => sum + readCaps(child), 0);
+    const own = line.capMinor ?? under;
+    if (own > 0) caps[line.id] = own;
+    return own;
+  };
+  if (budgets.data) for (const line of budgets.data.lines) readCaps(line);
   const membership = useCategorySetMembership().data ?? {};
   const sets = useCategorySets().data ?? [];
   const ofKind = accounts.filter((a) => a.kind === kind);
@@ -216,9 +272,9 @@ export function SpendingReport({
   /** The category being looked at, when the page is showing one. Its children make the ring. */
   const open = categoryId ? (findNode(tree, categoryId) ?? null) : null;
 
-  return (
-    <div className="space-y-4" data-testid="spending-report">
-      {/* The chart is about one month, so the month is moved from here rather than from a filter. */}
+  /** The month arrows and the money-out/in switch. A month with nothing in it still needs the way back. */
+  const header = (
+    <div className="mb-1">
       {onMonth && (
         <div className="flex items-center justify-between">
           <Button variant="ghost" className="px-2 py-1" aria-label="Earlier month" onClick={() => onMonth(addMonths(month, -1))}>
@@ -232,20 +288,26 @@ export function SpendingReport({
           </Button>
         </div>
       )}
-      <div className={cx('flex flex-wrap items-center gap-2', open && 'hidden')}>
+      <div className="mt-3 flex gap-1.5">
         {(['expense', 'income'] as const).map((k) => (
-          <Button
+          <button
             key={k}
-            variant={kind === k ? 'primary' : 'secondary'}
+            type="button"
             aria-pressed={kind === k}
-            onClick={() => setKind(k)}
+            onClick={() => onKind(k)}
+            // Named apart from what it says: the form on this same page already has an "Income" button.
+            aria-label={k === 'expense' ? 'Show expenses' : 'Show income'}
+            className={cx('min-h-9 flex-1 rounded-lg text-sm font-medium', kind === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600')}
           >
-            {/* Not "Spending" and "Income": the form on this same page already has buttons by those names. */}
-            {k === 'expense' ? 'Money out' : 'Money in'}
-          </Button>
+            {k === 'expense' ? 'Expense' : 'Income'}
+          </button>
         ))}
       </div>
+    </div>
+  );
 
+  return (
+    <div className="space-y-4" data-testid="spending-report">
       {open ? (
         <Ring
           nodes={open.ownMinor > 0 ? [...open.children, { id: open.id, name: `${open.name} (general)`, ownMinor: open.ownMinor, totalMinor: open.ownMinor, children: [] }] : open.children}
@@ -263,15 +325,22 @@ export function SpendingReport({
           </div>
           {totals.isSuccess && tree.length === 0 && setGroups.length === 0 ? (
             <Card>
+              {header}
               <Empty>Nothing recorded for {monthLabel(month)}.</Empty>
             </Card>
           ) : (
             <Ring
               nodes={tree}
+              extra={setGroups.map((group) => ({ key: `set:${group.set.id}`, label: group.set.name, totalMinor: group.tree.reduce((sum, node) => sum + node.totalMinor, 0) }))}
               totalMinor={total}
-              middleLabel={kind === 'expense' ? `Spent in ${monthLabel(month).split(' ')[0]}` : `Earned in ${monthLabel(month).split(' ')[0]}`}
+              middleLabel={kind === 'expense' ? 'Total spent' : 'Total earned'}
               month={month}
               transactions={transactions}
+              caps={onBudgets ? caps : undefined}
+              header={header}
+              second={hasBudgets ? <BudgetGauge progress={progress} month={month} today={isoDate()} /> : undefined}
+              page={page}
+              onPage={setPage}
               showRows={showAll}
               onAsk={() => setShowAll(true)}
               onFold={() => setShowAll(false)}
@@ -284,7 +353,7 @@ export function SpendingReport({
                 <h2 className="mb-1 text-sm font-semibold">{group.set.name}</h2>
                 <div className="divide-y divide-slate-100">
                   {group.tree.map((node) => (
-                    <Row key={node.id} node={node} colour={categoryColour(node.id)} widest={group.tree[0]?.totalMinor ?? 0} totalMinor={total} month={month} />
+                    <Row key={node.id} node={node} colour={categoryColour(node.id)} totalMinor={total} month={month} capMinor={onBudgets ? caps[node.id] : undefined} against={onBudgets ? 'budget' : 'month'} />
                   ))}
                 </div>
               </div>

@@ -1,9 +1,9 @@
 import { uuidv7 } from '@expanses/core';
-import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
-import { accounts, transactions } from '../schema';
-import { expenseTemplates } from '../schema-recurring';
+import { accounts, entries, transactions } from '../schema';
+import { billSkips, expenseTemplates } from '../schema-recurring';
 
 export class RecurringError extends Error {
   constructor(
@@ -160,4 +160,78 @@ export async function committedByCategory(database: Database, ws: WorkspaceConte
     committed[template.categoryAccountId] = (committed[template.categoryAccountId] ?? 0) + template.amountMinor;
   }
   return committed;
+}
+
+/** Where a recurring bill stands this month. */
+export type BillState = 'paid' | 'owed' | 'later' | 'skipped';
+
+export interface MonthlyBill extends ExpenseTemplateRow {
+  state: BillState;
+  /** The date the bill was recorded on, when it has been. Not the day it was due. */
+  paidOn: string | null;
+  /** What it came to when it was paid, which may differ from the template's amount. */
+  paidMinor: number | null;
+}
+
+/**
+ * Every active recurring bill, and where it stands in the month `onDate` falls in.
+ *
+ * One question answered in one place: what is paid, what is owed now, what is still to come, and what was
+ * deliberately skipped. A bill paid early counts as paid, because the question is whether this month's is
+ * settled rather than when it was.
+ */
+export async function monthlyBills(database: Database, ws: WorkspaceContext, onDate: string): Promise<MonthlyBill[]> {
+  const month = onDate.slice(0, 7);
+  const today = Number(onDate.slice(8, 10));
+  const templates = (await listExpenseTemplates(database, ws)).filter((template) => template.active);
+  if (templates.length === 0) return [];
+
+  const recorded = await database.db
+    .select({ templateId: transactions.templateId, occurredOn: transactions.occurredOn, id: transactions.id })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.workspaceId, ws.workspaceId),
+        eq(transactions.status, 'posted'),
+        gte(transactions.occurredOn, `${month}-01`),
+        lte(transactions.occurredOn, `${month}-31`),
+      ),
+    );
+  const paid = new Map<string, { occurredOn: string; id: string }>();
+  for (const row of recorded) if (row.templateId) paid.set(row.templateId, { occurredOn: row.occurredOn, id: row.id });
+
+  const skips = await database.db
+    .select({ templateId: billSkips.templateId })
+    .from(billSkips)
+    .where(and(eq(billSkips.workspaceId, ws.workspaceId), eq(billSkips.month, month)));
+  const skipped = new Set(skips.map((row) => row.templateId));
+
+  const amounts = paid.size === 0 ? [] : await database.db
+    .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor })
+    .from(entries)
+    .where(and(eq(entries.workspaceId, ws.workspaceId), inArray(entries.transactionId, [...paid.values()].map((row) => row.id))));
+
+  return templates
+    .map((template): MonthlyBill => {
+      const settled = paid.get(template.id);
+      const line = settled ? amounts.find((row) => row.transactionId === settled.id && row.accountId === template.categoryAccountId) : undefined;
+      const state: BillState = settled ? 'paid' : skipped.has(template.id) ? 'skipped' : template.dayOfMonth <= today ? 'owed' : 'later';
+      return { ...template, state, paidOn: settled?.occurredOn ?? null, paidMinor: line ? Number(line.amountMinor) : null };
+    })
+    .sort((a, b) => a.dayOfMonth - b.dayOfMonth || a.name.localeCompare(b.name));
+}
+
+/** Marks this month's bill as deliberately unpaid, so it stops being owed. Skipping twice changes nothing. */
+export async function skipBill(database: Database, ws: WorkspaceContext, templateId: string, month: string): Promise<void> {
+  await database.db
+    .insert(billSkips)
+    .values({ workspaceId: ws.workspaceId, templateId, month, createdAt: new Date().toISOString() })
+    .onConflictDoNothing();
+}
+
+/** Takes back a skip, so the bill is owed again. */
+export async function unskipBill(database: Database, ws: WorkspaceContext, templateId: string, month: string): Promise<void> {
+  await database.db
+    .delete(billSkips)
+    .where(and(eq(billSkips.workspaceId, ws.workspaceId), eq(billSkips.templateId, templateId), eq(billSkips.month, month)));
 }

@@ -9,6 +9,7 @@ import {
   House,
   Landmark,
   PiggyBank,
+  Receipt,
   Scale,
   Sparkles,
   Store,
@@ -57,6 +58,7 @@ export const MORE_GROUPS: readonly NavGroup[] = [
     items: [
       { to: '/', label: 'Dashboard', icon: House },
       { to: '/budget', label: 'Budget', icon: PiggyBank },
+      { to: '/bills', label: 'Recurring', icon: Receipt },
       { to: '/events', label: 'Events', icon: CalendarRange },
       { to: '/goals', label: 'Goals', icon: Sparkles },
       { to: '/accounts', label: 'Accounts', icon: Landmark },

@@ -1,72 +1,110 @@
 import { isoDate, parseMajor } from '@expanses/core';
-import { deleteEvent, finishEvent, removeEventBudget, saveEvent, setEventBudget, tagTransaction } from '@expanses/db';
-import { Link } from '@tanstack/react-router';
+import { type EventRow, saveEvent } from '@expanses/db';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { CalendarRange, ChevronRight, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
-import { useCategorySetMembership, useCategorySets, useSetCategories } from '../categories/set-queries';
-import { useEventBudgets, useEvents, useEventSheet, useEventSuggestions } from './queries';
+import { useInvalidateAll } from '../../lib/queries';
+import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
+import { useCategorySets } from '../categories/set-queries';
+import { useEvents, useEventSheet } from './queries';
+
+/** "13 – 17 Aug 2026", or one date when the event is a single day. */
+export function eventDates(event: Pick<EventRow, 'startsOn' | 'endsOn'>): string {
+  const day = (iso: string, withYear: boolean) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}) });
+  if (event.startsOn === event.endsOn) return day(event.startsOn, true);
+  return `${day(event.startsOn, false)} – ${day(event.endsOn, true)}`;
+}
+
+/** Where an event stands, in the words its card and its screen both use. */
+export function eventStatus(event: Pick<EventRow, 'startsOn' | 'endsOn' | 'finishedAt'>, today: string): 'Upcoming' | 'Now' | 'Done' {
+  if (event.finishedAt !== null || event.endsOn < today) return 'Done';
+  return event.startsOn > today ? 'Upcoming' : 'Now';
+}
+
+export function StatusChip({ status }: { status: 'Upcoming' | 'Now' | 'Done' }) {
+  return (
+    <span
+      className={cx(
+        'rounded-full px-1.5 py-px text-[10.5px] font-bold tracking-wide uppercase',
+        status === 'Now' ? 'bg-emerald-100 text-emerald-800' : status === 'Upcoming' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-500',
+      )}
+    >
+      {status}
+    </span>
+  );
+}
+
+/** One event as a card: what it cost against what it planned, and a thin bar when it planned anything. */
+function EventCard({ event, today }: { event: EventRow; today: string }) {
+  const { ws } = useApp();
+  const sheet = useEventSheet(event.id).data;
+  const planned = sheet?.plannedMinor ?? null;
+  const spent = sheet?.actualMinor ?? 0;
+  const over = planned !== null && spent > planned;
+  return (
+    <Link to="/events/$eventId" params={{ eventId: event.id }} className="block" data-testid="event-row">
+      <Card>
+        <span className="flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-700">
+            <CalendarRange size={18} strokeWidth={2.2} aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">{event.name}</span>
+            <span className="flex items-center gap-1.5 text-xs text-slate-500">
+              {eventDates(event)} <StatusChip status={eventStatus(event, today)} />
+            </span>
+          </span>
+          <span className="shrink-0 text-right">
+            <Money minor={spent} currency={ws.baseCurrency} className="block text-sm font-semibold" />
+            <span className="block text-xs text-slate-500">
+              {planned === null ? 'no plan' : <>of <Money minor={planned} currency={ws.baseCurrency} /></>}
+            </span>
+          </span>
+          <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
+        </span>
+        {planned !== null && (
+          <span className="mt-2 mr-7 ml-12 block h-1 overflow-hidden rounded-full bg-slate-100">
+            <span className={cx('block h-1 rounded-full', over ? 'bg-red-700' : 'bg-emerald-600')} style={{ width: `${Math.min(1, spent / planned) * 100}%` }} />
+          </span>
+        )}
+      </Card>
+    </Link>
+  );
+}
 
 /**
  * Events: a birth, a wedding, a renovation, a trip, Lebaran.
  *
- * Spending on an event lands across many categories and a few weeks, so no budget line ever sees
- * the whole of it. Planning it category by category answers what it should cost, and also says which
- * categories to look in — which is what keeps the tagging to one sitting rather than a running chore.
+ * Spending on an event lands across many categories and a few weeks, so no monthly line ever sees the whole of it.
+ * Each event is read on its own screen, built like Cashflow; this one lists them, the running ones first.
  */
 export function EventsPage() {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const navigate = useNavigate();
   const events = useEvents();
-  const accounts = useAccounts();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const budgets = useEventBudgets(selectedId);
-  const sheet = useEventSheet(selectedId);
-  const suggestions = useEventSuggestions(selectedId);
+  const sets = useCategorySets().data ?? [];
+  const today = isoDate();
   const [error, setError] = useState<unknown>(null);
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
-  const [startsOn, setStartsOn] = useState(isoDate());
-  const [endsOn, setEndsOn] = useState(isoDate());
+  const [startsOn, setStartsOn] = useState(today);
+  const [endsOn, setEndsOn] = useState(today);
   const [plannedTotal, setPlannedTotal] = useState('');
   const [setId, setSetId] = useState('');
-  const [showFinished, setShowFinished] = useState(false);
 
-  const [categoryId, setCategoryId] = useState('');
-  const [planned, setPlanned] = useState('');
-
-  // Finished events leave the list rather than the workspace: the spending and the sheet stay readable.
   const all = events.data ?? [];
-  const list = showFinished ? all : all.filter((event) => event.finishedAt === null);
-  const finishedCount = all.filter((event) => event.finishedAt !== null).length;
-  const selected = list.find((event) => event.id === selectedId) ?? null;
-  const sets = useCategorySets().data ?? [];
-  // An event plans against its own set when it has one, so a renovation is planned in renovation terms.
-  const setCategories = useSetCategories(selected?.setId ?? null).data ?? [];
-  // Without a set of its own an event plans against the monthly tree — which does not include other
-  // sets' categories, or the list would offer two Flights and a Postpartum.
-  const membership = useCategorySetMembership().data ?? {};
-  const monthly = (accounts.data ?? []).filter(
-    (account) => account.kind === 'expense' && account.subtype === 'category' && membership[account.id] === undefined,
-  );
-  const categories = selected?.setId ? setCategories : monthly;
-  const nameOf = (id: string) => (accounts.data ?? []).find((account) => account.id === id)?.name ?? id;
+  const current = all.filter((event) => eventStatus(event, today) !== 'Done');
+  // The most recent first: last month's trip is what is looked back on, not the one from years ago.
+  const past = all.filter((event) => eventStatus(event, today) === 'Done').reverse();
 
-  async function run(work: () => Promise<unknown>) {
+  async function addEvent(submitted: FormEvent) {
+    submitted.preventDefault();
     setError(null);
     try {
-      await work();
-      await invalidate();
-    } catch (e) {
-      setError(e);
-    }
-  }
-
-  async function addEvent(event: FormEvent) {
-    event.preventDefault();
-    await run(async () => {
       const id = await saveEvent(database, ws, {
         name,
         startsOn,
@@ -74,30 +112,26 @@ export function EventsPage() {
         plannedMinor: plannedTotal.trim() === '' ? null : parseMajor(plannedTotal, ws.baseCurrency),
         setId: setId === '' ? null : setId,
       });
-      setSelectedId(id);
-      setName('');
-      setPlannedTotal('');
-      setAdding(false);
-    });
-  }
-
-  async function addCategory(event: FormEvent) {
-    event.preventDefault();
-    if (!selectedId) return;
-    await run(async () => {
-      await setEventBudget(database, ws, selectedId, {
-        categoryAccountId: categoryId,
-        plannedMinor: planned.trim() === '' ? null : parseMajor(planned, ws.baseCurrency),
-      });
-      setCategoryId('');
-      setPlanned('');
-    });
+      await invalidate();
+      // A new event is planned next, and that happens on its own screen.
+      await navigate({ to: '/events/$eventId', params: { eventId: id } });
+    } catch (e) {
+      setError(e);
+    }
   }
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Events" action={!adding && <Button onClick={() => setAdding(true)}>Add an event</Button>} />
-      <ErrorBox error={error ?? events.error ?? sheet.error} />
+      <PageHeader
+        title="Events"
+        controls={
+          <RoundButton label="New event" onClick={() => setAdding(true)}>
+            <Plus size={22} aria-hidden />
+          </RoundButton>
+        }
+        action={!adding && <Button onClick={() => setAdding(true)}>Add an event</Button>}
+      />
+      <ErrorBox error={error ?? events.error} />
 
       {adding && (
         <Card>
@@ -136,181 +170,25 @@ export function EventsPage() {
         </Card>
       )}
 
-      {finishedCount > 0 && (
-        <Button variant="secondary" aria-pressed={showFinished} onClick={() => setShowFinished(!showFinished)}>
-          {showFinished ? 'Hide finished' : `Show finished (${finishedCount})`}
-        </Button>
+      {events.isSuccess && all.length === 0 && !adding && (
+        <Empty>No events yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</Empty>
       )}
 
-      {list.length === 0 && !adding && <Empty>No events yet. A birth, a wedding, a renovation, a trip — anything that spends across categories.</Empty>}
-
-      {list.length > 0 && (
-        <Card className="space-y-1">
-          {list.map((event) => (
-            <div key={event.id} data-testid="event-row" className="flex flex-wrap items-center justify-between gap-2 py-1 text-sm">
-              <span className="flex flex-wrap items-baseline gap-2">
-                <button type="button" className="text-left underline-offset-2 hover:underline" onClick={() => setSelectedId(event.id)}>
-                  <span className="font-medium">{event.name}</span>{' '}
-                  <span className="text-xs text-slate-500">
-                    {event.startsOn} to {event.endsOn}
-                  </span>
-                </button>
-                <Link to="/events/$eventId" params={{ eventId: event.id }} className="text-xs underline">
-                  Open
-                </Link>
-                {event.finishedAt !== null && <span className="text-xs text-slate-500">finished</span>}
-              </span>
-              <span className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  aria-label={event.finishedAt === null ? `Finish ${event.name}` : `Reopen ${event.name}`}
-                  onClick={() => void run(() => finishEvent(database, ws, event.id, event.finishedAt === null))}
-                >
-                  {event.finishedAt === null ? 'Done' : 'Reopen'}
-                </Button>
-                <Button variant="danger" onClick={() => void run(() => deleteEvent(database, ws, event.id))}>
-                  Remove
-                </Button>
-              </span>
-            </div>
+      {current.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="px-1 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Now and next</h2>
+          {current.map((event) => (
+            <EventCard key={event.id} event={event} today={today} />
           ))}
-        </Card>
+        </section>
       )}
-
-      {selected && (
-        <Card className="space-y-3">
-          <div data-testid="event-sheet" className="space-y-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="text-sm font-semibold">{selected.name}</h2>
-              <span className="text-xs text-slate-600">
-                {sheet.data?.plannedMinor === null || sheet.data === undefined ? (
-                  'Nothing planned yet'
-                ) : (
-                  <>
-                    planned <Money minor={sheet.data.plannedMinor} currency={ws.baseCurrency} />
-                  </>
-                )}
-                {sheet.data && (
-                  <>
-                    {' · spent '}
-                    <Money minor={sheet.data.actualMinor} currency={ws.baseCurrency} className="font-semibold text-slate-900" />
-                  </>
-                )}
-              </span>
-            </div>
-
-            {sheet.data && sheet.data.overMinor !== null && sheet.data.overMinor > 0 && (
-              <p className="text-xs text-rose-600">
-                Over by <Money minor={sheet.data.overMinor} currency={ws.baseCurrency} />
-              </p>
-            )}
-
-            {(sheet.data?.lines.length ?? 0) > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-slate-500">
-                      <th className="py-1">Category</th>
-                      <th className="py-1 text-right">Planned</th>
-                      <th className="py-1 text-right">Spent</th>
-                      <th className="py-1 text-right">Over</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {sheet.data!.lines.map((line) => (
-                      <tr key={line.categoryId}>
-                        <td className="py-1">
-                          {line.name}
-                          {line.unplanned && <span className="ml-2 text-xs text-amber-700">not planned for</span>}
-                        </td>
-                        <td className="tabular py-1 text-right">
-                          {line.plannedMinor === null ? '—' : <Money minor={line.plannedMinor} currency={ws.baseCurrency} />}
-                        </td>
-                        <td className="tabular py-1 text-right">
-                          <Money minor={line.actualMinor} currency={ws.baseCurrency} />
-                        </td>
-                        <td className="tabular py-1 text-right">
-                          {line.overMinor === null || line.overMinor === 0 ? '—' : <Money minor={line.overMinor} currency={ws.baseCurrency} />}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <form onSubmit={addCategory} className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2">
-              <Field label="Category" className="min-w-48">
-                <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                  <option value="">Choose a category</option>
-                  {categories.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Planned" hint="Leave empty to include the category without a figure.">
-                <Input value={planned} onChange={(e) => setPlanned(e.target.value)} inputMode="decimal" placeholder="3000000" />
-              </Field>
-              <Button type="submit" variant="secondary">
-                Add category
-              </Button>
-            </form>
-
-            {(budgets.data?.length ?? 0) > 0 && (
-              <p className="text-xs text-slate-500">
-                Draws on{' '}
-                {(budgets.data ?? []).map((row, index) => (
-                  <span key={row.categoryAccountId}>
-                    {index > 0 && ', '}
-                    {nameOf(row.categoryAccountId)}{' '}
-                    <button
-                      type="button"
-                      aria-label={`Stop drawing on ${nameOf(row.categoryAccountId)}`}
-                      className="underline"
-                      onClick={() => void run(() => removeEventBudget(database, ws, selected.id, row.categoryAccountId))}
-                    >
-                      remove
-                    </button>
-                  </span>
-                ))}
-              </p>
-            )}
-          </div>
-        </Card>
-      )}
-
-      {selected && (suggestions.data?.length ?? 0) > 0 && (
-        <Card className="space-y-2">
-          <div data-testid="event-suggestions" className="space-y-2">
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="text-sm font-semibold">Was this part of {selected.name}?</h2>
-              <span className="text-xs text-slate-500">Inside the dates, in a category it draws on, not yet tagged</span>
-            </div>
-            {(suggestions.data ?? []).map((candidate) => (
-              <div key={candidate.transactionId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span>
-                  <span className="text-slate-500">{candidate.occurredOn}</span> <span className="font-medium">{candidate.description}</span>{' '}
-                  <span className="text-xs text-slate-500">{nameOf(candidate.categoryAccountId)}</span>
-                </span>
-                <span className="flex items-center gap-2">
-                  <Money minor={candidate.amountBaseMinor} currency={ws.baseCurrency} />
-                  <Button
-                    variant="secondary"
-                    aria-label={`Tag ${candidate.description}`}
-                    onClick={() => void run(() => tagTransaction(database, ws, candidate.transactionId, selected.id))}
-                  >
-                    Yes
-                  </Button>
-                </span>
-              </div>
-            ))}
-            <p className="text-xs text-slate-500">
-              Tagged spending leaves your monthly caps and is shown on the budget as its own line, because you meant to spend it.
-            </p>
-          </div>
-        </Card>
+      {past.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="px-1 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Past</h2>
+          {past.map((event) => (
+            <EventCard key={event.id} event={event} today={today} />
+          ))}
+        </section>
       )}
     </div>
   );

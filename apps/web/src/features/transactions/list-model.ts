@@ -195,6 +195,39 @@ export function groupByDay(rows: readonly ListRow[]): { date: string; rows: List
   return days;
 }
 
+/** A category and everything filed under it in the list, largest first. */
+export interface CategoryGroup {
+  /** The category's account id, or null for rows that have none: transfers, and drafts not yet filed. */
+  id: string | null;
+  name: string;
+  rows: ListRow[];
+  /** What the category came to in the workspace's own currency. Transfers and deleted rows count nothing. */
+  totalMinor: number;
+}
+
+/**
+ * The same rows, gathered by what they were spent on rather than when.
+ *
+ * Only spending and income carry a category, so transfers and unfiled drafts gather under one heading of
+ * their own rather than being dropped: a list that quietly loses rows cannot be trusted to add up.
+ */
+export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
+  const groups = new Map<string, CategoryGroup>();
+  for (const row of rows) {
+    const id = row.categoryId;
+    const spending = row.type === 'expense' || row.type === 'income';
+    // A transfer is not uncategorised spending: money moved without being spent, so it keeps its own heading.
+    const key = id ?? (spending ? 'uncategorised' : 'other');
+    const name = row.categoryName ?? (spending ? 'Uncategorised' : 'Transfers and other');
+    const group = groups.get(key) ?? { id, name, rows: [], totalMinor: 0 };
+    group.rows.push(row);
+    // A transfer moves money without spending it, and a deleted row was never real.
+    if (!row.deleted && (row.type === 'expense' || row.type === 'income')) group.totalMinor += row.baseMinor;
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => b.totalMinor - a.totalMinor || a.name.localeCompare(b.name));
+}
+
 /** A day's net in the workspace currency: income less spending, never counting drafts, deleted rows or transfers. */
 export function dayTotal(rows: readonly ListRow[]): number {
   return dayNet(rows.map((row) => ({ kind: row.type === 'expense' || row.type === 'income' ? row.type : 'transfer', amountMinor: row.baseMinor, counted: row.kind === 'tx' && !row.deleted })));

@@ -26,6 +26,7 @@ export function ChipMenu({
   searchable = false,
   active,
   shown,
+  iconOnly = false,
 }: {
   /** What the chip filters, shown when nothing is picked and read by screen readers either way. */
   name: string;
@@ -37,6 +38,8 @@ export function ChipMenu({
   active: boolean;
   /** What the chip reads while something is picked. */
   shown?: ReactNode;
+  /** Draws the chip as its icon alone: no name, no chevron. */
+  iconOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -93,7 +96,9 @@ export function ChipMenu({
           setIndex(Math.max(0, options.findIndex((option) => option.value === value)));
         }}
         className={cx(
-          'inline-flex h-9 max-w-64 items-center gap-1.5 rounded-lg px-2.5 text-sm ring-1',
+          'inline-flex max-w-64 items-center gap-1.5 rounded-lg text-sm ring-1',
+          // An icon sits beside a heading, so it is sized to the heading rather than to a row of named chips.
+          iconOnly ? 'h-8 w-8 justify-center' : 'h-9 px-2.5',
           active ? 'bg-slate-900 text-slate-300 ring-slate-900 hover:bg-slate-700' : 'bg-white text-slate-500 ring-slate-300 hover:bg-slate-100',
         )}
       >
@@ -106,10 +111,17 @@ export function ChipMenu({
         ) : (
           name
         )}
-        <ChevronDown size={14} aria-hidden />
+        {!iconOnly && <ChevronDown size={14} aria-hidden />}
       </button>
       {open && (
-        <div className="absolute left-0 z-20 mt-1 w-72 rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200">
+        <div
+          className={cx(
+            // A chip at the right edge hangs its menu from that edge, or the menu runs off the screen.
+            'absolute z-20 mt-1 max-w-[calc(100vw-2rem)] rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200',
+            // An icon's menu is only as wide as its longest choice; a named chip keeps room to search in.
+            iconOnly ? 'right-0 w-max min-w-40' : 'left-0 w-72',
+          )}
+        >
           {searchable && (
             <input
               autoFocus
