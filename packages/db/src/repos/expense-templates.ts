@@ -5,6 +5,7 @@ import {
   billWindow,
   type BillWindow,
   currentBillMonth,
+  expenseLines,
   isoDate,
   monthOf,
   payableBillMonths,
@@ -12,12 +13,13 @@ import {
 } from '@expanses/core';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { hasBooks } from './books';
+import { postTransactionTx, voidTransactionTx } from './ledger';
 
 export class RecurringError extends Error {
   constructor(
@@ -368,4 +370,86 @@ export async function unskipBill(database: Database, ws: WorkspaceContext, templ
   await database.db
     .delete(billSkips)
     .where(and(eq(billSkips.workspaceId, ws.workspaceId), eq(billSkips.templateId, templateId), eq(billSkips.month, month)));
+}
+
+export interface BillPaymentInput {
+  templateId: string;
+  /** YYYY-MM: which month's bill this pays. */
+  billMonth: string;
+  amountMinor: number;
+  /** The account that paid; the bill's own when absent. */
+  moneyAccountId?: string;
+}
+
+async function isSettled(tx: Db, ws: WorkspaceContext, templateId: string, month: string): Promise<boolean> {
+  const [skipped] = await tx
+    .select({ month: billSkips.month })
+    .from(billSkips)
+    .where(and(eq(billSkips.workspaceId, ws.workspaceId), eq(billSkips.templateId, templateId), eq(billSkips.month, month)));
+  if (skipped) return true;
+  const [paid] = (await billTablesExist(tx))
+    ? await tx
+        .select({ id: transactions.id })
+        .from(billPayments)
+        .innerJoin(transactions, eq(transactions.id, billPayments.transactionId))
+        .where(and(eq(billPayments.workspaceId, ws.workspaceId), eq(billPayments.templateId, templateId), eq(billPayments.billMonth, month), eq(transactions.status, 'posted')))
+    : await tx
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.templateId, templateId), eq(transactions.status, 'posted'), sql`substr(${transactions.occurredOn}, 1, 7) = ${month}`));
+  return Boolean(paid);
+}
+
+/**
+ * Records bill payments on one day, each an ordinary expense against its bill's category, linked to the bill and to
+ * the month it settles. All or nothing: a batch caught up on a Sunday either lands whole or not at all.
+ */
+export function recordBillPayments(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { paidOn: string; payments: BillPaymentInput[]; ratesToBase?: Record<string, number> },
+): Promise<string[]> {
+  return database.transaction(async (tx) => {
+    const ids: string[] = [];
+    for (const payment of input.payments) {
+      if (!BILL_MONTH.test(payment.billMonth)) throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
+      if (!(Number.isSafeInteger(payment.amountMinor) && payment.amountMinor > 0)) {
+        throw new RecurringError('AMOUNT_RANGE', 'Enter what the bill came to');
+      }
+      const [template] = await tx
+        .select()
+        .from(expenseTemplates)
+        .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), eq(expenseTemplates.id, payment.templateId), sql`${expenseTemplates.archivedAt} IS NULL`));
+      if (!template) throw new RecurringError('NOT_FOUND', 'That bill is not here');
+      const [wallet] = await tx
+        .select({ kind: accounts.kind, currency: accounts.currency })
+        .from(accounts)
+        .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.id, payment.moneyAccountId ?? template.moneyAccountId)));
+      if (!wallet || (wallet.kind !== 'asset' && wallet.kind !== 'liability')) {
+        throw new RecurringError('NOT_A_WALLET', 'A bill is paid from an account or a card');
+      }
+      if (await isSettled(tx, ws, template.id, payment.billMonth)) {
+        throw new RecurringError('ALREADY_SETTLED', `${template.name} is already settled for that month`);
+      }
+      const currency = wallet.currency ?? ws.baseCurrency;
+      ids.push(
+        await postTransactionTx(tx, ws, {
+          occurredOn: input.paidOn,
+          description: template.name,
+          templateId: template.id,
+          billMonth: payment.billMonth,
+          ratesToBase: input.ratesToBase,
+          lines: expenseLines({ categoryAccountId: template.categoryAccountId, paymentAccountId: payment.moneyAccountId ?? template.moneyAccountId, amountMinor: payment.amountMinor, currency }),
+        }),
+      );
+    }
+    return ids;
+  });
+}
+
+/** Takes recorded payments back: they are voided, so the months they settled are owed again. */
+export function undoBillPayments(database: Database, ws: WorkspaceContext, transactionIds: readonly string[]): Promise<void> {
+  return database.transaction(async (tx) => {
+    for (const id of transactionIds) await voidTransactionTx(tx, ws, id);
+  });
 }

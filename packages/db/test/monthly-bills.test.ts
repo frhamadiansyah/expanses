@@ -97,6 +97,15 @@ it('raises last month’s bill while it is unpaid, and moves on once a payment n
   });
 });
 
+it('skipping last month’s unpaid bill moves the row on to this month', async () => {
+  const h = await household();
+  const internet = await h.bill('Biznet Home', 'utilities.internet_provider', 28, 450_000, { payByDay: 5, startsMonth: '2026-08' });
+  expect((await monthlyBills(h.database, h.ws, '2026-09-08'))[0]).toMatchObject({ billMonth: '2026-08', state: 'overdue' });
+
+  await skipBill(h.database, h.ws, internet, '2026-08');
+  expect((await monthlyBills(h.database, h.ws, '2026-09-08'))[0]).toMatchObject({ billMonth: '2026-09', state: 'upcoming' });
+});
+
 it('a payment made early counts for the month it names', async () => {
   const h = await household();
   const gym = await h.bill('Fitness First', 'personal_care.sports_fitness', 25, 850_000);
