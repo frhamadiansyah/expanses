@@ -37,7 +37,8 @@ async function addEvent(page: Page, name: string) {
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);
   await page.getByRole('button', { name: 'Save event' }).click();
-  await expect(page.getByTestId('event-row')).toContainText(name);
+  // Saving opens the event: planning it is what comes next.
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
 test('an event is planned by category, and suggests what to tag', async ({ page }) => {
@@ -60,7 +61,7 @@ test('an event is planned by category, and suggests what to tag', async ({ page 
   // Tagged: it counts towards the event, and is over what was planned for it.
   const sheet = page.getByTestId('event-sheet');
   await expect(sheet).toContainText('4.200.000');
-  await expect(sheet).toContainText('Over by');
+  await expect(sheet).toContainText('Over the plan by');
 });
 
 test('tagged spending leaves the monthly caps but is still taken off what is left', async ({ page }) => {

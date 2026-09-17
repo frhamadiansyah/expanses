@@ -245,10 +245,12 @@ export interface TransactionView {
 export async function listTransactions(
   database: Database,
   ws: WorkspaceContext,
-  opts: { accountId?: string; accountIds?: readonly string[]; from?: string; to?: string; includeVoid?: boolean; limit?: number } = {},
+  opts: { accountId?: string; accountIds?: readonly string[]; from?: string; to?: string; includeVoid?: boolean; limit?: number; eventId?: string } = {},
 ): Promise<TransactionView[]> {
   const conds: SQL[] = [eq(transactions.workspaceId, ws.workspaceId)];
   if (!opts.includeVoid) conds.push(eq(transactions.status, 'posted'));
+  // An event's own history: what was tagged to it, whenever it happened.
+  if (opts.eventId) conds.push(eq(transactions.eventId, opts.eventId));
   if (opts.from) conds.push(gte(transactions.occurredOn, opts.from));
   if (opts.to) conds.push(lte(transactions.occurredOn, opts.to));
   if (opts.accountId) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetSheetFor, createAccount, deleteEvent, eventSheetFor, finishEvent, listEventBudgets, listEvents, postTransaction, replaceTransaction, saveBudget, saveEvent, setEventBudget, suggestForEvent, tagTransaction } from '../src/index';
+import { budgetSheetFor, createAccount, deleteEvent, eventSheetFor, finishEvent, listEventBudgets, listEvents, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, setEventBudget, suggestForEvent, tagTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 const MONTH = '2026-09';
@@ -213,5 +213,18 @@ describe('editing tagged spending', () => {
     });
 
     expect((await eventSheetFor(context.database, context.ws, id)).actualMinor).toBe(1_800_000);
+  });
+});
+
+describe('an event\'s history', () => {
+  it('lists what was tagged to the event, and nothing else from the same days', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    const hampers = await spend(context, context.gifts.id, `${MONTH}-20`, 4_200_000, 'Hampers');
+    await spend(context, context.food.id, `${MONTH}-20`, 85_000, 'Warung');
+    await tagTransaction(context.database, context.ws, hampers, id);
+
+    const history = await listTransactions(context.database, context.ws, { eventId: id });
+    expect(history.map((row) => row.description)).toEqual(['Hampers']);
   });
 });

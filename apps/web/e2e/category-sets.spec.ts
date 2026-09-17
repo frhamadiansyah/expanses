@@ -26,7 +26,8 @@ async function addEvent(page: Page, name: string, set: string) {
   await page.getByLabel('Starts on').fill(TODAY);
   await page.getByLabel('Ends on').fill(TODAY);
   await page.getByRole('button', { name: 'Save event' }).click();
-  await expect(page.getByTestId('event-row')).toContainText(name);
+  // Saving opens the event: planning it is what comes next.
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
 /**
@@ -54,7 +55,7 @@ test('a set of your own can be made, added to, and drawn on by an event', async 
 
   // Made here, usable there: the event draws on the set without any of it reaching the monthly tree.
   await addEvent(page, 'Nikahan', 'Wedding');
-  await page.getByRole('link', { name: 'Open' }).click();
+  await page.getByRole('button', { name: 'Add spending' }).click();
   await page.getByLabel('Description').fill('Katering Bu Tuti');
   await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByLabel('Category').selectOption({ label: 'Catering' });
@@ -84,18 +85,21 @@ test('an event can be called done, and put back', async ({ page }) => {
   await addEvent(page, 'Lebaran', 'Holiday');
 
   await page.getByRole('button', { name: 'Finish Lebaran' }).click();
-  // Gone from what is still asking for attention, not gone from the workspace.
-  await expect(page.getByTestId('event-row')).toHaveCount(0);
+  await expect(page.getByTestId('event-sheet')).toContainText('Done');
 
-  await page.getByRole('button', { name: /Show finished/ }).click();
-  await expect(page.getByTestId('event-row')).toContainText('Lebaran');
-  await expect(page.getByTestId('event-row')).toContainText('finished');
+  // Done moves it under Past on the list, not out of the workspace.
+  await page.goto('/events');
+  const past = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Past' }) });
+  await expect(past.getByTestId('event-row')).toContainText('Lebaran');
+  await expect(page.getByRole('heading', { name: 'Now and next' })).toHaveCount(0);
 
-  // Reopening empties the finished list, so its toggle goes with it: the row is simply back.
+  // Reopening puts it back among what is still running.
+  await past.getByTestId('event-row').click();
   await page.getByRole('button', { name: 'Reopen Lebaran' }).click();
-  await expect(page.getByTestId('event-row')).toContainText('Lebaran');
-  await expect(page.getByTestId('event-row')).not.toContainText('finished');
-  await expect(page.getByRole('button', { name: /finished/ })).toHaveCount(0);
+  await expect(page.getByTestId('event-sheet')).toContainText('Now');
+  await page.goto('/events');
+  const current = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Now and next' }) });
+  await expect(current.getByTestId('event-row')).toContainText('Lebaran');
 });
 
 test('a set category can be given a card MCC, so its spending earns the right rate', async ({ page }) => {
@@ -116,9 +120,8 @@ test('an event records its spending in its own categories, from its own page', a
   await addWallet(page);
   await addEvent(page, 'Rumah Bintaro', 'Renovation');
 
-  await page.getByRole('link', { name: 'Open' }).click();
-  await expect(page.getByRole('heading', { name: 'Rumah Bintaro' })).toBeVisible();
   await expect(page.getByText('draws on Renovation')).toBeVisible();
+  await page.getByRole('button', { name: 'Add spending' }).click();
 
   await page.getByLabel('Description').fill('Keramik lantai');
   await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
@@ -134,7 +137,7 @@ test('an event records its spending in its own categories, from its own page', a
 test('a set stays out of the monthly categories, and its spending out of the monthly caps', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Bayi', 'Newborn');
-  await page.getByRole('link', { name: 'Open' }).click();
+  await page.getByRole('button', { name: 'Add spending' }).click();
   await page.getByLabel('Description').fill('Popok');
   await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByLabel('Category').selectOption({ label: 'Diapering' });
@@ -153,8 +156,8 @@ test('a set stays out of the monthly categories, and its spending out of the mon
   await expect(page.getByLabel('Category', { exact: true }).locator('option', { hasText: 'Diapering' })).toHaveCount(0);
   await expect(page.getByTestId('line-Diapering')).toHaveCount(0);
 
-  // Spending still has to be visible somewhere, grouped as the set it belongs to.
+  // Nor does the month's chart: an event's spending is read on the event, where its total was already shown above.
   await page.goto('/spending');
-  await expect(page.getByTestId('set-group-Newborn')).toContainText('Diapering');
-  await expect(page.getByTestId('set-group-Newborn')).toContainText('900.000');
+  await expect(page.getByTestId('period-total')).toBeAttached();
+  await expect(page.getByTestId('set-group-Newborn')).toHaveCount(0);
 });
