@@ -8,6 +8,7 @@ import {
   BookError,
   categoryIdsOfBook,
   categoryTotalsBetween,
+  clearIncomeOverride,
   createAccount,
   createBook,
   createCategorySet,
@@ -30,6 +31,7 @@ import {
   saveExpectedIncome,
   saveExpenseTemplate,
   setActiveBook,
+  setIncomeOverride,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -375,6 +377,37 @@ describe('budgets, expected income and bills by book', () => {
     await saveExpectedIncome(database, inBook(ws, personal), 45_000_000);
     expect((await getBudgetIncome(database, ws, '2026-09')).amountMinor).toBe(45_000_000);
     expect((await getBudgetIncome(database, inBook(ws, personal), '2026-09')).amountMinor).toBe(45_000_000);
+  });
+});
+
+describe('expected-income overrides, dual-written like saveExpectedIncome', () => {
+  it('with Personal named, updates both the old table and the book table', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+
+    await setIncomeOverride(database, inBook(ws, personal), { month: '2026-10', amountMinor: 5_000_000 });
+    expect((await getBudgetIncome(database, ws, '2026-10')).amountMinor).toBe(5_000_000);
+    expect((await getBudgetIncome(database, inBook(ws, personal), '2026-10')).amountMinor).toBe(5_000_000);
+
+    await clearIncomeOverride(database, inBook(ws, personal), '2026-10');
+    expect((await getBudgetIncome(database, ws, '2026-10')).overridden).toBe(false);
+    expect((await getBudgetIncome(database, inBook(ws, personal), '2026-10')).overridden).toBe(false);
+  });
+
+  it('with a Business book named, touches only that book: an unscoped read still shows the old figure', async () => {
+    const { database, ws } = await setupDb();
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    await saveExpectedIncome(database, ws, 41_500_000);
+
+    await setIncomeOverride(database, inBook(ws, business), { month: '2026-10', amountMinor: 9_000_000 });
+    expect((await getBudgetIncome(database, inBook(ws, business), '2026-10')).amountMinor).toBe(9_000_000);
+    expect((await getBudgetIncome(database, ws, '2026-10')).amountMinor).toBe(41_500_000);
+    expect((await getBudgetIncome(database, ws, '2026-10')).overridden).toBe(false);
+
+    await clearIncomeOverride(database, inBook(ws, business), '2026-10');
+    expect((await getBudgetIncome(database, inBook(ws, business), '2026-10')).overridden).toBe(false);
+    // The old, unscoped figure was never touched by Business's override or its clearing.
+    expect((await getBudgetIncome(database, ws, '2026-10')).amountMinor).toBe(41_500_000);
   });
 });
 

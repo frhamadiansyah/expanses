@@ -11,4 +11,4 @@ export interface WorkspaceContext {
 export const inBook = (ws: WorkspaceContext, bookId: string): WorkspaceContext => ({ ...ws, bookId });
 
 // Owner-level reads — cards, points, events, net worth — ignore the open book.
-export const ownerScope = (ws: WorkspaceContext): WorkspaceContext => ({ workspaceId: ws.workspaceId, baseCurrency: ws.baseCurrency });
+export const ownerScope = ({ bookId: _bookId, ...rest }: WorkspaceContext): WorkspaceContext => rest;
