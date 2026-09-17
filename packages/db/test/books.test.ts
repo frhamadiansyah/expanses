@@ -6,7 +6,6 @@ import {
   archiveAccount,
   archiveBook,
   BookError,
-  booksSchema,
   categoryIdsOfBook,
   categoryTotalsBetween,
   createAccount,
@@ -99,10 +98,9 @@ describe('books', () => {
     const setId = await createCategorySet(database, ws, 'Holiday');
     // A name with no collision among DEFAULT_CATEGORIES (which does include a plain "Flights"), so the assertion
     // below can only pass because the set member was excluded, not because of an unrelated name clash.
-    const skiTrip = await addSetCategory(database, ws, setId, 'Ski Trip Fund');
-    // addSetCategory does not file a set category into any book, but migration 0042 backfilled every income/expense
-    // account into the Personal book regardless of set membership — reproduce that so the exclusion is exercised.
-    await database.db.insert(booksSchema.bookCategories).values({ categoryAccountId: skiTrip, workspaceId: ws.workspaceId, bookId: personal.id });
+    // A set category is filed in its set's book (Personal here), as migration 0042 also filed every set member, so the
+    // copy has to exclude it by set membership rather than by book.
+    await addSetCategory(database, ws, setId, 'Ski Trip Fund');
 
     const copied = await createBook(database, ws, { name: 'Copy', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
     const names = (
@@ -248,6 +246,42 @@ describe('reading one book', () => {
     const ids = async (bookId: string) => (await categoryTotalsBetween(database, inBook(ws, bookId), 'expense', '2026-08-01', '2026-08-31')).map((r) => r.accountId);
     expect(await ids(business)).toEqual([booth]);
     expect(await ids(personal)).toEqual([]);
+  });
+
+  it('files a new set category into its set’s book, and spending into it into that book', async () => {
+    const { database, ws } = await setupDb();
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const setId = await createCategorySet(database, inBook(ws, business), 'Trade fair');
+    // Added from a context naming no book: the set decides, not the context.
+    const booth = await addSetCategory(database, ws, setId, 'Booth');
+    expect(await database.db.values(sql`SELECT book_id FROM book_categories WHERE category_account_id = ${booth}`)).toEqual([[business]]);
+
+    const rental = await postTransaction(database, ws, {
+      occurredOn: '2026-08-15',
+      description: 'Booth rental',
+      lines: [
+        { accountId: booth, amountMinor: 900_000, currency: 'IDR' },
+        { accountId: card.id, amountMinor: -900_000, currency: 'IDR' },
+      ],
+    });
+    expect(await database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${rental}`)).toEqual([[business]]);
+  });
+
+  it('files the default sets’ categories into Personal, even with another book open', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const created = await ensureDefaultCategorySets(database, inBook(ws, business));
+    expect(created.length).toBeGreaterThan(0);
+    expect(await listCategorySets(database, inBook(ws, business))).toEqual([]);
+    expect((await listCategorySets(database, inBook(ws, personal))).map((set) => set.name).sort()).toEqual([...created].sort());
+    // Every one of their categories has a book row, and it is Personal's.
+    const unfiled = await database.db.values(
+      sql`SELECT m.category_account_id FROM category_set_members m LEFT JOIN book_categories b ON b.category_account_id = m.category_account_id
+          WHERE m.workspace_id = ${ws.workspaceId} AND (b.book_id IS NULL OR b.book_id != ${personal})`,
+    );
+    expect(unfiled).toEqual([]);
   });
 
   it('lists and files category sets by book', async () => {

@@ -38,14 +38,9 @@ export async function categoryTotalsBetween(
         gte(transactions.occurredOn, from),
         lte(transactions.occurredOn, to),
         ...(opts.excludeEvents ? [isNull(transactions.eventId)] : []),
-        // Narrowed to one book when the context names one; the whole workspace otherwise. A set's categories are
-        // not filed in book_categories themselves — they belong to whichever book holds their set.
-        ...(ws.bookId
-          ? [
-              sql`(${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})
-                OR ${entries.accountId} IN (SELECT m.category_account_id FROM category_set_members m JOIN book_category_sets s ON s.set_id = m.set_id WHERE s.book_id = ${ws.bookId}))`,
-            ]
-          : []),
+        // Narrowed to one book when the context names one; the whole workspace otherwise. Set categories are filed in
+        // book_categories too (into their set's book), so this one path covers them.
+        ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
       ),
     )
     .groupBy(entries.accountId);

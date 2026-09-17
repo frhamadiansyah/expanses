@@ -3,7 +3,7 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
-import { bookCategorySets } from '../schema-books';
+import { bookCategories, bookCategorySets } from '../schema-books';
 import { DEFAULT_CATEGORY_SETS } from '../seed';
 import { categorySetMembers, categorySets } from '../schema-category-sets';
 import { hasBooks, personalBookIdTx } from './books';
@@ -50,6 +50,18 @@ async function fileSetTx(tx: Db, ws: WorkspaceContext, setId: string): Promise<v
   if (!(await hasBooks(tx))) return;
   const bookId = ws.bookId ?? (await personalBookIdTx(tx, ws.workspaceId));
   if (bookId) await tx.insert(bookCategorySets).values({ setId, workspaceId: ws.workspaceId, bookId });
+}
+
+/**
+ * Files a set's new category into the set's book, so a set category is read and posted like any other: every income
+ * and expense category has a book_categories row. A set with no book row (made before it could have one) files into
+ * Personal. Skipped on a database stopped before migration 0042.
+ */
+async function fileSetCategoryTx(tx: Db, workspaceId: string, setId: string, categoryAccountId: string): Promise<void> {
+  if (!(await hasBooks(tx))) return;
+  const [row] = await tx.select({ bookId: bookCategorySets.bookId }).from(bookCategorySets).where(eq(bookCategorySets.setId, setId));
+  const bookId = row?.bookId ?? (await personalBookIdTx(tx, workspaceId));
+  if (bookId) await tx.insert(bookCategories).values({ categoryAccountId, workspaceId, bookId });
 }
 
 export async function createCategorySet(database: Database, ws: WorkspaceContext, name: string): Promise<string> {
@@ -137,6 +149,7 @@ export async function addSetCategory(database: Database, ws: WorkspaceContext, s
       createdAt: new Date().toISOString(),
     });
     await tx.insert(categorySetMembers).values({ categoryAccountId: id, workspaceId: ws.workspaceId, setId });
+    await fileSetCategoryTx(tx, ws.workspaceId, setId, id);
     return id;
   });
 }
@@ -179,6 +192,7 @@ export async function ensureDefaultCategorySets(database: Database, ws: Workspac
           createdAt: now,
         });
         await tx.insert(categorySetMembers).values({ categoryAccountId: accountId, workspaceId: ws.workspaceId, setId });
+        await fileSetCategoryTx(tx, ws.workspaceId, setId, accountId);
       }
     }
   });
