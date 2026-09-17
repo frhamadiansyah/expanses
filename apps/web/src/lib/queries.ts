@@ -62,9 +62,9 @@ export const isMoneyAccount = (a: AccountRow) => (a.kind === 'asset' || a.kind =
 export const isCategoryOf = (kind: 'expense' | 'income') => (a: AccountRow) => a.kind === kind && isActive(a);
 
 export const SUBTYPE_LABELS: Record<string, string> = {
-  bank: 'Bank account',
+  bank: 'Current account',
   cash: 'Cash',
-  savings: 'Savings',
+  savings: 'Saving account',
   investment: 'Investment',
   property: 'Property',
   vehicle: 'Vehicle',
