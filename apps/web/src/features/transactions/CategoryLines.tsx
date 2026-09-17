@@ -34,8 +34,8 @@ export function ShareLine({
 }
 
 /**
- * A category read against what was set aside for it: the figure set aside first, then what was spent and what is
- * left under it, against the two ends of the bar.
+ * A category read against what was set aside for it: what is left (or how far over) first, then what was spent and
+ * the share of the figure set aside, against the two ends of the bar.
  */
 export function CapLine({
   colour,
@@ -64,20 +64,19 @@ export function CapLine({
         <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: colour }} aria-hidden />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
         {capped ? (
-          <Money minor={capMinor} currency={currency} className="shrink-0 text-sm font-semibold" />
+          <span className={cx('tabular shrink-0 text-sm', over && 'text-red-700')}>
+            <span className="font-semibold">{formatMinor(Math.abs(capMinor - amountMinor), currency)}</span> {over ? 'over' : 'left'}
+          </span>
         ) : (
           <span className="shrink-0 text-xs text-slate-500">{noCap}</span>
         )}
         {chevron && <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />}
       </span>
       <span className={cx('tabular mt-1 ml-[22px] flex items-baseline gap-2 text-xs text-slate-500', chevron ? 'mr-7' : 'mr-0')}>
-        <span className={cx(over && 'font-semibold text-red-700')}>
-          Spent {formatMinor(amountMinor, currency)}
-          {capped && ` · ${share(amountMinor, capMinor)}%`}
-        </span>
+        <span>Spent {formatMinor(amountMinor, currency)}</span>
         {capped && (
           <span className={cx('ml-auto', over && 'font-semibold text-red-700')}>
-            {over ? `Over ${formatMinor(amountMinor - capMinor, currency)}` : `Left ${formatMinor(capMinor - amountMinor, currency)}`}
+            {share(amountMinor, capMinor)}% of {formatMinor(capMinor, currency)}
           </span>
         )}
       </span>
