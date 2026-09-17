@@ -61,3 +61,4 @@ export * from './repos/entry';
 export * from './repos/statements';
 export * as cardsSchema from './schema-cards';
 export * from './repos/cards';
+export * as booksSchema from './schema-books';

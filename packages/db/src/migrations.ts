@@ -40,6 +40,7 @@ import cardStatements from '../migrations/0038_card_statements.sql?raw';
 import jeniusEntryId from '../migrations/0039_jenius_entry_id.sql?raw';
 import cycleGates from '../migrations/0040_cycle_gates.sql?raw';
 import billSkips from '../migrations/0041_bill_skips.sql?raw';
+import books from '../migrations/0042_books.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -90,6 +91,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 39, name: 'jenius_entry_id', sql: jeniusEntryId },
   { version: 40, name: 'cycle_gates', sql: cycleGates },
   { version: 41, name: 'bill_skips', sql: billSkips },
+  { version: 42, name: 'books', sql: books },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */
