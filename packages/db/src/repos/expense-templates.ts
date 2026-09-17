@@ -1,9 +1,10 @@
-import { uuidv7 } from '@expanses/core';
+import { isoDate, uuidv7 } from '@expanses/core';
 import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { billSkips, expenseTemplates } from '../schema-recurring';
+import { billSkips, billWindows, expenseTemplates } from '../schema-recurring';
+import { BILL_MONTH, billTablesExist } from './bill-months';
 
 export class RecurringError extends Error {
   constructor(
@@ -24,6 +25,10 @@ export interface ExpenseTemplateRow {
   amountMinor: number | null;
   dayOfMonth: number;
   active: boolean;
+  /** The day it must be paid by; earlier than dayOfMonth means the next month. Null: due the day it comes out. */
+  payByDay: number | null;
+  /** YYYY-MM: the first month this bill can be owed for. */
+  startsMonth: string;
 }
 
 export interface SaveExpenseTemplateInput {
@@ -34,9 +39,12 @@ export interface SaveExpenseTemplateInput {
   amountMinor?: number | null;
   dayOfMonth: number;
   active?: boolean;
+  payByDay?: number | null;
+  /** A new bill's first month; this month when absent. Ignored on an edit. */
+  startsMonth?: string;
 }
 
-const toRow = (row: typeof expenseTemplates.$inferSelect): ExpenseTemplateRow => ({
+const toRow = (row: typeof expenseTemplates.$inferSelect, window?: { payByDay: number | null; startsMonth: string }): ExpenseTemplateRow => ({
   id: row.id,
   name: row.name,
   categoryAccountId: row.categoryAccountId,
@@ -44,6 +52,9 @@ const toRow = (row: typeof expenseTemplates.$inferSelect): ExpenseTemplateRow =>
   amountMinor: row.amountMinor,
   dayOfMonth: row.dayOfMonth,
   active: row.active === 1,
+  payByDay: window?.payByDay ?? null,
+  // An older database has no windows: the month the bill was made is the nearest honest answer.
+  startsMonth: window?.startsMonth ?? row.createdAt.slice(0, 7),
 });
 
 async function accountKind(database: Database, ws: WorkspaceContext, accountId: string): Promise<string | undefined> {
@@ -64,6 +75,13 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
   const amountMinor = input.amountMinor ?? null;
   if (amountMinor !== null && !(amountMinor > 0)) {
     throw new RecurringError('AMOUNT_RANGE', 'Leave the amount empty if it differs every month, or give one above nought');
+  }
+  const payByDay = input.payByDay ?? null;
+  if (payByDay !== null && (!Number.isInteger(payByDay) || payByDay < 1 || payByDay > 31)) {
+    throw new RecurringError('PAY_BY_RANGE', 'The pay-by day must be between 1 and 31, or left empty');
+  }
+  if (input.startsMonth !== undefined && !BILL_MONTH.test(input.startsMonth)) {
+    throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
   }
 
   // A bill points at a spending category and at the money that pays it. Crossing the two would post
@@ -102,6 +120,13 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
         active: input.active === false ? 0 : 1,
       },
     });
+
+  if (await billTablesExist(database.db)) {
+    await database.db
+      .insert(billWindows)
+      .values({ templateId: id, workspaceId: ws.workspaceId, payByDay, startsMonth: input.startsMonth ?? isoDate().slice(0, 7) })
+      .onConflictDoUpdate({ target: billWindows.templateId, set: { payByDay } });
+  }
   return id;
 }
 
@@ -119,7 +144,11 @@ export async function listExpenseTemplates(database: Database, ws: WorkspaceCont
       ),
     )
     .orderBy(asc(expenseTemplates.dayOfMonth), asc(expenseTemplates.createdAt));
-  return rows.map(toRow);
+  const windows = (await billTablesExist(database.db))
+    ? await database.db.select().from(billWindows).where(eq(billWindows.workspaceId, ws.workspaceId))
+    : [];
+  const byTemplate = new Map(windows.map((w) => [w.templateId, w]));
+  return rows.map((row) => toRow(row, byTemplate.get(row.id)));
 }
 
 export async function deleteExpenseTemplate(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
