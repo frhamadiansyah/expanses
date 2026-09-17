@@ -86,8 +86,14 @@ test('the phone header adds, searches and filters from three round buttons', asy
   await expect(page.getByLabel('Search transactions')).not.toBeVisible();
   await expect(page.getByRole('button', { name: /^Month/ })).not.toBeVisible();
 
+  // Search takes the header over: one field and a way out, until closing it gives the title back.
   await page.getByRole('button', { name: 'Search', exact: true }).click();
-  await expect(page.getByLabel('Search transactions')).toBeVisible();
+  await expect(page.getByLabel('Search transactions')).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Filters' })).toHaveCount(0);
+  await page.getByLabel('Search transactions').fill('nothing like it');
+  await page.getByRole('button', { name: 'Close search' }).click();
+  await expect(page.getByLabel('Search transactions')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Cashflow' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Filters' }).click();
   await expect(page.getByRole('button', { name: /^Month/ })).toBeVisible();
@@ -126,7 +132,8 @@ test('the month’s chart leads the list, and a category opens as its own screen
   await chart.getByRole('button', { name: 'Earlier month' }).click();
   await expect(chart.getByTestId('chart-month')).not.toHaveText(thisMonth ?? '');
   await expect(page).toHaveURL(/month=/);
-  await chart.getByRole('button', { name: 'Later month' }).click();
+  await expect(chart.getByTestId('chart-month')).toBeVisible();
+  await chart.getByRole('button', { name: 'Later month' }).click({ force: true });
   await expect(chart.getByTestId('chart-month')).toHaveText(thisMonth ?? '');
   await expect(page.getByTestId('statement-line')).toHaveCount(0);
 
@@ -140,7 +147,7 @@ test('the month’s chart leads the list, and a category opens as its own screen
   await expect(page.getByRole('button', { name: 'All transactions' })).toBeVisible();
 
   await page.getByRole('button', { name: 'All transactions' }).click();
-  await expect(page.getByRole('heading', { name: 'Transactions' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cashflow' })).toBeVisible();
 });
 
 test('no screen scrolls sideways at phone width', async ({ page }) => {

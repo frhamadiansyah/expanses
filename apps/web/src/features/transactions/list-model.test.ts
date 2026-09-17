@@ -1,6 +1,7 @@
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, sortRows, totals } from './list-model';
+import type { ListRow } from './list-model';
+import { buildRows, dayTotal, draftNeeds, EMPTY_FILTERS, filterRows, groupByDay, sortRows, totals , groupByCategory } from './list-model';
 
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], extra: Partial<AccountRow> = {}): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind, subtype, name: id, icon: null, currency: kind === 'expense' || kind === 'income' ? null : 'IDR', valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-09-01T00:00:00Z', ...extra,
@@ -131,5 +132,62 @@ describe('sorting and days', () => {
   it('adds a foreign purchase in the workspace currency', () => {
     const baht = buildRows([tx('2026-09-12', 'Bangkok taxi', [['groceries', 50000, 2250000], ['octo', -50000, -2250000]])], [], accounts, cards);
     expect(totals(baht)).toEqual({ count: 1, spentMinor: 2250000, incomeMinor: 0 });
+  });
+});
+
+describe('groupByCategory', () => {
+  const row = (over: Partial<ListRow>): ListRow => ({
+    id: over.id ?? 'r',
+    kind: 'tx',
+    date: '2026-09-15',
+    description: 'row',
+    amountMinor: 0,
+    currency: 'IDR',
+    baseMinor: 0,
+    type: 'expense',
+    categoryId: null,
+    categoryName: null,
+    parentName: null,
+    accountIds: [],
+    accountLabel: '',
+    cardId: null,
+    last4: null,
+    holderName: null,
+    deleted: false,
+    needs: [],
+    ...over,
+  });
+
+  it('gathers rows by category, largest first', () => {
+    const groups = groupByCategory([
+      row({ id: 'a', categoryId: 'fuel', categoryName: 'Fuel cost', baseMinor: 400_000 }),
+      row({ id: 'b', categoryId: 'groceries', categoryName: 'Groceries', baseMinor: 900_000 }),
+      row({ id: 'c', categoryId: 'fuel', categoryName: 'Fuel cost', baseMinor: 100_000 }),
+    ]);
+    expect(groups.map((g) => [g.name, g.rows.length, g.totalMinor])).toEqual([
+      ['Groceries', 1, 900_000],
+      ['Fuel cost', 2, 500_000],
+    ]);
+  });
+
+  it('keeps what has no category, without letting it count as spending', () => {
+    const groups = groupByCategory([
+      row({ id: 'a', categoryId: 'fuel', categoryName: 'Fuel cost', baseMinor: 100_000 }),
+      row({ id: 'b', type: 'transfer', baseMinor: 5_000_000 }),
+      row({ id: 'c', kind: 'draft', baseMinor: 0 }),
+    ]);
+    expect(groups.map((g) => [g.name, g.rows.length, g.totalMinor])).toEqual([
+      ['Fuel cost', 1, 100_000],
+      ['Transfers and other', 1, 0],
+      ['Uncategorised', 1, 0],
+    ]);
+  });
+
+  it('leaves a deleted row in its category but out of the total', () => {
+    const groups = groupByCategory([
+      row({ id: 'a', categoryId: 'fuel', categoryName: 'Fuel cost', baseMinor: 100_000 }),
+      row({ id: 'b', categoryId: 'fuel', categoryName: 'Fuel cost', baseMinor: 999_000, deleted: true }),
+    ]);
+    expect(groups[0]).toMatchObject({ rows: expect.objectContaining({ length: 2 }), totalMinor: 100_000 });
   });
 });
