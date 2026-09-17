@@ -47,6 +47,25 @@ export {
 } from './ledger/lines';
 export { displayAmount, netWorth, type NetWorthAccount, type NetWorthResult } from './ledger/balances';
 export { addMonths, daysInMonth, isoDate, lastNMonths, monthOf, monthRange } from './reports/periods';
+export {
+  BILL_DUE_SOON_DAYS,
+  billPill,
+  billSchedule,
+  type BillMonthsInput,
+  type BillSettlement,
+  billStanding,
+  type BillStanding,
+  type BillStateKind,
+  type BillTone,
+  billWindow,
+  type BillWindow,
+  currentBillMonth,
+  dayMonth,
+  daysFrom,
+  monthName,
+  ordinal,
+  payableBillMonths,
+} from './bills/schedule';
 export { type Period, type PeriodKind, parsePeriod, periodLabel, stepPeriod, weekOf, weeksOfMonth } from './reports/view-period';
 export {
   categoryAncestors,
