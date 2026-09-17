@@ -1,13 +1,14 @@
 import { isoDate } from '@expanses/core';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { Plus } from 'lucide-react';
+import { ListChecks, Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Card, cx, Empty, ErrorBox, Money, PageHeader, RoundButton } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, Money, PageHeader, RoundButton } from '../../ui';
 import { BillRow } from './BillRow';
-import { sectionsOf, summaryOf } from './bill-view';
+import { amountOf, isSettled, sectionsOf, summaryOf } from './bill-view';
+import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useMonthlyBills } from './queries';
 import { UndoToast } from './UndoToast';
@@ -30,11 +31,28 @@ export function RecurringPage() {
   const rows = bills.data ?? [];
 
   const [paying, setPaying] = useState<MonthlyBill | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [payingSeveral, setPayingSeveral] = useState(false);
   const [toast, setToast] = useState<{ text: string; undo: () => Promise<void> } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const clearToast = useCallback(() => setToast(null), []);
   // Stable, so the sheet does not re-run its open effect (and take focus back) whenever the list refreshes.
   const closeSheet = useCallback(() => setPaying(null), []);
+  const closeSeveral = useCallback(() => setPayingSeveral(false), []);
+
+  const toggle = (bill: MonthlyBill) =>
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(bill.id)) next.delete(bill.id);
+      else next.add(bill.id);
+      return next;
+    });
+
+  const doneSelecting = () => {
+    setSelecting(false);
+    setPicked(new Set());
+  };
 
   const currencyOf = (bill: MonthlyBill) => accounts.find((account) => account.id === bill.moneyAccountId)?.currency ?? ws.baseCurrency;
 
@@ -74,16 +92,38 @@ export function RecurringPage() {
   return (
     <div className="space-y-3">
       <PageHeader
-        title="Recurring"
+        title={selecting ? `${picked.size} selected` : 'Recurring'}
         controls={
-          <RoundButton label="New bill" onClick={() => void navigate({ to: '/bills/new' })}>
-            <Plus size={18} aria-hidden />
-          </RoundButton>
+          selecting ? (
+            <Button variant="secondary" onClick={doneSelecting}>
+              Done
+            </Button>
+          ) : (
+            <>
+              <RoundButton label="Select bills to pay" onClick={() => setSelecting(true)}>
+                <ListChecks size={18} aria-hidden />
+              </RoundButton>
+              <RoundButton label="New bill" onClick={() => void navigate({ to: '/bills/new' })}>
+                <Plus size={18} aria-hidden />
+              </RoundButton>
+            </>
+          )
         }
         action={
-          <Link to="/bills/new" aria-label="New bill" className={SECONDARY_LINK}>
-            + New bill
-          </Link>
+          selecting ? (
+            <Button variant="secondary" onClick={doneSelecting}>
+              Done
+            </Button>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Button variant="secondary" aria-label="Select bills to pay" onClick={() => setSelecting(true)}>
+                Select
+              </Button>
+              <Link to="/bills/new" aria-label="New bill" className={SECONDARY_LINK}>
+                + New bill
+              </Link>
+            </span>
+          )
         }
       />
 
@@ -139,13 +179,61 @@ export function RecurringPage() {
           {/* Card's look without its padding or clipping: rows run edge to edge, and a row's menu may hang below it. */}
           <div className={cx('rounded-xl bg-white shadow-sm ring-1 ring-slate-200', section.key === 'settled' && 'opacity-60')}>
             {section.rows.map((bill) => (
-              <BillRow key={bill.id} bill={bill} accounts={accounts} today={today} currency={currencyOf(bill)} onPay={pay} onSkip={(b) => void skip(b)} />
+              <BillRow
+                key={bill.id}
+                bill={bill}
+                accounts={accounts}
+                today={today}
+                currency={currencyOf(bill)}
+                onPay={pay}
+                onSkip={(b) => void skip(b)}
+                selecting={selecting}
+                picked={picked.has(bill.id)}
+                onToggle={toggle}
+              />
             ))}
           </div>
         </section>
       ))}
 
+      {selecting && picked.size > 0 && (() => {
+        const chosen = rows.filter((b) => picked.has(b.id));
+        const approximate = chosen.some((b) => b.amountMinor === null);
+        return (
+          <button
+            type="button"
+            onClick={() => setPayingSeveral(true)}
+            className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex min-h-12 max-w-md items-center justify-between rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white shadow-lg md:sticky md:bottom-6 md:mt-4 md:w-full"
+          >
+            <span>Pay {picked.size} selected</span>
+            <span>
+              {approximate && '~'}
+              <Money minor={chosen.reduce((s, b) => s + amountOf(b), 0)} currency={ws.baseCurrency} /> ›
+            </span>
+          </button>
+        );
+      })()}
+
       {toast && <UndoToast text={toast.text} onUndo={() => void undo()} onDone={clearToast} />}
+
+      {payingSeveral && (
+        <PaySeveralSheet
+          bills={rows.filter((b) => !isSettled(b))}
+          picked={picked}
+          today={today}
+          onClose={closeSeveral}
+          onPaid={(ids, count) => {
+            setPayingSeveral(false);
+            setSelecting(false);
+            const firstId = [...picked][0];
+            setPicked(new Set());
+            setToast({
+              text: count === 1 ? `Paid ${rows.find((b) => b.id === firstId)?.name ?? '1 bill'}` : `Paid ${count} bills`,
+              undo: () => undoBillPayments(database, ws, ids),
+            });
+          }}
+        />
+      )}
 
       {paying && (
         <PaySheet

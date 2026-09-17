@@ -178,6 +178,49 @@ test('a month can be skipped, and the skip undone', async ({ page }) => {
   await expect(row(page, 'Fitness First')).not.toContainText('Skipped');
 });
 
+test('several bills are ticked and recorded together, on the day they were paid', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await addBill(page, { name: 'Phone', amount: '150000' });
+  await addBill(page, { name: 'Electricity' });
+
+  await page.getByRole('button', { name: 'Select bills to pay' }).click();
+  await expect(page.getByRole('heading', { name: '0 selected' })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Select Phone' }).click();
+  await page.getByRole('checkbox', { name: 'Select Electricity' }).click();
+  await expect(page.getByRole('heading', { name: '2 selected' })).toBeVisible();
+  await page.getByRole('button', { name: /^Pay 2 selected/ }).click();
+
+  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  await sheet.getByRole('button', { name: 'Record 2 bills' }).click();
+  await expect(sheet).toContainText('Enter the amount of each ticked bill that varies');
+  await sheet.getByLabel('What Electricity came to').fill('432000');
+  const paidOn = new Date(Date.now() - 2 * 86_400_000);
+  const iso = `${paidOn.getFullYear()}-${String(paidOn.getMonth() + 1).padStart(2, '0')}-${String(paidOn.getDate()).padStart(2, '0')}`;
+  await sheet.getByLabel('Paid on').fill(iso);
+  await sheet.getByRole('button', { name: 'Record 2 bills' }).click();
+
+  await expect(sheet).toHaveCount(0);
+  await expect(toast(page)).toContainText('Paid 2 bills');
+  await expect(page.getByRole('heading', { name: 'Recurring' })).toBeVisible();
+  await page.goto('/transactions');
+  await expect(page.getByTestId('recurring-card')).toContainText('2 of 2 bills paid');
+});
+
+test('unticking a bill in Pay several leaves it unpaid', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await addBill(page, { name: 'Phone', amount: '150000' });
+  await addBill(page, { name: 'Internet', amount: '395000' });
+  await page.getByRole('button', { name: 'Select bills to pay' }).click();
+  await page.getByRole('checkbox', { name: 'Select Phone' }).click();
+  await page.getByRole('button', { name: /^Pay 1 selected/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  // The rest of the month's unpaid bills are offered, unticked.
+  await expect(sheet.getByRole('checkbox', { name: 'Pay Internet' })).not.toBeChecked();
+  await sheet.getByRole('button', { name: 'Record 1 bill' }).click();
+  await expect(row(page, 'Internet')).not.toContainText('✓ Paid');
+  await expect(row(page, 'Phone')).toContainText('✓ Paid');
+});
+
 test('a bill not out yet opens later, and can be paid early', async ({ page }) => {
   const now = new Date();
   const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
