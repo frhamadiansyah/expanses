@@ -48,7 +48,7 @@ export function categoryKeys(categoryId: string | null, accounts: readonly Accou
   return { key, rootKey: current?.systemKey ?? null, rootName: current && current.id !== categoryId ? current.name : null };
 }
 
-const SIZES = { md: { box: 'h-9 w-9', glyph: 18 }, sm: { box: 'h-6 w-6', glyph: 14 }, xs: { box: 'h-5 w-5', glyph: 12 } } as const;
+const SIZES = { lg: { box: 'h-16 w-16', glyph: 32 }, md: { box: 'h-9 w-9', glyph: 18 }, sm: { box: 'h-6 w-6', glyph: 14 }, xs: { box: 'h-5 w-5', glyph: 12 } } as const;
 
 /** A round, tinted category mark: the glyph names the category, the colour its top-level parent. */
 export function CategoryIcon({

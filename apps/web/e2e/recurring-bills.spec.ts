@@ -53,14 +53,66 @@ test('the Cashflow card counts the month’s bills', async ({ page }) => {
 test('a bill keeps its pay-by day through an edit', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Biznet Home', amount: '450000', out: 28, payBy: 5 });
-  await page.goto(`/bills/${await row(page, 'Biznet Home').getAttribute('data-bill-id')}/edit`);
+  await row(page, 'Biznet Home').click();
+  await page.getByRole('link', { name: 'Edit bill' }).click();
   await expect(page.getByRole('heading', { name: 'Edit bill' })).toBeVisible();
   await expect(page.getByLabel('Bill is out on')).toHaveValue('28');
   await expect(page.getByLabel('Pay by')).toHaveValue('5');
   await page.getByLabel('Pay by').selectOption('');
   await page.getByRole('button', { name: 'Save' }).click();
-  await page.goto(`/bills/${await row(page, 'Biznet Home').getAttribute('data-bill-id')}/edit`);
+  // Save on an edit returns to the bill's own page, not the list — Edit bill is reached from there directly.
+  await page.getByRole('link', { name: 'Edit bill' }).click();
   await expect(page.getByLabel('Pay by')).toHaveValue('');
+});
+
+test('a bill’s page pays its month and stays, with the payment and an undo', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await addBill(page, { name: 'Biznet Home', amount: '450000', out: 1, payBy: 28 });
+  await row(page, 'Biznet Home').click();
+
+  await expect(page.getByRole('heading', { name: 'Biznet Home' })).toBeVisible();
+  await expect(page.getByText('Every month · out on the 1st · pay by the 28th')).toBeVisible();
+  await page.getByRole('button', { name: /^Pay \w+ bill$/ }).click();
+  await page.getByRole('dialog', { name: 'Pay Biznet Home' }).getByRole('button', { name: 'Record payment' }).click();
+
+  await expect(page.getByRole('dialog', { name: 'Pay Biznet Home' })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/bills\/[^/]+$/);
+  const banner = page.getByTestId('just-paid');
+  await expect(banner).toContainText(/✓ Paid .*450\.000 on/);
+  await expect(page.getByTestId('bill-history').locator('[data-new="true"]')).toContainText('450.000');
+  await expect(page.getByRole('button', { name: /^Pay \w+ bill$/ })).toHaveCount(0);
+
+  await banner.getByRole('button', { name: 'Undo' }).click();
+  await expect(banner).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Pay \w+ bill$/ })).toBeVisible();
+});
+
+test('from a bill’s page: skip its month, edit it, and stop it', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await addBill(page, { name: 'Gym', amount: '350000' });
+  await row(page, 'Gym').click();
+  await expect(page.getByText('Paid from')).toBeVisible();
+
+  await page.getByRole('button', { name: /^Skip \w+ bill$/ }).click();
+  await expect(page.getByTestId('bill-hero')).toContainText('Skipped');
+
+  await page.getByRole('link', { name: 'Edit bill' }).click();
+  await page.getByLabel('Pay by').selectOption('5');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Every month · out on the 1st · pay by the 5th')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Stop this bill' }).click();
+  await expect(page).toHaveURL(/\/bills$/);
+  await expect(row(page, 'Gym')).toHaveCount(0);
+});
+
+test('a skipped row’s ⋯ menu still opens the bill’s page', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await addBill(page, { name: 'Netflix', amount: '120000' });
+  await rowAction(page, 'Netflix', /^Skip/);
+  await expect(row(page, 'Netflix')).toContainText('Skipped');
+  await rowAction(page, 'Netflix', /^See bill$/);
+  await expect(page.getByRole('heading', { name: 'Netflix' })).toBeVisible();
 });
 
 test('a bill that is out is paid from its row, and the month is settled', async ({ page }) => {

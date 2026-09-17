@@ -1,5 +1,6 @@
 import { monthName } from '@expanses/core';
 import type { AccountRow, MonthlyBill } from '@expanses/db';
+import { useNavigate } from '@tanstack/react-router';
 import { Check, MoreHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cx, Money } from '../../ui';
@@ -36,6 +37,8 @@ export function BillRow({
   const settled = isSettled(bill);
   const accountName = accounts.find((account) => account.id === bill.moneyAccountId)?.name ?? '';
   const pill = pillOf(bill);
+  const navigate = useNavigate();
+  const seeBill = () => void navigate({ to: '/bills/$billId', params: { billId: bill.id } });
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -83,8 +86,8 @@ export function BillRow({
             onClick={() => {
               if (suppressClick()) return;
               if (selecting) onToggle?.(bill);
-              // Task 10 turns a tap into the bill's own page; until then it pays a bill that is still to pay.
-              else if (!settled) onPay(bill);
+              // A tap always opens the bill's own page; paying and skipping stay one swipe or menu tap away.
+              else seeBill();
             }}
             className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left md:pr-12"
           >
@@ -120,9 +123,10 @@ export function BillRow({
         )}
       </SwipeRow>
 
-      {/* Outside the sliding layer, so a drag never lands on it and it never slides away with the row. A settled row has
-          nothing to offer yet; Task 10 gives every row See bill, and the button then shows on all of them. */}
-      {!selecting && !settled && (
+      {/* Outside the sliding layer, so a drag never lands on it and it never slides away with the row. Every row —
+          paid and skipped too — offers its ⋯ menu, since See bill is a way in for all of them; Pay and Skip only
+          make sense while the month is still unsettled. */}
+      {!selecting && (
         <div ref={menuRef}>
           <button
             type="button"
@@ -136,11 +140,18 @@ export function BillRow({
           </button>
           {menuOpen && (
             <div role="menu" className="absolute top-full right-2 z-20 -mt-2 w-48 overflow-hidden rounded-xl bg-white py-1 shadow-xl ring-1 ring-slate-200">
-              <button type="button" role="menuitem" onClick={choose(() => onPay(bill))} className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100">
-                Pay…
-              </button>
-              <button type="button" role="menuitem" onClick={choose(() => onSkip(bill))} className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100">
-                Skip {monthName(bill.billMonth, 'short')} bill
+              {!settled && (
+                <button type="button" role="menuitem" onClick={choose(() => onPay(bill))} className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100">
+                  Pay…
+                </button>
+              )}
+              {!settled && (
+                <button type="button" role="menuitem" onClick={choose(() => onSkip(bill))} className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100">
+                  Skip {monthName(bill.billMonth, 'short')} bill
+                </button>
+              )}
+              <button type="button" role="menuitem" onClick={choose(seeBill)} className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100">
+                See bill
               </button>
             </div>
           )}

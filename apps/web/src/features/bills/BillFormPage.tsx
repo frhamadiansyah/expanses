@@ -71,8 +71,9 @@ export function BillFormPage({ billId }: { billId?: string }) {
         payByDay: payBy === '' ? null : Number(payBy),
       });
       await invalidate();
-      // Task 10 adds the bill's own page; until then both a new bill and an edit land back on the list.
-      await navigate({ to: '/bills' });
+      // A new bill has no page yet to land on; an edit came from one, so Save returns to it.
+      if (billId) await navigate({ to: '/bills/$billId', params: { billId } });
+      else await navigate({ to: '/bills' });
     } catch (e) {
       setError(e);
     }
@@ -140,13 +141,23 @@ export function BillFormPage({ billId }: { billId?: string }) {
 
           <div className="flex gap-2">
             <Button type="submit">Save</Button>
-            {/* Task 10 adds the bill's own page; until then Cancel, like Save, lands back on the list. */}
-            <Link
-              to="/bills"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100"
-            >
-              Cancel
-            </Link>
+            {/* Cancel goes back the way Save would: to the bill's own page for an edit, to the list for a new one. */}
+            {billId ? (
+              <Link
+                to="/bills/$billId"
+                params={{ billId }}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100"
+              >
+                Cancel
+              </Link>
+            ) : (
+              <Link
+                to="/bills"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100"
+              >
+                Cancel
+              </Link>
+            )}
           </div>
         </form>
       </Card>
