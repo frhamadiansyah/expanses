@@ -1,6 +1,18 @@
 import { expenseLines, isoDate } from '@expanses/core';
 import { afterEach, expect, it } from 'vitest';
-import { createAccount, listAccounts, monthlyBills, postTransaction, saveExpenseTemplate, skipBill, unskipBill } from '../src/index';
+import {
+  billDetail,
+  createAccount,
+  listAccounts,
+  monthlyBills,
+  personalBook,
+  postTransaction,
+  replaceTransaction,
+  saveExpenseTemplate,
+  skipBill,
+  unskipBill,
+  voidTransaction,
+} from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -9,72 +21,159 @@ afterEach(() => {
   current = undefined;
 });
 
-/** Three bills: one paid, one whose day has gone, one still to come. */
 async function household() {
   current = await setupDb();
   const { database, ws } = current;
   const bank = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' });
   const all = await listAccounts(database, ws);
   const category = (key: string) => all.find((a) => a.systemKey === key)!.id;
-  const rent = category('property.housing_rent');
-  const internet = category('utilities.internet_provider');
-  const gym = category('personal_care.sports_fitness');
-  const bill = (name: string, categoryAccountId: string, dayOfMonth: number, amountMinor: number | null) =>
-    saveExpenseTemplate(database, ws, { name, categoryAccountId, moneyAccountId: bank.id, dayOfMonth, amountMinor });
-  return { database, ws, bank, rent, internet, gym, bill };
+  const bill = (
+    name: string,
+    key: string,
+    dayOfMonth: number,
+    amountMinor: number | null,
+    extra: { payByDay?: number | null; startsMonth?: string } = {},
+  ) =>
+    saveExpenseTemplate(database, ws, {
+      name,
+      categoryAccountId: category(key),
+      moneyAccountId: bank.id,
+      dayOfMonth,
+      amountMinor,
+      startsMonth: '2026-09',
+      ...extra,
+    });
+  const pay = (templateId: string, key: string, occurredOn: string, amountMinor: number, billMonth?: string) =>
+    postTransaction(database, ws, {
+      occurredOn,
+      description: 'Bill',
+      templateId,
+      billMonth,
+      lines: expenseLines({ categoryAccountId: category(key), paymentAccountId: bank.id, amountMinor, currency: 'IDR' }),
+    });
+  return { database, ws, bank, bill, pay };
 }
 
-it('says of each bill whether it is paid, owed now, or still to come', async () => {
+it('says where each bill stands on the day, soonest pay-by first', async () => {
   const h = await household();
-  const rent = await h.bill('Apartment rent', h.rent, 1, 7_500_000);
-  await h.bill('Biznet Home', h.internet, 10, 395_000);
-  await h.bill('Fitness First', h.gym, 25, 850_000);
-
-  await postTransaction(h.database, h.ws, {
-    occurredOn: '2026-09-03',
-    description: 'Apartment rent',
-    templateId: rent,
-    lines: expenseLines({ categoryAccountId: h.rent, paymentAccountId: h.bank.id, amountMinor: 7_600_000, currency: 'IDR' }),
-  });
+  const rent = await h.bill('Apartment rent', 'property.housing_rent', 1, 7_500_000);
+  await h.bill('Biznet Home', 'utilities.internet_provider', 10, 395_000);
+  await h.bill('Telkomsel Halo', 'utilities.mobile_phone', 1, 185_000, { payByDay: 17 });
+  await h.bill('Fitness First', 'personal_care.sports_fitness', 25, 850_000);
+  await h.bill('Tuition', 'utilities.mobile_phone', 1, 3_500_000, { payByDay: 25 });
+  await h.pay(rent, 'property.housing_rent', '2026-09-03', 7_600_000);
 
   const bills = await monthlyBills(h.database, h.ws, '2026-09-15');
-  expect(bills.map((b) => [b.name, b.state])).toEqual([
-    ['Apartment rent', 'paid'],
-    ['Biznet Home', 'owed'],
-    ['Fitness First', 'later'],
+  expect(bills.map((b) => [b.name, b.state, b.days])).toEqual([
+    ['Apartment rent', 'paid', 0],
+    ['Biznet Home', 'overdue', 5],
+    ['Telkomsel Halo', 'dueSoon', 2],
+    ['Fitness First', 'upcoming', 10],
+    ['Tuition', 'open', 10],
   ]);
-  // Paid on the 3rd, for more than the template says: both are worth knowing.
-  expect(bills[0]).toMatchObject({ paidOn: '2026-09-03', paidMinor: 7_600_000 });
-  expect(bills[1]).toMatchObject({ paidOn: null, paidMinor: null });
+  expect(bills[0]).toMatchObject({ billMonth: '2026-09', paidOn: '2026-09-03', paidMinor: 7_600_000 });
+  expect(bills[1]).toMatchObject({ paidOn: null, paidMinor: null, paymentId: null, payableMonths: ['2026-09', '2026-10'] });
 });
 
-it('a bill paid before its day still counts as paid', async () => {
+it('raises last month’s bill while it is unpaid, and moves on once a payment names it', async () => {
   const h = await household();
-  const gym = await h.bill('Fitness First', h.gym, 25, 850_000);
-  await postTransaction(h.database, h.ws, {
-    occurredOn: '2026-09-02',
-    description: 'Fitness First',
-    templateId: gym,
-    lines: expenseLines({ categoryAccountId: h.gym, paymentAccountId: h.bank.id, amountMinor: 850_000, currency: 'IDR' }),
+  const internet = await h.bill('Biznet Home', 'utilities.internet_provider', 28, 450_000, { payByDay: 5, startsMonth: '2026-08' });
+
+  expect((await monthlyBills(h.database, h.ws, '2026-09-02'))[0]).toMatchObject({ billMonth: '2026-08', state: 'dueSoon', days: 3 });
+  expect((await monthlyBills(h.database, h.ws, '2026-09-08'))[0]).toMatchObject({
+    billMonth: '2026-08',
+    state: 'overdue',
+    days: 3,
+    payableMonths: ['2026-08', '2026-09', '2026-10'],
   });
-  const [bill] = await monthlyBills(h.database, h.ws, '2026-09-15');
-  expect(bill).toMatchObject({ state: 'paid', paidOn: '2026-09-02' });
+
+  // Paid in September, for August.
+  await h.pay(internet, 'utilities.internet_provider', '2026-09-08', 450_000, '2026-08');
+  expect((await monthlyBills(h.database, h.ws, '2026-09-08'))[0]).toMatchObject({
+    billMonth: '2026-09',
+    state: 'upcoming',
+    days: 20,
+    payableMonths: ['2026-09', '2026-10'],
+  });
+});
+
+it('a payment made early counts for the month it names', async () => {
+  const h = await household();
+  const gym = await h.bill('Fitness First', 'personal_care.sports_fitness', 25, 850_000);
+  await h.pay(gym, 'personal_care.sports_fitness', '2026-08-30', 850_000, '2026-09');
+  expect((await monthlyBills(h.database, h.ws, '2026-09-15'))[0]).toMatchObject({ state: 'paid', paidOn: '2026-08-30' });
+});
+
+it('a voided payment settles nothing', async () => {
+  const h = await household();
+  const gym = await h.bill('Fitness First', 'personal_care.sports_fitness', 3, 850_000);
+  const paid = await h.pay(gym, 'personal_care.sports_fitness', '2026-09-03', 850_000);
+  await voidTransaction(h.database, h.ws, paid);
+  expect((await monthlyBills(h.database, h.ws, '2026-09-15'))[0]).toMatchObject({ state: 'overdue', paymentId: null });
+});
+
+it('a corrected payment settles only the month the correction names', async () => {
+  const h = await household();
+  const gym = await h.bill('Fitness First', 'personal_care.sports_fitness', 3, 850_000, { startsMonth: '2026-08' });
+  const paid = await h.pay(gym, 'personal_care.sports_fitness', '2026-09-03', 850_000, '2026-09');
+  const all = await listAccounts(h.database, h.ws);
+  const gymCategory = all.find((a) => a.systemKey === 'personal_care.sports_fitness')!.id;
+  // Re-filed under August: the September row left behind by the void must not keep September settled.
+  await replaceTransaction(h.database, h.ws, paid, {
+    occurredOn: '2026-09-03',
+    description: 'Bill',
+    billMonth: '2026-08',
+    lines: expenseLines({ categoryAccountId: gymCategory, paymentAccountId: h.bank.id, amountMinor: 850_000, currency: 'IDR' }),
+  });
+  const detail = await billDetail(h.database, h.ws, gym, '2026-09-15');
+  expect(detail.history.map((row) => [row.month, row.state])).toEqual([
+    ['2026-09', 'overdue'],
+    ['2026-08', 'paid'],
+  ]);
+  expect(detail.bill).toMatchObject({ billMonth: '2026-09', state: 'overdue', paymentId: null });
 });
 
 it('a skipped month stops being owed, and can be taken back', async () => {
   const h = await household();
-  const gym = await h.bill('Fitness First', h.gym, 3, 850_000);
-  expect((await monthlyBills(h.database, h.ws, '2026-09-15'))[0]!.state).toBe('owed');
+  const gym = await h.bill('Fitness First', 'personal_care.sports_fitness', 3, 850_000);
+  expect((await monthlyBills(h.database, h.ws, '2026-09-15'))[0]!.state).toBe('overdue');
 
   await skipBill(h.database, h.ws, gym, '2026-09');
   expect((await monthlyBills(h.database, h.ws, '2026-09-15'))[0]!.state).toBe('skipped');
   // Skipping one month says nothing about the next.
-  expect((await monthlyBills(h.database, h.ws, '2026-10-15'))[0]!.state).toBe('owed');
-  // And it is idempotent, so a second tap is not an error.
+  expect((await monthlyBills(h.database, h.ws, '2026-10-15'))[0]).toMatchObject({ billMonth: '2026-10', state: 'overdue' });
   await skipBill(h.database, h.ws, gym, '2026-09');
 
   await unskipBill(h.database, h.ws, gym, '2026-09');
-  expect((await monthlyBills(h.database, h.ws, '2026-09-15'))[0]!.state).toBe('owed');
+  expect((await monthlyBills(h.database, h.ws, '2026-09-15'))[0]!.state).toBe('overdue');
+});
+
+it('estimates a bill that varies from what it came to last time', async () => {
+  const h = await household();
+  const pln = await h.bill('PLN electricity', 'utilities.electricity', 20, null, { startsMonth: '2026-08' });
+  await h.pay(pln, 'utilities.electricity', '2026-08-22', 802_000);
+  expect((await monthlyBills(h.database, h.ws, '2026-09-08'))[0]).toMatchObject({ billMonth: '2026-09', state: 'upcoming', amountMinor: null, estimateMinor: 802_000 });
+});
+
+it('lists a bill’s months newest first: what is coming, what is late, what was paid or skipped', async () => {
+  const h = await household();
+  const internet = await h.bill('Biznet Home', 'utilities.internet_provider', 28, 450_000, { payByDay: 5, startsMonth: '2026-06' });
+  await h.pay(internet, 'utilities.internet_provider', '2026-06-29', 450_000);
+  await h.pay(internet, 'utilities.internet_provider', '2026-08-04', 450_000, '2026-07');
+  await skipBill(h.database, h.ws, internet, '2026-05');
+
+  const detail = await billDetail(h.database, h.ws, internet, '2026-09-08');
+  expect(detail.bill).toMatchObject({ billMonth: '2026-08', state: 'overdue', days: 3 });
+  expect(detail.history.map((row) => [row.month, row.state])).toEqual([
+    ['2026-09', 'upcoming'],
+    ['2026-08', 'overdue'],
+    ['2026-07', 'paid'],
+    ['2026-06', 'paid'],
+    ['2026-05', 'skipped'],
+  ]);
+  expect(detail.history[2]).toMatchObject({ paidOn: '2026-08-04', paidMinor: 450_000 });
+  expect(detail.bookName).toBe((await personalBook(h.database, h.ws)).name);
+  await expect(billDetail(h.database, h.ws, 'nope', '2026-09-08')).rejects.toMatchObject({ code: 'NOT_FOUND' });
 });
 
 it('holds its nerve when nothing recurring is set up', async () => {

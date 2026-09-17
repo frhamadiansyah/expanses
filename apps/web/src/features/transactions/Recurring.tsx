@@ -12,10 +12,12 @@ import { Button, Card, cx, ErrorBox, Input, Money } from '../../ui';
 const day = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
 
+/** Out and unpaid: the old "owed" state, until this screen is rebuilt. */
+const OWED = new Set(['overdue', 'dueSoon', 'open']);
+
 /** How late a bill is, in the words you would use about it. */
-function lateness(bill: MonthlyBill, today: string): string {
-  const days = Number(today.slice(8, 10)) - bill.dayOfMonth;
-  return days <= 0 ? 'due today' : days === 1 ? '1 day late' : `${days} days late`;
+function lateness(bill: MonthlyBill): string {
+  return bill.state === 'overdue' ? `${bill.days} ${bill.days === 1 ? 'day' : 'days'} late` : 'due';
 }
 
 function useBills(today: string) {
@@ -38,7 +40,7 @@ export function Recurring({ today = isoDate() }: { today?: string }) {
   if (rows.length === 0) return null;
 
   const settled = rows.filter((bill) => bill.state === 'paid' || bill.state === 'skipped');
-  const owed = rows.filter((bill) => bill.state === 'owed');
+  const owed = rows.filter((bill) => OWED.has(bill.state));
   const owedMinor = owed.reduce((sum, bill) => sum + (bill.amountMinor ?? 0), 0);
   const done = settled.length === rows.length;
 
@@ -84,8 +86,8 @@ function RecurringSheet({ today, onClose }: { today: string; onClose: () => void
   const [busy, setBusy] = useState(false);
 
   const rows = bills.data ?? [];
-  const owed = rows.filter((bill) => bill.state === 'owed');
-  const later = rows.filter((bill) => bill.state === 'later');
+  const owed = rows.filter((bill) => OWED.has(bill.state));
+  const later = rows.filter((bill) => bill.state === 'upcoming');
   const done = rows.filter((bill) => bill.state === 'paid' || bill.state === 'skipped');
   const currencyOf = (bill: MonthlyBill) => accounts.find((account) => account.id === bill.moneyAccountId)?.currency ?? ws.baseCurrency;
   const chosen = rows.filter((bill) => picked.has(bill.id));
@@ -113,6 +115,7 @@ function RecurringSheet({ today, onClose }: { today: string; onClose: () => void
           occurredOn: paidOn,
           description: bill.name,
           templateId: bill.id,
+          billMonth: bill.billMonth,
           lines: [
             { accountId: bill.categoryAccountId, amountMinor, currency },
             { accountId: bill.moneyAccountId, amountMinor: -amountMinor, currency },
@@ -131,7 +134,7 @@ function RecurringSheet({ today, onClose }: { today: string; onClose: () => void
   async function skip(bill: MonthlyBill) {
     setError(null);
     try {
-      await skipBill(database, ws, bill.id, today.slice(0, 7));
+      await skipBill(database, ws, bill.id, bill.billMonth);
       await invalidate();
     } catch (e) {
       setError(e);
@@ -144,14 +147,14 @@ function RecurringSheet({ today, onClose }: { today: string; onClose: () => void
         <span className="block truncate text-sm font-medium">{bill.name}</span>
         <span className="block truncate text-xs text-slate-500">
           the {ordinal(bill.dayOfMonth)}
-          {bill.state === 'owed' && <b className="font-semibold text-amber-700"> · {lateness(bill, today)}</b>}
+          {OWED.has(bill.state) && <b className="font-semibold text-amber-700"> · {lateness(bill)}</b>}
           {bill.state === 'paid' && bill.paidOn && ` · paid ${day(bill.paidOn)}`}
           {bill.state === 'skipped' && ' · skipped this month'}
         </span>
       </span>
       {bill.amountMinor !== null ? (
         <Money minor={bill.paidMinor ?? bill.amountMinor} currency={currencyOf(bill)} className="shrink-0 text-sm font-semibold" />
-      ) : bill.state === 'owed' && picked.has(bill.id) ? (
+      ) : OWED.has(bill.state) && picked.has(bill.id) ? (
         <Input
           className="w-28 shrink-0"
           inputMode="decimal"
