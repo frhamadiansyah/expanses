@@ -18,10 +18,16 @@ import {
   listAccounts,
   listBooks,
   listCategorySets,
+  getBudgetIncome,
+  listBudgets,
+  listExpenseTemplates,
   ownerScope,
   personalBook,
   postTransaction,
   renameBook,
+  saveBudget,
+  saveExpectedIncome,
+  saveExpenseTemplate,
   setActiveBook,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -314,6 +320,43 @@ describe('reading one book', () => {
     expect((await ensureCategoryKeys(database, ws)).created).toContain('utilities.gas_energy');
     const [[recreated]] = (await database.db.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND system_key = 'utilities.gas_energy'`)) as [[string]];
     expect(await categoryIdsOfBook(database, personal)).toContain(recreated);
+  });
+});
+
+describe('budgets, expected income and bills by book', () => {
+  it('keeps budgets, expected income and bills to their own book', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const software = await createAccount(database, inBook(ws, business), { name: 'Software', kind: 'expense', subtype: 'category', currency: null });
+    const pets = await createAccount(database, ws, { name: 'Pets', kind: 'expense', subtype: 'category', currency: null });
+
+    await saveBudget(database, inBook(ws, business), { categoryAccountId: software.id, amountMinor: 1_000_000 });
+    await saveBudget(database, inBook(ws, personal), { categoryAccountId: pets.id, amountMinor: 500_000 });
+    await saveExpectedIncome(database, inBook(ws, business), 20_000_000);
+    await saveExpenseTemplate(database, inBook(ws, business), { name: 'Figma', categoryAccountId: software.id, moneyAccountId: bank.id, amountMinor: 260_000, dayOfMonth: 2 });
+
+    expect((await listBudgets(database, inBook(ws, business), '2026-09')).map((b) => b.categoryAccountId)).toEqual([software.id]);
+    expect((await getBudgetIncome(database, inBook(ws, business), '2026-09')).amountMinor).toBe(20_000_000);
+    expect((await getBudgetIncome(database, inBook(ws, personal), '2026-09')).amountMinor).not.toBe(20_000_000);
+    expect((await listExpenseTemplates(database, inBook(ws, business))).map((t) => t.name)).toEqual(['Figma']);
+    expect(await listExpenseTemplates(database, inBook(ws, personal))).toEqual([]);
+  });
+
+  it('writes without a book to Personal too, so the old table and the book table agree', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+
+    // Saved with no book named, the way the sample seed and every pre-books caller does.
+    await saveExpectedIncome(database, ws, 41_500_000);
+    expect((await getBudgetIncome(database, ws, '2026-09')).amountMinor).toBe(41_500_000);
+    expect((await getBudgetIncome(database, inBook(ws, personal), '2026-09')).amountMinor).toBe(41_500_000);
+
+    // Saved again through Personal's own id, the old table (which unscoped reads use) still agrees.
+    await saveExpectedIncome(database, inBook(ws, personal), 45_000_000);
+    expect((await getBudgetIncome(database, ws, '2026-09')).amountMinor).toBe(45_000_000);
+    expect((await getBudgetIncome(database, inBook(ws, personal), '2026-09')).amountMinor).toBe(45_000_000);
   });
 });
 
