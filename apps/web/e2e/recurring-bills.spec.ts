@@ -28,11 +28,16 @@ async function addBill(page: Page, options: { name: string; amount?: string; out
   await expect(page.getByTestId('bill-row').filter({ hasText: options.name })).toBeVisible();
 }
 
-/** Opens the recurring sheet from the card above the transactions. Kept for the skipped sheet tests below. */
-async function openRecurring(page: Page) {
-  await page.goto('/transactions');
-  await page.getByTestId('recurring-card').click();
-  return page.getByTestId('recurring-sheet');
+const row = (page: Page, name: string) => page.getByTestId('bill-row').filter({ hasText: name });
+
+/** The undo toast. Not any status: the install hint and the backup banner are statuses too. */
+const toast = (page: Page) => page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
+
+/** The desktop way to a row's actions: the ⋯ button, shown on hover and focus. */
+async function rowAction(page: Page, name: string, action: RegExp) {
+  await row(page, name).hover();
+  await page.getByRole('button', { name: `Actions for ${name}` }).click();
+  await page.getByRole('menuitem', { name: action }).click();
 }
 
 test('the Cashflow card counts the month’s bills', async ({ page }) => {
@@ -48,101 +53,87 @@ test('the Cashflow card counts the month’s bills', async ({ page }) => {
 test('a bill keeps its pay-by day through an edit', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Biznet Home', amount: '450000', out: 28, payBy: 5 });
-  await page.getByTestId('bill-row').filter({ hasText: 'Biznet Home' }).getByRole('link', { name: 'Edit' }).click();
+  await page.goto(`/bills/${await row(page, 'Biznet Home').getAttribute('data-bill-id')}/edit`);
   await expect(page.getByRole('heading', { name: 'Edit bill' })).toBeVisible();
   await expect(page.getByLabel('Bill is out on')).toHaveValue('28');
   await expect(page.getByLabel('Pay by')).toHaveValue('5');
   await page.getByLabel('Pay by').selectOption('');
   await page.getByRole('button', { name: 'Save' }).click();
-  await page.getByTestId('bill-row').filter({ hasText: 'Biznet Home' }).getByRole('link', { name: 'Edit' }).click();
+  await page.goto(`/bills/${await row(page, 'Biznet Home').getAttribute('data-bill-id')}/edit`);
   await expect(page.getByLabel('Pay by')).toHaveValue('');
 });
 
-// Rewritten against the Recurring screen in Task 9.
-test.skip('a bill whose day has passed is owed, and recording it settles the month', async ({ page }) => {
+test('a bill that is out is paid from its row, and the month is settled', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Phone', amount: '150000' });
 
-  // The card counts it before anything is done about it.
   await page.goto('/transactions');
-  await expect(page.getByTestId('recurring-card')).toContainText('0 of 1 bill paid');
-  await expect(page.getByTestId('recurring-card')).toContainText('150.000');
+  await page.getByTestId('recurring-card').click();
+  await expect(page).toHaveURL(/\/bills$/);
+  await expect(page.getByTestId('bills-summary')).toContainText('Still to pay in');
+  await expect(page.getByTestId('bills-summary')).toContainText('150.000');
 
-  const sheet = await openRecurring(page);
-  await expect(sheet).toContainText('Owed now');
-  await sheet.getByLabel('Pay Phone').check();
-  await sheet.getByRole('button', { name: /^Record/ }).click();
+  await rowAction(page, 'Phone', /^Pay/);
+  const sheet = page.getByRole('dialog', { name: 'Pay Phone' });
+  await expect(sheet.getByLabel('What it came to')).not.toHaveValue('');
+  await sheet.getByRole('button', { name: 'Record payment' }).click();
 
-  // Settled: it moves to what is already paid, and the payment is in the list.
-  await expect(sheet).toContainText('Already paid');
-  await expect(sheet.getByLabel('Pay Phone')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(toast(page)).toContainText('Paid Phone');
+  await expect(page.getByText('Paid and skipped · 1')).toBeVisible();
+  await expect(row(page, 'Phone')).toContainText('✓ Paid');
+
+  await page.goto('/transactions');
   await expect(page.getByTestId('recurring-card')).toContainText('1 of 1 bill paid');
   await expect(page.getByRole('listitem').filter({ hasText: 'Phone' }).first()).toBeVisible();
 });
 
-// Rewritten against the Recurring screen in Task 9.
-test.skip('several bills are recorded together, on the day they were paid', async ({ page }) => {
+test('undo takes a payment back', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Phone', amount: '150000' });
-  await addBill(page, { name: 'Internet', amount: '395000' });
-
-  const sheet = await openRecurring(page);
-  await sheet.getByLabel('Pay Phone').check();
-  await sheet.getByLabel('Pay Internet').check();
-  // One date for the lot: they were paid two days ago, not today.
-  const paidOn = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
-  await sheet.getByLabel('Paid on').fill(paidOn);
-  await sheet.getByRole('button', { name: 'Record 2 bills' }).click();
-
-  await expect(sheet.getByLabel('Pay Phone')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Close' }).click();
-  await expect(page.getByTestId('recurring-card')).toContainText('2 of 2 bills paid');
+  await rowAction(page, 'Phone', /^Pay/);
+  await page.getByRole('dialog', { name: 'Pay Phone' }).getByRole('button', { name: 'Record payment' }).click();
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByText(/Paid and skipped/)).toHaveCount(0);
+  await expect(row(page, 'Phone')).not.toContainText('✓ Paid');
 });
 
-// Rewritten against the Recurring screen in Task 9.
-test.skip('a bill that differs every month asks what it came to', async ({ page }) => {
+test('a bill that varies asks what it came to', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Electricity' });
+  await expect(row(page, 'Electricity')).toContainText('Amount varies');
 
-  const sheet = await openRecurring(page);
-  // No amount was set, so none is shown as though it were known.
-  await expect(sheet).toContainText('Electricity');
-  await expect(sheet).not.toContainText('150.000');
+  await rowAction(page, 'Electricity', /^Pay/);
+  const sheet = page.getByRole('dialog', { name: 'Pay Electricity' });
+  await expect(sheet.getByLabel('What it came to')).toHaveValue('');
+  await sheet.getByRole('button', { name: 'Record payment' }).click();
+  await expect(sheet).toContainText('Enter what it came to');
+  await sheet.getByLabel('What it came to').fill('432000');
+  await sheet.getByRole('button', { name: 'Record payment' }).click();
+  await expect(sheet).toHaveCount(0);
 
-  await sheet.getByLabel('Pay Electricity').check();
-  await sheet.getByLabel('What Electricity came to').fill('432000');
-  await sheet.getByRole('button', { name: /^Record/ }).click();
-
-  await expect(sheet).toContainText('Already paid');
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.goto('/transactions');
   await expect(page.getByRole('listitem').filter({ hasText: '432.000' }).first()).toBeVisible();
 });
 
-// Rewritten against the Recurring screen in Task 9.
-test.skip('a month can be skipped, and stops being owed', async ({ page }) => {
+test('a month can be skipped, and the skip undone', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Fitness First', amount: '850000' });
-
-  const sheet = await openRecurring(page);
-  await sheet.getByRole('button', { name: 'Skip' }).click();
-
-  await expect(sheet).toContainText('skipped this month');
-  await expect(sheet).not.toContainText('Owed now');
-  await page.getByRole('button', { name: 'Close' }).click();
-  // A skipped bill counts as settled: the month is done with it.
-  await expect(page.getByTestId('recurring-card')).toContainText('1 of 1 bill paid');
+  await rowAction(page, 'Fitness First', /^Skip/);
+  await expect(toast(page)).toContainText('Skipped Fitness First this month');
+  await expect(row(page, 'Fitness First')).toContainText('Skipped');
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(row(page, 'Fitness First')).not.toContainText('Skipped');
 });
 
-// Rewritten against the Recurring screen in Task 9.
-test.skip('a bill whose day has not come round is listed as still to come', async ({ page }) => {
+test('a bill not out yet opens later, and can be paid early', async ({ page }) => {
+  const now = new Date();
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  test.skip(now.getDate() >= last, 'Nothing is still to come on the last day of a month');
   await addWallet(page, 'BCA Tahapan');
-  // The 31st has not passed in any month this test can run in, except on the 31st itself.
   await addBill(page, { name: 'Housing rent', amount: '5000000', out: 31 });
-
-  const sheet = await openRecurring(page);
-  if (new Date().getDate() < 31) {
-    await expect(sheet).toContainText('Later this month');
-    await expect(sheet).not.toContainText('Owed now');
-  }
+  await expect(page.getByText('Later', { exact: true })).toBeVisible();
+  await expect(row(page, 'Housing rent')).toContainText('Opens');
+  await rowAction(page, 'Housing rent', /^Pay/);
+  await expect(page.getByRole('dialog', { name: 'Pay Housing rent' })).toBeVisible();
 });
