@@ -279,7 +279,7 @@ export function SpendingReport({
 
   /** The month arrows and the money-out/in switch. A month with nothing in it still needs the way back. */
   const header = (
-    <div className="mb-1">
+    <div>
       {onMonth && (
         <div className="flex items-center justify-between">
           {/* Arrows step by whatever the period is — a week, a month, a quarter, a year. All time and two chosen dates have no neighbours. */}
@@ -312,7 +312,7 @@ export function SpendingReport({
       {picking && onMonth && (
         <PeriodPicker value={month} years={yearsSince(first.data ?? null)} onPick={onMonth} onClose={() => setPicking(false)} />
       )}
-      <div className="mt-3 flex gap-1.5">
+      <div className="mt-5 flex gap-1.5">
         {(['expense', 'income'] as const).map((k) => (
           <button
             key={k}
