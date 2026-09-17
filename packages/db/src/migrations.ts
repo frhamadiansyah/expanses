@@ -42,6 +42,7 @@ import cycleGates from '../migrations/0040_cycle_gates.sql?raw';
 import billSkips from '../migrations/0041_bill_skips.sql?raw';
 import books from '../migrations/0042_books.sql?raw';
 import categorySystemKeyPerBook from '../migrations/0043_category_system_key_per_book.sql?raw';
+import billMonths from '../migrations/0044_bill_months.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -94,6 +95,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 41, name: 'bill_skips', sql: billSkips },
   { version: 42, name: 'books', sql: books },
   { version: 43, name: 'category_system_key_per_book', sql: categorySystemKeyPerBook },
+  { version: 44, name: 'bill_months', sql: billMonths },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */
