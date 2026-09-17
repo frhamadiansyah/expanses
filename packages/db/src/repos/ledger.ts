@@ -3,12 +3,14 @@ import { and, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
+import { bookTransactions } from '../schema-books';
 import { cardPostings, cardSettlements } from '../schema-cards';
 import { transactionPointActuals } from '../schema-points';
+import { bookOfCategory, hasBooks } from './books';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -74,7 +76,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   const ids = [...new Set(input.lines.map((l) => l.accountId))];
   const found = ids.length
     ? await tx
-        .select({ id: accounts.id, currency: accounts.currency })
+        .select({ id: accounts.id, currency: accounts.currency, kind: accounts.kind })
         .from(accounts)
         .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids)))
     : [];
@@ -84,6 +86,22 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     ratesToBase: input.ratesToBase ?? {},
     accountCurrencies: Object.fromEntries(found.map((a) => [a.id, a.currency])),
   });
+
+  // A transaction that spends or earns belongs to the book of its categories; one that only moves money between
+  // your own accounts (a transfer, a card payment) belongs to none. It may not straddle two books. Computed and
+  // checked before any insert below, so a refused posting leaves nothing behind.
+  const booksEnabled = await hasBooks(tx);
+  let bookId: string | undefined;
+  if (booksEnabled) {
+    const categoryIds = found.filter((a) => a.kind === 'income' || a.kind === 'expense').map((a) => a.id);
+    const bookIds = new Set<string>();
+    for (const categoryId of categoryIds) {
+      const owner = await bookOfCategory(tx, categoryId);
+      if (owner) bookIds.add(owner);
+    }
+    if (bookIds.size > 1) throw new LedgerError('TWO_BOOKS', 'A transaction cannot spend in two workspaces at once');
+    [bookId] = bookIds;
+  }
 
   const id = uuidv7();
   await tx.insert(transactions).values({
@@ -117,6 +135,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
       spendCategoryId: p.spendCategoryId,
     })),
   );
+  if (bookId) await tx.insert(bookTransactions).values({ transactionId: id, workspaceId: ws.workspaceId, bookId });
   await audit(tx, ws, 'post', id, input);
   return id;
 }

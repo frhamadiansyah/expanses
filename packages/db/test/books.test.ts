@@ -16,6 +16,7 @@ import {
   listBooks,
   ownerScope,
   personalBook,
+  postTransaction,
   renameBook,
   setActiveBook,
 } from '../src/index';
@@ -143,6 +144,56 @@ describe('books', () => {
     // An archived book is no longer open; the app falls back to Personal.
     expect(await activeBookId(database, ws)).toBe(personal.id);
     await expect(archiveBook(database, ws, personal.id)).rejects.toThrow(/last/);
+  });
+});
+
+describe('posting into a book', () => {
+  it('files spending into its category’s book and a transfer into none', async () => {
+    const { database, ws } = await setupDb();
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const meals = await createAccount(database, inBook(ws, business), { name: 'Client meals', kind: 'expense', subtype: 'category', currency: null });
+
+    const dinner = await postTransaction(database, ws, {
+      occurredOn: '2026-08-15',
+      description: 'Supplier dinner',
+      lines: [
+        { accountId: meals.id, amountMinor: 640_000, currency: 'IDR' },
+        { accountId: card.id, amountMinor: -640_000, currency: 'IDR' },
+      ],
+    });
+    const payment = await postTransaction(database, ws, {
+      occurredOn: '2026-08-20',
+      description: 'Card bill',
+      lines: [
+        { accountId: card.id, amountMinor: 640_000, currency: 'IDR' },
+        { accountId: bank.id, amountMinor: -640_000, currency: 'IDR' },
+      ],
+    });
+    expect(await database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${dinner}`)).toEqual([[business]]);
+    expect(await database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${payment}`)).toEqual([]);
+  });
+
+  it('refuses one transaction spending in two books', async () => {
+    const { database, ws } = await setupDb();
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const meals = await createAccount(database, inBook(ws, business), { name: 'Client meals', kind: 'expense', subtype: 'category', currency: null });
+    const pets = await createAccount(database, ws, { name: 'Pets', kind: 'expense', subtype: 'category', currency: null });
+    await expect(
+      postTransaction(database, ws, {
+        occurredOn: '2026-08-15',
+        description: 'Mixed',
+        lines: [
+          { accountId: meals.id, amountMinor: 100, currency: 'IDR' },
+          { accountId: pets.id, amountMinor: 100, currency: 'IDR' },
+          { accountId: card.id, amountMinor: -200, currency: 'IDR' },
+        ],
+      }),
+    ).rejects.toThrow(/two workspaces/);
+    // Refused before anything was written: no entries were left behind for either category.
+    expect(await database.db.values(sql`SELECT count(*) FROM entries WHERE account_id IN (${meals.id}, ${pets.id})`)).toEqual([[0]]);
   });
 });
 
