@@ -24,7 +24,8 @@ export function PaySeveralSheet({
   picked: ReadonlySet<string>;
   today: string;
   onClose: () => void;
-  onPaid: (ids: string[], count: number) => void;
+  /** The recorded transactions and the names of the bills they paid — what was ticked here, not on the list. */
+  onPaid: (ids: string[], names: string[]) => void;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -64,7 +65,7 @@ export function PaySeveralSheet({
       }
       const ids = await recordBillPayments(database, ws, { paidOn, payments });
       await invalidate();
-      onPaid(ids, ids.length);
+      onPaid(ids, chosen.map((bill) => bill.name));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

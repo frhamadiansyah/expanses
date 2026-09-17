@@ -59,6 +59,9 @@ export function BillPage({ billId }: { billId: string }) {
   const account = accounts.find((a) => a.id === bill.moneyAccountId);
   const currency = account?.currency ?? ws.baseCurrency;
   const pill = pillOf(bill);
+  // The month just paid, which is not always the month the page now speaks for: paying last month's overdue bill, or
+  // choosing another month in For, moves the bill on. The confirmation follows the payment, not the bill.
+  const paidMonth = justPaid ? history.find((row) => row.month === justPaid.month && row.state === 'paid') : undefined;
 
   async function undo() {
     if (!justPaid) return;
@@ -116,10 +119,11 @@ export function BillPage({ billId }: { billId: string }) {
         <span className={cx('rounded-full px-2 py-0.5 text-[11px] font-semibold', pill.className)}>{pill.text}</span>
       </section>
 
-      {justPaid && bill.state === 'paid' && (
+      {justPaid && paidMonth && (
         <div data-testid="just-paid" role="status" className="flex items-center justify-between rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           <span>
             ✓ Paid <Money minor={justPaid.amountMinor} currency={currency} /> on {dayMonth(justPaid.paidOn)}
+            {justPaid.month !== bill.billMonth && ` · ${monthName(justPaid.month, 'long')} bill`}
           </span>
           <button type="button" onClick={() => void undo()} className="min-h-11 font-semibold">
             Undo
@@ -152,8 +156,8 @@ export function BillPage({ billId }: { billId: string }) {
           {history.map((row) => (
             <div
               key={row.month}
-              data-new={justPaid?.month === row.month}
-              className={cx('flex justify-between py-2 text-sm', justPaid?.month === row.month && 'rounded-lg bg-emerald-50 px-2')}
+              data-new={paidMonth?.month === row.month}
+              className={cx('flex justify-between py-2 text-sm', paidMonth?.month === row.month && 'rounded-lg bg-emerald-50 px-2')}
             >
               <span>{monthName(row.month, 'long')} bill</span>
               <span>

@@ -196,7 +196,8 @@ function Ring({
 }
 
 /**
- * Where a month's money went, by category: the same transactions the list shows, added up.
+ * Where a month's money went, by category: the list's transactions added up, except that a bill paid in another
+ * month counts in the month of its bill (so August's internet paid on 3 September adds to August).
  *
  * It reads the month the page is already on, so switching between the list and this is a change of
  * view rather than a change of subject. A category with children opens into its own ring; one without

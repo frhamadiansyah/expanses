@@ -1,4 +1,4 @@
-import { billPill, type BillTone, monthName } from '@expanses/core';
+import { billPill, type BillTone, minorToMajorString, monthName } from '@expanses/core';
 import type { MonthlyBill } from '@expanses/db';
 
 export const isSettled = (bill: MonthlyBill) => bill.state === 'paid' || bill.state === 'skipped';
@@ -76,4 +76,22 @@ export const PILL_CLASS: Record<BillTone, string> = {
 export function pillOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn'>): { text: string; className: string } {
   const pill = billPill({ state: bill.state, days: bill.days }, bill.window, bill.paidOn);
   return { text: pill.text, className: PILL_CLASS[pill.tone] };
+}
+
+/**
+ * A bill's amount as it goes into a form field, in the currency of the account that pays it — the currency it is
+ * parsed back in on save, so a USD bill of 1500 minor reads 15.00 and saves as 15.00. Empty when the amount varies.
+ */
+export function amountInput(amountMinor: number | null, currency: string): string {
+  return amountMinor === null ? '' : minorToMajorString(amountMinor, currency);
+}
+
+/** The toast after recording: the bill by name when there was one, else how many. */
+export function paidText(names: readonly string[]): string {
+  return names.length === 1 ? `Paid ${names[0]}` : `Paid ${names.length} bills`;
+}
+
+/** The toast after a skip. Last month's or next month's bill is named, so the skip is not mistaken for this month's. */
+export function skippedText(name: string, month: string, today: string): string {
+  return month === today.slice(0, 7) ? `Skipped ${name} this month` : `Skipped ${name}’s ${monthName(month, 'long')} bill`;
 }

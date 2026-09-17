@@ -1,4 +1,4 @@
-import { minorToMajorString, ordinal, parseMajor } from '@expanses/core';
+import { ordinal, parseMajor } from '@expanses/core';
 import { saveExpenseTemplate } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useState } from 'react';
@@ -6,6 +6,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
 import { useExpenseTemplates } from '../transactions/queries';
+import { amountInput } from './bill-view';
 
 const WALLET_SUBTYPES = ['bank', 'cash', 'savings', 'credit_card'];
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -44,17 +45,19 @@ export function BillFormPage({ billId }: { billId?: string }) {
 
   // Filled once the bill being edited has arrived; not kept in sync after, so typing is never clobbered.
   useEffect(() => {
-    if (!billId || loaded) return;
+    if (!billId || loaded || !accounts.data) return;
     const bill = (templates.data ?? []).find((t) => t.id === billId);
     if (!bill) return;
     setName(bill.name);
-    setAmount(bill.amountMinor === null ? '' : minorToMajorString(bill.amountMinor, ws.baseCurrency));
+    // Written in the paying account's currency, the one save parses it back in: a USD bill must not read as rupiah.
+    const payer = accounts.data.find((account) => account.id === bill.moneyAccountId);
+    setAmount(amountInput(bill.amountMinor, payer?.currency ?? ws.baseCurrency));
     setCategoryAccountId(bill.categoryAccountId);
     setMoneyAccountId(bill.moneyAccountId);
     setOutDay(String(bill.dayOfMonth));
     setPayBy(String(bill.payByDay ?? ''));
     setLoaded(true);
-  }, [billId, loaded, templates.data, ws.baseCurrency]);
+  }, [billId, loaded, templates.data, accounts.data, ws.baseCurrency]);
 
   async function save(event: FormEvent) {
     event.preventDefault();

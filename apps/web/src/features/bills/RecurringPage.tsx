@@ -7,7 +7,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Money, PageHeader, RoundButton } from '../../ui';
 import { BillRow } from './BillRow';
-import { amountOf, isSettled, sectionsOf, summaryOf } from './bill-view';
+import { amountOf, isSettled, paidText, sectionsOf, skippedText, summaryOf } from './bill-view';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useMonthlyBills } from './queries';
@@ -64,7 +64,7 @@ export function RecurringPage() {
     try {
       await skipBill(database, ws, bill.id, month);
       await invalidate();
-      setToast({ text: `Skipped ${bill.name} this month`, undo: () => unskipBill(database, ws, bill.id, month) });
+      setToast({ text: skippedText(bill.name, month, today), undo: () => unskipBill(database, ws, bill.id, month) });
     } catch (e) {
       setError(e);
     }
@@ -222,15 +222,12 @@ export function RecurringPage() {
           picked={picked}
           today={today}
           onClose={closeSeveral}
-          onPaid={(ids, count) => {
+          onPaid={(ids, names) => {
             setPayingSeveral(false);
             setSelecting(false);
-            const firstId = [...picked][0];
             setPicked(new Set());
-            setToast({
-              text: count === 1 ? `Paid ${rows.find((b) => b.id === firstId)?.name ?? '1 bill'}` : `Paid ${count} bills`,
-              undo: () => undoBillPayments(database, ws, ids),
-            });
+            // Named from what the sheet recorded: its ticks can differ from what was picked on the list.
+            setToast({ text: paidText(names), undo: () => undoBillPayments(database, ws, ids) });
           }}
         />
       )}
@@ -244,7 +241,7 @@ export function RecurringPage() {
           onSkipped={(month) => {
             const b = paying;
             setPaying(null);
-            setToast({ text: `Skipped ${b.name} this month`, undo: () => unskipBill(database, ws, b.id, month) });
+            setToast({ text: skippedText(b.name, month, today), undo: () => unskipBill(database, ws, b.id, month) });
           }}
           onSeeBill={() => navigate({ to: '/bills/$billId', params: { billId: paying.id } })}
         />

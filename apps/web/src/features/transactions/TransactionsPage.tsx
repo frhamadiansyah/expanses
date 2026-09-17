@@ -19,7 +19,7 @@ import { isEditable } from './draft';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
-import { buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
+import { billTagOf, buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { Recurring } from './Recurring';
@@ -619,6 +619,7 @@ export function TransactionsPage() {
     const goal = goalName(tradeByTransaction.get(tx.id)?.goalId ?? tx.goalId ?? null);
     const points = purchasePoints.data?.[tx.id];
     const trade = tradeByTransaction.has(tx.id);
+    const billTag = billTagOf(tx);
     const clickable = !trade && isEditable(tx);
     return (
       <li
@@ -647,6 +648,8 @@ export function TransactionsPage() {
             {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}
             {withDate && (!singleMonth || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {label}
+            {/* Paid in one month for another's bill: listed on the day paid, counted in the budget in its bill month. */}
+            {billTag && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">{billTag}</span>}
           </div>
           <div className="truncate text-xs text-slate-500">
             {tx.description ? `${tx.description} · ` : ''}

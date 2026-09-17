@@ -24,7 +24,13 @@ export function SwipeRow({
   leftAction?: ReactNode;
   className?: string;
 }) {
-  const [x, setX] = useState(0);
+  const [x, setXState] = useState(0);
+  // The latest offset, for the release: a pointerup can arrive before React has rendered the last move.
+  const offset = useRef(0);
+  const setX = (next: number) => {
+    offset.current = next;
+    setXState(next);
+  };
   const [dragging, setDragging] = useState(false);
   const drag = useRef<{ startX: number; startY: number; base: number; moved: boolean; pointer: number } | null>(null);
   const dragged = useRef(false);
@@ -43,7 +49,7 @@ export function SwipeRow({
         onPointerDown={(e) => {
           dragged.current = false;
           if (!enabled) return;
-          drag.current = { startX: e.clientX, startY: e.clientY, base: x, moved: false, pointer: e.pointerId };
+          drag.current = { startX: e.clientX, startY: e.clientY, base: offset.current, moved: false, pointer: e.pointerId };
         }}
         onPointerMove={(e) => {
           const d = drag.current;
@@ -67,17 +73,18 @@ export function SwipeRow({
           setDragging(false);
           if (!d?.moved) {
             // A tap on a row left open closes it, and does nothing else.
-            if (x !== 0) {
+            if (offset.current !== 0) {
               dragged.current = true;
               setX(0);
             }
             return;
           }
           dragged.current = true;
-          if (x > PAY_AT && canRight) {
+          const released = offset.current;
+          if (released > PAY_AT && canRight) {
             setX(0);
             onSwipeRight!();
-          } else setX(x < -OPEN_AT && canLeft ? -REVEAL : 0);
+          } else setX(released < -OPEN_AT && canLeft ? -REVEAL : 0);
         }}
         onPointerCancel={() => {
           drag.current = null;

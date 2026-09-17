@@ -232,3 +232,88 @@ test('a bill not out yet opens later, and can be paid early', async ({ page }) =
   await rowAction(page, 'Housing rent', /^Pay/);
   await expect(page.getByRole('dialog', { name: 'Pay Housing rent' })).toBeVisible();
 });
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+test('last month’s overdue bill paid from its page says so, can be undone, and is tagged in the history', async ({ page }) => {
+  const now = new Date();
+  const earlier = new Date(now.getFullYear(), now.getMonth() - 1, 15, 12);
+  const lastMonth = MONTHS[earlier.getMonth()]!;
+  const thisMonth = MONTHS[now.getMonth()]!;
+  // The bill is set up last month, so last month's bill is owed and, with no pay-by day, overdue by now.
+  await page.clock.setSystemTime(earlier);
+  await addWallet(page, 'BCA Tahapan');
+  await addBill(page, { name: 'Biznet Home', amount: '450000', out: 1 });
+  await page.clock.setSystemTime(now);
+
+  await page.goto('/bills');
+  await expect(row(page, 'Biznet Home')).toContainText('Overdue');
+  await row(page, 'Biznet Home').click();
+  await page.getByRole('button', { name: `Pay ${lastMonth} bill` }).click();
+  const sheet = page.getByRole('dialog', { name: 'Pay Biznet Home' });
+  await expect(sheet.getByLabel('For')).toHaveValue(new RegExp(`-${String(earlier.getMonth() + 1).padStart(2, '0')}$`));
+  await sheet.getByRole('button', { name: 'Record payment' }).click();
+
+  // The page moves on to this month's bill; the confirmation stays with the one just paid.
+  const banner = page.getByTestId('just-paid');
+  await expect(banner).toContainText(/✓ Paid .*450\.000 on/);
+  await expect(banner).toContainText(`${lastMonth} bill`);
+  await expect(page.getByTestId('bill-history').locator('[data-new="true"]')).toContainText(`${lastMonth} bill`);
+  await expect(page.getByTestId('bill-history').locator('[data-new="true"]')).toContainText('450.000');
+  await expect(page.getByRole('button', { name: `Pay ${thisMonth} bill` })).toBeVisible();
+
+  await banner.getByRole('button', { name: 'Undo' }).click();
+  await expect(banner).toHaveCount(0);
+  await expect(page.getByRole('button', { name: `Pay ${lastMonth} bill` })).toBeVisible();
+
+  await page.getByRole('button', { name: `Pay ${lastMonth} bill` }).click();
+  await sheet.getByRole('button', { name: 'Record payment' }).click();
+  await expect(banner).toContainText(`${lastMonth} bill`);
+
+  // Listed on the day it was paid, with a tag saying whose month it was.
+  await page.goto('/transactions');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Biznet Home' }).first()).toContainText(`${lastMonth.slice(0, 3)} bill`);
+});
+
+test('Pay several names the bill it recorded, not the one first picked', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await addBill(page, { name: 'Phone', amount: '150000' });
+  await addBill(page, { name: 'Internet', amount: '395000' });
+  await page.getByRole('button', { name: 'Select bills to pay' }).click();
+  await page.getByRole('checkbox', { name: 'Select Phone' }).click();
+  await page.getByRole('checkbox', { name: 'Select Internet' }).click();
+  await page.getByRole('button', { name: /^Pay 2 selected/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  await sheet.getByRole('checkbox', { name: 'Pay Phone' }).click();
+  await sheet.getByRole('button', { name: 'Record 1 bill' }).click();
+
+  await expect(toast(page)).toContainText('Paid Internet');
+  await expect(row(page, 'Internet')).toContainText('✓ Paid');
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(row(page, 'Internet')).not.toContainText('✓ Paid');
+  await expect(row(page, 'Phone')).not.toContainText('✓ Paid');
+});
+
+test('a bill paid from a dollar account keeps its amount through an edit', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('Wise USD');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Currency').selectOption('USD');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Wise USD', exact: true })).toBeVisible();
+
+  await page.goto('/bills/new');
+  await page.getByLabel('Name', { exact: true }).fill('Cloud storage');
+  await page.getByLabel('Amount', { exact: true }).fill('15');
+  await page.getByLabel('Category').selectOption({ index: 1 });
+  await page.getByLabel('Paid from').selectOption({ label: 'Wise USD' });
+  await page.getByRole('button', { name: 'Save' }).click();
+  await row(page, 'Cloud storage').click();
+
+  await page.getByRole('link', { name: 'Edit bill' }).click();
+  await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('15.00');
+  await page.getByRole('button', { name: 'Save' }).click();
+  // Formatted the Indonesian way, "US$15,00"; the bug read it as rupiah and saved "US$1.500,00".
+  await expect(page.getByTestId('bill-hero')).toContainText(/US\$\s?15,00/);
+});
