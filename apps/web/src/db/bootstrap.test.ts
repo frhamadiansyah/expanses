@@ -1,5 +1,17 @@
 import { findEntry } from '@expanses/catalog';
-import { applyCatalogEntry, createAccount, createDatabase, createWorkspace, getCatalogState, listAccounts, listCategorySets, listEarnRules, migrate } from '@expanses/db';
+import {
+  applyCatalogEntry,
+  createAccount,
+  createDatabase,
+  createWorkspace,
+  getCatalogState,
+  inBook,
+  listAccounts,
+  listCategorySets,
+  listEarnRules,
+  migrate,
+  personalBook,
+} from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it } from 'vitest';
 import { openAppDb } from './bootstrap';
@@ -20,7 +32,7 @@ describe('openAppDb', () => {
       expect(unmappedKeys).toHaveLength(7);
 
       const app = await openAppDb(database);
-      expect(app.ws).toEqual(ws);
+      expect(app.ws).toEqual(inBook(ws, (await personalBook(database, ws)).id));
       expect((await listAccounts(database, ws)).find((a) => a.name === 'Groceries')?.systemKey).toBe('household.groceries');
       expect(await getCatalogState(database, ws, programId)).toMatchObject({ entryVersion: findEntry('bca-sq-krisflyer-visa-signature')!.entryVersion, status: 'linked' });
       for (const rule of await listEarnRules(database, ws, programId)) expect(rule.match.excludeCategoryIds).toHaveLength(7);
