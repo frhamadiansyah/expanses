@@ -42,7 +42,7 @@ test('the budget page puts the budget first and says what is left or over under 
   // The budget leads the row; under it, what went out with its share, and how far past the budget it went.
   await expect(food).toContainText('300.000');
   await expect(food).toContainText('500.000 · 167%');
-  await expect(food).toContainText('200.000 over');
+  await expect(food).toContainText(/Over Rp\s?200\.000/);
 
   // A category with no budget keeps the shape: its spend, and no share of a budget that does not exist.
   const transport = page.getByTestId('report-row').filter({ hasText: 'Transportation' });

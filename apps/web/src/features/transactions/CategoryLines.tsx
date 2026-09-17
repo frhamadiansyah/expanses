@@ -34,7 +34,7 @@ export function ShareLine({
 }
 
 /**
- * A category read against what was set aside for it: the figure set aside first, then what went out and what is
+ * A category read against what was set aside for it: the figure set aside first, then what was spent and what is
  * left under it, against the two ends of the bar.
  */
 export function CapLine({
@@ -72,12 +72,12 @@ export function CapLine({
       </span>
       <span className={cx('tabular mt-1 ml-[22px] flex items-baseline gap-2 text-xs text-slate-500', chevron ? 'mr-7' : 'mr-0')}>
         <span className={cx(over && 'font-semibold text-red-700')}>
-          {formatMinor(amountMinor, currency)}
+          Spent {formatMinor(amountMinor, currency)}
           {capped && ` · ${share(amountMinor, capMinor)}%`}
         </span>
         {capped && (
           <span className={cx('ml-auto', over && 'font-semibold text-red-700')}>
-            {over ? `${formatMinor(amountMinor - capMinor, currency)} over` : `${formatMinor(capMinor - amountMinor, currency)} left`}
+            {over ? `Over ${formatMinor(amountMinor - capMinor, currency)}` : `Left ${formatMinor(capMinor - amountMinor, currency)}`}
           </span>
         )}
       </span>
