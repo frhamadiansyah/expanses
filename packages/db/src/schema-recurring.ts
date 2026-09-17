@@ -14,3 +14,12 @@ export const expenseTemplates = sqliteTable('expense_templates', {
   archivedAt: text('archived_at'),
   createdAt: text('created_at').notNull(),
 });
+
+/** A month in which a recurring bill was deliberately not paid, so it stops being owed. */
+export const billSkips = sqliteTable('bill_skips', {
+  workspaceId: text('workspace_id').notNull(),
+  templateId: text('template_id').notNull(),
+  /** YYYY-MM: a skip belongs to a month rather than to a day. */
+  month: text('month').notNull(),
+  createdAt: text('created_at').notNull(),
+});

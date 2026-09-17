@@ -22,6 +22,7 @@ import { LoansPage } from '../features/loans/LoansPage';
 import { CoretaxPage } from '../features/coretax/CoretaxPage';
 import { OverviewPage } from '../features/networth/OverviewPage';
 import { TradesPage } from '../features/networth/TradesPage';
+import { BillsPage } from '../features/transactions/BillsPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { Layout } from './Layout';
 
@@ -59,6 +60,7 @@ const routeTree = rootRoute.addChildren([
     },
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/budget', component: BudgetPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/bills', component: BillsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators', component: CalculatorsPage }),
