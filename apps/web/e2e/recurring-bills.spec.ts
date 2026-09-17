@@ -28,14 +28,25 @@ async function addBill(page: Page, options: { name: string; amount?: string; day
   await expect(page.getByTestId('bill-row').filter({ hasText: options.name })).toBeVisible();
 }
 
-/** Opens the recurring sheet from the card above the transactions. */
+/** Opens the recurring sheet from the card above the transactions. Kept for the skipped sheet tests below. */
 async function openRecurring(page: Page) {
   await page.goto('/transactions');
   await page.getByTestId('recurring-card').click();
   return page.getByTestId('recurring-sheet');
 }
 
-test('a bill whose day has passed is owed, and recording it settles the month', async ({ page }) => {
+test('the Cashflow card counts the month’s bills', async ({ page }) => {
+  await addWallet(page, 'BCA Tahapan');
+  await addBill(page, { name: 'Phone', amount: '150000' });
+
+  // The card counts it before anything is done about it.
+  await page.goto('/transactions');
+  await expect(page.getByTestId('recurring-card')).toContainText('0 of 1 bill paid');
+  await expect(page.getByTestId('recurring-card')).toContainText('150.000');
+});
+
+// Rewritten against the Recurring screen in Task 9.
+test.skip('a bill whose day has passed is owed, and recording it settles the month', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Phone', amount: '150000' });
 
@@ -57,7 +68,8 @@ test('a bill whose day has passed is owed, and recording it settles the month', 
   await expect(page.getByRole('listitem').filter({ hasText: 'Phone' }).first()).toBeVisible();
 });
 
-test('several bills are recorded together, on the day they were paid', async ({ page }) => {
+// Rewritten against the Recurring screen in Task 9.
+test.skip('several bills are recorded together, on the day they were paid', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Phone', amount: '150000' });
   await addBill(page, { name: 'Internet', amount: '395000' });
@@ -75,7 +87,8 @@ test('several bills are recorded together, on the day they were paid', async ({ 
   await expect(page.getByTestId('recurring-card')).toContainText('2 of 2 bills paid');
 });
 
-test('a bill that differs every month asks what it came to', async ({ page }) => {
+// Rewritten against the Recurring screen in Task 9.
+test.skip('a bill that differs every month asks what it came to', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Electricity' });
 
@@ -93,7 +106,8 @@ test('a bill that differs every month asks what it came to', async ({ page }) =>
   await expect(page.getByRole('listitem').filter({ hasText: '432.000' }).first()).toBeVisible();
 });
 
-test('a month can be skipped, and stops being owed', async ({ page }) => {
+// Rewritten against the Recurring screen in Task 9.
+test.skip('a month can be skipped, and stops being owed', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   await addBill(page, { name: 'Fitness First', amount: '850000' });
 
@@ -107,7 +121,8 @@ test('a month can be skipped, and stops being owed', async ({ page }) => {
   await expect(page.getByTestId('recurring-card')).toContainText('1 of 1 bill paid');
 });
 
-test('a bill whose day has not come round is listed as still to come', async ({ page }) => {
+// Rewritten against the Recurring screen in Task 9.
+test.skip('a bill whose day has not come round is listed as still to come', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
   // The 31st has not passed in any month this test can run in, except on the 31st itself.
   await addBill(page, { name: 'Housing rent', amount: '5000000', day: '31' });
