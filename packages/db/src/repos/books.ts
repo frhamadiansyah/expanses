@@ -1,0 +1,200 @@
+import { uuidv7 } from '@expanses/core';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import type { WorkspaceContext } from '../context';
+import type { Database, Db } from '../database';
+import { accounts, settings } from '../schema';
+import { bookCategories, books } from '../schema-books';
+import { NOT_IN_A_SET } from '../schema-category-sets';
+
+export type BookKind = 'personal' | 'business' | 'family' | 'shared';
+
+export interface BookRow {
+  id: string;
+  name: string;
+  kind: BookKind;
+  baseCurrency: string;
+  countEventsInBudget: boolean;
+  archivedAt: string | null;
+}
+
+export class BookError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BookError';
+  }
+}
+
+const toRow = (row: typeof books.$inferSelect): BookRow => ({
+  id: row.id,
+  name: row.name,
+  kind: row.kind,
+  baseCurrency: row.baseCurrency,
+  countEventsInBudget: row.countEventsInBudget === 1,
+  archivedAt: row.archivedAt,
+});
+
+/*
+ * A database still stopped before migration 0042 has no book tables at all. Every write below is skipped in that
+ * case so those databases keep working exactly as before books existed (the same reason cards, points and the
+ * rest read the workspace whole). A positive result is memoised per database handle — the table never goes away
+ * once created — but a negative one is not, since migrate() may run later on the same handle.
+ */
+const booksTableExists = new WeakMap<Db, boolean>();
+
+export async function hasBooks(tx: Db): Promise<boolean> {
+  if (booksTableExists.get(tx)) return true;
+  const rows = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'books'`);
+  const exists = rows.length > 0;
+  if (exists) booksTableExists.set(tx, true);
+  return exists;
+}
+
+export async function listBooks(database: Database, ws: WorkspaceContext): Promise<BookRow[]> {
+  const rows = await database.db
+    .select()
+    .from(books)
+    .where(and(eq(books.workspaceId, ws.workspaceId), isNull(books.archivedAt)))
+    .orderBy(asc(books.sortOrder), asc(books.createdAt));
+  return rows.map(toRow);
+}
+
+/** The first book: every workspace has one, made with it or by migration 0042. */
+export async function personalBook(database: Database, ws: WorkspaceContext): Promise<BookRow> {
+  const [first] = await listBooks(database, ws);
+  if (!first) throw new BookError('This workspace has no books');
+  return first;
+}
+
+/**
+ * The first open book's id, read inside a transaction (personalBook reads through database.db, which would wait on
+ * the transaction's own lock). Null when the workspace has no books yet.
+ */
+export async function personalBookIdTx(tx: Db, workspaceId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: books.id })
+    .from(books)
+    .where(and(eq(books.workspaceId, workspaceId), isNull(books.archivedAt)))
+    .orderBy(asc(books.sortOrder), asc(books.createdAt))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/** Makes the Personal book for a workspace being created. Used inside createWorkspace's transaction. */
+export async function createPersonalBookTx(tx: Db, workspaceId: string, baseCurrency: string, createdAt: string): Promise<string> {
+  const id = uuidv7();
+  await tx.insert(books).values({ id, workspaceId, name: 'Personal', kind: 'personal', baseCurrency, countEventsInBudget: 0, sortOrder: 0, archivedAt: null, createdAt });
+  return id;
+}
+
+export async function bookOfCategory(tx: Db, categoryAccountId: string): Promise<string | null> {
+  const [row] = await tx.select({ bookId: bookCategories.bookId }).from(bookCategories).where(eq(bookCategories.categoryAccountId, categoryAccountId));
+  return row?.bookId ?? null;
+}
+
+export async function createBook(
+  database: Database,
+  ws: WorkspaceContext,
+  input: { name: string; kind: BookKind; baseCurrency: string; countEventsInBudget?: boolean; copyCategoriesFrom?: string | null },
+): Promise<string> {
+  const name = input.name.trim();
+  if (!name) throw new BookError('A book needs a name');
+  const id = uuidv7();
+  const now = new Date().toISOString();
+
+  await database.transaction(async (tx) => {
+    const [{ count }] = (await tx.select({ count: sql<number>`count(*)` }).from(books).where(eq(books.workspaceId, ws.workspaceId))) as [{ count: number }];
+    await tx.insert(books).values({
+      id,
+      workspaceId: ws.workspaceId,
+      name,
+      kind: input.kind,
+      baseCurrency: input.baseCurrency,
+      countEventsInBudget: input.countEventsInBudget ? 1 : 0,
+      sortOrder: Number(count),
+      archivedAt: null,
+      createdAt: now,
+    });
+    if (!input.copyCategoriesFrom) return;
+
+    // Only a book of this same workspace can be copied from, and only while it is still open — an id from
+    // another workspace, or one that has been archived, refuses rather than silently copying nothing (or,
+    // without the workspace check, another workspace's categories).
+    const [sourceBook] = await tx
+      .select({ id: books.id })
+      .from(books)
+      .where(and(eq(books.id, input.copyCategoriesFrom), eq(books.workspaceId, ws.workspaceId), isNull(books.archivedAt)));
+    if (!sourceBook) throw new BookError('The book to copy categories from was not found in this workspace');
+
+    // A copy is a new tree: new ids, parents remapped, system keys kept so card earning rules still apply.
+    // Category-set members are excluded (NOT_IN_A_SET, as ensureCategoryKeys uses): they are event categories,
+    // not part of the book's regular tree, even though a database migrated by 0042 filed them in a book too.
+    const source = (
+      await tx
+        .select()
+        .from(accounts)
+        .innerJoin(bookCategories, eq(bookCategories.categoryAccountId, accounts.id))
+        .where(
+          and(
+            eq(bookCategories.bookId, input.copyCategoriesFrom),
+            eq(bookCategories.workspaceId, ws.workspaceId),
+            eq(accounts.workspaceId, ws.workspaceId),
+            isNull(accounts.archivedAt),
+            NOT_IN_A_SET,
+          ),
+        )
+    ).map(({ accounts: a }) => a);
+    const sourceIds = new Set(source.map((a) => a.id));
+    const newIds = new Map(source.map((a) => [a.id, uuidv7()]));
+
+    // Parents must be inserted (and their new id known) before children that reference them via parent_id, a
+    // foreign key. Order is not guaranteed by the query above, so insert in dependency order rather than row
+    // order. A parent excluded from the copy (archived, or claimed by a category set) never arrives, so its
+    // child is ready immediately too and is filed at the top level instead of waiting forever.
+    const remaining = [...source];
+    const insertedOldIds = new Set<string>();
+    while (remaining.length) {
+      const readyIndex = remaining.findIndex((a) => !a.parentId || insertedOldIds.has(a.parentId) || !sourceIds.has(a.parentId));
+      // Every parent a remaining row could be waiting on is itself in source, so this can only be -1 if the
+      // tree has a cycle, which createAccountTx never allows (a parent must exist before its child does).
+      if (readyIndex === -1) throw new BookError('Category tree has a cycle it cannot copy');
+      const a = remaining.splice(readyIndex, 1)[0]!;
+      const parentId = a.parentId && newIds.has(a.parentId) ? newIds.get(a.parentId)! : null;
+      await tx.insert(accounts).values({ ...a, id: newIds.get(a.id)!, workspaceId: ws.workspaceId, parentId, createdAt: now });
+      await tx.insert(bookCategories).values({ categoryAccountId: newIds.get(a.id)!, workspaceId: ws.workspaceId, bookId: id });
+      insertedOldIds.add(a.id);
+    }
+  });
+  return id;
+}
+
+export async function renameBook(database: Database, ws: WorkspaceContext, bookId: string, name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new BookError('A book needs a name');
+  await database.db.update(books).set({ name: trimmed }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+}
+
+export async function archiveBook(database: Database, ws: WorkspaceContext, bookId: string): Promise<void> {
+  const open = await listBooks(database, ws);
+  if (open.length <= 1) throw new BookError('The last book cannot be archived');
+  await database.db.update(books).set({ archivedAt: new Date().toISOString() }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+}
+
+const activeKey = (ws: WorkspaceContext) => `active_book:${ws.workspaceId}`;
+
+/** The book the app last had open, or Personal when it was never set or has since been archived. */
+export async function activeBookId(database: Database, ws: WorkspaceContext): Promise<string> {
+  const open = await listBooks(database, ws);
+  const [row] = await database.db.select({ value: settings.value }).from(settings).where(eq(settings.key, activeKey(ws)));
+  const remembered = open.find((book) => book.id === row?.value);
+  return (remembered ?? open[0])!.id;
+}
+
+export async function setActiveBook(database: Database, ws: WorkspaceContext, bookId: string): Promise<void> {
+  await database.db.insert(settings).values({ key: activeKey(ws), value: bookId }).onConflictDoUpdate({ target: settings.key, set: { value: bookId } });
+}
+
+/** Category ids filed in a book, for narrowing owner-wide queries to it. */
+export async function categoryIdsOfBook(database: Database, bookId: string): Promise<string[]> {
+  const rows = await database.db.select({ id: bookCategories.categoryAccountId }).from(bookCategories).where(eq(bookCategories.bookId, bookId));
+  return rows.map((row) => row.id);
+}

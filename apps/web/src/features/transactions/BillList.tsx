@@ -2,7 +2,7 @@ import { minorToMajorString, parseMajor } from '@expanses/core';
 import { deleteExpenseTemplate, saveExpenseTemplate } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Money, Select } from '../../ui';
 import { useExpenseTemplates } from './queries';
 
@@ -23,7 +23,9 @@ export function BillList() {
   const [day, setDay] = useState('1');
   const [error, setError] = useState<unknown>(null);
 
-  const categories = (accounts.data ?? []).filter((account) => account.kind === 'expense' && account.subtype === 'category');
+  const inOpenBook = useInOpenBook();
+  // A bill is recorded into the open book, so it picks from that book's categories.
+  const categories = (accounts.data ?? []).filter((account) => account.kind === 'expense' && account.subtype === 'category' && inOpenBook(account));
   const wallets = (accounts.data ?? []).filter((account) => WALLET_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
   const bills = templates.data ?? [];
   const nameOf = (id: string) => (accounts.data ?? []).find((account) => account.id === id)?.name ?? '';

@@ -15,7 +15,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { isCategoryOf, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { isCategoryOf, useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, PageHeader } from '../../ui';
 import { categoryMcc } from './category-mcc';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
@@ -28,8 +28,9 @@ export function CategoriesPage() {
   const [error, setError] = useState<unknown>(null);
 
   const membership = useCategorySetMembership().data ?? {};
-  // The monthly tree only: a set's categories are managed on the event that draws on them.
-  const categories = (accounts.data ?? []).filter(isCategoryOf(kind)).filter((account) => membership[account.id] === undefined);
+  const inOpenBook = useInOpenBook();
+  // The monthly tree only, and only the open book's: a set's categories are managed on the event that draws on them.
+  const categories = (accounts.data ?? []).filter(isCategoryOf(kind)).filter((account) => membership[account.id] === undefined && inOpenBook(account));
   const sets = useCategorySets().data ?? [];
   const overrides = useQuery({ queryKey: ['category-mccs', ws.workspaceId], queryFn: () => listCategoryMccs(database, ws) });
   const allCategories = (accounts.data ?? []).filter((a) => a.subtype === 'category');

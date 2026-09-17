@@ -38,6 +38,9 @@ export async function categoryTotalsBetween(
         gte(transactions.occurredOn, from),
         lte(transactions.occurredOn, to),
         ...(opts.excludeEvents ? [isNull(transactions.eventId)] : []),
+        // Narrowed to one book when the context names one; the whole workspace otherwise. Set categories are filed in
+        // book_categories too (into their set's book), so this one path covers them.
+        ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
       ),
     )
     .groupBy(entries.accountId);

@@ -76,7 +76,8 @@ export function Donut({
   // The drawing is the ring plus what is written against it, so it is wider than it is tall: the names
   // need room at the sides, and cutting them to fit a square is what forces "Proper…" on a plain word.
   const size = 400;
-  const height = 306;
+  // Just tall enough for a name under the lowest label and a share over the highest: no air above the ring.
+  const height = 290;
   const centre = size / 2;
   const middleOf = height / 2;
   const radius = 88;

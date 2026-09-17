@@ -15,8 +15,11 @@ const MISSING = 'bg-amber-50 ring-1 ring-amber-400 ring-inset';
 
 export type RowOptions = ReturnType<typeof buildRowOptions>;
 
-/** The choices for the paid-with and category cells. Built once per list, not once per row. */
-export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly CardRow[]) {
+/**
+ * The choices for the paid-with and category cells. Built once per list, not once per row. Categories are narrowed
+ * by `inOpenBook` (the open book's); money accounts never are.
+ */
+export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly CardRow[], inOpenBook: (a: AccountRow) => boolean = () => true) {
   const money = accounts.filter(isMoneyAccount);
   const payments = paymentOptions(money, cards);
   const paid: ComboOption[] = payments.map((option) => ({
@@ -25,7 +28,7 @@ export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly
     meta: option.last4 ?? undefined,
     keywords: option.holderName ?? undefined,
   }));
-  const categoryRows = accounts.filter(isCategoryOf('expense'));
+  const categoryRows = accounts.filter((a) => isCategoryOf('expense')(a) && inOpenBook(a));
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const categories: ComboOption[] = categoryRows
     .map((a) => ({

@@ -3,7 +3,9 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { bookCategories } from '../schema-books';
 import { NOT_IN_A_SET } from '../schema-category-sets';
+import { hasBooks, personalBookIdTx } from './books';
 
 type AccountRow = typeof accounts.$inferSelect;
 
@@ -58,6 +60,11 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
         createdAt: now,
       };
       await tx.insert(accounts).values(row);
+      // A default recreated on open joins the Personal book, where the rest of the default tree lives.
+      if (await hasBooks(tx)) {
+        const bookId = await personalBookIdTx(tx, ws.workspaceId);
+        if (bookId) await tx.insert(bookCategories).values({ categoryAccountId: row.id, workspaceId: ws.workspaceId, bookId });
+      }
       rows.push(row);
       byKey.set(key, row);
       created.push(key);

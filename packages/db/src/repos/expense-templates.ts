@@ -109,7 +109,15 @@ export async function listExpenseTemplates(database: Database, ws: WorkspaceCont
   const rows = await database.db
     .select()
     .from(expenseTemplates)
-    .where(and(eq(expenseTemplates.workspaceId, ws.workspaceId), sql`${expenseTemplates.archivedAt} IS NULL`))
+    .where(
+      and(
+        eq(expenseTemplates.workspaceId, ws.workspaceId),
+        sql`${expenseTemplates.archivedAt} IS NULL`,
+        // One book's bills when the context names one; every bill in the workspace otherwise. dueExpenseTemplates,
+        // committedByCategory and monthlyBills all build on this list, so narrowing here narrows them too.
+        ...(ws.bookId ? [sql`${expenseTemplates.categoryAccountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+      ),
+    )
     .orderBy(asc(expenseTemplates.dayOfMonth), asc(expenseTemplates.createdAt));
   return rows.map(toRow);
 }

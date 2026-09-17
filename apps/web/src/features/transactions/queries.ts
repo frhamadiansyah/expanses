@@ -5,12 +5,12 @@ import { useApp } from '../../app/context';
 
 export function useExpenseTemplates() {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['expense-templates', ws.workspaceId], queryFn: () => listExpenseTemplates(database, ws) });
+  return useQuery({ queryKey: ['expense-templates', ws.workspaceId, ws.bookId ?? null], queryFn: () => listExpenseTemplates(database, ws) });
 }
 
 /** Bills whose day has passed this month with nothing recorded against them. Asked when the page opens. */
 export function useDueBills() {
   const { database, ws } = useApp();
   const today = isoDate();
-  return useQuery({ queryKey: ['bills-due', ws.workspaceId, today], queryFn: () => dueExpenseTemplates(database, ws, today) });
+  return useQuery({ queryKey: ['bills-due', ws.workspaceId, ws.bookId ?? null, today], queryFn: () => dueExpenseTemplates(database, ws, today) });
 }

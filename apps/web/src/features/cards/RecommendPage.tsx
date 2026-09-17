@@ -92,7 +92,7 @@ export function RecommendPage() {
           </Field>
           <Field label="Category">
             <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <CategoryOptions accounts={all} kind="expense" />
+              <CategoryOptions ownerWide accounts={all} kind="expense" />
             </Select>
           </Field>
           <Field label="Merchant" hint={merchantHint}>

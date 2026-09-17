@@ -1,5 +1,5 @@
 import { uuidv7 } from '@expanses/core';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
@@ -144,7 +144,13 @@ export async function listBudgets(database: Database, ws: WorkspaceContext, mont
   const rows = await database.db
     .select({ id: budgets.id, categoryAccountId: budgets.categoryAccountId, amountMinor: budgets.amountMinor })
     .from(budgets)
-    .where(eq(budgets.workspaceId, ws.workspaceId));
+    .where(
+      and(
+        eq(budgets.workspaceId, ws.workspaceId),
+        // One book's caps when the context names one; every cap in the workspace otherwise.
+        ...(ws.bookId ? [sql`${budgets.categoryAccountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+      ),
+    );
 
   const overrides = await database.db
     .select({ budgetId: budgetOverrides.budgetId, amountMinor: budgetOverrides.amountMinor })

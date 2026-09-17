@@ -3,7 +3,9 @@ import { asc, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, auditLog, workspaceMembers, workspaces } from '../schema';
+import { bookCategories } from '../schema-books';
 import { DEFAULT_CATEGORIES, SYSTEM_ACCOUNTS } from '../seed';
+import { createPersonalBookTx, hasBooks } from './books';
 
 export type WorkspaceType = 'personal' | 'shared' | 'business' | 'travel';
 export type WorkspaceRow = typeof workspaces.$inferSelect;
@@ -40,6 +42,16 @@ export async function createWorkspace(
     await tx.insert(workspaceMembers).values({ workspaceId: id, userId: LOCAL_USER_ID, role: 'owner' });
     await tx.insert(accounts).values(rows);
     await tx.insert(auditLog).values({ id: uuidv7(), workspaceId: id, action: 'create', entity: 'workspace', entityId: id, payloadJson: JSON.stringify(input), createdAt: now });
+
+    // Every workspace gets a Personal book holding its categories. Skipped on a database still stopped before
+    // migration 0042, which has no book tables yet.
+    if (await hasBooks(tx)) {
+      const bookId = await createPersonalBookTx(tx, id, input.baseCurrency, now);
+      const categoryRows = rows.filter((row) => row.kind === 'income' || row.kind === 'expense');
+      if (categoryRows.length) {
+        await tx.insert(bookCategories).values(categoryRows.map((row) => ({ categoryAccountId: row.id!, workspaceId: id, bookId })));
+      }
+    }
   });
 
   return { workspaceId: id, baseCurrency: input.baseCurrency };

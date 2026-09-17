@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { type AccountRow, listAccounts, nativeBalances, resolveRates } from '@expanses/db';
+import { type AccountRow, categoryIdsOfBook, listAccounts, nativeBalances, resolveRates } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useApp } from '../app/context';
@@ -13,6 +13,26 @@ export function useAccounts() {
     queryKey: ['accounts', ws.workspaceId],
     queryFn: () => listAccounts(database, ws, { includeArchived: true }),
   });
+}
+
+/** The categories filed in the open book. Disabled when no book is open, which reads the whole workspace. */
+export function useBookCategoryIds() {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['book-categories', ws.workspaceId, ws.bookId],
+    queryFn: async () => new Set(await categoryIdsOfBook(database, ws.bookId!)),
+    enabled: ws.bookId !== undefined,
+  });
+}
+
+/**
+ * A test for "this category is in the open book", for the screens that speak for one book. Only income and expense
+ * lists go through it — money accounts are shared by every book. Until the ids arrive (or with no book open) every
+ * category passes, so a picker is never briefly empty.
+ */
+export function useInOpenBook(): (a: AccountRow) => boolean {
+  const ids = useBookCategoryIds().data;
+  return useCallback((a: AccountRow) => !ids || ids.has(a.id), [ids]);
 }
 
 export function useBalances(asOf?: string) {

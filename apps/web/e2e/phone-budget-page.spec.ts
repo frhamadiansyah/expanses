@@ -15,7 +15,7 @@ async function spend(page: Page, what: string, category: string, amount: string)
   await expect(sheet).toHaveCount(0);
 }
 
-test('the budget page puts the budget first and says what is left or over under it', async ({ page }) => {
+test('a budget row leads with what is left or over, then what was spent and its share of the budget', async ({ page }) => {
   await page.goto('/accounts');
   await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
   await page.getByLabel('Type').selectOption('bank');
@@ -39,10 +39,10 @@ test('the budget page puts the budget first and says what is left or over under 
   await page.getByTestId('see-categories').click();
 
   const food = page.getByTestId('report-row').filter({ hasText: 'Food and beverage' });
-  // The budget leads the row; under it, what went out with its share, and how far past the budget it went.
-  await expect(food).toContainText('300.000');
-  await expect(food).toContainText('500.000 · 167%');
-  await expect(food).toContainText('200.000 over');
+  // How far past the budget leads the row; under it, what was spent and its share of the budget.
+  await expect(food).toContainText(/Rp\s?200\.000 over/);
+  await expect(food).toContainText(/Spent Rp\s?500\.000/);
+  await expect(food).toContainText(/167% of Rp\s?300\.000/);
 
   // A category with no budget keeps the shape: its spend, and no share of a budget that does not exist.
   const transport = page.getByTestId('report-row').filter({ hasText: 'Transportation' });

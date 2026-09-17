@@ -1,12 +1,14 @@
 import { CATALOG } from '@expanses/catalog';
 import { isoDate } from '@expanses/core';
 import {
+  activeBookId,
   contextOf,
   createDatabase,
   createWorkspace,
   type Database,
   ensureCategoryKeys,
   ensureDefaultCategorySets,
+  inBook,
   listWorkspaces,
   migrate,
   syncLinkedPrograms,
@@ -38,7 +40,9 @@ export async function openAppDb(database: Database): Promise<AppDb> {
     // A bad bundled entry must not stop the app opening; linked cards keep their current terms until the next open.
     console.warn('Catalogue sync failed', error);
   }
-  return { database, ws, workspaceName: workspace!.name };
+  // The set of books last open, or Personal. Owner-level screens ignore it; book-scoped ones read it.
+  const opened = inBook(ws, await activeBookId(database, ws));
+  return { database, ws: opened, workspaceName: workspace!.name };
 }
 
 export async function bootstrap(): Promise<AppDb> {

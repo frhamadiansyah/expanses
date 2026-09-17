@@ -1,5 +1,5 @@
 import { addMonths, displayAmount, isoDate, lastNMonths, monthOf, monthRange } from '@expanses/core';
-import { categoryTotalsBetween, expiringSoonAcross, nativeBalances, netWorthAt } from '@expanses/db';
+import { categoryTotalsBetween, expiringSoonAcross, nativeBalances, netWorthAt, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
@@ -51,10 +51,12 @@ export function DashboardPage() {
     queryFn: async () => {
       const cur = monthRange(thisMonth);
       const prev = monthRange(addMonths(thisMonth, -1));
+      // The dashboard speaks for the owner: every book's spending and income together.
+      const owner = ownerScope(ws);
       return {
-        spending: sum(await categoryTotalsBetween(database, ws, 'expense', cur.from, cur.to)),
-        income: sum(await categoryTotalsBetween(database, ws, 'income', cur.from, cur.to)),
-        lastSpending: sum(await categoryTotalsBetween(database, ws, 'expense', prev.from, prev.to)),
+        spending: sum(await categoryTotalsBetween(database, owner, 'expense', cur.from, cur.to)),
+        income: sum(await categoryTotalsBetween(database, owner, 'income', cur.from, cur.to)),
+        lastSpending: sum(await categoryTotalsBetween(database, owner, 'expense', prev.from, prev.to)),
       };
     },
   });

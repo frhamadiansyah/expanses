@@ -57,7 +57,7 @@ test('an event reads like Cashflow: where it went, and a swipe to what it planne
   // Turned to the plan, the rows read each category against what was planned for it.
   await sheet.getByRole('button', { name: 'Against the plan' }).click();
   const lodging = page.getByTestId('event-detail-sheet');
-  await expect(lodging).toContainText('900.000 over');
+  await expect(lodging).toContainText(/Rp\s?900\.000 over/);
   await expect(sheet).toContainText('Over the plan by');
 
   // The event's own history sits under it.
