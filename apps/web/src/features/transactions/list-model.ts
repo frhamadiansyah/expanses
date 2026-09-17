@@ -1,4 +1,4 @@
-import { dayNet, matchesSearch } from '@expanses/core';
+import { dayNet, matchesSearch, parsePeriod } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { classify } from './classify';
 
@@ -43,7 +43,7 @@ export interface ListFilters {
   /** '' for any; a category includes everything filed under it. */
   cat: string;
   type: 'all' | 'expense' | 'income' | 'transfer';
-  /** 'all', or YYYY-MM. Recorded rows are already loaded for the month; drafts are filtered here. */
+  /** The period on show: 'all', YYYY-MM, or any other period. Recorded rows are already loaded for it; drafts are filtered here. */
   month: string;
   showDeleted: boolean;
   onlyDrafts: boolean;
@@ -158,7 +158,10 @@ export function filterRows(rows: readonly ListRow[], f: ListFilters, accounts: r
     if (row.deleted && !f.showDeleted) return false;
     // A draft with no date yet is never hidden by the month it cannot be placed in, and asking for
     // what is not recorded shows all of it, whichever month it belongs to.
-    if (f.month !== 'all' && !f.onlyDrafts && row.date && !row.date.startsWith(f.month)) return false;
+    if (f.month !== 'all' && !f.onlyDrafts && row.date) {
+      const period = parsePeriod(f.month);
+      if (period?.from && (row.date < period.from || row.date > period.to!)) return false;
+    }
     if (f.type === 'expense' && row.type !== 'expense') return false;
     if (f.type === 'income' && row.type !== 'income') return false;
     if (f.type === 'transfer' && !['transfer', 'debt', 'opening'].includes(row.type)) return false;

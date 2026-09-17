@@ -81,6 +81,11 @@ describe('filterRows', () => {
     expect(ids({ showDeleted: true })).toContain(voided.id);
   });
 
+  it('keeps any period, not only a month', () => {
+    expect(ids({ month: '2026-Q3' })).toContain(august.id);
+    expect(ids({ month: '2026-09-01..2026-12-31' })).not.toContain(august.id);
+  });
+
   it('keeps a month, but never hides an undated draft or the not-recorded list', () => {
     expect(ids({ month: '2026-08' })).toEqual([august.id]);
     const undated = buildRows([august], [draft({ occurredOn: 'yesterday' })], accounts, cards);

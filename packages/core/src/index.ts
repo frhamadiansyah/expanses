@@ -47,6 +47,7 @@ export {
 } from './ledger/lines';
 export { displayAmount, netWorth, type NetWorthAccount, type NetWorthResult } from './ledger/balances';
 export { addMonths, daysInMonth, isoDate, lastNMonths, monthOf, monthRange } from './reports/periods';
+export { type Period, type PeriodKind, parsePeriod, periodLabel, stepPeriod, weekOf, weeksOfMonth } from './reports/view-period';
 export {
   categoryAncestors,
   type CategoryAmount,
