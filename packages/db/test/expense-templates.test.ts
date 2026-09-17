@@ -274,6 +274,14 @@ describe('pay-by day', () => {
     expect(await context.database.db.values(sql`SELECT count(*) FROM bill_windows`)).toEqual([[1]]);
   });
 
+  it('writes the bill and its window together, or neither', async () => {
+    const context = await household();
+    // A window that cannot be written must not leave a bill behind with no pay-by day and no first month.
+    await context.database.execScript(`CREATE TRIGGER no_windows BEFORE INSERT ON bill_windows BEGIN SELECT RAISE(ABORT, 'windows refused'); END`);
+    await expect(internet(context, { payByDay: 5 })).rejects.toThrow();
+    expect(await context.database.db.values(sql`SELECT count(*) FROM expense_templates`)).toEqual([[0]]);
+  });
+
   it('refuses a pay-by day outside a month', async () => {
     const context = await household();
     await expect(internet(context, { payByDay: 0 })).rejects.toMatchObject({ code: 'PAY_BY_RANGE' });

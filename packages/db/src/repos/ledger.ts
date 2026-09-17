@@ -284,6 +284,11 @@ export interface TransactionView {
   cardId: string | null;
   /** Goal a tagged transfer funds. Ordinary payments never carry one. */
   goalId: string | null;
+  /**
+   * YYYY-MM: the month's bill a bill payment settles, which can differ from the month it was paid in. Null for
+   * anything else, and on a database without bill_payments. Optional so a view built by hand need not name it.
+   */
+  billMonth?: string | null;
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -345,6 +350,18 @@ export async function listTransactions(
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
     .where(inArray(entries.transactionId, txs.map((t) => t.id)));
 
+  // Bill months come from their own table, keyed by transaction, so a list without bills pays one small query.
+  const billMonths = (await billTablesExist(database.db))
+    ? new Map(
+        (
+          await database.db
+            .select({ transactionId: billPayments.transactionId, billMonth: billPayments.billMonth })
+            .from(billPayments)
+            .where(inArray(billPayments.transactionId, txs.map((t) => t.id)))
+        ).map((row) => [row.transactionId, row.billMonth]),
+      )
+    : new Map<string, string>();
+
   const byTx = new Map<string, TransactionEntryView[]>();
   for (const { transactionId, ...entry } of rows) {
     const list = byTx.get(transactionId) ?? [];
@@ -363,6 +380,7 @@ export async function listTransactions(
     mcc: t.mcc,
     cardId: t.cardId,
     goalId: t.goalId,
+    billMonth: billMonths.get(t.id) ?? null,
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));

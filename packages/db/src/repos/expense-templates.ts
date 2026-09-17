@@ -72,8 +72,8 @@ const toRow = (row: typeof expenseTemplates.$inferSelect, window?: { payByDay: n
   startsMonth: window?.startsMonth ?? row.createdAt.slice(0, 7),
 });
 
-async function accountKind(database: Database, ws: WorkspaceContext, accountId: string): Promise<string | undefined> {
-  const [row] = await database.db
+async function accountKind(db: Db, ws: WorkspaceContext, accountId: string): Promise<string | undefined> {
+  const [row] = await db
     .select({ kind: accounts.kind })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
@@ -99,50 +99,53 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     throw new RecurringError('MONTH_FORMAT', 'A month is written YYYY-MM');
   }
 
-  // A bill points at a spending category and at the money that pays it. Crossing the two would post
-  // a payment nobody could read, so it is refused rather than corrected.
-  if ((await accountKind(database, ws, input.categoryAccountId)) !== 'expense') {
-    throw new RecurringError('NOT_A_CATEGORY', 'A bill needs a spending category');
-  }
-  const payer = await accountKind(database, ws, input.moneyAccountId);
-  if (payer !== 'asset' && payer !== 'liability') {
-    throw new RecurringError('NOT_A_WALLET', 'A bill needs an account or a card to pay it');
-  }
+  // One write: a bill saved without its window would have no pay-by day and a first month guessed from createdAt.
+  return database.transaction(async (tx) => {
+    // A bill points at a spending category and at the money that pays it. Crossing the two would post
+    // a payment nobody could read, so it is refused rather than corrected.
+    if ((await accountKind(tx, ws, input.categoryAccountId)) !== 'expense') {
+      throw new RecurringError('NOT_A_CATEGORY', 'A bill needs a spending category');
+    }
+    const payer = await accountKind(tx, ws, input.moneyAccountId);
+    if (payer !== 'asset' && payer !== 'liability') {
+      throw new RecurringError('NOT_A_WALLET', 'A bill needs an account or a card to pay it');
+    }
 
-  const id = input.id ?? uuidv7();
-  await database.db
-    .insert(expenseTemplates)
-    .values({
-      id,
-      workspaceId: ws.workspaceId,
-      name,
-      categoryAccountId: input.categoryAccountId,
-      moneyAccountId: input.moneyAccountId,
-      amountMinor,
-      dayOfMonth: input.dayOfMonth,
-      active: input.active === false ? 0 : 1,
-      archivedAt: null,
-      createdAt: new Date().toISOString(),
-    })
-    .onConflictDoUpdate({
-      target: expenseTemplates.id,
-      set: {
+    const id = input.id ?? uuidv7();
+    await tx
+      .insert(expenseTemplates)
+      .values({
+        id,
+        workspaceId: ws.workspaceId,
         name,
         categoryAccountId: input.categoryAccountId,
         moneyAccountId: input.moneyAccountId,
         amountMinor,
         dayOfMonth: input.dayOfMonth,
         active: input.active === false ? 0 : 1,
-      },
-    });
+        archivedAt: null,
+        createdAt: new Date().toISOString(),
+      })
+      .onConflictDoUpdate({
+        target: expenseTemplates.id,
+        set: {
+          name,
+          categoryAccountId: input.categoryAccountId,
+          moneyAccountId: input.moneyAccountId,
+          amountMinor,
+          dayOfMonth: input.dayOfMonth,
+          active: input.active === false ? 0 : 1,
+        },
+      });
 
-  if (await billTablesExist(database.db)) {
-    await database.db
-      .insert(billWindows)
-      .values({ templateId: id, workspaceId: ws.workspaceId, payByDay, startsMonth: input.startsMonth ?? isoDate().slice(0, 7) })
-      .onConflictDoUpdate({ target: billWindows.templateId, set: { payByDay } });
-  }
-  return id;
+    if (await billTablesExist(tx)) {
+      await tx
+        .insert(billWindows)
+        .values({ templateId: id, workspaceId: ws.workspaceId, payByDay, startsMonth: input.startsMonth ?? isoDate().slice(0, 7) })
+        .onConflictDoUpdate({ target: billWindows.templateId, set: { payByDay } });
+    }
+    return id;
+  });
 }
 
 export async function listExpenseTemplates(database: Database, ws: WorkspaceContext): Promise<ExpenseTemplateRow[]> {

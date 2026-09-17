@@ -5,6 +5,7 @@ import {
   listAccounts,
   listTransactions,
   monthlyBills,
+  postTransaction,
   recordBillPayments,
   saveExpenseTemplate,
   skipBill,
@@ -50,6 +51,25 @@ it('records a payment on the day paid, for the month it names', async () => {
   ]);
   expect(await h.state(h.internet, '2026-09-03')).toMatchObject({ billMonth: '2026-09', state: 'upcoming' });
   expect((await billDetail(h.database, h.ws, h.internet, '2026-09-03')).history.find((m) => m.month === '2026-08')).toMatchObject({ state: 'paid', paidOn: '2026-09-03' });
+});
+
+it('the history list knows which month a bill payment settles', async () => {
+  const h = await household();
+  const [late] = await recordBillPayments(h.database, h.ws, { paidOn: '2026-09-03', payments: [{ templateId: h.internet, billMonth: '2026-08', amountMinor: 450_000 }] });
+  const [onTime] = await recordBillPayments(h.database, h.ws, { paidOn: '2026-09-04', payments: [{ templateId: h.rent, billMonth: '2026-09', amountMinor: 6_000_000 }] });
+  const plain = await postTransaction(h.database, h.ws, {
+    occurredOn: '2026-09-05',
+    description: 'Coffee',
+    lines: [
+      { accountId: h.category('utilities.electricity'), amountMinor: 30_000, currency: 'IDR' },
+      { accountId: h.bca.id, amountMinor: -30_000, currency: 'IDR' },
+    ],
+  });
+
+  const byId = new Map((await listTransactions(h.database, h.ws, { from: '2026-09-01', to: '2026-09-30' })).map((t) => [t.id, t]));
+  expect(byId.get(late!)?.billMonth).toBe('2026-08');
+  expect(byId.get(onTime!)?.billMonth).toBe('2026-09');
+  expect(byId.get(plain)?.billMonth).toBeNull();
 });
 
 it('records several together, each for its own month and from its own account', async () => {
