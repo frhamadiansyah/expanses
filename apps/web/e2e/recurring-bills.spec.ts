@@ -273,6 +273,9 @@ test('last month’s overdue bill paid from its page says so, can be undone, and
   // Listed on the day it was paid, with a tag saying whose month it was.
   await page.goto('/transactions');
   await expect(page.getByRole('listitem').filter({ hasText: 'Biznet Home' }).first()).toContainText(`${lastMonth.slice(0, 3)} bill`);
+  // The table says the same on a wide screen.
+  await page.getByRole('button', { name: 'Table' }).click();
+  await expect(page.getByTestId('table-row').filter({ hasText: `${lastMonth.slice(0, 3)} bill` })).toHaveCount(1);
 });
 
 test('Pay several names the bill it recorded, not the one first picked', async ({ page }) => {
