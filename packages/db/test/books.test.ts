@@ -1,6 +1,24 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { activeBookId, archiveBook, createAccount, createBook, inBook, listAccounts, listBooks, ownerScope, personalBook, renameBook, setActiveBook } from '../src/index';
+import {
+  activeBookId,
+  addSetCategory,
+  archiveAccount,
+  archiveBook,
+  BookError,
+  booksSchema,
+  createAccount,
+  createBook,
+  createCategorySet,
+  createWorkspace,
+  inBook,
+  listAccounts,
+  listBooks,
+  ownerScope,
+  personalBook,
+  renameBook,
+  setActiveBook,
+} from '../src/index';
 import { setupDb } from './helpers';
 
 describe('books', () => {
@@ -30,6 +48,75 @@ describe('books', () => {
       (await database.db.values<[string | null]>(sql`SELECT a.system_key FROM accounts a JOIN book_categories b ON b.category_account_id = a.id WHERE b.book_id = ${bookId} ORDER BY a.system_key`)).map((r) => r[0]);
     expect(await keys(copied)).toEqual(await keys(personal.id));
     expect((await listBooks(database, ws)).find((b) => b.id === empty)).toMatchObject({ countEventsInBudget: true });
+
+    // Tree shape carries over too: a copied child points at its own book's copied parent, never the source's id.
+    const tree = async (bookId: string) => {
+      const rows = await database.db.values<[string, string, string | null]>(
+        sql`SELECT a.id, a.name, a.parent_id FROM accounts a JOIN book_categories b ON b.category_account_id = a.id WHERE b.book_id = ${bookId}`,
+      );
+      return new Map(rows.map(([accountId, name, parentId]) => [name, { id: accountId, parentId }]));
+    };
+    const personalTree = await tree(personal.id);
+    const copiedTree = await tree(copied);
+    let sawAChild = false;
+    for (const [name, row] of personalTree) {
+      if (!row.parentId) continue;
+      sawAChild = true;
+      const parentName = [...personalTree].find(([, v]) => v.id === row.parentId)?.[0];
+      expect(copiedTree.get(name)!.parentId).toBe(copiedTree.get(parentName!)!.id);
+      expect(copiedTree.get(name)!.parentId).not.toBe(row.parentId);
+    }
+    expect(sawAChild).toBe(true);
+  });
+
+  it('refuses to copy categories from a book outside this workspace', async () => {
+    const { database, ws } = await setupDb();
+    const other = await createWorkspace(database, { name: 'Other', type: 'personal', baseCurrency: 'IDR' });
+    const otherPersonal = await personalBook(database, other);
+
+    await expect(createBook(database, ws, { name: 'Sneaky', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: otherPersonal.id })).rejects.toThrow(BookError);
+    // Nothing was left behind by the failed attempt: it fails atomically, book included.
+    expect((await listBooks(database, ws)).map((b) => b.name)).toEqual(['Personal']);
+  });
+
+  it('refuses to copy categories from an archived book', async () => {
+    const { database, ws } = await setupDb();
+    const biz = await createBook(database, ws, { name: 'Biz', kind: 'business', baseCurrency: 'IDR' });
+    await archiveBook(database, ws, biz);
+
+    await expect(createBook(database, ws, { name: 'Copy', kind: 'family', baseCurrency: 'IDR', copyCategoriesFrom: biz })).rejects.toThrow(BookError);
+  });
+
+  it('excludes category-set members when copying, even one a migrated database also filed in the book', async () => {
+    const { database, ws } = await setupDb();
+    const personal = await personalBook(database, ws);
+    const setId = await createCategorySet(database, ws, 'Holiday');
+    // A name with no collision among DEFAULT_CATEGORIES (which does include a plain "Flights"), so the assertion
+    // below can only pass because the set member was excluded, not because of an unrelated name clash.
+    const skiTrip = await addSetCategory(database, ws, setId, 'Ski Trip Fund');
+    // addSetCategory does not file a set category into any book, but migration 0042 backfilled every income/expense
+    // account into the Personal book regardless of set membership — reproduce that so the exclusion is exercised.
+    await database.db.insert(booksSchema.bookCategories).values({ categoryAccountId: skiTrip, workspaceId: ws.workspaceId, bookId: personal.id });
+
+    const copied = await createBook(database, ws, { name: 'Copy', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
+    const names = (
+      await database.db.values<[string]>(sql`SELECT a.name FROM accounts a JOIN book_categories b ON b.category_account_id = a.id WHERE b.book_id = ${copied}`)
+    ).map((r) => r[0]);
+    expect(names).not.toContain('Ski Trip Fund');
+  });
+
+  it('files a child at the top level when its parent is archived and so is not being copied', async () => {
+    const { database, ws } = await setupDb();
+    const source = await createBook(database, ws, { name: 'Source', kind: 'business', baseCurrency: 'IDR' });
+    const parent = await createAccount(database, inBook(ws, source), { name: 'Parent', kind: 'expense', subtype: 'category', currency: null });
+    await createAccount(database, inBook(ws, source), { name: 'Child', kind: 'expense', subtype: 'category', currency: null, parentId: parent.id });
+    await archiveAccount(database, ws, parent.id);
+
+    const copied = await createBook(database, ws, { name: 'Copy', kind: 'family', baseCurrency: 'IDR', copyCategoriesFrom: source });
+    const rows = await database.db.values<[string, string | null]>(
+      sql`SELECT a.name, a.parent_id FROM accounts a JOIN book_categories b ON b.category_account_id = a.id WHERE b.book_id = ${copied}`,
+    );
+    expect(rows).toEqual([['Child', null]]);
   });
 
   it('files a new category into the book the context names', async () => {

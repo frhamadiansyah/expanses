@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, settings } from '../schema';
 import { bookCategories, books } from '../schema-books';
+import { NOT_IN_A_SET } from '../schema-category-sets';
 
 export type BookKind = 'personal' | 'business' | 'family' | 'shared';
 
@@ -101,24 +102,50 @@ export async function createBook(
     });
     if (!input.copyCategoriesFrom) return;
 
+    // Only a book of this same workspace can be copied from, and only while it is still open — an id from
+    // another workspace, or one that has been archived, refuses rather than silently copying nothing (or,
+    // without the workspace check, another workspace's categories).
+    const [sourceBook] = await tx
+      .select({ id: books.id })
+      .from(books)
+      .where(and(eq(books.id, input.copyCategoriesFrom), eq(books.workspaceId, ws.workspaceId), isNull(books.archivedAt)));
+    if (!sourceBook) throw new BookError('The book to copy categories from was not found in this workspace');
+
     // A copy is a new tree: new ids, parents remapped, system keys kept so card earning rules still apply.
+    // Category-set members are excluded (NOT_IN_A_SET, as ensureCategoryKeys uses): they are event categories,
+    // not part of the book's regular tree, even though a database migrated by 0042 filed them in a book too.
     const source = (
       await tx
         .select()
         .from(accounts)
         .innerJoin(bookCategories, eq(bookCategories.categoryAccountId, accounts.id))
-        .where(and(eq(bookCategories.bookId, input.copyCategoriesFrom), isNull(accounts.archivedAt)))
+        .where(
+          and(
+            eq(bookCategories.bookId, input.copyCategoriesFrom),
+            eq(bookCategories.workspaceId, ws.workspaceId),
+            eq(accounts.workspaceId, ws.workspaceId),
+            isNull(accounts.archivedAt),
+            NOT_IN_A_SET,
+          ),
+        )
     ).map(({ accounts: a }) => a);
+    const sourceIds = new Set(source.map((a) => a.id));
     const newIds = new Map(source.map((a) => [a.id, uuidv7()]));
 
     // Parents must be inserted (and their new id known) before children that reference them via parent_id, a
-    // foreign key. Order is not guaranteed by the query above, so insert in dependency order rather than row order.
+    // foreign key. Order is not guaranteed by the query above, so insert in dependency order rather than row
+    // order. A parent excluded from the copy (archived, or claimed by a category set) never arrives, so its
+    // child is ready immediately too and is filed at the top level instead of waiting forever.
     const remaining = [...source];
     const insertedOldIds = new Set<string>();
     while (remaining.length) {
-      const readyIndex = remaining.findIndex((a) => !a.parentId || insertedOldIds.has(a.parentId));
+      const readyIndex = remaining.findIndex((a) => !a.parentId || insertedOldIds.has(a.parentId) || !sourceIds.has(a.parentId));
+      // Every parent a remaining row could be waiting on is itself in source, so this can only be -1 if the
+      // tree has a cycle, which createAccountTx never allows (a parent must exist before its child does).
+      if (readyIndex === -1) throw new BookError('Category tree has a cycle it cannot copy');
       const a = remaining.splice(readyIndex, 1)[0]!;
-      await tx.insert(accounts).values({ ...a, id: newIds.get(a.id)!, parentId: a.parentId ? (newIds.get(a.parentId) ?? null) : null, createdAt: now });
+      const parentId = a.parentId && newIds.has(a.parentId) ? newIds.get(a.parentId)! : null;
+      await tx.insert(accounts).values({ ...a, id: newIds.get(a.id)!, workspaceId: ws.workspaceId, parentId, createdAt: now });
       await tx.insert(bookCategories).values({ categoryAccountId: newIds.get(a.id)!, workspaceId: ws.workspaceId, bookId: id });
       insertedOldIds.add(a.id);
     }
