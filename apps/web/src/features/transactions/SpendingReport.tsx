@@ -5,7 +5,7 @@ import { Link } from '@tanstack/react-router';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts } from '../../lib/queries';
+import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { Button, Card, cx, Empty, Money } from '../../ui';
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { budgetProgress } from './budget-progress';
@@ -221,6 +221,7 @@ export function SpendingReport({
 }) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
+  const inOpenBook = useInOpenBook();
   // The categories are folded away until asked for: the list underneath is what most days are about.
   const [showAll, setShowAll] = useState(false);
   // Which of the two charts the card is turned to. The rows follow it, so one denominator is on screen at a time.
@@ -235,7 +236,7 @@ export function SpendingReport({
   const first = useQuery({ queryKey: ['first-transaction', ws.workspaceId], queryFn: () => firstTransactionDate(database, ws), enabled: picking });
 
   const totals = useQuery({
-    queryKey: ['category-totals', ws.workspaceId, kind, month, 'without-events'],
+    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, 'without-events'],
     // An event is read on its own: a week in Singapore would otherwise swallow the shape of an ordinary month.
     queryFn: () => categoryTotalsBetween(database, ws, kind, from, to, { excludeEvents: true }),
   });
@@ -262,8 +263,9 @@ export function SpendingReport({
   const ofKind = accounts.filter((a) => a.kind === kind);
   const amounts = (totals.data ?? []).map((row) => ({ accountId: row.accountId, amountBaseMinor: row.amountBaseMinor }));
   const countById = new Map((totals.data ?? []).map((row) => [row.accountId, row.transactions]));
+  // The monthly tree is the open book's; each set is already narrowed to the book by useCategorySets.
   const tree = categoryTree(
-    ofKind.filter((a) => membership[a.id] === undefined),
+    ofKind.filter((a) => membership[a.id] === undefined && inOpenBook(a)),
     amounts,
   );
   // Each set is shown as its own group rather than mixed in: a renovation is read as a renovation.

@@ -85,7 +85,7 @@ export function EventsPage() {
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
   const events = useEvents();
-  const sets = useCategorySets().data ?? [];
+  const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const today = isoDate();
   const [error, setError] = useState<unknown>(null);
 

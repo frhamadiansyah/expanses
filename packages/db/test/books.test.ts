@@ -7,13 +7,18 @@ import {
   archiveBook,
   BookError,
   booksSchema,
+  categoryIdsOfBook,
+  categoryTotalsBetween,
   createAccount,
   createBook,
   createCategorySet,
   createWorkspace,
+  ensureCategoryKeys,
+  ensureDefaultCategorySets,
   inBook,
   listAccounts,
   listBooks,
+  listCategorySets,
   ownerScope,
   personalBook,
   postTransaction,
@@ -194,6 +199,87 @@ describe('posting into a book', () => {
     ).rejects.toThrow(/two workspaces/);
     // Refused before anything was written: no entries were left behind for either category.
     expect(await database.db.values(sql`SELECT count(*) FROM entries WHERE account_id IN (${meals.id}, ${pets.id})`)).toEqual([[0]]);
+  });
+});
+
+describe('reading one book', () => {
+  it('adds up only the open book’s categories', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const meals = await createAccount(database, inBook(ws, business), { name: 'Client meals', kind: 'expense', subtype: 'category', currency: null });
+    const pets = await createAccount(database, ws, { name: 'Pets', kind: 'expense', subtype: 'category', currency: null });
+    const spend = (categoryId: string, amountMinor: number) =>
+      postTransaction(database, ws, {
+        occurredOn: '2026-08-15',
+        description: 'x',
+        lines: [
+          { accountId: categoryId, amountMinor, currency: 'IDR' },
+          { accountId: card.id, amountMinor: -amountMinor, currency: 'IDR' },
+        ],
+      });
+    await spend(meals.id, 640_000);
+    await spend(pets.id, 150_000);
+
+    const ids = async (bookId?: string) =>
+      (await categoryTotalsBetween(database, bookId ? inBook(ws, bookId) : ws, 'expense', '2026-08-01', '2026-08-31')).map((r) => r.accountId).sort();
+    expect(await ids(business)).toEqual([meals.id]);
+    expect(await ids(personal)).toEqual([pets.id]);
+    expect(await ids()).toEqual([meals.id, pets.id].sort());
+  });
+
+  it('counts a set’s categories in the book the set is filed in', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    // A set's categories are not filed in book_categories themselves: they travel with their set.
+    const setId = await createCategorySet(database, inBook(ws, business), 'Trade fair');
+    const booth = await addSetCategory(database, ws, setId, 'Booth');
+    await postTransaction(database, ws, {
+      occurredOn: '2026-08-15',
+      description: 'Booth rental',
+      lines: [
+        { accountId: booth, amountMinor: 900_000, currency: 'IDR' },
+        { accountId: card.id, amountMinor: -900_000, currency: 'IDR' },
+      ],
+    });
+    const ids = async (bookId: string) => (await categoryTotalsBetween(database, inBook(ws, bookId), 'expense', '2026-08-01', '2026-08-31')).map((r) => r.accountId);
+    expect(await ids(business)).toEqual([booth]);
+    expect(await ids(personal)).toEqual([]);
+  });
+
+  it('lists and files category sets by book', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const fair = await createCategorySet(database, inBook(ws, business), 'Trade fair');
+    // No book named: Personal, as every set has always been.
+    const holiday = await createCategorySet(database, ws, 'Holiday');
+    expect(await database.db.values(sql`SELECT book_id FROM book_category_sets WHERE set_id = ${fair}`)).toEqual([[business]]);
+    expect(await database.db.values(sql`SELECT book_id FROM book_category_sets WHERE set_id = ${holiday}`)).toEqual([[personal]]);
+
+    const names = async (scope: typeof ws) => (await listCategorySets(database, scope)).map((set) => set.name);
+    expect(await names(inBook(ws, business))).toEqual(['Trade fair']);
+    expect(await names(inBook(ws, personal))).toEqual(['Holiday']);
+    expect(await names(ws)).toEqual(['Holiday', 'Trade fair']);
+  });
+
+  it('files the default sets, and any default category created on open, into Personal', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    const created = await ensureDefaultCategorySets(database, ws);
+    expect(created.length).toBeGreaterThan(0);
+    expect((await listCategorySets(database, inBook(ws, personal))).map((set) => set.name).sort()).toEqual([...created].sort());
+
+    // A default the workspace is missing is recreated on open; it lands in Personal like the rest of the tree.
+    const [[gift]] = (await database.db.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND system_key = 'utilities.gas_energy'`)) as [[string]];
+    await database.db.run(sql`DELETE FROM book_categories WHERE category_account_id = ${gift}`);
+    await database.db.run(sql`DELETE FROM accounts WHERE id = ${gift}`);
+    expect((await ensureCategoryKeys(database, ws)).created).toContain('utilities.gas_energy');
+    const [[recreated]] = (await database.db.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND system_key = 'utilities.gas_energy'`)) as [[string]];
+    expect(await categoryIdsOfBook(database, personal)).toContain(recreated);
   });
 });
 

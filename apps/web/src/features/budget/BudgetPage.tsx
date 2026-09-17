@@ -2,7 +2,7 @@ import { addMonths, type BudgetLine, isoDate, monthOf, parseMajor } from '@expan
 import { clearBudgetOverride, removeBudget, saveBudget, saveExpectedIncome, setBudgetOverride, setIncomeOverride } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useBudgets, useBudgetSheet, useCommittedBills } from './queries';
@@ -69,7 +69,9 @@ export function BudgetPage() {
   const accounts = useAccounts().data ?? [];
   const membership = useCategorySetMembership().data ?? {};
   // Caps are for the monthly tree; an event plans its set on its own page.
-  const categories = accounts.filter((account) => account.kind === 'expense' && membership[account.id] === undefined);
+  const inOpenBook = useInOpenBook();
+  // Caps are the open book's too: a Business budget is set against Business categories.
+  const categories = accounts.filter((account) => account.kind === 'expense' && membership[account.id] === undefined && inOpenBook(account));
   const sheetQuery = useBudgetSheet(month);
   const budgets = useBudgets(month);
   const sheet = sheetQuery.data;

@@ -8,7 +8,7 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { loadPurchasePoints } from '../../lib/purchase-points';
-import { isCategoryOf, isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { isCategoryOf, isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
@@ -200,6 +200,8 @@ export function TransactionsPage() {
   const search = route.useSearch();
   const month = search.month ?? monthOf(isoDate());
   const accounts = useAccounts().data ?? [];
+  // Category pickers and filters on this page read the open book; money accounts are every book's.
+  const inOpenBook = useInOpenBook();
   const cards = useCards().data ?? [];
   const drafts = useDrafts();
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
@@ -292,7 +294,7 @@ export function TransactionsPage() {
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
 
-  const rowOptions = buildRowOptions(accounts, cards);
+  const rowOptions = buildRowOptions(accounts, cards, inOpenBook);
   const money = accounts.filter(isMoneyAccount);
   const cardsOf = (accountId: string) => cards.filter((card) => card.accountId === accountId);
   const paidOptions: ChipOption[] = [
@@ -310,7 +312,7 @@ export function TransactionsPage() {
   const categoryOptions: ChipOption[] = [
     { value: '', label: 'Any category' },
     ...accounts
-      .filter((a) => isCategoryOf('expense')(a) || isCategoryOf('income')(a))
+      .filter((a) => (isCategoryOf('expense')(a) || isCategoryOf('income')(a)) && inOpenBook(a))
       .map((a) => ({ value: a.id, label: categoryPath(accounts, a.id), icon: <CategoryIcon categoryId={a.id} accounts={accounts} size="xs" />, indent: a.parentId !== null }))
       .sort((x, y) => x.label.localeCompare(y.label)),
   ];

@@ -89,7 +89,7 @@ export function ReviewPage() {
                         onChange={(e) => void run(draft.id, () => editDraft(database, ws, draft.id, { categoryAccountId: e.target.value }))}
                         className="py-1"
                       >
-                        <CategoryOptions accounts={accounts} kind={draft.amountMinor >= 0 ? 'expense' : 'income'} parentSuffix="(general)" />
+                        <CategoryOptions ownerWide accounts={accounts} kind={draft.amountMinor >= 0 ? 'expense' : 'income'} parentSuffix="(general)" />
                       </Select>
                     </td>
                     <td className="py-1 whitespace-nowrap">

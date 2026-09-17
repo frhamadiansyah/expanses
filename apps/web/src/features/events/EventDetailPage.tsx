@@ -46,7 +46,7 @@ export function EventDetailPage() {
   const history = useEventHistory(eventId);
   const accounts = useAccounts().data ?? [];
   const money = accounts.filter(isMoneyAccount);
-  const sets = useCategorySets().data ?? [];
+  const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const setCategories = useSetCategories(event?.setId ?? null).data ?? [];
   const membership = useCategorySetMembership().data ?? {};
   const today = isoDate();

@@ -1,4 +1,5 @@
 import type { AccountRow } from '@expanses/db';
+import { useInOpenBook } from '../../lib/queries';
 import { useCategorySetMembership } from '../categories/set-queries';
 
 /**
@@ -6,20 +7,26 @@ import { useCategorySetMembership } from '../categories/set-queries';
  *
  * Set categories are left out: every picker built on this one speaks for the monthly tree, and an
  * event's categories are chosen on the event itself.
+ *
+ * The open book's categories only, unless `ownerWide`: card rules, loans, debts and drafts belong to the owner and can
+ * name a category in any book.
  */
 export function CategoryOptions({
   accounts,
   kind,
   placeholder = 'Choose…',
   parentSuffix = '(all)',
+  ownerWide = false,
 }: {
   accounts: AccountRow[];
   kind: 'expense' | 'income';
   placeholder?: string | null;
   parentSuffix?: string;
+  ownerWide?: boolean;
 }) {
   const membership = useCategorySetMembership().data ?? {};
-  const categories = accounts.filter((a) => a.kind === kind && a.archivedAt === null && membership[a.id] === undefined);
+  const inOpenBook = useInOpenBook();
+  const categories = accounts.filter((a) => a.kind === kind && a.archivedAt === null && membership[a.id] === undefined && (ownerWide || inOpenBook(a)));
   const roots = categories.filter((c) => c.parentId === null);
   return (
     <>

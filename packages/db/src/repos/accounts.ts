@@ -3,9 +3,9 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
-import { bookCategories, books } from '../schema-books';
+import { bookCategories } from '../schema-books';
 import { SYSTEM_ACCOUNTS, type SystemAccountKey } from '../seed';
-import { hasBooks } from './books';
+import { hasBooks, personalBookIdTx } from './books';
 import { postTransactionTx } from './ledger';
 
 export type AccountRow = typeof accounts.$inferSelect;
@@ -122,16 +122,7 @@ export async function createAccountTx(tx: Db, ws: WorkspaceContext, input: Creat
     await tx.insert(accounts).values(row);
     if ((row.kind === 'income' || row.kind === 'expense') && (await hasBooks(tx))) {
       // A category belongs to a set of books: the one the context names, or the workspace's first (Personal).
-      const bookId =
-        ws.bookId ??
-        (
-          await tx
-            .select({ id: books.id })
-            .from(books)
-            .where(and(eq(books.workspaceId, ws.workspaceId), isNull(books.archivedAt)))
-            .orderBy(asc(books.sortOrder), asc(books.createdAt))
-            .limit(1)
-        )[0]?.id;
+      const bookId = ws.bookId ?? (await personalBookIdTx(tx, ws.workspaceId));
       if (bookId) await tx.insert(bookCategories).values({ categoryAccountId: row.id, workspaceId: ws.workspaceId, bookId });
     }
     const opening = input.openingBalanceMinor ?? 0;

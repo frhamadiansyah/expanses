@@ -1,11 +1,15 @@
-import { categorySetMembership, listCategorySets, listSetCategories } from '@expanses/db';
+import { categorySetMembership, listCategorySets, listSetCategories, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
-/** The sets this workspace can draw on. */
-export function useCategorySets() {
+/**
+ * The sets the open book can draw on. Events span books, so their screens ask for every set in the workspace
+ * (`ownerWide`) — an event may use a set filed in any book.
+ */
+export function useCategorySets({ ownerWide = false }: { ownerWide?: boolean } = {}) {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['category-sets', ws.workspaceId], queryFn: () => listCategorySets(database, ws) });
+  const scope = ownerWide ? ownerScope(ws) : ws;
+  return useQuery({ queryKey: ['category-sets', ws.workspaceId, scope.bookId ?? null], queryFn: () => listCategorySets(database, scope) });
 }
 
 /**

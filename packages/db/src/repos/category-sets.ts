@@ -1,10 +1,12 @@
 import { uuidv7 } from '@expanses/core';
-import { and, asc, eq, isNull } from 'drizzle-orm';
-import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { ownerScope, type WorkspaceContext } from '../context';
+import type { Database, Db } from '../database';
 import { accounts } from '../schema';
+import { bookCategorySets } from '../schema-books';
 import { DEFAULT_CATEGORY_SETS } from '../seed';
 import { categorySetMembers, categorySets } from '../schema-category-sets';
+import { hasBooks, personalBookIdTx } from './books';
 
 export class CategorySetError extends Error {
   constructor(
@@ -29,20 +31,40 @@ export async function listCategorySets(database: Database, ws: WorkspaceContext)
   return database.db
     .select({ id: categorySets.id, name: categorySets.name })
     .from(categorySets)
-    .where(and(eq(categorySets.workspaceId, ws.workspaceId), isNull(categorySets.archivedAt)))
+    .where(
+      and(
+        eq(categorySets.workspaceId, ws.workspaceId),
+        isNull(categorySets.archivedAt),
+        // One book's sets when the context names a book; every set in the workspace otherwise.
+        ...(ws.bookId ? [sql`${categorySets.id} IN (SELECT set_id FROM book_category_sets WHERE book_id = ${ws.bookId})`] : []),
+      ),
+    )
     .orderBy(asc(categorySets.name));
+}
+
+/**
+ * Files a new set into a book: the one the context names, or Personal. Skipped on a database stopped before
+ * migration 0042, which has no books to file into.
+ */
+async function fileSetTx(tx: Db, ws: WorkspaceContext, setId: string): Promise<void> {
+  if (!(await hasBooks(tx))) return;
+  const bookId = ws.bookId ?? (await personalBookIdTx(tx, ws.workspaceId));
+  if (bookId) await tx.insert(bookCategorySets).values({ setId, workspaceId: ws.workspaceId, bookId });
 }
 
 export async function createCategorySet(database: Database, ws: WorkspaceContext, name: string): Promise<string> {
   const trimmed = name.trim();
   if (!trimmed) throw new CategorySetError('NAME_REQUIRED', 'A set needs a name');
   const id = uuidv7();
-  await database.db.insert(categorySets).values({
-    id,
-    workspaceId: ws.workspaceId,
-    name: trimmed,
-    archivedAt: null,
-    createdAt: new Date().toISOString(),
+  await database.transaction(async (tx) => {
+    await tx.insert(categorySets).values({
+      id,
+      workspaceId: ws.workspaceId,
+      name: trimmed,
+      archivedAt: null,
+      createdAt: new Date().toISOString(),
+    });
+    await fileSetTx(tx, ws, id);
   });
   return id;
 }
@@ -126,7 +148,10 @@ export async function addSetCategory(database: Database, ws: WorkspaceContext, s
  * starting point, not something to keep restoring.
  */
 export async function ensureDefaultCategorySets(database: Database, ws: WorkspaceContext): Promise<string[]> {
-  const existing = new Set((await listCategorySets(database, ws)).map((set) => set.name));
+  // Checked across the whole workspace, and a missing default filed into Personal: the defaults arrive with the
+  // feature, not with whichever book happens to be open.
+  const owner = ownerScope(ws);
+  const existing = new Set((await listCategorySets(database, owner)).map((set) => set.name));
   const missing = DEFAULT_CATEGORY_SETS.filter((set) => !existing.has(set.name));
   if (missing.length === 0) return [];
 
@@ -135,6 +160,7 @@ export async function ensureDefaultCategorySets(database: Database, ws: Workspac
     for (const set of missing) {
       const setId = uuidv7();
       await tx.insert(categorySets).values({ id: setId, workspaceId: ws.workspaceId, name: set.name, archivedAt: null, createdAt: now });
+      await fileSetTx(tx, owner, setId);
       for (const [index, name] of set.categories.entries()) {
         const accountId = uuidv7();
         await tx.insert(accounts).values({

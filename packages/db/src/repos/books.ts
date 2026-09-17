@@ -65,6 +65,20 @@ export async function personalBook(database: Database, ws: WorkspaceContext): Pr
   return first;
 }
 
+/**
+ * The first open book's id, read inside a transaction (personalBook reads through database.db, which would wait on
+ * the transaction's own lock). Null when the workspace has no books yet.
+ */
+export async function personalBookIdTx(tx: Db, workspaceId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: books.id })
+    .from(books)
+    .where(and(eq(books.workspaceId, workspaceId), isNull(books.archivedAt)))
+    .orderBy(asc(books.sortOrder), asc(books.createdAt))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 /** Makes the Personal book for a workspace being created. Used inside createWorkspace's transaction. */
 export async function createPersonalBookTx(tx: Db, workspaceId: string, baseCurrency: string, createdAt: string): Promise<string> {
   const id = uuidv7();

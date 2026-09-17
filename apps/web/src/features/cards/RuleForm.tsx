@@ -108,12 +108,12 @@ export function RuleForm({
           <div className="grid gap-3 md:grid-cols-2">
         <Field label="Only these categories" hint="None selected = every category. Ctrl/⌘-click for several.">
           <Select multiple size={6} value={categoryIds} onChange={(e) => setCategoryIds(selected(e.target))}>
-            <CategoryOptions accounts={accounts} kind="expense" placeholder={null} />
+            <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
           </Select>
         </Field>
         <Field label="Never these categories" hint="e.g. Fees, insurance, e-wallet top-ups.">
           <Select multiple size={6} value={excludeIds} onChange={(e) => setExcludeIds(selected(e.target))}>
-            <CategoryOptions accounts={accounts} kind="expense" placeholder={null} />
+            <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
           </Select>
         </Field>
         <Field label="Merchant keywords" hint="Comma-separated, matched in the description. Empty = any merchant.">
