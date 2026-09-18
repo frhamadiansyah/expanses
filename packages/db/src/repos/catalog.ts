@@ -248,6 +248,25 @@ export async function syncLinkedPrograms(database: Database, ws: WorkspaceContex
   return synced;
 }
 
+/**
+ * Writes every catalogue program's rules again from the entry it already carries, without waiting for a newer one.
+ *
+ * An earn rule names category ids, so categories a new workspace has just been given — copied from another
+ * workspace, or made because the app posts into them — earn nothing until the rules are planned over them too.
+ * The entry itself does not change, so a customised program keeps the rows the user added, as everywhere else.
+ */
+export async function replanCatalogProgramsTx(tx: Db, ws: WorkspaceContext, today: string): Promise<void> {
+  const programs = await tx
+    .select()
+    .from(rewardPrograms)
+    .where(and(eq(rewardPrograms.workspaceId, ws.workspaceId), isNotNull(rewardPrograms.catalogSnapshotJson), isNull(rewardPrograms.archivedAt)));
+  for (const program of programs) {
+    const entry = JSON.parse(program.catalogSnapshotJson as string) as CatalogEntry;
+    await clearRows(tx, ws, program.id, false);
+    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked', false, program.catalogMemberLevel);
+  }
+}
+
 /** Applies a newer entry to a customised program: replaces catalogue rows, keeps rows the user added, stays customised. */
 export function applyCatalogUpdate(database: Database, ws: WorkspaceContext, programId: string, entry: CatalogEntry, today: string): Promise<void> {
   return database.transaction(async (tx) => {

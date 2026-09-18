@@ -83,6 +83,82 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
 }
 
 /**
+ * The keys a repository posts into on its own, without anybody choosing a category: the interest and the fees on
+ * a loan payment, interest received on money lent, a forgiven debt, a realised gain and the tax on it.
+ *
+ * Every book needs its own, because `categoryIdsByKeyTx` falls back to the oldest copy anywhere when the open book
+ * has none — which would file a new workspace's loan interest into Personal, quietly and for good.
+ */
+export const POSTED_INTO_KEYS: readonly string[] = [
+  'gift_giving',
+  'government_taxes.estimated_tax',
+  'income.investment',
+  'income.other',
+  'income.realized_gains',
+  'miscellaneous.fees_charges',
+  'miscellaneous.interest',
+];
+
+/** Each default key's name, kind and parent key, for recreating one where a book is missing it. */
+const DEFAULT_BY_KEY = new Map<string, { name: string; kind: 'expense' | 'income'; parentKey: string | null }>(
+  DEFAULT_CATEGORIES.flatMap((category) => [
+    [category.key, { name: category.name, kind: category.kind, parentKey: null }] as const,
+    ...(category.children ?? []).map((child) => [child.key, { name: child.name, kind: category.kind, parentKey: category.key }] as const),
+  ]),
+);
+
+/**
+ * Gives one book its own category for every key in `POSTED_INTO_KEYS`, creating what it has not got — the same
+ * ensure-by-key path as `ensureCategoryKeys`, narrowed to a single book rather than the whole workspace.
+ *
+ * Runs for a book just created, copied or empty: a copy already carries the source's keys, so only what the
+ * source itself was missing is made. A parent is made first when its child needs one, so the tree keeps its shape.
+ */
+export async function ensureBookCategoryKeysTx(tx: Db, ws: WorkspaceContext, bookId: string, createdAt: string): Promise<string[]> {
+  const rows = await tx
+    .select({ id: accounts.id, systemKey: accounts.systemKey, parentId: accounts.parentId, sortOrder: accounts.sortOrder })
+    .from(accounts)
+    .innerJoin(bookCategories, eq(bookCategories.categoryAccountId, accounts.id))
+    .where(and(eq(bookCategories.bookId, bookId), eq(accounts.workspaceId, ws.workspaceId), isNull(accounts.archivedAt)));
+  const byKey = new Map(rows.flatMap((row) => (row.systemKey ? [[row.systemKey, row.id] as const] : [])));
+  const created: string[] = [];
+
+  const ensure = async (key: string): Promise<string> => {
+    const existing = byKey.get(key);
+    if (existing) return existing;
+    const spec = DEFAULT_BY_KEY.get(key);
+    // Only default keys are ever ensured, and POSTED_INTO_KEYS is checked against DEFAULT_CATEGORIES by a test.
+    if (!spec) throw new Error(`${key} is not a default category`);
+    const parentId = spec.parentKey ? await ensure(spec.parentKey) : null;
+    const id = uuidv7();
+    const sortOrder = Math.max(-1, ...rows.filter((row) => row.parentId === parentId).map((row) => row.sortOrder)) + 1;
+    await tx.insert(accounts).values({
+      id,
+      workspaceId: ws.workspaceId,
+      parentId,
+      kind: spec.kind,
+      subtype: 'category',
+      name: spec.name,
+      icon: null,
+      currency: null,
+      valuationMode: 'derived',
+      systemKey: key,
+      sortOrder,
+      archivedAt: null,
+      createdAt,
+    });
+    await tx.insert(bookCategories).values({ categoryAccountId: id, workspaceId: ws.workspaceId, bookId });
+    rows.push({ id, systemKey: key, parentId, sortOrder });
+    byKey.set(key, id);
+    created.push(key);
+    return id;
+  };
+
+  for (const key of POSTED_INTO_KEYS) await ensure(key);
+  return created;
+}
+
+/**
  * Categories that carry a default key, one per key, in the book the context names — else the Personal book.
  *
  * Once a workspace copies another's categories, two rows in one workspace share a key (migration 0043 narrowed the

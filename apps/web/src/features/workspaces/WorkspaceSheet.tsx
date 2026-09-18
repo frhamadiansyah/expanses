@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { cx, ErrorBox } from '../../ui';
+import { NewWorkspaceSheet } from './NewWorkspaceSheet';
 import { WorkspaceDot } from './WorkspaceBadge';
 import { useBooks, useSpentThisMonth } from './queries';
 
@@ -15,12 +16,13 @@ import { useBooks, useSpentThisMonth } from './queries';
  * Choosing one changes what the whole app reads, so the sheet closes straight after: staying open over figures
  * that have just been thrown away would only invite a second tap on the row you already chose.
  */
-export function WorkspaceSheet({ onClose, onNew }: { onClose: () => void; onNew?: () => void }) {
+export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
   const { ws, workspaceName, switchBook } = useApp();
   const books = useBooks();
   const spent = useSpentThisMonth();
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   async function choose(bookId: string) {
     if (bookId === ws.bookId) return onClose();
@@ -35,6 +37,10 @@ export function WorkspaceSheet({ onClose, onNew }: { onClose: () => void; onNew?
       setBusy(null);
     }
   }
+
+  // One sheet at a time: making a workspace ends in another one being open, so the list behind it would be
+  // answering about a workspace that is no longer the one on the screen.
+  if (creating) return <NewWorkspaceSheet onClose={onClose} />;
 
   return (
     <Sheet title="Workspaces" onClose={onClose}>
@@ -72,19 +78,14 @@ export function WorkspaceSheet({ onClose, onNew }: { onClose: () => void; onNew?
       </div>
 
       <div className="mt-3 border-t border-slate-100 pt-3">
-        {onNew && (
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              onNew();
-            }}
-            className="flex min-h-11 w-full items-center gap-3 rounded-lg px-1 text-left text-sm font-medium hover:bg-slate-50"
-          >
-            <Plus size={18} aria-hidden className="shrink-0 text-slate-500" />
-            New workspace
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="flex min-h-11 w-full items-center gap-3 rounded-lg px-1 text-left text-sm font-medium hover:bg-slate-50"
+        >
+          <Plus size={18} aria-hidden className="shrink-0 text-slate-500" />
+          New workspace
+        </button>
         <Link
           to="/settings"
           onClick={onClose}

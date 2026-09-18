@@ -1,11 +1,16 @@
+import { findEntry } from '@expanses/catalog';
+import { computeCycleEarn, DEFAULT_CATEGORY_KEYS, expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   activeBookId,
   addSetCategory,
+  applyCatalogEntry,
   archiveAccount,
   archiveBook,
   BookError,
+  cardSpendLines,
+  categoryIdsByKey,
   categoryIdsOfBook,
   categoryTotalsBetween,
   clearIncomeOverride,
@@ -18,16 +23,24 @@ import {
   inBook,
   listAccounts,
   listBooks,
+  listCategoryMccs,
   listCategorySets,
+  listCycleBonuses,
+  listEarnRules,
   getBudgetIncome,
   listBudgets,
   listExpenseTemplates,
   listTransactions,
   ownerScope,
   personalBook,
+  POSTED_INTO_KEYS,
   postTransaction,
+  recordLoan,
+  recordRepayment,
   renameBook,
   saveBudget,
+  saveCardTerms,
+  saveCategoryMcc,
   saveExpectedIncome,
   saveExpenseTemplate,
   setActiveBook,
@@ -55,13 +68,25 @@ describe('books', () => {
 
     const count = async (bookId: string) =>
       Number(((await database.db.values<[number]>(sql`SELECT count(*) FROM book_categories WHERE book_id = ${bookId}`)) as [[number]])[0][0]);
-    expect(await count(empty)).toBe(0);
     expect(await count(copied)).toBe(await count(personal.id));
 
     // A copy is a new category, keeping its system key so card earning rules still recognise it.
     const keys = async (bookId: string) =>
       (await database.db.values<[string | null]>(sql`SELECT a.system_key FROM accounts a JOIN book_categories b ON b.category_account_id = a.id WHERE b.book_id = ${bookId} ORDER BY a.system_key`)).map((r) => r[0]);
     expect(await keys(copied)).toEqual(await keys(personal.id));
+    // "Start empty" copies nothing, but never nothing at all: the handful of categories the app posts into on
+    // its own — loan interest, a realised gain, the tax on it — are its own, or they would be Personal's.
+    expect(await keys(empty)).toEqual([
+      'gift_giving',
+      'government_taxes',
+      'government_taxes.estimated_tax',
+      'income.investment',
+      'income.other',
+      'income.realized_gains',
+      'miscellaneous',
+      'miscellaneous.fees_charges',
+      'miscellaneous.interest',
+    ]);
     expect((await listBooks(database, ws)).find((b) => b.id === empty)).toMatchObject({ countEventsInBudget: true });
 
     // Tree shape carries over too: a copied child points at its own book's copied parent, never the source's id.
@@ -128,9 +153,56 @@ describe('books', () => {
 
     const copied = await createBook(database, ws, { name: 'Copy', kind: 'family', baseCurrency: 'IDR', copyCategoriesFrom: source });
     const rows = await database.db.values<[string, string | null]>(
-      sql`SELECT a.name, a.parent_id FROM accounts a JOIN book_categories b ON b.category_account_id = a.id WHERE b.book_id = ${copied}`,
+      sql`SELECT a.name, a.parent_id FROM accounts a JOIN book_categories b ON b.category_account_id = a.id WHERE b.book_id = ${copied} AND a.system_key IS NULL`,
     );
     expect(rows).toEqual([['Child', null]]);
+  });
+
+  it('only ever ensures keys the defaults define, since that is where their name and parent come from', () => {
+    for (const key of POSTED_INTO_KEYS) expect(DEFAULT_CATEGORY_KEYS.has(key), key).toBe(true);
+  });
+
+  it('copies a category’s typed MCC with the category, so a copied workspace earns the same points', async () => {
+    const { database, ws } = await setupDb();
+    const personal = await personalBook(database, ws);
+    const keys = await categoryIdsByKey(database, ws);
+    await saveCategoryMcc(database, ws, keys['food_beverage.restaurants']!, '5812');
+
+    const family = await createBook(database, ws, { name: 'Family', kind: 'family', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
+    const copied = (await categoryIdsByKey(database, inBook(ws, family)))['food_beverage.restaurants']!;
+    expect(copied).not.toBe(keys['food_beverage.restaurants']);
+    expect((await listCategoryMccs(database, ws))[copied]).toBe('5812');
+    // The choice of which published category option a card runs is the card's, not a category's: nothing to copy.
+    expect(await database.db.values(sql`SELECT count(*) FROM catalog_category_choices`)).toEqual([[0]]);
+  });
+
+  it('gives a workspace started empty the categories the app posts into, so its interest is its own', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const scope = inBook(ws, business);
+    const bca = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR', openingBalanceMinor: 50_000_000, openedOn: '2026-01-01' });
+
+    const { debtAccountId } = await recordLoan(database, scope, {
+      person: { name: 'Andi', direction: 'lent', currency: 'IDR' },
+      occurredOn: '2026-09-05',
+      amountMinor: 10_000_000,
+      moneyAccountId: bca.id,
+    });
+    const { transactionId } = await recordRepayment(database, scope, {
+      debtAccountId,
+      occurredOn: '2026-10-05',
+      amountMinor: 3_000_000,
+      interestMinor: 200_000,
+      moneyAccountId: bca.id,
+    });
+
+    // The interest is the only category line, so it decides the workspace. It must be Business's own copy of
+    // Other Income — a workspace with none would borrow Personal's and file the repayment there.
+    expect(await database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${transactionId}`)).toEqual([[business]]);
+    const otherIncome = (await categoryIdsByKey(database, scope))['income.other']!;
+    expect(await categoryIdsOfBook(database, business)).toContain(otherIncome);
+    expect(await categoryIdsOfBook(database, personal)).not.toContain(otherIncome);
   });
 
   it('files a new category into the book the context names', async () => {
@@ -422,6 +494,38 @@ describe('context helpers', () => {
     expect(ownerScope(narrowed)).toEqual({ workspaceId: 'ws1', baseCurrency: 'IDR' });
     // ownerScope never carries a bookId through, even if one somehow slipped in.
     expect(ownerScope(narrowed)).not.toHaveProperty('bookId');
+  });
+});
+
+describe('a card earns in the workspace that copied its categories', () => {
+  it('names the copies in the card’s rules, so travel booked in a copied category still earns the travel rate', async () => {
+    const { database, ws } = await setupDb();
+    const personal = await personalBook(database, ws);
+    const card = await createAccount(database, ws, { name: 'Garuda UOB', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    await saveCardTerms(database, ws, { accountId: card.id, statementDay: 25, dueDay: 12, creditLimitMinor: 50_000_000, annualFeeMinor: null });
+    const { programId } = await applyCatalogEntry(database, ws, {
+      cardAccountId: card.id,
+      entry: structuredClone(findEntry('uob-garuda-indonesia')!),
+      today: '2026-09-15',
+      replaceManual: false,
+    });
+
+    // The rules were written before this workspace existed, and an earn rule names category ids.
+    const family = await createBook(database, ws, { name: 'Family', kind: 'family', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
+    const travel = (await categoryIdsByKey(database, inBook(ws, family)))['travel']!;
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-10',
+      description: 'Hotel',
+      lines: expenseLines({ categoryAccountId: travel, paymentAccountId: card.id, amountMinor: 8_000_000, currency: 'IDR' }),
+    });
+
+    const all = await listAccounts(database, ws);
+    const ancestors = Object.fromEntries(all.map((a) => [a.id, a.parentId ? [a.parentId] : []]));
+    const lines = await cardSpendLines(database, ws, card.id, '2026-09-01', '2026-09-30');
+    const rules = await listEarnRules(database, ws, programId);
+    const bonuses = await listCycleBonuses(database, ws, programId);
+    // A mile per Rp 8.000 on travel; the base rate would have paid 666 for the same Rp 8 juta.
+    expect(computeCycleEarn(lines, rules, ancestors, { bonuses, cycleEnd: '2026-09-30' }).totalPoints).toBe(1000);
   });
 });
 
