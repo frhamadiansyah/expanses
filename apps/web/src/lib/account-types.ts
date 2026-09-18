@@ -1,4 +1,4 @@
-import type { AccountSubtype } from '@expanses/db';
+import type { AccountRow, AccountSubtype } from '@expanses/db';
 
 /**
  * The kinds of account someone can open, and what each is called. Pure data, so the list the Accounts page
@@ -62,3 +62,15 @@ export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'cash', 's
 
 /** What can pay a bill: money the owner holds, or a card that will be settled later. */
 export const WALLET_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES, 'credit_card'];
+
+/**
+ * May this account be offered as a way to pay, or as somewhere money is received? Every "pay with", "paid from"
+ * and "received into" list asks this, because holding a balance is not the same as being spendable.
+ *
+ * An asset has to be money the owner can move: a time deposit is locked until it matures, and a house or a
+ * holding of shares is not money at all, however much it is worth. A liability is the other way round — a card,
+ * a loan or money owed to someone is settled later rather than held now, and every one of them can be charged.
+ */
+export function canPayWith(account: Pick<AccountRow, 'kind' | 'subtype'>): boolean {
+  return account.kind === 'asset' ? SPENDABLE_SUBTYPES.includes(account.subtype) : true;
+}

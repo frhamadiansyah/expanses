@@ -14,6 +14,7 @@ import { RecommendPage } from '../features/cards/RecommendPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
+import { AddAccountPage } from '../features/ownables/AddAccountPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
@@ -73,6 +74,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators', component: CalculatorsPage }),
+  // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage }),

@@ -1,17 +1,21 @@
-import { CURRENCIES, displayAmount, isoDate, parseMajor, parseRate } from '@expanses/core';
-import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, createCardAccount, renameAccount, upsertRate } from '@expanses/db';
+import { CASH_ITEMS, cashCodeForSubtype, CURRENCIES, displayAmount, hartaLabel, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
+import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, createCardAccount, openCashAccount, renameAccount, upsertRate } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { ACCOUNT_TYPES, SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
-import { useAssetValues } from '../networth/queries';
+import { useAssetProfiles, useAssetValues } from '../networth/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { Button, Card, Empty, ErrorBox, errorMessage, Field, Input, Money, PageHeader, Select } from '../../ui';
 
 /** Sentinel for a bank the catalogue has never heard of. */
 const OTHER = '__other';
+
+/** The seven kinds of account that hold money, as the catalogue names them. Their `id` is the ledger's subtype. */
+const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
+const isCashSubtype = (subtype: AccountSubtype): subtype is MoneyAccountSubtype => CASH_SUBTYPES.has(subtype);
 
 function AddAccountForm() {
   const { database, ws } = useApp();
@@ -24,6 +28,7 @@ function AddAccountForm() {
   const [subtype, setSubtype] = useState<AccountSubtype>('bank');
   const [currency, setCurrency] = useState(ws.baseCurrency);
   const [balance, setBalance] = useState('');
+  const [maturesOn, setMaturesOn] = useState('');
   const [openedOn, setOpenedOn] = useState(isoDate());
   const [manualRate, setManualRate] = useState('');
   const [error, setError] = useState<unknown>(null);
@@ -33,6 +38,8 @@ function AddAccountForm() {
   const foreign = currency !== ws.baseCurrency;
   // A card is the one account that comes from a bank as a named product. Cash and property do not.
   const isCard = subtype === 'credit_card';
+  // A deposit is the one kind of money account with terms of its own, and the day it comes back is not guessable.
+  const isDeposit = subtype === 'time_deposit';
   const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
   const chosenIssuer = issuer === OTHER ? otherIssuer : issuer;
 
@@ -56,6 +63,9 @@ function AddAccountForm() {
       }
       if (isCard) {
         await createCardAccount(database, ws, { name, subtype: 'credit_card', currency, issuer: chosenIssuer, last4, openingBalanceMinor, openedOn, openingRateToBase });
+      } else if (isCashSubtype(subtype)) {
+        // Money opened here files under the same code the picker would have given it, and a deposit keeps its terms.
+        await openCashAccount(database, ws, { item: subtype, name, currency, openingBalanceMinor, openedOn, openingRateToBase, maturesOn: maturesOn || undefined });
       } else {
         await createAccount(database, ws, { name, kind, subtype, currency, openingBalanceMinor, openedOn, openingRateToBase });
       }
@@ -64,6 +74,7 @@ function AddAccountForm() {
       setOtherIssuer('');
       setLast4('');
       setBalance('');
+      setMaturesOn('');
       setManualRate('');
       await invalidate();
     } catch (e) {
@@ -80,8 +91,14 @@ function AddAccountForm() {
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA Visa Platinum" required />
         </Field>
         <Field label="Type">
+          {/* The money accounts first, named as the catalogue names them, then everything else this form can open. */}
           <Select value={subtype} onChange={(e) => setSubtype(e.target.value as AccountSubtype)}>
-            {ACCOUNT_TYPES.map((t) => (
+            {CASH_ITEMS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+            {ACCOUNT_TYPES.filter((t) => !isCashSubtype(t.subtype)).map((t) => (
               <option key={t.subtype} value={t.subtype}>
                 {SUBTYPE_LABELS[t.subtype]}
               </option>
@@ -123,6 +140,11 @@ function AddAccountForm() {
         <Field label={kind === 'liability' ? 'Amount owed now' : 'Current balance'} hint="Optional. Posted as an opening balance.">
           <Input value={balance} onChange={(e) => setBalance(e.target.value)} inputMode="decimal" placeholder="0" />
         </Field>
+        {isDeposit && (
+          <Field label="Matures on" hint="The day the money comes back. Move it out with a transfer when it does.">
+            <Input type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />
+          </Field>
+        )}
         <Field label="Balance as of">
           <Input type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
         </Field>
@@ -148,7 +170,19 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const values = useAssetValues();
+  const profiles = useAssetProfiles();
   const valued = (id: string) => (values.data ?? []).find((row) => row.accountId === id && row.mode !== 'derived');
+  /**
+   * The code this account files under in the tax report, and what the form calls it. The owner's own choice when
+   * there is a profile; otherwise the default its kind of money account carries, which is what the report uses too.
+   * Nothing for a card or a loan: those are a debt's code, which the debt's own page shows.
+   */
+  const filedAs = (account: AccountRow) => {
+    const chosen = (profiles.data ?? []).find((row) => row.accountId === account.id)?.coretaxCode;
+    const code = chosen ?? (isCashSubtype(account.subtype) ? cashCodeForSubtype(account.subtype) : null);
+    const label = code ? hartaLabel(code) : '';
+    return label ? `${code} · ${label}` : null;
+  };
   if (accounts.length === 0) return null;
 
   async function rename(account: AccountRow) {
@@ -181,6 +215,15 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
               </Link>
               <div className="text-xs text-slate-500">
                 {SUBTYPE_LABELS[account.subtype]} · {account.currency}
+                {filedAs(account) && (
+                  <>
+                    {' · '}
+                    {/* The code is never shown while choosing; here it is, and this is where it can be changed. */}
+                    <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="underline">
+                      {filedAs(account)}
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
             {account.subtype === 'credit_card' && (
@@ -222,6 +265,9 @@ export function AccountsPage() {
         title="Accounts"
         action={
           <div className="flex gap-3 text-sm">
+            <Link to="/accounts/new" className="font-medium underline">
+              Add account
+            </Link>
             <Link to="/import" className="underline">
               Import CSV
             </Link>

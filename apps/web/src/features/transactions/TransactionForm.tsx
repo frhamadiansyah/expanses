@@ -3,6 +3,7 @@ import { type AccountRow, mccSourcesFor, postTransaction, recordTaggedTransfer, 
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
+import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
@@ -16,8 +17,13 @@ import { useAssetProfiles, useAssetValues } from '../networth/queries';
 import { useGoals } from '../goals/queries';
 import { recordTrade } from '@expanses/db';
 
-function MoneyAccountOptions({ accounts }: { accounts: AccountRow[] }) {
-  const money = accounts.filter(isMoneyAccount);
+/**
+ * The accounts a money field may name. `spendableOnly` narrows them to what can actually pay or be paid into —
+ * a time deposit holds money it cannot be spent from, and a house is not money at all. A transfer passes nothing,
+ * because both sides of a transfer may be any money account: that is how a deposit is opened and how it comes back.
+ */
+function MoneyAccountOptions({ accounts, spendableOnly }: { accounts: AccountRow[]; spendableOnly?: boolean }) {
+  const money = accounts.filter((a) => isMoneyAccount(a) && (!spendableOnly || canPayWith(a)));
   return (
     <>
       <option value="">Choose…</option>
@@ -246,7 +252,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
                 value={purchase.moneyId}
                 onChange={(e) => setPurchaseField({ moneyId: e.target.value, moneyIsCard: byId.get(e.target.value)?.subtype === 'credit_card' })}
               >
-                <MoneyAccountOptions accounts={accounts} />
+                <MoneyAccountOptions accounts={accounts} spendableOnly />
               </Select>
             </Field>
             {purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card' && (
@@ -282,7 +288,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
           </Field>
           <Field label={draft.mode === 'expense' ? 'Paid with' : draft.mode === 'income' ? 'Received into' : 'From'}>
             <Select value={draft.moneyId} onChange={(e) => set({ moneyId: e.target.value })}>
-              <MoneyAccountOptions accounts={accounts} />
+              <MoneyAccountOptions accounts={accounts} spendableOnly={draft.mode !== 'transfer'} />
             </Select>
           </Field>
           {askWhichCard && (

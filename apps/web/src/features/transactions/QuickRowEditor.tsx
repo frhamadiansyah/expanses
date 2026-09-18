@@ -1,6 +1,7 @@
 import { categoryPath, matchCategory, matchPayment } from '@expanses/core';
 import type { AccountRow, CardRow } from '@expanses/db';
 import type { ReactNode } from 'react';
+import { canPayWith } from '../../lib/account-types';
 import { isCategoryOf, isMoneyAccount } from '../../lib/queries';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -20,7 +21,8 @@ export type RowOptions = ReturnType<typeof buildRowOptions>;
  * by `inOpenBook` (the open book's); money accounts never are.
  */
 export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly CardRow[], inOpenBook: (a: AccountRow) => boolean = () => true) {
-  const money = accounts.filter(isMoneyAccount);
+  // The cell says what paid, so it offers only what can: never a locked deposit, never a house.
+  const money = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a));
   const payments = paymentOptions(money, cards);
   const paid: ComboOption[] = payments.map((option) => ({
     value: paymentKey(option.accountId, option.cardId),

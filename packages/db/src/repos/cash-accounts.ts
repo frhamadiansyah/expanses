@@ -13,6 +13,8 @@ export interface OpenCashAccountInput {
   openingBalanceMinor?: number;
   openedOn?: string;
   openingRateToBase?: number;
+  /** The bank or institution holding it, kept as the kas table's "Nama bank/institusi". */
+  bank?: string;
   /** Time deposit only. */
   maturesOn?: string;
   rateBps?: number;
@@ -41,6 +43,8 @@ export async function openCashAccount(database: Database, ws: WorkspaceContext, 
       planGroup: 'liquid',
       coretaxSection: 'kas',
       coretaxCode: item.code,
+      // The one detail the form can answer while opening the account; the rest of the kas row is filled in later.
+      coretaxFields: input.bank ? { inst: input.bank } : undefined,
     });
     if (behaviour.valuedBy === 'deposit') {
       await saveDepositTermsTx(tx, ws, { accountId: account.id, maturesOn: input.maturesOn!, rateBps: input.rateBps ?? 0 });
