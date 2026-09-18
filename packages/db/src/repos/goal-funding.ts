@@ -13,7 +13,7 @@ import {
   uuidv7,
 } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
-import type { WorkspaceContext } from '../context';
+import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { auditLog } from '../schema';
 import { investmentTrades } from '../schema-assets';
@@ -132,7 +132,8 @@ const perMonth = (totalMinor: number, months: number) => (months > 0 ? roundHalf
 export async function goalPlansFor(database: Database, ws: WorkspaceContext, date: string): Promise<GoalSummary> {
   const goalRows = await listGoals(database, ws);
   const links = await goalLinksFor(database, ws, date);
-  const flows = await periodFlows(database, ws, { from: `${addMonths(monthOf(date), -11)}-01`, to: date });
+  // What you can put away is yours, not one workspace's, and it is counted in your own currency.
+  const flows = await periodFlows(database, ownerScope(ws), { from: `${addMonths(monthOf(date), -11)}-01`, to: date });
   const monthlyOutgoingMinor = perMonth(flows.spendingMinor + flows.debtPaymentsMinor, flows.months);
   const capacityMonthlyMinor = Math.max(0, perMonth(flows.incomeMinor - flows.spendingMinor - flows.debtPaymentsMinor, flows.months));
 

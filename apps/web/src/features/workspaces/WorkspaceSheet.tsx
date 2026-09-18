@@ -64,9 +64,11 @@ export function WorkspaceSheet({ onClose }: { onClose: () => void }) {
                   <WorkspaceDot book={book} />
                   <span className="min-w-0 flex-1">
                     <span className={cx('block truncate text-sm', open && 'font-semibold')}>{book.name}</span>
-                    {/* The owner's currency: spentThisMonthByBook answers in it, whatever the workspace reads in. */}
+                    {/* Each workspace's own currency, as that workspace's own screens show it. */}
                     <span className="block text-xs text-slate-500">
-                      {spent.isSuccess ? `Spent ${formatMinor(spent.data[book.id] ?? 0, ws.baseCurrency)} this month` : 'Spent this month…'}
+                      {spent.isSuccess
+                        ? `Spent ${formatMinor(spent.data[book.id]?.amountMinor ?? 0, spent.data[book.id]?.currency ?? book.baseCurrency)} this month`
+                        : 'Spent this month…'}
                     </span>
                   </span>
                   {open && <Check size={16} aria-label="Open" className="shrink-0 text-slate-900" />}

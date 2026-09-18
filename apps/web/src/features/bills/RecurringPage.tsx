@@ -11,6 +11,8 @@ import { amountOf, isSettled, paidText, sectionsOf, skippedText, summaryOf } fro
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useMonthlyBills } from './queries';
+import { useBookMoney } from '../workspaces/queries';
+import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from './UndoToast';
 
 const SECONDARY_LINK = 'inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100';
@@ -56,6 +58,25 @@ export function RecurringPage() {
 
   const currencyOf = (bill: MonthlyBill) => accounts.find((account) => account.id === bill.moneyAccountId)?.currency ?? ws.baseCurrency;
 
+  // Each row says what its own bill costs, in the money it is paid with. The totals add rows up, so they cannot:
+  // every amount is brought into the currency this workspace reads in first, and what no rate reaches is left out
+  // of the sum and named above it, rather than added in as though a dollar were a rupiah.
+  const money = useBookMoney().data;
+  const readCurrency = money?.currency ?? ws.baseCurrency;
+  const unconverted = new Map<string, string>();
+  const inReadCurrency = (bill: MonthlyBill): MonthlyBill => {
+    if (!money?.converts) return bill;
+    const from = currencyOf(bill);
+    const at = (minor: number | null) => {
+      if (minor === null) return null;
+      const converted = money.convert(minor, from, today);
+      if (converted === null) unconverted.set(from, today);
+      return converted ?? 0;
+    };
+    return { ...bill, amountMinor: at(bill.amountMinor), paidMinor: at(bill.paidMinor), estimateMinor: at(bill.estimateMinor) };
+  };
+  const readRows = rows.map(inReadCurrency);
+
   const pay = (bill: MonthlyBill) => setPaying(bill);
 
   async function skip(bill: MonthlyBill) {
@@ -87,7 +108,7 @@ export function RecurringPage() {
     }
   }
 
-  const summary = summaryOf(rows, today);
+  const summary = summaryOf(readRows, today);
 
   return (
     <div className="space-y-3">
@@ -139,12 +160,13 @@ export function RecurringPage() {
       )}
 
       {rows.length > 0 && (
-        <div data-testid="bills-summary">
+        <div data-testid="bills-summary" className="space-y-2">
+          <Unconverted missing={[...unconverted].map(([currency, onDate]) => ({ currency, onDate }))} currency={readCurrency} />
           <Card className="space-y-1">
             <span className="block text-xs text-slate-500">Still to pay in {summary.monthLabel}</span>
             <span className="block text-3xl font-semibold tabular">
               {summary.approximate && '~'}
-              <Money minor={summary.totalMinor} currency={ws.baseCurrency} />
+              <Money minor={summary.totalMinor} currency={readCurrency} />
               {summary.variesText && <span className="text-sm font-normal text-slate-500"> · {summary.variesText}</span>}
             </span>
             {summary.lines.map((line) => (
@@ -152,7 +174,7 @@ export function RecurringPage() {
                 <span className={LINE_TONE[line.key]}>{line.label}</span>
                 <span>
                   {line.approximate && '~'}
-                  <Money minor={line.minor} currency={ws.baseCurrency} />
+                  <Money minor={line.minor} currency={readCurrency} />
                 </span>
               </div>
             ))}
@@ -197,7 +219,7 @@ export function RecurringPage() {
       ))}
 
       {selecting && picked.size > 0 && (() => {
-        const chosen = rows.filter((b) => picked.has(b.id));
+        const chosen = readRows.filter((b) => picked.has(b.id));
         const approximate = chosen.some((b) => b.amountMinor === null);
         return (
           <button
@@ -208,7 +230,7 @@ export function RecurringPage() {
             <span>Pay {picked.size} selected</span>
             <span>
               {approximate && '~'}
-              <Money minor={chosen.reduce((s, b) => s + amountOf(b), 0)} currency={ws.baseCurrency} /> ›
+              <Money minor={chosen.reduce((s, b) => s + amountOf(b), 0)} currency={readCurrency} /> ›
             </span>
           </button>
         );

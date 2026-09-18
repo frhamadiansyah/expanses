@@ -1,5 +1,5 @@
 import { isoDate, monthOf, monthRange } from '@expanses/core';
-import { bookNamesOf, listBooks, spentThisMonthByBook } from '@expanses/db';
+import { bookMoneyFor, bookNamesOf, listBooks, spentThisMonthByBook } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -25,6 +25,17 @@ export function useSpentThisMonth() {
   const { from, to } = monthRange(month);
   // Not narrowed by the open workspace: this is every workspace's figure at once, asked for once.
   return useQuery({ queryKey: ['book-spent', ws.workspaceId, month], queryFn: () => spentThisMonthByBook(database, ws, from, to) });
+}
+
+/**
+ * The currency the open workspace reads in, and the way to bring an amount into it.
+ *
+ * Every figure that comes out of the database already reads in this currency; this is for the screens that add
+ * amounts up themselves — the bills summary, which sums bills paid from accounts in several currencies.
+ */
+export function useBookMoney() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['book-money', ws.workspaceId, ws.bookId ?? null], queryFn: () => bookMoneyFor(database, ws) });
 }
 
 /**

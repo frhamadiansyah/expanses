@@ -90,7 +90,8 @@ test('a transfer cannot land in a holding measured in units', async ({ page }) =
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await page.getByRole('button', { name: 'Transfer' }).click();
-  await expect(page.getByLabel('To')).not.toContainText('Antam gold bars');
+  // Exactly "To": the chart above the form labels itself "… Total spent", which a loose match also catches.
+  await expect(page.getByLabel('To', { exact: true })).not.toContainText('Antam gold bars');
   await expect(page.getByText(/Use Buy or sell, so units are counted/)).toBeVisible();
 });
 
@@ -143,7 +144,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover k
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await page.getByRole('button', { name: 'Transfer' }).click();
   await page.getByLabel('From').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('To').selectOption({ label: 'RDN Stockbit (IDR)' });
+  await page.getByLabel('To', { exact: true }).selectOption({ label: 'RDN Stockbit (IDR)' });
   await page.getByLabel('Amount').fill('2000000');
   await page.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
   await page.getByRole('button', { name: 'Save' }).click();

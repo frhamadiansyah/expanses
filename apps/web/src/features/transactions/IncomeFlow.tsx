@@ -1,5 +1,5 @@
 import { monthRange } from '@expanses/core';
-import { categoryTotalsBetween } from '@expanses/db';
+import { categoryTotalsIn } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -20,20 +20,22 @@ export function IncomeFlow({ month }: { month: string }) {
   const { from, to } = monthRange(month);
   const spending = useQuery({
     queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, 'expense', month],
-    queryFn: () => categoryTotalsBetween(database, ws, 'expense', from, to, { billMonths: true }),
+    queryFn: () => categoryTotalsIn(database, ws, 'expense', from, to, { billMonths: true }),
   });
   const income = useQuery({
     queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, 'income', month],
-    queryFn: () => categoryTotalsBetween(database, ws, 'income', from, to),
+    queryFn: () => categoryTotalsIn(database, ws, 'income', from, to),
   });
 
   const nameOf = (id: string) => accounts.find((a) => a.id === id)?.name ?? 'Uncategorised';
-  const bands = [...(spending.data ?? [])]
+  // Both sides read in the workspace's own currency, so the bands and what was kept are the same money.
+  const currency = spending.data?.currency ?? ws.baseCurrency;
+  const bands = [...(spending.data?.rows ?? [])]
     .map((row) => ({ id: row.accountId, name: nameOf(row.accountId), minor: row.amountBaseMinor }))
     .sort((a, b) => b.minor - a.minor)
     .slice(0, 10);
-  const spent = (spending.data ?? []).reduce((sum, row) => sum + row.amountBaseMinor, 0);
-  const earned = (income.data ?? []).reduce((sum, row) => sum + row.amountBaseMinor, 0);
+  const spent = (spending.data?.rows ?? []).reduce((sum, row) => sum + row.amountBaseMinor, 0);
+  const earned = (income.data?.rows ?? []).reduce((sum, row) => sum + row.amountBaseMinor, 0);
   if (spent === 0 && earned === 0) return null;
 
   // The drawing is sized by what came in, so a month that overspends visibly runs past its income.
@@ -51,7 +53,7 @@ export function IncomeFlow({ month }: { month: string }) {
         <h2 className="text-sm font-semibold">Income → where it went</h2>
         <p className="text-xs text-slate-500">
           Kept <b className={spent <= earned ? 'font-semibold text-emerald-700' : 'font-semibold text-red-700'}>{share(earned - spent, earned)}%</b> of{' '}
-          <Money minor={earned} currency={ws.baseCurrency} />
+          <Money minor={earned} currency={currency} />
         </p>
       </div>
       <svg viewBox={`0 0 ${width} ${height + 24}`} className="w-full" role="img" aria-label={`Of ${earned / 100} earned, ${spent / 100} was spent across ${bands.length} categories`}>

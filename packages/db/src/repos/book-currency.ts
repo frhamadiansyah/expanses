@@ -6,6 +6,12 @@ import { fxRates } from '../schema';
 import { books } from '../schema-books';
 import { hasBooks } from './books';
 
+/** One currency no rate reached, with the earliest date it was asked for: what a screen names to the user. */
+export interface Unconverted {
+  currency: string;
+  onDate: string;
+}
+
 export interface BookMoney {
   /** False when the workspace reads in the owner's own currency: every figure then takes today's path, unchanged. */
   converts: boolean;
@@ -14,7 +20,7 @@ export interface BookMoney {
   /** Null when no rate exists for that currency on or before that date; the caller leaves the amount out. */
   convert(amountMinor: number, currency: string, onDate: string): number | null;
   /** What could not be converted, for the screen to say: one entry per currency, with its earliest date. */
-  missing(): { currency: string; onDate: string }[];
+  missing(): Unconverted[];
 }
 
 /** The base currency of one book of this workspace, or nothing when the id is not this workspace's. */

@@ -17,6 +17,7 @@ import {
   saveBudget,
   saveExpenseTemplate,
   spentThisMonthByBook,
+  upsertRate,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -206,6 +207,31 @@ describe('one workspace per transaction', () => {
       ],
     });
 
-    expect(await spentThisMonthByBook(database, ws, '2026-09-01', '2026-09-30')).toEqual({ [personal]: 412_300, [business]: 640_000 });
+    expect(await spentThisMonthByBook(database, ws, '2026-09-01', '2026-09-30')).toEqual({
+      [personal]: { amountMinor: 412_300, currency: 'IDR' },
+      [business]: { amountMinor: 640_000, currency: 'IDR' },
+    });
+  });
+
+  it('shows a workspace that reads in another currency its own figure, in that currency', async () => {
+    const { database, ws, personal, business } = await copy();
+    const singapore = await createBook(database, ws, { name: 'Singapore', kind: 'business', baseCurrency: 'SGD' });
+    await upsertRate(database, { fromCurrency: 'IDR', toCurrency: 'SGD', onDate: '2026-09-01', rate: 0.000083, source: 'manual', sourceDate: '2026-09-01' });
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const meals = await createAccount(database, inBook(ws, singapore), { name: 'Client meals', kind: 'expense', subtype: 'category', currency: null });
+    await postTransaction(database, inBook(ws, singapore), {
+      occurredOn: '2026-09-10',
+      description: 'Dinner',
+      lines: [
+        { accountId: meals.id, amountMinor: 12_000_000, currency: 'IDR' },
+        { accountId: card.id, amountMinor: -12_000_000, currency: 'IDR' },
+      ],
+    });
+
+    expect(await spentThisMonthByBook(database, ws, '2026-09-01', '2026-09-30')).toEqual({
+      [personal]: { amountMinor: 0, currency: 'IDR' },
+      [business]: { amountMinor: 0, currency: 'IDR' },
+      [singapore]: { amountMinor: 99_600, currency: 'SGD' },
+    });
   });
 });

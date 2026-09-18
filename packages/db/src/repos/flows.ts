@@ -4,6 +4,8 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { assetProfiles, investmentTrades } from '../schema-assets';
+import { bookMoneyFor, type Unconverted } from './book-currency';
+import { categoryIdsOfBook, hasBooks } from './books';
 import { categoryIdsByKeyAll } from './categories';
 import { listInstallments } from './installments';
 import { homeLoanAccountIds } from './loans';
@@ -19,6 +21,10 @@ export interface PeriodFlowsResult extends PeriodFlows {
   from: string;
   to: string;
   byMonth: MonthFlow[];
+  /** The currency these figures read in: the open workspace's own, else the owner's. */
+  currency: string;
+  /** Amounts left out because no rate reaches `currency` for that date or earlier. */
+  missing: Unconverted[];
 }
 
 const MAX_MONTHS = 12;
@@ -64,10 +70,22 @@ export async function periodFlows(
   // A caller may name the home loans; otherwise the loans say so themselves, by what they bought.
   const homeLoans = new Set(opts.homeLoanAccountIds ?? (await homeLoanAccountIds(database, ws)));
 
+  // Income and spending are what this workspace earned and spent; savings and debt are facts about your own
+  // accounts, which no workspace owns. So only the two category sides are narrowed to the open book.
+  const ofBook = ws.bookId && (await hasBooks(database.db)) ? new Set(await categoryIdsOfBook(database, ws.bookId)) : null;
+  const counts = (accountId: string) => ofBook === null || ofBook.has(accountId);
+
+  // Each figure is read in the workspace's own currency: an entry from the currency it was paid in, on its own day;
+  // anything already kept in the owner's currency (an instalment, a trade) from there, on the day it falls.
+  const money = await bookMoneyFor(database, ws);
+  const intoRead = (amountMinor: number, onDate: string) => (money.converts ? (money.convert(amountMinor, ws.baseCurrency, onDate) ?? 0) : amountMinor);
+
   const rows = await database.db
     .select({
       transactionId: entries.transactionId,
       accountId: entries.accountId,
+      amountMinor: entries.amountMinor,
+      currency: entries.currency,
       amountBaseMinor: entries.amountBaseMinor,
       kind: accounts.kind,
       subtype: accounts.subtype,
@@ -99,18 +117,22 @@ export async function periodFlows(
   for (const row of rows) {
     const month = monthOf(row.occurredOn);
     const bucket = byMonth.get(month);
-    if (row.kind === 'income' && !realizedGains.has(row.accountId)) {
-      if (bucket) bucket.incomeMinor += displayAmount('income', row.amountBaseMinor);
-    } else if (row.kind === 'expense' && !finalTax.has(row.accountId)) {
-      if (bucket) bucket.spendingMinor += displayAmount('expense', row.amountBaseMinor);
+    // What the entry is worth in the read currency. Null means no rate reaches that day, so it counts as nothing
+    // and is named in `missing`; which side of the ledger a row is on is still read from the owner's figure, so a
+    // missing rate never turns a loan payment into something else.
+    const read = (money.converts ? money.convert(row.amountMinor, row.currency, row.occurredOn) : row.amountBaseMinor) ?? 0;
+    if (row.kind === 'income' && !realizedGains.has(row.accountId) && counts(row.accountId)) {
+      if (bucket) bucket.incomeMinor += displayAmount('income', read);
+    } else if (row.kind === 'expense' && !finalTax.has(row.accountId) && counts(row.accountId)) {
+      if (bucket) bucket.spendingMinor += displayAmount('expense', read);
     }
     const roll: TransactionRoll =
       perTransaction.get(row.transactionId) ??
       { month, principalMinor: 0, interestMinor: 0, touchesHomeLoan: false, intoSavingsMinor: 0, fromSpendingMoney: false };
-    if (row.subtype === 'loan' && row.amountBaseMinor > 0) roll.principalMinor += row.amountBaseMinor;
-    if (interest.has(row.accountId)) roll.interestMinor += displayAmount('expense', row.amountBaseMinor);
+    if (row.subtype === 'loan' && row.amountBaseMinor > 0) roll.principalMinor += read;
+    if (interest.has(row.accountId)) roll.interestMinor += displayAmount('expense', read);
     if (homeLoans.has(row.accountId)) roll.touchesHomeLoan = true;
-    if (row.kind === 'asset' && isSavingsDestination(row.accountId, row.subtype)) roll.intoSavingsMinor += row.amountBaseMinor;
+    if (row.kind === 'asset' && isSavingsDestination(row.accountId, row.subtype)) roll.intoSavingsMinor += read;
     if (row.kind === 'asset' && isSpendingMoney(row.accountId, row.subtype) && row.amountBaseMinor < 0) roll.fromSpendingMoney = true;
     perTransaction.set(row.transactionId, roll);
   }
@@ -121,6 +143,7 @@ export async function periodFlows(
       transactionId: investmentTrades.transactionId,
       kind: investmentTrades.kind,
       cashAccountId: investmentTrades.cashAccountId,
+      occurredOn: investmentTrades.occurredOn,
       grossMinor: investmentTrades.grossMinor,
       feeMinor: investmentTrades.feeMinor,
       taxMinor: investmentTrades.taxMinor,
@@ -167,7 +190,7 @@ export async function periodFlows(
   for (const trade of tradeRows) {
     if (trade.kind !== 'buy' || trade.cashAccountId === null) continue;
     if (savingsAccounts.has(trade.cashAccountId)) continue;
-    putAwayMinor += trade.grossMinor + trade.feeMinor + trade.taxMinor;
+    putAwayMinor += intoRead(trade.grossMinor + trade.feeMinor + trade.taxMinor, trade.occurredOn);
   }
 
   // An instalment billed in the period is a debt payment, though the purchase was spending once,
@@ -177,9 +200,10 @@ export async function periodFlows(
       const month = addMonths(plan.firstBilledMonth, index);
       const bucket = byMonth.get(month);
       if (!bucket) continue;
-      debtPaymentsMinor += plan.monthlyMinor;
-      nonMortgageDebtPaymentsMinor += plan.monthlyMinor;
-      bucket.debtPaymentsMinor += plan.monthlyMinor;
+      const billed = intoRead(plan.monthlyMinor, `${month}-01`);
+      debtPaymentsMinor += billed;
+      nonMortgageDebtPaymentsMinor += billed;
+      bucket.debtPaymentsMinor += billed;
     }
   }
 
@@ -200,5 +224,7 @@ export async function periodFlows(
     nonMortgageDebtPaymentsMinor,
     putAwayMinor,
     byMonth: [...byMonth.values()],
+    currency: money.currency,
+    missing: money.missing(),
   };
 }

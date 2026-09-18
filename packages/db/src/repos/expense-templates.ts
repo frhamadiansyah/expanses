@@ -18,6 +18,7 @@ import { accounts, entries, transactions } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
+import { bookMoneyFor } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { postTransactionTx, voidTransactionTx } from './ledger';
 
@@ -185,13 +186,27 @@ export async function deleteExpenseTemplate(database: Database, ws: WorkspaceCon
 /**
  * What each category already owes to bills this month, so a budget can say how much of it is spoken
  * for. A bill with no fixed amount contributes nothing: guessing one would overstate the commitment.
+ *
+ * A bill's amount is in the currency of the account that pays it, so the sum is brought into the currency the
+ * workspace reads in, at today's rate — which is also what stops a dollar bill and a rupiah bill being added
+ * together as though they were the same money.
  */
 export async function committedByCategory(database: Database, ws: WorkspaceContext): Promise<Record<string, number>> {
   const templates = await listExpenseTemplates(database, ws);
+  const money = await bookMoneyFor(database, ws);
+  const payers = new Map(
+    (await database.db.select({ id: accounts.id, currency: accounts.currency }).from(accounts).where(eq(accounts.workspaceId, ws.workspaceId))).map((row) => [
+      row.id,
+      row.currency,
+    ]),
+  );
+  const today = isoDate();
   const committed: Record<string, number> = {};
   for (const template of templates) {
     if (!template.active || template.amountMinor === null) continue;
-    committed[template.categoryAccountId] = (committed[template.categoryAccountId] ?? 0) + template.amountMinor;
+    const amountMinor = money.convert(template.amountMinor, payers.get(template.moneyAccountId) ?? ws.baseCurrency, today);
+    if (amountMinor === null) continue; // no rate reaches today: left out rather than counted as the wrong money
+    committed[template.categoryAccountId] = (committed[template.categoryAccountId] ?? 0) + amountMinor;
   }
   return committed;
 }

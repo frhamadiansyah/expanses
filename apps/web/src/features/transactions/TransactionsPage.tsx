@@ -1,5 +1,5 @@
 import { categoryPath, formatMinor, isoDate, monthOf, parseLooseAmount, parseLooseDate, parseUnits, parsePeriod, periodLabel } from '@expanses/core';
-import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactions, ownerScope, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
+import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactionsIn, ownerScope, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, CalendarDays, CalendarX2, Check, ChevronDown, ChevronLeft, CircleAlert, CreditCard, Ellipsis, Trash2, LayoutGrid, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
@@ -29,6 +29,7 @@ import { TransactionForm } from './TransactionForm';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
+import { Unconverted } from '../workspaces/Unconverted';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 
@@ -292,23 +293,27 @@ export function TransactionsPage() {
   const listWs = ownerWide ? ownerScope(ws) : ws;
   const list = useQuery({
     queryKey: ['transactions', ws.workspaceId, ws.bookId ?? null, ownerWide, scopeIds?.join(',') ?? 'all', month, filters.showDeleted],
-    queryFn: () => listTransactions(database, listWs, { accountIds: scopeIds, ...range, includeVoid: filters.showDeleted, limit: month === 'all' ? ALL_TIME_LIMIT : undefined }),
+    queryFn: () => listTransactionsIn(database, listWs, { accountIds: scopeIds, ...range, includeVoid: filters.showDeleted, limit: month === 'all' ? ALL_TIME_LIMIT : undefined }),
   });
+  // A workspace reads its list in its own currency: the day's total and the month's line say so too. An account's
+  // history is owner-wide, so it answers in the owner's currency, as the bank statement beside it does.
+  const listCurrency = list.data?.currency ?? ws.baseCurrency;
+  const recorded = list.data?.transactions ?? [];
   // Which workspace each row is filed in, so an account's history says whose spending it is showing.
-  const badgeOf = useWorkspaceBadges((list.data ?? []).map((tx) => tx.id));
+  const badgeOf = useWorkspaceBadges(recorded.map((tx) => tx.id));
   /** The workspace a row would have to be opened in before it could be edited; null when this one will do. */
   const elsewhereOf = (transactionId: string) => editInsteadIn(badgeOf(transactionId), ws.bookId);
   const purchasePoints = useQuery({
-    queryKey: ['purchase-points', ws.workspaceId, (list.data ?? []).map((tx) => tx.id).join(',')],
+    queryKey: ['purchase-points', ws.workspaceId, recorded.map((tx) => tx.id).join(',')],
     enabled: list.isSuccess && accounts.length > 0,
-    queryFn: () => loadPurchasePoints(database, ws, list.data ?? [], accounts),
+    queryFn: () => loadPurchasePoints(database, ws, recorded, accounts),
   });
 
   // A page opened for one account or category shows only the drafts that touch it.
   const pending = (drafts.data ?? []).filter(
     (draft) => !scopeIds || (draft.accountId !== null && scopeIds.includes(draft.accountId)) || (draft.categoryAccountId !== null && scopeIds.includes(draft.categoryAccountId)),
   );
-  const rows = buildRows(list.data ?? [], pending, accounts, cards);
+  const rows = buildRows(recorded, pending, accounts, cards);
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
 
@@ -1042,16 +1047,16 @@ export function TransactionsPage() {
           {sum.spentMinor > 0 && (
             <>
               {' · '}
-              <b className="font-semibold text-slate-900">{formatMinor(sum.spentMinor, ws.baseCurrency)}</b> spent
+              <b className="font-semibold text-slate-900">{formatMinor(sum.spentMinor, listCurrency)}</b> spent
             </>
           )}
           {sum.incomeMinor > 0 && (
             <>
               {' · '}
-              <b className="font-semibold text-slate-900">{formatMinor(sum.incomeMinor, ws.baseCurrency)}</b> in
+              <b className="font-semibold text-slate-900">{formatMinor(sum.incomeMinor, listCurrency)}</b> in
             </>
           )}
-          {month === 'all' && (list.data?.length ?? 0) >= ALL_TIME_LIMIT && ` · the newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only`}
+          {month === 'all' && recorded.length >= ALL_TIME_LIMIT && ` · the newest ${ALL_TIME_LIMIT.toLocaleString('en-GB')} only`}
         </p>
         )}
       </div>
@@ -1067,10 +1072,12 @@ export function TransactionsPage() {
           onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
         />
       )}
+      <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />
       <ErrorBox error={error ?? list.error ?? drafts.error} />
       {view === 'table' ? (
         <>
         {!inCategory && chartShown && <Recurring today={today} />}
+        {/* baseCurrency is what a row typed into the table is parsed and recorded in, so it stays the owner's. */}
         <TransactionsTable
           rows={shown}
           options={rowOptions}
@@ -1193,7 +1200,7 @@ export function TransactionsPage() {
                           </span>
                         </span>
                         <span className="text-right">
-                          <Money minor={Math.abs(group.totalMinor)} currency={ws.baseCurrency} className="block text-sm font-semibold" />
+                          <Money minor={Math.abs(group.totalMinor)} currency={listCurrency} className="block text-sm font-semibold" />
                           {whole > 0 && group.totalMinor !== 0 && (
                             <span className="block text-xs text-slate-500">{Math.round((Math.abs(group.totalMinor) / whole) * 100)}%</span>
                           )}
@@ -1208,7 +1215,7 @@ export function TransactionsPage() {
             ) : (
               groupByDay(shown).map((day) => (
                 <Card key={day.date || 'undated'}>
-                  <DayHeader date={day.date} net={dayTotal(day.rows)} currency={ws.baseCurrency} />
+                  <DayHeader date={day.date} net={dayTotal(day.rows)} currency={listCurrency} />
                   <ul className="divide-y divide-slate-100">{day.rows.map((row) => rowView(row))}</ul>
                 </Card>
               ))

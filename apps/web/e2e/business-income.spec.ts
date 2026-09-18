@@ -80,7 +80,7 @@ test('money moved in from the family wallet is not a sale', async ({ page }) => 
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await page.getByRole('button', { name: 'Transfer' }).click();
   await page.getByLabel('From').selectOption({ label: 'Family wallet (IDR)' });
-  await page.getByLabel('To').selectOption({ label: 'Business wallet (IDR)' });
+  await page.getByLabel('To', { exact: true }).selectOption({ label: 'Business wallet (IDR)' });
   await page.getByLabel('Amount', { exact: true }).fill('50000000');
   await page.getByRole('button', { name: 'Save' }).click();
 

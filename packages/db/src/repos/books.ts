@@ -1,6 +1,6 @@
-import { displayAmount, isSupportedCurrency, uuidv7 } from '@expanses/core';
+import { isSupportedCurrency, uuidv7 } from '@expanses/core';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { WorkspaceContext } from '../context';
+import { inBook, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, settings } from '../schema';
 import { bookCategories, books, bookTransactions } from '../schema-books';
@@ -10,6 +10,7 @@ import { categoryMccs } from '../schema-points';
 // rules that name them. The other two live where they belong and are called from here.
 import { replanCatalogProgramsTx } from './catalog';
 import { ensureBookCategoryKeysTx } from './categories';
+import { categoryTotalsIn } from './reports';
 
 export type BookKind = 'personal' | 'business' | 'family' | 'shared';
 
@@ -277,24 +278,26 @@ export async function bookNamesOf(
 }
 
 /**
- * What each workspace spent between two dates, in the owner's base currency.
+ * What each workspace spent between two dates, each in the currency that workspace reads in.
  *
- * One query rather than one per workspace: the switcher shows this for every workspace at once. Transfers and card
- * payments are filed in no workspace, so they are in nobody's figure — which is the rule everywhere else too.
+ * A loop rather than one grouped query: a workspace reading in dollars converts amount by amount, at the rate on
+ * each day, and there are only ever a handful of workspaces. Reusing the same reading its own screens use is what
+ * keeps the switcher's figure and the workspace's own chart from disagreeing. Transfers and card payments are filed
+ * in no workspace, so they are in nobody's figure — which is the rule everywhere else too.
  */
-export async function spentThisMonthByBook(database: Database, ws: WorkspaceContext, from: string, to: string): Promise<Record<string, number>> {
+export async function spentThisMonthByBook(
+  database: Database,
+  ws: WorkspaceContext,
+  from: string,
+  to: string,
+): Promise<Record<string, { amountMinor: number; currency: string }>> {
   if (!(await hasBooks(database.db))) return {};
-  const rows = await database.db.values<[string, number]>(sql`
-    SELECT bc.book_id, sum(e.amount_base_minor)
-    FROM entries e
-    JOIN transactions t ON t.id = e.transaction_id
-    JOIN accounts a ON a.id = e.account_id
-    JOIN book_categories bc ON bc.category_account_id = e.account_id
-    WHERE e.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND a.kind = 'expense'
-      AND t.occurred_on BETWEEN ${from} AND ${to}
-    GROUP BY bc.book_id
-  `);
-  return Object.fromEntries(rows.map(([bookId, total]) => [String(bookId), displayAmount('expense', Number(total))]));
+  const spent: Record<string, { amountMinor: number; currency: string }> = {};
+  for (const book of await listBooks(database, ws)) {
+    const totals = await categoryTotalsIn(database, inBook(ws, book.id), 'expense', from, to);
+    spent[book.id] = { amountMinor: totals.rows.reduce((sum, row) => sum + row.amountBaseMinor, 0), currency: totals.currency };
+  }
+  return spent;
 }
 
 /** Category ids filed in a book, for narrowing owner-wide queries to it. */
