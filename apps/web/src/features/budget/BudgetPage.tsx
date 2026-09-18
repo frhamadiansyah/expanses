@@ -5,6 +5,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { useCategorySetMembership } from '../categories/set-queries';
+import { useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { useBudgets, useBudgetSheet, useCommittedBills } from './queries';
 
@@ -83,8 +84,14 @@ export function BudgetPage() {
   const sheet = sheetQuery.data;
   const overridden = new Set((budgets.data ?? []).filter((row) => row.overridden).map((row) => row.categoryAccountId));
   const committed = useCommittedBills().data ?? {};
-  // The sheet answers in the open workspace's own currency; the owner's is the answer until it arrives.
-  const currency = sheet?.currency ?? ws.baseCurrency;
+  // A cap, a month override and the expected take-home are the workspace's own figures, kept in the money that
+  // workspace reads in — so they are typed, parsed and labelled in it, and the actuals they are compared against
+  // are converted into the same currency. Read from the workspace's own row rather than from the sheet: what a
+  // figure is parsed in must not depend on a query still being in flight.
+  const openBook = useOpenBook();
+  const planCurrency = openBook?.baseCurrency ?? ws.baseCurrency;
+  // The sheet answers in the open workspace's own currency; the workspace's own row is the answer until it arrives.
+  const currency = sheet?.currency ?? planCurrency;
 
   // Roots first, each followed by its children, so the select reads like the sheet.
   const options = categories
@@ -100,7 +107,7 @@ export function BudgetPage() {
     try {
       const target = categoryId || options[0]?.id;
       if (!target) throw new Error('There are no categories to budget for yet');
-      const minor = parseMajor(amount, ws.baseCurrency);
+      const minor = parseMajor(amount, planCurrency);
       if (thisMonthOnly) await setBudgetOverride(database, ws, { categoryAccountId: target, month, amountMinor: minor });
       else await saveBudget(database, ws, { categoryAccountId: target, amountMinor: minor });
       await invalidate();
@@ -114,7 +121,7 @@ export function BudgetPage() {
     event.preventDefault();
     setError(null);
     try {
-      const minor = parseMajor(income, ws.baseCurrency);
+      const minor = parseMajor(income, planCurrency);
       if (incomeThisMonthOnly) await setIncomeOverride(database, ws, { month, amountMinor: minor });
       else await saveExpectedIncome(database, ws, minor);
       await invalidate();
@@ -230,7 +237,7 @@ export function BudgetPage() {
 
       <Card>
         <form onSubmit={submitIncome} className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
-          <Field label={`Expected take-home (${ws.baseCurrency})`}>
+          <Field label={`Expected take-home (${planCurrency})`}>
             <Input value={income} onChange={(e) => setIncome(e.target.value)} inputMode="numeric" />
           </Field>
           <label className="flex items-center gap-2 pb-2 text-xs text-slate-600">
@@ -254,7 +261,7 @@ export function BudgetPage() {
               ))}
             </Select>
           </Field>
-          <Field label={`Monthly amount (${ws.baseCurrency})`}>
+          <Field label={`Monthly amount (${planCurrency})`}>
             <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" />
           </Field>
           <label className="flex items-center gap-2 pb-2 text-xs text-slate-600">

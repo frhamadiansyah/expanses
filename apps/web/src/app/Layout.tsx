@@ -32,6 +32,7 @@ const MORE = [
   { to: '/recommend', label: 'Which card?' },
   { to: '/import', label: 'Import CSV' },
   { to: '/backup', label: 'Backup' },
+  { to: '/settings', label: 'Settings' },
 ] as const;
 
 /**

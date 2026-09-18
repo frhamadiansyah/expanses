@@ -1,11 +1,13 @@
-import { isSupportedCurrency, uuidv7 } from '@expanses/core';
+import { convertMinor, isoDate, isSupportedCurrency, uuidv7 } from '@expanses/core';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { inBook, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
-import { accounts, settings } from '../schema';
-import { bookCategories, books, bookTransactions } from '../schema-books';
+import { accounts, auditLog, settings } from '../schema';
+import { bookBudgetSettings, bookCategories, bookIncomeOverrides, books, bookTransactions } from '../schema-books';
+import { budgetIncomeOverrides, budgetOverrides, budgets, budgetSettings } from '../schema-budget';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { categoryMccs } from '../schema-points';
+import { findRate } from './fx';
 // Making a workspace is where three things meet: the book itself, the categories it starts with, and the card
 // rules that name them. The other two live where they belong and are called from here.
 import { replanCatalogProgramsTx } from './catalog';
@@ -257,6 +259,92 @@ export async function setActiveBook(database: Database, ws: WorkspaceContext, bo
 export async function setBookEventsInBudget(database: Database, ws: WorkspaceContext, bookId: string, on: boolean): Promise<void> {
   await bookOf(database, ws, bookId);
   await database.db.update(books).set({ countEventsInBudget: on ? 1 : 0 }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+}
+
+/**
+ * Changes the currency a workspace reads in, and carries its plan across with it.
+ *
+ * Caps, month overrides and expected income carry no currency of their own: they are figures in whatever the
+ * workspace reads in. Left alone, Rp 5.000.000 of groceries would become S$5.000.000 overnight, so they are
+ * converted once, at today's rate, and the change is refused outright when there is no rate to convert with —
+ * better a refusal than a plan nobody can trust. Spending itself is never rewritten: an entry keeps the money it
+ * was paid in, and is converted again on every read at the rate on its own day.
+ */
+export async function setBookBaseCurrency(database: Database, ws: WorkspaceContext, bookId: string, currency: string): Promise<{ rate: number; onDate: string }> {
+  if (!isSupportedCurrency(currency)) throw new BookError('BAD_CURRENCY', `${currency} is not a currency this app knows`);
+  const book = await bookOf(database, ws, bookId);
+  const today = isoDate();
+  if (book.baseCurrency === currency) return { rate: 1, onDate: today };
+  const found = await findRate(database, book.baseCurrency, currency, today);
+  if (!found) throw new BookError('NO_RATE', `No ${book.baseCurrency}→${currency} rate yet. Record one first.`);
+  // Through convertMinor, so a currency with a different number of minor units lands on a whole figure.
+  const into = (amountMinor: number) => convertMinor(amountMinor, book.baseCurrency, currency, found.rate);
+  const now = new Date().toISOString();
+
+  await database.transaction(async (tx) => {
+    // The old, workspace-wide budget tables are Personal's own copy — budget-settings.ts writes both whenever
+    // Personal is written — so they move when Personal moves and are left alone for any other workspace.
+    const personalId = await personalBookIdTx(tx, ws.workspaceId);
+    const ids = (await tx.select({ id: bookCategories.categoryAccountId }).from(bookCategories).where(eq(bookCategories.bookId, bookId))).map((row) => row.id);
+
+    const caps = ids.length
+      ? await tx
+          .select({ id: budgets.id, amountMinor: budgets.amountMinor })
+          .from(budgets)
+          .where(and(eq(budgets.workspaceId, ws.workspaceId), inArray(budgets.categoryAccountId, ids)))
+      : [];
+    for (const cap of caps) {
+      await tx.update(budgets).set({ amountMinor: into(cap.amountMinor), updatedAt: now }).where(eq(budgets.id, cap.id));
+      // A month override is a cap for one month; it is the same figure in the same money.
+      const overrides = await tx.select({ id: budgetOverrides.id, amountMinor: budgetOverrides.amountMinor }).from(budgetOverrides).where(eq(budgetOverrides.budgetId, cap.id));
+      for (const override of overrides) {
+        await tx.update(budgetOverrides).set({ amountMinor: into(override.amountMinor) }).where(eq(budgetOverrides.id, override.id));
+      }
+    }
+
+    const [expected] = await tx.select({ expectedIncomeMinor: bookBudgetSettings.expectedIncomeMinor }).from(bookBudgetSettings).where(eq(bookBudgetSettings.bookId, bookId));
+    if (expected) {
+      await tx.update(bookBudgetSettings).set({ expectedIncomeMinor: into(expected.expectedIncomeMinor), updatedAt: now }).where(eq(bookBudgetSettings.bookId, bookId));
+    }
+    const bonusMonths = await tx.select({ month: bookIncomeOverrides.month, amountMinor: bookIncomeOverrides.amountMinor }).from(bookIncomeOverrides).where(eq(bookIncomeOverrides.bookId, bookId));
+    for (const month of bonusMonths) {
+      await tx
+        .update(bookIncomeOverrides)
+        .set({ amountMinor: into(month.amountMinor) })
+        .where(and(eq(bookIncomeOverrides.bookId, bookId), eq(bookIncomeOverrides.month, month.month)));
+    }
+
+    if (bookId === personalId) {
+      const [old] = await tx.select({ expectedIncomeMinor: budgetSettings.expectedIncomeMinor }).from(budgetSettings).where(eq(budgetSettings.workspaceId, ws.workspaceId));
+      if (old) {
+        await tx.update(budgetSettings).set({ expectedIncomeMinor: into(old.expectedIncomeMinor), updatedAt: now }).where(eq(budgetSettings.workspaceId, ws.workspaceId));
+      }
+      const oldMonths = await tx
+        .select({ month: budgetIncomeOverrides.month, amountMinor: budgetIncomeOverrides.amountMinor })
+        .from(budgetIncomeOverrides)
+        .where(eq(budgetIncomeOverrides.workspaceId, ws.workspaceId));
+      for (const month of oldMonths) {
+        await tx
+          .update(budgetIncomeOverrides)
+          .set({ amountMinor: into(month.amountMinor) })
+          .where(and(eq(budgetIncomeOverrides.workspaceId, ws.workspaceId), eq(budgetIncomeOverrides.month, month.month)));
+      }
+    }
+
+    await tx.update(books).set({ baseCurrency: currency }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+    // Worth a record of its own: every cap in the workspace has just been rewritten, and the rate that did it is
+    // the only way to read the old figures back out of the new ones.
+    await tx.insert(auditLog).values({
+      id: uuidv7(),
+      workspaceId: ws.workspaceId,
+      action: 'update',
+      entity: 'book_currency',
+      entityId: bookId,
+      payloadJson: JSON.stringify({ from: book.baseCurrency, to: currency, rate: found.rate, onDate: found.onDate }),
+      createdAt: now,
+    });
+  });
+  return { rate: found.rate, onDate: found.onDate };
 }
 
 /**

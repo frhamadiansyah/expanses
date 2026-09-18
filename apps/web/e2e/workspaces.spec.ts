@@ -129,3 +129,54 @@ test('an account’s history holds every workspace, each row saying which', asyn
   await page.getByRole('button', { name: 'Open Personal' }).click();
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Personal');
 });
+
+/** The switcher is where a workspace is chosen; Settings is where one is changed, and it says so. */
+test('the switcher’s “Manage workspaces” lands on Settings, and the sheet closes behind it', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('link', { name: 'Manage workspaces' }).click();
+
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  // Your own currency is stated rather than offered: every owner-level figure is already recorded against it.
+  await expect(page.getByText('Net worth, balances, statements and the tax report are read in this currency.')).toBeVisible();
+  await expect(page.getByTestId('workspace-entry')).toHaveCount(1);
+});
+
+/**
+ * Settings holds what a workspace is, rather than which one is open: its name, and whether it is still in use.
+ * Personal is neither — it is where categories and expected income fall back to — so it refuses to go away.
+ */
+test('Settings renames a workspace, archives it, and keeps Personal', async ({ page }) => {
+  await addBank(page);
+  await newWorkspace(page, 'Business', 'Copy from Personal');
+
+  await page.goto('/settings');
+  // Personal first, then the one just made: the order the switcher shows them in.
+  await expect(page.getByTestId('workspace-entry')).toHaveCount(2);
+  const business = page.getByTestId('workspace-entry').nth(1);
+  await business.getByTestId('settings-workspace-row').click();
+  await business.getByLabel('Name', { exact: true }).fill('Consulting');
+  await business.getByRole('button', { name: 'Save' }).click();
+  await expect(business.getByTestId('settings-workspace-row')).toContainText('Consulting');
+  // The switcher follows: it is the same workspace, under the name it is now called.
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Consulting');
+
+  // Archiving asks twice, and the app cannot stay in a workspace that has just been put away.
+  await business.getByRole('button', { name: 'Archive workspace' }).click();
+  await business.getByRole('button', { name: 'Click again to archive' }).click();
+  await expect(page.getByTestId('workspace-entry')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Personal');
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice')).toHaveCount(1);
+  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'Close' }).click();
+
+  // Personal stays, and says why in the place it was asked to go.
+  const personal = page.getByTestId('workspace-entry').first();
+  await personal.getByTestId('settings-workspace-row').click();
+  await personal.getByRole('button', { name: 'Archive workspace' }).click();
+  await personal.getByRole('button', { name: 'Click again to archive' }).click();
+  await expect(personal.getByRole('alert')).toContainText('Personal is where categories and expected income fall back to, so it stays');
+  await expect(page.getByTestId('workspace-entry')).toHaveCount(1);
+});

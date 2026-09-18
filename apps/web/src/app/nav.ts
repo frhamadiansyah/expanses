@@ -11,6 +11,7 @@ import {
   PiggyBank,
   Receipt,
   Scale,
+  Settings,
   Sparkles,
   Store,
   Tags,
@@ -51,6 +52,7 @@ export const MORE_GROUPS: readonly NavGroup[] = [
     items: [
       { to: '/backup', label: 'Backup', icon: ArrowDownToLine },
       { to: '/import', label: 'Import CSV', icon: ArrowUpFromLine },
+      { to: '/settings', label: 'Settings', icon: Settings },
     ],
   },
   {

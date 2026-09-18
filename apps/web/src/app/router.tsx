@@ -27,6 +27,7 @@ import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
+import { SettingsPage } from '../features/workspaces/SettingsPage';
 import { Layout } from './Layout';
 
 export interface CardSearch {
@@ -97,6 +98,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/import', component: ImportPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
 ]);
 
 export const router = createRouter({ routeTree });
