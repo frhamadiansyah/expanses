@@ -4,7 +4,7 @@ import { findEntry } from '../src/index';
 import { planCatalogApply } from '../src/plan';
 
 const idsExcept = (...missing: string[]) =>
-  Object.fromEntries([...DEFAULT_CATEGORY_KEYS].filter((key) => !missing.includes(key)).map((key) => [key, `id:${key}`]));
+  Object.fromEntries([...DEFAULT_CATEGORY_KEYS].filter((key) => !missing.includes(key)).map((key) => [key, [`id:${key}`]]));
 const entry = (id: string) => findEntry(id)!;
 
 describe('planCatalogApply', () => {

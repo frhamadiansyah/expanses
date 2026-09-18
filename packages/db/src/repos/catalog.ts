@@ -6,7 +6,7 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cardIdentity } from '../schema-cards';
 import { cardTerms, catalogCategoryChoices, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
-import { categoryIdsByKeyTx } from './categories';
+import { categoryIdsByKeyAllTx } from './categories';
 import { type RewardProgramRow, saveCycleBonusTx, saveEarnRuleTx, saveRedemptionOptionTx, saveTransferPartnerTx } from './points';
 
 export class CatalogError extends Error {
@@ -80,7 +80,9 @@ async function writePlan(
   setCrediting = false,
   memberLevel: string | null = null,
 ) {
-  const plan = planCatalogApply(entry, await categoryIdsByKeyTx(tx, ws), today, memberLevel, await choicesFor(tx, ws, program.id));
+  // A card is the owner's, not one workspace's: an earning rule keyed to a category must name every workspace's
+  // copy of it, or a business dinner on the same card would earn nothing.
+  const plan = planCatalogApply(entry, await categoryIdsByKeyAllTx(tx, ws), today, memberLevel, await choicesFor(tx, ws, program.id));
   // A rule capped at "one times your limit" needs the card's own terms; the smaller of that and any published
   // cap wins. With no limit recorded, the published cap stands alone rather than the rule going uncapped.
   const [terms] = await tx

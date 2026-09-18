@@ -154,7 +154,7 @@ async function owedNowTx(tx: Db, ws: WorkspaceContext, accountId: string, direct
   return direction === 'lent' ? raw : -raw;
 }
 
-/** The categories every debt action can reach for. */
+/** The categories every debt action can reach for — the open workspace's copies, since that is where it records. */
 async function debtCategoriesTx(tx: Db, ws: WorkspaceContext) {
   const keys = await categoryIdsByKeyTx(tx, ws);
   return {

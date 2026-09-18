@@ -240,7 +240,7 @@ describe('Kartu Kredit Jenius', () => {
   });
 
   it('a foreign purchase in the chosen category earns double once, not four times', () => {
-    const rules = planCatalogApply(jenius(), { 'food_beverage.restaurants': 'c-dining', 'food_beverage.cafe_dessert': 'c-coffee' }, NEW, 'grow-plus', [
+    const rules = planCatalogApply(jenius(), { 'food_beverage.restaurants': ['c-dining'], 'food_beverage.cafe_dessert': ['c-coffee'] }, NEW, 'grow-plus', [
       { optionKey: 'food-beverages', from: null, to: null },
     ]).rules.filter((rule) => rule.validFrom === NEW);
 
@@ -260,7 +260,7 @@ describe('Kartu Kredit Jenius', () => {
 
   it('offers the same four whatever the Club status', () => {
     const names = (level: string) =>
-      planCatalogApply(jenius(), { 'household.groceries': 'c-groceries' }, NEW, level, [{ optionKey: 'groceries', from: null, to: null }]).rules
+      planCatalogApply(jenius(), { 'household.groceries': ['c-groceries'] }, NEW, level, [{ optionKey: 'groceries', from: null, to: null }]).rules
         .filter((rule) => rule.name.startsWith('Double Yay category') && rule.validFrom === NEW)
         .map((rule) => rule.name);
     expect(names('grow-plus')).toEqual(['Double Yay category: Groceries & Gasoline']);

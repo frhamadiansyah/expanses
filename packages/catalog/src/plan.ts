@@ -69,7 +69,7 @@ export interface CatalogPlan {
  */
 export function planCatalogApply(
   entry: CatalogEntry,
-  categoryIdsByKey: Record<string, string>,
+  categoryIdsByKey: Record<string, readonly string[]>,
   today: string,
   memberLevel?: string | null,
   categoryChoices: readonly AppliedCategoryChoice[] = [],
@@ -79,9 +79,10 @@ export function planCatalogApply(
   const atLevel = (levels: readonly string[] | undefined) => !levels || (!!memberLevel && levels.includes(memberLevel));
   const ids = (keys: readonly string[] | undefined) =>
     (keys ?? []).flatMap((key) => {
-      const id = categoryIdsByKey[key];
-      if (id === undefined) unmapped.add(key);
-      return id === undefined ? [] : [id];
+      // One key, one category per workspace: a rule keyed to restaurants must earn on a business dinner too.
+      const found = categoryIdsByKey[key];
+      if (!found || found.length === 0) unmapped.add(key);
+      return found ? [...found] : [];
     });
 
   /** Null when the match is limited to categories of which none exist: an empty list would match every category. */

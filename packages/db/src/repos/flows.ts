@@ -4,7 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { assetProfiles, investmentTrades } from '../schema-assets';
-import { categoryIdsByKey } from './categories';
+import { categoryIdsByKeyAll } from './categories';
 import { listInstallments } from './installments';
 import { homeLoanAccountIds } from './loans';
 
@@ -56,10 +56,11 @@ export async function periodFlows(
   range: { from: string; to: string },
   opts: { homeLoanAccountIds?: string[] } = {},
 ): Promise<PeriodFlowsResult> {
-  const keys = await categoryIdsByKey(database, ws);
-  const realizedGainsId = keys['income.realized_gains'];
-  const finalTaxId = keys['government_taxes.estimated_tax'];
-  const interestId = keys['miscellaneous.interest'];
+  // Flows are the owner's whole picture, so a key means every workspace's copy of it, not one workspace's.
+  const keys = await categoryIdsByKeyAll(database, ws);
+  const realizedGains = new Set(keys['income.realized_gains'] ?? []);
+  const finalTax = new Set(keys['government_taxes.estimated_tax'] ?? []);
+  const interest = new Set(keys['miscellaneous.interest'] ?? []);
   // A caller may name the home loans; otherwise the loans say so themselves, by what they bought.
   const homeLoans = new Set(opts.homeLoanAccountIds ?? (await homeLoanAccountIds(database, ws)));
 
@@ -98,16 +99,16 @@ export async function periodFlows(
   for (const row of rows) {
     const month = monthOf(row.occurredOn);
     const bucket = byMonth.get(month);
-    if (row.kind === 'income' && row.accountId !== realizedGainsId) {
+    if (row.kind === 'income' && !realizedGains.has(row.accountId)) {
       if (bucket) bucket.incomeMinor += displayAmount('income', row.amountBaseMinor);
-    } else if (row.kind === 'expense' && row.accountId !== finalTaxId) {
+    } else if (row.kind === 'expense' && !finalTax.has(row.accountId)) {
       if (bucket) bucket.spendingMinor += displayAmount('expense', row.amountBaseMinor);
     }
     const roll: TransactionRoll =
       perTransaction.get(row.transactionId) ??
       { month, principalMinor: 0, interestMinor: 0, touchesHomeLoan: false, intoSavingsMinor: 0, fromSpendingMoney: false };
     if (row.subtype === 'loan' && row.amountBaseMinor > 0) roll.principalMinor += row.amountBaseMinor;
-    if (row.accountId === interestId) roll.interestMinor += displayAmount('expense', row.amountBaseMinor);
+    if (interest.has(row.accountId)) roll.interestMinor += displayAmount('expense', row.amountBaseMinor);
     if (homeLoans.has(row.accountId)) roll.touchesHomeLoan = true;
     if (row.kind === 'asset' && isSavingsDestination(row.accountId, row.subtype)) roll.intoSavingsMinor += row.amountBaseMinor;
     if (row.kind === 'asset' && isSpendingMoney(row.accountId, row.subtype) && row.amountBaseMinor < 0) roll.fromSpendingMoney = true;

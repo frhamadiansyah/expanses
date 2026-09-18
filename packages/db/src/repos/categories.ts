@@ -1,5 +1,5 @@
 import { DEFAULT_CATEGORIES, uuidv7 } from '@expanses/core';
-import { and, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
@@ -82,15 +82,37 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
   });
 }
 
-/** Active categories that carry a default key, for mapping catalogue category keys to account ids. */
-export function categoryIdsByKey(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
-  return categoryIdsByKeyTx(database.db, ws);
+/**
+ * Categories that carry a default key, one per key, in the book the context names — else the Personal book.
+ *
+ * Once a workspace copies another's categories, two rows in one workspace share a key (migration 0043 narrowed the
+ * unique index to allow it), so "the" category for a key only means anything inside one book. Owner-level figures
+ * and card earning rules must not use this: they want every copy — `categoryIdsByKeyAllTx`.
+ */
+export async function categoryIdsByKeyTx(db: Db, ws: WorkspaceContext): Promise<Record<string, string>> {
+  const all = await categoryIdsByKeyAllTx(db, ws);
+  if (!(await hasBooks(db))) return Object.fromEntries(Object.entries(all).map(([key, ids]) => [key, ids[0]!]));
+  const bookId = ws.bookId ?? (await personalBookIdTx(db, ws.workspaceId));
+  const inBookId = new Set(
+    (await db.select({ id: bookCategories.categoryAccountId }).from(bookCategories).where(eq(bookCategories.bookId, bookId ?? ''))).map((row) => row.id),
+  );
+  // The book's own copy when it has one; otherwise the oldest copy anywhere, so a workspace with no categories of
+  // its own still records rather than failing.
+  return Object.fromEntries(Object.entries(all).map(([key, ids]) => [key, ids.find((id) => inBookId.has(id)) ?? ids[0]!]));
 }
 
-export async function categoryIdsByKeyTx(db: Db, ws: WorkspaceContext): Promise<Record<string, string>> {
+/** Every id that carries each key, oldest first, across every book. */
+export async function categoryIdsByKeyAllTx(db: Db, ws: WorkspaceContext): Promise<Record<string, string[]>> {
   const rows = await db
     .select({ id: accounts.id, key: accounts.systemKey })
     .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category'), isNotNull(accounts.systemKey), isNull(accounts.archivedAt)));
-  return Object.fromEntries(rows.map((row) => [row.key as string, row.id]));
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category'), isNotNull(accounts.systemKey), isNull(accounts.archivedAt)))
+    .orderBy(asc(accounts.createdAt), asc(accounts.id));
+  const byKey: Record<string, string[]> = {};
+  for (const row of rows) (byKey[row.key as string] ??= []).push(row.id);
+  return byKey;
 }
+
+/** Active categories that carry a default key, for mapping catalogue category keys to account ids. */
+export const categoryIdsByKey = (database: Database, ws: WorkspaceContext) => categoryIdsByKeyTx(database.db, ws);
+export const categoryIdsByKeyAll = (database: Database, ws: WorkspaceContext) => categoryIdsByKeyAllTx(database.db, ws);
