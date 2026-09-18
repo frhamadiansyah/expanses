@@ -104,10 +104,10 @@ Every row: `section: 'kas'`, `behaviour.opens: 'money'`.
 | id / account subtype | Label | Sub | Code | Valued by | Spendable | Note |
 |---|---|---|---|---|---|---|
 | `cash` | Cash | banknotes and coins | 0101 | balance | yes | today's `cash` |
-| `bank` | Bank account | everyday account | 0102 | balance | yes | today's `bank`; label already "Bank account" in the mockup, "Current account" in `SUBTYPE_LABELS` — the catalogue's label wins |
+| `bank` | Current account | everyday account at a bank | 0102 | balance | yes | today's `bank`; the mockup said "Bank account", `SUBTYPE_LABELS` says "Current account" — a later ruling gave it to `SUBTYPE_LABELS`, so the app's own name wins and the catalogue carries it |
 | `savings` | Saving account | money set aside | 0102 | balance | yes | today's `savings` |
 | `time_deposit` | Time deposit | locked until it matures | 0104 | deposit | **no** | **new subtype** |
-| `ewallet` | Electronic money | GoPay, OVO, DANA | 0105 | balance | yes | today's `ewallet`; default code **changes** from 0102 (§7) |
+| `ewallet` | Digital wallet | electronic money — GoPay, OVO, DANA | 0105 | balance | yes | today's `ewallet`, named as `SUBTYPE_LABELS` names it; "electronic money" rides in the sub-line, so searching for it still lands; default code **changes** from 0102 (§7) |
 | `fund` | Fund account | broker or RDN cash | 0109 | balance | yes | today's `fund`; default code **changes** from 0102 (§7) |
 | `other_cash` | Other cash equivalents | cheque, wesel, commercial paper | 0109 | balance | yes | **new subtype** |
 
@@ -210,8 +210,10 @@ section `lainnya`. Nothing else in the catalogue offers two valuations.
 **The legacy asset item.** `assetItem('cash')` — *Bank, cash or deposit*, 0102, `assetKind: 'cash'`,
 `subtype: 'bank'`, `planGroup: 'liquid'`, `valuedBy: 'balance'` — is kept in the catalogue and in the
 `AddAssetForm` select, marked *"better added as an account"*. It is **not** offered in the picker: money
-belongs under Add account. It stays because four Playwright specs add a cash asset through it, and because
-"keep every existing field and flow" is a constraint of this work.
+belongs under Add account. It carries `inPicker: false`, and `pickerRows` drops anything so marked, so a
+search for "bank", "cash", "deposit" or "account" cannot reach it either — the picker has no other door.
+It stays because four Playwright specs add a cash asset through it, and because "keep every existing field
+and flow" is a constraint of this work.
 
 ### 2.5 "Something else"
 
@@ -346,7 +348,7 @@ Nothing new. Each kind of thing already has a home for its code, and the pickers
 | Holding, property, vehicle, other | `asset_profiles.coretax_code` | `saveAssetProfile` |
 | Receivable | `debt_profiles.coretax_code` | `openDebtBalance` / `saveDebtProfile` |
 | Payable to a person | `debt_profiles.coretax_code` | `openDebtBalance` / `saveDebtProfile` |
-| Loan | `loan_terms.coretax_code` | `saveLoanTerms` |
+| Loan | `loan_terms.coretax_code` | `saveLoanTerms`, or `setLoanCode` when only the code changes |
 | Credit card | none — `DEBT_CODE_BY_SUBTYPE` gives 102 | — |
 
 The one genuinely new thing is that **Add account now writes an `asset_profiles` row**. Today it writes none,
@@ -364,7 +366,11 @@ which is why every account created there files as 0102.
   Today a person's account can only be opened by `recordLoan` or `splitBill`, both of which need a money
   account because money moves; a debt you already had needs none, and posts against Opening Balances the way
   every other opening balance does.
-- `saveDepositTerms` / `listDepositTerms` / `depositTablesExist` — new, in `repos/deposit-terms.ts`.
+- `saveDepositTerms` / `getDepositTerms` / `listDepositTerms` / `depositTablesExist` — new, in
+  `repos/deposit-terms.ts`. The reads are what the account's page and the Accounts row print the terms from,
+  and `saveDepositTerms` is what the editor beside them writes through.
+- `setLoanCode(database, ws, accountId, coretaxCode)` — new, in `repos/loans.ts`. Writes `coretax_code` and
+  nothing else, so changing what a loan files as cannot move a rate period.
 
 `saveAssetProfile`, `saveDebtProfile`, `saveLoanTerms` and `setAssetReporting` are unchanged; the pickers pass
 `planGroup`, `unitKind`, `lotSize`, `coretaxSection` and `coretaxCode` through the arguments they already take.
@@ -398,9 +404,13 @@ Choosing a row opens the account form with the item's fields:
 
 | Item | Fields |
 |---|---|
-| Cash, Electronic money, Other cash equivalents | Name, Balance now, Balance as of |
-| Bank account, Saving account, Fund account | Name, Balance now, Bank, Currency, Balance as of |
-| Time deposit | Name, Balance now, Bank, **Matures on**, **Interest rate**, Balance as of |
+| Cash, Digital wallet, Other cash equivalents | Name, Balance now, Currency, Balance as of |
+| Current account, Saving account, Fund account | Name, Balance now, Bank, Currency, Balance as of |
+| Time deposit | Name, Balance now, Bank, Currency, **Matures on**, **Interest rate**, Balance as of |
+
+Every one of the seven is asked which currency it holds, not only the three kept at an institution: a wallet
+in dollars, cash in euros and a deposit in Singapore are all ordinary, and taking the workspace's own currency
+without asking would quietly mis-state them.
 
 Foreign currency keeps the rate field and the rate check the existing form has. The time deposit's form ends
 with the mockup's note: *"When it matures, move the money to an account with a transfer."* It cannot be paid
@@ -493,11 +503,17 @@ The picker never shows a code. Afterwards, three places do.
    **Tax report code** field validating four digits, with `hartaLabel` as its hint. It gains a select above the
    box listing every item of the code's own family plus *Something else*, so the code can be re-chosen in the
    catalogue's words; the four-digit box stays beneath it for a code the catalogue does not name, because DJP
-   itself tells people to pick a code to match their situation. Money accounts reach this page now that they
+   itself tells people to pick a code to match their situation, and choosing *Type a code instead* puts the
+   cursor in that box. Two items can share a code — 0102 is both a current account and a saving one, 0109 both
+   a fund account and other cash equivalents — so the select is given the thing's own item id (a money
+   account's subtype) and opens on the choice that matches it, not on the first item to claim the code.
+   A time deposit's page also prints its terms — *Matures 1 Mar 2027 · 6,25%* — with an editor beside them,
+   so a maturity or a rate typed off a certificate can be corrected. Money accounts reach this page now that they
    have profiles: the Accounts list links every account's type line to it and prints the code beside the type.
 3. **A debt's own page** — two new editors, matching the one assets have:
-   - `LoanDetailPage` gains a **Tax report code** select of the four kode utang, saved through
-     `saveLoanTerms`'s existing `coretaxCode` argument.
+   - `LoanDetailPage` gains a **Tax report code** select of the four kode utang, saved through `setLoanCode`,
+     which writes the code and nothing else: re-sending the whole terms would rewrite the opening rate period
+     and move a period that began before the first instalment.
    - `PersonCard` gains the same select for a person's debt, saved through `saveDebtProfile`'s existing
      `coretaxCode` argument — 0201/0202/0209 for money owed to you, 101/103/109 for money you owe.
 
