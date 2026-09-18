@@ -27,8 +27,11 @@ export const BALANCE_SUBTYPES = {
  * Accounts that hold money the owner can move: everyday cash, a wallet, a current or savings account, or
  * cash at a broker. Money can be spent from them, received into them, and set aside on them for a goal —
  * unlike a holding, which is worth what it is worth and is tagged purchase by purchase.
+ *
+ * A time deposit is deliberately not here: it holds money it cannot be paid from, and the money leaves by a
+ * transfer when it matures. Other cash equivalents — a cheque, a wesel, commercial paper — can be spent.
  */
-export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['cash', 'bank', 'savings', 'fund', 'ewallet'];
+export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['cash', 'bank', 'savings', 'fund', 'ewallet', 'other_cash'];
 
 export interface CreateAccountInput {
   name: string;

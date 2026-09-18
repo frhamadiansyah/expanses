@@ -210,6 +210,57 @@ async function openPersonTx(
   return account.id;
 }
 
+export interface OpenDebtBalanceInput {
+  direction: DebtDirection;
+  personName: string;
+  currency: string;
+  /** What is owed now, as a positive amount whichever way the debt runs. */
+  balanceMinor: number;
+  openedOn?: string;
+  personIdNumber?: string | null;
+  reason?: string | null;
+  dueOn?: string | null;
+  coretaxCode?: string;
+  openingRateToBase?: number;
+}
+
+/**
+ * A debt or a receivable that already existed, opened at what is owed today. `recordLoan` is for money
+ * moving now and needs an account to move it from; this one posts against Opening Balances, the way
+ * every other balance brought in from before the app does.
+ */
+export async function openDebtBalance(database: Database, ws: WorkspaceContext, input: OpenDebtBalanceInput): Promise<{ id: string }> {
+  const personName = input.personName.trim();
+  if (!personName) throw new DebtDbError('A debt needs a name to go with it');
+  if (input.balanceMinor < 0) throw new DebtDbError('Say what is owed as a positive amount');
+  return database.transaction(async (tx) => {
+    const account = await createAccountTx(tx, ws, {
+      name: personName,
+      kind: input.direction === 'lent' ? 'asset' : 'liability',
+      subtype: input.direction === 'lent' ? 'receivable' : 'payable',
+      currency: input.currency,
+      // Natural sign: openingBalanceLines already turns a liability's amount owed the right way round.
+      openingBalanceMinor: input.balanceMinor,
+      openedOn: input.openedOn,
+      openingRateToBase: input.openingRateToBase,
+    });
+    await writeProfileTx(
+      tx,
+      ws,
+      {
+        accountId: account.id,
+        personName,
+        personIdNumber: input.personIdNumber,
+        reason: input.reason,
+        dueOn: input.dueOn,
+        coretaxCode: input.coretaxCode,
+      },
+      input.direction,
+    );
+    return { id: account.id };
+  });
+}
+
 export interface RecordLoanInput {
   /** An account this person already has, or `person` to open one. */
   debtAccountId?: string;

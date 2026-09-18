@@ -54,8 +54,11 @@ export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
  * Accounts that hold money the owner can move: what a screen offers when it asks where money comes from or
  * goes — a repayment, a loan payment, the cash side of a trade, money set aside for a goal. The ledger keeps
  * the same list for what can be earmarked; a test holds the two in step.
+ *
+ * A time deposit is left out on purpose: it cannot be paid from, and the money leaves by a transfer when it
+ * matures. Other cash equivalents — a cheque, a wesel, commercial paper — can be spent.
  */
-export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'cash', 'savings', 'fund', 'ewallet'];
+export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'cash', 'savings', 'fund', 'ewallet', 'other_cash'];
 
 /** What can pay a bill: money the owner holds, or a card that will be settled later. */
 export const WALLET_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES, 'credit_card'];

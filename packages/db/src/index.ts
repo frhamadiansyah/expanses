@@ -6,6 +6,8 @@ export { inBook, ownerScope, type WorkspaceContext } from './context';
 export { DEFAULT_CATEGORIES, SYSTEM_ACCOUNTS, type SystemAccountKey } from './seed';
 export * from './repos/workspaces';
 export * from './repos/accounts';
+export * from './repos/cash-accounts';
+export * from './repos/deposit-terms';
 export * from './repos/categories';
 export * from './repos/mcc';
 export * from './repos/point-actuals';
