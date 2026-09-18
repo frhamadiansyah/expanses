@@ -87,12 +87,15 @@ export function OwnablePicker({
       {/* Above the list, not under it: on this screen it says what the rows below all have in common. */}
       {more && family && !searching && moreHint && <RowHint>{moreHint(assetFamily(family).label)}</RowHint>}
       {kicker && !searching && !family && <Kicker>{kicker}</Kicker>}
-      <RowList>
-        {rows.map((row) => (
-          <PickerButton key={row.id} row={row} onClick={() => choose(row.id)} />
-        ))}
-        {rows.length === 0 && <p className="px-3 py-3 text-sm text-slate-500">Nothing here matches “{query.trim()}”.</p>}
-      </RowList>
+      {/* The list is the answer to what is typed above it, so a screen reader hears it change, not only sees it. */}
+      <div aria-live="polite">
+        <RowList>
+          {rows.map((row) => (
+            <PickerButton key={row.id} row={row} onClick={() => choose(row.id)} />
+          ))}
+          {rows.length === 0 && <p className="px-3 py-3 text-sm text-slate-500">Nothing here matches “{query.trim()}”.</p>}
+        </RowList>
+      </div>
       {hint && !searching && !family && <RowHint>{hint}</RowHint>}
       {handOver.length > 0 && !searching && !family && (
         <RowList>

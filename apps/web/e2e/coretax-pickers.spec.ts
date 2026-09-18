@@ -31,6 +31,21 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true })).toBeVisible();
 
+  // What was typed on the way in is said back: the day the money comes back, and what it pays for waiting.
+  const deposito = page.locator('li', { has: page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true }) });
+  await expect(deposito).toContainText('Matures 1 Mar 2027 · 6,25%');
+
+  // And it can be put right, because a date typed off a certificate is a date that can be mistyped.
+  await deposito.getByRole('link', { name: /^0104/ }).click();
+  await expect(page.getByText('Matures 1 Mar 2027 · 6,25%')).toBeVisible();
+  await page.getByRole('button', { name: 'Change' }).click();
+  await page.getByLabel('Matures on').fill('2027-12-01');
+  await page.getByLabel('Interest rate').fill('6,75');
+  await page.getByRole('button', { name: 'Save terms' }).click();
+  await expect(page.getByText('Matures 1 Dec 2027 · 6,75%')).toBeVisible();
+  await page.goto('/accounts');
+  await expect(deposito).toContainText('Matures 1 Dec 2027 · 6,75%');
+
   // Money you hold: net worth counts it, and the balance sheet calls it cash.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('120.000.000');
@@ -121,6 +136,18 @@ test('a mortgage, a wallet and a deposit reach the tax report under the right ko
   await expect(utang).toContainText('Bank BTN');
 });
 
+test('the asset picker never offers money, whatever is typed into its search', async ({ page }) => {
+  await page.goto('/net-worth/assets/new');
+  const search = page.getByPlaceholder('Search everything you can own');
+  for (const query of ['bank', 'cash', 'deposit', 'account']) {
+    await search.fill(query);
+    await expect(page.getByRole('button', { name: 'Bank, cash or deposit' })).toHaveCount(0);
+  }
+  // Money has a door of its own, and the picker says where it is.
+  await search.fill('');
+  await expect(page.getByRole('link', { name: /Add an account instead/ })).toBeVisible();
+});
+
 test('a code can be changed afterwards, in the words the form uses', async ({ page }) => {
   await page.goto('/accounts/new');
   await page.getByRole('button', { name: 'Fund account' }).click();
@@ -137,4 +164,20 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await expect(page.getByText('Saved.')).toBeVisible();
   await page.goto('/accounts');
   await expect(page.getByText(/0102 · Tabungan/)).toBeVisible();
+});
+
+test('a thing sharing its code with another reads back as itself', async ({ page }) => {
+  await page.goto('/accounts/new');
+  await page.getByRole('button', { name: 'Saving account' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan Berjangka');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Tahapan Berjangka', exact: true })).toBeVisible();
+
+  // 0102 is both a current account and a saving account. The account itself says which, and the list opens on it.
+  await page.getByRole('link', { name: /0102 · Tabungan/ }).click();
+  await expect(page.getByLabel('What it is')).toHaveValue('savings');
+
+  // Typing a code the list does not name is the way out, and choosing it puts the cursor in the box.
+  await page.getByLabel('What it is').selectOption({ label: 'Type a code instead' });
+  await expect(page.getByLabel('Tax report code')).toBeFocused();
 });

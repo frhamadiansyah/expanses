@@ -42,6 +42,12 @@ export interface OwnableItem {
   /** The Coretax table it files under. Null for a debt: Bagian B is one table. */
   section: CoretaxSection | null;
   behaviour: OwnableBehaviour;
+  /**
+   * False for an item a picker must never offer, however it is reached — a search included. Only the legacy
+   * money-as-an-asset entry is marked: it stays in the catalogue for what is already there and in the inline
+   * form's select, but money belongs under Add account. Absent everywhere else, which reads as "offer it".
+   */
+  inPicker?: false;
 }
 
 export interface OwnableFamilyRow {
@@ -271,6 +277,7 @@ const LEGACY_CASH_ASSET: OwnableItem = {
   code: '0102',
   section: 'kas',
   behaviour: { opens: 'holding', assetKind: 'cash', subtype: 'bank', planGroup: 'liquid', valuedBy: 'balance', unitKind: null, lotSize: null, priceLabel: null },
+  inPicker: false,
 };
 
 /** §2.4 — the five families, in the order the screen lists them. */

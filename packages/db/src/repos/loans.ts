@@ -147,6 +147,28 @@ export async function saveLoanTerms(database: Database, ws: WorkspaceContext, in
   });
 }
 
+/**
+ * What a loan files as in Bagian B, changed on its own.
+ *
+ * Not `saveLoanTerms` with the same terms sent back: that rewrites the opening rate period from the terms, and
+ * a period that began before the first instalment — a rate agreed at signing, a grace period — would be moved
+ * to the first payment date by a change that was only ever about the code.
+ */
+export async function setLoanCode(database: Database, ws: WorkspaceContext, accountId: string, coretaxCode: string): Promise<void> {
+  await database.transaction(async (tx) => {
+    await loanAccountTx(tx, ws, accountId);
+    const [existing] = await tx
+      .select({ accountId: loanTerms.accountId })
+      .from(loanTerms)
+      .where(and(eq(loanTerms.accountId, accountId), eq(loanTerms.workspaceId, ws.workspaceId)));
+    if (!existing) throw new LoanDbError("Add this loan's terms first, then file it under a code");
+    await tx
+      .update(loanTerms)
+      .set({ coretaxCode })
+      .where(and(eq(loanTerms.accountId, accountId), eq(loanTerms.workspaceId, ws.workspaceId)));
+  });
+}
+
 type TermsDbRow = typeof loanTerms.$inferSelect;
 
 function toRow(row: TermsDbRow, periods: RatePeriodRow[], isHomeLoan: boolean): LoanTermsRow {

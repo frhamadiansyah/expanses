@@ -10,6 +10,7 @@ import {
   DEBT_ITEMS,
   debtItem,
   elseItem,
+  HARTA_ENGLISH,
   KODE_HARTA,
   KODE_UTANG,
   type MoneyAccountSubtype,
@@ -97,8 +98,10 @@ describe('the five families', () => {
     expect(assetItem('vehicle')).toMatchObject({ code: '0403', behaviour: { assetKind: 'vehicle', valuedBy: 'value' } });
     expect(assetItem('other')).toMatchObject({ code: '0799', behaviour: { assetKind: 'other', valuedBy: 'value' } });
     // Money added as an asset: kept for what is already there, never offered in the picker.
-    expect(assetItem('cash')).toMatchObject({ code: '0102', behaviour: { assetKind: 'cash', valuedBy: 'balance' } });
+    expect(assetItem('cash')).toMatchObject({ code: '0102', behaviour: { assetKind: 'cash', valuedBy: 'balance' }, inPicker: false });
     expect(ASSET_FAMILIES.flatMap((family) => family.items).map((item) => item.id)).not.toContain('cash');
+    // It is the only one marked so: everything else the catalogue names is a thing a picker may offer.
+    expect([...CASH_ITEMS, ...ASSET_ITEMS, ...DEBT_ITEMS].filter((item) => item.inPicker === false).map((item) => item.id)).toEqual(['cash']);
   });
 
   it('values investments the way each is actually priced', () => {
@@ -153,6 +156,15 @@ describe('something else', () => {
 
   it('refuses a code the family does not hold', () => {
     expect(() => elseItem('movable', '0502')).toThrow(/0502/);
+  });
+
+  /** `elseItem` reads its label straight out of `HARTA_ENGLISH`; a code with no gloss would be labelled undefined. */
+  it('has English words for every code it can reach', () => {
+    for (const family of ASSET_FAMILIES) {
+      for (const entry of somethingElse(family.id)) {
+        expect((HARTA_ENGLISH as Record<string, string>)[entry.code], entry.code).toBeTruthy();
+      }
+    }
   });
 });
 

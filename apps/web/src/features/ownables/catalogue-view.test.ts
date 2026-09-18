@@ -32,6 +32,16 @@ describe('the rows a picker draws', () => {
     ]);
   });
 
+  /** Money is an account. The legacy asset item stays in the inline form's select, but no picker may offer it. */
+  it('never offers the legacy money-as-an-asset item, however it is searched for', () => {
+    for (const query of ['bank', 'cash', 'deposit', 'account', 'bank, cash or deposit', '0102']) {
+      expect(pickerRows({ flow: 'asset', query }).map((row) => row.id), query).not.toContain('cash');
+    }
+    for (const family of ['receivable', 'invest', 'movable', 'immovable', 'other'] as const) {
+      expect(pickerRows({ flow: 'asset', query: '', family }).map((row) => row.id)).not.toContain('cash');
+    }
+  });
+
   it('searches across families, so a thing is found without knowing its family', () => {
     expect(pickerRows({ flow: 'asset', query: 'apartment' }).map((row) => row.id)).toEqual(['apartment']);
     expect(pickerRows({ flow: 'asset', query: 'emas' }).length).toBe(0);
@@ -95,6 +105,24 @@ describe('changing the code afterwards', () => {
     expect(groups[1]!.choices.map((choice) => choice.code)).toEqual(['0103', '0106', '0107', '0108']);
     expect(choiceForCode(groups, '0102')?.label).toBe('Current account');
     expect(choiceForCode(groups, '0104')?.label).toBe('Time deposit');
+  });
+
+  /**
+   * Two items share 0102 and two share 0109, so the code alone cannot say which of them a thing is. The thing
+   * knows: its own subtype is the choice's value, and a saving account must not read back as a current one.
+   */
+  it('reads a shared code back as the thing itself, not as the first item to claim it', () => {
+    const groups = codeChoices('account', '0102');
+    expect(choiceForCode(groups, '0102', 'savings')?.label).toBe('Saving account');
+    expect(choiceForCode(groups, '0102', 'bank')?.label).toBe('Current account');
+    expect(choiceForCode(groups, '0109', 'other_cash')?.label).toBe('Other cash equivalents');
+    expect(choiceForCode(groups, '0109', 'fund')?.label).toBe('Fund account');
+    // The hint never outranks the code: a thing filed as 0503 is an apartment whatever subtype its account has.
+    expect(choiceForCode(codeChoices('asset', '0503'), '0503', 'property')?.label).toBe('Apartment');
+    // Nothing to go on, and nothing named by that code: the answer is still the first match, or none at all.
+    expect(choiceForCode(groups, '0109')?.label).toBe('Fund account');
+    expect(choiceForCode(groups, '0104', 'savings')?.label).toBe('Time deposit');
+    expect(choiceForCode(groups, '9999', 'savings')).toBeNull();
   });
 
   it('opens every table for a code no table names, so nothing becomes unreachable', () => {

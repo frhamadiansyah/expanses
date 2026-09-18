@@ -1,5 +1,5 @@
 import { formatMinor } from '@expanses/core';
-import { type ButtonHTMLAttributes, cloneElement, type InputHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
+import { type ButtonHTMLAttributes, cloneElement, type InputHTMLAttributes, type ReactElement, type ReactNode, type Ref, type SelectHTMLAttributes, useId } from 'react';
 
 export const cx = (...classes: (string | false | null | undefined)[]) => classes.filter(Boolean).join(' ');
 
@@ -43,7 +43,8 @@ export function Button({
 const FIELD = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base md:text-sm focus:border-slate-900 focus:outline-none';
 
 /** A text field; `leading` puts a short unit such as a currency code inside the field, before what is typed. */
-export function Input({ className, leading, ...props }: InputHTMLAttributes<HTMLInputElement> & { leading?: string }) {
+// The ref is spread onto the input like any other prop, so a screen can put the cursor in a box it owns.
+export function Input({ className, leading, ...props }: InputHTMLAttributes<HTMLInputElement> & { leading?: string; ref?: Ref<HTMLInputElement> }) {
   if (!leading) return <input className={cx(FIELD, className)} {...props} />;
   return (
     <div className="relative">

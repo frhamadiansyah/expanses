@@ -6,7 +6,8 @@ import { useApp } from '../../app/context';
 import { ACCOUNT_TYPES, SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
-import { useAssetProfiles, useAssetValues } from '../networth/queries';
+import { depositLine } from '../networth/deposit-terms';
+import { useAssetProfiles, useAssetValues, useDepositTerms } from '../networth/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { Button, Card, Empty, ErrorBox, errorMessage, Field, Input, Money, PageHeader, Select } from '../../ui';
 
@@ -171,7 +172,13 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
   const invalidate = useInvalidateAll();
   const values = useAssetValues();
   const profiles = useAssetProfiles();
+  const deposits = useDepositTerms();
   const valued = (id: string) => (values.data ?? []).find((row) => row.accountId === id && row.mode !== 'derived');
+  /** A deposit's own two facts, the same short line its page prints: the day it comes back and what it pays. */
+  const terms = (id: string) => {
+    const row = (deposits.data ?? []).find((entry) => entry.accountId === id);
+    return row ? depositLine(row) : null;
+  };
   /**
    * The code this account files under in the tax report, and what the form calls it. The owner's own choice when
    * there is a profile; otherwise the default its kind of money account carries, which is what the report uses too.
@@ -224,6 +231,7 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
                     </Link>
                   </>
                 )}
+                {terms(account.id) && ` · ${terms(account.id)}`}
               </div>
             </div>
             {account.subtype === 'credit_card' && (

@@ -122,8 +122,9 @@ export const MORE_ROW_ID = 'more';
  */
 export function pickerRows({ flow, query, family, more }: PickerQuery): PickerRow[] {
   const searching = searchTokens(query).length > 0;
-  if (searching) return searchOwnables(query, flow).map((item) => rowOf(flow, item));
-  if (flow !== 'asset') return searchOwnables('', flow).map((item) => rowOf(flow, item));
+  const offered = (items: readonly OwnableItem[]) => items.filter((item) => item.inPicker !== false);
+  if (searching) return offered(searchOwnables(query, flow)).map((item) => rowOf(flow, item));
+  if (flow !== 'asset') return offered(searchOwnables('', flow)).map((item) => rowOf(flow, item));
   if (!family) return ASSET_FAMILIES.map((entry) => ({ id: entry.id, label: entry.label, sub: entry.sub, ...FAMILY_TILES[entry.id] }));
   const spare = somethingElse(family);
   if (more) return spare.map((entry) => rowOf(flow, elseItem(family, entry.code), family));
@@ -303,13 +304,17 @@ export function personCodeChoices(direction: 'lent' | 'borrowed'): CodeChoice[] 
   return namedChoices('piutang');
 }
 
-/** The choice a code currently stands for, so a list opens on what the thing already is. Null when nothing names it. */
-export function choiceForCode(groups: readonly CodeChoiceGroup[], code: string): CodeChoice | null {
-  for (const group of groups) {
-    const hit = group.choices.find((choice) => choice.code === code);
-    if (hit) return hit;
-  }
-  return null;
+/**
+ * The choice a code currently stands for, so a list opens on what the thing already is. Null when nothing names it.
+ *
+ * Two items can share a code — a current account and a saving account are both 0102, a fund account and other
+ * cash equivalents both 0109 — and the code alone cannot tell them apart. The thing itself can: `value` is its
+ * own item id, which for a money account is its subtype. It only ever chooses between choices that already
+ * carry the right code, so a hint that belongs to another table changes nothing.
+ */
+export function choiceForCode(groups: readonly CodeChoiceGroup[], code: string, value?: string): CodeChoice | null {
+  const sharing = groups.flatMap((group) => group.choices.filter((choice) => choice.code === code));
+  return sharing.find((choice) => choice.value === value) ?? sharing[0] ?? null;
 }
 
 /** What a harta or utang code is called on the form itself. Empty when neither table knows it. */
