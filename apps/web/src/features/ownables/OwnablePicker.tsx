@@ -167,7 +167,7 @@ function PickerButton({ row, onClick }: { row: PickerRow; onClick: () => void })
 }
 
 /** The pickers that exist as routes today. A hand-over anywhere else falls back to a push until its route lands. */
-const TYPED_HAND_OVER = ['/accounts/new', '/net-worth/assets/new'] as const;
+const TYPED_HAND_OVER = ['/accounts/new', '/net-worth/assets/new', '/debts/new'] as const;
 type TypedHandOver = (typeof TYPED_HAND_OVER)[number];
 const typedHandOver = (to: string): TypedHandOver | null => TYPED_HAND_OVER.find((path) => path === to) ?? null;
 
