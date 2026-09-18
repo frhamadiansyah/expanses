@@ -5,6 +5,8 @@ import { type FormEvent, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Button, Card, cx, Field, Input, Select } from '../../ui';
 import { suggestPattern } from '../merchants/mcc-search';
+import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
+import { useWorkspaceBadges } from '../workspaces/queries';
 import { checkedTotals, describeSuggestion, purchasesOf } from './hint-text';
 import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 
@@ -74,12 +76,15 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
     }
     return hints;
   }, [result, cp.crediting, cp.transactionActuals]);
+  // Worked out before the early return, since the badges are asked for with a hook and hooks cannot be skipped.
+  const purchases = result ? purchasesOf(result.lines) : [];
+  // A card is yours, so its cycle holds every workspace's purchases; each says which it was filed in.
+  const badgeOf = useWorkspaceBadges(purchases.map((purchase) => purchase.transactionId));
   if (!result || !program) return null;
   const unit = program.unit;
   const perPurchase = cp.crediting === 'per_transaction';
   const actuals = new Map(cp.transactionActuals.map((actual) => [actual.transactionId, actual]));
   const approximate = new Set(result.earn.approximateTransactionIds);
-  const purchases = purchasesOf(result.lines);
   const totals = checkedTotals(result, cp.transactionActuals);
 
   return (
@@ -147,7 +152,10 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
             <li key={purchase.transactionId} className="py-2 text-sm">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{purchase.description}</div>
+                  <div className="truncate font-medium">
+                    {purchase.description}
+                    <WorkspaceBadge book={badgeOf(purchase.transactionId)} />
+                  </div>
                   <div className="text-xs text-slate-500">
                     {shortDate(purchase.occurredOn)} · {formatMinor(purchase.amountMinor, currency)} ·{' '}
                     <span className={cx('rounded px-1 py-0.5', purchase.mccSource === 'category' || purchase.mccSource === null ? 'bg-slate-100' : 'bg-emerald-50 text-emerald-800')}>

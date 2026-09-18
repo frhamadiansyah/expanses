@@ -130,6 +130,58 @@ test('an account’s history holds every workspace, each row saying which', asyn
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Personal');
 });
 
+/** A credit card with a statement day, so there is a statement to read the purchases off. */
+async function addCard(page: Page) {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('BCA Visa');
+  await page.getByLabel('Type').selectOption('credit_card');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+
+  await page.goto('/cards');
+  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  // The 31st is clamped to each month's last day, so today is always inside the current statement.
+  await page.getByLabel('Billing date').fill('31');
+  await page.getByLabel('Due date').fill('15');
+  await page.getByRole('button', { name: 'Save terms' }).click();
+  await expect(page.getByText('Step 2 of 3')).toBeVisible();
+}
+
+/** Spends on the card from whatever workspace is open. */
+async function buyOnCard(page: Page, description: string, amount: string) {
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await page.getByLabel('Description').fill(description);
+  await page.getByLabel('Paid with').selectOption({ label: 'BCA Visa (IDR)' });
+  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
+  await page.getByLabel('Amount', { exact: true }).fill(amount);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText(description).first()).toBeVisible();
+}
+
+/**
+ * A card is the owner's, like the account it is paid from: the bank bills one statement for everything bought on
+ * it, from whichever workspace. So the statement holds both, adds both up, and each row says where it was filed —
+ * the badge is a label, not a filter, which is what the total is here to prove.
+ */
+test('a card’s statement holds every workspace, and each row says which', async ({ page }) => {
+  await addBank(page);
+  await addCard(page);
+  await buyOnCard(page, 'Superindo', '450000');
+
+  await newWorkspace(page, 'Business', 'Copy from Personal');
+  await buyOnCard(page, 'Client lunch', '320000');
+
+  await page.goto('/cards');
+  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  const lines = page.getByTestId('statement-line');
+  await expect(lines).toHaveCount(2);
+  await expect(lines.filter({ hasText: 'Superindo' }).getByTestId('workspace-badge')).toHaveText('Personal');
+  await expect(lines.filter({ hasText: 'Client lunch' }).getByTestId('workspace-badge')).toHaveText('Business');
+  // The bank bills the whole card, so the bill is both workspaces added together.
+  await expect(page.getByTestId('statement-total')).toContainText('770.000');
+});
+
 /** The switcher is where a workspace is chosen; Settings is where one is changed, and it says so. */
 test('the switcher’s “Manage workspaces” lands on Settings, and the sheet closes behind it', async ({ page }) => {
   await page.goto('/');
