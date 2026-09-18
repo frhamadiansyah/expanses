@@ -1,4 +1,6 @@
+import type { CatalogEntry } from '@expanses/catalog';
 import { addMonths, debtItem, type LoanMethod, monthOf, parseMajor } from '@expanses/core';
+import { memberLevelsOf } from '../cards/catalog-picker';
 
 /**
  * What a choice on the debt picker turns into, worked out without a browser.
@@ -164,5 +166,84 @@ export function planNewDebt(draft: DebtItemDraft, currency: string, today: strin
       rateBps,
       coretaxCode: item.code,
     },
+  };
+}
+
+/** What the card form asks for, as typed. The chosen catalogue entry is passed beside it, not held in here. */
+export interface NewCardDraft {
+  name: string;
+  /** The bank, when the card is typed by hand. A catalogue card is told its bank by the entry. */
+  issuer: string;
+  last4: string;
+  owed: string;
+  /** The holder's standing with the bank, for an entry that publishes levels. */
+  memberLevel: string;
+  statementDay: string;
+  dueDay: string;
+}
+
+export const emptyNewCardDraft = (): NewCardDraft => ({ name: '', issuer: '', last4: '', owed: '', memberLevel: '', statementDay: '', dueDay: '' });
+
+export interface NewCardPlan {
+  name: string;
+  issuer: string | null;
+  last4: string | null;
+  currency: string;
+  openingBalanceMinor: number;
+  /** The level to apply the entry at, when it publishes any. */
+  memberLevel: string | null;
+  /** The billing cycle, or null when neither day was given — which only a card typed by hand may do. */
+  terms: { statementDay: number; dueDay: number } | null;
+}
+
+/** A day of the month `card_terms` will accept. `saveCardTerms` takes 1-31; this says so before anything is written. */
+function dayOfMonth(typed: string, label: string): number {
+  const day = Number(typed.trim());
+  if (!Number.isInteger(day) || day < 1 || day > 31) throw new Error(`The ${label} is a day of the month, 1 to 31`);
+  return day;
+}
+
+/**
+ * Everything that can be refused about a new card, worked out before a single row is written.
+ *
+ * Opening the account first and validating afterwards is what makes a half-made card: the account is committed,
+ * the error is shown, and pressing the button again either opens a second one or is turned away by the duplicate
+ * check on the last four digits — leaving no way to finish. So every refusal the steps after it could raise is
+ * raised here instead, with the entry's own conditions among them.
+ */
+export function planNewCard(draft: NewCardDraft, entry: CatalogEntry | null, baseCurrency: string): NewCardPlan {
+  const name = draft.name.trim();
+  if (!name) throw new Error('Give the card a name');
+
+  const levels = entry ? memberLevelsOf(entry) : [];
+  const memberLevel = draft.memberLevel.trim();
+  // The same condition `applyCatalogEntry` enforces, asked before the account exists rather than after.
+  if (levels.length > 0 && !levels.some((level) => level.key === memberLevel)) {
+    throw new Error(`This card earns by ${entry?.program.name} level. Choose the level you are on before adding it.`);
+  }
+
+  const currency = entry?.currency ?? baseCurrency;
+  let openingBalanceMinor = 0;
+  if (draft.owed.trim() !== '') {
+    try {
+      openingBalanceMinor = parseMajor(draft.owed, currency);
+    } catch {
+      throw new Error('The amount must be a number');
+    }
+  }
+
+  const someDay = draft.statementDay.trim() !== '' || draft.dueDay.trim() !== '';
+  // The published fee is kept on the card's terms, and the terms need both days, so a catalogue card is asked.
+  if (entry && !someDay) throw new Error('A card from the catalogue needs its billing date and due date: that is where its fee and its cycle are kept');
+  const terms = someDay ? { statementDay: dayOfMonth(draft.statementDay, 'billing date'), dueDay: dayOfMonth(draft.dueDay, 'due date') } : null;
+
+  return {
+    name,
+    issuer: entry ? entry.bank : draft.issuer.trim() || null,
+    last4: draft.last4.trim() || null,
+    currency,
+    openingBalanceMinor,
+    memberLevel: memberLevel || null,
+    terms,
   };
 }

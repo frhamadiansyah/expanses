@@ -1,5 +1,6 @@
+import { CATALOG } from '@expanses/catalog';
 import { describe, expect, it } from 'vitest';
-import { emptyDebtItemDraft, planNewDebt } from './debt-form';
+import { emptyDebtItemDraft, emptyNewCardDraft, type NewCardDraft, planNewCard, planNewDebt } from './debt-form';
 
 const draft = (id: string, patch: Record<string, string>) => ({ ...emptyDebtItemDraft(id, '2026-09-18'), ...patch });
 
@@ -57,5 +58,38 @@ describe('planning a debt from the picker', () => {
     expect(() => planNewDebt(draft('home_mortgage', { lender: 'Bank BTN' }), 'IDR', '2026-09-18')).toThrow('Enter how much is still owed');
     expect(() => planNewDebt(draft('affiliate_debt', { owed: '10000000' }), 'IDR', '2026-09-18')).toThrow('Say who this is with');
     expect(() => planNewDebt(draft('personal_loan', { owed: '1000000', lender: 'Andi', term: '0' }), 'IDR', '2026-09-18')).toThrow('A loan runs for at least one month');
+  });
+});
+
+describe('planning a card before anything is written', () => {
+  const entryFor = (id: string) => {
+    const entry = CATALOG.find((candidate) => candidate.id === id);
+    if (!entry) throw new Error(`The catalogue no longer carries "${id}"`);
+    return entry;
+  };
+  /** A card whose earning depends on the holder's standing with the bank, so a level has to be chosen. */
+  const tiered = entryFor('jenius-platinum');
+  const plain = entryFor('bca-unionpay');
+  const card = (patch: Partial<NewCardDraft>) => ({ ...emptyNewCardDraft(), ...patch });
+
+  it('refuses a card that earns by level until the level is chosen, so no account is opened first', () => {
+    expect(() => planNewCard(card({ name: 'Jenius', statementDay: '25', dueDay: '12' }), tiered, 'IDR')).toThrow(/Choose the level you are on/);
+    expect(planNewCard(card({ name: 'Jenius', memberLevel: 'grow-plus', statementDay: '25', dueDay: '12' }), tiered, 'IDR')).toMatchObject({
+      memberLevel: 'grow-plus',
+      terms: { statementDay: 25, dueDay: 12 },
+    });
+  });
+
+  it('takes the bank, the currency and the level from the entry, and the bank as typed without one', () => {
+    expect(planNewCard(card({ name: 'BCA UnionPay', statementDay: '25', dueDay: '12' }), plain, 'IDR')).toMatchObject({ issuer: 'BCA', currency: 'IDR', memberLevel: null });
+    expect(planNewCard(card({ name: 'Kartu lama', issuer: 'Bank Mega' }), null, 'IDR')).toMatchObject({ issuer: 'Bank Mega', terms: null });
+  });
+
+  it('says what is missing, in words meant for the screen', () => {
+    expect(() => planNewCard(card({ statementDay: '25', dueDay: '12' }), plain, 'IDR')).toThrow('Give the card a name');
+    expect(() => planNewCard(card({ name: 'BCA UnionPay' }), plain, 'IDR')).toThrow(/needs its billing date and due date/);
+    expect(() => planNewCard(card({ name: 'BCA UnionPay', statementDay: '25', dueDay: '40' }), plain, 'IDR')).toThrow('The due date is a day of the month, 1 to 31');
+    expect(() => planNewCard(card({ name: 'BCA UnionPay', statementDay: '25' }), plain, 'IDR')).toThrow('The due date is a day of the month, 1 to 31');
+    expect(() => planNewCard(card({ name: 'Kartu lama', owed: 'lots' }), null, 'IDR')).toThrow('The amount must be a number');
   });
 });

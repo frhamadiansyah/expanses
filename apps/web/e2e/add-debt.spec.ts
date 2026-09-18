@@ -59,3 +59,22 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
   await page.getByRole('tab', { name: 'Card & plans' }).click();
   await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
 });
+
+test('a card that earns by level is refused until the level is chosen, and nothing is opened meanwhile', async ({ page }) => {
+  await page.goto('/debts/new');
+  await page.getByRole('button', { name: 'Credit card' }).click();
+
+  await page.getByLabel('Which card').selectOption({ label: 'Jenius Platinum' });
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Due date').fill('12');
+  await page.getByRole('button', { name: 'Add card' }).click();
+
+  await expect(page.getByText(/Choose the level you are on/)).toBeVisible();
+  await expect(page).toHaveURL(/\/debts\/new$/);
+  // Nothing was opened, so the same button finishes the job once the level is given.
+  await page.goto('/cards');
+  await expect(page.getByText('Jenius Platinum')).toHaveCount(0);
+
+  await page.goto('/accounts');
+  await expect(page.getByText('Jenius Platinum')).toHaveCount(0);
+});

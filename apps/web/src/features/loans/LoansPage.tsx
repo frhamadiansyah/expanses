@@ -164,15 +164,16 @@ export function LoansPage() {
       <PageHeader
         title="Loans"
         action={
-          <div className="flex items-center gap-4">
-            {/* Terms go on a loan account that already exists; the picker is for the loan that does not yet. */}
-            {!adding && (
+          // While the inline form is open there is no action to show, and an empty row would still take its gap.
+          !adding && (
+            <div className="flex items-center gap-4">
+              {/* Terms go on a loan account that already exists; the picker is for the loan that does not yet. */}
               <Link to="/debts/new" className="text-sm font-medium text-slate-600 underline-offset-4 hover:underline">
                 What do you owe?
               </Link>
-            )}
-            {!adding && <Button onClick={() => setAdding(true)}>Add loan terms</Button>}
-          </div>
+              <Button onClick={() => setAdding(true)}>Add loan terms</Button>
+            </div>
+          )
         }
       />
       <NetWorthTabs />

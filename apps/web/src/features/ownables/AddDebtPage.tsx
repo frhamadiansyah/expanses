@@ -1,5 +1,5 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
-import { debtItem, isoDate, parseMajor } from '@expanses/core';
+import { debtItem, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
@@ -9,7 +9,7 @@ import { Button, ErrorBox, InputRow, RowGroup, RowHint, SelectRow } from '../../
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { memberLevelsOf, searchCatalog } from '../cards/catalog-picker';
 import { fieldsFor, handOverRows } from './catalogue-view';
-import { type DebtItemDraft, emptyDebtItemDraft, planNewDebt } from './debt-form';
+import { type DebtItemDraft, emptyDebtItemDraft, planNewCard, planNewDebt } from './debt-form';
 import { OwnablePicker } from './OwnablePicker';
 
 /**
@@ -79,7 +79,8 @@ function DebtItemForm({ item }: { item: string }) {
         await navigate({ to: '/net-worth/debts' });
         return;
       }
-      if (!plan.account) return;
+      // Only a card leaves the account out, and a card never reaches this form.
+      if (!plan.account) throw new Error(`“${chosen.label}” is not opened here`);
       const account = await createAccount(database, ws, {
         name: plan.account.name,
         kind: plan.account.kind,
@@ -127,11 +128,14 @@ function DebtItemForm({ item }: { item: string }) {
 /** The bank a card can be given when the catalogue has never heard of it. Mirrors the Accounts page's own sentinel. */
 const OTHER = '__other';
 
-/** Every bundled credit card, grouped by the bank that issues it, so a dropdown reads the way a wallet does. */
+/**
+ * Every bundled credit card, grouped by the bank that issues it, so a dropdown reads the way a wallet does:
+ * banks in order, and each bank's products in order under it.
+ */
 function byIssuer(entries: readonly CatalogEntry[]): [string, CatalogEntry[]][] {
   const groups = new Map<string, CatalogEntry[]>();
   for (const entry of entries) groups.set(entry.bank, [...(groups.get(entry.bank) ?? []), entry]);
-  return [...groups].sort(([a], [b]) => a.localeCompare(b));
+  return [...groups].map(([bank, list]): [string, CatalogEntry[]] => [bank, [...list].sort((a, b) => a.name.localeCompare(b.name))]).sort(([a], [b]) => a.localeCompare(b));
 }
 
 /**
@@ -167,6 +171,9 @@ function NewCardForm() {
   const credit = CATALOG.filter((entry) => entry.cardType !== 'debit');
   const matches = searchCatalog(credit, query);
   const entry = credit.find((candidate) => candidate.id === entryId) ?? null;
+  // The card already chosen stays in the list however the search is narrowed afterwards: a select whose value is
+  // not among its options draws blank, and the form would go on applying an entry the screen no longer names.
+  const options = entry && !matches.includes(entry) ? [entry, ...matches] : matches;
   const levels = entry ? memberLevelsOf(entry) : [];
   const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
 
@@ -185,25 +192,29 @@ function NewCardForm() {
     setError(null);
     setBusy(true);
     try {
-      const currency = entry?.currency ?? ws.baseCurrency;
-      const days = statementDay.trim() !== '' && dueDay.trim() !== '';
-      if (entry && !days) throw new Error('A card from the catalogue needs its billing date and due date: that is where its fee and its cycle are kept');
+      // Everything that can be refused is refused before the account exists: a card opened and then turned away
+      // cannot be finished, since pressing the button again either opens a second one or hits the duplicate check.
+      const plan = planNewCard(
+        { name, issuer: issuer === OTHER ? otherIssuer : issuer, last4, owed, memberLevel, statementDay, dueDay },
+        entry,
+        ws.baseCurrency,
+      );
       const account = await createCardAccount(database, ws, {
-        name,
+        name: plan.name,
         subtype: 'credit_card',
-        currency,
+        currency: plan.currency,
         // The catalogue knows the bank; a card typed by hand is told it.
-        issuer: entry ? entry.bank : issuer === OTHER ? otherIssuer : issuer,
-        last4,
-        openingBalanceMinor: owed.trim() ? parseMajor(owed, currency) : 0,
+        issuer: plan.issuer,
+        last4: plan.last4,
+        openingBalanceMinor: plan.openingBalanceMinor,
         openedOn: today,
       });
       // The terms row has to exist before the catalogue can write the published fee onto it.
-      if (days) {
-        await saveCardTerms(database, ws, { accountId: account.id, statementDay: Number(statementDay), dueDay: Number(dueDay), creditLimitMinor: null, annualFeeMinor: null });
+      if (plan.terms) {
+        await saveCardTerms(database, ws, { accountId: account.id, ...plan.terms, creditLimitMinor: null, annualFeeMinor: null });
       }
       if (entry) {
-        await applyCatalogEntry(database, ws, { cardAccountId: account.id, entry, today, replaceManual: false, memberLevel: memberLevel || null });
+        await applyCatalogEntry(database, ws, { cardAccountId: account.id, entry, today, replaceManual: false, memberLevel: plan.memberLevel });
       }
       await invalidate();
       await navigate({ to: '/cards/$cardId', params: { cardId: account.id } });
@@ -222,7 +233,7 @@ function NewCardForm() {
         <InputRow label="Find a card" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="BCA, KrisFlyer, Mandiri" />
         <SelectRow label="Which card" value={entryId} onChange={(e) => choose(e.target.value)}>
           <option value="">Not listed — type the name</option>
-          {byIssuer(matches).map(([bank, entries]) => (
+          {byIssuer(options).map(([bank, entries]) => (
             <optgroup key={bank} label={bank}>
               {entries.map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>

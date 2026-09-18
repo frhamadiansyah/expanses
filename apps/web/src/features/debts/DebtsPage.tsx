@@ -40,15 +40,16 @@ export function DebtsPage() {
       <PageHeader
         title="Lend &amp; borrow"
         action={
-          <div className="flex items-center gap-4">
-            {/* The inline form is still one click away; the picker is for when you do not know what to call it. */}
-            {!adding && (
+          // While the inline form is open there is no action to show, and an empty row would still take its gap.
+          !adding && (
+            <div className="flex items-center gap-4">
+              {/* The inline form is still one click away; the picker is for when you do not know what to call it. */}
               <Link to="/debts/new" className="text-sm font-medium text-slate-600 underline-offset-4 hover:underline">
                 What do you owe?
               </Link>
-            )}
-            {!adding && <Button onClick={() => setAdding(true)}>Add a loan</Button>}
-          </div>
+              <Button onClick={() => setAdding(true)}>Add a loan</Button>
+            </div>
+          )
         }
       />
       <NetWorthTabs />
