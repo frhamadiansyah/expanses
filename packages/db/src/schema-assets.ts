@@ -20,6 +20,16 @@ export const assetProfiles = sqliteTable('asset_profiles', {
   updatedAt: text('updated_at').notNull(),
 });
 
+/** What a time deposit was opened on: the day it comes back and what it pays. One row per deposit account. */
+export const depositTerms = sqliteTable('deposit_terms', {
+  accountId: text('account_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  /** The day the money comes back. Nothing is automated off it: the owner moves it with a transfer. */
+  maturesOn: text('matures_on').notNull(),
+  rateBps: integer('rate_bps').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const investmentTrades = sqliteTable('investment_trades', {
   id: text('id').primaryKey(),
   workspaceId: text('workspace_id').notNull(),

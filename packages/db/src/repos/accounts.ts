@@ -19,7 +19,7 @@ export class AccountError extends Error {
 }
 
 export const BALANCE_SUBTYPES = {
-  asset: ['cash', 'bank', 'savings', 'fund', 'ewallet', 'investment', 'property', 'vehicle', 'receivable'],
+  asset: ['cash', 'bank', 'savings', 'fund', 'ewallet', 'time_deposit', 'other_cash', 'investment', 'property', 'vehicle', 'receivable'],
   liability: ['credit_card', 'loan', 'payable'],
 } as const satisfies Record<'asset' | 'liability', readonly AccountSubtype[]>;
 

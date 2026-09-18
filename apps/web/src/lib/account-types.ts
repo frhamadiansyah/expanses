@@ -6,7 +6,9 @@ import type { AccountSubtype } from '@expanses/db';
  *
  * A fund account is money held at a broker or fund manager ready to invest — an Indonesian RDN, a brokerage
  * cash account. A digital wallet is GoPay, OVO, DANA or ShopeePay. Both hold money and both pay and receive,
- * so both are money accounts, not holdings: what they are worth is what the ledger says.
+ * so both are money accounts, not holdings: what they are worth is what the ledger says. So are a time
+ * deposit, which holds money the bank keeps until it matures, and other cash equivalents — a cheque, a
+ * wesel, commercial paper.
  */
 export const ACCOUNT_TYPES: { subtype: AccountSubtype; kind: 'asset' | 'liability' }[] = [
   { subtype: 'bank', kind: 'asset' },
@@ -14,6 +16,8 @@ export const ACCOUNT_TYPES: { subtype: AccountSubtype; kind: 'asset' | 'liabilit
   { subtype: 'savings', kind: 'asset' },
   { subtype: 'ewallet', kind: 'asset' },
   { subtype: 'fund', kind: 'asset' },
+  { subtype: 'time_deposit', kind: 'asset' },
+  { subtype: 'other_cash', kind: 'asset' },
   { subtype: 'credit_card', kind: 'liability' },
   { subtype: 'investment', kind: 'asset' },
   { subtype: 'property', kind: 'asset' },
@@ -33,6 +37,8 @@ export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
   savings: 'Saving account',
   fund: 'Fund account',
   ewallet: 'Digital wallet',
+  time_deposit: 'Time deposit',
+  other_cash: 'Other cash equivalents',
   investment: 'Investment',
   property: 'Property',
   vehicle: 'Vehicle',
