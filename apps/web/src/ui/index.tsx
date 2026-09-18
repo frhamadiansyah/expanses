@@ -3,6 +3,9 @@ import { type ButtonHTMLAttributes, cloneElement, type InputHTMLAttributes, type
 
 export const cx = (...classes: (string | false | null | undefined)[]) => classes.filter(Boolean).join(' ');
 
+// Grouped list rows live next door, but they are part of the same kit: one import for anything that draws a screen.
+export { InputRow, Kicker, Row, RowGroup, RowHint, SelectRow } from './rows';
+
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -11,6 +14,8 @@ const BUTTON = {
   primary: 'bg-slate-900 text-white hover:bg-slate-700',
   secondary: 'bg-white text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100',
   danger: 'bg-white text-red-700 ring-1 ring-red-300 hover:bg-red-50',
+  // Green, for the one button on a screen that settles money: recording a payment.
+  success: 'bg-emerald-700 text-white hover:bg-emerald-800',
   ghost: 'text-slate-700 hover:bg-slate-100',
 };
 
