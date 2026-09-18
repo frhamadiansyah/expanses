@@ -5,7 +5,7 @@ import { ChevronLeft, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCategorySetMembership, useCategorySets, useSetCategories } from '../categories/set-queries';
 import { BudgetGauge, type GaugeWords } from '../transactions/BudgetGauge';
@@ -14,7 +14,7 @@ import { categoryColour } from '../transactions/category-colours';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
-import { useEventBudgets, useEventHistory, useEvents, useEventSheet, useEventSuggestions } from './queries';
+import { useBooksInEvent, useEventBudgets, useEventHistory, useEvents, useEventSheet, useEventSuggestions } from './queries';
 
 /** A month has budgets; an event has a plan. */
 const PLAN_WORDS: GaugeWords = {
@@ -40,10 +40,16 @@ export function EventDetailPage() {
   const navigate = useNavigate();
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
-  const sheet = useEventSheet(eventId);
-  const budgets = useEventBudgets(eventId);
-  const suggestions = useEventSuggestions(eventId);
-  const history = useEventHistory(eventId);
+  // Which workspace the event is being read in: null is the whole trip, an id is one workspace's share of it.
+  const [tab, setTab] = useState<string | null>(null);
+  const books = useBooksInEvent(eventId).data ?? [];
+  // A tab whose workspace has since been archived, or whose last tagged payment has gone, would read as an
+  // empty event rather than as nothing at all; the whole trip is the honest answer while that is true.
+  const openTab = books.some((book) => book.id === tab) ? tab : null;
+  const sheet = useEventSheet(eventId, openTab);
+  const budgets = useEventBudgets(eventId, openTab);
+  const suggestions = useEventSuggestions(eventId, openTab);
+  const history = useEventHistory(eventId, openTab);
   const accounts = useAccounts().data ?? [];
   const money = accounts.filter(isMoneyAccount);
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
@@ -129,6 +135,32 @@ export function EventDetailPage() {
   const onPlan = hasPlan && page === 1;
   const transactions = history.data?.length ?? 0;
 
+  /**
+   * All, then one button per workspace that spent in the event.
+   *
+   * It only appears once there are two, since one button named after the only workspace there is says nothing.
+   * A transfer is filed in no workspace, so it shows under every tab — as it does in every workspace's
+   * Cashflow — and the ring counts no transfers, so nothing is counted twice by it being there.
+   */
+  const workspaceTabs = books.length > 1 && (
+    <div role="group" aria-label="Workspace" data-testid="event-workspaces" className="inline-flex max-w-full flex-wrap gap-0.5 rounded-lg bg-slate-200 p-0.5">
+      {[{ id: null, name: 'All' }, ...books].map((choice) => (
+        <button
+          key={choice.id ?? 'all'}
+          type="button"
+          aria-pressed={openTab === choice.id}
+          onClick={() => setTab(choice.id)}
+          className={cx(
+            'rounded-md px-3 py-1.5 text-sm font-medium',
+            openTab === choice.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
+          )}
+        >
+          {choice.name}
+        </button>
+      ))}
+    </div>
+  );
+
   const donut = (
     <div data-testid="event-total">
       <Donut
@@ -204,6 +236,8 @@ export function EventDetailPage() {
           </form>
         </Card>
       )}
+
+      {workspaceTabs && <div className="flex justify-center">{workspaceTabs}</div>}
 
       {event && (
         <div data-testid="event-sheet">

@@ -1,4 +1,4 @@
-import { eventSheetFor, listEventBudgets, listEvents, listTransactions, ownerScope, suggestForEvent } from '@expanses/db';
+import { booksInEvent, eventSheetFor, inBook, listEventBudgets, listEvents, listTransactions, ownerScope, suggestForEvent, type WorkspaceContext } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -8,41 +8,64 @@ export function useEvents() {
   return useQuery({ queryKey: ['events', ws.workspaceId], queryFn: () => listEvents(database, ownerScope(ws)) });
 }
 
-export function useEventBudgets(eventId: string | null) {
+/**
+ * The scope one tab on the event screen reads in: the whole trip, or the one workspace chosen.
+ *
+ * The open workspace has nothing to do with it — an event is read from wherever you happen to be — so the
+ * default is always owner-wide, and a tab narrows it by name rather than by what the app has open.
+ */
+const scopeOf = (ws: WorkspaceContext, bookId: string | null) => (bookId ? inBook(ws, bookId) : ownerScope(ws));
+
+/** The workspaces that have spending tagged to this event — one tab each, above the ring. */
+export function useBooksInEvent(eventId: string | null) {
   const { database, ws } = useApp();
   return useQuery({
-    queryKey: ['event-budgets', ws.workspaceId, eventId],
-    queryFn: () => listEventBudgets(database, ownerScope(ws), eventId!),
+    queryKey: ['event-books', ws.workspaceId, eventId],
+    queryFn: () => booksInEvent(database, ownerScope(ws), eventId!),
+    enabled: eventId !== null,
+  });
+}
+
+export function useEventBudgets(eventId: string | null, bookId: string | null = null) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['event-budgets', ws.workspaceId, eventId, bookId],
+    queryFn: () => listEventBudgets(database, scopeOf(ws, bookId), eventId!),
     enabled: eventId !== null,
   });
 }
 
 /** What the event was expected to cost, against what it did. */
-export function useEventSheet(eventId: string | null) {
+export function useEventSheet(eventId: string | null, bookId: string | null = null) {
   const { database, ws } = useApp();
   return useQuery({
-    queryKey: ['event-sheet', ws.workspaceId, eventId],
-    queryFn: () => eventSheetFor(database, ownerScope(ws), eventId!),
+    queryKey: ['event-sheet', ws.workspaceId, eventId, bookId],
+    queryFn: () => eventSheetFor(database, scopeOf(ws, bookId), eventId!),
     enabled: eventId !== null,
   });
 }
 
-/** Payments inside the window, in a category the event draws on, not yet tagged to anything. */
-export function useEventSuggestions(eventId: string | null) {
+/**
+ * Payments inside the window, in a category the event draws on, not yet tagged to anything.
+ *
+ * Narrowed by the tab like everything else: under one workspace the categories the event draws on are that
+ * workspace's, so what is offered there is what tagging it would actually add to the ring being read.
+ */
+export function useEventSuggestions(eventId: string | null, bookId: string | null = null) {
   const { database, ws } = useApp();
   return useQuery({
-    queryKey: ['event-suggestions', ws.workspaceId, eventId],
-    queryFn: () => suggestForEvent(database, ownerScope(ws), eventId!),
+    queryKey: ['event-suggestions', ws.workspaceId, eventId, bookId],
+    queryFn: () => suggestForEvent(database, scopeOf(ws, bookId), eventId!),
     enabled: eventId !== null,
   });
 }
 
 /** What was tagged to the event, newest first: its own transaction history. */
-export function useEventHistory(eventId: string | null) {
+export function useEventHistory(eventId: string | null, bookId: string | null = null) {
   const { database, ws } = useApp();
   return useQuery({
-    queryKey: ['event-history', ws.workspaceId, eventId],
-    queryFn: () => listTransactions(database, ownerScope(ws), { eventId: eventId! }),
+    queryKey: ['event-history', ws.workspaceId, eventId, bookId],
+    queryFn: () => listTransactions(database, scopeOf(ws, bookId), { eventId: eventId! }),
     enabled: eventId !== null,
   });
 }

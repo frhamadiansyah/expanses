@@ -388,6 +388,25 @@ export async function spentThisMonthByBook(
   return spent;
 }
 
+/** The workspaces that have spending tagged to this event, in the order the switcher shows them. */
+export async function booksInEvent(database: Database, ws: WorkspaceContext, eventId: string): Promise<BookRow[]> {
+  if (!(await hasBooks(database.db))) return [];
+  const rows = await database.db
+    .select()
+    .from(books)
+    .where(
+      and(
+        eq(books.workspaceId, ws.workspaceId),
+        isNull(books.archivedAt),
+        // Spending, not planning: a workspace that only has a figure against the event is not one you can read
+        // the trip in yet, so it gets no tab until money is actually filed there.
+        sql`${books.id} IN (SELECT bt.book_id FROM book_transactions bt JOIN transactions t ON t.id = bt.transaction_id WHERE t.event_id = ${eventId} AND t.status = 'posted')`,
+      ),
+    )
+    .orderBy(asc(books.sortOrder), asc(books.createdAt));
+  return rows.map(toRow);
+}
+
 /** Category ids filed in a book, for narrowing owner-wide queries to it. */
 export async function categoryIdsOfBook(database: Database, bookId: string): Promise<string[]> {
   const rows = await database.db.select({ id: bookCategories.categoryAccountId }).from(bookCategories).where(eq(bookCategories.bookId, bookId));

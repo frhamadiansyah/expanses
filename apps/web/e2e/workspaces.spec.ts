@@ -180,3 +180,81 @@ test('Settings renames a workspace, archives it, and keeps Personal', async ({ p
   await expect(personal.getByRole('alert')).toContainText('Personal is where categories and expected income fall back to, so it stays');
   await expect(page.getByTestId('workspace-entry')).toHaveCount(1);
 });
+
+// Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00 in Jakarta
+// it names yesterday and an event window built from it excludes what was just recorded.
+const NOW = new Date();
+const TODAY = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(NOW.getDate()).padStart(2, '0')}`;
+
+/** Records spending in whatever workspace is open, against a category of that workspace. */
+async function spendOn(page: Page, description: string, category: string, amount: string) {
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await page.getByLabel('Description').fill(description);
+  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await page.getByLabel('Category').selectOption({ label: category });
+  await page.getByLabel('Amount', { exact: true }).fill(amount);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText(description).first()).toBeVisible();
+}
+
+/** Draws the event on a category, then says yes to the payment it then suggests. */
+async function planAndTag(page: Page, category: string, description: string) {
+  await page.getByLabel('Category').selectOption({ label: category });
+  await page.getByRole('button', { name: 'Add category' }).click();
+  await expect(page.getByRole('button', { name: `Stop drawing on ${category}` })).toBeVisible();
+  await page.getByTestId('event-suggestions').getByRole('button', { name: `Tag ${description}` }).click();
+}
+
+/**
+ * A trip is the owner's, not a workspace's: it is spent on from both, and no single workspace's Cashflow ever
+ * holds the whole of it. So the event reads whole by default, and one tab at a time reads that workspace's
+ * share — its figure, and only the categories filed in it.
+ */
+test('an event reads whole, then one workspace at a time', async ({ page }) => {
+  // The Categories screen asks for a name with a prompt; this is the answer to it.
+  page.on('dialog', (dialog) => void dialog.accept(dialog.type() === 'prompt' ? 'Client lunches' : ''));
+
+  await addBank(page);
+  await spendOn(page, 'Hotel dinner', 'Restaurants', '4200000');
+
+  await page.goto('/events');
+  await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Singapore holiday');
+  await page.getByLabel('Starts on').fill(TODAY);
+  await page.getByLabel('Ends on').fill(TODAY);
+  await page.getByRole('button', { name: 'Save event' }).click();
+  await expect(page.getByRole('heading', { name: 'Singapore holiday', exact: true })).toBeVisible();
+  const url = page.url();
+  await planAndTag(page, 'Restaurants', 'Hotel dinner');
+  // One workspace has spent in it, so there is nothing to choose between yet.
+  await expect(page.getByTestId('event-workspaces')).toHaveCount(0);
+
+  // A second workspace, with a category of its own so each side of the trip is told apart by name.
+  await newWorkspace(page, 'Business', 'Start empty');
+  await page.goto('/categories');
+  await page.getByRole('button', { name: 'Add category' }).click();
+  await expect(page.getByText('Client lunches')).toBeVisible();
+  await spendOn(page, 'Supplier lunch', 'Client lunches', '640000');
+
+  await page.goto(url);
+  await planAndTag(page, 'Client lunches', 'Supplier lunch');
+
+  // All: the whole trip, both workspaces added up.
+  const tabs = page.getByTestId('event-workspaces');
+  await expect(tabs.getByRole('button')).toHaveText(['All', 'Personal', 'Business']);
+  await expect(page.getByTestId('event-total')).toContainText('4.840.000');
+  await expect(page.getByTestId('event-detail-sheet')).toContainText('Restaurants');
+
+  // Business: its own share, and only the categories filed in it.
+  await tabs.getByRole('button', { name: 'Business' }).click();
+  await expect(page.getByTestId('event-total')).toContainText('640.000');
+  await expect(page.getByTestId('event-detail-sheet')).toContainText('Client lunches');
+  await expect(page.getByTestId('event-detail-sheet')).not.toContainText('Restaurants');
+  // And its own history: the dinner is Personal's, so it is not under this tab.
+  await expect(page.getByText('Hotel dinner')).toHaveCount(0);
+
+  // Back to All, and the whole trip is there again.
+  await tabs.getByRole('button', { name: 'All' }).click();
+  await expect(page.getByTestId('event-total')).toContainText('4.840.000');
+});
