@@ -1,4 +1,14 @@
-import { type AssetKind, type CoretaxSection, parseMajor, parseUnits, presetFor, type ValuationBasis } from '@expanses/core';
+import {
+  type AssetKind,
+  assetItem,
+  type CoretaxSection,
+  type OwnableItem,
+  parseMajor,
+  parseUnits,
+  type PlanGroup,
+  type UnitKind,
+  type ValuationBasis,
+} from '@expanses/core';
 
 export interface PurchaseDraft {
   occurredOn: string;
@@ -9,7 +19,8 @@ export interface PurchaseDraft {
 }
 
 export interface NewAssetDraft {
-  kind: AssetKind;
+  /** An id from the catalogue — a named item, or an `else:NNNN` code out of "Something else". */
+  itemId: string;
   name: string;
   currency: string;
   /** Holdings: what the owner already has, entered as opening positions. */
@@ -23,11 +34,30 @@ export interface NewAssetDraft {
   /** What one unit of the asset's currency was worth in base when it was got. Held in the ledger only. */
   openingRate: string;
   coretaxFields: Record<string, string>;
+  /** Gold jewellery: record what it is worth rather than weigh it. Ignored by everything else. */
+  typedInstead: boolean;
+  /** A receivable: who owes the money. Empty means "whatever this is called". */
+  personName: string;
 }
 
 export interface NewAssetPlan {
   account: { name: string; kind: 'asset'; subtype: string; currency: string; openingBalanceMinor: number; openedOn: string };
-  profile: { assetKind: AssetKind; coretaxSection: CoretaxSection; coretaxCode: string; coretaxFields: Record<string, string>; acquiredYear: number | null };
+  /**
+   * The asset profile to write, or null when the thing chosen is not a holding at all — a receivable is
+   * kept by the Lend & borrow ledger, which has its own profile table.
+   */
+  profile: {
+    assetKind: AssetKind;
+    planGroup: PlanGroup;
+    unitKind: UnitKind | null;
+    lotSize: number | null;
+    coretaxSection: CoretaxSection;
+    coretaxCode: string;
+    coretaxFields: Record<string, string>;
+    acquiredYear: number | null;
+  } | null;
+  /** Set instead of `profile` when the thing chosen is money owed: what to open in the ledger. */
+  person: { direction: 'lent' | 'borrowed'; personName: string; coretaxCode: string; balanceMinor: number } | null;
   /** Opening positions, paid from Opening Balances so bank balances do not move. */
   trades: { occurredOn: string; unitsMicro: number; grossMinor: number }[];
   valuation: { asOf: string; valueMinor: number; basis: ValuationBasis } | null;
@@ -38,24 +68,48 @@ export interface NewAssetPlan {
   openingRateToBase?: number;
 }
 
-/** Holdings are counted in units and priced; property and vehicles are estimated. */
-export const needsPurchases = (kind: AssetKind): boolean => presetFor(kind).valuationMode === 'market';
-export const needsEstimate = (kind: AssetKind): boolean => presetFor(kind).valuationMode === 'snapshot';
+/**
+ * The catalogue item behind a draft, with gold jewellery's "I'd rather type what it is worth" already
+ * applied: the same code and the same table, recorded as a thing with a value rather than a weight
+ * priced per gram. Everything downstream reads the item, so the swap only has to happen here.
+ */
+export function chosenItem(itemId: string, typedInstead = false): OwnableItem {
+  const item = assetItem(itemId);
+  const { behaviour } = item;
+  if (behaviour.opens === 'holding' && behaviour.orTyped && typedInstead) {
+    return { ...item, behaviour: { ...behaviour, assetKind: 'other', unitKind: null, valuedBy: 'value' } };
+  }
+  return item;
+}
+
+/** Anything counted out in units, shares, grams or face value is entered as past purchases. */
+export const needsPurchases = (itemId: string, typedInstead = false): boolean => {
+  const { behaviour } = chosenItem(itemId, typedInstead);
+  return behaviour.opens === 'holding' && (behaviour.valuedBy === 'units' || behaviour.valuedBy === 'face' || behaviour.valuedBy === 'grams');
+};
+
+/** Anything the owner puts a value on — property, a car, a patent — is estimated instead. */
+export const needsEstimate = (itemId: string, typedInstead = false): boolean => {
+  const { behaviour } = chosenItem(itemId, typedInstead);
+  return behaviour.opens === 'holding' && behaviour.valuedBy === 'value';
+};
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export function emptyDraft(kind: AssetKind, currency: string, today: string): NewAssetDraft {
+export function emptyDraft(itemId: string, currency: string, today: string, typedInstead = false): NewAssetDraft {
   return {
-    kind,
+    itemId,
     name: '',
     currency,
-    purchases: needsPurchases(kind) ? [{ occurredOn: today, units: '', cost: '' }] : [],
+    purchases: needsPurchases(itemId, typedInstead) ? [{ occurredOn: today, units: '', cost: '' }] : [],
     purchasedOn: today,
     cost: '',
     estimate: '',
     estimateBasis: 'estimate',
     openingRate: '',
     coretaxFields: {},
+    typedInstead,
+    personName: '',
   };
 }
 
@@ -64,7 +118,9 @@ export function emptyDraft(kind: AssetKind, currency: string, today: string): Ne
  * Throws with a message meant for the screen.
  */
 export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan {
-  const preset = presetFor(draft.kind);
+  const item = chosenItem(draft.itemId, draft.typedInstead);
+  const { behaviour } = item;
+  const holding = behaviour.opens === 'holding' ? behaviour : null;
   const name = draft.name.trim();
   if (!name) throw new Error('Give this asset a name');
 
@@ -73,7 +129,7 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
   let openedOn = today;
   let years: number[] = [];
 
-  if (needsPurchases(draft.kind)) {
+  if (needsPurchases(draft.itemId, draft.typedInstead)) {
     for (const purchase of draft.purchases) {
       const hasUnits = purchase.units.trim() !== '';
       const hasCost = purchase.cost.trim() !== '';
@@ -102,20 +158,30 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
   if (openingRateToBase !== undefined && !(openingRateToBase > 0)) throw new Error('The rate must be more than zero');
 
   let valuation: NewAssetPlan['valuation'] = null;
-  if (needsEstimate(draft.kind) && draft.estimate.trim() !== '') {
+  if (needsEstimate(draft.itemId, draft.typedInstead) && draft.estimate.trim() !== '') {
     valuation = { asOf: today, valueMinor: parseMajor(draft.estimate, draft.currency), basis: draft.estimateBasis };
     if (valuation.valueMinor < 0) throw new Error('An estimate cannot be negative');
   }
 
+  // The ledger names the account after the person, so "Who" left empty simply means what this is called.
+  const personName = draft.personName.trim() || name;
+
   return {
-    account: { name, kind: 'asset', subtype: preset.subtype, currency: draft.currency, openingBalanceMinor, openedOn },
-    profile: {
-      assetKind: draft.kind,
-      coretaxSection: preset.coretaxSection,
-      coretaxCode: preset.coretaxCode,
-      coretaxFields: Object.fromEntries(Object.entries(draft.coretaxFields).filter(([, value]) => value.trim() !== '')),
-      acquiredYear: years.length ? Math.min(...years) : null,
-    },
+    account: { name, kind: 'asset', subtype: holding ? holding.subtype : 'receivable', currency: draft.currency, openingBalanceMinor, openedOn },
+    profile: holding
+      ? {
+          assetKind: holding.assetKind,
+          planGroup: holding.planGroup,
+          unitKind: holding.unitKind,
+          lotSize: holding.lotSize,
+          // Every asset item files under a table; only a debt's section is null, and no debt reaches here.
+          coretaxSection: item.section ?? 'lainnya',
+          coretaxCode: item.code,
+          coretaxFields: Object.fromEntries(Object.entries(draft.coretaxFields).filter(([, value]) => value.trim() !== '')),
+          acquiredYear: years.length ? Math.min(...years) : null,
+        }
+      : null,
+    person: behaviour.opens === 'person' ? { direction: behaviour.direction, personName, coretaxCode: item.code, balanceMinor: openingBalanceMinor } : null,
     trades,
     valuation,
     openingRateToBase,

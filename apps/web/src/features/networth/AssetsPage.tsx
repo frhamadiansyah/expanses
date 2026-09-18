@@ -67,6 +67,12 @@ export function AssetsPage() {
               <div className="text-xs text-slate-500">Everything you own</div>
               <Money minor={totalOf(groups)} currency={baseCurrency} className="text-lg font-semibold" />
             </div>
+            {/* The inline form is still one click away; the picker is for when you do not know what to call it. */}
+            {!adding && (
+              <Link to="/net-worth/assets/new" className="text-sm font-medium text-slate-600 underline-offset-4 hover:underline">
+                What do you own?
+              </Link>
+            )}
             {!adding && <Button onClick={() => setAdding(true)}>Add asset</Button>}
           </div>
         }

@@ -1,5 +1,5 @@
 import type { OwnableFamily, OwnableFlow } from '@expanses/core';
-import { useRouter } from '@tanstack/react-router';
+import { Link, useRouter } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { usePhone } from '../../app/use-phone';
@@ -85,11 +85,12 @@ export function OwnablePicker({
       {hint && !searching && !family && <RowHint>{hint}</RowHint>}
       {handOver.length > 0 && !searching && !family && (
         <RowList>
-          {handOver.map((row) => (
-            // A path, not a typed `Link`: each of the three pickers is a route of its own, and this row only has
-            // to point at one. The router picks the push up and navigates without the page reloading.
-            <PickerButton key={row.id} row={row} onClick={() => router.history.push(row.to)} />
-          ))}
+          {handOver.map((row) => {
+            // A typed `Link` wherever the picker it hands over to has been built, so the router checks the path at
+            // compile time; the rest stay a plain push until their route exists, which navigates just the same.
+            const to = typedHandOver(row.to);
+            return to ? <PickerLink key={row.id} row={row} to={to} /> : <PickerButton key={row.id} row={row} onClick={() => router.history.push(row.to)} />;
+          })}
         </RowList>
       )}
     </div>
@@ -126,14 +127,14 @@ function RowList({ children }: { children: ReactNode }) {
   return <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">{children}</div>;
 }
 
-function PickerButton({ row, onClick }: { row: PickerRow; onClick: () => void }) {
+const PICKER_ROW =
+  'flex min-h-14 w-full items-center gap-3 border-t border-slate-100 px-3 py-2 text-left first:border-t-0 hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900';
+
+/** The tile, the label and the quiet line under it — the same whether the row acts or navigates. */
+function PickerBody({ row }: { row: PickerRow }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-14 w-full items-center gap-3 border-t border-slate-100 px-3 py-2 text-left first:border-t-0 hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
-    >
-      {/* Decoration: the label is what a screen reader and a test read this button by. */}
+    <>
+      {/* Decoration: the label is what a screen reader and a test read this row by. */}
       <span aria-hidden className={cx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base', row.tint)}>
         {row.icon}
       </span>
@@ -142,6 +143,27 @@ function PickerButton({ row, onClick }: { row: PickerRow; onClick: () => void })
         <span className="block truncate text-xs text-slate-500">{row.sub}</span>
       </span>
       <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-400" />
+    </>
+  );
+}
+
+function PickerButton({ row, onClick }: { row: PickerRow; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={PICKER_ROW}>
+      <PickerBody row={row} />
     </button>
+  );
+}
+
+/** The pickers that exist as routes today. A hand-over anywhere else falls back to a push until its route lands. */
+const TYPED_HAND_OVER = ['/accounts/new', '/net-worth/assets/new'] as const;
+type TypedHandOver = (typeof TYPED_HAND_OVER)[number];
+const typedHandOver = (to: string): TypedHandOver | null => TYPED_HAND_OVER.find((path) => path === to) ?? null;
+
+function PickerLink({ row, to }: { row: PickerRow; to: TypedHandOver }) {
+  return (
+    <Link to={to} className={PICKER_ROW}>
+      <PickerBody row={row} />
+    </Link>
   );
 }

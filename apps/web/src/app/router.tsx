@@ -15,6 +15,7 @@ import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { AddAccountPage } from '../features/ownables/AddAccountPage';
+import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
@@ -90,6 +91,8 @@ const routeTree = rootRoute.addChildren([
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
+  // "new" is a static segment, which outranks the `$accountId` below it however they are ordered here.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/new', component: AddAssetPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/goals', component: GoalsPage }),
