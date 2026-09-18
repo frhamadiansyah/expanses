@@ -17,6 +17,22 @@ import { describe, expect, it } from 'vitest';
 import { openAppDb } from './bootstrap';
 
 describe('openAppDb', () => {
+  it('migrates a database of its own, up to the newest schema the build carries', async () => {
+    const executor = createNodeExecutor();
+    try {
+      // Nothing has run here: the app opens an empty file the way it does on a first visit.
+      const app = await openAppDb(createDatabase(executor));
+      const [version] = (await executor.query('SELECT max(version) FROM schema_migrations', [], 'get')) as [number];
+      // 45 is account_types, which rebuilds the accounts table; a browser that stops short of it cannot
+      // open a fund account or a digital wallet.
+      expect(Number(version)).toBe(45);
+      expect(await migrate(app.database)).toEqual([]);
+      expect((await listAccounts(app.database, app.ws)).some((a) => a.subtype === 'category')).toBe(true);
+    } finally {
+      executor.close();
+    }
+  });
+
   it('keys default categories before syncing linked catalogue programs', async () => {
     const executor = createNodeExecutor();
     try {

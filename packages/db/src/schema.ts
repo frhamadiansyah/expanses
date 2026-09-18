@@ -26,7 +26,8 @@ export const accounts = sqliteTable('accounts', {
   parentId: text('parent_id'),
   kind: text('kind', { enum: ['asset', 'liability', 'income', 'expense', 'equity'] }).notNull(),
   subtype: text('subtype', {
-    enum: ['cash', 'bank', 'credit_card', 'savings', 'investment', 'property', 'vehicle', 'receivable', 'payable', 'loan', 'category', 'equity'],
+    // 'fund' is a money account at a broker or fund manager (an RDN), not the asset profile kind of the same name.
+    enum: ['cash', 'bank', 'credit_card', 'savings', 'fund', 'ewallet', 'investment', 'property', 'vehicle', 'receivable', 'payable', 'loan', 'category', 'equity'],
   }).notNull(),
   name: text('name').notNull(),
   icon: text('icon'),

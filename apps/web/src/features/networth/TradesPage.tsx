@@ -2,6 +2,7 @@ import { averagePriceMicro, formatPriceMicro, formatUnits, isoDate, minorToMajor
 import { declareReinvestment, deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
+import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { NetWorthTabs } from './NetWorthTabs';
@@ -36,7 +37,7 @@ export function TradesPage() {
   const holdings = (values.data ?? [])
     .filter((row) => row.mode === 'market')
     .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency }));
-  const cashAccounts = (accounts.data ?? []).filter((account) => ['bank', 'cash', 'savings'].includes(account.subtype) && account.archivedAt === null);
+  const cashAccounts = (accounts.data ?? []).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
   const nameOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.name ?? 'Holding';
   const currencyOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.currency ?? ws.baseCurrency;
   const unitLabelOf = (accountId: string) => {

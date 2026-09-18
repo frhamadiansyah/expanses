@@ -61,15 +61,4 @@ export const isActive = (a: AccountRow) => a.archivedAt === null;
 export const isMoneyAccount = (a: AccountRow) => (a.kind === 'asset' || a.kind === 'liability') && isActive(a);
 export const isCategoryOf = (kind: 'expense' | 'income') => (a: AccountRow) => a.kind === kind && isActive(a);
 
-export const SUBTYPE_LABELS: Record<string, string> = {
-  bank: 'Current account',
-  cash: 'Cash',
-  savings: 'Saving account',
-  investment: 'Investment',
-  property: 'Property',
-  vehicle: 'Vehicle',
-  receivable: 'Money owed to me',
-  credit_card: 'Credit card',
-  loan: 'Loan',
-  payable: 'Money I owe',
-};
+export { SUBTYPE_LABELS } from './account-types';

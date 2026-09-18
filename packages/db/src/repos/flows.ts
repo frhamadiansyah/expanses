@@ -22,9 +22,11 @@ export interface PeriodFlowsResult extends PeriodFlows {
 }
 
 const MAX_MONTHS = 12;
-/** Money parked here is money put away, not spending money. */
-const SAVINGS_SUBTYPES = ['savings'];
-const SPENDING_SUBTYPES = ['cash', 'bank'];
+/* Deliberately not the ledger's spendable list, which is one list of accounts that hold money: this splits
+   that list in two. Money that reaches a savings pot or a broker is money put away; money in a wallet, a
+   current account or a pocket is spending money, and a top-up is not saving. */
+const SAVINGS_SUBTYPES = ['savings', 'fund'];
+const SPENDING_SUBTYPES = ['cash', 'bank', 'ewallet'];
 
 function monthsBetween(from: string, to: string): string[] {
   const months: string[] = [];

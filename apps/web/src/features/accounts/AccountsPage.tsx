@@ -3,7 +3,8 @@ import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, cr
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
-import { isMoneyAccount, SUBTYPE_LABELS, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { ACCOUNT_TYPES, SUBTYPE_LABELS } from '../../lib/account-types';
+import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { useAssetValues } from '../networth/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
@@ -11,19 +12,6 @@ import { Button, Card, Empty, ErrorBox, errorMessage, Field, Input, Money, PageH
 
 /** Sentinel for a bank the catalogue has never heard of. */
 const OTHER = '__other';
-
-const TYPES: { subtype: AccountSubtype; kind: 'asset' | 'liability' }[] = [
-  { subtype: 'bank', kind: 'asset' },
-  { subtype: 'cash', kind: 'asset' },
-  { subtype: 'savings', kind: 'asset' },
-  { subtype: 'credit_card', kind: 'liability' },
-  { subtype: 'investment', kind: 'asset' },
-  { subtype: 'property', kind: 'asset' },
-  { subtype: 'vehicle', kind: 'asset' },
-  { subtype: 'receivable', kind: 'asset' },
-  { subtype: 'loan', kind: 'liability' },
-  { subtype: 'payable', kind: 'liability' },
-];
 
 function AddAccountForm() {
   const { database, ws } = useApp();
@@ -41,7 +29,7 @@ function AddAccountForm() {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  const kind = TYPES.find((t) => t.subtype === subtype)!.kind;
+  const kind = ACCOUNT_TYPES.find((t) => t.subtype === subtype)!.kind;
   const foreign = currency !== ws.baseCurrency;
   // A card is the one account that comes from a bank as a named product. Cash and property do not.
   const isCard = subtype === 'credit_card';
@@ -93,7 +81,7 @@ function AddAccountForm() {
         </Field>
         <Field label="Type">
           <Select value={subtype} onChange={(e) => setSubtype(e.target.value as AccountSubtype)}>
-            {TYPES.map((t) => (
+            {ACCOUNT_TYPES.map((t) => (
               <option key={t.subtype} value={t.subtype}>
                 {SUBTYPE_LABELS[t.subtype]}
               </option>

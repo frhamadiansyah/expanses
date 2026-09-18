@@ -3,12 +3,11 @@ import { saveExpenseTemplate } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
+import { WALLET_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
 import { useExpenseTemplates } from '../transactions/queries';
 import { amountInput } from './bill-view';
-
-const WALLET_SUBTYPES = ['bank', 'cash', 'savings', 'credit_card'];
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 export function EditBillRoute() {

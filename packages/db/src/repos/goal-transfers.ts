@@ -4,6 +4,7 @@ import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalEarmarks, goals } from '../schema-goals';
+import { SPENDABLE_SUBTYPES } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { GoalDbError } from './goals';
 import { postTransactionTx, voidTransactionTx } from './ledger';
@@ -25,16 +26,14 @@ export interface TaggedTransferResult {
   setAsideMinor: number;
 }
 
-/** Somewhere money can wait for a goal: everyday cash, a savings pot, or broker cash grouped as investments. */
-const PARKABLE_SUBTYPES = ['cash', 'bank', 'savings'];
-
 async function canHoldSetAside(tx: Db, ws: WorkspaceContext, accountId: string): Promise<boolean> {
   const [account] = await tx
     .select({ subtype: accounts.subtype })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
   if (!account) return false;
-  if (PARKABLE_SUBTYPES.includes(account.subtype)) return true;
+  // Money can wait for a goal wherever it can be set aside, or in a holding the owner groups as investments.
+  if (SPENDABLE_SUBTYPES.includes(account.subtype)) return true;
   const [profile] = await tx
     .select({ planGroup: assetProfiles.planGroup })
     .from(assetProfiles)
