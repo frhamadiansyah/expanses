@@ -18,11 +18,14 @@ import {
   createBook,
   createCategorySet,
   createWorkspace,
+  dismissCatalogVersion,
   ensureCategoryKeys,
+  getCatalogState,
   ensureDefaultCategorySets,
   inBook,
   listAccounts,
   listBooks,
+  listCardTerms,
   listCategoryMccs,
   listCategorySets,
   listCycleBonuses,
@@ -526,6 +529,28 @@ describe('a card earns in the workspace that copied its categories', () => {
     const bonuses = await listCycleBonuses(database, ws, programId);
     // A mile per Rp 8.000 on travel; the base rate would have paid 666 for the same Rp 8 juta.
     expect(computeCycleEarn(lines, rules, ancestors, { bonuses, cycleEnd: '2026-09-30' }).totalPoints).toBe(1000);
+  });
+
+  it('leaves the fee the holder recorded and the update they dismissed alone while doing it', async () => {
+    const { database, ws } = await setupDb();
+    const personal = await personalBook(database, ws);
+    const card = await createAccount(database, ws, { name: 'Garuda UOB', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    await saveCardTerms(database, ws, { accountId: card.id, statementDay: 25, dueDay: 12, creditLimitMinor: 50_000_000, annualFeeMinor: null });
+    const entry = structuredClone(findEntry('uob-garuda-indonesia')!);
+    const { programId } = await applyCatalogEntry(database, ws, { cardAccountId: card.id, entry, today: '2026-09-15', replaceManual: false });
+
+    // The bank waived this holder's fee, and they have already said they do not want the next entry.
+    await saveCardTerms(database, ws, { accountId: card.id, statementDay: 25, dueDay: 12, creditLimitMinor: 50_000_000, annualFeeMinor: 0 });
+    await dismissCatalogVersion(database, ws, programId, entry.entryVersion + 1);
+
+    const family = await createBook(database, ws, { name: 'Family', kind: 'family', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
+
+    // Making a workspace is not the entry arriving: only the rules are written again.
+    expect((await listCardTerms(database, ws)).map((terms) => terms.annualFeeMinor)).toEqual([0]);
+    expect(await getCatalogState(database, ws, programId)).toMatchObject({ dismissedVersion: entry.entryVersion + 1, status: 'linked' });
+    const travel = (await categoryIdsByKey(database, inBook(ws, family)))['travel']!;
+    const travelRule = (await listEarnRules(database, ws, programId)).find((rule) => rule.name === 'Travel and hotels');
+    expect(travelRule!.match.categoryIds).toContain(travel);
   });
 });
 

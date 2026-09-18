@@ -70,6 +70,11 @@ async function clearRows(tx: Db, ws: WorkspaceContext, programId: string, manual
 
 /** Writes the entry's planned rows and catalogue fields onto the program. Returns category keys that could not be mapped. */
 /** `setCrediting` is true only when applying or resetting: crediting is the user's checking preference once linked. */
+/**
+ * `rulesOnly` is for a re-plan that is not an application of the entry: the rules are written again because the
+ * ids they name have changed, and nothing else about the card has. It leaves the annual fee alone (the user may
+ * have had theirs waived or negotiated down from the published one) and leaves a dismissed version dismissed.
+ */
 async function writePlan(
   tx: Db,
   ws: WorkspaceContext,
@@ -79,6 +84,7 @@ async function writePlan(
   status: 'linked' | 'customised',
   setCrediting = false,
   memberLevel: string | null = null,
+  rulesOnly = false,
 ) {
   // A card is the owner's, not one workspace's: an earning rule keyed to a category must name every workspace's
   // copy of it, or a business dinner on the same card would earn nothing.
@@ -114,7 +120,7 @@ async function writePlan(
     );
   }
   // The statement day is personal; only the published fee comes from the catalogue, and only onto terms the user set up.
-  if (plan.annualFeeMinor !== null) {
+  if (plan.annualFeeMinor !== null && !rulesOnly) {
     await tx
       .update(cardTerms)
       .set({ annualFeeMinor: plan.annualFeeMinor })
@@ -129,7 +135,7 @@ async function writePlan(
       catalogEntryId: entry.id,
       catalogEntryVersion: entry.entryVersion,
       catalogStatus: status,
-      catalogDismissedVersion: null,
+      ...(rulesOnly ? {} : { catalogDismissedVersion: null }),
       catalogMemberLevel: plan.requiresMemberLevel ? memberLevel : null,
       catalogSnapshotJson: JSON.stringify(entry),
       ...(setCrediting ? { crediting: plan.crediting } : {}),
@@ -253,7 +259,9 @@ export async function syncLinkedPrograms(database: Database, ws: WorkspaceContex
  *
  * An earn rule names category ids, so categories a new workspace has just been given — copied from another
  * workspace, or made because the app posts into them — earn nothing until the rules are planned over them too.
- * The entry itself does not change, so a customised program keeps the rows the user added, as everywhere else.
+ * The entry itself does not change, so a customised program keeps the rows the user added, as everywhere else,
+ * and `rulesOnly` keeps the rest of the card as it was: the annual fee the user recorded, and any catalogue
+ * update they have already dismissed. Nothing here is the entry arriving; only the ids under it moved.
  */
 export async function replanCatalogProgramsTx(tx: Db, ws: WorkspaceContext, today: string): Promise<void> {
   const programs = await tx
@@ -263,7 +271,7 @@ export async function replanCatalogProgramsTx(tx: Db, ws: WorkspaceContext, toda
   for (const program of programs) {
     const entry = JSON.parse(program.catalogSnapshotJson as string) as CatalogEntry;
     await clearRows(tx, ws, program.id, false);
-    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked', false, program.catalogMemberLevel);
+    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked', false, program.catalogMemberLevel, true);
   }
 }
 

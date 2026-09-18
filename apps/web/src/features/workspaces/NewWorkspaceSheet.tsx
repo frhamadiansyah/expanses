@@ -25,7 +25,10 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
   const books = useBooks();
   const hasPersonal = (books.data ?? []).some((book) => book.kind === 'personal');
   const [name, setName] = useState('');
-  const [kind, setKind] = useState<BookKind>(hasPersonal ? 'business' : 'personal');
+  // Null until a tile is pressed, so the default settles when the list of workspaces arrives rather than being
+  // fixed on the first render — a sheet opened before it loads would otherwise start on a disabled Personal.
+  const [chosenKind, setChosenKind] = useState<BookKind | null>(null);
+  const kind = chosenKind ?? (hasPersonal ? 'business' : 'personal');
   const [copyFrom, setCopyFrom] = useState('');
   const [baseCurrency, setBaseCurrency] = useState(ws.baseCurrency);
   // Null while nobody has touched the switch: a business counts an event as spending like any other, where a
@@ -73,7 +76,7 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
                   disabled={disabled}
                   title={disabled ? 'There is already a Personal workspace' : undefined}
                   aria-pressed={kind === option.value}
-                  onClick={() => setKind(option.value)}
+                  onClick={() => setChosenKind(option.value)}
                   className={cx(
                     'min-h-11 rounded-lg px-2 py-2 text-sm font-medium ring-1 disabled:opacity-40',
                     kind === option.value ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50',
@@ -108,16 +111,19 @@ export function NewWorkspaceSheet({ onClose }: { onClose: () => void }) {
           </Field>
         </div>
 
-        <label className="flex items-start gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            role="switch"
-            className="mt-0.5"
-            checked={countEventsInBudget}
-            onChange={(e) => setEvents(e.target.checked)}
-          />
-          Count event spending in this workspace&rsquo;s monthly budget
-        </label>
+        <fieldset>
+          <legend className="mb-1 block text-xs font-medium text-slate-600">Events</legend>
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              role="switch"
+              className="mt-0.5"
+              checked={countEventsInBudget}
+              onChange={(e) => setEvents(e.target.checked)}
+            />
+            Count event spending in this workspace&rsquo;s monthly budget
+          </label>
+        </fieldset>
 
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={busy}>
