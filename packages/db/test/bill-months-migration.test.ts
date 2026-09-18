@@ -62,7 +62,7 @@ describe('migration 0044', () => {
     // A template id that names no bill is left alone.
     await older.db.values(sql`UPDATE transactions SET template_id = 'not-a-bill' WHERE id = ${stray}`);
 
-    expect(await migrate(older)).toEqual([44, 45]);
+    expect(await migrate(older)).toEqual([44, 45, 46]);
 
     expect(await older.db.values(sql`SELECT template_id, workspace_id, pay_by_day FROM bill_windows`)).toEqual([[bill, ws.workspaceId, null]]);
     const [[starts]] = (await older.db.values<[string]>(sql`SELECT starts_month FROM bill_windows`)) as [[string]];

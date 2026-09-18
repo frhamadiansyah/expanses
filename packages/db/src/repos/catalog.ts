@@ -6,7 +6,7 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { cardIdentity } from '../schema-cards';
 import { cardTerms, catalogCategoryChoices, cycleBonuses, earnRules, redemptionOptions, rewardPrograms, transferPartners } from '../schema-points';
-import { categoryIdsByKeyTx } from './categories';
+import { categoryIdsByKeyAllTx } from './categories';
 import { type RewardProgramRow, saveCycleBonusTx, saveEarnRuleTx, saveRedemptionOptionTx, saveTransferPartnerTx } from './points';
 
 export class CatalogError extends Error {
@@ -70,6 +70,11 @@ async function clearRows(tx: Db, ws: WorkspaceContext, programId: string, manual
 
 /** Writes the entry's planned rows and catalogue fields onto the program. Returns category keys that could not be mapped. */
 /** `setCrediting` is true only when applying or resetting: crediting is the user's checking preference once linked. */
+/**
+ * `rulesOnly` is for a re-plan that is not an application of the entry: the rules are written again because the
+ * ids they name have changed, and nothing else about the card has. It leaves the annual fee alone (the user may
+ * have had theirs waived or negotiated down from the published one) and leaves a dismissed version dismissed.
+ */
 async function writePlan(
   tx: Db,
   ws: WorkspaceContext,
@@ -79,8 +84,11 @@ async function writePlan(
   status: 'linked' | 'customised',
   setCrediting = false,
   memberLevel: string | null = null,
+  rulesOnly = false,
 ) {
-  const plan = planCatalogApply(entry, await categoryIdsByKeyTx(tx, ws), today, memberLevel, await choicesFor(tx, ws, program.id));
+  // A card is the owner's, not one workspace's: an earning rule keyed to a category must name every workspace's
+  // copy of it, or a business dinner on the same card would earn nothing.
+  const plan = planCatalogApply(entry, await categoryIdsByKeyAllTx(tx, ws), today, memberLevel, await choicesFor(tx, ws, program.id));
   // A rule capped at "one times your limit" needs the card's own terms; the smaller of that and any published
   // cap wins. With no limit recorded, the published cap stands alone rather than the rule going uncapped.
   const [terms] = await tx
@@ -112,7 +120,7 @@ async function writePlan(
     );
   }
   // The statement day is personal; only the published fee comes from the catalogue, and only onto terms the user set up.
-  if (plan.annualFeeMinor !== null) {
+  if (plan.annualFeeMinor !== null && !rulesOnly) {
     await tx
       .update(cardTerms)
       .set({ annualFeeMinor: plan.annualFeeMinor })
@@ -127,7 +135,7 @@ async function writePlan(
       catalogEntryId: entry.id,
       catalogEntryVersion: entry.entryVersion,
       catalogStatus: status,
-      catalogDismissedVersion: null,
+      ...(rulesOnly ? {} : { catalogDismissedVersion: null }),
       catalogMemberLevel: plan.requiresMemberLevel ? memberLevel : null,
       catalogSnapshotJson: JSON.stringify(entry),
       ...(setCrediting ? { crediting: plan.crediting } : {}),
@@ -244,6 +252,27 @@ export async function syncLinkedPrograms(database: Database, ws: WorkspaceContex
     if (didSync) synced.push(id);
   }
   return synced;
+}
+
+/**
+ * Writes every catalogue program's rules again from the entry it already carries, without waiting for a newer one.
+ *
+ * An earn rule names category ids, so categories a new workspace has just been given — copied from another
+ * workspace, or made because the app posts into them — earn nothing until the rules are planned over them too.
+ * The entry itself does not change, so a customised program keeps the rows the user added, as everywhere else,
+ * and `rulesOnly` keeps the rest of the card as it was: the annual fee the user recorded, and any catalogue
+ * update they have already dismissed. Nothing here is the entry arriving; only the ids under it moved.
+ */
+export async function replanCatalogProgramsTx(tx: Db, ws: WorkspaceContext, today: string): Promise<void> {
+  const programs = await tx
+    .select()
+    .from(rewardPrograms)
+    .where(and(eq(rewardPrograms.workspaceId, ws.workspaceId), isNotNull(rewardPrograms.catalogSnapshotJson), isNull(rewardPrograms.archivedAt)));
+  for (const program of programs) {
+    const entry = JSON.parse(program.catalogSnapshotJson as string) as CatalogEntry;
+    await clearRows(tx, ws, program.id, false);
+    await writePlan(tx, ws, program, entry, today, program.catalogStatus ?? 'linked', false, program.catalogMemberLevel, true);
+  }
 }
 
 /** Applies a newer entry to a customised program: replaces catalogue rows, keeps rows the user added, stays customised. */

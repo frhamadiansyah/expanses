@@ -91,7 +91,7 @@ describe('migration 0045', () => {
     const balancesBefore = await nativeBalances(database, ws);
     expect(before.rows.length).toBeGreaterThan(6);
 
-    expect(await migrate(database)).toEqual([45]);
+    expect(await migrate(database)).toEqual([45, 46]);
 
     const after = await accountsSchema();
     expect(after.rows).toEqual(before.rows);

@@ -22,12 +22,12 @@ export interface SetIncomeOverrideInput {
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function assertMonth(month: string): void {
-  if (!MONTH.test(month)) throw new BudgetError(`"${month}" is not a month; write it as YYYY-MM`);
+  if (!MONTH.test(month)) throw new BudgetError('BAD_MONTH', `"${month}" is not a month; write it as YYYY-MM`);
 }
 
 function assertAmount(amountMinor: number): void {
-  if (!Number.isSafeInteger(amountMinor)) throw new BudgetError('An amount must be a whole number of minor units');
-  if (amountMinor < 0) throw new BudgetError('Income cannot be less than nothing');
+  if (!Number.isSafeInteger(amountMinor)) throw new BudgetError('NOT_WHOLE', 'An amount must be a whole number of minor units');
+  if (amountMinor < 0) throw new BudgetError('AMOUNT_RANGE', 'Income cannot be less than nothing');
 }
 
 /**

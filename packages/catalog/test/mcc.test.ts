@@ -4,7 +4,7 @@ import { describeEntry, diffCatalogEntries, findEntry, planCatalogApply, validat
 import type { CatalogEntry } from '../src/types';
 
 const unionpay = (): CatalogEntry => structuredClone(findEntry('bca-unionpay')!);
-const ids = Object.fromEntries([...DEFAULT_CATEGORY_KEYS].map((key) => [key, `id:${key}`]));
+const ids = Object.fromEntries([...DEFAULT_CATEGORY_KEYS].map((key) => [key, [`id:${key}`]]));
 
 describe('MCC rules in catalogue entries', () => {
   it('rejects malformed MCC codes and ranges', () => {

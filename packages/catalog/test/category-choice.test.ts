@@ -47,7 +47,7 @@ const withChoice = (): CatalogEntry => ({
   verifiedOn: '2026-09-13',
 });
 
-const plan = (choices: AppliedCategoryChoice[]) => planCatalogApply(withChoice(), { 'food_beverage.restaurants': 'c-dining', 'household.groceries': 'c-groceries' }, '2026-09-13', null, choices);
+const plan = (choices: AppliedCategoryChoice[]) => planCatalogApply(withChoice(), { 'food_beverage.restaurants': ['c-dining'], 'household.groceries': ['c-groceries'] }, '2026-09-13', null, choices);
 
 describe('a category the holder picks: validation', () => {
   it('accepts a menu and a rule that names it', () => {

@@ -2,7 +2,7 @@ import { computeCycleEarn, DEFAULT_CATEGORY_KEYS, type SpendLine } from '@expans
 import { describe, expect, it } from 'vitest';
 import { CATALOG, findEntry, MERCHANTS, planCatalogApply, validateMerchants } from '../src/index';
 
-const ids = Object.fromEntries([...DEFAULT_CATEGORY_KEYS].map((key) => [key, key]));
+const ids = Object.fromEntries([...DEFAULT_CATEGORY_KEYS].map((key) => [key, [key]]));
 const earnOn = (entryId: string, lines: SpendLine[]) => {
   const plan = planCatalogApply(findEntry(entryId)!, ids, '2026-09-11');
   const rules = plan.rules.map(({ catalogKey, ...rule }) => ({ ...rule, id: catalogKey }));

@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, ErrorBox, Field, Input, Select } from '../../ui';
+import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
+import { useWorkspaceBadges } from '../workspaces/queries';
 import { StatementBand } from './StatementBand';
 import { cycleBack } from './statement-dates';
 import { groupStatementLines } from './statement-groups';
@@ -128,6 +130,9 @@ export function StatementPanel({
         .reverse()
     : [];
   const statementOf = (line: StatementLine) => statementCycleFor(line.statementOn, statementDay);
+  // A card is yours, not a workspace's, so its statement holds every workspace and each row says which. The
+  // searched rows are asked for alongside the statement's, so a hit found under a different workspace says so too.
+  const badgeOf = useWorkspaceBadges([...lines, ...found].map((line) => line.transactionId));
   function openStatementOf(line: StatementLine) {
     // Count back from the statement today is in to the one this line was billed on.
     let steps = 0;
@@ -186,6 +191,7 @@ export function StatementPanel({
                     <span className="tabular w-24 shrink-0 text-slate-500">{line.occurredOn.slice(0, 4) === today.slice(0, 4) ? day(line.occurredOn) : dayYear(line.occurredOn)}</span>
                     <span className="min-w-0 flex-1 truncate">
                       {line.description}
+                      <WorkspaceBadge book={badgeOf(line.transactionId)} />
                       {line.instalment && <span className="ml-1.5 text-xs text-slate-500">· instalment {line.instalment.number} of {line.instalment.of}</span>}
                       {last4(line.cardId) && <span className="tabular ml-1.5 text-xs font-semibold text-slate-500">···· {last4(line.cardId)}</span>}
                     </span>
@@ -243,6 +249,8 @@ export function StatementPanel({
                       <span className="tabular w-14 text-slate-500">{day(line.occurredOn)}</span>
                       <span className="min-w-0 flex-1 truncate">
                         {line.description}
+                        {/* Whose spending this is, when the card has been used from more than one workspace. */}
+                        <WorkspaceBadge book={badgeOf(line.transactionId)} />
                         {line.instalment && (
                           <span className="ml-1.5 text-xs text-slate-500">
                             · instalment {line.instalment.number} of {line.instalment.of}

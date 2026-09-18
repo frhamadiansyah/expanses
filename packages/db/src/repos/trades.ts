@@ -112,6 +112,7 @@ async function tradeAccountsFor(tx: Db, ws: WorkspaceContext, accountId: string,
   if (!holding) throw new AssetError('Asset not found in this workspace');
   const cash = cashAccountId ? rows.find((row) => row.id === cashAccountId) : undefined;
   if (cashAccountId && !cash) throw new AssetError('Cash account not found in this workspace');
+  // Gains, investment income and the tax on them: the open workspace's copies, since the trade records there.
   const byKey = await categoryIdsByKeyTx(tx, ws);
   const need = (key: string) => {
     const id = byKey[key];

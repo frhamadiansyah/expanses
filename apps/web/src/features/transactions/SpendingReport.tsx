@@ -1,5 +1,5 @@
 import { type BudgetLine, categoryTree, type CategoryTreeNode, formatMinor, isoDate, parsePeriod, periodLabel, stepPeriod } from '@expanses/core';
-import { budgetSheetFor, categoryTotalsBetween, firstTransactionDate } from '@expanses/db';
+import { budgetSheetFor, categoryTotalsIn, firstTransactionDate } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -16,6 +16,8 @@ import { Deck } from './Deck';
 import { Donut, type DonutSlice } from './Donut';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { IncomeFlow } from './IncomeFlow';
+import { mergeUnconverted, Unconverted, type UnconvertedRow } from '../workspaces/Unconverted';
+import { useOpenBook } from '../workspaces/queries';
 
 
 /** The node for a category anywhere in the tree, so a page showing one can draw it. */
@@ -34,6 +36,7 @@ function Row({
   colour,
   totalMinor,
   month,
+  currency,
   capMinor,
   against = 'month',
   onOpen,
@@ -42,18 +45,19 @@ function Row({
   colour: string;
   totalMinor: number;
   month: string;
+  /** What the figures read in: the open workspace's own currency. */
+  currency: string;
   /** What this category was budgeted this month, if anything. The bar measures the month against it. */
   capMinor?: number | null;
   /** What the row is being read against, which is whichever chart the card is showing. */
   against?: 'month' | 'budget';
   onOpen?: () => void;
 }) {
-  const { ws } = useApp();
   const inside =
     against === 'budget' ? (
-      <CapLine colour={colour} name={node.name} amountMinor={node.totalMinor} capMinor={capMinor} currency={ws.baseCurrency} />
+      <CapLine colour={colour} name={node.name} amountMinor={node.totalMinor} capMinor={capMinor} currency={currency} />
     ) : (
-      <ShareLine colour={colour} name={node.name} amountMinor={node.totalMinor} wholeMinor={totalMinor} currency={ws.baseCurrency} />
+      <ShareLine colour={colour} name={node.name} amountMinor={node.totalMinor} wholeMinor={totalMinor} currency={currency} />
     );
   // A category with children opens into them; one without goes straight to its transactions.
   return onOpen ? (
@@ -73,6 +77,7 @@ function Ring({
   totalMinor,
   middleLabel,
   month,
+  currency,
   colourOf,
   transactions,
   caps,
@@ -90,6 +95,8 @@ function Ring({
   totalMinor: number;
   middleLabel: string;
   month: string;
+  /** What the figures read in: the open workspace's own currency. */
+  currency: string;
   /** How a child ring tints its slices. The month's own ring takes the palette, clashes resolved. */
   colourOf?: (node: CategoryTreeNode, index: number) => string;
   transactions: number;
@@ -111,7 +118,6 @@ function Ring({
   onAsk?: () => void;
   onFold?: () => void;
 }) {
-  const { ws } = useApp();
   // One tap on the chart, whichever way the list is at the time.
   const fold = showRows ? onFold : onAsk;
   const ordered = [...nodes].sort((a, b) => b.totalMinor - a.totalMinor);
@@ -132,7 +138,7 @@ function Ring({
     <Donut
       slices={slices}
       totalMinor={totalMinor}
-      middle={formatMinor(totalMinor, ws.baseCurrency)}
+      middle={formatMinor(totalMinor, currency)}
       label={middleLabel}
       under={transactions > 0 ? `${transactions} transaction${transactions === 1 ? '' : 's'}` : undefined}
       onPick={fold ? undefined : onOpen ? (key) => { const node = byId.get(key); if (node) onOpen(node); } : undefined}
@@ -184,6 +190,7 @@ function Ring({
               colour={colourById.get(node.id) ?? (colourOf ? colourOf(node, index) : categoryColour(node.id))}
               totalMinor={totalMinor}
               month={month}
+              currency={currency}
               capMinor={caps?.[node.id]}
               against={caps ? 'budget' : 'month'}
               onOpen={onOpen && node.children.length > 0 ? () => onOpen(node) : undefined}
@@ -210,6 +217,7 @@ export function SpendingReport({
   onKind,
   onPick,
   onMonth,
+  alsoMissing = [],
 }: {
   month: string;
   categoryId?: string;
@@ -219,6 +227,8 @@ export function SpendingReport({
   onPick?: (id: string) => void;
   /** Given, the chart carries the month itself: the arrows step through them. */
   onMonth?: (month: string) => void;
+  /** What the list below could not convert either. The chart says it once for the whole screen. */
+  alsoMissing?: readonly UnconvertedRow[];
 }) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
@@ -236,16 +246,22 @@ export function SpendingReport({
   const isMonth = period?.kind === 'month';
   const first = useQuery({ queryKey: ['first-transaction', ws.workspaceId], queryFn: () => firstTransactionDate(database, ws), enabled: picking });
 
+  // A workspace that counts its events wants them in the chart too, so the chart and its budget never disagree
+  // about what the month cost. Everywhere else an event is read on its own: a week in Singapore would otherwise
+  // swallow the shape of an ordinary month.
+  const eventsInCaps = useOpenBook()?.countEventsInBudget ?? false;
   const totals = useQuery({
-    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, 'without-events'],
-    // An event is read on its own: a week in Singapore would otherwise swallow the shape of an ordinary month.
-    queryFn: () => categoryTotalsBetween(database, ws, kind, from, to, { excludeEvents: true, billMonths: true }),
+    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, eventsInCaps ? 'with-events' : 'without-events'],
+    queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: !eventsInCaps, billMonths: true }),
   });
   const budgets = useQuery({
     queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month],
     enabled: kind === 'expense' && isMonth,
     queryFn: () => budgetSheetFor(database, ws, month),
   });
+  // A workspace reads its chart in its own currency; the owner's is the answer until the first read arrives.
+  const currency = totals.data?.currency ?? ws.baseCurrency;
+  const missing = mergeUnconverted(totals.data?.missing ?? [], alsoMissing);
   const progress = budgetProgress(budgets.data?.lines ?? []);
   // The budget page exists only where there is a budget to measure, and only for money going out.
   const hasBudgets = kind === 'expense' && isMonth && progress.any;
@@ -262,8 +278,8 @@ export function SpendingReport({
   const membership = useCategorySetMembership().data ?? {};
   const sets = useCategorySets().data ?? [];
   const ofKind = accounts.filter((a) => a.kind === kind);
-  const amounts = (totals.data ?? []).map((row) => ({ accountId: row.accountId, amountBaseMinor: row.amountBaseMinor }));
-  const countById = new Map((totals.data ?? []).map((row) => [row.accountId, row.transactions]));
+  const amounts = (totals.data?.rows ?? []).map((row) => ({ accountId: row.accountId, amountBaseMinor: row.amountBaseMinor }));
+  const countById = new Map((totals.data?.rows ?? []).map((row) => [row.accountId, row.transactions]));
   // The monthly tree is the open book's; each set is already narrowed to the book by useCategorySets.
   const tree = categoryTree(
     ofKind.filter((a) => membership[a.id] === undefined && inOpenBook(a)),
@@ -335,12 +351,14 @@ export function SpendingReport({
 
   return (
     <div className="space-y-4" data-testid="spending-report">
+      <Unconverted missing={missing} currency={currency} />
       {open ? (
         <Ring
           nodes={open.ownMinor > 0 ? [...open.children, { id: open.id, name: `${open.name} (general)`, ownMinor: open.ownMinor, totalMinor: open.ownMinor, children: [] }] : open.children}
           totalMinor={open.totalMinor}
           middleLabel={open.name}
           month={month}
+          currency={currency}
           transactions={countIn(open)}
           showRows
           colourOf={(_, index) => shade(categoryColour(open.id), index, Math.max(2, open.children.length))}
@@ -348,7 +366,7 @@ export function SpendingReport({
       ) : (
         <>
           <div data-testid="period-total" className="sr-only">
-            <Money minor={total} currency={ws.baseCurrency} />
+            <Money minor={total} currency={currency} />
           </div>
           {totals.isSuccess && tree.length === 0 && setGroups.length === 0 ? (
             <Card>
@@ -362,6 +380,7 @@ export function SpendingReport({
               totalMinor={total}
               middleLabel={kind === 'expense' ? 'Total spent' : 'Total earned'}
               month={month}
+              currency={currency}
               transactions={transactions}
               caps={onBudgets ? caps : undefined}
               header={header}
@@ -380,7 +399,7 @@ export function SpendingReport({
                 <h2 className="mb-1 text-sm font-semibold">{group.set.name}</h2>
                 <div className="divide-y divide-slate-100">
                   {group.tree.map((node) => (
-                    <Row key={node.id} node={node} colour={categoryColour(node.id)} totalMinor={total} month={month} capMinor={onBudgets ? caps[node.id] : undefined} against={onBudgets ? 'budget' : 'month'} />
+                    <Row key={node.id} node={node} colour={categoryColour(node.id)} totalMinor={total} month={month} currency={currency} capMinor={onBudgets ? caps[node.id] : undefined} against={onBudgets ? 'budget' : 'month'} />
                   ))}
                 </div>
               </div>

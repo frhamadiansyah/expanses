@@ -232,7 +232,7 @@ describe('committedByCategory', () => {
       dayOfMonth: 5,
     });
 
-    expect(await committedByCategory(context.database, context.ws)).toEqual({ [context.phone.id]: 500_000 });
+    expect(await committedByCategory(context.database, context.ws)).toEqual({ committed: { [context.phone.id]: 500_000 }, currency: 'IDR', missing: [] });
   });
 
   it('leaves an open-ended bill out rather than guessing what it will be', async () => {
@@ -244,7 +244,7 @@ describe('committedByCategory', () => {
       dayOfMonth: 20,
     });
 
-    expect(await committedByCategory(context.database, context.ws)).toEqual({});
+    expect(await committedByCategory(context.database, context.ws)).toEqual({ committed: {}, currency: 'IDR', missing: [] });
   });
 });
 

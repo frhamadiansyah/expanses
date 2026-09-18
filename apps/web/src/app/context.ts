@@ -1,9 +1,14 @@
 import { createContext, useContext } from 'react';
 import type { AppDb } from '../db/bootstrap';
 
-export const AppContext = createContext<AppDb | null>(null);
+export interface AppState extends AppDb {
+  /** Opens another workspace: remembered on the device, and every cached figure dropped. */
+  switchBook: (bookId: string) => Promise<void>;
+}
 
-export function useApp(): AppDb {
+export const AppContext = createContext<AppState | null>(null);
+
+export function useApp(): AppState {
   const value = useContext(AppContext);
   if (!value) throw new Error('AppContext is missing');
   return value;

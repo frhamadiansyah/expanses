@@ -1,9 +1,10 @@
 import { type EventSheet, eventSheet, uuidv7 } from '@expanses/core';
-import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { eventBudgets, events } from '../schema-events';
+import { hasBooks } from './books';
 
 export class EventError extends Error {
   constructor(
@@ -45,6 +46,18 @@ export interface EventBudgetRow {
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Narrows a category column to the workspace the context names, or to nothing at all when it names none.
+ *
+ * An event is owner-level — a trip touches Personal and Business alike — so its screen reads whole by default.
+ * A tab on that screen asks for one workspace at a time, and this is what one tab means: the plan filed there
+ * and the spending filed there, nothing of the other's. Same subquery every other book-scoped read uses.
+ */
+async function ofBook(database: Database, ws: WorkspaceContext, column: SQLWrapper): Promise<SQL[]> {
+  if (!ws.bookId || !(await hasBooks(database.db))) return [];
+  return [sql`${column} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`];
+}
 
 const toRow = (row: typeof events.$inferSelect): EventRow => ({
   id: row.id,
@@ -180,7 +193,13 @@ export async function listEventBudgets(database: Database, ws: WorkspaceContext,
   const rows = await database.db
     .select()
     .from(eventBudgets)
-    .where(and(eq(eventBudgets.workspaceId, ws.workspaceId), eq(eventBudgets.eventId, eventId)));
+    .where(
+      and(
+        eq(eventBudgets.workspaceId, ws.workspaceId),
+        eq(eventBudgets.eventId, eventId),
+        ...(await ofBook(database, ws, eventBudgets.categoryAccountId)),
+      ),
+    );
   return rows.map((row) => ({ categoryAccountId: row.categoryAccountId, plannedMinor: row.plannedMinor }));
 }
 
@@ -254,6 +273,7 @@ export async function eventSheetFor(database: Database, ws: WorkspaceContext, ev
         eq(transactions.status, 'posted'),
         eq(transactions.eventId, eventId),
         eq(accounts.kind, 'expense'),
+        ...(await ofBook(database, ws, entries.accountId)),
       ),
     )
     .groupBy(entries.accountId);
@@ -261,12 +281,15 @@ export async function eventSheetFor(database: Database, ws: WorkspaceContext, ev
   const names = await database.db
     .select({ id: accounts.id, name: accounts.name })
     .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense')));
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense'), ...(await ofBook(database, ws, accounts.id))));
 
   return eventSheet({
     planned: planned.map((row) => ({ categoryId: row.categoryAccountId, plannedMinor: row.plannedMinor })),
     actuals: actualRows.map((row) => ({ categoryId: row.categoryId, amountBaseMinor: Number(row.total) })),
     categoryNames: Object.fromEntries(names.map((row) => [row.id, row.name])),
-    totalPlannedMinor: event.plannedMinor,
+    // One figure for the whole event is exactly that — the whole event's. Measuring one workspace's share
+    // against the trip's own figure would read as wildly under plan on every tab, so a tab is measured
+    // against the part of the plan filed in it instead.
+    totalPlannedMinor: ws.bookId ? null : event.plannedMinor,
   });
 }

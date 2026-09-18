@@ -1,5 +1,5 @@
 import { merchantKey } from '@expanses/core';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -23,7 +23,16 @@ export async function guessCategoryFromHistory(database: Database, ws: Workspace
     .from(entries)
     .innerJoin(transactions, eq(entries.transactionId, transactions.id))
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
-    .where(and(eq(entries.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), eq(accounts.kind, 'expense')))
+    .where(
+      and(
+        eq(entries.workspaceId, ws.workspaceId),
+        eq(transactions.status, 'posted'),
+        eq(accounts.kind, 'expense'),
+        // A guess is offered to a form that records into one workspace, so it may only offer that workspace's
+        // categories: anything else the posting would refuse a moment later.
+        ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+      ),
+    )
     .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
     .limit(HISTORY_LIMIT);
 

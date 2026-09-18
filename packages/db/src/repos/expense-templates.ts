@@ -18,7 +18,8 @@ import { accounts, entries, transactions } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
-import { hasBooks } from './books';
+import { bookMoneyFor, type Unconverted } from './book-currency';
+import { bookOfCategory, hasBooks } from './books';
 import { postTransactionTx, voidTransactionTx } from './ledger';
 
 export class RecurringError extends Error {
@@ -106,6 +107,12 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     if ((await accountKind(tx, ws, input.categoryAccountId)) !== 'expense') {
       throw new RecurringError('NOT_A_CATEGORY', 'A bill needs a spending category');
     }
+    // A bill is listed by the workspace that owns its category, so a category filed elsewhere would save a bill
+    // this workspace could never see again — and would post its payment into the other workspace.
+    if (ws.bookId && (await hasBooks(tx))) {
+      const owner = await bookOfCategory(tx, input.categoryAccountId);
+      if (owner && owner !== ws.bookId) throw new RecurringError('OTHER_BOOK', 'That category belongs to another workspace');
+    }
     const payer = await accountKind(tx, ws, input.moneyAccountId);
     if (payer !== 'asset' && payer !== 'liability') {
       throw new RecurringError('NOT_A_WALLET', 'A bill needs an account or a card to pay it');
@@ -179,15 +186,35 @@ export async function deleteExpenseTemplate(database: Database, ws: WorkspaceCon
 /**
  * What each category already owes to bills this month, so a budget can say how much of it is spoken
  * for. A bill with no fixed amount contributes nothing: guessing one would overstate the commitment.
+ *
+ * A bill's amount is in the currency of the account that pays it, so the sum is brought into the currency the
+ * workspace reads in, at today's rate — which is also what stops a dollar bill and a rupiah bill being added
+ * together as though they were the same money. A bill no rate reaches is named in `missing` rather than only
+ * dropped: an understated commitment is worse than a stated gap.
  */
-export async function committedByCategory(database: Database, ws: WorkspaceContext): Promise<Record<string, number>> {
+export async function committedByCategory(
+  database: Database,
+  ws: WorkspaceContext,
+): Promise<{ committed: Record<string, number>; currency: string; missing: Unconverted[] }> {
   const templates = await listExpenseTemplates(database, ws);
+  const money = await bookMoneyFor(database, ws);
+  const payers = new Map(
+    (await database.db.select({ id: accounts.id, currency: accounts.currency }).from(accounts).where(eq(accounts.workspaceId, ws.workspaceId))).map((row) => [
+      row.id,
+      row.currency,
+    ]),
+  );
+  const today = isoDate();
   const committed: Record<string, number> = {};
   for (const template of templates) {
     if (!template.active || template.amountMinor === null) continue;
-    committed[template.categoryAccountId] = (committed[template.categoryAccountId] ?? 0) + template.amountMinor;
+    // No rate reaching today leaves the bill out rather than counting it as the wrong money — and says so in
+    // `missing`, so the budget's "… of it is bills" line cannot quietly understate what is already spoken for.
+    const amountMinor = money.convert(template.amountMinor, payers.get(template.moneyAccountId) ?? ws.baseCurrency, today);
+    if (amountMinor === null) continue;
+    committed[template.categoryAccountId] = (committed[template.categoryAccountId] ?? 0) + amountMinor;
   }
-  return committed;
+  return { committed, currency: money.currency, missing: money.missing() };
 }
 
 /** Where one month's bill stands. */

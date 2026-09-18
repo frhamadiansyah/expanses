@@ -253,7 +253,7 @@ export function TransactionForm({ initial, onDone }: { initial?: TransactionView
               <>
                 <Field label="Category for points" hint="Not spending: it only tells the points engine what the card bought.">
                   <Select value={purchase.spendCategoryId} onChange={(e) => setPurchaseField({ spendCategoryId: e.target.value })}>
-                    <CategoryOptions ownerWide accounts={accounts} kind="expense" parentSuffix="(general)" />
+                    <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
                   </Select>
                 </Field>
                 <Field label="MCC" hint="Gold and jewellery shops are 5944.">

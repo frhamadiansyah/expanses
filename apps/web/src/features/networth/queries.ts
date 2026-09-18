@@ -13,6 +13,7 @@ import {
   listTrades,
   listValuations,
   monthEndValues,
+  ownerScope,
   positionsFor,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
@@ -116,6 +117,7 @@ export function usePeriodFlows(range: { from: string; to: string }) {
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['period-flows', ws.workspaceId, range.from, range.to],
-    queryFn: () => periodFlows(database, ws, range),
+    // Net worth is the owner's whole picture: every workspace, in the owner's own currency.
+    queryFn: () => periodFlows(database, ownerScope(ws), range),
   });
 }

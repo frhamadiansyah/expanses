@@ -8,6 +8,7 @@ import { cardPostings, cardSettlements } from '../schema-cards';
 import { transactionPointActuals } from '../schema-points';
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
+import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
@@ -106,7 +107,9 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
       const owner = await bookOfCategory(tx, categoryId);
       if (owner) bookIds.add(owner);
     }
-    if (bookIds.size > 1) throw new LedgerError('TWO_BOOKS', 'A transaction cannot spend in two workspaces at once');
+    // "Spend" would be wrong for the income and refund sides this also guards, and for a form that mixed the
+    // two by accident the fix is the same: pick the categories from one workspace.
+    if (bookIds.size > 1) throw new LedgerError('TWO_BOOKS', 'A transaction cannot belong to two workspaces at once. Pick categories from one workspace.');
     [bookId] = bookIds;
   }
 
@@ -302,11 +305,17 @@ export async function firstTransactionDate(database: Database, ws: WorkspaceCont
   return row?.first ?? null;
 }
 
-export async function listTransactions(
-  database: Database,
-  ws: WorkspaceContext,
-  opts: { accountId?: string; accountIds?: readonly string[]; from?: string; to?: string; includeVoid?: boolean; limit?: number; eventId?: string } = {},
-): Promise<TransactionView[]> {
+export interface ListTransactionsOptions {
+  accountId?: string;
+  accountIds?: readonly string[];
+  from?: string;
+  to?: string;
+  includeVoid?: boolean;
+  limit?: number;
+  eventId?: string;
+}
+
+async function listWith(database: Database, ws: WorkspaceContext, opts: ListTransactionsOptions, money: BookMoney): Promise<TransactionView[]> {
   const conds: SQL[] = [eq(transactions.workspaceId, ws.workspaceId)];
   if (!opts.includeVoid) conds.push(eq(transactions.status, 'posted'));
   // An event's own history: what was tagged to it, whenever it happened.
@@ -368,7 +377,7 @@ export async function listTransactions(
     list.push(entry);
     byTx.set(transactionId, list);
   }
-  return txs.map((t) => ({
+  const views = txs.map((t) => ({
     id: t.id,
     occurredOn: t.occurredOn,
     description: t.description,
@@ -384,6 +393,30 @@ export async function listTransactions(
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));
+  // A workspace that reads in another currency reads its list there too: only the base figure the day's total is
+  // added up from moves. What was actually paid — the entry's own amount and currency — is left exactly as it was,
+  // and an amount no rate reaches counts as nothing rather than as rupiah pretending to be dollars.
+  if (money.converts) {
+    for (const view of views) {
+      for (const entry of view.entries) entry.amountBaseMinor = money.convert(entry.amountMinor, entry.currency, view.occurredOn) ?? 0;
+    }
+  }
+  return views;
+}
+
+export async function listTransactions(database: Database, ws: WorkspaceContext, opts: ListTransactionsOptions = {}): Promise<TransactionView[]> {
+  return listWith(database, ws, opts, await bookMoneyFor(database, ws));
+}
+
+/** The same list, with the currency it reads in and what it could not bring into that currency. */
+export async function listTransactionsIn(
+  database: Database,
+  ws: WorkspaceContext,
+  opts: ListTransactionsOptions = {},
+): Promise<{ transactions: TransactionView[]; currency: string; missing: Unconverted[] }> {
+  const money = await bookMoneyFor(database, ws);
+  const rows = await listWith(database, ws, opts, money);
+  return { transactions: rows, currency: money.currency, missing: money.missing() };
 }
 
 /** Raw debit-positive sums of posted entries per account, in each account's entry currency, up to asOf inclusive. */

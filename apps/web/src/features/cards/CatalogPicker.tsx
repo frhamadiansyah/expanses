@@ -1,5 +1,5 @@
 import { CATALOG, type CatalogEntry, describeEntry, planCatalogApply } from '@expanses/catalog';
-import { categoryIdsByKey } from '@expanses/db';
+import { categoryIdsByKeyAll } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -27,7 +27,8 @@ export function CatalogPicker({
   const [query, setQuery] = useState('');
   const [memberLevel, setMemberLevel] = useState<string | null>(null);
   const [categoryOption, setCategoryOption] = useState<string | null>(null);
-  const categoryKeys = useQuery({ queryKey: ['category-keys', ws.workspaceId], queryFn: () => categoryIdsByKey(database, ws) });
+  // A card earns wherever it is used, so the preview maps each key to every workspace's copy of that category.
+  const categoryKeys = useQuery({ queryKey: ['category-keys', ws.workspaceId], queryFn: () => categoryIdsByKeyAll(database, ws) });
   const forThisCard = CATALOG.filter((entry) => (entry.cardType === 'debit') === debit);
   const matches = searchCatalog(forThisCard, query);
   const selected = CATALOG.find((entry) => entry.id === selectedId);

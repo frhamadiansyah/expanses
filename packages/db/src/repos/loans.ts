@@ -307,6 +307,7 @@ export async function recordLoanPayment(
     const name = await accountNameTx(tx, ws, input.accountId);
     const owed = await owedOnTx(tx, ws, input.accountId);
     if (input.principalMinor > owed) throw new LoanDbError(`${name} has ${owed} left, so the principal cannot be more than that`);
+    // Interest, fees: the open workspace's copies, since the payment is recorded there.
     const keys = await categoryIdsByKeyTx(tx, ws);
     const extras = (input.extras ?? []).filter((extra) => extra.amountMinor > 0);
     const total = input.principalMinor + input.interestMinor + extras.reduce((sum, extra) => sum + extra.amountMinor, 0);
@@ -371,6 +372,7 @@ export async function recordExtraPayment(
     const owed = await owedOnTx(tx, ws, input.accountId);
     if (input.amountMinor > owed) throw new LoanDbError(`${name} has ${owed} left, so nothing more than that can be paid off`);
     const { terms, periods } = await termsForTx(tx, ws, input.accountId);
+    // Interest, fees: the open workspace's copies, since the payment is recorded there.
     const keys = await categoryIdsByKeyTx(tx, ws);
     const penaltyMinor = input.penaltyMinor ?? 0;
 

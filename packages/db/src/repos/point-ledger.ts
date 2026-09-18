@@ -25,7 +25,7 @@ import { accounts } from '../schema';
 import { pointEntries, pointSnapshots, rewardPrograms } from '../schema-points';
 import { listAccounts } from './accounts';
 import { listTransactionPointActuals } from './point-actuals';
-import { categoryIdsByKey } from './categories';
+import { categoryIdsByKeyAll } from './categories';
 import { cardTerms } from '../schema-points';
 import { cardSpendLines, listCycleActuals, listCycleBonuses, listEarnRules, listRedemptionOptions, PointsError, toRedemption } from './points';
 
@@ -449,16 +449,17 @@ export async function cardYearRoi(database: Database, ws: WorkspaceContext, prog
     .where(and(eq(rewardPrograms.id, programId), eq(rewardPrograms.workspaceId, ws.workspaceId)));
   if (!program) throw new PointsError('Reward program not found');
 
-  const keys = await categoryIdsByKey(database, ws);
-  const feeCategoryId = keys['miscellaneous.membership_fee'];
-  const charges = feeCategoryId
+  // The fee is the card's, whichever workspace it was filed in, so every copy of the fee category counts.
+  const keys = await categoryIdsByKeyAll(database, ws);
+  const feeCategoryIds = keys['miscellaneous.membership_fee'] ?? [];
+  const charges = feeCategoryIds.length
     ? await database.db.values<[string, number]>(sql`
         SELECT t.occurred_on, e.amount_minor
         FROM entries e
         JOIN transactions t ON t.id = e.transaction_id
         WHERE e.workspace_id = ${ws.workspaceId}
           AND t.status = 'posted'
-          AND e.account_id = ${feeCategoryId}
+          AND e.account_id IN (${sql.join(feeCategoryIds.map((id) => sql`${id}`), sql`, `)})
           AND t.occurred_on <= ${today}
           AND EXISTS (SELECT 1 FROM entries c WHERE c.transaction_id = t.id AND c.account_id = ${program.cardAccountId})
         ORDER BY t.occurred_on DESC

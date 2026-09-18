@@ -2,7 +2,7 @@ import { type CsvDateFormat, type CsvMapping, type CsvRow, detectDelimiter, form
 import { captureDrafts, existingExternalRefs, importRows } from '@expanses/db';
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
-import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, Card, cx, ErrorBox, Field, PageHeader, Select } from '../../ui';
 
 const PREVIEW_LIMIT = 300;
@@ -41,6 +41,7 @@ export function ImportPage() {
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const all = useAccounts().data ?? [];
+  const inOpenBook = useInOpenBook();
   const money = all.filter(isMoneyAccount);
   const [accountId, setAccountId] = useState('');
   const [fileName, setFileName] = useState('');
@@ -56,8 +57,9 @@ export function ImportPage() {
   const currency = account?.currency ?? ws.baseCurrency;
   const mapped = useMemo(() => (mapping ? mapCsvRows(table, mapping, currency, accountId) : { rows: [], errors: [] }), [table, mapping, currency, accountId]);
   // Matched on key, not name: renaming Other Expense to Miscellaneous once left every row defaulting to Skip.
-  const otherExpense = all.find((a) => a.systemKey === 'miscellaneous')?.id ?? '';
-  const otherIncome = all.find((a) => a.systemKey === 'income.other')?.id ?? '';
+  // An import records into the open workspace, so its fallbacks must be that workspace's categories.
+  const otherExpense = all.find((a) => a.systemKey === 'miscellaneous' && inOpenBook(a))?.id ?? '';
+  const otherIncome = all.find((a) => a.systemKey === 'income.other' && inOpenBook(a))?.id ?? '';
   const categoryFor = (row: CsvRow) => overrides[row.externalRef] ?? (row.amountMinor > 0 ? otherExpense : account?.subtype === 'credit_card' ? '' : otherIncome);
 
   useEffect(() => {
@@ -299,8 +301,10 @@ export function ImportPage() {
                               <option value="">Skip</option>
                               {(['expense', 'income'] as const).map((kind) => (
                                 <optgroup key={kind} label={kind === 'expense' ? 'Expense' : 'Income'}>
+                                  {/* An imported row is real spending, so it may only name the open workspace's categories — as
+                                      the draft queue and every recording picker already do. */}
                                   {all
-                                    .filter((a) => a.kind === kind && a.archivedAt === null)
+                                    .filter((a) => a.kind === kind && a.archivedAt === null && inOpenBook(a))
                                     .map((a) => (
                                       <option key={a.id} value={a.id}>
                                         {a.parentId ? `  ${a.name}` : a.name}

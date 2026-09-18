@@ -5,14 +5,21 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { useCategorySetMembership } from '../categories/set-queries';
+import { useOpenBook } from '../workspaces/queries';
+import { Unconverted } from '../workspaces/Unconverted';
 import { useBudgets, useBudgetSheet, useCommittedBills } from './queries';
 
 function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
-function Line({ node, overridden, depth, committed }: { node: BudgetLine; overridden: Set<string>; depth: number; committed: Record<string, number> }) {
-  const { ws } = useApp();
+function Line({
+  node,
+  overridden,
+  depth,
+  committed,
+  currency,
+}: { node: BudgetLine; overridden: Set<string>; depth: number; committed: Record<string, number>; currency: string }) {
   return (
     <li data-testid={`line-${node.name}`}>
       <div className="flex items-center gap-3 py-2" style={{ paddingLeft: depth * 20 }}>
@@ -23,12 +30,12 @@ function Line({ node, overridden, depth, committed }: { node: BudgetLine; overri
               'No budget'
             ) : (
               <>
-                Cap <Money minor={node.capMinor} currency={ws.baseCurrency} />
+                Cap <Money minor={node.capMinor} currency={currency} />
                 {overridden.has(node.id) && ' · just this month'}
                 {committed[node.id] !== undefined && (
                   <>
                     {' · '}
-                    <Money minor={committed[node.id]!} currency={ws.baseCurrency} /> of it is bills
+                    <Money minor={committed[node.id]!} currency={currency} /> of it is bills
                   </>
                 )}
               </>
@@ -36,10 +43,10 @@ function Line({ node, overridden, depth, committed }: { node: BudgetLine; overri
           </div>
         </div>
         <div className="text-right">
-          <Money minor={node.totalMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
+          <Money minor={node.totalMinor} currency={currency} className="text-sm font-medium" />
           {node.overMinor > 0 && (
             <div className="text-xs font-medium text-rose-600">
-              Over by <Money minor={node.overMinor} currency={ws.baseCurrency} />
+              Over by <Money minor={node.overMinor} currency={currency} />
             </div>
           )}
         </div>
@@ -47,7 +54,7 @@ function Line({ node, overridden, depth, committed }: { node: BudgetLine; overri
       {node.children.length > 0 && (
         <ul>
           {node.children.map((child) => (
-            <Line key={child.id} node={child} overridden={overridden} depth={depth + 1} committed={committed} />
+            <Line key={child.id} node={child} overridden={overridden} depth={depth + 1} committed={committed} currency={currency} />
           ))}
         </ul>
       )}
@@ -77,6 +84,14 @@ export function BudgetPage() {
   const sheet = sheetQuery.data;
   const overridden = new Set((budgets.data ?? []).filter((row) => row.overridden).map((row) => row.categoryAccountId));
   const committed = useCommittedBills().data ?? {};
+  // A cap, a month override and the expected take-home are the workspace's own figures, kept in the money that
+  // workspace reads in — so they are typed, parsed and labelled in it, and the actuals they are compared against
+  // are converted into the same currency. Read from the workspace's own row rather than from the sheet: what a
+  // figure is parsed in must not depend on a query still being in flight.
+  const openBook = useOpenBook();
+  const planCurrency = openBook?.baseCurrency ?? ws.baseCurrency;
+  // The sheet answers in the open workspace's own currency; the workspace's own row is the answer until it arrives.
+  const currency = sheet?.currency ?? planCurrency;
 
   // Roots first, each followed by its children, so the select reads like the sheet.
   const options = categories
@@ -92,7 +107,7 @@ export function BudgetPage() {
     try {
       const target = categoryId || options[0]?.id;
       if (!target) throw new Error('There are no categories to budget for yet');
-      const minor = parseMajor(amount, ws.baseCurrency);
+      const minor = parseMajor(amount, planCurrency);
       if (thisMonthOnly) await setBudgetOverride(database, ws, { categoryAccountId: target, month, amountMinor: minor });
       else await saveBudget(database, ws, { categoryAccountId: target, amountMinor: minor });
       await invalidate();
@@ -106,7 +121,7 @@ export function BudgetPage() {
     event.preventDefault();
     setError(null);
     try {
-      const minor = parseMajor(income, ws.baseCurrency);
+      const minor = parseMajor(income, planCurrency);
       if (incomeThisMonthOnly) await setIncomeOverride(database, ws, { month, amountMinor: minor });
       else await saveExpectedIncome(database, ws, minor);
       await invalidate();
@@ -143,6 +158,7 @@ export function BudgetPage() {
       </div>
 
       <ErrorBox error={error} />
+      <Unconverted missing={sheet?.unconverted ?? []} currency={currency} />
 
       {sheet && (
         <Card className="space-y-3">
@@ -150,25 +166,25 @@ export function BudgetPage() {
             <div>
               <div className="text-xs text-slate-500">Budgeted</div>
               <div data-testid="caps-total" className="text-xl font-semibold">
-                <Money minor={sheet.capsTotalMinor} currency={ws.baseCurrency} />
+                <Money minor={sheet.capsTotalMinor} currency={currency} />
               </div>
             </div>
             <div>
               <div className="text-xs text-slate-500">Spent</div>
               <div data-testid="spent-total" className="text-xl font-semibold">
-                <Money minor={sheet.spendingActualMinor} currency={ws.baseCurrency} />
+                <Money minor={sheet.spendingActualMinor} currency={currency} />
               </div>
             </div>
             <div>
               <div className="text-xs text-slate-500">Left over, as planned</div>
               <div data-testid="left-over-plan" className="text-xl font-semibold">
-                <Money minor={sheet.leftOverPlanMinor} currency={ws.baseCurrency} />
+                <Money minor={sheet.leftOverPlanMinor} currency={currency} />
               </div>
             </div>
             <div>
               <div className="text-xs text-slate-500">Left over, so far</div>
               <div data-testid="left-over-actual" className="text-xl font-semibold">
-                <Money minor={sheet.leftOverActualMinor} currency={ws.baseCurrency} />
+                <Money minor={sheet.leftOverActualMinor} currency={currency} />
               </div>
               <div className="text-xs text-slate-500">{sheet.overCount} over their cap</div>
             </div>
@@ -182,26 +198,31 @@ export function BudgetPage() {
             <div>
               <div className="text-sm font-medium">Take-home pay</div>
               <div className="text-xs text-slate-500">
-                Planned <Money minor={sheet.incomePlanMinor} currency={ws.baseCurrency} />
+                Planned <Money minor={sheet.incomePlanMinor} currency={currency} />
                 {sheet.incomeOverridden && ' · just this month'}
               </div>
             </div>
-            <Money minor={sheet.incomeActualMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
+            <Money minor={sheet.incomeActualMinor} currency={currency} className="text-sm font-medium" />
           </div>
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" data-testid="debt-line">
             <div>
               <div className="text-sm font-medium">Debt payments</div>
               <div className="text-xs text-slate-500">Loans and instalments, which are committed before anything else.</div>
             </div>
-            <Money minor={sheet.debtPaymentsActualMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
+            <Money minor={sheet.debtPaymentsActualMinor} currency={currency} className="text-sm font-medium" />
           </div>
           {sheet.eventSpendingMinor > 0 && (
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" data-testid="event-line">
               <div>
                 <div className="text-sm font-medium">Events</div>
-                <div className="text-xs text-slate-500">Outside the caps, because you meant to spend it. Still taken off what is left.</div>
+                {/* Named either way, but it is only a separate subtraction when the caps above have not seen it. */}
+                <div className="text-xs text-slate-500">
+                  {sheet.eventsInCaps
+                    ? 'Included in the caps above, because this workspace counts what it means to spend.'
+                    : 'Outside the caps, because you meant to spend it. Still taken off what is left.'}
+                </div>
               </div>
-              <Money minor={sheet.eventSpendingMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
+              <Money minor={sheet.eventSpendingMinor} currency={currency} className="text-sm font-medium" />
             </div>
           )}
           {sheet.savings.map((row) => (
@@ -209,10 +230,10 @@ export function BudgetPage() {
               <div>
                 <div className="text-sm font-medium">{row.name}</div>
                 <div className="text-xs text-slate-500">
-                  Needs <Money minor={row.planMinor} currency={ws.baseCurrency} /> a month
+                  Needs <Money minor={row.planMinor} currency={currency} /> a month
                 </div>
               </div>
-              <Money minor={row.actualMinor} currency={ws.baseCurrency} className="text-sm font-medium" />
+              <Money minor={row.actualMinor} currency={currency} className="text-sm font-medium" />
             </div>
           ))}
           {sheet.savings.length === 0 && <p className="text-xs text-slate-500">No goals yet, so nothing is being saved towards.</p>}
@@ -221,7 +242,7 @@ export function BudgetPage() {
 
       <Card>
         <form onSubmit={submitIncome} className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
-          <Field label={`Expected take-home (${ws.baseCurrency})`}>
+          <Field label={`Expected take-home (${planCurrency})`}>
             <Input value={income} onChange={(e) => setIncome(e.target.value)} inputMode="numeric" />
           </Field>
           <label className="flex items-center gap-2 pb-2 text-xs text-slate-600">
@@ -245,7 +266,7 @@ export function BudgetPage() {
               ))}
             </Select>
           </Field>
-          <Field label={`Monthly amount (${ws.baseCurrency})`}>
+          <Field label={`Monthly amount (${planCurrency})`}>
             <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" />
           </Field>
           <label className="flex items-center gap-2 pb-2 text-xs text-slate-600">
@@ -264,7 +285,7 @@ export function BudgetPage() {
       <Card>
         <ul className="divide-y divide-slate-100">
           {(sheet?.lines ?? []).map((node) => (
-            <Line key={node.id} node={node} overridden={overridden} depth={0} committed={committed} />
+            <Line key={node.id} node={node} overridden={overridden} depth={0} committed={committed} currency={currency} />
           ))}
         </ul>
       </Card>
