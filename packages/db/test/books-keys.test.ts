@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
+  bookNamesOf,
   categoryIdsByKey,
   categoryIdsByKeyAll,
   createAccount,
@@ -149,5 +150,32 @@ describe('one workspace per transaction', () => {
       spendCategoryId: theirs,
     });
     expect(await database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${loan.transactionId}`)).toEqual([]);
+  });
+
+  it('names the workspace of each transaction asked about, and says nothing about a transfer', async () => {
+    const { database, ws, business } = await copy();
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const theirs = (await categoryIdsByKey(database, inBook(ws, business)))['food_beverage.restaurants']!;
+    const dinner = await postTransaction(database, inBook(ws, business), {
+      occurredOn: '2026-09-02',
+      description: 'Supplier dinner',
+      lines: [
+        { accountId: theirs, amountMinor: 640_000, currency: 'IDR' },
+        { accountId: card.id, amountMinor: -640_000, currency: 'IDR' },
+      ],
+    });
+    const payment = await postTransaction(database, ws, {
+      occurredOn: '2026-09-20',
+      description: 'Card bill',
+      lines: [
+        { accountId: card.id, amountMinor: 640_000, currency: 'IDR' },
+        { accountId: bank.id, amountMinor: -640_000, currency: 'IDR' },
+      ],
+    });
+    const names = await bookNamesOf(database, ws, [dinner, payment]);
+    expect(names[dinner]).toMatchObject({ id: business, name: 'Business', kind: 'business' });
+    expect(names[payment]).toBeUndefined();
+    expect(await bookNamesOf(database, ws, [])).toEqual({});
   });
 });

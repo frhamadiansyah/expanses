@@ -1,5 +1,5 @@
 import { categoryPath, formatMinor, isoDate, monthOf, parseLooseAmount, parseLooseDate, parseUnits, parsePeriod, periodLabel } from '@expanses/core';
-import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactions, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
+import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactions, ownerScope, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, CalendarDays, CalendarX2, Check, ChevronDown, ChevronLeft, CircleAlert, CreditCard, Ellipsis, Trash2, LayoutGrid, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
@@ -26,6 +26,8 @@ import { Recurring } from './Recurring';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionForm } from './TransactionForm';
+import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
+import { useWorkspaceBadges } from '../workspaces/queries';
 
 const route = getRouteApi('/transactions');
 
@@ -276,10 +278,16 @@ export function TransactionsPage() {
     }
     return ids;
   })();
+  // An account is yours, not a workspace's: its history must hold every workspace, or it will not agree with the
+  // statement the bank sends. A category scope stays narrowed, since a category belongs to one workspace anyway.
+  const ownerWide = scope !== undefined && isMoneyAccount(scope);
+  const listWs = ownerWide ? ownerScope(ws) : ws;
   const list = useQuery({
-    queryKey: ['transactions', ws.workspaceId, ws.bookId ?? null, scopeIds?.join(',') ?? 'all', month, filters.showDeleted],
-    queryFn: () => listTransactions(database, ws, { accountIds: scopeIds, ...range, includeVoid: filters.showDeleted, limit: month === 'all' ? ALL_TIME_LIMIT : undefined }),
+    queryKey: ['transactions', ws.workspaceId, ws.bookId ?? null, ownerWide, scopeIds?.join(',') ?? 'all', month, filters.showDeleted],
+    queryFn: () => listTransactions(database, listWs, { accountIds: scopeIds, ...range, includeVoid: filters.showDeleted, limit: month === 'all' ? ALL_TIME_LIMIT : undefined }),
   });
+  // Which workspace each row is filed in, so an account's history says whose spending it is showing.
+  const badgeOf = useWorkspaceBadges((list.data ?? []).map((tx) => tx.id));
   const purchasePoints = useQuery({
     queryKey: ['purchase-points', ws.workspaceId, (list.data ?? []).map((tx) => tx.id).join(',')],
     enabled: list.isSuccess && accounts.length > 0,
@@ -648,6 +656,8 @@ export function TransactionsPage() {
             {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}
             {withDate && (!singleMonth || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {label}
+            {/* Whose spending this is, when the list holds more than one workspace. */}
+            <WorkspaceBadge book={badgeOf(tx.id)} />
             {/* Paid in one month for another's bill: listed on the day paid, counted in the budget in its bill month. */}
             {billTag && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">{billTag}</span>}
           </div>

@@ -1,9 +1,9 @@
 import { isSupportedCurrency, uuidv7 } from '@expanses/core';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, settings } from '../schema';
-import { bookCategories, books } from '../schema-books';
+import { bookCategories, books, bookTransactions } from '../schema-books';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 
 export type BookKind = 'personal' | 'business' | 'family' | 'shared';
@@ -227,6 +227,24 @@ export async function setActiveBook(database: Database, ws: WorkspaceContext, bo
 export async function setBookEventsInBudget(database: Database, ws: WorkspaceContext, bookId: string, on: boolean): Promise<void> {
   await bookOf(database, ws, bookId);
   await database.db.update(books).set({ countEventsInBudget: on ? 1 : 0 }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+}
+
+/**
+ * Which workspace each of these transactions was filed in. Ones filed nowhere — a transfer, a card-funded
+ * purchase — are simply absent, so a row that belongs to every workspace is badged in none.
+ */
+export async function bookNamesOf(
+  database: Database,
+  ws: WorkspaceContext,
+  transactionIds: readonly string[],
+): Promise<Record<string, { id: string; name: string; kind: BookKind }>> {
+  if (transactionIds.length === 0 || !(await hasBooks(database.db))) return {};
+  const rows = await database.db
+    .select({ transactionId: bookTransactions.transactionId, id: books.id, name: books.name, kind: books.kind })
+    .from(bookTransactions)
+    .innerJoin(books, eq(books.id, bookTransactions.bookId))
+    .where(and(eq(bookTransactions.workspaceId, ws.workspaceId), inArray(bookTransactions.transactionId, [...transactionIds])));
+  return Object.fromEntries(rows.map((row) => [row.transactionId, { id: row.id, name: row.name, kind: row.kind }]));
 }
 
 /** Category ids filed in a book, for narrowing owner-wide queries to it. */
