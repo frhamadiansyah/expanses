@@ -5,8 +5,14 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, ErrorBox, Input, Money, Select } from '../../ui';
-const ROW = 'flex min-h-11 items-center justify-between gap-3 border-t border-slate-100 px-3 first:border-t-0';
+import { Button, ErrorBox, InputRow, Money, RowGroup, SelectRow } from '../../ui';
+
+/**
+ * What it came to, written big and bare in the middle of the sheet. No box around it: it is the one thing the sheet is
+ * asking for, and a border would only make it look like the three quiet rows below.
+ */
+const HERO =
+  'w-full rounded-lg bg-transparent py-1 text-center text-3xl font-semibold tabular text-slate-900 placeholder:text-slate-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900';
 
 /**
  * Paying one bill: what it came to, which month's bill it settles, what paid it and when. A fixed bill comes filled in,
@@ -82,76 +88,64 @@ export function PaySheet({
   return (
     <Sheet title={`Pay ${bill.name}`} onClose={onClose}>
       <form onSubmit={record} className="space-y-3">
-        <Input
-          aria-label="What it came to"
-          inputMode="decimal"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          className="text-center text-3xl font-semibold md:text-3xl"
-          placeholder={bill.amountMinor === null ? 'What it came to' : undefined}
-        />
-        {bill.amountMinor === null && (
-          <p className="text-center text-xs text-slate-500">
-            {bill.estimateMinor === null ? (
-              'Amount varies'
-            ) : (
-              <>
-                Amount varies · last month <Money minor={bill.estimateMinor} currency={currency} />
-              </>
-            )}
-          </p>
-        )}
-
-        <div className="rounded-xl ring-1 ring-slate-200">
-          <div className={ROW}>
-            <label htmlFor="pay-for" className="text-sm">
-              For
-            </label>
-            <Select id="pay-for" value={month} onChange={(e) => setMonth(e.target.value)} className="w-auto border-0 text-right">
-              {months.map((m) => (
-                <option key={m} value={m}>
-                  {monthName(m, 'long')} bill
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className={ROW}>
-            <label htmlFor="pay-with" className="text-sm">
-              Paid with
-            </label>
-            <Select id="pay-with" value={payer} onChange={(e) => setPayer(e.target.value)} className="w-auto border-0 text-right">
-              {wallets.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className={ROW}>
-            <label htmlFor="pay-on" className="text-sm">
-              Paid on
-            </label>
-            <Input id="pay-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} className="w-auto border-0 text-right" />
-          </div>
+        <div className="space-y-1 pb-1">
+          <input
+            aria-label="What it came to"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className={HERO}
+            placeholder={bill.amountMinor === null ? 'What it came to' : undefined}
+          />
+          {bill.amountMinor === null && (
+            <p className="text-center text-xs text-slate-500">
+              {bill.estimateMinor === null ? (
+                'Amount varies'
+              ) : (
+                <>
+                  Amount varies · last month <Money minor={bill.estimateMinor} currency={currency} />
+                </>
+              )}
+            </p>
+          )}
         </div>
 
+        <RowGroup>
+          <SelectRow label="For" id="pay-for" value={month} onChange={(e) => setMonth(e.target.value)}>
+            {months.map((m) => (
+              <option key={m} value={m}>
+                {monthName(m, 'long')} bill
+              </option>
+            ))}
+          </SelectRow>
+          <SelectRow label="Paid with" id="pay-with" value={payer} onChange={(e) => setPayer(e.target.value)}>
+            {wallets.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </SelectRow>
+          <InputRow label="Paid on" id="pay-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
+        </RowGroup>
+
         {missing && (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-center text-sm text-red-700">
             Enter what it came to
           </p>
         )}
         <ErrorBox error={error} />
 
-        <Button type="submit" className="w-full" disabled={busy}>
+        <Button type="submit" variant="success" className="w-full" disabled={busy}>
           Record payment
         </Button>
 
+        {/* Quiet beside the green button: neither is the thing the sheet was opened to do. */}
         <div className="flex items-center justify-between gap-3">
-          <button type="button" onClick={() => void skip()} disabled={busy} className="min-h-11 text-sm font-medium text-slate-600">
+          <button type="button" onClick={() => void skip()} disabled={busy} className="min-h-11 px-1 text-sm font-medium text-slate-600 disabled:opacity-50">
             Skip this month
           </button>
           {onSeeBill && (
-            <button type="button" onClick={onSeeBill} className="min-h-11 text-sm font-medium text-emerald-800">
+            <button type="button" onClick={onSeeBill} className="min-h-11 px-1 text-sm font-medium text-slate-600">
               See bill ›
             </button>
           )}

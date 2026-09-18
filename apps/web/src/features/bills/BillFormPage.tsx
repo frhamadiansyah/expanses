@@ -1,11 +1,11 @@
 import { ordinal, parseMajor } from '@expanses/core';
 import { saveExpenseTemplate } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useId, useState } from 'react';
 import { useApp } from '../../app/context';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
+import { Button, ErrorBox, InputRow, Kicker, PageHeader, RowGroup, RowHint, SelectRow } from '../../ui';
 import { useExpenseTemplates } from '../transactions/queries';
 import { amountInput } from './bill-view';
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -37,6 +37,8 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const [payBy, setPayBy] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [loaded, setLoaded] = useState(false);
+  // The amount's hint sits under the whole card, so the field has to say out loud which sentence explains it.
+  const amountHint = useId();
 
   // A bill is recorded into the open book, so it picks from that book's categories.
   const categories = (accounts.data ?? []).filter((account) => account.kind === 'expense' && account.subtype === 'category' && inOpenBook(account));
@@ -81,88 +83,81 @@ export function BillFormPage({ billId }: { billId?: string }) {
     }
   }
 
+  // Cancel goes back the way Save would: to the bill's own page for an edit, to the list for a new one.
+  const cancel = 'block min-h-11 py-3 text-center text-sm font-medium text-slate-600 hover:text-slate-900';
+
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-lg">
       <PageHeader title={billId ? 'Edit bill' : 'New bill'} />
-      <Card>
+      <form onSubmit={save} className="space-y-2">
         <ErrorBox error={error ?? templates.error} />
-        <form onSubmit={save} className="space-y-3">
-          <Field label="Name">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Phone, water, gas" />
-          </Field>
-          <Field label="Amount" hint="Leave it empty when it changes every month, like electricity. You'll be asked each time.">
-            <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="150000" />
-          </Field>
-          <Field label="Category">
-            <Select value={categoryAccountId} onChange={(e) => setCategoryAccountId(e.target.value)}>
-              <option value="">Choose a category</option>
-              {categories.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Paid from">
-            <Select value={moneyAccountId} onChange={(e) => setMoneyAccountId(e.target.value)}>
-              <option value="">Choose an account</option>
-              {wallets.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+        <RowGroup>
+          <InputRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Phone, water, gas" />
+          <InputRow
+            label="Amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            placeholder="150000"
+            aria-describedby={amountHint}
+          />
+          <SelectRow label="Category" value={categoryAccountId} onChange={(e) => setCategoryAccountId(e.target.value)}>
+            <option value="">Choose a category</option>
+            {categories.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </SelectRow>
+          <SelectRow label="Paid from" value={moneyAccountId} onChange={(e) => setMoneyAccountId(e.target.value)}>
+            <option value="">Choose an account</option>
+            {wallets.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </SelectRow>
+        </RowGroup>
+        <RowHint id={amountHint}>Leave it empty when it changes every month, like electricity. You'll be asked each time.</RowHint>
 
-          <h2 className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">When</h2>
+        <Kicker>When</Kicker>
+        <RowGroup>
+          <SelectRow label="Repeats" value="monthly" disabled>
+            <option value="monthly">Every month</option>
+          </SelectRow>
+          <SelectRow label="Bill is out on" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
+            {DAYS.map((day) => (
+              <option key={day} value={day}>
+                {ordinal(day)}
+              </option>
+            ))}
+          </SelectRow>
+          <SelectRow label="Pay by" value={payBy} onChange={(e) => setPayBy(e.target.value)}>
+            <option value="">No pay-by day</option>
+            {DAYS.map((day) => (
+              <option key={day} value={day}>
+                {ordinal(day)}
+              </option>
+            ))}
+          </SelectRow>
+        </RowGroup>
+        <RowHint>Earlier than the out day means the next month: out on the 28th, pay by the 5th.</RowHint>
 
-          <Field label="Repeats">
-            <Select value="monthly" disabled>
-              <option value="monthly">Every month</option>
-            </Select>
-          </Field>
-          <Field label="Bill is out on">
-            <Select value={outDay} onChange={(e) => setOutDay(e.target.value)}>
-              {DAYS.map((day) => (
-                <option key={day} value={day}>
-                  {ordinal(day)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Pay by" hint="Earlier than the out day means the next month: out on the 28th, pay by the 5th.">
-            <Select value={payBy} onChange={(e) => setPayBy(e.target.value)}>
-              <option value="">No pay-by day</option>
-              {DAYS.map((day) => (
-                <option key={day} value={day}>
-                  {ordinal(day)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <div className="flex gap-2">
-            <Button type="submit">Save</Button>
-            {/* Cancel goes back the way Save would: to the bill's own page for an edit, to the list for a new one. */}
-            {billId ? (
-              <Link
-                to="/bills/$billId"
-                params={{ billId }}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100"
-              >
-                Cancel
-              </Link>
-            ) : (
-              <Link
-                to="/bills"
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100"
-              >
-                Cancel
-              </Link>
-            )}
-          </div>
-        </form>
-      </Card>
+        <div className="pt-3">
+          <Button type="submit" className="w-full">
+            Save
+          </Button>
+        </div>
+        {billId ? (
+          <Link to="/bills/$billId" params={{ billId }} className={cancel}>
+            Cancel
+          </Link>
+        ) : (
+          <Link to="/bills" className={cancel}>
+            Cancel
+          </Link>
+        )}
+      </form>
     </div>
   );
 }
