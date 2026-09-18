@@ -301,8 +301,10 @@ export function ImportPage() {
                               <option value="">Skip</option>
                               {(['expense', 'income'] as const).map((kind) => (
                                 <optgroup key={kind} label={kind === 'expense' ? 'Expense' : 'Income'}>
+                                  {/* An imported row is real spending, so it may only name the open workspace's categories — as
+                                      the draft queue and every recording picker already do. */}
                                   {all
-                                    .filter((a) => a.kind === kind && a.archivedAt === null)
+                                    .filter((a) => a.kind === kind && a.archivedAt === null && inOpenBook(a))
                                     .map((a) => (
                                       <option key={a.id} value={a.id}>
                                         {a.parentId ? `  ${a.name}` : a.name}

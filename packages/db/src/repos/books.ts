@@ -1,4 +1,4 @@
-import { isSupportedCurrency, uuidv7 } from '@expanses/core';
+import { displayAmount, isSupportedCurrency, uuidv7 } from '@expanses/core';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -245,6 +245,27 @@ export async function bookNamesOf(
     .innerJoin(books, eq(books.id, bookTransactions.bookId))
     .where(and(eq(bookTransactions.workspaceId, ws.workspaceId), inArray(bookTransactions.transactionId, [...transactionIds])));
   return Object.fromEntries(rows.map((row) => [row.transactionId, { id: row.id, name: row.name, kind: row.kind }]));
+}
+
+/**
+ * What each workspace spent between two dates, in the owner's base currency.
+ *
+ * One query rather than one per workspace: the switcher shows this for every workspace at once. Transfers and card
+ * payments are filed in no workspace, so they are in nobody's figure — which is the rule everywhere else too.
+ */
+export async function spentThisMonthByBook(database: Database, ws: WorkspaceContext, from: string, to: string): Promise<Record<string, number>> {
+  if (!(await hasBooks(database.db))) return {};
+  const rows = await database.db.values<[string, number]>(sql`
+    SELECT bc.book_id, sum(e.amount_base_minor)
+    FROM entries e
+    JOIN transactions t ON t.id = e.transaction_id
+    JOIN accounts a ON a.id = e.account_id
+    JOIN book_categories bc ON bc.category_account_id = e.account_id
+    WHERE e.workspace_id = ${ws.workspaceId} AND t.status = 'posted' AND a.kind = 'expense'
+      AND t.occurred_on BETWEEN ${from} AND ${to}
+    GROUP BY bc.book_id
+  `);
+  return Object.fromEntries(rows.map(([bookId, total]) => [String(bookId), displayAmount('expense', Number(total))]));
 }
 
 /** Category ids filed in a book, for narrowing owner-wide queries to it. */

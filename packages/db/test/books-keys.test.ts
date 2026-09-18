@@ -16,6 +16,7 @@ import {
   saveAssetProfile,
   saveBudget,
   saveExpenseTemplate,
+  spentThisMonthByBook,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -177,5 +178,34 @@ describe('one workspace per transaction', () => {
     expect(names[dinner]).toMatchObject({ id: business, name: 'Business', kind: 'business' });
     expect(names[payment]).toBeUndefined();
     expect(await bookNamesOf(database, ws, [])).toEqual({});
+  });
+
+  it('adds up what each workspace spent in a period, and leaves transfers out of all of them', async () => {
+    const { database, ws, personal, business } = await copy();
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const spend = (bookId: string, key: string, amountMinor: number) =>
+      categoryIdsByKey(database, inBook(ws, bookId)).then((keys) =>
+        postTransaction(database, inBook(ws, bookId), {
+          occurredOn: '2026-09-10',
+          description: 'x',
+          lines: [
+            { accountId: keys[key]!, amountMinor, currency: 'IDR' },
+            { accountId: card.id, amountMinor: -amountMinor, currency: 'IDR' },
+          ],
+        }),
+      );
+    await spend(personal, 'household.groceries', 412_300);
+    await spend(business, 'food_beverage.restaurants', 640_000);
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-11',
+      description: 'Card bill',
+      lines: [
+        { accountId: card.id, amountMinor: 640_000, currency: 'IDR' },
+        { accountId: bank.id, amountMinor: -640_000, currency: 'IDR' },
+      ],
+    });
+
+    expect(await spentThisMonthByBook(database, ws, '2026-09-01', '2026-09-30')).toEqual({ [personal]: 412_300, [business]: 640_000 });
   });
 });

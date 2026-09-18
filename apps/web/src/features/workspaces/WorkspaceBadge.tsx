@@ -21,3 +21,21 @@ export function WorkspaceBadge({ book }: { book: { name: string; kind: string } 
     </span>
   );
 }
+
+/**
+ * The same tint, worn as a 22px round with the workspace's first letter — what a switcher row and the identity
+ * block show, where there is room for a mark but not for a second copy of the name.
+ */
+export function WorkspaceDot({ book }: { book: { name: string; kind: string } | null }) {
+  return (
+    <span
+      aria-hidden
+      className={cx(
+        'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11px] font-semibold uppercase',
+        TINT[book?.kind ?? ''] ?? TINT.shared,
+      )}
+    >
+      {book?.name.trim().charAt(0) ?? '·'}
+    </span>
+  );
+}
