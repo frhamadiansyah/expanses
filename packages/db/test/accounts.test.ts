@@ -1,5 +1,17 @@
+import { expenseLines } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { AccountError, archiveAccount, createAccount, listAccounts, nativeBalances } from '../src/index';
+import {
+  AccountError,
+  archiveAccount,
+  assetValuesAt,
+  createAccount,
+  listAccounts,
+  listEarmarks,
+  nativeBalances,
+  postTransaction,
+  saveEarmark,
+  saveGoal,
+} from '../src/index';
 import { setupDb } from './helpers';
 
 describe('workspace seed', () => {
@@ -93,5 +105,44 @@ describe('category keys on new workspaces', () => {
     expect(new Set(categories.map((c) => c.systemKey))).toEqual(new Set(DEFAULT_CATEGORY_KEYS));
     expect(categories.find((c) => c.systemKey === 'utilities.gas_energy')?.name).toBe('Gas & energy');
     expect(categories.find((c) => c.systemKey === 'government_taxes')?.name).toBe('Government & taxes');
+  });
+});
+
+describe('fund accounts and digital wallets', () => {
+  it('holds money, pays like cash, and counts as cash and equivalents', async () => {
+    const { database, ws } = await setupDb();
+    const groceries = (await listAccounts(database, ws)).find((a) => a.name === 'Groceries')!;
+    const gopay = await createAccount(database, ws, { name: 'GoPay', kind: 'asset', subtype: 'ewallet', currency: 'IDR', openingBalanceMinor: 500_000 });
+    const rdn = await createAccount(database, ws, { name: 'RDN Mandiri Sekuritas', kind: 'asset', subtype: 'fund', currency: 'IDR', openingBalanceMinor: 8_000_000 });
+
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-18',
+      description: 'Warung Tegal',
+      lines: expenseLines({ categoryAccountId: groceries.id, paymentAccountId: gopay.id, amountMinor: 45_000, currency: 'IDR' }),
+    });
+
+    const balances = await nativeBalances(database, ws);
+    expect(balances[gopay.id]).toBe(455_000);
+    expect(balances[rdn.id]).toBe(8_000_000);
+
+    const values = await assetValuesAt(database, ws, '2026-09-30');
+    const groupOf = new Map(values.map((row) => [row.accountId, row.planGroup]));
+    expect(groupOf.get(gopay.id)).toBe('liquid');
+    expect(groupOf.get(rdn.id)).toBe('liquid');
+    expect(values.find((row) => row.accountId === rdn.id)?.valueMinor).toBe(8_000_000);
+  });
+
+  it('can hold money set aside for a goal', async () => {
+    const { database, ws } = await setupDb();
+    const rdn = await createAccount(database, ws, { name: 'RDN', kind: 'asset', subtype: 'fund', currency: 'IDR', openingBalanceMinor: 8_000_000 });
+    const goalId = await saveGoal(database, ws, {
+      name: 'Rumah',
+      kind: 'home',
+      growthBps: 500,
+      returnBps: 600,
+      stages: [{ name: 'Uang muka', targetMinor: 100_000_000, targetMonths: null, dueOn: '2030-01-31' }],
+    });
+    await saveEarmark(database, ws, { goalId, accountId: rdn.id, amountMinor: 3_000_000 });
+    expect((await listEarmarks(database, ws)).find((row) => row.accountId === rdn.id)?.amountMinor).toBe(3_000_000);
   });
 });

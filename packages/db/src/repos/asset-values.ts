@@ -41,6 +41,9 @@ const GROUP_BY_SUBTYPE: Record<string, PlanGroup> = {
   cash: 'liquid',
   bank: 'liquid',
   savings: 'liquid',
+  // Broker cash and a wallet balance are both money you can withdraw, so they sit with cash, not with holdings.
+  fund: 'liquid',
+  ewallet: 'liquid',
   investment: 'invest',
   receivable: 'owed',
   property: 'use',

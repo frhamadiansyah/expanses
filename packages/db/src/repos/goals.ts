@@ -44,7 +44,7 @@ export interface SaveGoalInput {
 }
 
 /** Only money you can move can be set aside; holdings are tagged per purchase instead. */
-const EARMARKABLE = ['cash', 'bank', 'savings'];
+const EARMARKABLE = ['cash', 'bank', 'savings', 'fund', 'ewallet'];
 
 export async function listGoals(database: Database, ws: WorkspaceContext, opts: { includeArchived?: boolean } = {}): Promise<GoalRow[]> {
   const rows = await database.db
@@ -211,7 +211,7 @@ export async function saveEarmark(database: Database, ws: WorkspaceContext, inpu
       .where(and(eq(accounts.id, input.accountId), eq(accounts.workspaceId, ws.workspaceId)));
     if (!account) throw new GoalDbError('Account not found in this workspace');
     if (!EARMARKABLE.includes(account.subtype)) {
-      throw new GoalDbError('Only cash, bank and savings accounts can be set aside; a holding is tagged on each purchase instead');
+      throw new GoalDbError('Only accounts that hold money can be set aside; a holding is tagged on each purchase instead');
     }
     const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, input.goalId), eq(goals.workspaceId, ws.workspaceId)));
     if (!goal) throw new GoalDbError('Goal not found in this workspace');

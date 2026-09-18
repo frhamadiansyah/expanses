@@ -25,8 +25,8 @@ export interface TaggedTransferResult {
   setAsideMinor: number;
 }
 
-/** Somewhere money can wait for a goal: everyday cash, a savings pot, or broker cash grouped as investments. */
-const PARKABLE_SUBTYPES = ['cash', 'bank', 'savings'];
+/** Somewhere money can wait for a goal: everyday cash, a wallet, a savings pot, or cash at a broker. */
+const PARKABLE_SUBTYPES = ['cash', 'bank', 'savings', 'fund', 'ewallet'];
 
 async function canHoldSetAside(tx: Db, ws: WorkspaceContext, accountId: string): Promise<boolean> {
   const [account] = await tx

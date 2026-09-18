@@ -7,7 +7,7 @@ import { investmentTrades } from '../schema-assets';
 import { goalContributions } from '../schema-budget';
 
 /** Where money that reaches a goal can sit without being fresh saving when it moves on. */
-const PARKED = ['savings', 'investment'];
+const PARKED = ['savings', 'investment', 'fund'];
 
 /** Records a change to a set-aside. Nothing is written when the amount did not move. */
 export async function recordContributionTx(

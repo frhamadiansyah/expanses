@@ -23,8 +23,8 @@ export interface PeriodFlowsResult extends PeriodFlows {
 
 const MAX_MONTHS = 12;
 /** Money parked here is money put away, not spending money. */
-const SAVINGS_SUBTYPES = ['savings'];
-const SPENDING_SUBTYPES = ['cash', 'bank'];
+const SAVINGS_SUBTYPES = ['savings', 'fund'];
+const SPENDING_SUBTYPES = ['cash', 'bank', 'ewallet'];
 
 function monthsBetween(from: string, to: string): string[] {
   const months: string[] = [];
