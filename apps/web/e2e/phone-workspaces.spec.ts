@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 /**
  * On a phone the ⋯ menu is the only room left for anything that is not the list itself, so the workspace sits
@@ -44,4 +44,54 @@ test('a workspace is made from ⋯ and starts with none of the other’s categor
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await expect(form.getByLabel('Category').locator('option', { hasText: 'Restaurants' })).toHaveCount(0);
   await expect(form.getByLabel('Category').locator('option', { hasText: 'Interest' })).toHaveCount(1);
+});
+
+/** One account of each kind, so there is somewhere to move money from and somewhere for it to land. */
+async function addAccount(page: Page, name: string, type: string, balance: string) {
+  await page.getByLabel('Name', { exact: true }).fill(name);
+  await page.getByLabel('Type').selectOption(type);
+  await page.getByLabel('Current balance').fill(balance);
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+}
+
+/**
+ * Moving your own money between your own accounts is not spending, so it is filed in no workspace — and a row
+ * filed nowhere has to be visible from everywhere, or the account it moved money out of stops adding up from
+ * inside a workspace. It counts in nobody's figure, which is why the chart reads the same on both sides.
+ */
+test('a transfer is filed in no workspace, so every workspace shows it and none counts it', async ({ page }) => {
+  await page.goto('/accounts');
+  await addAccount(page, 'BCA Tahapan', 'bank', '20000000');
+  await addAccount(page, 'Jenius', 'savings', '0');
+
+  await page.goto('/transactions');
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Transfer', exact: true }).click();
+  await form.getByLabel('Description').fill('Top up');
+  await form.getByLabel('From').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await form.getByLabel('To', { exact: true }).selectOption({ label: 'Jenius (IDR)' });
+  await form.getByLabel('Amount', { exact: true }).fill('500000');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  // Personal: the transfer is on the list, and the month's chart has nothing to draw.
+  await expect(page.getByText('Top up').first()).toBeVisible();
+  await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
+
+  await page.getByRole('button', { name: 'Filters' }).click();
+  await page.getByTestId('filters-menu').getByTestId('workspace-row').click();
+  await page.getByRole('dialog', { name: 'Workspaces' }).getByRole('button', { name: 'New workspace' }).click();
+  const sheet = page.getByRole('dialog', { name: 'New workspace' });
+  await sheet.getByLabel('Name', { exact: true }).fill('Business');
+  await sheet.getByRole('button', { name: 'Create workspace' }).click();
+  await expect(sheet).toHaveCount(0);
+  await page.getByRole('button', { name: 'Filters' }).click();
+  await expect(page.getByTestId('filters-menu').getByTestId('workspace-row')).toContainText('Business');
+  await page.keyboard.press('Escape');
+
+  // Business: the same transfer, still there, and still counted in nothing.
+  await expect(page.getByText('Top up').first()).toBeVisible();
+  await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
 });

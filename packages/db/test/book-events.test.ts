@@ -3,11 +3,13 @@ import {
   booksInEvent,
   budgetSheetFor,
   categoryIdsByKey,
+  categoryTotalsBetween,
   createAccount,
   createBook,
   eventSheetFor,
   inBook,
   listEventBudgets,
+  listTransactions,
   ownerScope,
   personalBook,
   postTransaction,
@@ -92,6 +94,31 @@ describe('an event across workspaces', () => {
     });
     await tagTransaction(database, ws, id, eventId);
     expect((await booksInEvent(database, ws, eventId)).map((book) => book.name)).toEqual(['Personal']);
+  });
+});
+
+/**
+ * Moving your own money is not spending, so it belongs to no workspace at all. It has to stay visible from every
+ * one of them — a workspace that hid it would leave the account unexplainable from inside — while counting in
+ * none of their figures. Nothing here is new behaviour: this is the rule that is easiest to break later.
+ */
+describe('a transfer between your own accounts', () => {
+  it('shows a transfer in every workspace and counts it in none', async () => {
+    const { database, ws, personal, business } = await copy();
+    const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const pot = await createAccount(database, ws, { name: 'Jenius', kind: 'asset', subtype: 'savings', currency: 'IDR' });
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-11',
+      description: 'Top up',
+      lines: [
+        { accountId: pot.id, amountMinor: 500_000, currency: 'IDR' },
+        { accountId: bank.id, amountMinor: -500_000, currency: 'IDR' },
+      ],
+    });
+    for (const bookId of [personal, business]) {
+      expect((await listTransactions(database, inBook(ws, bookId))).map((t) => t.description)).toContain('Top up');
+      expect(await categoryTotalsBetween(database, inBook(ws, bookId), 'expense', '2026-09-01', '2026-09-30')).toEqual([]);
+    }
   });
 });
 
