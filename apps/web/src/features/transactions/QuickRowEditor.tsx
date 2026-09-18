@@ -1,12 +1,11 @@
-import { categoryPath, matchCategory, matchPayment } from '@expanses/core';
+import { categoryPath, matchCategory, matchPayment, type PaymentOption } from '@expanses/core';
 import type { AccountRow, CardRow } from '@expanses/db';
 import type { ReactNode } from 'react';
-import { canPayWith } from '../../lib/account-types';
 import { isCategoryOf, isMoneyAccount } from '../../lib/queries';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CellCombo, type ComboOption } from './CellCombo';
-import { paymentKey, paymentOptions, type QuickValues } from './quick-row';
+import { payerOptions, paymentKey, type QuickValues } from './quick-row';
 
 /** Date, description, amount, paid with, category, then whatever the row can do. Shared by the list and the table. */
 export const ROW_GRID = 'grid grid-cols-[5.5rem_minmax(0,1.6fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_9.5rem] items-center gap-px';
@@ -21,15 +20,16 @@ export type RowOptions = ReturnType<typeof buildRowOptions>;
  * by `inOpenBook` (the open book's); money accounts never are.
  */
 export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly CardRow[], inOpenBook: (a: AccountRow) => boolean = () => true) {
-  // The cell says what paid, so it offers only what can: never a locked deposit, never a house.
-  const money = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a));
-  const payments = paymentOptions(money, cards);
-  const paid: ComboOption[] = payments.map((option) => ({
+  const money = accounts.filter(isMoneyAccount);
+  const toCombo = (option: PaymentOption): ComboOption => ({
     value: paymentKey(option.accountId, option.cardId),
     label: option.accountName,
     meta: option.last4 ?? undefined,
     keywords: option.holderName ?? undefined,
-  }));
+  });
+  // The cell says what paid, so it offers only what can: never a locked deposit, never a house.
+  const payments = payerOptions(money, cards, '');
+  const paid: ComboOption[] = payments.map(toCombo);
   const categoryRows = accounts.filter((a) => isCategoryOf('expense')(a) && inOpenBook(a));
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const categories: ComboOption[] = categoryRows
@@ -43,7 +43,11 @@ export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly
     .sort((x, y) => (x.keywords ?? '').localeCompare(y.keywords ?? ''));
   const categoryMatch = categoryRows.map((a) => ({ id: a.id, name: a.name, parentName: a.parentId ? (byId.get(a.parentId)?.name ?? null) : null }));
   return {
-    paid,
+    /**
+     * The paid-with list for one row. Built here rather than handed over whole, because what a row may offer
+     * depends on what it already names: a purchase recorded against a house still has to show the house.
+     */
+    paidFor: (accountId: string): ComboOption[] => (accountId && !paid.some((option) => option.value.split(':')[0] === accountId) ? payerOptions(money, cards, accountId).map(toCombo) : paid),
     categories,
     resolvePaid: (text: string) => {
       const hit = matchPayment(text, payments);
@@ -132,7 +136,7 @@ export function QuickRowEditor({
         label="Row paid with"
         placeholder="Name or last 4 digits"
         value={paymentKey(values.accountId, values.cardId)}
-        options={options.paid}
+        options={options.paidFor(values.accountId)}
         resolve={options.resolvePaid}
         invalid={missing('paid with')}
         onChange={(key) => {

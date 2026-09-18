@@ -70,7 +70,14 @@ export const WALLET_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES
  * An asset has to be money the owner can move: a time deposit is locked until it matures, and a house or a
  * holding of shares is not money at all, however much it is worth. A liability is the other way round — a card,
  * a loan or money owed to someone is settled later rather than held now, and every one of them can be charged.
+ *
+ * `current` is the account the field being drawn already names, and it is always kept. Narrowing what may be
+ * chosen is a rule about new choices; applying it to a transaction already recorded would only hide the truth —
+ * a purchase posted against a property account years ago would open with an empty cell reading as an error,
+ * and saving the row again would silently move the money. So the list is strict for everything but what is
+ * already there.
  */
-export function canPayWith(account: Pick<AccountRow, 'kind' | 'subtype'>): boolean {
+export function canPayWith(account: Pick<AccountRow, 'id' | 'kind' | 'subtype'>, current?: string | null): boolean {
+  if (current && account.id === current) return true;
   return account.kind === 'asset' ? SPENDABLE_SUBTYPES.includes(account.subtype) : true;
 }

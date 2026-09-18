@@ -1,6 +1,6 @@
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { isQuickEditable, parsePastedRows, paymentOptions, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells } from './quick-row';
+import { isQuickEditable, parsePastedRows, payerOptions, paymentOptions, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells } from './quick-row';
 
 const TODAY = '2026-09-15';
 const account = (id: string, kind: AccountRow['kind'], subtype: AccountRow['subtype'], currency: string | null, extra: Partial<AccountRow> = {}): AccountRow => ({
@@ -83,6 +83,29 @@ describe('paymentOptions', () => {
     const options = paymentOptions(accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability'), cards);
     expect(options.filter((o) => o.accountId === 'bonvoy').map((o) => o.last4)).toEqual(['1467', '8802']);
     expect(options.filter((o) => o.accountId === 'bca')).toHaveLength(1);
+  });
+});
+
+describe('what a row may say paid', () => {
+  const money = [
+    ...accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability'),
+    account('rumah', 'asset', 'property', 'IDR', { name: 'Rumah Bintaro' }),
+    account('deposito', 'asset', 'time_deposit', 'IDR', { name: 'Deposito BCA' }),
+  ];
+
+  it('offers money that can move, and never a house or a locked deposit', () => {
+    const ids = payerOptions(money, cards, '').map((o) => o.accountId);
+    expect(ids).toContain('bca');
+    expect(ids).toContain('bonvoy');
+    expect(ids).not.toContain('rumah');
+    expect(ids).not.toContain('deposito');
+  });
+
+  it('keeps the account the row already names, so an old purchase still shows what paid it', () => {
+    const ids = payerOptions(money, cards, 'rumah').map((o) => o.accountId);
+    expect(ids).toContain('rumah');
+    // Keeping one is not loosening the rule: everything else is as strict as before.
+    expect(ids).not.toContain('deposito');
   });
 });
 

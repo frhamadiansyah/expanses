@@ -105,13 +105,20 @@ const receivable = (id: string, label: string, code: string): OwnableItem => ({
   behaviour: { opens: 'person', direction: 'lent', valuedBy: 'ledger' },
 });
 
-/** §2.3 — every row `section: 'kas'`, `behaviour.opens: 'money'`, in the order the screen lists them. */
+/**
+ * §2.3 — every row `section: 'kas'`, `behaviour.opens: 'money'`, in the order the screen lists them.
+ *
+ * A label here is the app's own name for that kind of account, character for character: the Accounts page prints
+ * `SUBTYPE_LABELS` beside every account and offers the same words in its Type select, and one kind of account
+ * called two things is one kind of account nobody can match up. A test in apps/web holds the two lists in step.
+ * The quiet line carries the words the label dropped, so searching for "bank" or "electronic money" still lands.
+ */
 export const CASH_ITEMS: readonly OwnableItem[] = [
   money('cash', 'Cash', 'banknotes and coins', '0101'),
-  money('bank', 'Bank account', 'everyday account', '0102'),
+  money('bank', 'Current account', 'everyday account at a bank', '0102'),
   money('savings', 'Saving account', 'money set aside', '0102'),
   money('time_deposit', 'Time deposit', 'locked until it matures', '0104', { valuedBy: 'deposit', spendable: false }),
-  money('ewallet', 'Electronic money', 'GoPay, OVO, DANA', '0105'),
+  money('ewallet', 'Digital wallet', 'electronic money — GoPay, OVO, DANA', '0105'),
   money('fund', 'Fund account', 'broker or RDN cash', '0109'),
   money('other_cash', 'Other cash equivalents', 'cheque, wesel, commercial paper', '0109'),
 ];

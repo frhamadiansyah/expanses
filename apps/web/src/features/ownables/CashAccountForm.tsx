@@ -1,7 +1,7 @@
 import { cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { openCashAccount, upsertRate } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useId, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
@@ -33,6 +33,8 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
   const [manualRate, setManualRate] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // A row is one line and has no room to explain itself, so the sentence lives under the group and the row points at it.
+  const balanceHint = useId();
 
   const chosen = cashItem(item);
   const asks = fieldsFor('account', item);
@@ -87,7 +89,16 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
       <ErrorBox error={error} />
       <RowGroup>
         <InputRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA Tahapan" required />
-        {asks.includes('balance') && <InputRow label="Balance now" value={balance} onChange={(e) => setBalance(e.target.value)} inputMode="decimal" placeholder="0" />}
+        {asks.includes('balance') && (
+          <InputRow
+            label="Balance now"
+            aria-describedby={balanceHint}
+            value={balance}
+            onChange={(e) => setBalance(e.target.value)}
+            inputMode="decimal"
+            placeholder="0"
+          />
+        )}
         {asks.includes('bank') && <InputRow label="Bank" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="BCA" />}
         {asks.includes('currency') && (
           <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
@@ -103,6 +114,7 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
         <InputRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
         {foreign && <InputRow label={`Rate: ${ws.baseCurrency} per 1 ${currency}`} value={manualRate} onChange={(e) => setManualRate(e.target.value)} inputMode="decimal" />}
       </RowGroup>
+      {asks.includes('balance') && <RowHint id={balanceHint}>Optional. Posted as an opening balance.</RowHint>}
       {foreign && <RowHint>{ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}</RowHint>}
       <RowHint>The picker chose what kind of account this is. Name is what you call yours.</RowHint>
       {locked && <RowHint>When it matures, move the money to an account with a transfer.</RowHint>}

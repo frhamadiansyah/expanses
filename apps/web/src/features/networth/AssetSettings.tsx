@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { CodePicker } from '../ownables/CodePicker';
 import { PLAN_GROUP_LABELS, PLAN_GROUP_ORDER } from './labels';
 
 /** Which side of the plan an asset counts on, and how many shares make a lot at your broker. */
@@ -97,6 +98,8 @@ export function AssetSettings({
             <option value="ordinary">Ordinary — added to taxable income</option>
           </Select>
         </Field>
+        {/* The words first, the digits second: the list answers "which of these is it?", the box takes anything else. */}
+        <CodePicker flow="asset" code={code.trim()} onChange={setCode} disabled={!reportable} />
         <Field
           label="Tax report code"
           hint={code.trim() === '' ? 'Four digits. Empty uses the code this kind of asset normally takes.' : hartaLabel(code.trim()) || 'Not a code the form knows.'}

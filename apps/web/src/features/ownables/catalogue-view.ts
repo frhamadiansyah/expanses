@@ -2,9 +2,15 @@ import {
   ASSET_FAMILIES,
   assetFamily,
   assetItem,
+  CASH_ITEMS,
   cashItem,
   debtItem,
   elseItem,
+  HARTA_ENGLISH,
+  hartaLabel,
+  type HartaFamily,
+  KODE_HARTA,
+  KODE_UTANG,
   type MoneyAccountSubtype,
   type OwnableFamily,
   type OwnableFlow,
@@ -154,9 +160,8 @@ export function handOverRows(flow: OwnableFlow): HandOverRow[] {
 export type FieldKey = 'balance' | 'bank' | 'currency' | 'matures' | 'rate' | 'units' | 'price' | 'grams' | 'face' | 'value' | 'person' | 'owed' | 'lender' | 'term' | 'card';
 
 /**
- * Money held at a bank or a broker: the accounts worth asking which institution, and the only ones that are
- * plausibly in a currency other than the one the workspace counts in. Cash in a wallet and an e-money balance
- * are neither.
+ * Money held at a bank or a broker: the accounts worth asking which institution for, because the tax report
+ * wants the institution's name on their kas row. Cash in a pocket and an e-money balance have no institution.
  */
 const AT_AN_INSTITUTION: readonly MoneyAccountSubtype[] = ['bank', 'savings', 'fund'];
 
@@ -171,9 +176,11 @@ export function fieldsFor(flow: OwnableFlow, id: string): FieldKey[] {
   const item = flow === 'account' ? cashItem(id as MoneyAccountSubtype) : flow === 'debt' ? debtItem(id) : assetItem(id);
   const { behaviour } = item;
   switch (behaviour.opens) {
+    // Every money account is asked which currency it holds. Dollars in a wallet, euros in cash and a deposit in
+    // Singapore are all ordinary; taking the workspace's own currency without asking would silently mis-state them.
     case 'money':
-      if (behaviour.valuedBy === 'deposit') return ['balance', 'bank', 'matures', 'rate'];
-      return AT_AN_INSTITUTION.includes(behaviour.subtype) ? ['balance', 'bank', 'currency'] : ['balance'];
+      if (behaviour.valuedBy === 'deposit') return ['balance', 'bank', 'currency', 'matures', 'rate'];
+      return AT_AN_INSTITUTION.includes(behaviour.subtype) ? ['balance', 'bank', 'currency'] : ['balance', 'currency'];
     case 'holding':
       switch (behaviour.valuedBy) {
         case 'units':
@@ -196,3 +203,114 @@ export function fieldsFor(flow: OwnableFlow, id: string): FieldKey[] {
       return ['card'];
   }
 }
+
+/**
+ * Changing what a thing files as, after it exists.
+ *
+ * The picker hides the code while someone is choosing, which is right: nobody owns a "0503". Afterwards is the
+ * other way round — the thing is on its own page, the code is printed there, and the only useful question is
+ * "which of these is it really?". So the same words the picker used are offered again, now as a list to change.
+ *
+ * Only the code's own table is offered. A code is what the tax report files the row under, and a row cannot move
+ * between Lampiran 1's tables without becoming a different thing: a flat is not a receivable. Anything the table
+ * does not name is reached by typing the four digits, which is why that box never goes away.
+ */
+
+/** One line of the code picker: the words, the code behind them, and a value of its own. */
+export interface CodeChoice {
+  /** Unique within the picker. Two items can share a code — a current account and a savings account are both
+   *  0102 — and a `select` that keyed on the code alone could not keep them apart. */
+  value: string;
+  code: string;
+  label: string;
+}
+
+export interface CodeChoiceGroup {
+  label: string;
+  choices: CodeChoice[];
+}
+
+/** What the whole cash table is called on the screen that opens one. Not an asset family: money is an account. */
+const KAS_LABEL = 'Cash and cash equivalents';
+
+const FAMILY_LABELS: Record<HartaFamily, string> = {
+  kas: KAS_LABEL,
+  piutang: assetFamily('receivable').label,
+  investasi: assetFamily('invest').label,
+  bergerak: assetFamily('movable').label,
+  tidak_bergerak: assetFamily('immovable').label,
+  lainnya: assetFamily('other').label,
+};
+
+/** The items the app names in each harta table, in the order its own picker lists them. */
+const NAMED_ITEMS: Record<HartaFamily, readonly OwnableItem[]> = {
+  kas: CASH_ITEMS,
+  piutang: assetFamily('receivable').items,
+  investasi: assetFamily('invest').items,
+  bergerak: assetFamily('movable').items,
+  tidak_bergerak: assetFamily('immovable').items,
+  lainnya: assetFamily('other').items,
+};
+
+const HARTA_FAMILIES = Object.keys(FAMILY_LABELS) as HartaFamily[];
+
+const familyOfCode = (code: string): HartaFamily | null => KODE_HARTA.find((entry) => entry.code === code)?.family ?? null;
+
+/**
+ * The rest of a harta table: every code its named items have not already spent. English where the catalogue has
+ * a word for it; otherwise what the form itself calls it, which for Giro or Cek is the only name there is.
+ */
+function spareCodes(family: HartaFamily): CodeChoice[] {
+  const spent = new Set(NAMED_ITEMS[family].map((item) => item.code));
+  return KODE_HARTA.filter((entry) => entry.family === family && !spent.has(entry.code)).map((entry) => ({
+    value: `code:${entry.code}`,
+    code: entry.code,
+    label: (HARTA_ENGLISH as Record<string, string>)[entry.code] ?? entry.label,
+  }));
+}
+
+const namedChoices = (family: HartaFamily): CodeChoice[] => NAMED_ITEMS[family].map((item) => ({ value: item.id, code: item.code, label: item.label }));
+
+/** The four kode utang, said the way the debt picker says them rather than in the form's own sentence-long Indonesian. */
+export const UTANG_CHOICES: readonly CodeChoice[] = [
+  { value: '101', code: '101', label: 'Bank or finance-company loan' },
+  { value: '102', code: '102', label: 'Credit card' },
+  { value: '103', code: '103', label: 'Affiliate debt — family or a related company' },
+  { value: '109', code: '109', label: 'Other debts' },
+];
+
+/**
+ * What a thing already filed under `code` can be changed to: its own table's named items, then what is left of
+ * that table under "Something else". A code the tables do not name — or none yet — opens every table instead,
+ * because there is nothing to narrow by and a house must still be reachable.
+ */
+export function codeChoices(flow: OwnableFlow, code: string): CodeChoiceGroup[] {
+  if (flow === 'debt') return [{ label: 'What you owe', choices: [...UTANG_CHOICES] }];
+  const family = familyOfCode(code);
+  if (!family) {
+    return HARTA_FAMILIES.map((one) => ({ label: FAMILY_LABELS[one], choices: [...namedChoices(one), ...spareCodes(one)] })).filter((group) => group.choices.length > 0);
+  }
+  const spare = spareCodes(family);
+  const groups: CodeChoiceGroup[] = [{ label: FAMILY_LABELS[family], choices: namedChoices(family) }];
+  if (spare.length > 0) groups.push({ label: 'Something else', choices: spare });
+  return groups;
+}
+
+/** The codes a person's debt may file under: the receivable table for money owed to you, the kode utang for money you owe. */
+export function personCodeChoices(direction: 'lent' | 'borrowed'): CodeChoice[] {
+  // Never 102: a credit card is a card, and it has a form of its own.
+  if (direction === 'borrowed') return UTANG_CHOICES.filter((choice) => choice.code !== '102');
+  return namedChoices('piutang');
+}
+
+/** The choice a code currently stands for, so a list opens on what the thing already is. Null when nothing names it. */
+export function choiceForCode(groups: readonly CodeChoiceGroup[], code: string): CodeChoice | null {
+  for (const group of groups) {
+    const hit = group.choices.find((choice) => choice.code === code);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** What a harta or utang code is called on the form itself. Empty when neither table knows it. */
+export const codeLabel = (flow: OwnableFlow, code: string): string => (flow === 'debt' ? (KODE_UTANG.find((entry) => entry.code === code)?.label ?? '') : hartaLabel(code));
