@@ -15,6 +15,7 @@ import { categoryColour } from '../transactions/category-colours';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
+import { useCategoryWorkspaces } from '../workspaces/queries';
 import { useBooksInEvent, useEventBudgets, useEventHistory, useEvents, useEventSheet, useEventSuggestions } from './queries';
 
 /** A month has budgets; an event has a plan. */
@@ -78,6 +79,13 @@ export function EventDetailPage() {
   const monthly = accounts.filter((account) => account.kind === 'expense' && account.subtype === 'category' && membership[account.id] === undefined);
   const planCategories = event?.setId ? setCategories : monthly;
   const nameOf = (id: string) => accounts.find((account) => account.id === id)?.name ?? id;
+  // The plan is the owner's, so it offers every workspace's categories — and two workspaces can hold copies of
+  // one category, the same word twice. Each is said with the workspace it belongs to, so the choice is a real one.
+  const workspaceOf = useCategoryWorkspaces();
+  const planName = (id: string) => {
+    const workspace = workspaceOf(id);
+    return workspace ? `${nameOf(id)} · ${workspace}` : nameOf(id);
+  };
   const setName = sets.find((row) => row.id === event?.setId)?.name ?? null;
 
   async function run(work: () => Promise<unknown>) {
@@ -258,6 +266,8 @@ export function EventDetailPage() {
             <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']}>
               {donut}
               <BudgetGauge
+                // An event is read whole, in the owner's own money, whichever workspace's tab is open.
+                currency={ws.baseCurrency}
                 progress={{
                   capsMinor: plannedTotal,
                   spentMinor: spent,
@@ -309,7 +319,7 @@ export function EventDetailPage() {
               <option value="">Choose a category</option>
               {planCategories.map((account) => (
                 <option key={account.id} value={account.id}>
-                  {account.name}
+                  {planName(account.id)}
                 </option>
               ))}
             </Select>
@@ -327,7 +337,7 @@ export function EventDetailPage() {
             {(budgets.data ?? []).map((row, index) => (
               <span key={row.categoryAccountId}>
                 {index > 0 && ', '}
-                {nameOf(row.categoryAccountId)}{' '}
+                {planName(row.categoryAccountId)}{' '}
                 <button
                   type="button"
                   aria-label={`Stop drawing on ${nameOf(row.categoryAccountId)}`}

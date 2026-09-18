@@ -250,9 +250,14 @@ async function spendOn(page: Page, description: string, category: string, amount
   await expect(page.getByText(description).first()).toBeVisible();
 }
 
-/** Draws the event on a category, then says yes to the payment it then suggests. */
-async function planAndTag(page: Page, category: string, description: string) {
-  await page.getByLabel('Category').selectOption({ label: category });
+/**
+ * Draws the event on a category, then says yes to the payment it then suggests.
+ *
+ * `option` is what the picker calls that category: once there is more than one workspace it says which workspace
+ * each option belongs to, since two workspaces can hold copies of one category and the name alone is a coin toss.
+ */
+async function planAndTag(page: Page, category: string, description: string, option = category) {
+  await page.getByLabel('Category').selectOption({ label: option });
   await page.getByRole('button', { name: 'Add category' }).click();
   await expect(page.getByRole('button', { name: `Stop drawing on ${category}` })).toBeVisible();
   await page.getByTestId('event-suggestions').getByRole('button', { name: `Tag ${description}` }).click();
@@ -290,7 +295,10 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await spendOn(page, 'Supplier lunch', 'Client lunches', '640000');
 
   await page.goto(url);
-  await planAndTag(page, 'Client lunches', 'Supplier lunch');
+  await planAndTag(page, 'Client lunches', 'Supplier lunch', 'Client lunches · Business');
+  // The plan says which workspace each category it draws on belongs to, in the same words as the picker: two
+  // workspaces can hold a category of the same name, and the name alone would make the choice a coin toss.
+  await expect(page.getByRole('button', { name: 'Stop drawing on Restaurants' }).locator('xpath=..')).toContainText('Restaurants · Personal');
 
   // All: the whole trip, both workspaces added up.
   const tabs = page.getByTestId('event-workspaces');

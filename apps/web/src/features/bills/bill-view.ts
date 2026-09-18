@@ -1,5 +1,6 @@
 import { billPill, type BillTone, minorToMajorString, monthName } from '@expanses/core';
-import type { MonthlyBill } from '@expanses/db';
+import type { BookMoney, MonthlyBill } from '@expanses/db';
+import type { UnconvertedRow } from '../workspaces/Unconverted';
 
 export const isSettled = (bill: MonthlyBill) => bill.state === 'paid' || bill.state === 'skipped';
 const isOutAndUnpaid = (bill: MonthlyBill) => bill.state === 'overdue' || bill.state === 'dueSoon' || bill.state === 'open';
@@ -53,6 +54,40 @@ export function summaryOf(rows: readonly MonthlyBill[], today: string): BillSumm
     lines: groups.filter((g) => sum(g.rows) > 0).map((g) => ({ key: g.key, label: g.label, minor: sum(g.rows), approximate: anyVaries(g.rows) })),
     allSettled: open.length === 0,
   };
+}
+
+/**
+ * Every bill in the currency the workspace reads in, so a total can add them up.
+ *
+ * A bill's amount is in the money of the account that pays it, and a workspace may be paid from accounts in
+ * several currencies: added up raw, a dollar bill and a rupiah bill would make a figure that means nothing. Each
+ * is converted from the payer's currency at the rate on the day the bill comes out — the day the money leaves —
+ * and one no rate reaches counts as nothing and is named, rather than being added in as the wrong money.
+ *
+ * A workspace reading in the owner's own currency converts nothing and gets its rows back untouched.
+ */
+export function billsInReadCurrency(
+  rows: readonly MonthlyBill[],
+  money: BookMoney | undefined,
+  currencyOf: (bill: MonthlyBill) => string,
+): { rows: MonthlyBill[]; unconverted: UnconvertedRow[] } {
+  if (!money?.converts) return { rows: [...rows], unconverted: [] };
+  const missed = new Map<string, string>();
+  const converted = rows.map((bill) => {
+    const from = currencyOf(bill);
+    const onDate = bill.window.opensOn;
+    const at = (minor: number | null) => {
+      if (minor === null) return null;
+      const value = money.convert(minor, from, onDate);
+      if (value === null) {
+        const earliest = missed.get(from);
+        if (!earliest || onDate < earliest) missed.set(from, onDate);
+      }
+      return value ?? 0;
+    };
+    return { ...bill, amountMinor: at(bill.amountMinor), paidMinor: at(bill.paidMinor), estimateMinor: at(bill.estimateMinor) };
+  });
+  return { rows: converted, unconverted: [...missed].map(([currency, onDate]) => ({ currency, onDate })).sort((a, b) => a.currency.localeCompare(b.currency)) };
 }
 
 /** What the Cashflow card calls owed: every bill that is out and unpaid. */

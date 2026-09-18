@@ -21,20 +21,21 @@ export function mergeUnconverted(...lists: readonly (readonly UnconvertedRow[])[
 /**
  * What a figure leaves out, said above it.
  *
- * A workspace that reads in its own currency converts each amount at the rate on its own day, and rates are kept
- * one way round: a workspace in dollars needs rupiah→dollar rows. Rather than guess at a day no rate reaches, the
- * amount is left out — so the screen has to say so, or the total would quietly be wrong.
+ * A workspace that reads in its own currency converts each amount at the rate on its own day, either way round:
+ * a workspace in dollars takes a rupiah→dollar row, or a dollar→rupiah one turned over. Rather than guess at a day
+ * no rate reaches at all, the amount is left out — so the screen has to say so, or the total would quietly be wrong.
  *
  * One banner to a screen: where the chart and the list are shown together they are the same missing rate said
  * twice, so the chart takes the list's list as well and the list leaves it to the chart.
  */
 export function Unconverted({ missing, currency }: { missing: readonly UnconvertedRow[]; currency: string }) {
   if (missing.length === 0) return null;
-  const one = missing.length === 1;
   return (
+    // One entry per currency is what a read reports, so the currencies are named and the amounts are not counted:
+    // "3 amounts" would be a figure the screen has not been told and the user could not check.
     <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="unconverted">
-      {missing.length} amount{one ? '' : 's'} in {missing.map((m) => m.currency).join(', ')} {one ? 'is' : 'are'} not counted: no{' '}
-      {missing[0]!.currency}→{currency} rate for {shortDate(missing[0]!.onDate, isoDate())} or earlier. Use Add transaction to enter one.
+      Amounts in {missing.map((m) => m.currency).join(', ')} are not counted: no {missing[0]!.currency}→{currency} rate for{' '}
+      {shortDate(missing[0]!.onDate, isoDate())} or earlier. Use Add transaction to enter one.
     </p>
   );
 }

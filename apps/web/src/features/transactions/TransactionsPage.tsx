@@ -300,9 +300,17 @@ export function TransactionsPage() {
   const listCurrency = list.data?.currency ?? ws.baseCurrency;
   const recorded = list.data?.transactions ?? [];
   // Which workspace each row is filed in, so an account's history says whose spending it is showing.
-  const badgeOf = useWorkspaceBadges(recorded.map((tx) => tx.id));
+  const badges = useWorkspaceBadges(recorded.map((tx) => tx.id));
+  const badgeOf = badges.of;
   /** The workspace a row would have to be opened in before it could be edited; null when this one will do. */
   const elsewhereOf = (transactionId: string) => editInsteadIn(badgeOf(transactionId), ws.bookId);
+  /**
+   * Whether a row's workspace is known yet. An owner-wide list holds every workspace's rows, and until the
+   * badges arrive they all look unfiled — which would read as editable here for that window, and one quick save
+   * would re-file another workspace's spending. A list narrowed to one workspace cannot hold another's, so it
+   * never waits.
+   */
+  const filingKnown = !ownerWide || badges.ready;
   const purchasePoints = useQuery({
     queryKey: ['purchase-points', ws.workspaceId, recorded.map((tx) => tx.id).join(',')],
     enabled: list.isSuccess && accounts.length > 0,
@@ -381,7 +389,7 @@ export function TransactionsPage() {
       return;
     }
     const tx = row.tx!;
-    if (tradeByTransaction.has(tx.id) || !isEditable(tx)) return;
+    if (tradeByTransaction.has(tx.id) || !isEditable(tx) || !filingKnown) return;
     // An account's history holds every workspace, but this page's category pickers hold only the open one's:
     // saving here would re-file the row into this workspace. Say which one to open instead.
     if (elsewhereOf(tx.id)) {
@@ -653,7 +661,7 @@ export function TransactionsPage() {
     // Filed in another workspace: it can still be reached and asked about, but it is not dressed as editable.
     const reachable = !trade && isEditable(tx);
     const elsewhere = reachable ? elsewhereOf(tx.id) : null;
-    const clickable = reachable && !elsewhere;
+    const clickable = reachable && !elsewhere && filingKnown;
     return (
       <li
         key={tx.id}
@@ -735,6 +743,7 @@ export function TransactionsPage() {
     renderForm: (tx, onDone) => <TransactionForm initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),
     elsewhereOf,
+    filingKnown,
   };
 
   /**
