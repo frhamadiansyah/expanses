@@ -31,6 +31,7 @@ import {
   saveExpectedIncome,
   saveExpenseTemplate,
   setActiveBook,
+  setBookEventsInBudget,
   setIncomeOverride,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -155,7 +156,9 @@ describe('books', () => {
     expect((await listBooks(database, ws)).map((b) => b.name)).toEqual(['Personal']);
     // An archived book is no longer open; the app falls back to Personal.
     expect(await activeBookId(database, ws)).toBe(personal.id);
-    await expect(archiveBook(database, ws, personal.id)).rejects.toThrow(/last/);
+    // Personal is also the last book here, but it is refused for being Personal, not merely for being last
+    // (the 'the Personal workspace is found by what it is' describe block below covers the last-book case on its own).
+    await expect(archiveBook(database, ws, personal.id)).rejects.toMatchObject({ code: 'PERSONAL_BOOK' });
   });
 });
 
@@ -419,5 +422,39 @@ describe('context helpers', () => {
     expect(ownerScope(narrowed)).toEqual({ workspaceId: 'ws1', baseCurrency: 'IDR' });
     // ownerScope never carries a bookId through, even if one somehow slipped in.
     expect(ownerScope(narrowed)).not.toHaveProperty('bookId');
+  });
+});
+
+describe('the Personal workspace is found by what it is', () => {
+  it('stays Personal when a workspace made before it is archived, and cannot itself be archived', async () => {
+    const { database, ws } = await setupDb();
+    const personal = await personalBook(database, ws);
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+
+    // Personal is the book of kind 'personal', not merely the first row.
+    await database.db.run(sql`UPDATE books SET sort_order = 5 WHERE id = ${personal.id}`);
+    expect((await personalBook(database, ws)).id).toBe(personal.id);
+
+    await expect(archiveBook(database, ws, personal.id)).rejects.toMatchObject({ code: 'PERSONAL_BOOK' });
+    await archiveBook(database, ws, business);
+    expect((await listBooks(database, ws)).map((b) => b.name)).toEqual(['Personal']);
+  });
+
+  it('refuses a second Personal, an unknown id, an unsupported currency and an unknown kind', async () => {
+    const { database, ws } = await setupDb();
+    await expect(createBook(database, ws, { name: 'Also me', kind: 'personal', baseCurrency: 'IDR' })).rejects.toMatchObject({ code: 'ONE_PERSONAL' });
+    await expect(createBook(database, ws, { name: 'Biz', kind: 'business', baseCurrency: 'ZZZ' })).rejects.toMatchObject({ code: 'BAD_CURRENCY' });
+    await expect(createBook(database, ws, { name: 'Biz', kind: 'club' as never, baseCurrency: 'IDR' })).rejects.toMatchObject({ code: 'BAD_KIND' });
+    await expect(renameBook(database, ws, 'no-such-book', 'Nope')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(archiveBook(database, ws, 'no-such-book')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(setActiveBook(database, ws, 'no-such-book')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('remembers whether a workspace counts event spending in its budget', async () => {
+    const { database, ws } = await setupDb();
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR', countEventsInBudget: true });
+    expect((await listBooks(database, ws)).find((b) => b.id === business)).toMatchObject({ countEventsInBudget: true });
+    await setBookEventsInBudget(database, ws, business, false);
+    expect((await listBooks(database, ws)).find((b) => b.id === business)).toMatchObject({ countEventsInBudget: false });
   });
 });

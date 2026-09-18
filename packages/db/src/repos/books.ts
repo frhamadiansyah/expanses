@@ -1,4 +1,4 @@
-import { uuidv7 } from '@expanses/core';
+import { isSupportedCurrency, uuidv7 } from '@expanses/core';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -18,11 +18,16 @@ export interface BookRow {
 }
 
 export class BookError extends Error {
-  constructor(message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
     super(message);
     this.name = 'BookError';
   }
 }
+
+const KINDS: readonly BookKind[] = ['personal', 'business', 'family', 'shared'];
 
 const toRow = (row: typeof books.$inferSelect): BookRow => ({
   id: row.id,
@@ -58,25 +63,29 @@ export async function listBooks(database: Database, ws: WorkspaceContext): Promi
   return rows.map(toRow);
 }
 
-/** The first book: every workspace has one, made with it or by migration 0042. */
+/**
+ * The workspace things fall back to: expected income, recreated default categories, default category sets, and a
+ * category filed with no context. It is the book of kind 'personal' — never merely the first row, because archiving
+ * or reordering would otherwise hand all of that to Business.
+ */
 export async function personalBook(database: Database, ws: WorkspaceContext): Promise<BookRow> {
-  const [first] = await listBooks(database, ws);
-  if (!first) throw new BookError('This workspace has no books');
-  return first;
+  const open = await listBooks(database, ws);
+  const found = open.find((book) => book.kind === 'personal') ?? open[0];
+  if (!found) throw new BookError('NO_BOOK', 'This workspace has no workspaces in it');
+  return found;
 }
 
 /**
- * The first open book's id, read inside a transaction (personalBook reads through database.db, which would wait on
- * the transaction's own lock). Null when the workspace has no books yet.
+ * personalBook's id, read inside a transaction (personalBook reads through database.db, which would wait on the
+ * transaction's own lock). Null when the workspace has no books yet.
  */
 export async function personalBookIdTx(tx: Db, workspaceId: string): Promise<string | null> {
-  const [row] = await tx
-    .select({ id: books.id })
+  const rows = await tx
+    .select({ id: books.id, kind: books.kind })
     .from(books)
     .where(and(eq(books.workspaceId, workspaceId), isNull(books.archivedAt)))
-    .orderBy(asc(books.sortOrder), asc(books.createdAt))
-    .limit(1);
-  return row?.id ?? null;
+    .orderBy(asc(books.sortOrder), asc(books.createdAt));
+  return (rows.find((row) => row.kind === 'personal') ?? rows[0])?.id ?? null;
 }
 
 /** Makes the Personal book for a workspace being created. Used inside createWorkspace's transaction. */
@@ -91,17 +100,33 @@ export async function bookOfCategory(tx: Db, categoryAccountId: string): Promise
   return row?.bookId ?? null;
 }
 
+/** A book of this workspace, archived or not — an id from another workspace is not here. */
+async function bookOf(database: Database, ws: WorkspaceContext, bookId: string): Promise<BookRow> {
+  const [row] = await database.db.select().from(books).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+  if (!row) throw new BookError('NOT_FOUND', 'That workspace is not here');
+  return toRow(row);
+}
+
 export async function createBook(
   database: Database,
   ws: WorkspaceContext,
   input: { name: string; kind: BookKind; baseCurrency: string; countEventsInBudget?: boolean; copyCategoriesFrom?: string | null },
 ): Promise<string> {
   const name = input.name.trim();
-  if (!name) throw new BookError('A book needs a name');
+  if (!name) throw new BookError('NAME_REQUIRED', 'A workspace needs a name');
+  if (!KINDS.includes(input.kind)) throw new BookError('BAD_KIND', `${input.kind} is not a kind of workspace this app knows`);
+  if (!isSupportedCurrency(input.baseCurrency)) throw new BookError('BAD_CURRENCY', `${input.baseCurrency} is not a currency this app knows`);
   const id = uuidv7();
   const now = new Date().toISOString();
 
   await database.transaction(async (tx) => {
+    if (input.kind === 'personal') {
+      const [existing] = await tx
+        .select({ id: books.id })
+        .from(books)
+        .where(and(eq(books.workspaceId, ws.workspaceId), eq(books.kind, 'personal'), isNull(books.archivedAt)));
+      if (existing) throw new BookError('ONE_PERSONAL', 'There is already a Personal workspace');
+    }
     const [{ count }] = (await tx.select({ count: sql<number>`count(*)` }).from(books).where(eq(books.workspaceId, ws.workspaceId))) as [{ count: number }];
     await tx.insert(books).values({
       id,
@@ -123,7 +148,7 @@ export async function createBook(
       .select({ id: books.id })
       .from(books)
       .where(and(eq(books.id, input.copyCategoriesFrom), eq(books.workspaceId, ws.workspaceId), isNull(books.archivedAt)));
-    if (!sourceBook) throw new BookError('The book to copy categories from was not found in this workspace');
+    if (!sourceBook) throw new BookError('NO_SOURCE', 'The workspace to copy categories from was not found in this workspace');
 
     // A copy is a new tree: new ids, parents remapped, system keys kept so card earning rules still apply.
     // Category-set members are excluded (NOT_IN_A_SET, as ensureCategoryKeys uses): they are event categories,
@@ -156,7 +181,7 @@ export async function createBook(
       const readyIndex = remaining.findIndex((a) => !a.parentId || insertedOldIds.has(a.parentId) || !sourceIds.has(a.parentId));
       // Every parent a remaining row could be waiting on is itself in source, so this can only be -1 if the
       // tree has a cycle, which createAccountTx never allows (a parent must exist before its child does).
-      if (readyIndex === -1) throw new BookError('Category tree has a cycle it cannot copy');
+      if (readyIndex === -1) throw new BookError('CYCLE', 'Category tree has a cycle it cannot copy');
       const a = remaining.splice(readyIndex, 1)[0]!;
       const parentId = a.parentId && newIds.has(a.parentId) ? newIds.get(a.parentId)! : null;
       await tx.insert(accounts).values({ ...a, id: newIds.get(a.id)!, workspaceId: ws.workspaceId, parentId, createdAt: now });
@@ -168,14 +193,17 @@ export async function createBook(
 }
 
 export async function renameBook(database: Database, ws: WorkspaceContext, bookId: string, name: string): Promise<void> {
+  await bookOf(database, ws, bookId);
   const trimmed = name.trim();
-  if (!trimmed) throw new BookError('A book needs a name');
+  if (!trimmed) throw new BookError('NAME_REQUIRED', 'A workspace needs a name');
   await database.db.update(books).set({ name: trimmed }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
 }
 
 export async function archiveBook(database: Database, ws: WorkspaceContext, bookId: string): Promise<void> {
+  const book = await bookOf(database, ws, bookId);
+  if (book.kind === 'personal') throw new BookError('PERSONAL_BOOK', 'Personal is where categories and expected income fall back to, so it stays');
   const open = await listBooks(database, ws);
-  if (open.length <= 1) throw new BookError('The last book cannot be archived');
+  if (open.length <= 1) throw new BookError('LAST_BOOK', 'The last workspace cannot be archived');
   await database.db.update(books).set({ archivedAt: new Date().toISOString() }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
 }
 
@@ -190,7 +218,15 @@ export async function activeBookId(database: Database, ws: WorkspaceContext): Pr
 }
 
 export async function setActiveBook(database: Database, ws: WorkspaceContext, bookId: string): Promise<void> {
+  const book = await bookOf(database, ws, bookId);
+  if (book.archivedAt) throw new BookError('NOT_FOUND', 'That workspace is not here');
   await database.db.insert(settings).values({ key: activeKey(ws), value: bookId }).onConflictDoUpdate({ target: settings.key, set: { value: bookId } });
+}
+
+/** Whether this workspace's monthly caps count spending tagged to an event. */
+export async function setBookEventsInBudget(database: Database, ws: WorkspaceContext, bookId: string, on: boolean): Promise<void> {
+  await bookOf(database, ws, bookId);
+  await database.db.update(books).set({ countEventsInBudget: on ? 1 : 0 }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
 }
 
 /** Category ids filed in a book, for narrowing owner-wide queries to it. */

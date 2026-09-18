@@ -23,9 +23,8 @@ describe('openAppDb', () => {
       // Nothing has run here: the app opens an empty file the way it does on a first visit.
       const app = await openAppDb(createDatabase(executor));
       const [version] = (await executor.query('SELECT max(version) FROM schema_migrations', [], 'get')) as [number];
-      // 45 is account_types, which rebuilds the accounts table; a browser that stops short of it cannot
-      // open a fund account or a digital wallet.
-      expect(Number(version)).toBe(45);
+      // 46 is book_indexes, the newest migration; a browser that stops short of it is running stale schema.
+      expect(Number(version)).toBe(46);
       expect(await migrate(app.database)).toEqual([]);
       expect((await listAccounts(app.database, app.ws)).some((a) => a.subtype === 'category')).toBe(true);
     } finally {
