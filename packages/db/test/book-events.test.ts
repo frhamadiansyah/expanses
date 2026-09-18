@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   booksInEvent,
+  budgetSheetFor,
   categoryIdsByKey,
   createAccount,
   createBook,
@@ -91,5 +92,47 @@ describe('an event across workspaces', () => {
     });
     await tagTransaction(database, ws, id, eventId);
     expect((await booksInEvent(database, ws, eventId)).map((book) => book.name)).toEqual(['Personal']);
+  });
+});
+
+describe('whether a workspace’s caps see an event', () => {
+  it('keeps a holiday out of Personal’s caps and inside Business’s', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    // Business counts its events: a client trip is what that workspace is for, so its caps are meant to feel it.
+    const business = await createBook(database, ws, {
+      name: 'Business',
+      kind: 'business',
+      baseCurrency: 'IDR',
+      countEventsInBudget: true,
+      copyCategoriesFrom: personal,
+    });
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const eventId = await saveEvent(database, ws, { name: 'Singapore holiday', startsOn: '2026-08-13', endsOn: '2026-08-17' });
+    const spend = async (bookId: string, key: string, amountMinor: number) => {
+      const keys = await categoryIdsByKey(database, inBook(ws, bookId));
+      const id = await postTransaction(database, inBook(ws, bookId), {
+        occurredOn: '2026-08-15',
+        description: 'x',
+        lines: [
+          { accountId: keys[key]!, amountMinor, currency: 'IDR' },
+          { accountId: card.id, amountMinor: -amountMinor, currency: 'IDR' },
+        ],
+      });
+      await tagTransaction(database, ws, id, eventId);
+    };
+    await spend(personal, 'travel.hotels', 11_200_000);
+    await spend(business, 'food_beverage.restaurants', 640_000);
+
+    const personalSheet = await budgetSheetFor(database, inBook(ws, personal), '2026-08');
+    const businessSheet = await budgetSheetFor(database, inBook(ws, business), '2026-08');
+
+    // Personal holds the trip apart: nothing against its caps, the whole of its own share on the event line.
+    expect(personalSheet.spendingActualMinor).toBe(0);
+    expect(personalSheet.eventSpendingMinor).toBe(11_200_000);
+    // Business's share is inside its caps — and taken off what is left exactly once, not twice.
+    expect(businessSheet.spendingActualMinor).toBe(640_000);
+    expect(businessSheet.eventSpendingMinor).toBe(640_000);
+    expect(businessSheet.leftOverActualMinor).toBe(businessSheet.incomeActualMinor - 640_000);
   });
 });

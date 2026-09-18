@@ -5,7 +5,7 @@ import type { Database } from '../database';
 import { accounts } from '../schema';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { bookMoneyFor, type Unconverted } from './book-currency';
-import { hasBooks } from './books';
+import { hasBooks, listBooks } from './books';
 import { getBudgetIncome } from './budget-settings';
 import { goalContributionsFor } from './goal-contributions';
 import { listBudgets } from './budgets';
@@ -48,6 +48,9 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
   // A database stopped before migration 0042 has no book_categories to narrow by, and read the whole workspace
   // before workspaces existed — which is what it must keep doing.
   const narrowToBook = ws.bookId !== undefined && (await hasBooks(database.db));
+  // Whether this workspace's caps are meant to feel an event is the workspace's own decision, and there is no
+  // workspace to ask when none is open (or before migration 0042) — so the old behaviour, events held apart.
+  const countEvents = narrowToBook ? ((await listBooks(database, ws)).find((book) => book.id === ws.bookId)?.countEventsInBudget ?? false) : false;
   const categories = await database.db
     .select({ id: accounts.id, parentId: accounts.parentId, name: accounts.name })
     .from(accounts)
@@ -63,8 +66,9 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
     );
 
   const [amounts, budgets, income, flows, goals, contributions, eventSpending, committed] = await Promise.all([
-    // Events are held out of the caps; they get their own line and are still taken off what is left.
-    categoryTotalsIn(database, ws, 'expense', from, to, { excludeEvents: true, billMonths: true }),
+    // Events are held out of the caps unless this workspace asked for them; either way they get their own line,
+    // and budgetSheet subtracts them from what is left only when the caps have not already counted them.
+    categoryTotalsIn(database, ws, 'expense', from, to, { excludeEvents: !countEvents, billMonths: true }),
     listBudgets(database, ws, month),
     getBudgetIncome(database, ws, month),
     periodFlows(database, ws, { from, to }),
@@ -98,6 +102,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
       actualMinor: asOfMonthEnd(contributions[plan.goalId] ?? 0),
     })),
     eventSpendingMinor: eventSpending.amountMinor,
+    eventsInCaps: countEvents,
   });
 
   return {

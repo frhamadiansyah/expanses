@@ -17,6 +17,7 @@ import { Donut, type DonutSlice } from './Donut';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { IncomeFlow } from './IncomeFlow';
 import { mergeUnconverted, Unconverted, type UnconvertedRow } from '../workspaces/Unconverted';
+import { useOpenBook } from '../workspaces/queries';
 
 
 /** The node for a category anywhere in the tree, so a page showing one can draw it. */
@@ -245,10 +246,13 @@ export function SpendingReport({
   const isMonth = period?.kind === 'month';
   const first = useQuery({ queryKey: ['first-transaction', ws.workspaceId], queryFn: () => firstTransactionDate(database, ws), enabled: picking });
 
+  // A workspace that counts its events wants them in the chart too, so the chart and its budget never disagree
+  // about what the month cost. Everywhere else an event is read on its own: a week in Singapore would otherwise
+  // swallow the shape of an ordinary month.
+  const eventsInCaps = useOpenBook()?.countEventsInBudget ?? false;
   const totals = useQuery({
-    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, 'without-events'],
-    // An event is read on its own: a week in Singapore would otherwise swallow the shape of an ordinary month.
-    queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: true, billMonths: true }),
+    queryKey: ['category-totals', ws.workspaceId, ws.bookId ?? null, kind, month, eventsInCaps ? 'with-events' : 'without-events'],
+    queryFn: () => categoryTotalsIn(database, ws, kind, from, to, { excludeEvents: !eventsInCaps, billMonths: true }),
   });
   const budgets = useQuery({
     queryKey: ['budget-sheet', ws.workspaceId, ws.bookId ?? null, month],

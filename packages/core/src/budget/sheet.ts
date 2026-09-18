@@ -51,6 +51,12 @@ export interface BudgetSheetInput {
    * what is left, because it did leave the account.
    */
   eventSpendingMinor: number;
+  /**
+   * Whether `amounts` already contains that event spending — the workspace's own decision. A business
+   * workspace whose trips are the work wants them inside its caps; a household one does not. Required
+   * rather than optional, so no caller can forget to say which of the two totals it passed.
+   */
+  eventsInCaps: boolean;
 }
 
 export interface BudgetSheet {
@@ -61,8 +67,10 @@ export interface BudgetSheet {
   /** Only budgets with no budgeted ancestor, so a purchase is never counted twice. */
   capsTotalMinor: number;
   spendingActualMinor: number;
-  /** What events cost this month, held apart from the caps but not from the cash. */
+  /** What events cost this month: named either way, and inside the lines above only when `eventsInCaps`. */
   eventSpendingMinor: number;
+  /** Carried through so a screen can say whether the lines above already contain the event line. */
+  eventsInCaps: boolean;
   overCount: number;
   incomePlanMinor: number;
   incomeActualMinor: number;
@@ -134,6 +142,7 @@ export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
     capsTotalMinor,
     spendingActualMinor,
     eventSpendingMinor: input.eventSpendingMinor,
+    eventsInCaps: input.eventsInCaps,
     overCount,
     incomePlanMinor: input.incomePlanMinor,
     incomeActualMinor: input.incomeActualMinor,
@@ -143,7 +152,13 @@ export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
     savingsActualMinor,
     leftOverPlanMinor: input.incomePlanMinor - capsTotalMinor - input.debtPaymentsPlanMinor - savingsPlanMinor,
     leftOverActualMinor:
-      input.incomeActualMinor - spendingActualMinor - input.eventSpendingMinor - input.debtPaymentsActualMinor - savingsActualMinor,
+      input.incomeActualMinor -
+      spendingActualMinor -
+      // When the workspace counts its events, they are already inside spendingActual: subtracting again would
+      // charge the month for the same dinner twice.
+      (input.eventsInCaps ? 0 : input.eventSpendingMinor) -
+      input.debtPaymentsActualMinor -
+      savingsActualMinor,
   };
 }
 

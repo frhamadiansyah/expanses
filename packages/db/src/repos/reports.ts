@@ -144,6 +144,9 @@ export async function categoryTotalsIn(
  *
  * The budget leaves this out of its caps, so it has to be shown and subtracted somewhere: money spent
  * on a wedding is money gone, however deliberately it went.
+ *
+ * Narrowed to one workspace when the context names one, exactly as the category totals are: a holiday whose
+ * hotels were filed in Personal and whose dinners were filed in Business is two figures, not one shown twice.
  */
 export async function eventSpendingBetween(
   database: Database,
@@ -159,6 +162,7 @@ export async function eventSpendingBetween(
     gte(transactions.occurredOn, from),
     lte(transactions.occurredOn, to),
     isNotNull(transactions.eventId),
+    ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
   );
   if (!money.converts) {
     const [row] = await database.db

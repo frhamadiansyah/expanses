@@ -215,7 +215,12 @@ export function BudgetPage() {
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" data-testid="event-line">
               <div>
                 <div className="text-sm font-medium">Events</div>
-                <div className="text-xs text-slate-500">Outside the caps, because you meant to spend it. Still taken off what is left.</div>
+                {/* Named either way, but it is only a separate subtraction when the caps above have not seen it. */}
+                <div className="text-xs text-slate-500">
+                  {sheet.eventsInCaps
+                    ? 'Included in the caps above, because this workspace counts what it means to spend.'
+                    : 'Outside the caps, because you meant to spend it. Still taken off what is left.'}
+                </div>
               </div>
               <Money minor={sheet.eventSpendingMinor} currency={currency} className="text-sm font-medium" />
             </div>

@@ -26,6 +26,7 @@ const input = (overrides: Partial<BudgetSheetInput> = {}): BudgetSheetInput => (
   debtPaymentsActualMinor: 0,
   savings: [],
   eventSpendingMinor: 0,
+  eventsInCaps: false,
   ...overrides,
 });
 
@@ -160,5 +161,35 @@ describe('an occasion', () => {
 
     expect(sheet.eventSpendingMinor).toBe(0);
     expect(sheet.leftOverActualMinor).toBe(5_000_000);
+  });
+});
+
+describe('a workspace that counts its events', () => {
+  const base = {
+    month: '2026-08',
+    categories: [{ id: 'c1', parentId: null, name: 'Restaurants' }],
+    amounts: [{ accountId: 'c1', amountBaseMinor: 1_000_000 }],
+    caps: [{ categoryId: 'c1', amountMinor: 2_000_000 }],
+    incomePlanMinor: 10_000_000,
+    incomeActualMinor: 10_000_000,
+    debtPaymentsPlanMinor: 0,
+    debtPaymentsActualMinor: 0,
+    savings: [],
+    eventSpendingMinor: 400_000,
+  };
+
+  it('subtracts event spending once when the caps do not see it', () => {
+    const sheet = budgetSheet({ ...base, eventsInCaps: false });
+
+    expect(sheet.leftOverActualMinor).toBe(10_000_000 - 1_000_000 - 400_000);
+  });
+
+  it('does not subtract it twice when the caps already contain it', () => {
+    // The caller passed totals that include the event, so spendingActual is the whole 1.400.000.
+    const sheet = budgetSheet({ ...base, amounts: [{ accountId: 'c1', amountBaseMinor: 1_400_000 }], eventsInCaps: true });
+
+    expect(sheet.spendingActualMinor).toBe(1_400_000);
+    expect(sheet.eventSpendingMinor).toBe(400_000);
+    expect(sheet.leftOverActualMinor).toBe(10_000_000 - 1_400_000);
   });
 });
