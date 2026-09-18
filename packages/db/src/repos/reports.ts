@@ -46,7 +46,9 @@ async function categoryRows(
       // book_categories too (into their set's book), so this one path covers them.
       ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
     )!,
-    // The day an amount is converted on is the day it is counted on, so a bill paid late converts on the day it was paid.
+    // The day an amount is converted on is the day it is counted on. Under billMonths that is the out day of the
+    // month whose bill it settles, not the day the payment was made — so August's internet paid on 3 September is
+    // counted in August and converted at August's rate, which is the month the figure speaks for.
     onDate: byBillMonth ? sql<string>`${attributedOn()}` : sql<string>`${transactions.occurredOn}`,
   };
 }

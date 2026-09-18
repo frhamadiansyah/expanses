@@ -16,7 +16,7 @@ import { Deck } from './Deck';
 import { Donut, type DonutSlice } from './Donut';
 import { PeriodPicker, yearsSince } from './PeriodPicker';
 import { IncomeFlow } from './IncomeFlow';
-import { Unconverted } from '../workspaces/Unconverted';
+import { mergeUnconverted, Unconverted, type UnconvertedRow } from '../workspaces/Unconverted';
 
 
 /** The node for a category anywhere in the tree, so a page showing one can draw it. */
@@ -216,6 +216,7 @@ export function SpendingReport({
   onKind,
   onPick,
   onMonth,
+  alsoMissing = [],
 }: {
   month: string;
   categoryId?: string;
@@ -225,6 +226,8 @@ export function SpendingReport({
   onPick?: (id: string) => void;
   /** Given, the chart carries the month itself: the arrows step through them. */
   onMonth?: (month: string) => void;
+  /** What the list below could not convert either. The chart says it once for the whole screen. */
+  alsoMissing?: readonly UnconvertedRow[];
 }) {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
@@ -254,7 +257,7 @@ export function SpendingReport({
   });
   // A workspace reads its chart in its own currency; the owner's is the answer until the first read arrives.
   const currency = totals.data?.currency ?? ws.baseCurrency;
-  const missing = totals.data?.missing ?? [];
+  const missing = mergeUnconverted(totals.data?.missing ?? [], alsoMissing);
   const progress = budgetProgress(budgets.data?.lines ?? []);
   // The budget page exists only where there is a budget to measure, and only for money going out.
   const hasBudgets = kind === 'expense' && isMonth && progress.any;

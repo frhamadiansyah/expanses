@@ -1070,9 +1070,10 @@ export function TransactionsPage() {
           categoryId={scope?.kind === 'expense' || scope?.kind === 'income' ? scope.id : undefined}
           onPick={(id) => setSearch({ account: id })}
           onMonth={(next) => setSearch({ month: next === monthOf(today) ? undefined : next })}
+          alsoMissing={list.data?.missing ?? []}
         />
       )}
-      <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />
+      {!chartShown && <Unconverted missing={list.data?.missing ?? []} currency={listCurrency} />}
       <ErrorBox error={error ?? list.error ?? drafts.error} />
       {view === 'table' ? (
         <>

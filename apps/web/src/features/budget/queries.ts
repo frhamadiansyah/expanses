@@ -13,8 +13,15 @@ export function useBudgets(month: string) {
   return useQuery({ queryKey: ['budgets', ws.workspaceId, ws.bookId ?? null, month], queryFn: () => listBudgets(database, ws, month) });
 }
 
-/** What each category already owes to recurring bills, so a budget can say what is spoken for. */
+/**
+ * What each category already owes to recurring bills, so a budget can say what is spoken for.
+ *
+ * Only the figures: a bill no rate reached is named by the sheet's own `unconverted`, so the page says it once.
+ */
 export function useCommittedBills() {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['bills-committed', ws.workspaceId, ws.bookId ?? null], queryFn: () => committedByCategory(database, ws) });
+  return useQuery({
+    queryKey: ['bills-committed', ws.workspaceId, ws.bookId ?? null],
+    queryFn: async () => (await committedByCategory(database, ws)).committed,
+  });
 }

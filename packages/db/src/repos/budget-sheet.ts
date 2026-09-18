@@ -5,9 +5,11 @@ import type { Database } from '../database';
 import { accounts } from '../schema';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { bookMoneyFor, type Unconverted } from './book-currency';
+import { hasBooks } from './books';
 import { getBudgetIncome } from './budget-settings';
 import { goalContributionsFor } from './goal-contributions';
 import { listBudgets } from './budgets';
+import { committedByCategory } from './expense-templates';
 import { periodFlows } from './flows';
 import { goalPlansFor } from './goal-funding';
 import { categoryTotalsIn, eventSpendingBetween } from './reports';
@@ -43,6 +45,9 @@ function mergeMissing(...lists: readonly Unconverted[][]): Unconverted[] {
 export async function budgetSheetFor(database: Database, ws: WorkspaceContext, month: string): Promise<BudgetSheetResult> {
   const { from, to } = monthRange(month);
 
+  // A database stopped before migration 0042 has no book_categories to narrow by, and read the whole workspace
+  // before workspaces existed — which is what it must keep doing.
+  const narrowToBook = ws.bookId !== undefined && (await hasBooks(database.db));
   const categories = await database.db
     .select({ id: accounts.id, parentId: accounts.parentId, name: accounts.name })
     .from(accounts)
@@ -53,11 +58,11 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
         eq(accounts.kind, 'expense'),
         NOT_IN_A_SET,
         // …and for one workspace's tree when one is open: a Business sheet is about Business categories.
-        ...(ws.bookId ? [sql`${accounts.id} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+        ...(narrowToBook ? [sql`${accounts.id} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
       ),
     );
 
-  const [amounts, budgets, income, flows, goals, contributions, eventSpending] = await Promise.all([
+  const [amounts, budgets, income, flows, goals, contributions, eventSpending, committed] = await Promise.all([
     // Events are held out of the caps; they get their own line and are still taken off what is left.
     categoryTotalsIn(database, ws, 'expense', from, to, { excludeEvents: true, billMonths: true }),
     listBudgets(database, ws, month),
@@ -67,6 +72,9 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
     goalPlansFor(database, ws, to),
     goalContributionsFor(database, ws, month),
     eventSpendingBetween(database, ws, from, to),
+    // Only for what it could not convert: the per-category figures are the budget page's own read. A bill left out
+    // of "… of it is bills" is a gap in what this page shows, so the sheet's own banner has to name it.
+    committedByCategory(database, ws),
   ]);
 
   // A goal is kept in the owner's currency, and what it asks for every month is a plan rather than a payment: the
@@ -96,6 +104,6 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
     ...sheet,
     incomeOverridden: income.overridden,
     currency: amounts.currency,
-    unconverted: mergeMissing(amounts.missing, eventSpending.missing, flows.missing, money.missing()),
+    unconverted: mergeMissing(amounts.missing, eventSpending.missing, flows.missing, committed.missing, money.missing()),
   };
 }
