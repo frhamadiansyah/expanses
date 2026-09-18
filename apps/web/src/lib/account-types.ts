@@ -1,4 +1,4 @@
-import type { AccountSubtype } from '@expanses/db';
+import type { AccountRow, AccountSubtype } from '@expanses/db';
 
 /**
  * The kinds of account someone can open, and what each is called. Pure data, so the list the Accounts page
@@ -6,7 +6,9 @@ import type { AccountSubtype } from '@expanses/db';
  *
  * A fund account is money held at a broker or fund manager ready to invest — an Indonesian RDN, a brokerage
  * cash account. A digital wallet is GoPay, OVO, DANA or ShopeePay. Both hold money and both pay and receive,
- * so both are money accounts, not holdings: what they are worth is what the ledger says.
+ * so both are money accounts, not holdings: what they are worth is what the ledger says. So are a time
+ * deposit, which holds money the bank keeps until it matures, and other cash equivalents — a cheque, a
+ * wesel, commercial paper.
  */
 export const ACCOUNT_TYPES: { subtype: AccountSubtype; kind: 'asset' | 'liability' }[] = [
   { subtype: 'bank', kind: 'asset' },
@@ -14,6 +16,8 @@ export const ACCOUNT_TYPES: { subtype: AccountSubtype; kind: 'asset' | 'liabilit
   { subtype: 'savings', kind: 'asset' },
   { subtype: 'ewallet', kind: 'asset' },
   { subtype: 'fund', kind: 'asset' },
+  { subtype: 'time_deposit', kind: 'asset' },
+  { subtype: 'other_cash', kind: 'asset' },
   { subtype: 'credit_card', kind: 'liability' },
   { subtype: 'investment', kind: 'asset' },
   { subtype: 'property', kind: 'asset' },
@@ -33,6 +37,8 @@ export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
   savings: 'Saving account',
   fund: 'Fund account',
   ewallet: 'Digital wallet',
+  time_deposit: 'Time deposit',
+  other_cash: 'Other cash equivalents',
   investment: 'Investment',
   property: 'Property',
   vehicle: 'Vehicle',
@@ -48,8 +54,30 @@ export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
  * Accounts that hold money the owner can move: what a screen offers when it asks where money comes from or
  * goes — a repayment, a loan payment, the cash side of a trade, money set aside for a goal. The ledger keeps
  * the same list for what can be earmarked; a test holds the two in step.
+ *
+ * A time deposit is left out on purpose: it cannot be paid from, and the money leaves by a transfer when it
+ * matures. Other cash equivalents — a cheque, a wesel, commercial paper — can be spent.
  */
-export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'cash', 'savings', 'fund', 'ewallet'];
+export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'cash', 'savings', 'fund', 'ewallet', 'other_cash'];
 
 /** What can pay a bill: money the owner holds, or a card that will be settled later. */
 export const WALLET_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES, 'credit_card'];
+
+/**
+ * May this account be offered as a way to pay, or as somewhere money is received? Every "pay with", "paid from"
+ * and "received into" list asks this, because holding a balance is not the same as being spendable.
+ *
+ * An asset has to be money the owner can move: a time deposit is locked until it matures, and a house or a
+ * holding of shares is not money at all, however much it is worth. A liability is the other way round — a card,
+ * a loan or money owed to someone is settled later rather than held now, and every one of them can be charged.
+ *
+ * `current` is the account the field being drawn already names, and it is always kept. Narrowing what may be
+ * chosen is a rule about new choices; applying it to a transaction already recorded would only hide the truth —
+ * a purchase posted against a property account years ago would open with an empty cell reading as an error,
+ * and saving the row again would silently move the money. So the list is strict for everything but what is
+ * already there.
+ */
+export function canPayWith(account: Pick<AccountRow, 'id' | 'kind' | 'subtype'>, current?: string | null): boolean {
+  if (current && account.id === current) return true;
+  return account.kind === 'asset' ? SPENDABLE_SUBTYPES.includes(account.subtype) : true;
+}

@@ -1,5 +1,6 @@
 import { expenseLines, minorToMajorString, parseLooseAmount, parseLooseDate, type PaymentOption, type PostingLine } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
+import { canPayWith } from '../../lib/account-types';
 import { classify } from './classify';
 
 /**
@@ -128,6 +129,21 @@ export function paymentOptions(accounts: readonly AccountRow[], cards: readonly 
 }
 
 export const paymentKey = (accountId: string, cardId: string | null | undefined) => (cardId ? `${accountId}:${cardId}` : accountId);
+
+/**
+ * The paid-with choices for one row: everything that can pay, and — always — the account the row already names.
+ *
+ * The cell says what paid, so it offers only what can: never a locked deposit, never a house. But a purchase
+ * already recorded against one of those is a fact, and a cell that cannot show its own value reads as an error
+ * and invites being saved over. `current` is that account, kept whatever it is; pass an empty string for a row
+ * being typed from scratch, which has nothing to keep.
+ */
+export function payerOptions(accounts: readonly AccountRow[], cards: readonly CardRow[], current: string): PaymentOption[] {
+  return paymentOptions(
+    accounts.filter((account) => canPayWith(account, current)),
+    cards,
+  );
+}
 
 /**
  * Rows pasted from a spreadsheet, as cells. Text with no tab and no line break is an ordinary paste

@@ -1,5 +1,5 @@
-import { extraPaymentEffect, flatToEffectiveBps, formatMinor, isoDate, minorToMajorString } from '@expanses/core';
-import { addRatePeriod, recordExtraPayment, recordLoanPayment } from '@expanses/db';
+import { extraPaymentEffect, flatToEffectiveBps, formatMinor, isoDate, minorToMajorString, utangLabel } from '@expanses/core';
+import { addRatePeriod, type LoanTermsRow, recordExtraPayment, recordLoanPayment, setLoanCode } from '@expanses/db';
 import { Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -7,8 +7,48 @@ import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { CategoryOptions } from '../cards/options';
+import { UTANG_CHOICES } from '../ownables/catalogue-view';
 import { type PaymentDraft, paymentDraftFrom, paymentDraftToInput } from './loan-form';
 import { useLoan, useNextPayment, useSchedule } from './queries';
+
+/**
+ * What this loan files as in Bagian B, changed here rather than only where it was opened.
+ *
+ * The picker never showed a code — a mortgage is a mortgage — but the four kode utang are not interchangeable,
+ * and only the borrower knows whether the money came from a bank or from an uncle. Only the code is written,
+ * so that changing it changes the code and nothing else — the rate periods stay exactly as they stand.
+ */
+function LoanCodeField({ terms }: { terms: LoanTermsRow }) {
+  const { database, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const [error, setError] = useState<unknown>(null);
+
+  async function choose(coretaxCode: string) {
+    setError(null);
+    try {
+      // The code alone: rewriting the terms to carry it would drag the opening rate period to the first payment.
+      await setLoanCode(database, ws, terms.accountId, coretaxCode);
+      await invalidate();
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  return (
+    <div className="max-w-md space-y-1">
+      <Field label="Tax report code" hint={utangLabel(terms.coretaxCode) || 'Not a code the form knows.'}>
+        <Select value={terms.coretaxCode} onChange={(e) => void choose(e.target.value)}>
+          {UTANG_CHOICES.map((choice) => (
+            <option key={choice.code} value={choice.code}>
+              {choice.label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <ErrorBox error={error} />
+    </div>
+  );
+}
 
 /** Records the instalment the schedule says is next, with anything riding along on it. */
 function PaymentForm({
@@ -363,6 +403,8 @@ export function LoanDetailPage() {
               <Money minor={repaidMinor} currency={currency} className="font-medium" />
             </div>
           </div>
+
+          <LoanCodeField terms={terms} />
 
           {!open && (
             <div className="flex flex-wrap gap-2">

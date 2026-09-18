@@ -91,7 +91,7 @@ describe('migration 0045', () => {
     const balancesBefore = await nativeBalances(database, ws);
     expect(before.rows.length).toBeGreaterThan(6);
 
-    expect(await migrate(database)).toEqual([45, 46]);
+    expect(await migrate(database)).toEqual([45, 46, 47]);
 
     const after = await accountsSchema();
     expect(after.rows).toEqual(before.rows);
@@ -119,7 +119,8 @@ describe('migration 0045', () => {
     // PRAGMA table_info reports none of those, which is why the table's own DDL is compared here.
     expect(shapeApartFromSubtypes(after.ddl)).toBe(shapeApartFromSubtypes(before.ddl));
     expect(allowedSubtypes(before.ddl)).not.toContain('fund');
-    expect(allowedSubtypes(after.ddl)).toEqual([...allowedSubtypes(before.ddl), 'ewallet', 'fund'].sort());
+    // `migrate` runs every later migration too, and 0047 widened the same CHECK again.
+    expect(allowedSubtypes(after.ddl)).toEqual([...allowedSubtypes(before.ddl), 'ewallet', 'fund', 'other_cash', 'time_deposit'].sort());
     for (const clause of ['REFERENCES workspaces(id)', 'REFERENCES accounts(id)', 'id TEXT PRIMARY KEY']) {
       expect(flat(after.ddl)).toContain(clause);
     }

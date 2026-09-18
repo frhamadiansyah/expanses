@@ -1,4 +1,4 @@
-import { type CoretaxInputs, priceMicroFrom } from '@expanses/core';
+import { cashCodeForSubtype, type CoretaxInputs, priceMicroFrom } from '@expanses/core';
 import { eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -32,10 +32,11 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
   const loans = await listLoans(database, ws);
   const loanOf = new Map(loans.map((loan) => [loan.accountId, loan]));
 
-  const liabilities = await database.db
+  const accountRows = await database.db
     .select({ id: accounts.id, name: accounts.name, subtype: accounts.subtype, currency: accounts.currency })
     .from(accounts)
     .where(eq(accounts.workspaceId, ws.workspaceId));
+  const subtypeOf = new Map(accountRows.map((account) => [account.id, account.subtype]));
 
   const inputs: CoretaxInputs = { cash: [], holdings: [], estimated: [], receivables: [], debts: [] };
 
@@ -64,7 +65,15 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
 
     if (value.mode === 'derived') {
       if (balanceMinor <= 0) continue;
-      inputs.cash.push({ accountId: value.accountId, name: value.name, code: code ?? '0102', balanceMinor, currency: value.currency, fields });
+      // No code chosen: the kind of account decides it — a wallet files under 0105, a deposit under 0104.
+      inputs.cash.push({
+        accountId: value.accountId,
+        name: value.name,
+        code: code ?? cashCodeForSubtype(subtypeOf.get(value.accountId) ?? 'bank'),
+        balanceMinor,
+        currency: value.currency,
+        fields,
+      });
       continue;
     }
 
@@ -91,7 +100,7 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
     });
   }
 
-  for (const account of liabilities) {
+  for (const account of accountRows) {
     const code = DEBT_CODE_BY_SUBTYPE[account.subtype];
     if (!code) continue;
     // A liability is carried as a credit, so what is owed is the balance turned around.

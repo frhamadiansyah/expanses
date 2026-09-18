@@ -6,6 +6,7 @@ import {
   CheckCheck,
   CreditCard,
   FileSpreadsheet,
+  HandCoins,
   House,
   Landmark,
   PiggyBank,
@@ -64,6 +65,9 @@ export const MORE_GROUPS: readonly NavGroup[] = [
       { to: '/events', label: 'Events', icon: CalendarRange },
       { to: '/goals', label: 'Goals', icon: Sparkles },
       { to: '/accounts', label: 'Accounts', icon: Landmark },
+      // A debt is not opened from any one screen — a card, a mortgage and money borrowed from family land in three
+      // different places — so the picker that sorts that out is reached from here rather than hidden behind one of them.
+      { to: '/debts/new', label: 'Add a debt', icon: HandCoins },
       { to: '/categories', label: 'Categories', icon: Tags },
     ],
   },

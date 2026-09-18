@@ -169,6 +169,14 @@ export async function setLotSize(database: Database, ws: WorkspaceContext, accou
 
 /** Writes the profile of an asset, filling in anything not given from the preset for its kind. */
 export async function saveAssetProfile(database: Database, ws: WorkspaceContext, input: SaveAssetProfileInput): Promise<void> {
+  await database.transaction((tx) => saveAssetProfileTx(tx, ws, input));
+}
+
+/**
+ * The same write inside a transaction already running, so a caller can open the account and give it its
+ * profile as one atomic step. `saveAssetProfile` is this with a transaction of its own.
+ */
+export async function saveAssetProfileTx(tx: Db, ws: WorkspaceContext, input: SaveAssetProfileInput): Promise<void> {
   const defaults = profileDefaults(input.assetKind);
   const coretaxCode = input.coretaxCode === undefined ? defaults.coretaxCode : input.coretaxCode;
   if (coretaxCode !== null && !/^\d{4}$/.test(coretaxCode)) throw new AssetError('A Coretax code is four digits');
@@ -192,10 +200,8 @@ export async function saveAssetProfile(database: Database, ws: WorkspaceContext,
     taxTreatment: input.taxTreatment === undefined ? defaults.taxTreatment : input.taxTreatment,
     updatedAt: new Date().toISOString(),
   };
-  await database.transaction(async (tx) => {
-    await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
-    await tx.insert(assetProfiles).values(row).onConflictDoUpdate({ target: assetProfiles.accountId, set: row });
-  });
+  await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
+  await tx.insert(assetProfiles).values(row).onConflictDoUpdate({ target: assetProfiles.accountId, set: row });
 }
 
 export interface AssetReportingInput {

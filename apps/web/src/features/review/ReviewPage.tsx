@@ -2,6 +2,7 @@ import { formatMinor } from '@expanses/core';
 import { confirmDraft, dismissDraft, editDraft } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, PageHeader, Select } from '../../ui';
 import { CategoryOptions } from '../cards/options';
@@ -19,7 +20,8 @@ export function ReviewPage() {
   const invalidate = useInvalidateAll();
   const drafts = useDrafts();
   const accounts = useAccounts().data ?? [];
-  const money = accounts.filter(isMoneyAccount);
+  // Confirming a draft records real spending, so the account it names has to be one that can pay.
+  const money = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
 

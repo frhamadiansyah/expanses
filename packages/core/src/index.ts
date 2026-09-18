@@ -172,6 +172,27 @@ export {
 } from './assets/coretax-fields';
 export { type AssetKind, type AssetPreset, type AssetSubtype, ASSET_PRESETS, type PlanGroup, presetFor, type Risk, type UnitKind } from './assets/presets';
 export {
+  ASSET_FAMILIES,
+  ASSET_ITEMS,
+  assetFamily,
+  assetItem,
+  CASH_ITEMS,
+  cashCodeForSubtype,
+  cashItem,
+  DEBT_ITEMS,
+  debtItem,
+  elseItem,
+  HARTA_ENGLISH,
+  type MoneyAccountSubtype,
+  type OwnableBehaviour,
+  type OwnableFamily,
+  type OwnableFamilyRow,
+  type OwnableFlow,
+  type OwnableItem,
+  searchOwnables,
+  somethingElse,
+} from './assets/catalogue';
+export {
   type BalanceSheet,
   balanceSheet,
   SHEET_GROUP_LABELS,

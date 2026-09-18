@@ -4,6 +4,7 @@ import { useNavigate, useParams } from '@tanstack/react-router';
 import { ChevronLeft, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
+import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -51,7 +52,8 @@ export function EventDetailPage() {
   const suggestions = useEventSuggestions(eventId, openTab);
   const history = useEventHistory(eventId, openTab);
   const accounts = useAccounts().data ?? [];
-  const money = accounts.filter(isMoneyAccount);
+  // Spending recorded into an event is paid with something, so a locked deposit is no answer.
+  const money = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a));
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const setCategories = useSetCategories(event?.setId ?? null).data ?? [];
   const membership = useCategorySetMembership().data ?? {};

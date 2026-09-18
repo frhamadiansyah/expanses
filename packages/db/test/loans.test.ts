@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   type AccountRow,
+  addRatePeriod,
   createAccount,
   createDatabase,
   createWorkspace,
@@ -12,6 +13,7 @@ import {
   migrate,
   MIGRATIONS,
   saveLoanTerms,
+  setLoanCode,
   type WorkspaceContext,
 } from '../src/index';
 import { createNodeExecutor } from '../src/node';
@@ -100,6 +102,32 @@ describe('loan terms', () => {
     expect(loans).toHaveLength(1);
     expect(loans[0]).toMatchObject({ lenderName: 'Bank BTN Syariah', tenorMonths: 168 });
     expect(loans[0]!.periods).toHaveLength(1);
+  });
+
+  /**
+   * Changing what a loan files as must change the code and nothing else. Rewriting the whole terms to do it
+   * drags the opening period along, and a period that started before the first instalment — a grace period, a
+   * rate agreed at signing — would silently move to the first payment date.
+   */
+  it('changes the code on its own, leaving every rate period where it was', async () => {
+    await saveLoanTerms(database, ws, terms(kpr.id));
+    await addRatePeriod(database, ws, { accountId: kpr.id, fromOn: '2025-12-01', rateBps: 750, kind: 'fixed' });
+    const before = (await loanFor(database, ws, kpr.id))!.periods;
+
+    await setLoanCode(database, ws, kpr.id, '103');
+
+    const after = await loanFor(database, ws, kpr.id);
+    expect(after!.coretaxCode).toBe('103');
+    expect(after!.periods).toEqual(before);
+    expect(after!.periods.map((period) => period.fromOn)).toEqual(['2025-12-01', '2026-01-25']);
+    // Nothing else about the loan moves either.
+    expect(after).toMatchObject({ lenderName: 'Bank BTN', tenorMonths: 180, firstPaymentOn: '2026-01-25' });
+  });
+
+  it('refuses to file a loan under a code, or an account, it has no business with', async () => {
+    await saveLoanTerms(database, ws, terms(kpr.id));
+    await expect(setLoanCode(database, ws, bca.id, '103')).rejects.toThrow(LoanDbError);
+    await expect(setLoanCode(database, ws, carLoan.id, '103')).rejects.toThrow(/terms first/i);
   });
 
   it('refuses an account that is not a loan', async () => {

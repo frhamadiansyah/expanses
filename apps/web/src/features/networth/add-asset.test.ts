@@ -23,6 +23,61 @@ const houseDraft = (overrides: Partial<NewAssetDraft> = {}): NewAssetDraft => ({
   ...overrides,
 });
 
+describe('the item chosen decides the profile written', () => {
+  it('keeps what the eight old kinds always did', () => {
+    const plan = planNewAsset(
+      { ...emptyDraft('gold', 'IDR', '2026-09-18'), name: 'Antam gold bars', purchases: [{ occurredOn: '2024-02-03', units: '10', cost: '13100000' }] },
+      '2026-09-18',
+    );
+    expect(plan.profile).toMatchObject({ assetKind: 'gold', coretaxSection: 'lainnya', coretaxCode: '0701', planGroup: 'invest', unitKind: 'grams', acquiredYear: 2024 });
+    expect(plan.account.subtype).toBe('investment');
+  });
+
+  it('files an apartment under land and buildings, valued by what the owner says', () => {
+    const plan = planNewAsset(
+      { ...emptyDraft('apartment', 'IDR', '2026-09-18'), name: 'Apartemen Taman Anggrek', purchasedOn: '2021-06-01', cost: '1150000000', estimate: '1420000000' },
+      '2026-09-18',
+    );
+    expect(plan.profile).toMatchObject({ assetKind: 'property', coretaxSection: 'tidak_bergerak', coretaxCode: '0503', planGroup: 'use', acquiredYear: 2021 });
+    expect(plan.account.subtype).toBe('property');
+    expect(plan.valuation).toMatchObject({ valueMinor: 1_420_000_000, basis: 'estimate' });
+  });
+
+  it('files unlisted shares under investments, valued by what the owner says', () => {
+    const plan = planNewAsset({ ...emptyDraft('unlisted_stock', 'IDR', '2026-09-18'), name: 'PT Keluarga', purchasedOn: '2023-01-10', cost: '200000000' }, '2026-09-18');
+    expect(plan.profile).toMatchObject({ assetKind: 'other', coretaxSection: 'investasi', coretaxCode: '0302', planGroup: 'invest' });
+    expect(plan.account.subtype).toBe('investment');
+  });
+
+  it('records anything under Something else as a thing with a value, in the table its family files under', () => {
+    const plan = planNewAsset({ ...emptyDraft('else:0409', 'IDR', '2026-09-18'), name: 'Kapal nelayan', purchasedOn: '2025-05-05', cost: '80000000' }, '2026-09-18');
+    expect(plan.profile).toMatchObject({ assetKind: 'vehicle', coretaxSection: 'bergerak', coretaxCode: '0409', planGroup: 'use' });
+  });
+
+  it('weighs gold jewellery in grams, or takes a value when the owner would rather type one', () => {
+    const grams = planNewAsset(
+      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), name: 'Kalung', purchases: [{ occurredOn: '2025-01-01', units: '25', cost: '35000000' }] },
+      '2026-09-18',
+    );
+    expect(grams.profile).toMatchObject({ assetKind: 'gold', coretaxCode: '0702', unitKind: 'grams' });
+    expect(grams.trades).toHaveLength(1);
+
+    const typed = planNewAsset(
+      { ...emptyDraft('gold_jewellery', 'IDR', '2026-09-18'), name: 'Kalung', typedInstead: true, purchasedOn: '2025-01-01', cost: '35000000', estimate: '40000000' },
+      '2026-09-18',
+    );
+    expect(typed.profile).toMatchObject({ assetKind: 'other', coretaxCode: '0702', coretaxSection: 'lainnya', unitKind: null });
+    expect(typed.trades).toHaveLength(0);
+    expect(typed.valuation).toMatchObject({ valueMinor: 40_000_000 });
+  });
+
+  it('sends a receivable to the ledger rather than giving it a profile of its own', () => {
+    const plan = planNewAsset({ ...emptyDraft('trade_receivable', 'IDR', '2026-09-18'), name: 'PT Sejahtera', personName: 'PT Sejahtera', cost: '25000000' }, '2026-09-18');
+    expect(plan.person).toMatchObject({ direction: 'lent', personName: 'PT Sejahtera', coretaxCode: '0201', balanceMinor: 25_000_000 });
+    expect(plan.profile).toBeNull();
+  });
+});
+
 describe('what each kind asks for', () => {
   it('asks holdings for past purchases and property for an estimate', () => {
     expect(needsPurchases('gold')).toBe(true);
@@ -69,7 +124,7 @@ describe('planNewAsset', () => {
 
   it('keeps only the Coretax fields that were filled in', () => {
     const plan = planNewAsset(houseDraft({ coretaxFields: { loc: 'Jl. Contoh Raya No. 12', land: '120', cert: '  ' } }), TODAY);
-    expect(plan.profile.coretaxFields).toEqual({ loc: 'Jl. Contoh Raya No. 12', land: '120' });
+    expect(plan.profile!.coretaxFields).toEqual({ loc: 'Jl. Contoh Raya No. 12', land: '120' });
   });
 
   it('says what is missing, in plain words', () => {
@@ -82,6 +137,6 @@ describe('planNewAsset', () => {
   it('allows a holding with nothing bought yet', () => {
     const plan = planNewAsset(goldDraft({ purchases: [{ occurredOn: TODAY, units: '', cost: '' }] }), TODAY);
     expect(plan.trades).toEqual([]);
-    expect(plan.profile.acquiredYear).toBeNull();
+    expect(plan.profile!.acquiredYear).toBeNull();
   });
 });

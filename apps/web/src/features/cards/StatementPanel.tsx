@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CalendarArrowUp, ChevronLeft, ChevronRight, Search, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, ErrorBox, Field, Input, Select } from '../../ui';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
@@ -51,7 +52,8 @@ export function StatementPanel({
   const [back, setBack] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
-  const payers = accounts.filter((a) => isMoneyAccount(a) && a.kind === 'asset' && a.currency === card.currency);
+  // A bill is settled from money the owner can move — not from a deposit that is locked, nor from a holding.
+  const payers = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a) && a.kind === 'asset' && a.currency === card.currency);
   const [fromId, setFromId] = useState('');
   const [paidOn, setPaidOn] = useState(today);
   const [error, setError] = useState<unknown>(null);

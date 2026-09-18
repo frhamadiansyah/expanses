@@ -3,11 +3,12 @@ import { archiveAccount } from '@expanses/db';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { useBalances, useInvalidateAll } from '../../lib/queries';
+import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { AssetSettings } from './AssetSettings';
+import { DepositTermsCard } from './DepositTermsCard';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
@@ -36,9 +37,11 @@ export function AssetDetailPage() {
   const goals = useGoals();
   const loans = useLoans();
   const balances = useBalances();
+  const accounts = useAccounts();
   const [error, setError] = useState<unknown>(null);
 
   const value = values.data?.find((row) => row.accountId === accountId);
+  const account = (accounts.data ?? []).find((row) => row.id === accountId);
   const position = positions.data?.[accountId];
   const preset = profile.data ? presetFor(profile.data.assetKind) : undefined;
   const unitLabel = profile.data?.unitKind ? UNIT_LABELS[profile.data.unitKind] : '';
@@ -203,7 +206,10 @@ export function AssetDetailPage() {
         </Card>
       )}
 
-      {value && (
+      {value && <DepositTermsCard accountId={accountId} />}
+
+      {/* Only once the profile is in: the form fills its boxes when it mounts, and an empty code reads as "type one". */}
+      {value && !profile.isPending && (
         <AssetSettings
           key={accountId}
           accountId={accountId}
@@ -212,6 +218,8 @@ export function AssetDetailPage() {
           showLotSize={value.mode === 'market' && profile.data?.unitKind !== 'grams'}
           reportable={profile.data?.reportable ?? true}
           coretaxCode={profile.data?.coretaxCode ?? null}
+          // What the thing is, for the codes two items share: a saving account must not read back as a current one.
+          itemId={account?.subtype}
           taxTreatment={profile.data?.taxTreatment ?? null}
         />
       )}

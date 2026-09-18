@@ -44,6 +44,9 @@ const GROUP_BY_SUBTYPE: Record<string, PlanGroup> = {
   // Broker cash and a wallet balance are both money you can withdraw, so they sit with cash, not with holdings.
   fund: 'liquid',
   ewallet: 'liquid',
+  // A deposit cannot be paid from, but it is money and it comes back, so net worth counts it with cash.
+  time_deposit: 'liquid',
+  other_cash: 'liquid',
   investment: 'invest',
   receivable: 'owed',
   property: 'use',

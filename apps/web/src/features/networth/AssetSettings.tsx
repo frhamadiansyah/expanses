@@ -1,9 +1,10 @@
 import { hartaLabel, type PlanGroup } from '@expanses/core';
 import { setAssetGroup, setAssetReporting, setLotSize } from '@expanses/db';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { CodePicker } from '../ownables/CodePicker';
 import { PLAN_GROUP_LABELS, PLAN_GROUP_ORDER } from './labels';
 
 /** Which side of the plan an asset counts on, and how many shares make a lot at your broker. */
@@ -14,6 +15,7 @@ export function AssetSettings({
   showLotSize,
   reportable: currentReportable,
   coretaxCode: currentCode,
+  itemId,
   taxTreatment: currentTreatment,
 }: {
   accountId: string;
@@ -24,6 +26,8 @@ export function AssetSettings({
   reportable: boolean;
   /** Null when the asset has no profile yet. */
   coretaxCode: string | null;
+  /** What this thing is, as the catalogue names it — the account's subtype. Tells two items sharing a code apart. */
+  itemId?: string;
   /** How its income is taxed. Null means the owner has not said. */
   taxTreatment: 'final' | 'not_object' | 'ordinary' | null;
 }) {
@@ -37,6 +41,8 @@ export function AssetSettings({
   const [notice, setNotice] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // Choosing "Type a code instead" is a request for this box; without the cursor it looks like nothing happened.
+  const codeBox = useRef<HTMLInputElement>(null);
 
   async function save() {
     setError(null);
@@ -97,11 +103,13 @@ export function AssetSettings({
             <option value="ordinary">Ordinary — added to taxable income</option>
           </Select>
         </Field>
+        {/* The words first, the digits second: the list answers "which of these is it?", the box takes anything else. */}
+        <CodePicker flow="asset" code={code.trim()} itemId={itemId} onChange={setCode} onTypeInstead={() => codeBox.current?.focus()} disabled={!reportable} />
         <Field
           label="Tax report code"
           hint={code.trim() === '' ? 'Four digits. Empty uses the code this kind of asset normally takes.' : hartaLabel(code.trim()) || 'Not a code the form knows.'}
         >
-          <Input value={code} inputMode="numeric" onChange={(e) => setCode(e.target.value)} placeholder="0109" disabled={!reportable} />
+          <Input ref={codeBox} value={code} inputMode="numeric" onChange={(e) => setCode(e.target.value)} placeholder="0109" disabled={!reportable} />
         </Field>
       </div>
 

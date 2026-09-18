@@ -8,6 +8,7 @@ import {
   getAssetProfile,
   idleCash,
   listAssetProfiles,
+  listDepositTerms,
   listPrices,
   listTradeTemplates,
   listTrades,
@@ -40,6 +41,12 @@ export function useAssetProfiles() {
 export function useAssetProfile(accountId: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['asset-profile', ws.workspaceId, accountId], queryFn: () => getAssetProfile(database, ws, accountId) });
+}
+
+/** Every time deposit's maturity and rate, so a page can say them back beside the account they belong to. */
+export function useDepositTerms() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['deposit-terms', ws.workspaceId], queryFn: () => listDepositTerms(database, ws) });
 }
 
 export function useTrades(accountId?: string) {

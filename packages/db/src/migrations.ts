@@ -45,6 +45,7 @@ import categorySystemKeyPerBook from '../migrations/0043_category_system_key_per
 import billMonths from '../migrations/0044_bill_months.sql?raw';
 import accountTypes from '../migrations/0045_account_types.sql?raw';
 import bookIndexes from '../migrations/0046_book_indexes.sql?raw';
+import cashEquivalents from '../migrations/0047_cash_equivalents.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -100,6 +101,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 44, name: 'bill_months', sql: billMonths },
   { version: 45, name: 'account_types', sql: accountTypes },
   { version: 46, name: 'book_indexes', sql: bookIndexes },
+  { version: 47, name: 'cash_equivalents', sql: cashEquivalents },
 ];
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */

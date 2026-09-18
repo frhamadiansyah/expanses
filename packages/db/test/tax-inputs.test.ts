@@ -198,3 +198,31 @@ describe('what the year holds', () => {
     expect(inputs.debts).toEqual([]);
   });
 });
+
+describe('the code a money account files under', () => {
+  // The file's own beforeEach already opened BCA, gold, the house, the card and the KPR through setupDb;
+  // these two tests add to that workspace rather than making another.
+  it('follows its kind of account when the owner has never chosen one', async () => {
+    const opened: Record<string, string> = {};
+    for (const subtype of ['cash', 'bank', 'savings', 'time_deposit', 'ewallet', 'fund', 'other_cash'] as const) {
+      const account = await createAccount(database, ws, { name: `A ${subtype}`, kind: 'asset', subtype, currency: 'IDR', openingBalanceMinor: 1_000_000, openedOn: '2026-01-01' });
+      opened[subtype] = account.id;
+    }
+    const inputs = await coretaxInputsFor(database, ws, 2026);
+    const codeOf = (subtype: string) => inputs.cash.find((row) => row.accountId === opened[subtype])!.code;
+    expect(codeOf('cash')).toBe('0101');
+    expect(codeOf('bank')).toBe('0102');
+    expect(codeOf('savings')).toBe('0102');
+    expect(codeOf('time_deposit')).toBe('0104');
+    expect(codeOf('ewallet')).toBe('0105');
+    expect(codeOf('fund')).toBe('0109');
+    expect(codeOf('other_cash')).toBe('0109');
+  });
+
+  it('never overrules a code the owner did choose', async () => {
+    const wallet = await createAccount(database, ws, { name: 'GoPay', kind: 'asset', subtype: 'ewallet', currency: 'IDR', openingBalanceMinor: 500_000, openedOn: '2026-01-01' });
+    await saveAssetProfile(database, ws, { accountId: wallet.id, assetKind: 'cash', coretaxSection: 'kas', coretaxCode: '0109' });
+    const inputs = await coretaxInputsFor(database, ws, 2026);
+    expect(inputs.cash.find((row) => row.accountId === wallet.id)!.code).toBe('0109');
+  });
+});

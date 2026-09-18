@@ -14,6 +14,9 @@ import { RecommendPage } from '../features/cards/RecommendPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
+import { AddAccountPage } from '../features/ownables/AddAccountPage';
+import { AddAssetPage } from '../features/ownables/AddAssetPage';
+import { AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
@@ -73,6 +76,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators', component: CalculatorsPage }),
+  // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage }),
@@ -87,10 +92,15 @@ const routeTree = rootRoute.addChildren([
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
+  // "new" is a static segment, which outranks the `$accountId` below it however they are ordered here.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/new', component: AddAssetPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/goals', component: GoalsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/debts', component: DebtsPage }),
+  // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and only the
+  // last of those belongs under /net-worth/debts.
+  createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: LoansPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans/$accountId', component: LoanDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/tax-report', component: CoretaxPage }),

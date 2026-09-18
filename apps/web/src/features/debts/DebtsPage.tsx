@@ -1,4 +1,5 @@
 import type { PersonDebtRow } from '@expanses/db';
+import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
@@ -36,7 +37,21 @@ export function DebtsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Lend &amp; borrow" action={!adding && <Button onClick={() => setAdding(true)}>Add a loan</Button>} />
+      <PageHeader
+        title="Lend &amp; borrow"
+        action={
+          // While the inline form is open there is no action to show, and an empty row would still take its gap.
+          !adding && (
+            <div className="flex items-center gap-4">
+              {/* The inline form is still one click away; the picker is for when you do not know what to call it. */}
+              <Link to="/debts/new" className="text-sm font-medium text-slate-600 underline-offset-4 hover:underline">
+                What do you owe?
+              </Link>
+              <Button onClick={() => setAdding(true)}>Add a loan</Button>
+            </div>
+          )
+        }
+      />
       <NetWorthTabs />
       <ErrorBox error={people.error} />
 

@@ -1,11 +1,12 @@
-import { dueLabel, isoDate } from '@expanses/core';
-import { forgiveRemainder, type PersonDebtRow, recordRepayment } from '@expanses/db';
+import { type DebtDirection, dueLabel, hartaLabel, isoDate, utangLabel } from '@expanses/core';
+import { forgiveRemainder, type PersonDebtRow, recordRepayment, saveDebtProfile } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, ErrorBox, Field, Input, Money, Select } from '../../ui';
-import { useDebtHistory } from './queries';
+import { personCodeChoices } from '../ownables/catalogue-view';
+import { useDebtHistory, useDebtProfiles } from './queries';
 import { emptyRepaymentDraft, type RepaymentDraft, repaymentDraftToInput } from './debts-form';
 
 const DUE_PILL: Record<string, string> = {
@@ -37,6 +38,55 @@ function History({ accountId, currency }: { accountId: string; currency: string 
           <Money minor={row.amountMinor} currency={currency} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * What one loan between people files as, changed here.
+ *
+ * Money owed to you is harta — a piutang, and which of the three depends on whether the borrower is a customer,
+ * a relative, or neither. Money you owe is utang, and never 102: a credit card has a card's own form. The rest
+ * of the profile is written back untouched, so choosing a code changes the code alone.
+ */
+function DebtCodeField({ accountId, direction }: { accountId: string; direction: DebtDirection }) {
+  const { database, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const profile = (useDebtProfiles().data ?? []).find((row) => row.accountId === accountId);
+  const [error, setError] = useState<unknown>(null);
+  if (!profile) return null;
+  const naming = direction === 'lent' ? hartaLabel : utangLabel;
+
+  async function choose(coretaxCode: string) {
+    if (!profile) return;
+    setError(null);
+    try {
+      await saveDebtProfile(database, ws, {
+        accountId: profile.accountId,
+        personName: profile.personName,
+        personIdNumber: profile.personIdNumber,
+        reason: profile.reason,
+        dueOn: profile.dueOn,
+        coretaxCode,
+      });
+      await invalidate();
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  return (
+    <div className="max-w-sm space-y-1">
+      <Field label="Tax report code" hint={naming(profile.coretaxCode) || 'Not a code the form knows.'}>
+        <Select value={profile.coretaxCode} onChange={(e) => void choose(e.target.value)}>
+          {personCodeChoices(direction).map((choice) => (
+            <option key={choice.code} value={choice.code}>
+              {choice.label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <ErrorBox error={error} />
     </div>
   );
 }
@@ -162,6 +212,8 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
                   </div>
                 </div>
               )}
+              {/* Never shown while choosing who owes what; shown here, where it can be put right. */}
+              <DebtCodeField accountId={loan.accountId} direction={person.direction} />
             </div>
           );
         })}
