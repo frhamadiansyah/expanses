@@ -63,4 +63,5 @@ export * as cardsSchema from './schema-cards';
 export * from './repos/cards';
 export * as booksSchema from './schema-books';
 export * from './repos/books';
+export * from './repos/book-currency';
 export { billTablesExist } from './repos/bill-months';
