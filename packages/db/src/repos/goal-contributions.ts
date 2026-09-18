@@ -6,7 +6,9 @@ import { accounts, entries, transactions } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goalContributions } from '../schema-budget';
 
-/** Where money that reaches a goal can sit without being fresh saving when it moves on. */
+/* Where money that reaches a goal can sit without being fresh saving when it moves on. Narrower than the
+   ledger's spendable list on purpose: a buy paid from a broker's cash was already counted when the money
+   was parked there, while a buy paid from a wallet or a current account is fresh money. */
 const PARKED = ['savings', 'investment', 'fund'];
 
 /** Records a change to a set-aside. Nothing is written when the amount did not move. */

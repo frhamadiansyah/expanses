@@ -2,6 +2,7 @@ import { type GoalKind, isoDate, minorToMajorString, parseMajor } from '@expanse
 import { type EarmarkRow, type GoalRow, removeEarmark, saveEarmark, saveGoal } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
+import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
 import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, templateDueOn, templateFor } from './goal-cards';
@@ -15,8 +16,6 @@ interface StageDraft {
   usesMonths: boolean;
   paidOn: string | null;
 }
-
-const EARMARKABLE = ['cash', 'bank', 'savings', 'fund', 'ewallet'];
 
 function draftFromTemplate(template: GoalTemplate, today: string): StageDraft {
   return {
@@ -64,7 +63,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
   const [busy, setBusy] = useState(false);
 
   const template = GOAL_TEMPLATES.find((row) => row.kind === kind);
-  const savingsAccounts = (accounts.data ?? []).filter((account) => isMoneyAccount(account) && EARMARKABLE.includes(account.subtype));
+  const savingsAccounts = (accounts.data ?? []).filter((account) => isMoneyAccount(account) && SPENDABLE_SUBTYPES.includes(account.subtype));
 
   function pickKind(next: GoalKind) {
     setKind(next);

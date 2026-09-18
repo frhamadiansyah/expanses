@@ -2,6 +2,7 @@ import type { BusinessScheme } from '@expanses/core';
 import { archiveIncomeSource, saveIncomeSource } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
+import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Money, Select } from '../../ui';
 import { useBusinessReport } from './queries';
@@ -36,7 +37,7 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
   const [thresholdApplies, setThresholdApplies] = useState(true);
 
   const wallets = (accounts.data ?? []).filter(
-    (account) => ['bank', 'cash', 'savings', 'fund', 'ewallet'].includes(account.subtype) && account.archivedAt === null,
+    (account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null,
   );
   const data = report.data;
   const nothingYet = (data?.umkm.length ?? 0) === 0 && (data?.nppn.length ?? 0) === 0;

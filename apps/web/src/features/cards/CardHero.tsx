@@ -3,6 +3,7 @@ import { type AccountRow, cardStatement, type CardRow, postTransaction } from '@
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
+import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { isMoneyAccount, useInvalidateAll } from '../../lib/queries';
 import { Button, cx, ErrorBox, Field, Input, Select } from '../../ui';
 import { CardFace } from './CardFace';
@@ -38,7 +39,7 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
   const invalidate = useInvalidateAll();
   const currency = card.currency ?? ws.baseCurrency;
   // Only money that can pay a bill: bank, savings and cash, not holdings such as gold or shares.
-  const payers = accounts.filter((a) => isMoneyAccount(a) && ['bank', 'savings', 'cash', 'fund', 'ewallet'].includes(a.subtype) && a.currency === currency);
+  const payers = accounts.filter((a) => isMoneyAccount(a) && SPENDABLE_SUBTYPES.includes(a.subtype) && a.currency === currency);
   const [fromId, setFromId] = useState(payers[0]?.id ?? '');
   const [amount, setAmount] = useState(minorToMajorString(amountMinor, currency));
   const [paidOn, setPaidOn] = useState(today);

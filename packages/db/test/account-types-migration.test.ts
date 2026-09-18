@@ -51,12 +51,31 @@ async function atVersion44() {
   await post('tx-card', 'Tokopedia', '2026-02-10', [['acc-groceries', 150_000], ['acc-visa', -150_000]]);
 }
 
-/** Every column of every account, the shape of the table, and the indexes SQLite holds for it. */
+/** Line breaks and runs of spaces differ between the migration that wrote a statement and the one that
+    rewrites it; nothing about the constraint does. Compared on one line, the texts have to match. */
+const flat = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+const SUBTYPE_CHECK = /CHECK \(subtype IN \([^)]*\)\)/;
+
+/** The subtypes the table's own CHECK allows, whatever order and spacing it lists them in. */
+const allowedSubtypes = (ddl: string) => [...ddl.match(SUBTYPE_CHECK)![0].matchAll(/'(\w+)'/g)].map((m) => m[1]!).sort();
+
+/** The table with that one list blanked out: columns, defaults, foreign keys and the other CHECKs. */
+const shapeApartFromSubtypes = (ddl: string) => flat(ddl).replace(SUBTYPE_CHECK, 'CHECK (subtype IN (...))');
+
+/** Every column of every account, the table's own DDL, and the indexes SQLite holds for it. */
 async function accountsSchema() {
+  const [[ddl]] = (await database.db.values<[string]>(
+    sql`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'accounts'`,
+  )) as [[string]];
+  const indexes = await database.db.values<[string, string | null]>(
+    sql`SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'accounts' ORDER BY name`,
+  );
   return {
     rows: await database.db.values(sql`SELECT * FROM accounts ORDER BY id`),
     columns: await database.db.values(sql`PRAGMA table_info(accounts)`),
-    indexes: await database.db.values(sql`SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'accounts' ORDER BY name`),
+    ddl,
+    indexes: indexes.map(([name, indexSql]) => [name, indexSql === null ? null : flat(indexSql)]),
   };
 }
 
@@ -79,7 +98,7 @@ describe('migration 0045', () => {
     expect(after.columns).toEqual(before.columns);
     // Both of 0001's indexes are back, accounts_system_key in the narrowed form 0043 left it in.
     expect(after.indexes).toEqual(before.indexes);
-    expect(after.indexes.map((row) => (row as [string, string])[0])).toEqual([
+    expect(after.indexes.map(([name]) => name)).toEqual([
       'accounts_system_key',
       'accounts_workspace_kind',
       // The primary key's own index, proof the table was rebuilt with the same key and not merely emptied.
@@ -88,6 +107,39 @@ describe('migration 0045', () => {
     expect(await nativeBalances(database, ws)).toEqual(balancesBefore);
     // Entries, trades and the parent_id self-reference still point at rows that exist.
     expect(await database.db.values(sql`PRAGMA foreign_key_check`)).toEqual([]);
+  });
+
+  it('rewrites nothing in the table but the list of subtypes', async () => {
+    const before = await accountsSchema();
+
+    await migrate(database);
+
+    const after = await accountsSchema();
+    // Every column, default, foreign key, primary key and other CHECK, written exactly as 0001 wrote them.
+    // PRAGMA table_info reports none of those, which is why the table's own DDL is compared here.
+    expect(shapeApartFromSubtypes(after.ddl)).toBe(shapeApartFromSubtypes(before.ddl));
+    expect(allowedSubtypes(before.ddl)).not.toContain('fund');
+    expect(allowedSubtypes(after.ddl)).toEqual([...allowedSubtypes(before.ddl), 'ewallet', 'fund'].sort());
+    for (const clause of ['REFERENCES workspaces(id)', 'REFERENCES accounts(id)', 'id TEXT PRIMARY KEY']) {
+      expect(flat(after.ddl)).toContain(clause);
+    }
+  });
+
+  it('still refuses an asset with no currency, the other CHECK on the table', async () => {
+    await migrate(database);
+    await expect(
+      database.execScript(
+        `INSERT INTO accounts (id, workspace_id, kind, subtype, name, currency, valuation_mode, sort_order, created_at)
+         VALUES ('acc-no-currency', '${ws.workspaceId}', 'asset', 'ewallet', 'Wallet with no currency', NULL, 'derived', 0, '2026-01-01T00:00:00Z')`,
+      ),
+    ).rejects.toThrow();
+    // A workspace that does not exist is still refused too, so the foreign key survived the rebuild.
+    await expect(
+      database.execScript(
+        `INSERT INTO accounts (id, workspace_id, kind, subtype, name, currency, valuation_mode, sort_order, created_at)
+         VALUES ('acc-nowhere', 'no-such-workspace', 'asset', 'ewallet', 'GoPay', 'IDR', 'derived', 0, '2026-01-01T00:00:00Z')`,
+      ),
+    ).rejects.toThrow();
   });
 
   it('still refuses a second account on a system key, and a category may still share one', async () => {

@@ -3,8 +3,8 @@ import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, cr
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
-import { ACCOUNT_TYPES } from '../../lib/account-types';
-import { isMoneyAccount, SUBTYPE_LABELS, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { ACCOUNT_TYPES, SUBTYPE_LABELS } from '../../lib/account-types';
+import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { useAssetValues } from '../networth/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';

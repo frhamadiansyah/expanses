@@ -5,6 +5,7 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { goalCalculators } from '../schema-budget';
 import { goalEarmarks, goalStages, goals } from '../schema-goals';
+import { SPENDABLE_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
 
 export class GoalDbError extends Error {
@@ -42,9 +43,6 @@ export interface SaveGoalInput {
   /** Set only by a calculator writing its own working. Anything else typed here breaks the link. */
   derived?: boolean;
 }
-
-/** Only money you can move can be set aside; holdings are tagged per purchase instead. */
-const EARMARKABLE = ['cash', 'bank', 'savings', 'fund', 'ewallet'];
 
 export async function listGoals(database: Database, ws: WorkspaceContext, opts: { includeArchived?: boolean } = {}): Promise<GoalRow[]> {
   const rows = await database.db
@@ -210,7 +208,7 @@ export async function saveEarmark(database: Database, ws: WorkspaceContext, inpu
       .from(accounts)
       .where(and(eq(accounts.id, input.accountId), eq(accounts.workspaceId, ws.workspaceId)));
     if (!account) throw new GoalDbError('Account not found in this workspace');
-    if (!EARMARKABLE.includes(account.subtype)) {
+    if (!SPENDABLE_SUBTYPES.includes(account.subtype)) {
       throw new GoalDbError('Only accounts that hold money can be set aside; a holding is tagged on each purchase instead');
     }
     const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, input.goalId), eq(goals.workspaceId, ws.workspaceId)));

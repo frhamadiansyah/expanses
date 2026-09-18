@@ -2,6 +2,7 @@ import { dueLabel, isoDate } from '@expanses/core';
 import { forgiveRemainder, type PersonDebtRow, recordRepayment } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, ErrorBox, Field, Input, Money, Select } from '../../ui';
 import { useDebtHistory } from './queries';
@@ -16,8 +17,6 @@ const DUE_PILL: Record<string, string> = {
 const HISTORY_LABELS: Record<string, string> = { lend: 'Lent', repayment: 'Repayment', forgive: 'Forgiven' };
 
 /** Accounts money can come from or go to. A receivable holds a person's debt, not money. */
-const SPENDABLE = ['bank', 'cash', 'savings', 'fund', 'ewallet'];
-
 function History({ accountId, currency }: { accountId: string; currency: string }) {
   const history = useDebtHistory(accountId);
   if ((history.data?.length ?? 0) === 0) return null;
@@ -48,7 +47,7 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
   // Somewhere money can actually sit: never another person's account.
-  const moneyAccounts = accounts.filter((account) => SPENDABLE.includes(account.subtype) && account.archivedAt === null);
+  const moneyAccounts = accounts.filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
   const today = isoDate();
   const [repayingId, setRepayingId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);

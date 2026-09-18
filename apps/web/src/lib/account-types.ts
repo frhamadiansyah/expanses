@@ -23,7 +23,11 @@ export const ACCOUNT_TYPES: { subtype: AccountSubtype; kind: 'asset' | 'liabilit
   { subtype: 'payable', kind: 'liability' },
 ];
 
-export const SUBTYPE_LABELS: Record<string, string> = {
+/**
+ * Every subtype needs a name here, so adding one to the ledger without naming it does not compile. The last
+ * two are the ledger's own and never offered: a category, and the system equity accounts.
+ */
+export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
   bank: 'Current account',
   cash: 'Cash',
   savings: 'Saving account',
@@ -36,4 +40,16 @@ export const SUBTYPE_LABELS: Record<string, string> = {
   credit_card: 'Credit card',
   loan: 'Loan',
   payable: 'Money I owe',
+  category: 'Category',
+  equity: 'Equity',
 };
+
+/**
+ * Accounts that hold money the owner can move: what a screen offers when it asks where money comes from or
+ * goes — a repayment, a loan payment, the cash side of a trade, money set aside for a goal. The ledger keeps
+ * the same list for what can be earmarked; a test holds the two in step.
+ */
+export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['bank', 'cash', 'savings', 'fund', 'ewallet'];
+
+/** What can pay a bill: money the owner holds, or a card that will be settled later. */
+export const WALLET_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES, 'credit_card'];

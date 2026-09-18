@@ -3,6 +3,7 @@ import { addRatePeriod, recordExtraPayment, recordLoanPayment } from '@expanses/
 import { Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { CategoryOptions } from '../cards/options';
@@ -26,7 +27,7 @@ function PaymentForm({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const money = accounts.filter((account) => ['bank', 'cash', 'savings', 'fund', 'ewallet'].includes(account.subtype) && account.archivedAt === null);
+  const money = accounts.filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
   const today = isoDate();
   const next = useNextPayment(accountId, today);
   const [draft, setDraft] = useState<PaymentDraft | null>(null);
@@ -187,7 +188,7 @@ function ExtraPaymentForm({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const money = accounts.filter((account) => ['bank', 'cash', 'savings', 'fund', 'ewallet'].includes(account.subtype) && account.archivedAt === null);
+  const money = accounts.filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
   const today = isoDate();
   const [amount, setAmount] = useState('');
   const [penalty, setPenalty] = useState('');

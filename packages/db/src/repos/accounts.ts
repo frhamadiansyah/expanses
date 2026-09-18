@@ -23,6 +23,13 @@ export const BALANCE_SUBTYPES = {
   liability: ['credit_card', 'loan', 'payable'],
 } as const satisfies Record<'asset' | 'liability', readonly AccountSubtype[]>;
 
+/**
+ * Accounts that hold money the owner can move: everyday cash, a wallet, a current or savings account, or
+ * cash at a broker. Money can be spent from them, received into them, and set aside on them for a goal —
+ * unlike a holding, which is worth what it is worth and is tagged purchase by purchase.
+ */
+export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['cash', 'bank', 'savings', 'fund', 'ewallet'];
+
 export interface CreateAccountInput {
   name: string;
   kind: AccountKind;
