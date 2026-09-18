@@ -1,4 +1,5 @@
 import { findEntry } from '@expanses/catalog';
+import { readFileSync } from 'node:fs';
 import { computeCycleEarn, DEFAULT_CATEGORY_KEYS, expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
@@ -163,6 +164,22 @@ describe('books', () => {
 
   it('only ever ensures keys the defaults define, since that is where their name and parent come from', () => {
     for (const key of POSTED_INTO_KEYS) expect(DEFAULT_CATEGORY_KEYS.has(key), key).toBe(true);
+  });
+
+  it('ensures every key the repositories post into by themselves, so a new workspace never borrows Personal’s', () => {
+    // Read from the source rather than from a run: a key added to one of these files later, and not to
+    // POSTED_INTO_KEYS, would file that workspace's interest or tax into Personal quietly and for good.
+    const used = new Set<string>();
+    for (const file of ['loans.ts', 'debts.ts', 'trades.ts']) {
+      const source = readFileSync(new URL(`../src/repos/${file}`, import.meta.url), 'utf8');
+      // The three shapes these files look a key up in: keys['…'], byKey['…'] and need('…').
+      for (const [, bracket, called] of source.matchAll(/(?:keys|byKey)\[\s*'([^']+)'\s*\]|need\(\s*'([^']+)'\s*\)/g)) {
+        used.add((bracket ?? called)!);
+      }
+    }
+    // The regex finding nothing would make this test pass while proving nothing.
+    expect(used.size).toBeGreaterThan(3);
+    for (const key of used) expect(POSTED_INTO_KEYS, key).toContain(key);
   });
 
   it('copies a category’s typed MCC with the category, so a copied workspace earns the same points', async () => {
@@ -401,6 +418,31 @@ describe('reading one book', () => {
     expect((await ensureCategoryKeys(database, ws)).created).toContain('utilities.gas_energy');
     const [[recreated]] = (await database.db.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND system_key = 'utilities.gas_energy'`)) as [[string]];
     expect(await categoryIdsOfBook(database, personal)).toContain(recreated);
+  });
+
+  it('hangs a default it recreates under Personal’s own parent, never another workspace’s copy', async () => {
+    const { database, ws } = await setupDb();
+    const personal = (await personalBook(database, ws)).id;
+    // An empty workspace gets its own copies of the keys the app posts into, Estimated tax under Taxes among them.
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const key = 'government_taxes.estimated_tax';
+    const ids = (await database.db.values<[string]>(sql`SELECT id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND system_key = ${key}`)).map((r) => r[0]);
+    for (const id of ids) {
+      await database.db.run(sql`DELETE FROM book_categories WHERE category_account_id = ${id}`);
+      await database.db.run(sql`DELETE FROM accounts WHERE id = ${id}`);
+    }
+
+    expect((await ensureCategoryKeys(database, ws)).created).toContain(key);
+
+    const [[recreated, parentId]] = (await database.db.values<[string, string | null]>(
+      sql`SELECT id, parent_id FROM accounts WHERE workspace_id = ${ws.workspaceId} AND system_key = ${key}`,
+    )) as [[string, string | null]];
+    const personalCategories = await categoryIdsOfBook(database, personal);
+    expect(personalCategories).toContain(recreated);
+    // Filed in Personal and parented in Personal: a child of Business's Taxes would have shown Personal's tax
+    // under a workspace it does not belong to, and dragged the row into Business's tree on every screen.
+    expect(personalCategories).toContain(parentId);
+    expect(await categoryIdsOfBook(database, business)).not.toContain(parentId);
   });
 
   it('lists the book’s transactions and every transfer, never another book’s spending', async () => {

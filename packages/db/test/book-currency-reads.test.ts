@@ -7,7 +7,9 @@ import {
   createBook,
   eventSpendingBetween,
   inBook,
+  listTransactions,
   listTransactionsIn,
+  ownerScope,
   periodFlows,
   personalBook,
   postTransaction,
@@ -150,7 +152,8 @@ describe('what a workspace’s bills already claim', () => {
     // The dollar bill is left out of the figure rather than added as though it were rupiah — and is said out loud,
     // so "… of it is bills" cannot understate what is already spoken for without the page knowing.
     expect(after.committed).toEqual({ [meals.id]: 4_150 });
-    expect(after.missing).toEqual([{ currency: 'USD', onDate: isoDate() }]);
+    // Named against the day the bill comes out — the eighth of this month — since that is the day it is converted on.
+    expect(after.missing).toEqual([{ currency: 'USD', onDate: `${isoDate().slice(0, 7)}-08` }]);
   });
 });
 
@@ -174,5 +177,28 @@ describe('an event and a list read in the workspace’s currency', () => {
     expect(august).toMatchObject({ amountBaseMinor: 0, amountMinor: 6_000_000, currency: 'IDR' });
     const september = list.transactions.find((tx) => tx.id === inSeptember)!.entries.find((entry) => entry.accountId === meals.id)!;
     expect(september).toMatchObject({ amountBaseMinor: 99_600, amountMinor: 12_000_000 });
+  });
+});
+
+describe('an event read one workspace at a time', () => {
+  it('narrows its history to that workspace and still reads it in the owner’s money', async () => {
+    const { database, ws, sgd, book, card, meals } = await sgdWorkspace();
+    const personal = inBook(ws, (await personalBook(database, ws)).id);
+    const groceries = await createAccount(database, personal, { name: 'Groceries', kind: 'expense', subtype: 'category', currency: null });
+    const eventId = await saveEvent(database, ws, { name: 'Client visit', startsOn: '2026-09-01', endsOn: '2026-09-30' });
+    const dinner = await spend(database, book, { categoryId: meals.id, payerId: card.id, occurredOn: '2026-09-10', amountMinor: 12_000_000 });
+    const shopping = await spend(database, personal, { categoryId: groceries.id, payerId: card.id, occurredOn: '2026-09-11', amountMinor: 500_000 });
+    await tagTransaction(database, ws, dinner, eventId);
+    await tagTransaction(database, ws, shopping, eventId);
+
+    // The tab narrows by book, but the read stays owner-level, as every other figure on the event screen is.
+    const tab = await listTransactions(database, ownerScope(ws), { eventId, bookId: sgd });
+    expect(tab.map((tx) => tx.id)).toEqual([dinner]);
+    // Rupiah, the money the page's labels say — not the S$996,00 the workspace's own Cashflow would read.
+    expect(tab[0]!.entries.find((entry) => entry.accountId === meals.id)!.amountBaseMinor).toBe(12_000_000);
+
+    // The whole trip, for comparison: both workspaces' spending, all of it in rupiah.
+    const all = await listTransactions(database, ownerScope(ws), { eventId });
+    expect(all.map((tx) => tx.id).sort()).toEqual([dinner, shopping].sort());
   });
 });

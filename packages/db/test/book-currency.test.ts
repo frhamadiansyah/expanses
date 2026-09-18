@@ -46,6 +46,36 @@ describe('the money a workspace reads in', () => {
     expect(money.missing()).toEqual([{ currency: 'IDR', onDate: '2026-07-01' }]);
   });
 
+  it('reads a rate backwards when only the other direction is on file', async () => {
+    const { database, ws } = await setupDb();
+    const sgd = await createBook(database, ws, { name: 'Singapore', kind: 'business', baseCurrency: 'SGD' });
+    // What the user's own data holds: foreign→rupiah rows, entered whenever a purchase in another money was
+    // posted. Without reading them backwards a workspace in dollars would drop nearly every amount it has.
+    await upsertRate(database, { fromCurrency: 'SGD', toCurrency: 'IDR', onDate: '2026-08-01', rate: 11_500, source: 'manual', sourceDate: '2026-08-01' });
+    await upsertRate(database, { fromCurrency: 'SGD', toCurrency: 'IDR', onDate: '2026-09-01', rate: 12_000, source: 'manual', sourceDate: '2026-09-01' });
+    const money = await bookMoneyFor(database, inBook(ws, sgd));
+
+    // 12.000.000 rupiah at 12.000 rupiah to the dollar is S$1.000,00.
+    expect(money.convert(12_000_000, 'IDR', '2026-09-10')).toBe(100_000);
+    // The same "exact day, else the latest earlier" rule, on the inverted pair: August's row speaks for August.
+    // 1.000 rupiah at 11.500 is S$0,0869… — rounded half away from zero to nine cents.
+    expect(money.convert(1_000, 'IDR', '2026-08-15')).toBe(9);
+    // Before every rate, either way round, is still nothing.
+    expect(money.convert(12_000_000, 'IDR', '2026-07-01')).toBeNull();
+    expect(money.missing()).toEqual([{ currency: 'IDR', onDate: '2026-07-01' }]);
+  });
+
+  it('prefers the rate stored the way it is asked for over the inverse of the other', async () => {
+    const { database, ws } = await setupDb();
+    const sgd = await createBook(database, ws, { name: 'Singapore', kind: 'business', baseCurrency: 'SGD' });
+    await upsertRate(database, { fromCurrency: 'IDR', toCurrency: 'SGD', onDate: '2026-09-01', rate: 0.000083, source: 'manual', sourceDate: '2026-09-01' });
+    await upsertRate(database, { fromCurrency: 'SGD', toCurrency: 'IDR', onDate: '2026-09-01', rate: 12_000, source: 'manual', sourceDate: '2026-09-01' });
+    const money = await bookMoneyFor(database, inBook(ws, sgd));
+
+    // 0,000083 gives S$996,00; the inverse of 12.000 would have given S$1.000,00.
+    expect(money.convert(12_000_000, 'IDR', '2026-09-10')).toBe(99_600);
+  });
+
   it('reads a workspace’s chart, list, budget and bills in its own currency, and leaves out what it cannot convert', async () => {
     const { database, ws } = await setupDb();
     const sgd = await createBook(database, ws, { name: 'Singapore', kind: 'business', baseCurrency: 'SGD' });

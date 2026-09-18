@@ -121,6 +121,38 @@ describe('one workspace per transaction', () => {
     expect(await database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${edited}`)).toEqual([[business]]);
   });
 
+  it('refuses an edit that would move a transaction into another workspace', async () => {
+    const { database, ws, personal, business } = await copy();
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const theirs = (await categoryIdsByKey(database, inBook(ws, business)))['food_beverage.restaurants']!;
+    const mine = (await categoryIdsByKey(database, inBook(ws, personal)))['food_beverage.restaurants']!;
+    const dinner = await postTransaction(database, inBook(ws, business), {
+      occurredOn: '2026-09-02',
+      description: 'Supplier dinner',
+      lines: [
+        { accountId: theirs, amountMinor: 640_000, currency: 'IDR' },
+        { accountId: card.id, amountMinor: -640_000, currency: 'IDR' },
+      ],
+    });
+
+    // The two copies of Restaurants look alike on a screen; saving the wrong one would carry the spending out of
+    // Business without a word. No path may do it, whatever the form offered.
+    await expect(
+      replaceTransaction(database, inBook(ws, personal), dinner, {
+        occurredOn: '2026-09-02',
+        description: 'Supplier dinner',
+        lines: [
+          { accountId: mine, amountMinor: 640_000, currency: 'IDR' },
+          { accountId: card.id, amountMinor: -640_000, currency: 'IDR' },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'OTHER_BOOK' });
+
+    // Refused before anything was written: the original is still posted, and still Business's.
+    expect(await database.db.values(sql`SELECT status FROM transactions WHERE id = ${dinner}`)).toEqual([['posted']]);
+    expect(await database.db.values(sql`SELECT book_id FROM book_transactions WHERE transaction_id = ${dinner}`)).toEqual([[business]]);
+  });
+
   it('files a card-funded purchase and a card-paid loan in no workspace, so they show in every one', async () => {
     const { database, ws, business } = await copy();
     const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });

@@ -407,6 +407,23 @@ export async function booksInEvent(database: Database, ws: WorkspaceContext, eve
   return rows.map(toRow);
 }
 
+/**
+ * Which workspace each category is filed in, by category id.
+ *
+ * For the owner-level pickers: once one workspace copies another's categories, two rows carry the same name, and a
+ * list offering both has to say which is which or the choice is a coin toss. A category filed nowhere — a set's
+ * category, or a database from before workspaces — is simply absent.
+ */
+export async function bookNamesByCategory(database: Database, ws: WorkspaceContext): Promise<Record<string, { id: string; name: string; kind: BookKind }>> {
+  if (!(await hasBooks(database.db))) return {};
+  const rows = await database.db
+    .select({ categoryAccountId: bookCategories.categoryAccountId, id: books.id, name: books.name, kind: books.kind })
+    .from(bookCategories)
+    .innerJoin(books, eq(books.id, bookCategories.bookId))
+    .where(eq(bookCategories.workspaceId, ws.workspaceId));
+  return Object.fromEntries(rows.map((row) => [row.categoryAccountId, { id: row.id, name: row.name, kind: row.kind }]));
+}
+
 /** Category ids filed in a book, for narrowing owner-wide queries to it. */
 export async function categoryIdsOfBook(database: Database, bookId: string): Promise<string[]> {
   const rows = await database.db.select({ id: bookCategories.categoryAccountId }).from(bookCategories).where(eq(bookCategories.bookId, bookId));

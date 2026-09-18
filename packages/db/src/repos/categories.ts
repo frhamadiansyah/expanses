@@ -22,10 +22,25 @@ const ADDED_WITH_ASSETS = new Set(['income.realized_gains', 'government_taxes.es
  */
 export async function ensureCategoryKeys(database: Database, ws: WorkspaceContext): Promise<{ keyed: string[]; created: string[] }> {
   return database.transaction(async (tx) => {
-    const rows: AccountRow[] = await tx
+    const all: AccountRow[] = await tx
       .select()
       .from(accounts)
       .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.subtype, 'category'), NOT_IN_A_SET));
+    // The default tree is Personal's. Once another workspace holds copies of the same keys, a workspace-wide
+    // lookup would answer with whichever copy came last — keying, parenting and counting siblings against
+    // another workspace's rows, and hanging a category Personal is missing under Business's parent.
+    const personalBookId = (await hasBooks(tx)) ? await personalBookIdTx(tx, ws.workspaceId) : null;
+    const personalCategories = personalBookId
+      ? new Set(
+          (
+            await tx
+              .select({ id: bookCategories.categoryAccountId })
+              .from(bookCategories)
+              .where(and(eq(bookCategories.workspaceId, ws.workspaceId), eq(bookCategories.bookId, personalBookId)))
+          ).map((row) => row.id),
+        )
+      : null;
+    const rows = personalCategories ? all.filter((row) => personalCategories.has(row.id)) : all;
     const byKey = new Map(rows.flatMap((row) => (row.systemKey ? [[row.systemKey, row] as const] : [])));
     const keyed: string[] = [];
     const created: string[] = [];
@@ -61,9 +76,9 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
       };
       await tx.insert(accounts).values(row);
       // A default recreated on open joins the Personal book, where the rest of the default tree lives.
-      if (await hasBooks(tx)) {
-        const bookId = await personalBookIdTx(tx, ws.workspaceId);
-        if (bookId) await tx.insert(bookCategories).values({ categoryAccountId: row.id, workspaceId: ws.workspaceId, bookId });
+      if (personalBookId) {
+        await tx.insert(bookCategories).values({ categoryAccountId: row.id, workspaceId: ws.workspaceId, bookId: personalBookId });
+        personalCategories?.add(row.id);
       }
       rows.push(row);
       byKey.set(key, row);
