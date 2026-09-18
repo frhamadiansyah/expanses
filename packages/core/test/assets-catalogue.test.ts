@@ -180,4 +180,14 @@ describe('searching', () => {
     expect(searchOwnables('helicopter', 'asset')).toEqual([]);
     expect(searchOwnables('', 'asset').length).toBe(ASSET_ITEMS.length);
   });
+
+  it('matches as it is typed, one word at a time, never inside an unrelated compound word', () => {
+    // Prefix, not full-word: found before the last letter is typed.
+    expect(searchOwnables('moto', 'asset').map((item) => item.id)).toEqual(['motorcycle']);
+    expect(searchOwnables('apart', 'asset').map((item) => item.id)).toEqual(['apartment']);
+    // A hyphenated label is still found by its first word.
+    expect(searchOwnables('unit', 'asset').map((item) => item.id)).toEqual(['stock', 'fund', 'unit_link']);
+    // The prefix still respects word starts: "gold" never lands inside "Non-gold jewellery".
+    expect(searchOwnables('gold jewellery', 'asset').map((item) => item.id)).toEqual(['gold_jewellery']);
+  });
 });

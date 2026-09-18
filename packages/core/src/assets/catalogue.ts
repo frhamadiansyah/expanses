@@ -53,8 +53,11 @@ export interface OwnableFamilyRow {
   items: readonly OwnableItem[];
 }
 
+/** Every way an item can be valued — the union `VALUED_BY_WORDS` must have a gloss for, no more and no less. */
+type ValuedByWord = Extract<OwnableBehaviour, { opens: 'holding' }>['valuedBy'] | 'ledger';
+
 /** The quiet line under an item, naming how it is valued — the mockup's own words. */
-const VALUED_BY_WORDS: Record<string, string> = {
+const VALUED_BY_WORDS: Record<ValuedByWord, string> = {
   units: 'units × price',
   face: 'face value × price',
   grams: 'grams × gold price',
@@ -87,7 +90,7 @@ const holding = (
 ): OwnableItem => ({
   id,
   label,
-  sub: sub ?? VALUED_BY_WORDS[behaviour.valuedBy]!,
+  sub: sub ?? VALUED_BY_WORDS[behaviour.valuedBy],
   code,
   section: sectionOfCode(code),
   behaviour: { opens: 'holding', ...behaviour },
@@ -96,7 +99,7 @@ const holding = (
 const receivable = (id: string, label: string, code: string): OwnableItem => ({
   id,
   label,
-  sub: VALUED_BY_WORDS.ledger!,
+  sub: VALUED_BY_WORDS.ledger,
   code,
   section: sectionOfCode(code),
   behaviour: { opens: 'person', direction: 'lent', valuedBy: 'ledger' },
@@ -307,8 +310,15 @@ export function somethingElse(id: OwnableFamily): CoretaxCode[] {
   return KODE_HARTA.filter((entry) => entry.family === family.hartaFamily && !spent.has(entry.code));
 }
 
+/** Every code reachable through "Something else" (§2.5) — the union `HARTA_ENGLISH` must gloss, no more and no less. */
+type SomethingElseCode =
+  | '0301' | '0306' | '0309' | '0399'
+  | '0401' | '0404' | '0405' | '0406' | '0407' | '0408' | '0409' | '0410' | '0411' | '0412'
+  | '0504' | '0505'
+  | '0699' | '0707' | '0711' | '0712';
+
 /** English gloss for a "Something else" code, in the mockup's own words. Only the reachable codes need one. */
-export const HARTA_ENGLISH: Record<string, string> = {
+export const HARTA_ENGLISH: Record<SomethingElseCode, string> = {
   '0301': 'Shares bought to resell',
   '0306': 'Other debt securities',
   '0309': 'Equity not in share form',
@@ -344,7 +354,8 @@ const ELSE_BEHAVIOUR: Record<OwnableFamily, { assetKind: AssetKind; subtype: Ass
 export function elseItem(id: OwnableFamily, code: string): OwnableItem {
   const spare = somethingElse(id);
   if (!spare.some((entry) => entry.code === code)) throw new Error(`Family "${id}" has no spare code "${code}"`);
-  const label = HARTA_ENGLISH[code] ?? code;
+  // Verified above: every reachable "Something else" code is a SomethingElseCode, so HARTA_ENGLISH always has it.
+  const label = HARTA_ENGLISH[code as SomethingElseCode];
   const { assetKind, subtype, planGroup } = ELSE_BEHAVIOUR[id];
   return {
     id: elseId(code),
@@ -395,13 +406,18 @@ function ownableWords(item: OwnableItem): string[] {
     .filter(Boolean);
 }
 
-/** Items of a flow matching every token of the query, by label, sub-line and code. An empty query is everything. */
+/**
+ * Items of a flow matching every token of the query, by label, sub-line and code. Each token has to be
+ * the start of some word — prefix, not substring — so typing "unit" finds "Unit-linked insurance" as
+ * it is typed, while "gold" still never lands inside "Non-gold jewellery" (a hyphen keeps that one
+ * word). An empty query is everything.
+ */
 export function searchOwnables(query: string, flow: OwnableFlow): readonly OwnableItem[] {
   const items = FLOW_ITEMS[flow];
   const tokens = searchTokens(query);
   if (!tokens.length) return items;
   return items.filter((item) => {
     const words = ownableWords(item);
-    return tokens.every((t) => words.includes(t));
+    return tokens.every((t) => words.some((w) => w.startsWith(t)));
   });
 }
