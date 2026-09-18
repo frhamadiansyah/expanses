@@ -6,7 +6,7 @@ import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, Input, Money, Select } from '../../ui';
 
-const WALLET_SUBTYPES = ['bank', 'cash', 'savings', 'credit_card'];
+const WALLET_SUBTYPES = ['bank', 'cash', 'savings', 'fund', 'ewallet', 'credit_card'];
 const ROW = 'flex min-h-11 items-center justify-between gap-3 border-t border-slate-100 px-3 first:border-t-0';
 
 /**

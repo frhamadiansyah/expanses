@@ -16,7 +16,7 @@ interface StageDraft {
   paidOn: string | null;
 }
 
-const EARMARKABLE = ['cash', 'bank', 'savings'];
+const EARMARKABLE = ['cash', 'bank', 'savings', 'fund', 'ewallet'];
 
 function draftFromTemplate(template: GoalTemplate, today: string): StageDraft {
   return {

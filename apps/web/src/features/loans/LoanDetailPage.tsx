@@ -26,7 +26,7 @@ function PaymentForm({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const money = accounts.filter((account) => ['bank', 'cash', 'savings'].includes(account.subtype) && account.archivedAt === null);
+  const money = accounts.filter((account) => ['bank', 'cash', 'savings', 'fund', 'ewallet'].includes(account.subtype) && account.archivedAt === null);
   const today = isoDate();
   const next = useNextPayment(accountId, today);
   const [draft, setDraft] = useState<PaymentDraft | null>(null);
@@ -187,7 +187,7 @@ function ExtraPaymentForm({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const money = accounts.filter((account) => ['bank', 'cash', 'savings'].includes(account.subtype) && account.archivedAt === null);
+  const money = accounts.filter((account) => ['bank', 'cash', 'savings', 'fund', 'ewallet'].includes(account.subtype) && account.archivedAt === null);
   const today = isoDate();
   const [amount, setAmount] = useState('');
   const [penalty, setPenalty] = useState('');

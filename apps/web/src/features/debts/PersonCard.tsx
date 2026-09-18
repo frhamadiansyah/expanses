@@ -16,7 +16,7 @@ const DUE_PILL: Record<string, string> = {
 const HISTORY_LABELS: Record<string, string> = { lend: 'Lent', repayment: 'Repayment', forgive: 'Forgiven' };
 
 /** Accounts money can come from or go to. A receivable holds a person's debt, not money. */
-const SPENDABLE = ['bank', 'cash', 'savings'];
+const SPENDABLE = ['bank', 'cash', 'savings', 'fund', 'ewallet'];
 
 function History({ accountId, currency }: { accountId: string; currency: string }) {
   const history = useDebtHistory(accountId);

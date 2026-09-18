@@ -22,7 +22,7 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
 
   const set = (patch: Partial<DebtDraft>) => setDraft((current) => ({ ...current, ...patch }));
   // A loan comes from money you hold, or a card. Another person's account is not a source.
-  const money = accounts.filter((account) => ['bank', 'cash', 'savings', 'credit_card'].includes(account.subtype) && account.archivedAt === null);
+  const money = accounts.filter((account) => ['bank', 'cash', 'savings', 'fund', 'ewallet', 'credit_card'].includes(account.subtype) && account.archivedAt === null);
   const currency = money.find((account) => account.id === draft.moneyId)?.currency ?? ws.baseCurrency;
   const suggestions = people.data ? personSuggestions(people.data, draft.personName) : [];
 

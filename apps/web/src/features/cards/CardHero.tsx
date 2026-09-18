@@ -38,7 +38,7 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
   const invalidate = useInvalidateAll();
   const currency = card.currency ?? ws.baseCurrency;
   // Only money that can pay a bill: bank, savings and cash, not holdings such as gold or shares.
-  const payers = accounts.filter((a) => isMoneyAccount(a) && ['bank', 'savings', 'cash'].includes(a.subtype) && a.currency === currency);
+  const payers = accounts.filter((a) => isMoneyAccount(a) && ['bank', 'savings', 'cash', 'fund', 'ewallet'].includes(a.subtype) && a.currency === currency);
   const [fromId, setFromId] = useState(payers[0]?.id ?? '');
   const [amount, setAmount] = useState(minorToMajorString(amountMinor, currency));
   const [paidOn, setPaidOn] = useState(today);

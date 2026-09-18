@@ -8,7 +8,7 @@ import { Button, Card, ErrorBox, Field, Input, PageHeader, Select } from '../../
 import { useExpenseTemplates } from '../transactions/queries';
 import { amountInput } from './bill-view';
 
-const WALLET_SUBTYPES = ['bank', 'cash', 'savings', 'credit_card'];
+const WALLET_SUBTYPES = ['bank', 'cash', 'savings', 'fund', 'ewallet', 'credit_card'];
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 export function EditBillRoute() {
