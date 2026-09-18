@@ -114,7 +114,7 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
             <>
               <Field label="Category for points" hint="Not spending: it only tells the points engine what the card paid for.">
                 <Select value={draft.spendCategoryId} onChange={(e) => set({ spendCategoryId: e.target.value })}>
-                  <CategoryOptions ownerWide accounts={accounts} kind="expense" parentSuffix="(general)" />
+                  <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
                 </Select>
               </Field>
               <Field label="MCC">

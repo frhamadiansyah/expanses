@@ -106,7 +106,9 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
       const owner = await bookOfCategory(tx, categoryId);
       if (owner) bookIds.add(owner);
     }
-    if (bookIds.size > 1) throw new LedgerError('TWO_BOOKS', 'A transaction cannot spend in two workspaces at once');
+    // "Spend" would be wrong for the income and refund sides this also guards, and for a form that mixed the
+    // two by accident the fix is the same: pick the categories from one workspace.
+    if (bookIds.size > 1) throw new LedgerError('TWO_BOOKS', 'A transaction cannot belong to two workspaces at once. Pick categories from one workspace.');
     [bookId] = bookIds;
   }
 

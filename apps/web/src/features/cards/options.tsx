@@ -8,8 +8,9 @@ import { useCategorySetMembership } from '../categories/set-queries';
  * Set categories are left out: every picker built on this one speaks for the monthly tree, and an
  * event's categories are chosen on the event itself.
  *
- * The open book's categories only, unless `ownerWide`: card rules, loans, debts and drafts belong to the owner and can
- * name a category in any book.
+ * The open book's categories only, unless `ownerWide`: card rules and drafts belong to the owner and can name a
+ * category in any book. A form that records something — a loan, a debt, a card-funded purchase, an instalment's
+ * extras — offers the open book's categories, so it can never hand the posting a category from another one.
  */
 export function CategoryOptions({
   accounts,

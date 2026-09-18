@@ -4,9 +4,13 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { budgetOverrides, budgets } from '../schema-budget';
+import { bookOfCategory, hasBooks } from './books';
 
 export class BudgetError extends Error {
-  constructor(message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
     super(message);
     this.name = 'BudgetError';
   }
@@ -36,11 +40,22 @@ export interface BudgetRow {
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function assertMonth(month: string): void {
-  if (!MONTH.test(month)) throw new BudgetError(`"${month}" is not a month; write it as YYYY-MM`);
+  if (!MONTH.test(month)) throw new BudgetError('BAD_MONTH', `"${month}" is not a month; write it as YYYY-MM`);
 }
 
 function assertWholeMinor(amountMinor: number): void {
-  if (!Number.isSafeInteger(amountMinor)) throw new BudgetError('An amount must be a whole number of minor units');
+  if (!Number.isSafeInteger(amountMinor)) throw new BudgetError('NOT_WHOLE', 'An amount must be a whole number of minor units');
+}
+
+/**
+ * A cap is read back by the workspace that set it, so it may only be set on a category that workspace holds:
+ * one filed elsewhere would be saved and then never shown again. Skipped when no workspace is open (the whole
+ * workspace is being read) and on a database from before books existed.
+ */
+async function assertInOpenBook(database: Database, ws: WorkspaceContext, categoryAccountId: string): Promise<void> {
+  if (!ws.bookId || !(await hasBooks(database.db))) return;
+  const owner = await bookOfCategory(database.db, categoryAccountId);
+  if (owner && owner !== ws.bookId) throw new BudgetError('OTHER_BOOK', 'That category belongs to another workspace');
 }
 
 /** A budget belongs on a spending category, never on an account money sits in. */
@@ -49,15 +64,16 @@ async function assertCategory(database: Database, ws: WorkspaceContext, accountI
     .select({ kind: accounts.kind, subtype: accounts.subtype })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
-  if (!account) throw new BudgetError('That category does not exist in this workspace');
+  if (!account) throw new BudgetError('NOT_FOUND', 'That category does not exist in this workspace');
   if (account.subtype !== 'category' || account.kind !== 'expense') {
-    throw new BudgetError('A budget belongs on a spending category');
+    throw new BudgetError('NOT_A_CATEGORY', 'A budget belongs on a spending category');
   }
+  await assertInOpenBook(database, ws, accountId);
 }
 
 export async function saveBudget(database: Database, ws: WorkspaceContext, input: SaveBudgetInput): Promise<string> {
   assertWholeMinor(input.amountMinor);
-  if (input.amountMinor <= 0) throw new BudgetError('A budget must be above zero; remove it instead');
+  if (input.amountMinor <= 0) throw new BudgetError('AMOUNT_RANGE', 'A budget must be above zero; remove it instead');
   await assertCategory(database, ws, input.categoryAccountId);
 
   const now = new Date().toISOString();
@@ -99,14 +115,15 @@ export async function removeBudget(database: Database, ws: WorkspaceContext, cat
 export async function setBudgetOverride(database: Database, ws: WorkspaceContext, input: SetOverrideInput): Promise<void> {
   assertMonth(input.month);
   assertWholeMinor(input.amountMinor);
-  if (input.amountMinor < 0) throw new BudgetError('A month cannot ask for less than nothing');
+  if (input.amountMinor < 0) throw new BudgetError('AMOUNT_RANGE', 'A month cannot ask for less than nothing');
+  await assertInOpenBook(database, ws, input.categoryAccountId);
 
   await database.transaction(async (tx) => {
     const [budget] = await tx
       .select({ id: budgets.id })
       .from(budgets)
       .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, input.categoryAccountId)));
-    if (!budget) throw new BudgetError('That category carries no budget to override');
+    if (!budget) throw new BudgetError('NO_BUDGET', 'That category carries no budget to override');
 
     const [existing] = await tx
       .select({ id: budgetOverrides.id })

@@ -18,7 +18,7 @@ import { accounts, entries, transactions } from '../schema';
 import { bookCategories, books } from '../schema-books';
 import { billPayments, billSkips, billWindows, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
-import { hasBooks } from './books';
+import { bookOfCategory, hasBooks } from './books';
 import { postTransactionTx, voidTransactionTx } from './ledger';
 
 export class RecurringError extends Error {
@@ -105,6 +105,12 @@ export async function saveExpenseTemplate(database: Database, ws: WorkspaceConte
     // a payment nobody could read, so it is refused rather than corrected.
     if ((await accountKind(tx, ws, input.categoryAccountId)) !== 'expense') {
       throw new RecurringError('NOT_A_CATEGORY', 'A bill needs a spending category');
+    }
+    // A bill is listed by the workspace that owns its category, so a category filed elsewhere would save a bill
+    // this workspace could never see again — and would post its payment into the other workspace.
+    if (ws.bookId && (await hasBooks(tx))) {
+      const owner = await bookOfCategory(tx, input.categoryAccountId);
+      if (owner && owner !== ws.bookId) throw new RecurringError('OTHER_BOOK', 'That category belongs to another workspace');
     }
     const payer = await accountKind(tx, ws, input.moneyAccountId);
     if (payer !== 'asset' && payer !== 'liability') {

@@ -83,7 +83,7 @@ function PaymentForm({
               value={extra.categoryId}
               onChange={(e) => set({ extras: filled.extras.map((row, i) => (i === index ? { ...row, categoryId: e.target.value } : row)) })}
             >
-              <CategoryOptions ownerWide accounts={accounts} kind="expense" parentSuffix="(general)" />
+              <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
             </Select>
             <Input
               aria-label={`Extra ${index + 1} amount`}
