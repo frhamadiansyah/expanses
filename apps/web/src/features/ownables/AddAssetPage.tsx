@@ -24,6 +24,7 @@ export function AddAssetPage() {
           Money you can spend — cash, bank, e-wallet, broker cash — is an <b>account</b>, not an asset.
         </>
       }
+      moreHint={(family) => `Anything here is recorded as a thing you give a value to, and files under ${family.toLowerCase()} in the tax report.`}
       chosen={chosen}
       onChoose={setChosen}
       handOver={handOverRows('asset')}

@@ -1,4 +1,4 @@
-import type { OwnableFamily, OwnableFlow } from '@expanses/core';
+import { assetFamily, type OwnableFamily, type OwnableFlow } from '@expanses/core';
 import { Link, useRouter } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -22,6 +22,7 @@ export function OwnablePicker({
   kicker,
   searchPlaceholder,
   hint,
+  moreHint,
   chosen,
   onChoose,
   handOver = [],
@@ -35,6 +36,8 @@ export function OwnablePicker({
   searchPlaceholder: string;
   /** The sentence under the list, saying what does not belong here. */
   hint?: ReactNode;
+  /** The sentence above the "Something else" list, given the open family's name to put in it. */
+  moreHint?: (familyLabel: string) => ReactNode;
   /** The item id whose form is open, or null while nobody has chosen. */
   chosen: string | null;
   onChoose: (id: string | null) => void;
@@ -51,13 +54,19 @@ export function OwnablePicker({
   const searching = query.trim() !== '';
   const rows = pickerRows({ flow, query, family: family ?? undefined, more });
 
-  /** One step back: out of the form, out of "Something else", out of a family. Nothing else moves. */
+  /**
+   * One step back: out of the form, out of a search, out of "Something else", out of a family. Nothing else moves.
+   *
+   * A typed query is a step of its own, above the family it hides: without that, Back on a search result looks
+   * broken — it would drop the family underneath while the results, which do not depend on it, stayed put.
+   */
   const back = () => {
     if (chosen) onChoose(null);
+    else if (searching) setQuery('');
     else if (more) setMore(false);
     else if (family) setFamily(null);
   };
-  const canGoBack = Boolean(chosen || more || family);
+  const canGoBack = Boolean(chosen || searching || more || family);
 
   function choose(id: string) {
     if (id === MORE_ROW_ID) {
@@ -75,6 +84,8 @@ export function OwnablePicker({
   const list = (
     <div className="space-y-2">
       <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
+      {/* Above the list, not under it: on this screen it says what the rows below all have in common. */}
+      {more && family && !searching && moreHint && <RowHint>{moreHint(assetFamily(family).label)}</RowHint>}
       {kicker && !searching && !family && <Kicker>{kicker}</Kicker>}
       <RowList>
         {rows.map((row) => (
