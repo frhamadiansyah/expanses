@@ -1,9 +1,13 @@
 import { Link, Outlet } from '@tanstack/react-router';
+import { ChevronsUpDown } from 'lucide-react';
 import { useState } from 'react';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
 import { usePendingDraftCount } from '../features/review/queries';
 import { TransactionForm } from '../features/transactions/TransactionForm';
+import { useOpenBook } from '../features/workspaces/queries';
+import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
+import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
 import { useApp } from './context';
 import { AccountSheet } from './AccountSheet';
 import { Sheet } from './Sheet';
@@ -52,6 +56,10 @@ export function Layout() {
   const { workspaceName, ws } = useApp();
   const [more, setMore] = useState(false);
   const [adding, setAdding] = useState(false);
+  // The phone reaches the switcher from Cashflow's ⋯; the sidebar is on every screen, so a wide screen
+  // reaches it from more places than a phone does, never fewer.
+  const [choosing, setChoosing] = useState(false);
+  const openBook = useOpenBook();
   const phone = usePhone();
   return (
     <div
@@ -59,12 +67,22 @@ export function Layout() {
       style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
     >
       <aside className="hidden w-56 shrink-0 border-r border-slate-200 bg-white p-4 md:block">
-        <div className="mb-6 px-3">
-          <div className="text-lg font-semibold">Expanses</div>
-          <div className="text-xs text-slate-500">
-            {workspaceName} · {ws.baseCurrency} · on this device
-          </div>
-        </div>
+        <button
+          type="button"
+          aria-label="Workspace"
+          onClick={() => setChoosing(true)}
+          className="mb-6 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-slate-100"
+        >
+          <WorkspaceDot book={openBook} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-lg leading-tight font-semibold">Expanses</span>
+            <span className="block truncate text-xs text-slate-500">
+              {openBook?.name ?? workspaceName} · {openBook?.baseCurrency ?? ws.baseCurrency} · on this device
+            </span>
+          </span>
+          <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-slate-400" />
+        </button>
+        {choosing && <WorkspaceSheet onClose={() => setChoosing(false)} />}
         <nav className="space-y-1">
           {NAV.map((item) => (
             <Link

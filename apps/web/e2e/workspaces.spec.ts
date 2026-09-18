@@ -28,6 +28,30 @@ test('an account’s history opens from Accounts, and badges nothing while there
   await expect(page.getByTestId('workspace-badge')).toHaveCount(0);
 });
 
+/**
+ * A wide screen keeps the switcher in the sidebar, where it is on every screen — the phone reaches it only from
+ * Cashflow's ⋯, so the desktop is the stronger of the two, which is the rule.
+ */
+test('the sidebar names the open workspace and opens the switcher', async ({ page }) => {
+  await page.goto('/');
+  const switcher = page.getByRole('button', { name: 'Workspace' });
+  await expect(switcher).toContainText('Personal');
+  await expect(switcher).toContainText('IDR');
+  await switcher.click();
+  const sheet = page.getByRole('dialog', { name: 'Workspaces' });
+  await expect(sheet).toBeVisible();
+  // One workspace, and it is the open one: a tick beside it, and nothing else to choose.
+  const rows = sheet.getByTestId('workspace-choice');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Personal');
+  await expect(rows.first()).toHaveAttribute('aria-current', 'true');
+  await expect(rows.first().getByLabel('Open')).toBeVisible();
+  // It is reachable from a screen that is not Cashflow, which is the point of it living in the sidebar.
+  await page.getByRole('button', { name: 'Close' }).click();
+  await page.goto('/accounts');
+  await expect(page.getByRole('button', { name: 'Workspace' })).toBeVisible();
+});
+
 // Needs a second workspace, which is made by the workspace sheet's "New workspace" — Task 7. Until that lands
 // there is no way to reach two workspaces from the browser, so this flow cannot be driven yet.
 test.skip('an account’s history holds every workspace, each row saying which', async ({ page }) => {

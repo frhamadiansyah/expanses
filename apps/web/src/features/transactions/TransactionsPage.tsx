@@ -26,8 +26,11 @@ import { Recurring } from './Recurring';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionForm } from './TransactionForm';
-import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
-import { useWorkspaceBadges } from '../workspaces/queries';
+import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
+import { SwitchToEdit } from '../workspaces/SwitchToEdit';
+import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
+import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
+import { useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
 
 const route = getRouteApi('/transactions');
 
@@ -196,7 +199,7 @@ function DayHeader({ date, net, currency }: { date: string; net: number; currenc
 }
 
 export function TransactionsPage() {
-  const { database, ws } = useApp();
+  const { database, ws, workspaceName } = useApp();
   const invalidate = useInvalidateAll();
   const navigate = useNavigate({ from: '/transactions' });
   const search = route.useSearch();
@@ -213,6 +216,11 @@ export function TransactionsPage() {
   const [showSearch, setShowSearch] = useState(false);
   const phone = usePhone();
   const [showFilters, setShowFilters] = useState(false);
+  // The workspace switcher, reached from the ⋯ menu — the one thing in there that changes the whole app.
+  const [choosingWorkspace, setChoosingWorkspace] = useState(false);
+  const openBook = useOpenBook();
+  /** The row whose "this is another workspace's" line is showing, because somebody tried to edit it. */
+  const [elsewhereId, setElsewhereId] = useState<string | null>(null);
   // By day, as a diary, or by category, as a bill of what the month went on.
   const [grouping, setGrouping] = useState<'date' | 'category'>(() => {
     try {
@@ -288,6 +296,8 @@ export function TransactionsPage() {
   });
   // Which workspace each row is filed in, so an account's history says whose spending it is showing.
   const badgeOf = useWorkspaceBadges((list.data ?? []).map((tx) => tx.id));
+  /** The workspace a row would have to be opened in before it could be edited; null when this one will do. */
+  const elsewhereOf = (transactionId: string) => editInsteadIn(badgeOf(transactionId), ws.bookId);
   const purchasePoints = useQuery({
     queryKey: ['purchase-points', ws.workspaceId, (list.data ?? []).map((tx) => tx.id).join(',')],
     enabled: list.isSuccess && accounts.length > 0,
@@ -359,6 +369,7 @@ export function TransactionsPage() {
     setArmed(null);
     setError(null);
     setConverting(null);
+    setElsewhereId(null);
     if (row.kind === 'draft') {
       setEditingId(null);
       setEditing({ kind: 'draft', id: row.id, values: quickFromDraft(row.draft!, today) });
@@ -366,6 +377,12 @@ export function TransactionsPage() {
     }
     const tx = row.tx!;
     if (tradeByTransaction.has(tx.id) || !isEditable(tx)) return;
+    // An account's history holds every workspace, but this page's category pickers hold only the open one's:
+    // saving here would re-file the row into this workspace. Say which one to open instead.
+    if (elsewhereOf(tx.id)) {
+      setElsewhereId(tx.id);
+      return;
+    }
     if (isQuickEditable(tx)) {
       setEditingId(null);
       setEditing({ kind: 'tx', id: tx.id, values: quickFromTransaction(tx, today) });
@@ -628,18 +645,22 @@ export function TransactionsPage() {
     const points = purchasePoints.data?.[tx.id];
     const trade = tradeByTransaction.has(tx.id);
     const billTag = billTagOf(tx);
-    const clickable = !trade && isEditable(tx);
+    // Filed in another workspace: it can still be reached and asked about, but it is not dressed as editable.
+    const reachable = !trade && isEditable(tx);
+    const elsewhere = reachable ? elsewhereOf(tx.id) : null;
+    const clickable = reachable && !elsewhere;
     return (
       <li
         key={tx.id}
-        tabIndex={clickable ? 0 : undefined}
-        title={clickable ? 'Click to edit' : undefined}
-        onClick={clickable ? () => open(row) : undefined}
-        onKeyDown={clickable ? (event) => event.target === event.currentTarget && event.key === 'Enter' && open(row) : undefined}
+        tabIndex={reachable ? 0 : undefined}
+        title={clickable ? 'Click to edit' : elsewhere ? openToEditMessage(elsewhere) : undefined}
+        onClick={reachable ? () => open(row) : undefined}
+        onKeyDown={reachable ? (event) => event.target === event.currentTarget && event.key === 'Enter' && open(row) : undefined}
         className={cx(
           'group flex items-center gap-3 py-2',
           row.deleted && 'opacity-50 line-through',
           clickable && '-mx-2 cursor-pointer rounded-lg px-2 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-slate-900',
+          elsewhere && '-mx-2 rounded-lg px-2 focus-visible:outline-2 focus-visible:outline-slate-900',
         )}
       >
         <span className={cx(row.deleted && 'grayscale')}>
@@ -667,6 +688,8 @@ export function TransactionsPage() {
             {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
             {goal && ` · for ${goal}`}
           </div>
+          {/* Asked for by trying to edit it: the row says where it lives, and offers to take you there. */}
+          {elsewhere && elsewhereId === tx.id && <SwitchToEdit book={elsewhere} className="mt-0.5 block" />}
         </div>
         <div className="text-right">
           {/* The colour says which way the money went, so the sign would only say it twice. */}
@@ -706,6 +729,7 @@ export function TransactionsPage() {
     deleteRecorded: (id) => run(id, () => voidTransaction(database, ws, id)),
     renderForm: (tx, onDone) => <TransactionForm initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),
+    elsewhereOf,
   };
 
   /**
@@ -829,6 +853,22 @@ export function TransactionsPage() {
           {/* Taps outside the menu close it, the way a pull-down menu behaves on iOS. */}
           <button type="button" aria-label="Close filters" className="fixed inset-0 z-20 cursor-default" onClick={() => setShowFilters(false)} />
           <div role="menu" className="absolute top-16 right-4 z-30 w-60 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200" data-testid="filters-menu">
+            {/* First, and always here: it is how a second workspace is made, and how you move between them. */}
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="workspace-row"
+              onClick={() => {
+                setShowFilters(false);
+                setChoosingWorkspace(true);
+              }}
+              // A gap, not a divider: this changes the whole app, where the three below it narrow one list.
+              className="flex min-h-12 w-full items-center gap-3 border-b-6 border-slate-100 px-4 text-left text-sm"
+            >
+              <WorkspaceDot book={openBook} />
+              <span className="flex-1 truncate font-medium">{openBook?.name ?? workspaceName}</span>
+              <span className="text-xs text-slate-500">Workspace ›</span>
+            </button>
             <button
               type="button"
               role="menuitemcheckbox"
@@ -896,6 +936,7 @@ export function TransactionsPage() {
           </div>
         </Sheet>
       )}
+      {choosingWorkspace && <WorkspaceSheet onClose={() => setChoosingWorkspace(false)} />}
       {inCategory && (
         <button type="button" onClick={() => setSearch({ account: undefined })} className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
           <ChevronLeft size={16} aria-hidden />

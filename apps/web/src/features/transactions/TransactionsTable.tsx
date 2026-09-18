@@ -4,6 +4,8 @@ import { Link } from '@tanstack/react-router';
 import { Lock, RotateCcw, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button, cx } from '../../ui';
+import type { RowBook } from '../workspaces/filing';
+import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { isEditable } from './draft';
 import { billTagOf, type ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
@@ -24,6 +26,8 @@ export interface TableHandlers {
   /** The full form, for a row too involved to edit as cells. */
   renderForm: (tx: TransactionView, onDone: () => void) => ReactNode;
   tradeIds: ReadonlySet<string>;
+  /** The workspace a row has to be opened in before it can be edited; null when this one will do. */
+  elsewhereOf: (transactionId: string) => RowBook | null;
 }
 
 const same = (a: QuickValues, b: QuickValues) => (Object.keys(a) as (keyof QuickValues)[]).every((key) => a[key] === b[key]);
@@ -201,6 +205,8 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
   const sign = row.type === 'expense' ? '−' : row.type === 'income' ? '+' : '';
   const kind = { debt: 'Lend & borrow', transfer: 'Transfer', opening: 'Opening balance' }[row.type as 'debt' | 'transfer' | 'opening'];
   const why = row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
+  // Only a row that could be edited at all is sent off to another workspace to do it.
+  const elsewhere = row.deleted || !isEditable(tx) ? null : handlers.elsewhereOf(tx.id);
   return (
     <div data-testid="table-row" className={cx('border-b border-slate-100', row.deleted && 'opacity-50')}>
       <div className={cx(ROW_GRID, 'p-0.5 text-sm', row.deleted && 'line-through')}>
@@ -227,6 +233,8 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
             <Link to="/net-worth/trades" className="px-2 text-xs text-slate-500 underline">
               Buy &amp; sell
             </Link>
+          ) : elsewhere ? (
+            <SwitchToEdit book={elsewhere} className="px-2 text-right" />
           ) : (
             !row.deleted &&
             isEditable(tx) && (
@@ -286,7 +294,9 @@ export function TransactionsTable({
         {rows.length === 0 && <div className="px-3 py-6 text-center text-sm text-slate-500">{empty}</div>}
         {rows.map((row) => {
           const key = row.kind === 'draft' ? `d:${row.id}` : `t:${row.id}`;
-          if (row.kind === 'draft' || (!row.deleted && !handlers.tradeIds.has(row.id) && isQuickEditable(row.tx!))) {
+          // A row filed in another workspace is shown but not edited: the cells here offer this workspace's
+          // categories, so saving one would move it. It waits for its own workspace to be opened.
+          if (row.kind === 'draft' || (!row.deleted && !handlers.tradeIds.has(row.id) && !handlers.elsewhereOf(row.id) && isQuickEditable(row.tx!))) {
             return <EditableRow key={key} row={row} options={options} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} />;
           }
           return <LockedRow key={key} row={row} today={today} handlers={handlers} />;
