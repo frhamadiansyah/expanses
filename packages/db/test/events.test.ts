@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { budgetSheetFor, categoryTotalsBetween, createAccount, deleteEvent, eventPlanFor, finishEvent, firstTransactionDate, linkEventItem, listEvents, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, saveEventItem, suggestForEvent, tagTransaction, voidTransaction } from '../src/index';
 import { setupDb } from './helpers';
@@ -47,8 +48,12 @@ describe('saveEvent', () => {
     await lebaran(context);
 
     expect(await listEvents(context.database, context.ws)).toEqual([
-      { id: expect.any(String), name: 'Lebaran', startsOn: WINDOW.startsOn, endsOn: WINDOW.endsOn, plannedMinor: null, goalId: null, setId: null, finishedAt: null },
+      { id: expect.any(String), name: 'Lebaran', startsOn: WINDOW.startsOn, endsOn: WINDOW.endsOn, goalId: null, setId: null, finishedAt: null },
     ]);
+    // A plan is a list of things to buy, and its total is those items' sum. `events.planned_minor` stays in the
+    // table for the databases that already carry a figure in it; no writer here puts one there, and no row carries
+    // it forward. Read raw, because the row shape deliberately no longer has anywhere to show it.
+    expect(await context.database.db.values<[number | null]>(sql`SELECT planned_minor FROM events`)).toEqual([[null]]);
   });
 
   it('refuses an occasion that ends before it starts', async () => {
@@ -250,6 +255,68 @@ describe('suggestForEvent', () => {
     await tagTransaction(context.database, context.ws, transactionId, id);
 
     expect(await suggestForEvent(context.database, context.ws, id)).toEqual([]);
+  });
+
+  /*
+   * A receipt carrying a refund, a discount or a price correction booked back to the same category is one payment
+   * with two expense lines, one of them negative. What is offered is what actually left the account.
+   */
+  it('offers a receipt with a refund line at its net, once, and never at the sizes added up', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    await saveEventItem(context.database, context.ws, id, { name: 'Gift giving', unitPriceMinor: 3_000_000, categoryAccountId: context.gifts.id });
+    await postTransaction(context.database, context.ws, {
+      occurredOn: `${MONTH}-20`,
+      description: 'Hampers',
+      lines: [
+        { accountId: context.gifts.id, amountMinor: 5_000_000, currency: 'IDR' },
+        { accountId: context.gifts.id, amountMinor: -1_000_000, currency: 'IDR' },
+        { accountId: context.bca.id, amountMinor: -4_000_000, currency: 'IDR' },
+      ],
+    });
+
+    const candidates = await suggestForEvent(context.database, context.ws, id);
+    // One row for one payment: Rp40.000 left the bank, not Rp50.000, and certainly not Rp60.000 over two rows.
+    expect(candidates.map((row) => [row.description, row.amountBaseMinor])).toEqual([['Hampers', 4_000_000]]);
+  });
+
+  it('offers a refund of its own at nought rather than as money that left the account', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    await saveEventItem(context.database, context.ws, id, { name: 'Gift giving', unitPriceMinor: 3_000_000, categoryAccountId: context.gifts.id });
+    await postTransaction(context.database, context.ws, {
+      occurredOn: `${MONTH}-21`,
+      description: 'Hampers returned',
+      lines: [
+        { accountId: context.gifts.id, amountMinor: -1_200_000, currency: 'IDR' },
+        { accountId: context.bca.id, amountMinor: 1_200_000, currency: 'IDR' },
+      ],
+    });
+
+    // Still offered — money that came back inside the window belongs to the occasion — but never as spending.
+    expect((await suggestForEvent(context.database, context.ws, id)).map((row) => [row.description, row.amountBaseMinor])).toEqual([
+      ['Hampers returned', 0],
+    ]);
+  });
+
+  it('offers a receipt split across two of the occasion categories once, at the two lines together', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    await saveEventItem(context.database, context.ws, id, { name: 'Gift giving', unitPriceMinor: 3_000_000, categoryAccountId: context.gifts.id });
+    await saveEventItem(context.database, context.ws, id, { name: 'Open house', unitPriceMinor: 1_000_000, categoryAccountId: context.food.id });
+    await postTransaction(context.database, context.ws, {
+      occurredOn: `${MONTH}-22`,
+      description: 'Ranch Market',
+      lines: [
+        { accountId: context.gifts.id, amountMinor: 2_000_000, currency: 'IDR' },
+        { accountId: context.food.id, amountMinor: 700_000, currency: 'IDR' },
+        { accountId: context.bca.id, amountMinor: -2_700_000, currency: 'IDR' },
+      ],
+    });
+
+    const candidates = await suggestForEvent(context.database, context.ws, id);
+    // One payment is one question, and tagging answers all of it: two rows would ask it twice and, tagged, tag both.
+    expect(candidates.map((row) => [row.description, row.amountBaseMinor, row.categoryAccountId])).toEqual([['Ranch Market', 2_700_000, context.gifts.id]]);
   });
 
   it('offers nothing while the occasion draws on no category, rather than the whole month', async () => {

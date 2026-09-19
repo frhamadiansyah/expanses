@@ -25,8 +25,8 @@ export interface EventRow {
   name: string;
   startsOn: string;
   endsOn: string;
-  /** A figure for the whole event, instead of planning category by category. */
-  plannedMinor: number | null;
+  // `events.planned_minor` is not here on purpose: a plan is a list of things to buy, and its total is those items'
+  // sum. The column stays in the table for the databases that already carry a figure in it, and nothing reads it.
   goalId: string | null;
   /** The category set the event draws on, when it draws on one rather than the monthly categories. */
   setId: string | null;
@@ -51,7 +51,6 @@ const toRow = (row: typeof events.$inferSelect): EventRow => ({
   name: row.name,
   startsOn: row.startsOn,
   endsOn: row.endsOn,
-  plannedMinor: row.plannedMinor,
   goalId: row.goalId,
   setId: row.setId,
   finishedAt: row.finishedAt,

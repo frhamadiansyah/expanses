@@ -136,7 +136,34 @@ export async function suggestForEvent(database: Database, ws: WorkspaceContext, 
     )
     .orderBy(asc(transactions.occurredOn));
 
-  return rows.map((row) => ({ ...row, amountBaseMinor: Math.abs(row.amountBaseMinor) }));
+  /*
+   * One row per payment, not one per entry, and summed as the entries stand.
+   *
+   * An expense entry is debit-positive, so a discount, a partial refund or a price correction booked back to a
+   * spending category is a negative row on the same receipt. Taking each row's size — a `Math.abs` per entry —
+   * offered a receipt at more money than ever left the account, and offered it twice when two of its lines fell in
+   * the event's categories. Summed signed and clamped after, exactly as `expenseTotalOf` and `eventPlanFor` do it,
+   * so the figure beside "Yes" is the figure the event will read once the payment is tagged.
+   *
+   * A receipt that is a refund on balance comes to nought and is still offered: a refund inside the window, in a
+   * category the event draws on, is money that belongs to the event, and nought is the honest reading of what it
+   * spent. It is the one thing that must never be shown as a figure that came out of the account.
+   */
+  const totals = new Map<string, { head: EventCandidate; byCategory: Map<string, number> }>();
+  for (const row of rows) {
+    const found = totals.get(row.transactionId);
+    const byCategory = found?.byCategory ?? new Map<string, number>();
+    byCategory.set(row.categoryAccountId, (byCategory.get(row.categoryAccountId) ?? 0) + row.amountBaseMinor);
+    if (!found) totals.set(row.transactionId, { head: { ...row, amountBaseMinor: 0 }, byCategory });
+  }
+
+  return [...totals.values()].map(({ head, byCategory }) => {
+    const net = [...byCategory.values()].reduce((total, amount) => total + amount, 0);
+    // Filed under the category the most of this receipt sits in, the same rule the plan files a leftover under;
+    // the account id breaks a tie so two equal categories always read the same way round.
+    const [categoryAccountId] = [...byCategory].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]!;
+    return { ...head, categoryAccountId, amountBaseMinor: Math.max(0, net) };
+  });
 }
 
 /**

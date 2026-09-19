@@ -201,6 +201,45 @@ describe('a plan is per category', () => {
     ]);
   });
 
+  /*
+   * `unplannedCategoryCount` is what turns "Planned" into "Planned so far": it says there is spending here the plan
+   * never spoke for. A category with no items and no money left in it is not that. Money that came back has its own
+   * word for it under the ring, and saying a plan is only partial because a refund landed in a category nobody
+   * planned would be the label telling the user to go looking for spending that is not there.
+   */
+  const cancelled = (amountBaseMinor: number, refundMinor: number) =>
+    eventPlan({
+      categoryNames: { fun: 'Activities', taxi: 'Transport' },
+      items: [item('a1', 'Museum and theme park tickets', 4, 875_000, 'fun')],
+      actuals: [
+        ...(amountBaseMinor > 0 ? [actual('t1', 'taxi', amountBaseMinor, '2026-08-05', 'Grab')] : []),
+        actual('t2', 'taxi', -refundMinor, '2026-08-06', 'Grab refunded'),
+      ],
+    });
+
+  it('leaves out a category whose purchase and refund cancel exactly, though the line is still there', () => {
+    const plan = cancelled(900_000, 900_000);
+
+    expect(plan.lines.map((line) => [line.name, line.planned, line.actualMinor])).toEqual([
+      ['Activities', true, 0],
+      ['Transport', false, 0],
+    ]);
+    expect(plan.spentMinor).toBe(0);
+    expect(plan.unplannedCategoryCount).toBe(0);
+  });
+
+  it('leaves out a category whose only money came back', () => {
+    const plan = cancelled(0, 400_000);
+
+    expect(plan.lines.find((line) => line.name === 'Transport')).toMatchObject({ planned: false, actualMinor: -400_000 });
+    expect(plan.unplannedCategoryCount).toBe(0);
+  });
+
+  it('counts a category the moment there is money left in it', () => {
+    // The same two rows, a rupiah apart: what makes it unplanned spending is spending, not a category having a row.
+    expect(cancelled(900_001, 900_000).unplannedCategoryCount).toBe(1);
+  });
+
   it('keeps both invariants when only one category is planned', () => {
     expect(bali.toBuyMinor + bali.boughtEstimateMinor).toBe(bali.plannedMinor);
     expect(bali.boughtActualMinor + bali.notPlannedMinor).toBe(bali.spentMinor);

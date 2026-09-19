@@ -586,6 +586,42 @@ describe('a cover is refused rather than half written', () => {
     expect(await coverPairs(h.database)).toEqual([[null, null]]);
   });
 
+  /*
+   * A void keeps its tag and keeps its entries — that is what lets a correction carry the shares over — so being
+   * tagged to this event is not on its own enough to answer an item. Only a payment still posted can: a voided one
+   * is money that did not happen, and `expenseTotalOf` would lend its whole amount as a ceiling all the same.
+   */
+  it('refuses a receipt that has been voided, though it is still tagged to this event', async () => {
+    const h = await mothercare();
+    const cot = await h.item('Cot', 1, 2_000_000, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 3_000_000, 'Toko Bayi');
+    await voidTransaction(h.database, h.ws, receipt);
+    // The tag survives the void; it is the status, not the tag, that has to refuse it.
+    expect(await transactionRow(h.database, receipt)).toEqual({ status: 'void', eventId: h.eventId });
+
+    await expect(linkEventItem(h.database, h.ws, cot, receipt)).rejects.toMatchObject({ code: 'NOT_TAGGED' });
+    await expect(linkEventItem(h.database, h.ws, cot, receipt, 1_000_000)).rejects.toMatchObject({ code: 'NOT_TAGGED' });
+    await expect(setPurchaseCover(h.database, h.ws, receipt, [{ itemId: cot, shareMinor: 1_000_000 }])).rejects.toMatchObject({ code: 'NOT_TAGGED' });
+    expect(await coverPairs(h.database)).toEqual([[null, null]]);
+  });
+
+  /*
+   * The tick a void does NOT take off, so that correcting a receipt does not untick everything it answered: the
+   * refusal above is about writing a new link onto a dead payment, not about tearing down the ones already there.
+   */
+  it('leaves a share already written where it is when the payment behind it is voided', async () => {
+    const h = await mothercare();
+    const cot = await h.item('Cot', 1, 2_000_000, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 3_000_000, 'Toko Bayi');
+    await linkEventItem(h.database, h.ws, cot, receipt);
+    await voidTransaction(h.database, h.ws, receipt);
+
+    expect(await coverPairs(h.database)).toEqual([[receipt, 3_000_000]]);
+    // The reading is where the void counts for nothing: the item is not bought and the event spent nothing.
+    const plan = await eventPlanFor(h.database, h.ws, h.eventId);
+    expect(plan).toMatchObject({ spentMinor: 0, boughtCount: 0, boughtActualMinor: 0 });
+  });
+
   it('writes nothing at all when one item of a batch is unknown', async () => {
     const h = await mothercare();
     const cot = await h.item('Cot', 1, 2_000_000, h.gear.id);
@@ -652,5 +688,53 @@ describe('a cover is refused rather than half written', () => {
     await linkEventItem(h.database, h.ws, cot, receipt, 3_000_000);
     expect(await purchaseCover(h.database, h.ws, receipt)).toMatchObject({ givenMinor: 3_000_000, leftMinor: 0 });
     await expect(linkEventItem(h.database, h.ws, cot, receipt, 3_000_001)).rejects.toMatchObject({ code: 'OVER_ALLOCATED' });
+  });
+});
+
+/*
+ * A receipt moved from one occasion to another. The link the first occasion's item holds is deliberately left
+ * standing — tag it back and the tick is back where it was — so what is left of a receipt has to be read against
+ * the occasion it is tagged to now. Counting the old occasion's share here was worth a real figure: Rp20.000 of a
+ * Rp30.000 receipt offered to the new occasion, and a Rp10.000 under on its plan that nothing on screen explained.
+ */
+describe('a receipt retagged to another occasion', () => {
+  it('reads what is left against the occasion it is tagged to now, not the item it used to answer', async () => {
+    const h = await mothercare();
+    const cot = await h.item('Cot', 1, 2_000_000, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 3_000_000, 'Toko Bayi');
+    await linkEventItem(h.database, h.ws, cot, receipt, 1_000_000);
+
+    const shower = await saveEvent(h.database, h.ws, { name: 'Baby shower', startsOn: '2026-09-01', endsOn: '2026-09-30' });
+    const hampers = await saveEventItem(h.database, h.ws, shower, { name: 'Hampers', unitPriceMinor: 3_000_000, categoryAccountId: h.gear.id });
+    await tagTransaction(h.database, h.ws, receipt, shower);
+
+    // The cot's Rp10.000 is an occasion this payment is no longer on: none of the receipt is spoken for here.
+    expect(await purchaseCover(h.database, h.ws, receipt)).toMatchObject({ totalMinor: 3_000_000, givenMinor: 0, leftMinor: 3_000_000 });
+    // So the ordinary tick claims the whole receipt, and the plan reads neither over nor under.
+    await linkEventItem(h.database, h.ws, hampers, receipt);
+    expect(await eventPlanFor(h.database, h.ws, shower)).toMatchObject({
+      boughtActualMinor: 3_000_000,
+      spentMinor: 3_000_000,
+      differenceMinor: 0,
+      notPlannedMinor: 0,
+    });
+
+    // Tagged back, the cot answers exactly as it did: the reading was narrowed, nothing was torn down.
+    await tagTransaction(h.database, h.ws, receipt, h.eventId);
+    expect(await purchaseCover(h.database, h.ws, receipt)).toMatchObject({ givenMinor: 1_000_000, leftMinor: 2_000_000 });
+  });
+
+  it('answers no item while it is tagged to no occasion at all', async () => {
+    const h = await mothercare();
+    const cot = await h.item('Cot', 1, 2_000_000, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 3_000_000, 'Toko Bayi');
+    await linkEventItem(h.database, h.ws, cot, receipt, 1_000_000);
+
+    await tagTransaction(h.database, h.ws, receipt, null);
+    // An untagged payment belongs to no plan, so nothing of it is given away — and nothing may be written to it.
+    expect(await purchaseCover(h.database, h.ws, receipt)).toMatchObject({ totalMinor: 3_000_000, givenMinor: 0, leftMinor: 3_000_000 });
+    await expect(linkEventItem(h.database, h.ws, cot, receipt)).rejects.toMatchObject({ code: 'NOT_TAGGED' });
+    // The share it already carries is untouched by the reading either way.
+    expect(await coverPairs(h.database)).toEqual([[receipt, 1_000_000]]);
   });
 });

@@ -217,24 +217,47 @@ export interface PurchaseCover {
   covers: { itemId: string; shareMinor: number }[];
 }
 
+/**
+ * Read against the event the payment is tagged to *now*, never against every item that ever named it.
+ *
+ * Retagging a receipt from one occasion to another leaves the first occasion's item still pointing at it — the link
+ * is deliberately not torn down, so that tagging it back puts the tick straight back where it was. Counted here,
+ * that ghost would go on claiming its share of a receipt that has moved: a Rp30.000 receipt retagged with Rp10.000
+ * already given to the old event's item defaults the new event's tick to Rp20.000, and the plan then shows an
+ * unexplainable Rp10.000 under with nothing on screen able to say where the rest went.
+ *
+ * Scoping the reading rather than clearing the cover on retag is the same rule `eventPlan` already follows — it
+ * counts what each purchase has answered from the items of the event being read, and nothing else — so this is the
+ * two sides agreeing rather than a new rule. It also destroys nothing: a receipt tagged back reads exactly as it
+ * did before, where clearing the shares would lose a cover screen's worth of typing to a mis-tap. A payment tagged
+ * to no event answers no items at all, which is what `purchaseFor` already refuses to let anyone write.
+ */
 async function coverOf(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<PurchaseCover> {
-  const [row] = await tx
-    .select({ occurredOn: transactions.occurredOn, description: transactions.description })
+  const [found] = await tx
+    .select({ occurredOn: transactions.occurredOn, description: transactions.description, eventId: transactions.eventId })
     .from(transactions)
     .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.id, transactionId)));
-  if (!row) throw new EventError('NOT_FOUND', 'That payment is not in this workspace');
+  if (!found) throw new EventError('NOT_FOUND', 'That payment is not in this workspace');
+  const { eventId, ...row } = found;
   const totalMinor = await expenseTotalOf(tx, ws, transactionId);
-  const covers = (await eventItemsExist(tx))
-    ? (
-        await tx
-          .select({ itemId: eventItems.id, shareMinor: eventItems.shareMinor })
-          .from(eventItems)
-          .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.transactionId, transactionId)))
-      )
+  const covers =
+    eventId !== null && (await eventItemsExist(tx))
+      ? (
+          await tx
+            .select({ itemId: eventItems.id, shareMinor: eventItems.shareMinor })
+            .from(eventItems)
+            .where(
+              and(
+                eq(eventItems.workspaceId, ws.workspaceId),
+                eq(eventItems.transactionId, transactionId),
+                eq(eventItems.eventId, eventId),
+              ),
+            )
+        )
         // A share of null answers for nothing. The pair is kept whole above, so this only guards a row some other
         // hand left half set: it reads as unsettled, which cannot make the leftover smaller than it truly is.
-        .map((cover) => ({ itemId: cover.itemId, shareMinor: cover.shareMinor ?? 0 }))
-    : [];
+          .map((cover) => ({ itemId: cover.itemId, shareMinor: cover.shareMinor ?? 0 }))
+      : [];
   const givenMinor = covers.reduce((total, cover) => total + cover.shareMinor, 0);
   return { transactionId, ...row, totalMinor, givenMinor, leftMinor: totalMinor - givenMinor, covers };
 }
