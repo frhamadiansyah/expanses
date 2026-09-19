@@ -10,6 +10,7 @@ import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
+import { carryEventItemTx } from './event-items';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
 
@@ -268,6 +269,9 @@ export function replaceTransaction(
       .update(transactionPointActuals)
       .set({ transactionId: replacement, editedAfterCheck: 1 })
       .where(and(eq(transactionPointActuals.transactionId, id), eq(transactionPointActuals.workspaceId, ws.workspaceId)));
+    // What this payment bought off the plan is a fact about the same money: it follows the correction, and is cut to
+    // fit when the correction is smaller.
+    await carryEventItemTx(tx, ws, id, replacement);
     return replacement;
   });
 }

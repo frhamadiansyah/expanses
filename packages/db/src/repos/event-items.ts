@@ -2,7 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
-import { accounts } from '../schema';
+import { accounts, entries, transactions } from '../schema';
 import { eventItems } from '../schema-events';
 import { EventError, eventOf } from './event-scope';
 
@@ -156,11 +156,206 @@ export async function removeEventItem(database: Database, ws: WorkspaceContext, 
   await database.db.delete(eventItems).where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
 }
 
+/**
+ * The purchase that answered an item and how much of it that item is: one fact, in two columns.
+ *
+ * 0049 says "both NULL, or both set" in a comment and nothing enforces it, so the rule is kept here instead — every
+ * write of the pair goes through `writeCover`, which takes the two together or neither, so a row settled by a purchase
+ * with no figure, or carrying a figure against no purchase, is not a value this module can even express. SQLite cannot
+ * be given a CHECK after the fact without rebuilding the table, and amending 0049 in place would leave the constraint
+ * present on a fresh database and absent on one that already ran it — an invariant true in some copies and not others
+ * is worse than one upheld in the single module that writes the table.
+ */
+type Cover = { transactionId: string; shareMinor: number } | null;
+
+function writeCover(tx: Db, ws: WorkspaceContext, itemId: string, cover: Cover): Promise<unknown> {
+  return tx
+    .update(eventItems)
+    .set({ transactionId: cover?.transactionId ?? null, shareMinor: cover?.shareMinor ?? null })
+    .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
+}
+
+/** A share is whole minor units above nought. Nought is not a share — it is the absence of one, which is unlinking. */
+function checkShare(share: number): void {
+  if (!Number.isInteger(share) || share <= 0) throw new EventError('SHARE_RANGE', 'A share is a whole figure above nought');
+}
+
 /** Takes the tick off. The payment is untouched, and the other items on the same receipt keep their shares. */
 export async function unlinkEventItem(database: Database, ws: WorkspaceContext, itemId: string): Promise<void> {
   if (!(await eventItemsExist(database.db))) return;
-  await database.db
-    .update(eventItems)
-    .set({ transactionId: null, shareMinor: null })
-    .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
+  await writeCover(database.db, ws, itemId, null);
+}
+
+/** What a purchase's expense side comes to, in base minor units. The shares can never add to more than this. */
+async function expenseTotalOf(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<number> {
+  const rows = await tx
+    .select({ amount: entries.amountBaseMinor })
+    .from(entries)
+    .innerJoin(accounts, eq(entries.accountId, accounts.id))
+    .where(and(eq(entries.workspaceId, ws.workspaceId), eq(entries.transactionId, transactionId), eq(accounts.kind, 'expense')));
+  return rows.reduce((total, row) => total + Math.abs(row.amount), 0);
+}
+
+export interface PurchaseCover {
+  transactionId: string;
+  occurredOn: string;
+  description: string;
+  totalMinor: number;
+  givenMinor: number;
+  leftMinor: number;
+  covers: { itemId: string; shareMinor: number }[];
+}
+
+async function coverOf(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<PurchaseCover> {
+  const [row] = await tx
+    .select({ occurredOn: transactions.occurredOn, description: transactions.description })
+    .from(transactions)
+    .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.id, transactionId)));
+  if (!row) throw new EventError('NOT_FOUND', 'That payment is not in this workspace');
+  const totalMinor = await expenseTotalOf(tx, ws, transactionId);
+  const covers = (await eventItemsExist(tx))
+    ? (
+        await tx
+          .select({ itemId: eventItems.id, shareMinor: eventItems.shareMinor })
+          .from(eventItems)
+          .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.transactionId, transactionId)))
+      )
+        // A share of null answers for nothing. The pair is kept whole above, so this only guards a row some other
+        // hand left half set: it reads as unsettled, which cannot make the leftover smaller than it truly is.
+        .map((cover) => ({ itemId: cover.itemId, shareMinor: cover.shareMinor ?? 0 }))
+    : [];
+  const givenMinor = covers.reduce((total, cover) => total + cover.shareMinor, 0);
+  return { transactionId, ...row, totalMinor, givenMinor, leftMinor: totalMinor - givenMinor, covers };
+}
+
+/** The receipt, what of it already answers items, and what is left — the three figures the cover screen shows. */
+export function purchaseCover(database: Database, ws: WorkspaceContext, transactionId: string): Promise<PurchaseCover> {
+  return coverOf(database.db, ws, transactionId);
+}
+
+/** A payment can only answer items on the event it is tagged to, and only while it is still posted. */
+async function purchaseFor(tx: Db, ws: WorkspaceContext, eventId: string, transactionId: string): Promise<void> {
+  const [purchase] = await tx
+    .select({ eventId: transactions.eventId, status: transactions.status })
+    .from(transactions)
+    .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.id, transactionId)));
+  if (!purchase || purchase.status !== 'posted' || purchase.eventId !== eventId) {
+    throw new EventError('NOT_TAGGED', 'Only a payment already tagged to this event can answer an item');
+  }
+}
+
+/**
+ * Says a purchase answered this item, and how much of it this item is.
+ *
+ * The share defaults to the estimate, clamped to what is left on the receipt, so ticking something off usually needs no
+ * typing. An explicit share bigger than what is left is refused rather than quietly trimmed: a figure someone typed is
+ * a claim about the receipt, and trimming it would put a number on screen that nobody chose.
+ */
+export async function linkEventItem(
+  database: Database,
+  ws: WorkspaceContext,
+  itemId: string,
+  transactionId: string,
+  shareMinor?: number,
+): Promise<void> {
+  if (!(await eventItemsExist(database.db))) return;
+  await database.transaction(async (tx) => {
+    const [item] = await tx
+      .select()
+      .from(eventItems)
+      .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
+    if (!item) throw new EventError('ITEM_NOT_FOUND', 'That item is not on this event');
+    await purchaseFor(tx, ws, item.eventId, transactionId);
+
+    const cover = await coverOf(tx, ws, transactionId);
+    // Re-linking the same item does not have to fit twice over: its own share is what it is replacing.
+    const left = cover.leftMinor + (item.transactionId === transactionId ? (item.shareMinor ?? 0) : 0);
+    const share = shareMinor ?? Math.min(item.quantity * item.unitPriceMinor, left);
+    checkShare(share);
+    if (share > left) throw new EventError('OVER_ALLOCATED', `Only ${left} of this payment is still unaccounted for`);
+
+    await writeCover(tx, ws, itemId, { transactionId, shareMinor: share });
+  });
+}
+
+/**
+ * What one receipt covers, in one write: every item named is linked with its share, and every item that named this
+ * receipt and is no longer in the list is unlinked.
+ *
+ * Refused as a whole — inside one database transaction, so nothing at all is written — when a share is not a whole
+ * figure above nought, when an item is not there, when the payment is not tagged to the item's event, or when the
+ * shares add to more than the payment. The last is the one the plan depends on: the leftover it shows as "not planned
+ * for" is the receipt less its shares, so shares adding to more than the receipt would drive that below nought and
+ * quietly lose the row. A share is a reading of a purchase, never an edit of one; nothing here posts, moves or splits
+ * an entry.
+ */
+export async function setPurchaseCover(
+  database: Database,
+  ws: WorkspaceContext,
+  transactionId: string,
+  covers: readonly { itemId: string; shareMinor: number }[],
+): Promise<void> {
+  if (!(await eventItemsExist(database.db))) return;
+  for (const cover of covers) checkShare(cover.shareMinor);
+  // Keyed by item, so an item named twice is one share and not two — the figure checked is the figure written.
+  const wanted = new Map(covers.map((cover) => [cover.itemId, cover.shareMinor]));
+
+  await database.transaction(async (tx) => {
+    const totalMinor = await expenseTotalOf(tx, ws, transactionId);
+    let given = 0;
+    for (const share of wanted.values()) given += share;
+    if (given > totalMinor) throw new EventError('OVER_ALLOCATED', `Those shares come to ${given}, and the payment is only ${totalMinor}`);
+
+    for (const itemId of wanted.keys()) {
+      const [item] = await tx
+        .select({ eventId: eventItems.eventId })
+        .from(eventItems)
+        .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.id, itemId)));
+      if (!item) throw new EventError('ITEM_NOT_FOUND', 'That item is not on this event');
+      await purchaseFor(tx, ws, item.eventId, transactionId);
+    }
+
+    const rows = await tx
+      .select({ id: eventItems.id })
+      .from(eventItems)
+      .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.transactionId, transactionId)));
+    for (const row of rows) if (!wanted.has(row.id)) await writeCover(tx, ws, row.id, null);
+    for (const [itemId, shareMinor] of wanted) await writeCover(tx, ws, itemId, { transactionId, shareMinor });
+  });
+}
+
+/**
+ * Moves every share onto a corrected purchase. A correction voids and reposts under a new id, so without this every
+ * edit of a receipt would quietly untick everything it answered.
+ *
+ * When the correction is smaller than the shares add to, they are cut in proportion. Refusing the correction instead
+ * would leave someone unable to fix a wrong amount because the amount is wrong.
+ *
+ * Whole minor units cannot divide in proportion, so each share is floored and the rupiah left over go to the largest
+ * share — largest because that is where a rupiah is least visible, and one place because the shares of one purchase
+ * must add back to that purchase exactly or the leftover the plan reads is a lie. The arithmetic is done in BigInt:
+ * an Indonesian share times an Indonesian total passes what a double can count in whole numbers long before either
+ * figure looks large on screen, and money here is never a float.
+ */
+export async function carryEventItemTx(tx: Db, ws: WorkspaceContext, from: string, to: string): Promise<void> {
+  if (!(await eventItemsExist(tx))) return;
+  const rows = await tx
+    .select({ id: eventItems.id, shareMinor: eventItems.shareMinor })
+    .from(eventItems)
+    .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.transactionId, from)));
+  if (rows.length === 0) return;
+
+  const shares = rows.map((row) => ({ id: row.id, was: row.shareMinor ?? 0, share: row.shareMinor ?? 0 }));
+  const old = shares.reduce((total, row) => total + row.was, 0);
+  const now = await expenseTotalOf(tx, ws, to);
+  if (old > now && old > 0) {
+    const [big, size] = [BigInt(now), BigInt(old)];
+    for (const row of shares) row.share = Number((BigInt(row.was) * big) / size);
+    const largest = shares.reduce((best, row) => (row.was > best.was ? row : best), shares[0]!);
+    largest.share += now - shares.reduce((total, row) => total + row.share, 0);
+  }
+  for (const row of shares) {
+    // A share rounded down to nothing is not a share: that item simply stops being answered by this receipt.
+    await writeCover(tx, ws, row.id, row.share > 0 ? { transactionId: to, shareMinor: row.share } : null);
+  }
 }
