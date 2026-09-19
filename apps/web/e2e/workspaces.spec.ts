@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addItem, moneyIn, planFor } from './event-plan';
 
 /**
  * An account is yours, not a workspace's, so its history holds every workspace and each row says which one it
@@ -257,9 +258,8 @@ async function spendOn(page: Page, description: string, category: string, amount
  * each option belongs to, since two workspaces can hold copies of one category and the name alone is a coin toss.
  */
 async function planAndTag(page: Page, category: string, description: string, option = category) {
-  await page.getByLabel('Category').selectOption({ label: option });
-  await page.getByRole('button', { name: 'Add category' }).click();
-  await expect(page.getByRole('button', { name: `Stop drawing on ${category}` })).toBeVisible();
+  // What it is expected to cost: a plan is a list of things to buy, and an item without a price is not one.
+  await planFor(page, category, '1000000', option);
   await page.getByTestId('event-suggestions').getByRole('button', { name: `Tag ${description}` }).click();
 }
 
@@ -296,9 +296,13 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
 
   await page.goto(url);
   await planAndTag(page, 'Client lunches', 'Supplier lunch', 'Client lunches · Business');
-  // The plan says which workspace each category it draws on belongs to, in the same words as the picker: two
-  // workspaces can hold a category of the same name, and the name alone would make the choice a coin toss.
-  await expect(page.getByRole('button', { name: 'Stop drawing on Restaurants' }).locator('xpath=..')).toContainText('Restaurants · Personal');
+  // The item form says which workspace each category belongs to: two workspaces can hold a category of the same
+  // name, and the name alone would make the choice a coin toss. selectOption throws when the label is not offered.
+  await page.getByTestId('open-plan').click();
+  await page.getByRole('link', { name: 'Add an item' }).first().click();
+  await page.getByLabel('Category').selectOption({ label: 'Restaurants · Personal' });
+  await page.getByRole('link', { name: 'Cancel' }).click();
+  await page.getByRole('link', { name: 'Back to the event' }).click();
 
   // All: the whole trip, both workspaces added up.
   const tabs = page.getByTestId('event-workspaces');
@@ -314,7 +318,95 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   // And its own history: the dinner is Personal's, so it is not under this tab.
   await expect(page.getByText('Hotel dinner')).toHaveCount(0);
 
+  /*
+   * The tab travels into the plan and back out of it.
+   *
+   * It was carried in and lost coming home: the plan read in Business, and "Back to the event" landed on All,
+   * because the event held its tab in a screen's memory rather than in the URL the plan hands back.
+   */
+  await page.getByTestId('open-plan').click();
+  await expect(page.getByRole('heading', { name: 'Plan · Singapore holiday' })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await expect(tabs.getByRole('button', { name: 'Business' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('event-total')).toContainText('640.000');
+
   // Back to All, and the whole trip is there again.
   await tabs.getByRole('button', { name: 'All' }).click();
   await expect(page.getByTestId('event-total')).toContainText('4.840.000');
+});
+
+/**
+ * What is left of a receipt is a fact about the receipt, so the screens that settle it read the whole plan.
+ *
+ * A plan belongs to the owner and an event is spent on from every workspace, but `eventPlanFor` under a tab drops
+ * the items filed in *another* workspace's categories. Reading the pick-a-purchase list and "What it covers"
+ * through the open tab therefore showed a receipt one of those items already answers as free — offered at its full
+ * amount on one screen, and on the other seeded into "Given to items" with no row anywhere on the page to show it
+ * or hand it back. The write does not narrow, and `usePurchaseCover` does not narrow, so these two must not either.
+ *
+ * Nothing in the suite failed when the narrowing was put back, which is why this test exists: it is read under the
+ * Business tab, and every figure it asserts is a Personal item's doing.
+ */
+test('the screens that settle a receipt read the whole plan, not the open tab', async ({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept(dialog.type() === 'prompt' ? 'Client lunches' : ''));
+
+  await addBank(page);
+  await spendOn(page, 'Hotel dinner', 'Restaurants', '4200000');
+
+  await page.goto('/events');
+  await page.getByRole('button', { name: 'Add an event' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Singapore holiday');
+  await page.getByLabel('Starts on').fill(TODAY);
+  await page.getByLabel('Ends on').fill(TODAY);
+  await page.getByRole('button', { name: 'Save event' }).click();
+  // Saving opens the event; the address is only the event's once it has, so the heading is waited for first.
+  await expect(page.getByRole('heading', { name: 'Singapore holiday', exact: true })).toBeVisible();
+  const url = page.url();
+
+  // Personal's side of the trip: one thing still to buy, and a dinner tagged so the workspace has a tab at all.
+  await page.getByTestId('open-plan').click();
+  await addItem(page, { name: 'Welcome dinner', price: '1000000', category: 'Restaurants' });
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Hotel dinner' }).click();
+
+  // Business's side: a category and a receipt of its own.
+  await newWorkspace(page, 'Business', 'Start empty');
+  await page.goto('/categories');
+  await page.getByRole('button', { name: 'Add category' }).click();
+  await expect(page.getByText('Client lunches')).toBeVisible();
+  await spendOn(page, 'Supplier lunch', 'Client lunches', '640000');
+
+  await page.goto(url);
+  await page.getByTestId('open-plan').click();
+  await addItem(page, { name: 'Client entertaining', price: '1000000', category: 'Client lunches · Business' });
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Supplier lunch' }).click();
+
+  // Read whole, the Personal item takes Rp400.000 of the Business receipt. Odd of a person, and perfectly legal:
+  // an event is one trip and the workspaces are only how its money is filed.
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Welcome dinner' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: /Supplier lunch/ }).click();
+  await page.getByLabel('Share for Welcome dinner').fill('400000');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: /^Plan · / })).toBeVisible();
+
+  // Now read under the Business tab, where the Personal item is not part of the plan being shown.
+  await page.goto(url);
+  await page.getByTestId('event-workspaces').getByRole('button', { name: 'Business' }).click();
+  await page.getByTestId('open-plan').click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Client entertaining' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Link a purchase' }).click();
+
+  // Rp640.000 of receipt, Rp240.000 of it still free: the Personal item's share counts in every tab.
+  const lunch = page.getByRole('link', { name: /Supplier lunch/ });
+  await expect.poll(() => moneyIn(lunch)).toEqual([640_000, 240_000]);
+
+  // And on "What it covers" the item holding that share has a row, ticked, with the figure that was typed for it —
+  // so it can be handed back. Counted in the totals and absent from the list is money nobody could reach.
+  await lunch.click();
+  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Welcome dinner' })).toBeChecked();
+  await expect(page.getByLabel('Share for Welcome dinner')).toHaveValue('400000');
 });

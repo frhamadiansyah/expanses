@@ -1,4 +1,15 @@
-import { booksInEvent, eventSheetFor, inBook, listEventBudgets, listEvents, listTransactions, ownerScope, suggestForEvent, type WorkspaceContext } from '@expanses/db';
+import {
+  booksInEvent,
+  eventItemsExist,
+  eventPlanFor,
+  inBook,
+  listEvents,
+  listTransactions,
+  ownerScope,
+  purchaseCover,
+  suggestForEvent,
+  type WorkspaceContext,
+} from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -26,22 +37,42 @@ export function useBooksInEvent(eventId: string | null) {
   });
 }
 
-export function useEventBudgets(eventId: string | null, bookId: string | null = null) {
+/** What the event meant to buy, against what it actually bought. */
+export function useEventPlan(eventId: string | null, bookId: string | null = null) {
   const { database, ws } = useApp();
   return useQuery({
-    queryKey: ['event-budgets', ws.workspaceId, eventId, bookId],
-    queryFn: () => listEventBudgets(database, scopeOf(ws, bookId), eventId!),
+    queryKey: ['event-plan', ws.workspaceId, eventId, bookId],
+    queryFn: () => eventPlanFor(database, scopeOf(ws, bookId), eventId!),
     enabled: eventId !== null,
   });
 }
 
-/** What the event was expected to cost, against what it did. */
-export function useEventSheet(eventId: string | null, bookId: string | null = null) {
+/**
+ * Whether this copy of the data has the table a plan's items live in.
+ *
+ * A database stopped before migration 0049 has no `event_items`, and every write to it is a deliberate no-op that
+ * still hands back an id — correct for the repository, and a trap for a screen, which would show a saved item
+ * disappear with nothing said. So the screens ask first and say so plainly, instead of letting a save look like it
+ * worked. Not memoised past a refresh: `migrate()` may run on the same handle, and the answer then changes.
+ */
+export function useEventItemsReady() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['event-items-ready', ws.workspaceId], queryFn: () => eventItemsExist(database.db) });
+}
+
+/**
+ * One receipt, what it already answers, and what is left on it.
+ *
+ * Owner-level whatever tab is open: a receipt is one payment, and how much of it is still unaccounted for is a fact
+ * about that payment rather than about the workspace it is being read from. Narrowing it would let two tabs disagree
+ * about how much of one receipt is left, and the write that checks the shares does not narrow either.
+ */
+export function usePurchaseCover(transactionId: string | null) {
   const { database, ws } = useApp();
   return useQuery({
-    queryKey: ['event-sheet', ws.workspaceId, eventId, bookId],
-    queryFn: () => eventSheetFor(database, scopeOf(ws, bookId), eventId!),
-    enabled: eventId !== null,
+    queryKey: ['purchase-cover', ws.workspaceId, transactionId],
+    queryFn: () => purchaseCover(database, ownerScope(ws), transactionId!),
+    enabled: transactionId !== null,
   });
 }
 

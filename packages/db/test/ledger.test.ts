@@ -221,3 +221,47 @@ describe('setTransactionMcc', () => {
     await expect(setTransactionMcc(database, ws, 'missing', '5814')).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });
+
+/**
+ * The ceiling on one read, said out loud rather than discovered by someone whose oldest payment went missing.
+ *
+ * `listTransactions` hands back 500 rows unless it is asked for more, and the caller is never told it was cut
+ * short. That is a real edge for an event's history and for the Transactions list alike: past 500 the page is
+ * showing a first page, not a list. Nothing on this branch depends on it — the point of pinning it is that a
+ * change to the figure, or to which end of the list is dropped, fails here instead of surfacing as a user's
+ * September vanishing.
+ */
+describe('how many rows one read hands back', () => {
+  /** A day at a time from the start of 2026, so every row has its own date and the order is never a tie. */
+  const dayOf = (n: number) => new Date(Date.UTC(2026, 0, 1) + (n - 1) * 86_400_000).toISOString().slice(0, 10);
+
+  it('caps at 500, keeping the newest, and hands back the rest only when asked', async () => {
+    const { database, ws } = await setupDb();
+    const checking = await createAccount(database, ws, { name: 'BCA Checking', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const groceries = (await listAccounts(database, ws)).find((a) => a.name === 'Groceries')!;
+    // Nothing else in the ledger, so 501 rows is 501 rows and the boundary is where it is meant to be.
+    expect(await listTransactions(database, ws)).toHaveLength(0);
+
+    for (let day = 1; day <= 501; day += 1) {
+      await postTransaction(database, ws, {
+        occurredOn: dayOf(day),
+        description: `Day ${day}`,
+        lines: expenseLines({ categoryAccountId: groceries.id, paymentAccountId: checking.id, amountMinor: 1_000, currency: 'IDR' }),
+      });
+    }
+
+    const capped = await listTransactions(database, ws);
+    expect(capped).toHaveLength(500);
+    // Newest first, so it is the oldest day — and only the oldest — that falls off the end.
+    expect(capped[0]!.description).toBe('Day 501');
+    expect(capped.at(-1)!.description).toBe('Day 2');
+    expect(capped.map((tx) => tx.description)).not.toContain('Day 1');
+
+    // Nothing is lost, only past the end of one read: asked for more, the whole ledger comes back.
+    const all = await listTransactions(database, ws, { limit: 501 });
+    expect(all).toHaveLength(501);
+    expect(all.at(-1)!.description).toBe('Day 1');
+    // And a smaller limit is honoured rather than rounded up to the default.
+    expect(await listTransactions(database, ws, { limit: 3 })).toHaveLength(3);
+  });
+});

@@ -364,9 +364,11 @@ export {
 } from './coretax/business';
 export {
   type EventActual,
+  eventPlan,
+  type EventPlan,
+  type EventPlanInput,
+  type EventPlanItemInput,
+  type EventPlanItemView,
   type EventPlanLine,
-  eventSheet,
-  type EventSheet,
-  type EventSheetInput,
-  type EventSheetLine,
-} from './events/sheet';
+  type EventPlanUnplanned,
+} from './events/plan';

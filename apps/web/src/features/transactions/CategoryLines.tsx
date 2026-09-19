@@ -1,5 +1,6 @@
 import { formatMinor } from '@expanses/core';
 import { ChevronRight } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { cx, Money } from '../../ui';
 
 const share = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
@@ -14,6 +15,7 @@ export function ShareLine({
   wholeMinor,
   currency,
   chevron = true,
+  figure,
 }: {
   colour: string;
   name: string;
@@ -21,13 +23,15 @@ export function ShareLine({
   wholeMinor: number;
   currency: string;
   chevron?: boolean;
+  /** What stands at the end of the line instead of the plain figure — an event reads it against what was planned. */
+  figure?: ReactNode;
 }) {
   return (
     <span className="flex w-full items-center gap-2.5">
       <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: colour }} aria-hidden />
       <span className="tabular w-9 shrink-0 text-center text-[13px] font-semibold">{share(amountMinor, wholeMinor)}%</span>
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
-      <Money minor={amountMinor} currency={currency} className="shrink-0 text-sm font-semibold" />
+      {figure ?? <Money minor={amountMinor} currency={currency} className="shrink-0 text-sm font-semibold" />}
       {chevron && <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />}
     </span>
   );

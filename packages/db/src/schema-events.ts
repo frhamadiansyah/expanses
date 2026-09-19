@@ -17,12 +17,22 @@ export const events = sqliteTable('events', {
   createdAt: text('created_at').notNull(),
 });
 
-export const eventBudgets = sqliteTable('event_budgets', {
+/** One thing an event means to buy, and — once it is bought — the purchase that answered it and its share of it. */
+export const eventItems = sqliteTable('event_items', {
   id: text('id').primaryKey(),
   workspaceId: text('workspace_id').notNull(),
   eventId: text('event_id').notNull(),
-  categoryAccountId: text('category_account_id').notNull(),
-  /** Null means the category belongs to the event but carries no figure yet. */
-  plannedMinor: integer('planned_minor'),
+  name: text('name').notNull(),
+  quantity: integer('quantity').notNull(),
+  unitPriceMinor: integer('unit_price_minor').notNull(),
+  /** Null: planned but filed in no category, so it belongs to no workspace. */
+  categoryAccountId: text('category_account_id'),
+  /** A shop page. Never fetched by anything in this app. */
+  link: text('link'),
+  note: text('note'),
+  transactionId: text('transaction_id'),
+  /** How much of that purchase this item is. One receipt may answer several. */
+  shareMinor: integer('share_minor'),
+  sortOrder: integer('sort_order').notNull(),
   createdAt: text('created_at').notNull(),
 });

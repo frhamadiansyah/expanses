@@ -22,6 +22,13 @@ import { snapshotName } from './snapshot-policy';
 import { MANIFEST, memorySnapshots, restoreSnapshot } from './snapshots';
 import { createWorkerExecutor } from './worker-executor';
 
+/**
+ * The version one update behind the newest. Not `LATEST_VERSION - 1`: migration numbers may skip — 0048 is
+ * reserved by another plan and never shipped — so "one behind" is the highest version this build actually carries
+ * below its newest, which is what a device with a blocked update is really left sitting at.
+ */
+const PREVIOUS_VERSION = Math.max(...MIGRATIONS.filter((m) => m.version < LATEST_VERSION).map((m) => m.version));
+
 let executor: NodeExecutor | undefined;
 /** Every extra engine a test starts, closed whatever the test did. */
 const spares: NodeExecutor[] = [];
@@ -577,7 +584,7 @@ describe('openSafely', () => {
     const result = await openSafely({ database, snapshots: store, onStage: () => undefined });
 
     expect(result.ok).toBe(true);
-    expect(await databaseVersion(database)).toBe(LATEST_VERSION - 1);
+    expect(await databaseVersion(database)).toBe(PREVIOUS_VERSION);
     if (!result.ok) return;
     expect(result.app.update).toMatchObject({ blocked: LATEST_VERSION });
     // Not merely open: usable. `openAppDb` has already seeded categories and synced the catalogue against
