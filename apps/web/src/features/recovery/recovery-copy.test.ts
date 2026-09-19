@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecoveryReason, SnapshotInfo } from '../../db/open';
-import { lastGoodCopy, recoveryCopy } from './recovery-copy';
+import { lastGoodCopy, MID_SESSION_NOTE, recoveryCopy } from './recovery-copy';
 
 const reason = (kind: RecoveryReason['kind'], extra: Partial<RecoveryReason> = {}): RecoveryReason => ({
   kind,
@@ -29,6 +29,30 @@ describe('recoveryCopy', () => {
     const copy = recoveryCopy(reason('newer-database'), { hasSnapshot: true });
     expect(copy.actions).toEqual(['export', 'retry']);
     expect(copy.headline).toBe('This data was made by a newer version of Expanses');
+  });
+
+  /*
+   * Spec §3.4. The same failure, found with the app open and the user in it, needs one extra sentence and
+   * nothing else: they were looking at their money a second ago and it has just gone off the screen.
+   */
+  it('tells someone the app went out from under them what they have actually lost', () => {
+    const copy = recoveryCopy(reason('corrupt', { midSession: true }), { hasSnapshot: true });
+    expect(copy.body.startsWith(MID_SESSION_NOTE)).toBe(true);
+    expect(copy.body).toContain('not your money');
+    // Never alarming, never an instruction to delete anything, and every button still on offer.
+    expect(copy.body).not.toMatch(/delete|reinstall|lost your data|corrupt/i);
+    expect(copy.actions).toEqual(['export', 'restore', 'retry', 'start-fresh']);
+  });
+
+  it('does not tell someone who has only just launched the app that they lost a screen', () => {
+    expect(recoveryCopy(reason('corrupt'), { hasSnapshot: true }).body).not.toContain(MID_SESSION_NOTE);
+    // And the recovery tools, asked for on purpose, say nothing went wrong at all — even from a fatal.
+    expect(recoveryCopy(reason('corrupt', { midSession: true }), { hasSnapshot: true, requested: true }).body).not.toContain(MID_SESSION_NOTE);
+  });
+
+  it('says the data stopped answering, rather than that it would not open, when it had already opened', () => {
+    expect(recoveryCopy(reason('unreadable'), { hasSnapshot: true }).headline).toBe('Your data is on this device, but it would not open');
+    expect(recoveryCopy(reason('unreadable', { midSession: true }), { hasSnapshot: true }).headline).toBe('Your data stopped answering');
   });
 
   it('says the update was undone when it was', () => {

@@ -1,4 +1,5 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
+import { fatalKind, messageOf } from './fatal';
 import { NEWER_DATABASE } from './newer-database';
 
 type Method = 'run' | 'all' | 'values' | 'get';
@@ -119,6 +120,21 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       reply({ id: req.id, result: null });
     }
   } catch (error) {
-    reply({ id: req.id, error: error instanceof Error ? error.message : String(error) });
+    const message = messageOf(error);
+    /*
+     * A failure the session cannot carry on past is tagged here, where SQLite's own words are still intact
+     * (spec §3.4). Only the app's own reads and writes are tagged, and that is the point of the narrowing:
+     *
+     * - `import` already has an answer for a file it does not like — it puts the previous bytes straight
+     *   back — so a rejected restore must leave the app standing, not replace it with a recovery screen.
+     * - `snapshot` is allowed to fail: the open carries on without a copy and says so. A safety copy that
+     *   could not be taken is not a reason to take the app away from someone using it.
+     * - `export` and `wipe` are pressed on screens that show their own errors.
+     *
+     * What is left is `query` and `script`: the ordinary traffic of a running app, which is exactly where
+     * §3.4 says a corrupt page or a vanished file surfaces hours after the open.
+     */
+    const fatal = req.op === 'query' || req.op === 'script' ? fatalKind(message) : null;
+    reply(fatal ? { id: req.id, error: message, fatal } : { id: req.id, error: message });
   }
 };

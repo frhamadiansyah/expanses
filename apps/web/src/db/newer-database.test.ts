@@ -21,6 +21,10 @@ describe('refusedCopy', () => {
     expect(message).toContain('update 47');
     expect(message).toMatch(/Update Expanses/);
     expect(message).not.toMatch(/delete|remove|start fresh|reinstall/i);
+    // "Try it again" is the one instruction that cannot work: the app is what is behind, and on the
+    // Backup page the restore that was waiting has already been dropped by the time this is read.
+    expect(message).not.toMatch(/try (it )?again/i);
+    expect(message).toContain('put that copy back');
   });
 
   it('leaves every other failure exactly as it was', () => {

@@ -7,8 +7,10 @@ import {
   addBank,
   corruptTheDatabase,
   CORRUPT_HEADLINE,
+  enlargeTheDatabase,
   EXPORT_BUTTON,
   forgetSafetyCopies,
+  PAST_THE_SIZE_GUARD_BYTES,
   replaceTheDatabase,
   safetyCopies,
   waitForSafetyCopy,
@@ -382,4 +384,118 @@ test('an open with nothing to update shows no progress screen', async ({ page })
   expect(seen.filter((text) => text.includes('Taking a copy first…'))).toEqual([]);
   expect(seen.filter((text) => text.includes('Checking your data…'))).toEqual([]);
   await expect(page.getByText(/Your data was updated to version/)).toHaveCount(0);
+});
+
+/*
+ * Spec §3.4 — corruption found while the app is running.
+ *
+ * Everything above breaks a database and then opens it, which the staged open catches at the door. This is
+ * the other half: a database that opens perfectly well and goes wrong later, under a user who is already
+ * inside the app. Nothing is stubbed here either — a real page of a real OPFS database is ruined, the app
+ * really opens on it, and the query that finally touches that page is one the user makes by pressing a
+ * link in the navigation.
+ *
+ * What makes it reachable is the open's own size guard (spec §11.4): past 32 MiB the structural check is
+ * skipped on the way in, because it costs more than it is worth before first paint. That is a real device
+ * — a ten-year ledger — and it is precisely the device on which a bad page is found by a query rather than
+ * by the opener. So the file is grown past that line, and the damage is left for the app to walk into.
+ */
+
+/**
+ * The table to hole, and the screen that is asked for it afterwards.
+ *
+ * `entries` is every side of every transaction, so the opening balance entered below really is in it —
+ * which matters, because an empty table is never read at all. A query for rows that are not there is
+ * answered out of an index, and the table's own pages are never touched; a query for rows that *are*
+ * there has to go and get them. Nothing on the way in reads it: the open lists workspaces, settles the
+ * categories and reads the open book, and none of that is the ledger.
+ */
+const BROKEN_TABLE = 'entries';
+
+/**
+ * The same database, with one table's root page ruined and the file claiming the size that puts it past
+ * the open's structural check.
+ *
+ * Only the root page of one table goes. Every other page is untouched, which is the whole point: the
+ * schema still parses, `schema_migrations` still answers, the accounts still load, and SQLite says
+ * "database disk image is malformed" the first time anything asks for a row of this one table.
+ */
+function breakOneTableOutOfSight(source: string, target: string, table: string): { file: string; databaseBytes: number } {
+  mkdirSync(dirname(target), { recursive: true });
+  const bytes = readFileSync(source);
+
+  const db = new BetterSqlite3(source, { readonly: true });
+  let rootPage: number;
+  let pageSize: number;
+  try {
+    // Read, never written down: the app has changed its page size once already, and a test that hard-codes
+    // today's would corrupt whatever happens to lie at that offset instead of the table it named.
+    pageSize = Number(db.pragma('page_size', { simple: true }));
+    const row = db.prepare("SELECT rootpage FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) as { rootpage: number } | undefined;
+    expect(row, `no table called ${table} in the app's own backup`).toBeTruthy();
+    rootPage = row!.rootpage;
+  } finally {
+    db.close();
+  }
+  bytes.fill(0xff, (rootPage - 1) * pageSize, rootPage * pageSize);
+
+  /*
+   * And the header is told how big the file is about to be. SQLite believes the in-header page count only
+   * while it matches the change counter it was written for (bytes 24..27 against 92..95), so both are set
+   * — otherwise it falls back to the real file size and the size guard never trips.
+   */
+  const pages = Math.ceil(PAST_THE_SIZE_GUARD_BYTES / pageSize);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  view.setUint32(28, pages);
+  view.setUint32(92, view.getUint32(24));
+
+  writeFileSync(target, bytes);
+  return { file: target, databaseBytes: pages * pageSize };
+}
+
+test('a database that goes wrong while the app is open swaps the app for the recovery screen', async ({ page }, testInfo) => {
+  await addBank(page, 'Still here', '1000000');
+  const backup = await downloadBackup(page, join(testInfo.outputDir, 'sound.sqlite3'));
+  const holed = breakOneTableOutOfSight(backup, join(testInfo.outputDir, 'holed.sqlite3'), BROKEN_TABLE);
+  await replaceTheDatabase(page, readFileSync(holed.file));
+  await enlargeTheDatabase(page, holed.databaseBytes);
+
+  /*
+   * The app opens, and it opens properly. This is not the recovery screen with a different heading on it:
+   * it is the app, out of the very file that is holed, on a screen that has no reason to read the ledger.
+   */
+  await page.goto('/backup');
+  await expect(page.getByRole('button', { name: 'Download backup' })).toBeVisible({ timeout: 45_000 });
+
+  // And then they press a link, like anybody would, and the screen behind it asks for the pages that went.
+  await page.getByRole('navigation').getByRole('link', { name: 'Transactions', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: CORRUPT_HEADLINE, exact: true })).toBeVisible();
+  /*
+   * The sentence that proves this came the mid-session way and not through the opener: the screen the user
+   * was on is gone, their money is not. A screen reached by a failed open never says it.
+   */
+  await expect(page.getByText(/what you have lost is the screen you were on, not your money/i)).toBeVisible();
+  await expect(page.getByText(/still on this device and most of it is almost certainly fine/i)).toBeVisible();
+
+  // Every route out is on it, and the technical text is under Details where it belongs, not above the fold.
+  await page.getByText('Details', { exact: true }).click();
+  await expect(page.getByText(/malformed|disk image/i)).toBeVisible();
+
+  // The one that matters most: the data is still there to be taken away, from the app's own engine having
+  // died and let go of the files a moment ago.
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: EXPORT_BUTTON, exact: true }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^expanses-recovery-\d{4}-\d{2}-\d{2}\.sqlite3$/);
+
+  // And what was exported is the user's data, not an empty file: their bank is in it, read by a real engine.
+  const saved = join(testInfo.outputDir, 'rescued.sqlite3');
+  writeFileSync(saved, readFileSync((await file.path())!));
+  const rescued = new BetterSqlite3(saved, { readonly: true });
+  try {
+    expect(rescued.prepare('SELECT count(*) AS n FROM accounts WHERE name = ?').get('Still here')).toEqual({ n: 1 });
+  } finally {
+    rescued.close();
+  }
 });

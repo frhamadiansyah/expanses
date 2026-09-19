@@ -28,13 +28,24 @@ export interface RecoveryOptions {
  * opener is deliberately not reused — it is written for a log line, this is written for a person — and
  * `reason.detail` never appears above the fold.
  */
+/**
+ * The one sentence a screen that arrived mid-session owes the user, and the open-time screens do not.
+ *
+ * They were looking at their money a moment ago and the app has just gone out from under them. Said
+ * before anything else is asked of them: nothing was deleted, the thing they lost is the screen, and the
+ * app stopped on purpose rather than carrying on writing to a file that had stopped answering.
+ */
+export const MID_SESSION_NOTE = 'Expanses stopped here rather than keep writing to it, so what you have lost is the screen you were on, not your money.';
+
 export function recoveryCopy(reason: RecoveryReason, options: RecoveryOptions): RecoveryCopy {
   const { headline, body } = words(reason);
   return {
     headline: options.requested ? 'Recovery tools' : headline,
     body: options.requested
       ? 'Nothing has gone wrong. This screen never opens your data, so you can take a copy of it, put back the last good copy, or start again from here even when opening is what breaks.'
-      : body,
+      : reason.midSession
+        ? `${MID_SESSION_NOTE} ${body}`
+        : body,
     actions: actionsFor(reason, options),
   };
 }
@@ -103,8 +114,11 @@ function words(reason: RecoveryReason): { headline: string; body: string } {
         body: 'Your transactions, accounts and cards are still stored on this device. Something went wrong while opening them, which is usually temporary. Try again first — and take a copy while you are here, so you have one whatever happens next.',
       };
     case 'unreadable':
+      // Mid-session it did open — it stopped answering afterwards — so the headline has to say the true
+      // thing rather than the near one. The body is the same either way: it is the same file, in the same
+      // place, and the same three things are worth doing about it.
       return {
-        headline: 'Your data is on this device, but it would not open',
+        headline: reason.midSession ? 'Your data stopped answering' : 'Your data is on this device, but it would not open',
         body: 'The file is where it should be; it just did not answer this time. Another tab, a browser update or a device that was busy can all do this. Try again, and take a copy first so you are holding one either way.',
       };
     case 'corrupt':

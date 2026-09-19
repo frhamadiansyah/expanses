@@ -52,6 +52,19 @@ async function start() {
       return;
     }
     const app = result.app;
+    /*
+     * From here the app is open and the user is in it. A corrupt page, a disk that stops answering or a
+     * file the browser has taken back can all still turn up — hours later, from an ordinary query — and
+     * spec §3.4 says what happens then: the app is replaced by the same recovery screen a failed open
+     * builds, with the same typed reason and the same buttons.
+     *
+     * Registered before the app is rendered so there is no gap where a failure has nowhere to go, and it
+     * swaps the tree rather than reloading: a reload would race the failure, and could just as easily land
+     * on the same broken query again with nothing on screen to press.
+     */
+    app.onFatal?.((reason) => {
+      root.render(<RecoveryScreen reason={reason} snapshots={snapshots} />);
+    });
     if (import.meta.env.DEV) {
       const { loadSample, pushOverBudget, wantsOverBudget, wantsSample } = await import('./db/dev-sample');
       if (wantsSample()) {

@@ -56,6 +56,17 @@ export async function addBank(page: Page, name: string, balance: string) {
 const DATA_OFFSET = 4096;
 
 /**
+ * How large a database has to be before the open stops checking its structure on the way in.
+ *
+ * `QUICK_CHECK_LIMIT_BYTES` in `src/db/open.ts` is 32 MiB (spec §11.4's size guard): past that, a
+ * `quick_check` on the path to first paint costs more than it is worth, and the structural check happens
+ * only after an update. 34 MiB is comfortably the other side of that line, and it is what makes the
+ * mid-session journey reachable: a big ledger with a bad page in it opens, and says nothing at all until
+ * something actually reads that page.
+ */
+export const PAST_THE_SIZE_GUARD_BYTES = 34 * 1024 * 1024;
+
+/**
  * Writes bytes into the live database's slot file, from the page itself. Recovery mode never opens the
  * VFS, so the pool holds no sync access handles and the slot files can be written here — that is the
  * whole trick, and both the corruption and the from-the-future tests turn on it.
@@ -126,4 +137,24 @@ export async function corruptTheDatabase(page: Page) {
  */
 export async function replaceTheDatabase(page: Page, bytes: Buffer) {
   await writeOverTheDatabase(page, { position: DATA_OFFSET, base64: bytes.toString('base64'), minSize: DATA_OFFSET + 16 });
+}
+
+/**
+ * Grows the slot file to `databaseBytes` of database, so the file really is the size its header says.
+ *
+ * A header that claims more pages than the file holds is not a big database, it is a corrupt one — SQLite
+ * checks exactly that when it takes its first lock and refuses the file outright. So the pages have to be
+ * there. They are written here rather than shipped: one byte at the far end of the slot, and OPFS fills
+ * everything before it with zeros. Thirty-five megabytes of empty pages, for the price of a single write,
+ * where sending them through the browser as base64 would be nearly fifty megabytes of string.
+ *
+ * SQLite never reads those pages — nothing in the database points at them — and only `integrity_check`
+ * would have an opinion about them, which is the check this size deliberately puts out of reach.
+ */
+export async function enlargeTheDatabase(page: Page, databaseBytes: number) {
+  await writeOverTheDatabase(page, {
+    position: DATA_OFFSET + databaseBytes - 1,
+    base64: Buffer.alloc(1).toString('base64'),
+    minSize: DATA_OFFSET + 16,
+  });
 }

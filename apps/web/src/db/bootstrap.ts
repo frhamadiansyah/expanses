@@ -15,7 +15,7 @@ import {
   syncLinkedPrograms,
   type WorkspaceContext,
 } from '@expanses/db';
-import { type OpenResult, type OpenStage, openSafely, type Safety, say } from './open';
+import { type OpenResult, type OpenStage, openSafely, type RecoveryReason, type Safety, say } from './open';
 import { opfsSnapshots } from './snapshots';
 import { createWorkerExecutor } from './worker-executor';
 
@@ -37,6 +37,14 @@ export interface AppDb {
   safety?: Safety;
   /** Absent only where a caller opened a database without going through `openSafely`. */
   update?: UpdateOutcome;
+  /**
+   * Registers the handler for a failure the *running* app cannot carry on past — spec §3.4.
+   *
+   * Absent for a database opened without a worker (the Node-backed tests), because there is then no engine
+   * that can die underneath the app. Called at most once, with a typed reason; everything after it is
+   * rejected rather than left to hang.
+   */
+  onFatal?: (handler: (reason: RecoveryReason) => void) => void;
 }
 
 export async function openAppDb(database: Database, migrations?: Migration[]): Promise<AppDb> {
@@ -126,6 +134,23 @@ export async function bootstrap(onStage: (stage: OpenStage) => void, deps: Boots
       snapshotBytes: () => executor.snapshotBytes(),
       onStage,
     });
+    if (result.ok) {
+      /*
+       * The other half of layer 1 (spec §3.4). The app is about to be handed over and used for hours; from
+       * here on, the engine reporting a corrupt page or a file that has gone away is not one broken screen
+       * but the end of the session — so it has to reach the same recovery screen the open path builds.
+       *
+       * The worker is terminated first, before the caller is told, for the reason the `finally` below
+       * exists: it holds a sync access handle on every slot file the pool owns, and the recovery screen's
+       * Restore and Start fresh cannot touch those files until it lets go. Nothing is reloaded — a reload
+       * would race the failure and could land back on the same broken query — the screen is simply swapped.
+       */
+      result.app.onFatal = (handler) =>
+        executor.onFatal((reason) => {
+          worker.terminate();
+          handler(reason);
+        });
+    }
     return result;
   } finally {
     if (!result?.ok) worker.terminate();

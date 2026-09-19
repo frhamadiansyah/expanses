@@ -29,6 +29,12 @@ export interface RecoveryReason {
   exportable: boolean;
   /** Whether the database was put back the way it was before an update. */
   rolledBack?: boolean;
+  /**
+   * Whether this was found with the app already open and running, rather than on the way in (spec §3.4).
+   * It changes nothing about what is offered — the file is the file — and only what the screen says: the
+   * user was looking at their money a second ago and is owed a sentence about where it went.
+   */
+  midSession?: boolean;
 }
 
 export type OpenStage =

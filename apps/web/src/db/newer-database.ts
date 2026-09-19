@@ -26,9 +26,14 @@ export function newerDatabaseVersion(error: unknown): number | null {
  * Three things have to be in it: that nothing on this device changed, which is the fear; that the app is
  * what is behind, not the data, which is the fact; and what to do about it. Never "delete", never "start
  * fresh" — the most likely reader is someone restoring their own current backup onto an old build.
+ *
+ * And never "try it again", which is the one instruction that cannot work from here. Nothing about this
+ * device changes by pressing anything twice: the copy is refused for as long as the app is the older of
+ * the two, and on the screen where a restore was waiting it has already been dropped. Updating the app is
+ * the whole of what is left to do, and then coming back to the copy, which is still exactly where it was.
  */
 export function refusedCopyMessage(fileVersion: number, appVersion: number): string {
-  return `This data was made by a newer version of Expanses. Nothing on this device was changed: that copy was written by update ${fileVersion}, and this app knows up to update ${appVersion}. Update Expanses, then try it again.`;
+  return `This data was made by a newer version of Expanses. Nothing on this device was changed: that copy was written by update ${fileVersion}, and this app knows up to update ${appVersion}. Update Expanses, then put that copy back — it is still where it was.`;
 }
 
 /** The same failure as an Error an ErrorBox can show, or null when it is not this failure. */
