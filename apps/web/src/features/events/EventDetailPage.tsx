@@ -1,8 +1,8 @@
 import { expenseLines, formatMinor, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
 import { deleteEvent, finishEvent, linkEventItem, postTransaction, tagTransaction } from '@expanses/db';
-import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ChevronLeft, Plus } from 'lucide-react';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
@@ -11,16 +11,27 @@ import { coverTarget, isNothingLeft } from './buy-item';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCategorySetMembership, useCategorySets, useSetCategories } from '../categories/set-queries';
 import { BudgetGauge } from '../transactions/BudgetGauge';
-import { CapLine, ShareLine } from '../transactions/CategoryLines';
+import { ShareLine } from '../transactions/CategoryLines';
 import { categoryColour } from '../transactions/category-colours';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
-import { gaugeFor, PLAN_WORDS, plannedLabel, planCardRows } from './plan-view';
+import { PlanCard } from './PlanCard';
+import { differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { useCategoryWorkspaces } from '../workspaces/queries';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
 
 const dayCount = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00`) - Date.parse(`${from}T00:00:00`)) / 86_400_000) + 1;
+
+/** One figure under the ring: what it is on the left, what it is worth on the right. */
+function Figure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt>{label}</dt>
+      <dd className="font-semibold text-slate-900">{children}</dd>
+    </div>
+  );
+}
 
 /**
  * One event, read the way Cashflow reads a month.
@@ -165,11 +176,14 @@ export function EventDetailPage() {
   if (events.isSuccess && !event) return <Empty>That event is no longer here.</Empty>;
 
   const data = plan.data;
-  const lines = (data?.lines ?? []).filter((line) => line.actualMinor > 0 || line.planned);
-  const spentLines = lines.filter((line) => line.actualMinor > 0);
+  // The ring is every rupiah tagged to the event, so its slices are every category that has money in it.
+  const spentLines = (data?.lines ?? []).filter((line) => line.actualMinor > 0);
+  // Where it went keeps every category, planned or not — this is the page that must never hide what was spent.
+  const rows = data ? whereItWentRows(data) : [];
+  const totals = data ? planTotals(data) : null;
   const spent = data?.spentMinor ?? 0;
-  const plannedTotal = data?.hasPlan ? data.plannedMinor : null;
-  const hasPlan = plannedTotal !== null && plannedTotal > 0;
+  // An event has a plan when something is on the list, whatever it adds up to — not when a figure was set for it.
+  const hasPlan = data?.hasPlan === true;
   const onPlan = hasPlan && page === 1;
   const transactions = history.data?.length ?? 0;
 
@@ -281,7 +295,11 @@ export function EventDetailPage() {
         <div data-testid="event-sheet">
         <Card>
           <div className="flex flex-col items-center gap-0.5 pt-1">
-            <span className="text-sm font-semibold">{eventDates(event)}</span>
+            {/* The event's length used to be the gauge's third figure; it belongs with the dates, and the gauge's
+                third place goes to what is still to buy — a figure only the plan has. */}
+            <span className="text-sm font-semibold">
+              {eventDates(event)} · {dayCount(event.startsOn, event.endsOn)} {dayCount(event.startsOn, event.endsOn) === 1 ? 'day' : 'days'}
+            </span>
             <span className="flex items-center gap-1.5 text-xs text-slate-500">
               <StatusChip status={eventStatus(event, today)} />
               {setName && `draws on ${setName}`}
@@ -294,41 +312,90 @@ export function EventDetailPage() {
           ) : hasPlan ? (
             <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']}>
               {donut}
-              <BudgetGauge
-                // An event is read whole, in the owner's own money, whichever workspace's tab is open.
-                currency={ws.baseCurrency}
-                // Only the categories that have items: a trip that planned the flights and not the food would
-                // otherwise read every unplanned rupiah as over a plan that never meant to cover it.
-                progress={gaugeFor(data!)}
-                month={today.slice(0, 7)}
-                today={today}
-                // `set` is the caps label the gauge prints, and PLAN_WORDS cannot hold "Planned so far" as a
-                // constant — so it is overridden here, or the gauge would contradict the card above it.
-                words={{ ...PLAN_WORDS, set: plannedLabel(data!) }}
-                last={{ label: 'Long', value: `${dayCount(event.startsOn, event.endsOn)} ${dayCount(event.startsOn, event.endsOn) === 1 ? 'day' : 'days'}` }}
-              />
+              <div>
+                <BudgetGauge
+                  // An event is read whole, in the owner's own money, whichever workspace's tab is open.
+                  currency={ws.baseCurrency}
+                  // Only the categories that have items: a trip that planned the flights and not the food would
+                  // otherwise read every unplanned rupiah as over a plan that never meant to cover it.
+                  progress={gaugeFor(data!)}
+                  month={today.slice(0, 7)}
+                  today={today}
+                  // `set` is the caps label the gauge prints and `spent` the middle one, and PLAN_WORDS cannot hold
+                  // either as a constant — both depend on whether the plan speaks for the whole of the event.
+                  words={{ ...PLAN_WORDS, set: plannedLabel(data!), spent: spentLabel(data!) }}
+                  last={{ label: 'Still to buy', value: formatMinor(totals!.toBuyMinor, ws.baseCurrency) }}
+                />
+                {/* The mockup's order under the ring: how the bought things went, and what nobody planned. Every
+                    figure is `planTotals`', never recomputed here, so no two screens can disagree about one event. */}
+                <dl className="mt-2 space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-500">
+                  {data!.boughtCount > 0 && (
+                    <Figure label="Difference so far">
+                      <span className={TONE[differenceWords(data!.differenceMinor, ws.baseCurrency).tone]}>{differenceWords(data!.differenceMinor, ws.baseCurrency).text}</span>
+                    </Figure>
+                  )}
+                  {totals!.notPlannedMinor > 0 && (
+                    <Figure label="Not planned">
+                      <Money minor={totals!.notPlannedMinor} currency={ws.baseCurrency} />
+                    </Figure>
+                  )}
+                  {/* Money that came back answers no item, so it moves the total above without a row of its own on
+                      any of these lines. Named here rather than clamped away, and named in full on the plan screen. */}
+                  {totals!.moneyBackMinor > 0 && (
+                    <Figure label="Money back">
+                      <Money minor={totals!.moneyBackMinor} currency={ws.baseCurrency} className="text-emerald-700" />
+                    </Figure>
+                  )}
+                  {/*
+                   * The ring measures the planned categories alone; the chart one swipe back adds up the whole event.
+                   * Where those differ the other page's figure is printed here under the other page's own words, so
+                   * the two totals are one reading with a reason, rather than two numbers for one trip.
+                   */}
+                  {data!.spentMinor !== data!.plannedSpentMinor && (
+                    <Figure label="Total spent">
+                      <Money minor={Math.max(0, data!.spentMinor)} currency={ws.baseCurrency} />
+                    </Figure>
+                  )}
+                </dl>
+              </div>
             </Deck>
           ) : (
             donut
           )}
 
-          {lines.length > 0 && (
+          {/*
+           * The rows belong to "Where it went", the one page that shows every category. Against the plan there are
+           * no rows: a category is planned or it is not, and a bar drawn against a category that planned nothing
+           * would be measuring spending against a figure nobody set. The plan's own rows are on the plan screen.
+           */}
+          {!onPlan && rows.length > 0 && (
             <div className="mt-2 divide-y divide-slate-100 border-t border-slate-100" data-testid="event-detail-sheet">
-              {(onPlan ? lines : spentLines).map((line) => (
-                <div key={line.categoryId ?? 'none'} className="flex min-h-12 flex-col justify-center py-2.5">
-                  {onPlan ? (
-                    <CapLine
-                      colour={categoryColour(line.categoryId ?? 'none')}
-                      name={line.name}
-                      amountMinor={line.actualMinor}
-                      capMinor={line.planned ? line.plannedMinor : null}
-                      currency={ws.baseCurrency}
-                      chevron={false}
-                      noCap="not planned"
-                    />
-                  ) : (
-                    <ShareLine colour={categoryColour(line.categoryId ?? 'none')} name={line.name} amountMinor={line.actualMinor} wholeMinor={spent} currency={ws.baseCurrency} chevron={false} />
-                  )}
+              {rows.map((row) => (
+                <div key={row.categoryId ?? 'none'} className="flex min-h-12 flex-col justify-center py-2.5">
+                  <ShareLine
+                    colour={categoryColour(row.categoryId ?? 'none')}
+                    name={row.categoryId === null ? row.name : planName(row.categoryId)}
+                    // Clamped: a category whose refunds outweigh its purchases still cannot have spent less than
+                    // nothing. What came back is named under the ring, on the page that can explain it.
+                    amountMinor={Math.max(0, row.actualMinor)}
+                    wholeMinor={spent}
+                    currency={ws.baseCurrency}
+                    chevron={false}
+                    // A planned row is read against its own plan; an unplanned one has nothing to be read against.
+                    figure={
+                      row.planned ? (
+                        <span className="shrink-0 text-sm">
+                          <Money minor={Math.max(0, row.actualMinor)} currency={ws.baseCurrency} className="font-semibold" /> <span className="text-slate-500">of</span>{' '}
+                          <Money minor={row.plannedMinor} currency={ws.baseCurrency} className="text-slate-500" />
+                        </span>
+                      ) : undefined
+                    }
+                  />
+                  <span className="mt-1 ml-[22px] flex items-center gap-2 text-xs text-slate-500">
+                    {/* Grey, not amber: a category nobody planned is a fact about the plan, never a warning. */}
+                    {hasPlan && !row.planned && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">no items</span>}
+                    {row.subline}
+                  </span>
                 </div>
               ))}
             </div>
@@ -337,41 +404,11 @@ export function EventDetailPage() {
         </div>
       )}
 
-      {/* Put away while spending is being recorded: the plan is a screen of its own, and one question at a time is enough. */}
-      {!adding && (
-        <Card className="space-y-2">
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h2 className="text-sm font-semibold">Plan</h2>
-            <span className="text-xs text-slate-500">
-              {data?.itemCount ? `${data.itemCount} ${data.itemCount === 1 ? 'item' : 'items'} · ${data.boughtCount} bought` : 'Nothing planned yet'}
-            </span>
-          </div>
-          {(data ? planCardRows(data) : []).map((row) => (
-            <p key={row.categoryId ?? 'none'} className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="min-w-0 truncate">
-                {row.categoryId === null ? row.name : planName(row.categoryId)} <span className="text-xs text-slate-500">{row.subline}</span>
-              </span>
-              <Money minor={row.plannedMinor} currency={ws.baseCurrency} className="font-semibold" />
-            </p>
-          ))}
-          {/*
-           * The figure for a category is the sum of its items and is set nowhere else. The form that used to sit here
-           * asked for a category and a total and *appended* an item each time, so naming one twice quietly doubled it
-           * with no list on screen to show why. The plan screen is that list.
-           */}
-          {/* The words change with the card: nothing planned is an invitation, a list of items is a way in to it. */}
-          <Link
-            to="/events/$eventId/plan"
-            params={{ eventId }}
-            search={{ ws: openTab ?? undefined }}
-            data-testid="open-plan"
-            className="flex min-h-11 w-full items-center justify-center rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100"
-          >
-            {data?.itemCount ? 'See the whole plan' : 'Plan what to buy'}
-          </Link>
-          <p className="text-xs text-slate-500">A plan is a list of things to buy — how many of each and roughly what one costs. A category line is their sum.</p>
-        </Card>
-      )}
+      {/*
+       * Between the chart and the suggestions, and no longer put away while spending is being recorded: it is a card
+       * rather than a second form, so nothing on it competes with the one question the form is asking.
+       */}
+      {data && <PlanCard eventId={eventId} plan={data} bookId={openTab} />}
 
       {(suggestions.data?.length ?? 0) > 0 && event && (
         <Card className="space-y-2">

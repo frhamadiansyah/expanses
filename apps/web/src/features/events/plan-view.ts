@@ -15,8 +15,12 @@ export const PLAN_WORDS: GaugeWords = {
   left: 'Left of the plan',
   over: 'Over the plan by',
   set: 'Planned',
+  spent: 'Spent',
   overCount: (count) => `${count} ${count === 1 ? 'item' : 'items'} over`,
 };
+
+/** How the difference on an item or a plan is coloured. Beside the words it tones, so the two cannot drift apart. */
+export const TONE = { over: 'text-red-700', under: 'text-emerald-700', exact: 'text-slate-500' } as const;
 
 /**
  * The arc measures the categories that were planned, never the whole event.
@@ -40,6 +44,16 @@ export const gaugeFor = (plan: EventPlan): BudgetProgress => ({
  * whose refund is outweighed by other unplanned spending says it just as plainly as one whose refund is not.
  */
 export const plannedLabel = (plan: EventPlan) => (plan.unplannedCategoryCount > 0 || planTotals(plan).moneyBackMinor > 0 ? 'Planned so far' : 'Planned');
+
+/**
+ * What the ring's middle figure is counting, said out loud whenever it is not the whole event.
+ *
+ * The chart on the first page adds up every rupiah tagged to the event; the ring on the second adds up only the
+ * categories that have items, because those are the only ones a plan may be measured against. Where the two differ
+ * a user swiping between them would otherwise meet two totals for one trip with nothing saying why — so the ring's
+ * own figure is named for what it counts, and the page prints the chart's total beneath it under the chart's words.
+ */
+export const spentLabel = (plan: EventPlan) => (plan.spentMinor === plan.plannedSpentMinor ? 'Spent' : 'Spent on plan');
 
 /**
  * What one item cost against what it was estimated at, said in words and in a tone.

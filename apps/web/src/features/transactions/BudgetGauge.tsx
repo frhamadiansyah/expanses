@@ -24,6 +24,8 @@ export interface GaugeWords {
   left: string;
   over: string;
   set: string;
+  /** The middle figure's name. Spending under a cap is not always all the spending there is, and then it must say so. */
+  spent: string;
   /** How many lines went over, said in the gauge's own terms. */
   overCount: (count: number) => string;
 }
@@ -32,6 +34,7 @@ const MONTH_WORDS: GaugeWords = {
   left: 'Left to spend',
   over: 'Over budget by',
   set: 'Budgeted',
+  spent: 'Spent',
   overCount: (count) => `${count} ${count === 1 ? 'budget' : 'budgets'} over`,
 };
 
@@ -97,7 +100,7 @@ export function BudgetGauge({
       <div className="flex text-center">
         {[
           [words.set, formatMinor(progress.capsMinor, currency)],
-          ['Spent', formatMinor(progress.spentMinor, currency)],
+          [words.spent, formatMinor(progress.spentMinor, currency)],
           last ? [last.label, last.value] : ['Left in month', days === 1 ? '1 day' : `${days} days`],
         ].map(([label, value]) => (
           <div key={label} className="flex-1 px-1 not-first:border-l not-first:border-slate-200">

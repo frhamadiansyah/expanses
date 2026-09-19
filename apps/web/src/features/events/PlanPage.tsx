@@ -7,15 +7,13 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Card, cx, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { differenceWords, itemSubline, moneyBackRows, plannedLabel, planTotals } from './plan-view';
+import { differenceWords, itemSubline, moneyBackRows, plannedLabel, planTotals, TONE } from './plan-view';
 import { useEventHistory, useEventItemsReady, useEventPlan, useEvents } from './queries';
 
 /** The dark full-width link that is the one thing to do on an empty plan, and the quiet one at the foot of a full one. */
 const WIDE = 'flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium';
 const WIDE_DARK = `${WIDE} bg-slate-900 text-white hover:bg-slate-700`;
 const WIDE_QUIET = `${WIDE} bg-white text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100`;
-
-const TONE = { over: 'text-red-700', under: 'text-emerald-700', exact: 'text-slate-500' } as const;
 
 function Figure({ label, children }: { label: string; children: ReactNode }) {
   return (

@@ -12,6 +12,7 @@ import {
   plannedLabel,
   planTotals,
   quantityWords,
+  spentLabel,
   whereItWentRows,
 } from './plan-view';
 
@@ -48,6 +49,22 @@ describe('the gauge', () => {
     expect(gaugeFor(partly)).toMatchObject({ capsMinor: 20_200_000, spentMinor: 7_800_000 });
     expect(plannedLabel(partly)).toBe('Planned so far');
     expect(plannedLabel(plan)).toBe('Planned');
+  });
+
+  /*
+   * The two totals one swipe apart: the ring adds up 7.8m — the planned categories — while the chart behind it adds
+   * up all 12.8m tagged to the event. Both are true, and a user meeting them unlabelled has found two totals for one
+   * trip. So the ring's own figure is named for what it counts whenever the two differ, and is plainly "Spent" when
+   * there is only one total to have.
+   */
+  it('names the middle figure for what it counts when that is not the whole event', () => {
+    const partly = withFood();
+    expect(partly.spentMinor).toBe(12_800_000);
+    expect(gaugeFor(partly).spentMinor).toBe(7_800_000);
+    expect(spentLabel(partly)).toBe('Spent on plan');
+    // Nothing outside the plan, so the ring's figure is the whole event's and needs no qualifying.
+    expect(plan.spentMinor).toBe(gaugeFor(plan).spentMinor);
+    expect(spentLabel(plan)).toBe('Spent');
   });
 });
 

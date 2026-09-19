@@ -43,13 +43,16 @@ test('an event reads like Cashflow: where it went, and a swipe to what it planne
   const sheet = page.getByTestId('event-sheet');
   await expect(sheet.getByRole('button', { name: /Show expenses|Show income/ })).toHaveCount(0);
   await expect(page.getByTestId('event-total')).toContainText('8.180.000');
-  await expect(page.getByTestId('event-detail-sheet')).toContainText('52%');
+  // Where it went keeps every category: its share of the trip, and — since both were planned — what each was planned at.
+  const rows = page.getByTestId('event-detail-sheet');
+  await expect(rows).toContainText('52%');
+  await expect(rows).toContainText(/3\.900\.000\s*of\s*Rp\s?3\.000\.000/);
 
-  // Turned to the plan, the rows read each category against what was planned for it.
+  // Turned to the plan, the whole of what was spent in the planned categories against the whole of what was planned.
   await sheet.getByRole('button', { name: 'Against the plan' }).click();
-  const lodging = page.getByTestId('event-detail-sheet');
-  await expect(lodging).toContainText(/Rp\s?900\.000 over/);
   await expect(sheet).toContainText('Over the plan by');
+  await expect(sheet).toContainText(/Rp\s?680\.000/);
+  await expect(sheet).toContainText('Still to buy');
 
   // The event's own history sits under it.
   await expect(page.getByRole('heading', { name: 'Transaction history' })).toBeVisible();

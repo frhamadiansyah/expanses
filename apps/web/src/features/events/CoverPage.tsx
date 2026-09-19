@@ -5,10 +5,8 @@ import { useEffect, useId, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Input, Money, PageHeader } from '../../ui';
-import { coverTotals, differenceWords } from './plan-view';
+import { coverTotals, differenceWords, TONE } from './plan-view';
 import { useEventHistory, useEventPlan, useEvents, usePurchaseCover } from './queries';
-
-const TONE = { over: 'text-red-700', under: 'text-emerald-700', exact: 'text-slate-500' } as const;
 
 /** Half-typed digits are not an error, only a figure that is not there yet: nought until the whole of it parses. */
 function minorOf(typed: string, currency: string): number {

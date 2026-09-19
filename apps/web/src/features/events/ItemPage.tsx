@@ -7,10 +7,8 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Money, PageHeader, Row, RowGroup, RowHint } from '../../ui';
 import { buyTarget, coverTarget } from './buy-item';
-import { differenceWords } from './plan-view';
+import { differenceWords, TONE } from './plan-view';
 import { useEventPlan } from './queries';
-
-const TONE = { over: 'text-red-700', under: 'text-emerald-700', exact: 'text-slate-500' } as const;
 
 /** A link that reads as the quiet twin of a secondary Button beside it. */
 const ACTION_QUIET = 'inline-flex min-h-11 items-center justify-center rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100';
