@@ -1,8 +1,7 @@
-import { allPhotoFileNames } from '@expanses/db';
 import { Link, Outlet } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { photos } from '../photos/store';
+import { sweepPhotosAtStart } from '../photos/sweep-at-start';
 import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
@@ -71,16 +70,15 @@ export function Layout() {
    * moment nobody is looking at a form, and it reads every workspace's rows: a sweep that knew only the open
    * workspace would count another workspace's pictures as orphans and delete them.
    *
-   * `allPhotoFileNames` answers null where the database cannot say which files are in use — a device opened
-   * below a blocked update has no `transaction_photos` table — and `sweepOrphanPhotos` then deletes nothing.
-   * That pair is load-bearing: photos have no second copy, so the sweep only ever removes a file it can show
-   * is unreferenced. It also answers 0 and breaks nothing where OPFS is absent, so a private window is fine.
+   * `sweepPhotosAtStart` is the whole of it, and is tested as itself rather than copied into a test: the
+   * database is asked which files are in use, and the sweep deletes only what that answer proves is not.
+   * A database that cannot say — a device opened below a blocked update has no `transaction_photos` table —
+   * and a restore that has just replaced the database both leave every photograph exactly where it is.
+   * It answers 0 and breaks nothing where OPFS is absent, so a private window is fine too.
    */
   useEffect(() => {
     if (!database) return;
-    void allPhotoFileNames(database)
-      .then((kept) => photos.sweepOrphanPhotos(kept))
-      .catch((error: unknown) => console.warn('Photos were not swept', error));
+    void sweepPhotosAtStart(database).catch((error: unknown) => console.warn('Photos were not swept', error));
   }, [database]);
 
   return (

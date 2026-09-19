@@ -47,7 +47,8 @@ export interface PhotoStore {
    * overwrites a picture this device already holds.
    */
   putPhotoBytes(fileName: string, bytes: Uint8Array): Promise<boolean>;
-  deletePhotoFile(fileName: string): Promise<void>;
+  /** Answers whether the file really went. False is "it may still be there", never "there was nothing to do". */
+  deletePhotoFile(fileName: string): Promise<boolean>;
   listPhotoFiles(): Promise<string[]>;
   /**
    * Deletes every photo file no database row names, and answers how many went.
@@ -55,13 +56,53 @@ export interface PhotoStore {
    * `kept` is every file name in the database, from every workspace — or **null**, meaning this database
    * cannot say. Null is not "none": see `sweepOrphanPhotos` below for why the difference is the whole point.
    */
-  sweepOrphanPhotos(kept: Iterable<string> | null): Promise<number>;
+  sweepOrphanPhotos(kept: readonly string[] | null): Promise<number>;
+  /**
+   * Puts every photo now on this device beyond the sweep's reach, and answers which names are held.
+   *
+   * Called immediately before a restore replaces the database. See `sweepOrphanPhotos` for why.
+   */
+  holdPhotosBeforeRestore(): Promise<readonly string[]>;
   /** An object URL for a thumbnail or the full-size view. The caller revokes it. Null when there is no file. */
   photoUrl(fileName: string): Promise<string | null>;
 }
 
 /** The app's own directory under the OPFS root. The database's VFS lives in `.expanses/`; these two never meet. */
 const PHOTO_DIRECTORY = 'expanses-photos';
+
+/**
+ * The names the sweep is forbidden to touch, kept on the device rather than in the data.
+ *
+ * It has to outlive the database it protects photos from — a restore replaces the whole file — so the one
+ * place it cannot live is inside it. `localStorage` is where this app already keeps the other facts that are
+ * about this device rather than about the user's money (`features/backup/reminder-state.ts`).
+ */
+export interface SweepShield {
+  /** The names to spare. **Throws** when this device cannot say — which stands the sweep down entirely. */
+  read(): readonly string[];
+  write(names: readonly string[]): void;
+}
+
+/** Where the hold is written on a real device. Namespaced like the other keys this app owns. */
+const SHIELD_KEY = 'expanses.photos.held-before-restore';
+
+const deviceShield: SweepShield = {
+  read() {
+    // No web storage at all (a test runner, an odd embedding) is not a corrupt answer: there is nothing held
+    // because nothing could ever have been written. A storage that exists and throws *is* an unreadable
+    // answer, and it is allowed to propagate.
+    if (typeof localStorage === 'undefined') return [];
+    const raw = localStorage.getItem(SHIELD_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('The list of held photos is not a list.');
+    return parsed.filter((name): name is string => typeof name === 'string');
+  },
+  write(names) {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(SHIELD_KEY, JSON.stringify([...names]));
+  },
+};
 
 const EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -92,7 +133,10 @@ const defaultDirectory = async (): Promise<PhotoDirectory> => {
   return (await root.getDirectoryHandle(PHOTO_DIRECTORY, { create: true })) as unknown as PhotoDirectory;
 };
 
-export function makePhotoStore(getDirectory: () => PhotoDirectory | Promise<PhotoDirectory> = defaultDirectory): PhotoStore {
+export function makePhotoStore(
+  getDirectory: () => PhotoDirectory | Promise<PhotoDirectory> = defaultDirectory,
+  shield: SweepShield = deviceShield,
+): PhotoStore {
   /*
    * The directory is asked for once and held. Creating it is a write, and every read below would otherwise pay
    * for one; more importantly the getter is a factory, so calling it twice can hand back two different
@@ -159,11 +203,21 @@ export function makePhotoStore(getDirectory: () => PhotoDirectory | Promise<Phot
       return true;
     },
 
+    /**
+     * Answers whether the file really went.
+     *
+     * The failures are still swallowed — a caller asking for a picture to go has nothing useful to do about
+     * a directory that will not take the instruction — but they are no longer reported as successes. A
+     * read-only directory used to leave the sweep saying it had removed a file that is still on the device,
+     * and a count that overstates is worse than none: it is what a later "nothing left to sweep" would trust.
+     */
     async deletePhotoFile(fileName) {
       try {
         await (await directory()).removeEntry(fileName);
+        return true;
       } catch {
-        // Already gone, or no OPFS at all. Either way there is nothing left to do and nothing to report.
+        // Already gone, refused, or no OPFS at all. This cannot tell which, so it does not claim one.
+        return false;
       }
     },
 
@@ -185,29 +239,83 @@ export function makePhotoStore(getDirectory: () => PhotoDirectory | Promise<Phot
      * A photo has no second copy anywhere: not in the sqlite backup, not on a server, nowhere. So this is the
      * one function in the app that can destroy user data outright, and it is written to be timid.
      *
-     * `kept === null` means the database could not say which files are referenced. That happens for real: a
-     * device sitting below `LATEST_VERSION` because an update was blocked (`db/open.ts` — a blocked update is
-     * a state the app deliberately opens in, not a hypothetical) has no `transaction_photos` table, so it has
-     * no list of names. If that were reported as an empty list it would be indistinguishable from "there are
-     * genuinely no photos", and this sweep would read "delete every file in the directory" — including the
-     * photograph taken thirty seconds ago. So null deletes nothing. A sweep that cannot prove a file is
-     * unreferenced leaves it alone: tidying can wait for the next launch, a deleted photo cannot come back.
+     * There are three ways this can fail to prove it, and each one deletes nothing.
+     *
+     * **1. The database cannot say.** `kept === null`. That happens for real: a device sitting below
+     * `LATEST_VERSION` because an update was blocked (`db/open.ts` — a blocked update is a state the app
+     * deliberately opens in, not a hypothetical) has no `transaction_photos` table, so it has no list of
+     * names. If that were reported as an empty list it would be indistinguishable from "there are genuinely
+     * no photos", and this sweep would read "delete every file in the directory" — including the photograph
+     * taken thirty seconds ago.
+     *
+     * **2. The caller did not hand over a list at all.** `undefined` is not `null`, and — the one that
+     * actually type-checked — a bare `string` is an `Iterable<string>`, so `sweepOrphanPhotos(row.fileName)`
+     * used to compile and turn into a set of *characters* that matches no file name on earth. The parameter
+     * is now `readonly string[] | null`, and the guard asks what the value is rather than what it is not.
+     *
+     * **3. The database is out of date, because a restore just replaced it.** This is the one that cost a
+     * photograph: restore a backup taken before a picture was attached and every picture since is, to that
+     * database, an orphan. The row comes back the moment the newer backup is restored; the photograph never
+     * does, because it has no second copy anywhere. So a restore writes down what is on the device first
+     * (`holdPhotosBeforeRestore`), and those names are spared until some database in use names one — at
+     * which point the hold on it is let go, because a file a live database names is no longer at risk from
+     * the restore that put it there. If the hold itself cannot be read, that is a fourth way of not knowing,
+     * and it too deletes nothing.
+     *
+     * Tidying can wait for the next launch. A deleted photo cannot come back.
      */
     async sweepOrphanPhotos(kept) {
-      if (kept === null) {
+      if (kept == null || typeof kept === 'string') {
         console.warn('Photos were not swept: this database cannot say which files are in use, so none can be shown to be unused.');
         return 0;
       }
+      let held: readonly string[];
+      try {
+        held = shield.read();
+      } catch (error) {
+        console.warn('Photos were not swept: this device cannot say which photos a restore is still holding.', error);
+        return 0;
+      }
       const keep = new Set(kept);
+      const stillHeld = held.filter((name) => !keep.has(name));
+      if (stillHeld.length !== held.length) {
+        try {
+          shield.write(stillHeld);
+        } catch (error) {
+          // The hold not shrinking costs nothing but a little tidying, so it is never worth failing over.
+          console.warn('The list of held photos could not be shortened', error);
+        }
+      }
+      const holding = new Set(stillHeld);
       let removed = 0;
       // `listPhotoFiles` answers [] where OPFS is missing or will not be read, so a directory that could not
       // be walked sweeps nothing rather than half of something.
       for (const name of await store.listPhotoFiles()) {
-        if (keep.has(name)) continue;
-        await store.deletePhotoFile(name);
-        removed += 1;
+        if (keep.has(name) || holding.has(name)) continue;
+        if (await store.deletePhotoFile(name)) removed += 1;
       }
       return removed;
+    },
+
+    /**
+     * What a restore does before it replaces the database: write down every photo on the device.
+     *
+     * The database restore already forces a safety copy of the data it is about to overwrite. The pictures —
+     * the one thing in this app with no second copy anywhere — used to get nothing, and the sweep that ran
+     * on the very next load was pointed at a database that had never heard of them. This is their equivalent
+     * step, and it is cheaper than a copy: nothing is duplicated, the files are simply put out of reach.
+     */
+    async holdPhotosBeforeRestore() {
+      const here = await store.listPhotoFiles();
+      let held: readonly string[] = [];
+      try {
+        held = shield.read();
+      } catch {
+        // Unreadable, so it is replaced rather than added to. What is on the device right now is what matters.
+      }
+      const names = [...new Set([...held, ...here])].sort();
+      shield.write(names);
+      return names;
     },
 
     async photoUrl(fileName) {

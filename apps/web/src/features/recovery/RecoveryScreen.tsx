@@ -6,6 +6,7 @@ import { NO_SNAPSHOTS, type RecoveryReason, type SnapshotInfo, type SnapshotStor
 import { restoreBytes, salvageBytes } from '../../db/salvage';
 import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes } from '../../lib/download';
+import { photos } from '../../photos/store';
 import { Button, ErrorBox } from '../../ui';
 import { copyReasonWords } from '../backup/backupState';
 import { disabledWhileBusy, type RecoveryWork } from './busy-controls';
@@ -68,7 +69,10 @@ export function RecoveryScreen({
   const putBack = (chosen: SnapshotInfo) =>
     run('restore', 'Restore', async () => {
       // What is on the device now is kept first, so restoring the wrong copy is an undo and
-      // not the end of everything entered since that copy was taken.
+      // not the end of everything entered since that copy was taken. The pictures cannot be copied — they
+      // have no second copy anywhere — so they are held out of the app-start sweep's reach instead: the
+      // copy being put back may predate them, and to it every one of them would read as an orphan.
+      await photos.holdPhotosBeforeRestore().catch((error: unknown) => console.warn('Photos could not be held back from the sweep', error));
       await restoreSnapshot({
         snapshots,
         file: chosen.file,

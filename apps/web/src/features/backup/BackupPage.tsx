@@ -186,6 +186,16 @@ export function BackupPage() {
    * takes — the recovery screen is the rare one — so it is the path that most needs the copy.
    */
   async function putBack(restore: PendingRestore) {
+    /*
+     * The pictures are put beyond the sweep's reach before the data under them changes.
+     *
+     * A restore hands the app a database that may predate photos that are on this device right now, and
+     * `onConfirmRestore` reloads the page the moment it lands — so `Layout.tsx`'s app-start sweep runs
+     * against a database that has never heard of them and reads every one as an orphan. The row comes back
+     * if the newer backup is restored again; the photograph does not. The safety copy this restore already
+     * insisted on covers the data. This is the same insistence, for the one thing that has no second copy.
+     */
+    await photos.holdPhotosBeforeRestore().catch((error: unknown) => console.warn('Photos could not be held back from the sweep', error));
     if (!snapshots) {
       // This open has no store to keep a copy in. The restore the user asked for still happens; the file
       // downloaded a moment ago is what stands behind it.
