@@ -5,6 +5,7 @@ import {
   addPhoto,
   allPhotoFileNames,
   allPhotoRows,
+  cardSpendLines,
   createAccount,
   createDatabase,
   createWorkspace,
@@ -109,6 +110,27 @@ describe('migration 0048', () => {
    * transaction_photos does not exist, so a guard removed from any function below throws `no such table:
    * transaction_photos` instead of behaving as it does today. Each assertion here is that it does not throw.
    */
+  /*
+   * cardSpendLines grew a LEFT JOIN onto transaction_flags for Task 4 (the points engine reading channel).
+   * On a database stopped at 47 that table does not exist, so the join is skipped and every line must still
+   * come back with channel: null rather than throwing on a missing table.
+   */
+  it('cardSpendLines does not throw on a database that never got 0048, and reads channel as null', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database, MIGRATIONS.filter((m) => m.version <= 47));
+    const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    const card = await createAccount(database, ws, { name: 'BCA Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const electronics = (await listAccounts(database, ws)).find((a) => a.systemKey === 'shopping.electronics')!.id;
+    const id = await postTransaction(database, ws, {
+      occurredOn: '2026-09-17',
+      description: 'iPhone for Mama',
+      lines: expenseLines({ categoryAccountId: electronics, paymentAccountId: card.id, amountMinor: 18_999_000, currency: 'IDR' }),
+    });
+    const lines = await cardSpendLines(database, ws, card.id, '2026-09-01', '2026-09-30');
+    expect(lines.find((l) => l.transactionId === id)).toMatchObject({ channel: null });
+  });
+
   describe('the photo repository on a database that never got 0048', () => {
     async function stoppedAt47() {
       executor = createNodeExecutor();

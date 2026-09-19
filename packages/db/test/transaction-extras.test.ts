@@ -5,6 +5,7 @@ import {
   addPhoto,
   allPhotoFileNames,
   allPhotoRows,
+  cardSpendLines,
   createAccount,
   createWorkspace,
   deletePhoto,
@@ -109,6 +110,32 @@ it('changes the one fact a correction names and keeps the other', async () => {
     lines: expenseLines({ categoryAccountId: p.electronics, paymentAccountId: p.card.id, amountMinor: 18_999_000, currency: 'IDR' }),
   });
   expect((await listTransactions(p.database, p.ws))[0]).toMatchObject({ id: replacement, channel: 'online', excluded: true });
+});
+
+/*
+ * The points engine reads the same fact through a different door: cardSpendLines, not listTransactions. A rule
+ * that earns only online has to see 'online' on the line it is judging, and a purchase that said nothing must
+ * come back null rather than undefined vanishing into a join that never happened.
+ */
+it('carries the channel into the lines the points engine reads', async () => {
+  current = await setupDb();
+  const { database, ws } = current;
+  const card = await createAccount(database, ws, { name: 'BCA Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+  const electronics = (await listAccounts(database, ws)).find((a) => a.systemKey === 'shopping.electronics')!.id;
+  const said = await postTransaction(database, ws, {
+    occurredOn: '2026-09-17',
+    description: 'Tokopedia',
+    channel: 'online',
+    lines: expenseLines({ categoryAccountId: electronics, paymentAccountId: card.id, amountMinor: 300_000, currency: 'IDR' }),
+  });
+  const saidNothing = await postTransaction(database, ws, {
+    occurredOn: '2026-09-18',
+    description: 'Warung Steak',
+    lines: expenseLines({ categoryAccountId: electronics, paymentAccountId: card.id, amountMinor: 150_000, currency: 'IDR' }),
+  });
+  const lines = await cardSpendLines(database, ws, card.id, '2026-09-01', '2026-09-30');
+  expect(lines.find((l) => l.transactionId === said)).toMatchObject({ channel: 'online' });
+  expect(lines.find((l) => l.transactionId === saidNothing)).toMatchObject({ channel: null });
 });
 
 it('files the transaction under the event it was tagged to when it was recorded', async () => {
