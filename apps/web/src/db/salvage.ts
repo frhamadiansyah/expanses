@@ -10,6 +10,18 @@ const DATA_OFFSET = 4096;
 const HEADER = 32;
 
 /**
+ * Every file under a directory, however deep. The SAH pool does not keep its slots directly in its own
+ * directory — sqlite-wasm puts them in an `.opaque` subdirectory — and that is an implementation detail
+ * of the pool, not a contract. Walking the whole tree means a future layout costs nothing here.
+ */
+async function* filesUnder(dir: FileSystemDirectoryHandle): AsyncGenerator<FileSystemFileHandle> {
+  for await (const handle of dir.values()) {
+    if (handle.kind === 'file') yield handle as FileSystemFileHandle;
+    else yield* filesUnder(handle as FileSystemDirectoryHandle);
+  }
+}
+
+/**
  * Reads the database straight out of the VFS's slot files, without SQLite. Slots are identified by the
  * SQLite magic at DATA_OFFSET rather than by the name the VFS stores, so nothing here depends on how the
  * pool encodes paths. Returns null when there is nothing that looks like a database.
@@ -24,9 +36,8 @@ export async function salvageBytes(directory = '.expanses'): Promise<Uint8Array 
   if (!dir) return null;
 
   let best: Uint8Array | null = null;
-  for await (const handle of dir.values()) {
-    if (handle.kind !== 'file') continue;
-    const file = await (handle as FileSystemFileHandle).getFile().catch(() => null);
+  for await (const handle of filesUnder(dir)) {
+    const file = await handle.getFile().catch(() => null);
     if (!file || file.size <= DATA_OFFSET) continue;
 
     // The slice starts at the database's own first byte, so every offset below is the offset the SQLite

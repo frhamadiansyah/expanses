@@ -83,11 +83,12 @@ export function RecoveryScreen({
         {bytes && <p className="mt-2 text-sm text-slate-500">Your data on this device: {formatBytes(bytes.length)}.</p>}
       </div>
 
+      {/* Stacked and 44px tall: on a phone this is the one screen where a missed tap costs the most. */}
       <div className="space-y-2">
         {copy.actions.includes('restore') && newest && (
           <Button
             variant="primary"
-            className="w-full"
+            className="min-h-11 w-full"
             disabled={busy}
             onClick={() =>
               run('Restore', async () => {
@@ -100,12 +101,12 @@ export function RecoveryScreen({
           </Button>
         )}
         {copy.actions.includes('export') && (
-          <Button variant="secondary" className="w-full" disabled={busy} onClick={() => run('Export', onExport)}>
+          <Button variant="secondary" className="min-h-11 w-full" disabled={busy} onClick={() => run('Export', onExport)}>
             Download a copy of my data
           </Button>
         )}
         {copy.actions.includes('retry') && (
-          <Button variant={copy.actions.includes('restore') ? 'secondary' : 'primary'} className="w-full" disabled={busy} onClick={reopen}>
+          <Button variant={copy.actions.includes('restore') ? 'secondary' : 'primary'} className="min-h-11 w-full" disabled={busy} onClick={reopen}>
             Try again
           </Button>
         )}
