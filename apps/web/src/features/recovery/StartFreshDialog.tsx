@@ -66,7 +66,7 @@ export function StartFreshDialog({
           ) : (
             snapshots.map((snapshot) => (
               <li key={snapshot.file}>
-                A copy from {formatWhen(snapshot.takenAt)} <span className="text-slate-500">— {formatBytes(snapshot.size)}</span>
+                A copy from {formatWhen(snapshot.takenAt)} <span className="text-slate-500">— {formatBytes(snapshot.bytes)}</span>
               </li>
             ))
           )}

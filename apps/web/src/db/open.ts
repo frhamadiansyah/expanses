@@ -10,6 +10,10 @@ import {
   pendingMigrations,
 } from '@expanses/db';
 import { type AppDb, openAppDb } from './bootstrap';
+import type { SnapshotInfo, SnapshotReason } from './snapshot-policy';
+
+/** The types describing a safety copy live in `snapshot-policy.ts`; re-exported so every existing import from `./open` keeps working. */
+export type { SnapshotInfo, SnapshotReason } from './snapshot-policy';
 
 export type RecoveryKind = 'cannot-open' | 'unreadable' | 'corrupt' | 'newer-database' | 'migration-failed' | 'verify-failed' | 'locked';
 
@@ -28,22 +32,6 @@ export interface RecoveryReason {
 export type OpenStage =
   | { stage: 'opening' | 'snapshotting' | 'checking' }
   | { stage: 'migrating'; done: number; total: number; name: string };
-
-/** Why a copy was taken. Only a copy taken for one of these reasons is ever written. */
-export type SnapshotReason = 'before-migration' | 'before-restore' | 'before-start-fresh';
-
-/** One copy in the store, as the store describes it. Task 5 writes the store that produces these. */
-export interface SnapshotInfo {
-  /** The file name inside the app's own storage. The handle `read` takes. */
-  file: string;
-  reason: SnapshotReason;
-  /** The schema version the bytes were taken at. */
-  schemaVersion: number;
-  /** Size of the copy in bytes, so the screen can say how big the last good copy is. */
-  size: number;
-  /** When the copy was taken, ISO. */
-  takenAt: string;
-}
 
 /**
  * The copies kept beside the live database. Task 5 implements it over OPFS; until then the only
