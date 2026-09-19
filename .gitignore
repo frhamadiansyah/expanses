@@ -11,3 +11,6 @@ dist-preview/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Agent worktrees — scratch, never committed
+.claude/
