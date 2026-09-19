@@ -29,6 +29,8 @@ export {
   parseRate,
   roundHalfAwayFromZero,
 } from './money/money';
+export { evaluateAmount } from './money/keypad';
+export { zipStore, unzipStore } from './backup/zip';
 export {
   type AccountKind,
   type PlannedEntry,
@@ -251,6 +253,7 @@ export {
   splitBillPostings,
 } from './debts/postings';
 export { type DebtStatus, DUE_SOON_DAYS, type DueState, dueLabel, dueStateFor, statusFor } from './debts/status';
+export { equalShares, yourShare } from './debts/shares';
 export { annuityPaymentMinor, type LoanMethod, type LoanTerms, loanSchedule, type RatePeriod, type ScheduleRow } from './loans/schedule';
 export {
   type ExtraPayment,
