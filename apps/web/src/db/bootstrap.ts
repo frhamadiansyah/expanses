@@ -14,6 +14,7 @@ import {
   syncLinkedPrograms,
   type WorkspaceContext,
 } from '@expanses/db';
+import { NO_SNAPSHOTS, type OpenResult, type OpenStage, openSafely, say } from './open';
 import { createWorkerExecutor } from './worker-executor';
 
 export interface AppDb {
@@ -45,7 +46,28 @@ export async function openAppDb(database: Database): Promise<AppDb> {
   return { database, ws: opened, workspaceName: workspace!.name };
 }
 
-export async function bootstrap(): Promise<AppDb> {
-  const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-  return openAppDb(createDatabase(createWorkerExecutor(worker)));
+export function createWorker(): Worker {
+  return new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+}
+
+/**
+ * The one entry point the app starts from. Starting the engine is the only step outside `openSafely`,
+ * because it is the one failure with nothing to export: there is no database yet to hand back.
+ */
+export async function bootstrap(onStage: (stage: OpenStage) => void): Promise<OpenResult> {
+  let database: Database;
+  try {
+    database = createDatabase(createWorkerExecutor(createWorker()));
+  } catch (error) {
+    return {
+      ok: false,
+      reason: {
+        kind: 'cannot-open',
+        headline: 'We could not start the database engine on this device.',
+        detail: say(error),
+        exportable: false,
+      },
+    };
+  }
+  return openSafely({ database, snapshots: NO_SNAPSHOTS, onStage });
 }

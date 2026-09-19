@@ -21,7 +21,13 @@ function Message({ title, body }: { title: string; body: string }) {
 async function start() {
   root.render(<Message title="Opening your data…" body="Starting the local database on this device." />);
   try {
-    const app = await bootstrap();
+    // Task 4 replaces this with the recovery screen; until then a named reason at least says what happened.
+    const result = await bootstrap(() => undefined);
+    if (!result.ok) {
+      root.render(<Message title={result.reason.headline} body={result.reason.detail} />);
+      return;
+    }
+    const app = result.app;
     if (import.meta.env.DEV) {
       const { loadSample, pushOverBudget, wantsOverBudget, wantsSample } = await import('./db/dev-sample');
       if (wantsSample()) {
