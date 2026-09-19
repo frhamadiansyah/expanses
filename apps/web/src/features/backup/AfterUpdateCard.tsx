@@ -1,11 +1,12 @@
 import { isoDate } from '@expanses/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useApp } from '../../app/context';
 import { saveBytes } from '../../lib/download';
 import { Button, ErrorBox } from '../../ui';
 import { afterUpdate } from './after-update';
 import { setLastBackupAt } from './backupState';
+import { dismissUpdateCard, subscribeToUpdateCard, updateCardDismissed } from './reminder-state';
 
 /**
  * The one thing the app says about what happened on the way in.
@@ -18,7 +19,9 @@ import { setLastBackupAt } from './backupState';
 export function AfterUpdateCard() {
   const { database, safety, update } = useApp();
   const queryClient = useQueryClient();
-  const [gone, setGone] = useState(false);
+  // Published rather than kept here: the standing backup reminder stands down while this card is up, and
+  // it has to learn the moment it is not.
+  const gone = useSyncExternalStore(subscribeToUpdateCard, updateCardDismissed, updateCardDismissed);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -69,15 +72,16 @@ export function AfterUpdateCard() {
         <Button variant={undone ? 'secondary' : 'primary'} className="min-h-11" disabled={busy} onClick={() => void onBackup()}>
           Download a backup
         </Button>
-        {undone ? (
+        {undone && (
           <Button variant="secondary" className="min-h-11" disabled={busy || !safety} onClick={() => void onRetry()}>
             Try the update again
           </Button>
-        ) : (
-          <Button variant="ghost" className="min-h-11" disabled={busy} onClick={() => setGone(true)}>
-            Not now
-          </Button>
         )}
+        {/* Every message in the app can be put away, this one included: a card that cannot be dismissed is
+            one the user learns to read past, and while it stands it is covering for the backup reminder. */}
+        <Button variant="ghost" className="min-h-11" disabled={busy} onClick={dismissUpdateCard}>
+          Not now
+        </Button>
       </div>
       {done && (
         <p className="mt-2 text-xs">Backup downloaded. Keep it somewhere private — it is all of your data.</p>
@@ -87,7 +91,9 @@ export function AfterUpdateCard() {
       </div>
       <details className="mt-2 text-xs opacity-80">
         <summary className="cursor-pointer py-1">Details</summary>
-        <p className="mt-1">{undone ? `Update ${note.version} was put back and will be skipped until you try it again.` : `Your data is at update ${note.version}.`}</p>
+        {/* Which step of a run of updates was at fault is not knowable once they have all been put back, so
+            this names the point the app stops at rather than a culprit it would be guessing. */}
+        <p className="mt-1">{undone ? `Updates from ${note.version} onwards are being skipped until you ask us to try again.` : `Your data is at update ${note.version}.`}</p>
       </details>
     </div>
   );

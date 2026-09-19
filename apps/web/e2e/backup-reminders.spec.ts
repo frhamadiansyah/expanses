@@ -56,11 +56,23 @@ test('the backup screen lists the copies the app keeps, and restores one', async
   await page.goto('/accounts');
   await expect(page.getByRole('link', { name: 'In the copy' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Added afterwards' })).toHaveCount(0);
+
+  /*
+   * And the restore itself is undoable. A restore from the working app is the common one — the recovery
+   * screen is the rare one — so it must leave the same `before-restore` copy behind: the download alone is
+   * a file the user has to go and find again, and "Added afterwards" now exists nowhere else.
+   */
+  await page.goto('/backup');
+  await expect(page.getByRole('heading', { name: 'Safety copies on this device' }).locator('..')).toContainText('Taken before a restore');
 });
 
 test('the iPhone paragraph promises only what has been checked', async ({ page }) => {
   await page.goto('/backup');
   const section = page.getByRole('heading', { name: 'Backups and your iPhone' }).locator('..');
-  await expect(section).toContainText("your data sits in the app's own container, which iCloud and Finder back up with the rest of the phone");
-  await expect(section).toContainText('Deleting the app deletes that copy too.');
+  // Spec §8.2: no claim that a device backup covers this data until that has been checked on a device.
+  await expect(section).toContainText('an iPhone backup does not carry your data with it');
+  await expect(section).not.toContainText('back up with the rest of the phone');
+  await expect(section).not.toContainText("sits in the app's own container");
+  // And the one thing that is true today is still said plainly.
+  await expect(section).toContainText('keep downloading a backup of your own');
 });

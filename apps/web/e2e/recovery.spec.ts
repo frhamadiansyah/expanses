@@ -60,6 +60,118 @@ test('restore the last good copy brings the data back after corruption', async (
 });
 
 /**
+ * Restoring twice must not hand the corruption back.
+ *
+ * The first restore keeps a `before-restore` copy of what it replaces — which, on this journey, is a copy
+ * of the corrupt file. It is the newest copy on the device from that moment on, and it is an undo, not a
+ * candidate: "the last good copy" has to skip it and reach past to the day's copy, or a user who presses
+ * the biggest button twice ends up exactly where they started.
+ */
+test('the last good copy skips the copy taken of the corruption', async ({ page }) => {
+  await addBank(page, 'Rescue me', '1000000');
+  await forgetSafetyCopies(page);
+  await page.goto('/');
+  await waitForSafetyCopy(page);
+
+  await corruptTheDatabase(page);
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: CORRUPT_HEADLINE, exact: true })).toBeVisible();
+  await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Restore the last good copy/ }).click()]);
+  await page.goto('/accounts');
+  await expect(page.getByRole('link', { name: 'Rescue me' })).toBeVisible();
+  // Two copies now: the day's, and the undo taken of the corrupt file a moment ago.
+  await expect.poll(async () => (await safetyCopies(page)).length).toBeGreaterThanOrEqual(2);
+
+  // The same thing goes wrong again, and the screen is asked the same question a second time.
+  await corruptTheDatabase(page);
+  await page.goto('/');
+  const restore = page.getByRole('button', { name: /Restore the last good copy/ });
+  await expect(restore).toBeVisible();
+  await expect(restore).toContainText(/From .+ · [\d.]+ (KB|MB)/);
+
+  // The undo is not hidden — it is where an undo belongs, among the copies the user can go through.
+  await page.getByText('Choose a different copy').click();
+  await expect(page.getByText('Taken before a restore')).toBeVisible();
+
+  // And the big button hands back the data, not the copy of the corruption taken since.
+  await Promise.all([page.waitForEvent('load'), restore.click()]);
+  await page.goto('/accounts');
+  await expect(page.getByRole('link', { name: 'Rescue me' })).toBeVisible();
+});
+
+/**
+ * A second tab is told what it is, and offered only what can work there.
+ *
+ * The first tab holds every one of the database's files open. Export reads them and still works; a restore
+ * or a wipe would both fail on them, so neither is on screen — nobody presses a button here that cannot
+ * succeed, on the one screen where a dead button would be read as "my data is gone".
+ */
+test('a second tab says so plainly, and offers nothing that cannot work', async ({ page, context }) => {
+  await addBank(page, 'Open in the first tab', '1000000');
+
+  const second = await context.newPage();
+  await second.goto('/');
+  await expect(second.getByRole('heading', { name: 'Expanses is already open in another tab', exact: true })).toBeVisible();
+  await expect(second.getByText('Close the other Expanses tab or window, then try again here.')).toBeVisible();
+
+  await expect(second.getByRole('button', { name: /Restore the last good copy/ })).toHaveCount(0);
+  await expect(second.getByRole('button', { name: /Start fresh/ })).toHaveCount(0);
+  await expect(second.getByRole('link', { name: /recovery tools/i })).toHaveCount(0);
+
+  // Export reads the bytes off OPFS without the engine, so it works even while the other tab holds them.
+  const download = second.waitForEvent('download');
+  await second.getByRole('button', { name: EXPORT_BUTTON, exact: true }).click();
+  expect((await download).suggestedFilename()).toMatch(/^expanses-recovery-\d{4}-\d{2}-\d{2}\.sqlite3$/);
+
+  // And the first tab was never disturbed by any of it.
+  await page.goto('/accounts');
+  await expect(page.getByRole('link', { name: 'Open in the first tab' })).toBeVisible();
+  await second.close();
+});
+
+/**
+ * Start fresh when the engine itself will not do the wipe.
+ *
+ * `wipeEverything` asks the worker first, because the worker is what holds the slot files open; if it will
+ * not start, the directories are removed from the page instead. That fallback is the whole reason a user
+ * whose database cannot be opened can still start again — so here the engine is prevented from taking the
+ * wipe at all, and the device still has to end up empty.
+ */
+test('start fresh still empties the device when the engine will not do the wipe', async ({ page }) => {
+  await addBank(page, 'About to go', '1000000');
+  const copy = await waitForSafetyCopy(page);
+
+  await page.addInitScript(() => {
+    const Real = window.Worker;
+    class RefusesToWipe extends Real {
+      postMessage(message: unknown, transfer?: unknown) {
+        if ((message as { op?: string } | null)?.op === 'wipe') {
+          // Exactly what a worker that cannot install the SAH pool does: it fails instead of answering.
+          setTimeout(() => this.dispatchEvent(new ErrorEvent('error', { message: 'The database engine did not start.' })), 0);
+          return;
+        }
+        super.postMessage(message, transfer as Transferable[]);
+      }
+    }
+    window.Worker = RefusesToWipe as unknown as typeof Worker;
+  });
+
+  await page.goto('/?recover');
+  await expect(page.getByRole('heading', { name: 'Recovery tools', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Start fresh on this device', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Start fresh' });
+  await sheet.getByLabel('I already have a backup').check();
+  await Promise.all([page.waitForEvent('load'), sheet.getByRole('button', { name: 'Delete everything on this device', exact: true }).click()]);
+
+  // Everything went, the copies included, even though the engine never took part. (The empty database this
+  // opened on may have had a copy of its own taken since; that one is not it.)
+  expect(await safetyCopies(page)).not.toContain(copy);
+  await page.goto('/accounts');
+  await expect(page.getByRole('button', { name: 'Add account' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'About to go' })).toHaveCount(0);
+});
+
+/**
  * Start fresh from `/` — the path a frightened user actually takes. It is only possible because a failed
  * open now terminates the worker: while that worker lived, it held the pool's sync access handles and
  * every attempt to remove the files failed with "modifications are not allowed".
@@ -224,16 +336,38 @@ test('a long update says which step it is on, then offers a backup of the update
 
   // A backup is offered because the one the user holds is now older than their data.
   await expect(page.getByRole('button', { name: 'Download a backup' })).toBeEnabled();
+
+  /*
+   * And the standing reminder stands down only for as long as that card is really there.
+   *
+   * Money is entered without leaving the page — an in-app link, not a reload — so this is still the one
+   * open the card belongs to, and there is now data on this device that has never been backed up. The
+   * reminder is due at its loudest and is held back only because the card above it says more than it
+   * could. Putting that card away without downloading anything has to bring it back in the same breath:
+   * a phone left in a pocket for a fortnight never reloads, and that is exactly the user the thirty-day
+   * promise is for.
+   */
+  await page.getByRole('navigation').getByRole('link', { name: 'Accounts', exact: true }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Entered after the update');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Current balance').fill('1000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Entered after the update' })).toBeVisible();
+
+  const reminder = page.getByText('You have not backed up yet.');
+  await expect(reminder).toHaveCount(0);
+  await page.getByRole('button', { name: 'Not now', exact: true }).click();
+  await expect(page.getByText(`Your data was updated to version ${LATEST_VERSION}`)).toHaveCount(0);
+  await expect(reminder).toBeVisible();
 });
 
 /**
  * The open after an update has nothing to say, and says nothing.
  *
- * It is also what an interrupted update looks like from the next launch: each migration commits on its own,
- * so a closed tab leaves the versions that finished recorded and the one in flight rolled back, and the
- * next open picks up from there. That the run resumes rather than half-applies is proved in
- * `packages/db/test/migration-safety.test.ts`; what is asserted here is the other half — that an open with
- * no work to do never shows a progress screen at all.
+ * That and no more: this is the ordinary launch with no migrations pending, and it asserts only that such
+ * an open never shows a progress screen. An update interrupted half-way is a different launch, not tested
+ * here — what happens to the versions that had already committed is proved, in the engine rather than in
+ * the browser, by `packages/db/test/migration-safety.test.ts`.
  */
 test('an open with nothing to update shows no progress screen', async ({ page }) => {
   await watchTheOpening(page);

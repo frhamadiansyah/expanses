@@ -65,6 +65,13 @@ test('a restore of data from a newer app is refused before it is adopted, and th
    */
   await expect(page.getByText(REFUSAL)).toBeVisible();
   await expect(page.getByText(`Nothing on this device was changed: that copy was written by update ${FUTURE}`)).toBeVisible();
+  /*
+   * And it says the thing that is actually left to do. The waiting restore was dropped with the refusal —
+   * there is no second press still standing — so "try it again" would point at a button that is no longer
+   * on screen; choosing the file again is the real next step, once the app is new enough to take it.
+   */
+  await expect(page.getByText('Update Expanses, then choose that file again')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Replace my data with/ })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
   // Export is never taken away from someone whose only problem is an out-of-date app.
   await expect(page.getByRole('button', { name: 'Download backup' })).toBeEnabled();

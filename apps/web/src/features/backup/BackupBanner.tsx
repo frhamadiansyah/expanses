@@ -1,27 +1,14 @@
 import { isoDate } from '@expanses/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useApp } from '../../app/context';
 import { saveBytes } from '../../lib/download';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
 import { Button, cx, ErrorBox } from '../../ui';
-import { afterUpdate } from './after-update';
+import { afterUpdate, bannerStandsDown } from './after-update';
 import { type BackupSnooze, backupUrgency, bannerWords, daysSince, getLastBackupAt, reminderDue, setLastBackupAt, snoozeUntil } from './backupState';
-
-const SNOOZE_KEY = 'expanses.backup-reminder.snoozed';
-
-/** A "Not now" is about this screen on this device, so it lives here and not in the data a backup carries. */
-function readSnooze(): BackupSnooze | null {
-  try {
-    const raw = localStorage.getItem(SNOOZE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<BackupSnooze>;
-    return typeof parsed?.until === 'string' && typeof parsed.urgency === 'string' ? { until: parsed.until, urgency: parsed.urgency } : null;
-  } catch {
-    return null;
-  }
-}
+import { readSnooze, SNOOZE_KEY, subscribeToUpdateCard, updateCardDismissed } from './reminder-state';
 
 const TONE: Record<string, string> = {
   overdue: 'bg-amber-100 text-amber-900 ring-1 ring-amber-300',
@@ -47,13 +34,16 @@ export function BackupBanner() {
   const [snooze, setSnooze] = useState(readSnooze);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // Shared with the card above the page, so putting that card away brings this one back in the same session.
+  const cardDismissed = useSyncExternalStore(subscribeToUpdateCard, updateCardDismissed, updateCardDismissed);
 
   if (!accounts.isSuccess || !last.isSuccess) return null;
   // Not on the screen that answers it: a reminder on top of the thing it is reminding you to do is noise.
   if (matchRoute({ to: '/backup' })) return null;
   // The card above the page has just said more about their data than this can, and offers the same
-  // backup. Two messages about one thing is the nagging this branch is meant to avoid.
-  if (afterUpdate(update)) return null;
+  // backup. Two messages about one thing is the nagging this branch is meant to avoid — but only for as
+  // long as that card is really there.
+  if (bannerStandsDown(afterUpdate(update), cardDismissed)) return null;
 
   const level = backupUrgency(last.data, (accounts.data ?? []).some(isMoneyAccount));
   if (level === 'ok' || !reminderDue(level, snooze)) return null;

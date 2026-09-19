@@ -7,7 +7,8 @@ import { restoreBytes, salvageBytes } from '../../db/salvage';
 import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes } from '../../lib/download';
 import { Button, ErrorBox } from '../../ui';
-import { formatBytes, formatWhen, recoveryCopy } from './recovery-copy';
+import { copyReasonWords } from '../backup/backupState';
+import { formatBytes, formatWhen, lastGoodCopy, recoveryCopy } from './recovery-copy';
 import { StartFreshDialog } from './StartFreshDialog';
 
 /** Dropping the query and the hash, so "Try again" leaves recovery mode instead of returning to it. */
@@ -54,7 +55,25 @@ export function RecoveryScreen({
   }, [snapshots, reason.exportable]);
 
   const copy = recoveryCopy(reason, { hasSnapshot: kept.length > 0, requested });
-  const newest = kept[0] ?? null;
+  // The one the button promises, and the rest, which the user can go through themselves. A copy taken
+  // before a restore is never the first of those, but it is always among the second.
+  const lastGood = lastGoodCopy(kept);
+  const canRestore = copy.actions.includes('restore');
+  const others = kept.filter((candidate) => candidate.file !== lastGood?.file);
+
+  /** Puts `chosen` back, keeping a copy of what is on the device now so this is itself undoable. */
+  const putBack = (chosen: SnapshotInfo) =>
+    run('Restore', async () => {
+      // What is on the device now is kept first, so restoring the wrong copy is an undo and
+      // not the end of everything entered since that copy was taken.
+      await restoreSnapshot({
+        snapshots,
+        file: chosen.file,
+        live: async () => bytes ?? (await salvageBytes().catch(() => null)),
+        restore: restoreBytes,
+      });
+      reopen();
+    });
 
   async function run(what: string, action: () => Promise<void>) {
     setError(null);
@@ -90,29 +109,12 @@ export function RecoveryScreen({
 
       {/* Stacked and 44px tall: on a phone this is the one screen where a missed tap costs the most. */}
       <div className="space-y-2">
-        {copy.actions.includes('restore') && newest && (
-          <Button
-            variant="primary"
-            className="min-h-11 w-full flex-col gap-0 py-2"
-            disabled={busy}
-            onClick={() =>
-              run('Restore', async () => {
-                // What is on the device now is kept first, so restoring the wrong copy is an undo and
-                // not the end of everything entered since that copy was taken.
-                await restoreSnapshot({
-                  snapshots,
-                  file: newest.file,
-                  live: async () => bytes ?? (await salvageBytes().catch(() => null)),
-                  restore: restoreBytes,
-                });
-                reopen();
-              })
-            }
-          >
+        {canRestore && lastGood && (
+          <Button variant="primary" className="min-h-11 w-full flex-col gap-0 py-2" disabled={busy} onClick={() => void putBack(lastGood)}>
             <span className="block">Restore the last good copy</span>
             {/* What is actually being put back, so nobody presses this without knowing what they lose. */}
             <span className="mt-0.5 block text-xs font-normal opacity-80">
-              From {formatWhen(newest.takenAt)} · {formatBytes(newest.bytes)}
+              From {formatWhen(lastGood.takenAt)} · {formatBytes(lastGood.bytes)}
             </span>
           </Button>
         )}
@@ -128,6 +130,33 @@ export function RecoveryScreen({
         )}
       </div>
 
+      {/*
+        Every other copy the device holds, with the date, the size and why it was taken — because the newest
+        is not always the one the user wants. Someone who has just put back a copy from last week needs the
+        one taken before that restore; someone whose data went wrong this morning needs yesterday's. Shut by
+        default, so the screen still has one obvious thing to press.
+      */}
+      {canRestore && others.length > 0 && (
+        <details className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+          <summary className="cursor-pointer py-1 text-sm text-slate-700">{lastGood ? 'Choose a different copy' : 'Choose a copy to put back'}</summary>
+          <ul className="mt-1 divide-y divide-slate-200">
+            {others.map((candidate) => (
+              <li key={candidate.file} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className="min-w-0">
+                  <span className="block text-sm text-slate-900">{formatWhen(candidate.takenAt)}</span>
+                  <span className="block text-xs text-slate-500">
+                    {copyReasonWords(candidate.reason)} · {formatBytes(candidate.bytes)}
+                  </span>
+                </span>
+                <Button variant="secondary" className="min-h-11" disabled={busy} onClick={() => void putBack(candidate)}>
+                  Restore this one
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {note && (
         <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
           {note}
@@ -137,9 +166,7 @@ export function RecoveryScreen({
         <ErrorBox error={error} />
       </div>
 
-      {newest && !copy.actions.includes('restore') && (
-        <p className="mt-3 text-xs text-slate-500">The last copy we hold was taken on {formatWhen(newest.takenAt)}.</p>
-      )}
+      {kept[0] && !canRestore && <p className="mt-3 text-xs text-slate-500">The last copy we hold was taken on {formatWhen(kept[0].takenAt)}.</p>}
 
       <details className="mt-6 text-xs text-slate-500">
         <summary className="cursor-pointer py-2">Details</summary>

@@ -1,4 +1,4 @@
-import type { RecoveryKind, RecoveryReason } from '../../db/open';
+import type { RecoveryKind, RecoveryReason, SnapshotInfo } from '../../db/open';
 
 /** The four things the screen can offer. Every one of them is a button; none of them is a dead end. */
 export type RecoveryAction = 'export' | 'restore' | 'retry' | 'start-fresh';
@@ -44,18 +44,34 @@ export function recoveryCopy(reason: RecoveryReason, options: RecoveryOptions): 
  *
  * `export` and anything that writes need storage to be working at all, which is what `exportable` says: a
  * device where the engine never started has no bytes to hand over and nowhere to put bytes back. `restore`
- * additionally needs a copy to go back to, and means nothing to someone whose app is merely too old — their
- * data is newer than every copy we hold. `start-fresh` is withheld from exactly the two failures that are
- * not about the file: an app that is behind its data, and a second tab. `retry` is always there, because a
- * screen with no way forward is the white screen this replaces.
+ * additionally needs a copy to go back to, and means nothing in three cases: an app that is merely too old,
+ * where the data is newer than every copy we hold; an update that has *already* been put back, where the
+ * live file is that copy and the button would do nothing at all; and a second tab, where the tab that got
+ * there first holds the file open and nothing can be written. `start-fresh` is withheld from exactly the
+ * two failures that are not about the file: an app that is behind its data, and a second tab. `retry` is
+ * always there, because a screen with no way forward is the white screen this replaces.
  */
 function actionsFor(reason: RecoveryReason, { hasSnapshot }: RecoveryOptions): RecoveryAction[] {
+  const writable = reason.exportable && reason.kind !== 'locked';
   const actions: RecoveryAction[] = [];
   if (reason.exportable) actions.push('export');
-  if (reason.exportable && hasSnapshot && reason.kind !== 'newer-database') actions.push('restore');
+  if (writable && hasSnapshot && reason.kind !== 'newer-database' && !reason.rolledBack) actions.push('restore');
   actions.push('retry');
-  if (reason.exportable && reason.kind !== 'newer-database' && reason.kind !== 'locked') actions.push('start-fresh');
+  if (writable && reason.kind !== 'newer-database') actions.push('start-fresh');
   return actions;
+}
+
+/**
+ * The newest copy worth putting back, or null.
+ *
+ * A `before-restore` copy is skipped, however new it is. It is the undo net for a restore that went wrong —
+ * a copy *of what was replaced* — so after putting back a good copy over a corrupt file, the newest copy on
+ * the device is a copy of the corruption. Offering that as "the last good copy" would hand the user their
+ * own corruption back on the second press. It stays listed among the copies they can choose from by hand,
+ * which is where an undo belongs, and never under the button that promises a good one.
+ */
+export function lastGoodCopy(list: SnapshotInfo[]): SnapshotInfo | null {
+  return [...list].sort((a, b) => b.takenAt.localeCompare(a.takenAt)).find((copy) => copy.reason !== 'before-restore') ?? null;
 }
 
 /** A size a person can weigh: "4.2 MB", not "4,404,019 bytes". */

@@ -54,6 +54,20 @@ export interface PacedStages {
   stop: () => void;
 }
 
+export interface PacingOptions {
+  /** How long a stage has to last before it earns a paint. */
+  delay?: number;
+  /** What is already on screen when the pacer takes over, so it is never painted a second time. */
+  showing?: OpenStage | null;
+}
+
+/** Whether two stages would draw the identical screen. */
+function sameScreen(a: OpenStage, b: OpenStage | null): boolean {
+  if (!b || a.stage !== b.stage) return false;
+  if (a.stage !== 'migrating' || b.stage !== 'migrating') return true;
+  return a.done === b.done && a.total === b.total && a.name === b.name && a.copied === b.copied;
+}
+
 /**
  * Which stages earn a paint of their own.
  *
@@ -67,25 +81,37 @@ export interface PacedStages {
  * many seconds, it never happens on an ordinary launch — only on the first open after an app update —
  * and it is the one stage where the user is being asked not to close the app. Holding it back for a
  * third of a second would buy nothing and risk saying nothing at all during the work that matters.
+ *
+ * A stage that would draw the screen already on display is dropped rather than scheduled: the caller
+ * paints "Opening your data…" itself before the engine is asked for anything, and the opener then reports
+ * that same stage as its first. Repainting identical words is not a flash, but it is work, and it is one
+ * more thing that could ever become one.
  */
-export function paceStages(render: (stage: OpenStage) => void, delay: number = PACE_MS): PacedStages {
+export function paceStages(render: (stage: OpenStage) => void, options: PacingOptions = {}): PacedStages {
+  const delay = options.delay ?? PACE_MS;
+  let showing: OpenStage | null = options.showing ?? null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
   const clear = () => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
   };
+  const paint = (stage: OpenStage) => {
+    showing = stage;
+    render(stage);
+  };
   return {
     onStage: (stage) => {
       if (stopped) return;
       clear();
+      if (sameScreen(stage, showing)) return;
       if (stage.stage === 'migrating') {
-        render(stage);
+        paint(stage);
         return;
       }
       timer = setTimeout(() => {
         timer = undefined;
-        if (!stopped) render(stage);
+        if (!stopped) paint(stage);
       }, delay);
     },
     stop: () => {

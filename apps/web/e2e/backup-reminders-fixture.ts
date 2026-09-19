@@ -1,6 +1,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import BetterSqlite3 from 'better-sqlite3';
 import { expect, type Page } from '@playwright/test';
+// The app's own constant, not a copy of it: a key that drifted would make this fixture pass against
+// nothing at all. `reminder-state.ts` holds no React, so importing it here costs a string and nothing else.
+import { SNOOZE_KEY } from '../src/features/backup/reminder-state';
 
 // Not a spec: shared by `backup-reminders.spec.ts` (chromium) and `phone-backup-reminders.spec.ts`
 // (phone), because ageing a real database is fiddly enough that both projects must do it identically.
@@ -48,9 +51,6 @@ export async function restoreAgedByDays(page: Page, target: string, days: number
 export function overdueBanner(page: Page, days: number) {
   return page.getByRole('status').filter({ hasText: `No backup in ${days} days.` });
 }
-
-/** Where a "Not now" is remembered. Declared in `apps/web/src/features/backup/BackupBanner.tsx`. */
-export const SNOOZE_KEY = 'expanses.backup-reminder.snoozed';
 
 /** Winds a "Not now" back so the week it holds for has passed, as it will for the user a week later. */
 export async function expireSnooze(page: Page): Promise<void> {

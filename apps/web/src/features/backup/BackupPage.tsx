@@ -3,8 +3,9 @@ import { LATEST_VERSION } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type ChangeEvent, useState } from 'react';
 import { useApp } from '../../app/context';
-import { refusedCopy } from '../../db/newer-database';
-import type { SnapshotInfo } from '../../db/open';
+import { newerDatabaseVersion } from '../../db/newer-database';
+import type { SnapshotInfo, SnapshotStore } from '../../db/open';
+import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes } from '../../lib/download';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, PageHeader } from '../../ui';
@@ -15,6 +16,8 @@ interface PendingRestore {
   bytes: Uint8Array;
   name: string;
   safetyName: string;
+  /** Set when the bytes came from one of the app's own copies, so the store is asked for them afresh. */
+  file?: string;
 }
 
 export function BackupPage() {
@@ -91,7 +94,7 @@ export function BackupPage() {
       if (!isSqliteFile(bytes)) throw new Error('That copy is no longer readable on this device.');
       const safetyName = `expanses-before-restore-${isoDate()}.sqlite3`;
       await exportBackup(safetyName);
-      setPending({ bytes, name: `the copy from ${when}`, safetyName });
+      setPending({ bytes, name: `the copy from ${when}`, safetyName, file: copy.file });
     } catch (e) {
       setError(e);
     } finally {
@@ -99,23 +102,59 @@ export function BackupPage() {
     }
   }
 
+  /**
+   * Replacing the live data with `restore`, keeping what is here now first.
+   *
+   * The same call the recovery screen makes, and for the same reason: the download taken before the second
+   * press is a file the user has to go and find again, while a `before-restore` copy in the app's own
+   * storage turns the wrong restore into an undo they can press. This is the path a working app actually
+   * takes — the recovery screen is the rare one — so it is the path that most needs the copy.
+   */
+  async function putBack(restore: PendingRestore) {
+    if (!snapshots) {
+      // This open has no store to keep a copy in. The restore the user asked for still happens; the file
+      // downloaded a moment ago is what stands behind it.
+      await database.importBytes(restore.bytes);
+      return;
+    }
+    await restoreSnapshot({
+      /*
+       * A file from the user's downloads is not in the store, so the bytes already read and checked are
+       * handed over through a `read` that answers with them. One of the app's own copies is read from the
+       * store by name, as the recovery screen reads it.
+       */
+      snapshots: restore.file ? snapshots : ({ ...snapshots, read: async () => restore.bytes } satisfies SnapshotStore),
+      file: restore.file ?? restore.name,
+      live: () => database.exportBytes(),
+      restore: (bytes) => database.importBytes(bytes),
+    });
+  }
+
   async function onConfirmRestore() {
     if (!pending) return;
     setError(null);
     setBusy(true);
     try {
-      await database.importBytes(pending.bytes);
+      await putBack(pending);
       window.location.reload();
     } catch (e) {
       /*
        * A file from a newer build is refused before it is adopted, so this device's data is exactly where
-       * it was. The waiting restore is dropped with it: pressing the same button again cannot succeed
-       * until the app is updated, and while it waits it holds "Download backup" disabled — and export is
-       * the one thing that must always stay within reach.
+       * it was. The waiting restore is dropped with it — pressing the same button again cannot succeed
+       * until the app is updated — so the sentence says what is actually left to do rather than "try it
+       * again", which from here would mean choosing the file and downloading the safety copy all over.
        */
-      const refused = refusedCopy(e, LATEST_VERSION);
-      if (refused) setPending(null);
-      setError(refused ?? e);
+      const version = newerDatabaseVersion(e);
+      if (version === null) {
+        setError(e);
+      } else {
+        setPending(null);
+        setError(
+          new Error(
+            `This data was made by a newer version of Expanses. Nothing on this device was changed: that copy was written by update ${version}, and this app knows up to update ${LATEST_VERSION}. Update Expanses, then choose that file again — your data here stays exactly as it is until you do.`,
+          ),
+        );
+      }
       setBusy(false);
     }
   }
@@ -193,8 +232,10 @@ export function BackupPage() {
 
       <Card className="space-y-3">
         <h2 className="font-semibold">Backups and your iPhone</h2>
+        {/* Spec §8.2: until the device check has actually been run on a phone, nothing here may say a
+            device backup covers this data. What is true today is said instead. */}
         <p className="text-sm text-slate-700">
-          When Expanses is installed as an app, your data sits in the app's own container, which iCloud and Finder back up with the rest of the phone. Deleting the app deletes that copy too.
+          Expanses runs in your browser today, so an iPhone backup does not carry your data with it: an iCloud or Finder backup does not include a website's storage, and Safari can clear it after a week or so without opening the app. When Expanses ships as an installed app we will check on a real phone what a device backup covers, and say so here then.
         </p>
         <p className="text-sm text-slate-600">
           So keep downloading a backup of your own. A file you hold is the only copy that survives a lost phone, a deleted app, and a restore that goes wrong — and it opens on any device you install Expanses on.

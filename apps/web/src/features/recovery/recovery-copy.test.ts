@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { RecoveryReason } from '../../db/open';
-import { recoveryCopy } from './recovery-copy';
+import type { RecoveryReason, SnapshotInfo } from '../../db/open';
+import { lastGoodCopy, recoveryCopy } from './recovery-copy';
 
 const reason = (kind: RecoveryReason['kind'], extra: Partial<RecoveryReason> = {}): RecoveryReason => ({
   kind,
@@ -48,5 +48,49 @@ describe('recoveryCopy', () => {
   it('does not offer a restore or a wipe when storage is not working at all', () => {
     const copy = recoveryCopy(reason('cannot-open', { exportable: false }), { hasSnapshot: false });
     expect(copy.actions).toEqual(['retry']);
+  });
+
+  it('does not offer to put back a copy of an update that has already been put back', () => {
+    // The live file *is* that copy: the button would take a second press to change nothing at all.
+    for (const kind of ['migration-failed', 'verify-failed'] as const) {
+      expect(recoveryCopy(reason(kind, { rolledBack: true }), { hasSnapshot: true }).actions).not.toContain('restore');
+      // A rollback that could not be made is a different matter: there the copy is the way back.
+      expect(recoveryCopy(reason(kind, { rolledBack: false }), { hasSnapshot: true }).actions).toContain('restore');
+    }
+  });
+
+  it('offers a second tab nothing that the first tab would block', () => {
+    const copy = recoveryCopy(reason('locked'), { hasSnapshot: true });
+    // The other tab holds every file open: a restore and a wipe would both fail on it. Export reads, so it stays.
+    expect(copy.actions).toEqual(['export', 'retry']);
+    expect(copy.headline).toBe('Expanses is already open in another tab');
+    expect(copy.body).toContain('Close the other Expanses tab');
+  });
+});
+
+describe('lastGoodCopy', () => {
+  const copy = (takenAt: string, reason: SnapshotInfo['reason']): SnapshotInfo => ({
+    file: `${takenAt}-${reason}`,
+    reason,
+    schemaVersion: 47,
+    bytes: 1024,
+    takenAt,
+  });
+
+  it('skips the copy taken before a restore, however new it is', () => {
+    // The journey this exists for: a corrupt file was replaced with Tuesday's copy, so the newest copy on
+    // the device is now a copy of the corruption. Offering it would hand the corruption back.
+    const list = [copy('2026-09-18T09:00:00.000Z', 'daily'), copy('2026-09-19T10:00:00.000Z', 'before-restore')];
+    expect(lastGoodCopy(list)?.takenAt).toBe('2026-09-18T09:00:00.000Z');
+  });
+
+  it('takes the newest of the copies that are candidates', () => {
+    const list = [copy('2026-09-17T09:00:00.000Z', 'daily'), copy('2026-09-19T08:00:00.000Z', 'before-migration')];
+    expect(lastGoodCopy(list)?.reason).toBe('before-migration');
+  });
+
+  it('answers with nothing when every copy is an undo of a restore', () => {
+    expect(lastGoodCopy([copy('2026-09-19T10:00:00.000Z', 'before-restore')])).toBe(null);
+    expect(lastGoodCopy([])).toBe(null);
   });
 });

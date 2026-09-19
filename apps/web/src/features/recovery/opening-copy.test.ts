@@ -59,6 +59,23 @@ describe('paceStages', () => {
     expect(painted).toEqual([]);
   });
 
+  it('never repaints the screen that is already on display', () => {
+    // main.tsx paints "Opening your data…" before the engine is asked for anything, and the opener then
+    // reports that very stage as its first. The identical screen must not be scheduled a second time.
+    const paced = paceStages((stage) => painted.push(stage), { showing: { stage: 'opening' } });
+    paced.onStage({ stage: 'opening' });
+    vi.advanceTimersByTime(PACE_MS * 10);
+    expect(painted).toEqual([]);
+    // Anything that would say something new still gets its turn.
+    paced.onStage({ stage: 'snapshotting' });
+    vi.advanceTimersByTime(PACE_MS);
+    expect(painted).toEqual([{ stage: 'snapshotting' }]);
+    // And a stage repeated after a real paint is dropped in just the same way.
+    paced.onStage({ stage: 'snapshotting' });
+    vi.advanceTimersByTime(PACE_MS * 10);
+    expect(painted).toHaveLength(1);
+  });
+
   it('paints a stage that really is taking a while', () => {
     const paced = paceStages((stage) => painted.push(stage));
     paced.onStage({ stage: 'snapshotting' });
