@@ -1,4 +1,5 @@
 import type { RecoveryKind, RecoveryReason, SnapshotInfo } from '../../db/open';
+import type { RecoveryWork } from './busy-controls';
 
 /** The four things the screen can offer. Every one of them is a button; none of them is a dead end. */
 export type RecoveryAction = 'export' | 'restore' | 'retry' | 'start-fresh';
@@ -85,6 +86,49 @@ function actionsFor(reason: RecoveryReason, { hasSnapshot }: RecoveryOptions): R
   actions.push('retry');
   if (writable && reason.kind !== 'newer-database') actions.push('start-fresh');
   return actions;
+}
+
+/** What the screen says while it is working: one line to read and one line of detail. No fraction — see below. */
+export interface WorkingCopy {
+  title: string;
+  body: string;
+}
+
+/**
+ * What is on screen while an action here runs.
+ *
+ * Until this existed the screen showed nothing at all: `busy` only greyed buttons out, so a restore — a
+ * snapshot read, an OPFS salvage, a `before-restore` copy, then a cold worker pulling about a megabyte of
+ * wasm before `importDb` even starts — left someone who had just been told their database was broken
+ * staring at a screen where nothing moved for seconds to tens of seconds. That reads as a second hang, and
+ * a user who concludes that reaches for the one button still lit. It is the reason the button it reaches
+ * for had to be held back, so it is the reason these words exist.
+ *
+ * Two rules, the same two `opening-copy.ts` holds to. Nothing claims progress the code cannot account for:
+ * `askWorker` sends one message and hears one answer, so there is no fraction to report and none is
+ * invented — no bar, no percentage, no spinner pretending to measure something. And nothing promises what
+ * has not happened: the restore line says both copies are on the device because `restoreSnapshot` really
+ * does write one before it hands the bytes over, and it says why Try again is not pressable rather than
+ * leaving a dead-looking button to be read as a broken one.
+ */
+export function workingCopy(work: RecoveryWork): WorkingCopy {
+  switch (work) {
+    case 'restore':
+      return {
+        title: 'Putting that copy back…',
+        body: 'Keeping what is on this device now, then writing the copy over it. Both are on the device while this runs, so nothing is lost either way. Try again waits until it has finished, because reloading now would cut the write in half.',
+      };
+    case 'export':
+      return {
+        title: 'Reading your data…',
+        body: 'Taking the file off this device so your browser can save it. Nothing on the device is being changed.',
+      };
+    case 'wipe':
+      return {
+        title: 'Removing everything on this device…',
+        body: 'The data and every copy Expanses keeps here are going. Backups you have already downloaded are files on your computer or phone, and are not touched.',
+      };
+  }
 }
 
 /**

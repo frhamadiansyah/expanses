@@ -58,9 +58,19 @@ export class ErrorBoundary extends Component<Props, State> {
      * be pure, and here rather than in `render`, which must not have side effects at all. `setState` from
      * a commit-phase lifecycle is flushed before the browser paints, so the screen is drawn once, with the
      * buttons it has earned.
+     *
+     * The third argument is the one case where "once" is not enough. A release is deferred while a restore
+     * this app started is still rewriting the live slot, so the screen goes up without Restore or Start
+     * fresh — correctly, the handles are still held. When the engine does let go, seconds later or at the
+     * end of its grace, the handles are gone and those two buttons become true; said here, the screen
+     * redraws with them rather than staying as it was drawn for the life of the tab.
      */
     this.setState({
-      released: releaseEngine(this.props.release, (failure) => console.warn('The database engine could not be let go of', failure)),
+      released: releaseEngine(
+        this.props.release,
+        (failure) => console.warn('The database engine could not be let go of', failure),
+        () => this.setState({ released: true }),
+      ),
     });
   }
 

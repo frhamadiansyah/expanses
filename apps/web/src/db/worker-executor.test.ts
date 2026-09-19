@@ -276,6 +276,57 @@ describe('a failure the session cannot carry on past', () => {
   });
 
   /**
+   * What the wait defers, and what it must not.
+   *
+   * It defers the hand-over — when the *screen* swaps — and nothing else. The refusal is not part of it:
+   * `fatal` is set synchronously, before `closeDown` is entered, so the gate in `call()` refuses from the
+   * first instant rather than from the end of the grace. Tie the gate to `handOverReady` instead and the
+   * app spends up to fifteen seconds happily posting queries to a database already known to be corrupt,
+   * with every answer coming back through an engine that has given up. The screen may lag the failure; the
+   * engine never may.
+   */
+  it('refuses new work from the instant the database is known to be bad, not from the end of the grace', async () => {
+    vi.useFakeTimers();
+    const worker = {
+      onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      sent: [] as { id: number; op: string }[],
+      postMessage(message: { id: number; op: string }) {
+        worker.sent.push(message);
+        // The restore is accepted and left in flight; every query is answered with the corrupt page.
+        if (message.op === 'import') return;
+        queueMicrotask(() =>
+          worker.onmessage?.({ data: { id: message.id, error: 'database disk image is malformed', fatal: 'corrupt' } } as MessageEvent<unknown>),
+        );
+      },
+    };
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+    executor.arm();
+    const heard: RecoveryReason[] = [];
+    executor.onFatal((reason) => heard.push(reason));
+
+    // A restore in flight, so the hand-over is deferred for the whole of the grace below.
+    const restore = executor.importBytes(new Uint8Array([1, 2, 3]));
+    const settled = restore.then(
+      () => 'done',
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(executor.query('select 1', [], 'all')).rejects.toThrow(/malformed/);
+
+    // The screen has not swapped — the restore is still writing — and yet nothing else reaches the engine.
+    expect(heard).toEqual([]);
+    const sentBefore = worker.sent.length;
+    await expect(executor.query('select 2', [], 'all')).rejects.toThrow(/malformed/);
+    await expect(executor.execScript('vacuum')).rejects.toThrow(/malformed/);
+    expect(worker.sent).toHaveLength(sentBefore);
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(heard).toHaveLength(1);
+    expect(await settled).toMatch(/malformed/);
+  });
+
+  /**
    * The other half of finding A, and the reason `gone` is not the whole answer.
    *
    * `worker.onerror` is a signal the browser has to send. A worker that starts, installs nothing and then
@@ -432,6 +483,29 @@ describe('a failure the session cannot carry on past', () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(terminated).toBe(1);
     expect(await settled).toMatch(/let go of the database/);
+  });
+
+  /**
+   * A restore that ends badly has still ended, and the wait is for one that is *writing*.
+   *
+   * The engine refuses a copy written by a newer build, and OPFS or the pool can refuse one for reasons of
+   * their own; each comes back as a rejection, and after it the worker is idle. Cleared only on success,
+   * the marker would survive every one of them — and then every later `release()` sits through the full
+   * fifteen seconds over nothing, drawing the recovery screen without Restore or Start fresh for a quarter
+   * of a minute because the app believes a restore is still running that failed long ago.
+   */
+  it('lets go at once after a restore the engine refused, rather than waiting on one that has ended', async () => {
+    const worker = scriptedWorker((message) => ({ id: message.id, error: 'file is not a database' }));
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+
+    await expect(executor.importBytes(new Uint8Array([1, 2, 3]))).rejects.toThrow(/not a database/);
+
+    let terminated = 0;
+    executor.release(() => {
+      terminated += 1;
+    });
+    // Synchronously: there is nothing left writing the file to wait for.
+    expect(terminated).toBe(1);
   });
 
   it('tells the caller to terminate at once when nothing is in flight, and again if it is asked twice', async () => {

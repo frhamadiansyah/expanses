@@ -3,8 +3,8 @@ import { Sheet } from '../../app/Sheet';
 import type { SnapshotInfo } from '../../db/open';
 import { wipeEverything } from '../../db/salvage';
 import { Button, ErrorBox } from '../../ui';
-import { disabledWhileBusy } from './busy-controls';
-import { formatBytes, formatWhen } from './recovery-copy';
+import { disabledWhileBusy, type RecoveryWork } from './busy-controls';
+import { formatBytes, formatWhen, workingCopy } from './recovery-copy';
 
 /**
  * Starting again, which is the one action on the recovery screen that cannot be undone.
@@ -28,31 +28,33 @@ export function StartFreshDialog({
 }) {
   const [exported, setExported] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // Which of the two, not merely that one of them is running: "Keep my data" stays pressable through
+  // either, and the sheet says which it is waiting on. See `busy-controls.ts`.
+  const [busy, setBusy] = useState<RecoveryWork | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   async function downloadFirst() {
     setError(null);
-    setBusy(true);
+    setBusy('export');
     try {
       await onExport();
       setExported(true);
     } catch (e) {
       setError(e);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function deleteEverything() {
     setError(null);
-    setBusy(true);
+    setBusy('wipe');
     try {
       await wipeEverything();
       window.location.href = window.location.pathname;
     } catch (e) {
       setError(e);
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -81,6 +83,14 @@ export function StartFreshDialog({
           <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1 h-4 w-4" />
           <span>I already have a backup</span>
         </label>
+
+        {/* The same honest in-progress line the screen behind this one shows, for the same reason. */}
+        {busy && (
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm" role="status" aria-live="polite">
+            <p className="font-medium text-slate-900">{workingCopy(busy).title}</p>
+            <p className="mt-0.5 text-slate-600">{workingCopy(busy).body}</p>
+          </div>
+        )}
 
         <ErrorBox error={error} />
 

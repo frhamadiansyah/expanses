@@ -66,6 +66,15 @@ export interface SnapshotExecutor extends SqlExecutor {
  * own `catch` puts the old ones back — rather than cutting it off. Bounded, because the alternative to a
  * torn file must not be a screen that never changes: a restore that has not answered by then is given up
  * on and the swap happens anyway.
+ *
+ * The bound earns its keep on both ways out, but by different routes, and it is worth saying which. For a
+ * strike it is the screen itself: `handOverReady` and `handOver()` are inside the wait, so an unbounded one
+ * leaves the user on a broken app for ever. For a `release()` the screen is already drawn — the boundary
+ * drew it before asking — and what the bound buys there is the *terminate*, which is the only thing that
+ * frees the sync access handles the SAH pool holds on every slot file. Without it a release deferred behind
+ * a restore that never answers holds those handles for the life of the tab, and Restore and Start fresh can
+ * never be offered again. `releaseEngine` in `screen-failure.ts` hears the late `letGo` and redraws, so the
+ * end of the grace is a screen that gains two buttons rather than one that silently cannot.
  */
 const RESTORE_GRACE_MS = 15_000;
 

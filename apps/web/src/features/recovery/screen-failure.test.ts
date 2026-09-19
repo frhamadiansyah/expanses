@@ -90,6 +90,54 @@ describe('a screen that threw while it was drawing', () => {
       expect(letGo).toBeTypeOf('function');
     });
 
+    /*
+     * And what happens when it does let go, which is the whole reason the deferral is bounded on this path.
+     * The engine waits for the restore, or gives it up after `RESTORE_GRACE_MS`, and either way terminates
+     * the worker — the handles are then really gone and Restore and Start fresh are true. Nothing re-read
+     * that answer before, so a crash that landed during a restore cost the user those two buttons for the
+     * life of the tab, and the grace bought the file's safety with a screen that could never come true.
+     */
+    it('tells the screen when the engine lets go after it was already drawn', () => {
+      let letGo: (() => void) | undefined;
+      let late = 0;
+      const released = releaseEngine(
+        (done) => {
+          letGo = done;
+        },
+        () => undefined,
+        () => {
+          late += 1;
+        },
+      );
+
+      expect(released).toBe(false);
+      expect(late).toBe(0);
+      letGo?.();
+      expect(late).toBe(1);
+      // Which is a screen with the two buttons that write on it, where a moment ago there were none.
+      expect(recoveryCopy(screenFailureReason(new Error('boom'), { released: true }), { hasSnapshot: true }).actions).toEqual([
+        'export',
+        'restore',
+        'retry',
+        'start-fresh',
+      ]);
+    });
+
+    it('does not call back on the ordinary path, where the answer it returned is already the right one', () => {
+      let late = 0;
+      const released = releaseEngine(
+        (done) => done(),
+        () => undefined,
+        () => {
+          late += 1;
+        },
+      );
+
+      expect(released).toBe(true);
+      // A redraw here would be a second `setState` saying what the first one already said.
+      expect(late).toBe(0);
+    });
+
     it('never throws out of a boundary that is already handling a crash, and says the handles may still be held', () => {
       const failures: unknown[] = [];
       const released = releaseEngine(

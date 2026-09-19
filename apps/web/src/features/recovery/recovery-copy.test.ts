@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RecoveryReason, SnapshotInfo } from '../../db/open';
-import { lastGoodCopy, MID_SESSION_NOTE, recoveryCopy } from './recovery-copy';
+import type { RecoveryWork } from './busy-controls';
+import { lastGoodCopy, MID_SESSION_NOTE, recoveryCopy, workingCopy } from './recovery-copy';
 
 const reason = (kind: RecoveryReason['kind'], extra: Partial<RecoveryReason> = {}): RecoveryReason => ({
   kind,
@@ -116,5 +117,47 @@ describe('lastGoodCopy', () => {
   it('answers with nothing when every copy is an undo of a restore', () => {
     expect(lastGoodCopy([copy('2026-09-19T10:00:00.000Z', 'before-restore')])).toBe(null);
     expect(lastGoodCopy([])).toBe(null);
+  });
+});
+
+describe('what the screen says while it is working', () => {
+  const EVERY: RecoveryWork[] = ['restore', 'export', 'wipe'];
+
+  /*
+   * The screen used to say nothing at all: `busy` only greyed the buttons out, so a restore that spends
+   * tens of seconds on a cold worker and a megabyte of wasm looked exactly like a second hang. That is
+   * what made a user reach for the one button still lit, and that button is the one that can tear the
+   * write. The words are the other half of holding it back.
+   */
+  it('says what is happening, for every kind of work the screen can be waiting on', () => {
+    for (const work of EVERY) {
+      const copy = workingCopy(work);
+      expect(copy.title.length).toBeGreaterThan(0);
+      expect(copy.body.length).toBeGreaterThan(0);
+    }
+  });
+
+  /*
+   * And says it honestly. `askWorker` sends one message and hears one answer, so there is no fraction to
+   * report — no percentage, no "almost there", nothing that would have to be invented to be said.
+   */
+  it('never claims progress it cannot account for', () => {
+    for (const work of EVERY) {
+      const copy = workingCopy(work);
+      expect(`${copy.title} ${copy.body}`).not.toMatch(/\d\s*%|percent|almost|nearly (done|there)|halfway/i);
+    }
+  });
+
+  /* The button that is not pressable is explained rather than left to be read as a broken one. */
+  it('tells the user why Try again is waiting, during the one action that holds it back', () => {
+    expect(workingCopy('restore').body).toContain('Try again');
+    expect(workingCopy('export').body).not.toContain('Try again');
+    expect(workingCopy('wipe').body).not.toContain('Try again');
+  });
+
+  /* And promises nothing that has not happened: the copy of what is on the device really is written first. */
+  it('says both copies are on the device during a restore, because `restoreSnapshot` has written one', () => {
+    expect(workingCopy('restore').body).toMatch(/nothing is lost/i);
+    expect(workingCopy('wipe').body).toMatch(/already downloaded/i);
   });
 });

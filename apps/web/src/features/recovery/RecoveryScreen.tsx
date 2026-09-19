@@ -8,8 +8,8 @@ import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes } from '../../lib/download';
 import { Button, ErrorBox } from '../../ui';
 import { copyReasonWords } from '../backup/backupState';
-import { disabledWhileBusy } from './busy-controls';
-import { formatBytes, formatWhen, lastGoodCopy, recoveryCopy } from './recovery-copy';
+import { disabledWhileBusy, type RecoveryWork } from './busy-controls';
+import { formatBytes, formatWhen, lastGoodCopy, recoveryCopy, workingCopy } from './recovery-copy';
 import { StartFreshDialog } from './StartFreshDialog';
 
 /** Dropping the query and the hash, so "Try again" leaves recovery mode instead of returning to it. */
@@ -36,7 +36,9 @@ export function RecoveryScreen({
 }) {
   const [kept, setKept] = useState<SnapshotInfo[]>([]);
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
-  const [busy, setBusy] = useState(false);
+  // What is in flight, not merely that something is: which controls stay pressable depends on it, and so
+  // does what the screen says it is doing. See `busy-controls.ts`.
+  const [busy, setBusy] = useState<RecoveryWork | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [fresh, setFresh] = useState(false);
@@ -64,7 +66,7 @@ export function RecoveryScreen({
 
   /** Puts `chosen` back, keeping a copy of what is on the device now so this is itself undoable. */
   const putBack = (chosen: SnapshotInfo) =>
-    run('Restore', async () => {
+    run('restore', 'Restore', async () => {
       // What is on the device now is kept first, so restoring the wrong copy is an undo and
       // not the end of everything entered since that copy was taken.
       await restoreSnapshot({
@@ -76,10 +78,10 @@ export function RecoveryScreen({
       reopen();
     });
 
-  async function run(what: string, action: () => Promise<void>) {
+  async function run(work: RecoveryWork, what: string, action: () => Promise<void>) {
     setError(null);
     setNote(null);
-    setBusy(true);
+    setBusy(work);
     try {
       await action();
     } catch (e) {
@@ -88,7 +90,7 @@ export function RecoveryScreen({
       setError(refusedCopy(e, LATEST_VERSION) ?? e);
       console.warn(`${what} failed`, e);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -120,7 +122,7 @@ export function RecoveryScreen({
           </Button>
         )}
         {copy.actions.includes('export') && (
-          <Button variant="secondary" className="min-h-11 w-full" disabled={disabledWhileBusy('export', busy)} onClick={() => run('Export', onExport)}>
+          <Button variant="secondary" className="min-h-11 w-full" disabled={disabledWhileBusy('export', busy)} onClick={() => run('export', 'Export', onExport)}>
             Download a copy of my data
           </Button>
         )}
@@ -130,6 +132,20 @@ export function RecoveryScreen({
           </Button>
         )}
       </div>
+
+      {/*
+        What is happening, while it happens. Without it the screen is still and silent through a restore
+        that can take tens of seconds, which reads as a second hang — and the buttons greyed out around it
+        read as a broken screen rather than a busy one. `role="status"` because it appears under a reader
+        that has already moved past the heading. No bar: `askWorker` sends one message and hears one
+        answer, so there is no fraction to draw and none is faked. See `workingCopy`.
+      */}
+      {busy && (
+        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm" role="status" aria-live="polite">
+          <p className="font-medium text-slate-900">{workingCopy(busy).title}</p>
+          <p className="mt-0.5 text-slate-600">{workingCopy(busy).body}</p>
+        </div>
+      )}
 
       {/*
         Every other copy the device holds, with the date, the size and why it was taken — because the newest

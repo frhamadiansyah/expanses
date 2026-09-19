@@ -62,16 +62,33 @@ export function screenFailureReason(error: unknown, { released = false }: Screen
  * same answer to the screen: say the handles may still be there, and let `actionsFor` withhold the two
  * buttons that would fail on them. Never a thrown error of its own — the app has already crashed once, and
  * a boundary that crashes while handling a crash is the white page all over again.
+ *
+ * `onLate` is the fourth case, and it is why the deferral is bounded on this path as well as on the
+ * strike's. A deferred release ends one of two ways: the restore finishes, or `RESTORE_GRACE_MS` runs out
+ * and the engine gives it up — and either way `letGo` is called, the worker is terminated, and the handles
+ * really are gone. Without somewhere to say so, that moment changed nothing: the screen was drawn with
+ * `released: false` once and stayed that way for the life of the tab, so a user whose crash happened to
+ * land during a restore lost Restore and Start fresh permanently, and the grace bought the file's safety
+ * at the cost of a screen that could never come true. Told instead, the screen redraws with the two
+ * buttons it has now earned. Called only when the answer arrives *after* this returned — never on the
+ * ordinary synchronous path, where the return value has already said it.
  */
-export function releaseEngine(release: ((letGo: () => void) => void) | undefined, onFailure: (error: unknown) => void): boolean {
+export function releaseEngine(
+  release: ((letGo: () => void) => void) | undefined,
+  onFailure: (error: unknown) => void,
+  onLate: () => void = () => undefined,
+): boolean {
   if (!release) return false;
   try {
     // Set from inside the call on every ordinary path. Still false afterwards means the engine has not let
-    // go yet, and this screen does not offer what it cannot promise.
+    // go yet, and this screen does not offer what it cannot promise — until `onLate` says it can.
     let letGo = false;
+    let returned = false;
     release(() => {
       letGo = true;
+      if (returned) onLate();
     });
+    returned = true;
     return letGo;
   } catch (error) {
     onFailure(error);
