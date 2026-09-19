@@ -79,6 +79,9 @@ test('tagged spending leaves the monthly caps but is still taken off what is lef
 
   await addEvent(page, 'Lebaran');
   await page.getByLabel('Category').selectOption({ label: 'Food and beverage' });
+  // A plan is a list of things to buy, so a category is drawn on by planning something in it: there is no
+  // longer a way to name a category and leave the figure out.
+  await page.getByLabel('Planned', { exact: true }).fill('1000000');
   await page.getByRole('button', { name: 'Add category' }).click();
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Hampers' }).click();
   // Wait for the write to land: navigating on the next line can abandon it in flight.

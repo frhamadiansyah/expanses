@@ -1,4 +1,4 @@
-import { booksInEvent, eventSheetFor, inBook, listEventBudgets, listEvents, listTransactions, ownerScope, suggestForEvent, type WorkspaceContext } from '@expanses/db';
+import { booksInEvent, eventPlanFor, inBook, listEvents, listTransactions, ownerScope, suggestForEvent, type WorkspaceContext } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -26,21 +26,12 @@ export function useBooksInEvent(eventId: string | null) {
   });
 }
 
-export function useEventBudgets(eventId: string | null, bookId: string | null = null) {
+/** What the event meant to buy, against what it actually bought. */
+export function useEventPlan(eventId: string | null, bookId: string | null = null) {
   const { database, ws } = useApp();
   return useQuery({
-    queryKey: ['event-budgets', ws.workspaceId, eventId, bookId],
-    queryFn: () => listEventBudgets(database, scopeOf(ws, bookId), eventId!),
-    enabled: eventId !== null,
-  });
-}
-
-/** What the event was expected to cost, against what it did. */
-export function useEventSheet(eventId: string | null, bookId: string | null = null) {
-  const { database, ws } = useApp();
-  return useQuery({
-    queryKey: ['event-sheet', ws.workspaceId, eventId, bookId],
-    queryFn: () => eventSheetFor(database, scopeOf(ws, bookId), eventId!),
+    queryKey: ['event-plan', ws.workspaceId, eventId, bookId],
+    queryFn: () => eventPlanFor(database, scopeOf(ws, bookId), eventId!),
     enabled: eventId !== null,
   });
 }

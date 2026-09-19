@@ -1,9 +1,12 @@
-import { type EventSheet, eventSheet, uuidv7 } from '@expanses/core';
+import { type EventPlan, eventPlan, uuidv7 } from '@expanses/core';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { eventBudgets, events } from '../schema-events';
+import { events } from '../schema-events';
+import { categoryIdsOfBook, hasBooks } from './books';
+import { listSetCategories } from './category-sets';
+import { type EventItemRow, listEventItems } from './event-items';
 import { EventError, type EventRow, eventOf, ofBook, toEventRow as toRow } from './event-scope';
 
 // The error, the row and the two scoping helpers live in event-scope so the item repository can share them
@@ -19,11 +22,6 @@ export interface SaveEventInput {
   plannedMinor?: number | null;
   goalId?: string | null;
   setId?: string | null;
-}
-
-export interface EventBudgetRow {
-  categoryAccountId: string;
-  plannedMinor: number | null;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -90,68 +88,6 @@ export async function deleteEvent(database: Database, ws: WorkspaceContext, id: 
     .where(and(eq(events.workspaceId, ws.workspaceId), eq(events.id, id)));
 }
 
-/**
- * What a category is expected to cost for this event. A row here also says the category is one the
- * event draws on, which is what makes its suggestions precise rather than the whole month.
- */
-export async function setEventBudget(
-  database: Database,
-  ws: WorkspaceContext,
-  eventId: string,
-  input: { categoryAccountId: string; plannedMinor?: number | null },
-): Promise<void> {
-  await eventOf(database, ws, eventId);
-  const plannedMinor = input.plannedMinor ?? null;
-  if (plannedMinor !== null && !(plannedMinor > 0)) throw new EventError('AMOUNT_RANGE', 'Leave the figure empty, or give one above nought');
-
-  const [category] = await database.db
-    .select({ kind: accounts.kind })
-    .from(accounts)
-    .where(and(eq(accounts.id, input.categoryAccountId), eq(accounts.workspaceId, ws.workspaceId)));
-  if (category?.kind !== 'expense') throw new EventError('NOT_A_CATEGORY', 'An event is planned against spending categories');
-
-  await database.db
-    .insert(eventBudgets)
-    .values({
-      id: uuidv7(),
-      workspaceId: ws.workspaceId,
-      eventId,
-      categoryAccountId: input.categoryAccountId,
-      plannedMinor,
-      createdAt: new Date().toISOString(),
-    })
-    .onConflictDoUpdate({
-      target: [eventBudgets.workspaceId, eventBudgets.eventId, eventBudgets.categoryAccountId],
-      set: { plannedMinor },
-    });
-}
-
-export async function removeEventBudget(database: Database, ws: WorkspaceContext, eventId: string, categoryAccountId: string): Promise<void> {
-  await database.db
-    .delete(eventBudgets)
-    .where(
-      and(
-        eq(eventBudgets.workspaceId, ws.workspaceId),
-        eq(eventBudgets.eventId, eventId),
-        eq(eventBudgets.categoryAccountId, categoryAccountId),
-      ),
-    );
-}
-
-export async function listEventBudgets(database: Database, ws: WorkspaceContext, eventId: string): Promise<EventBudgetRow[]> {
-  const rows = await database.db
-    .select()
-    .from(eventBudgets)
-    .where(
-      and(
-        eq(eventBudgets.workspaceId, ws.workspaceId),
-        eq(eventBudgets.eventId, eventId),
-        ...(await ofBook(database, ws, eventBudgets.categoryAccountId)),
-      ),
-    );
-  return rows.map((row) => ({ categoryAccountId: row.categoryAccountId, plannedMinor: row.plannedMinor }));
-}
-
 /** Says a payment belongs to an event, or no longer does. */
 export async function tagTransaction(database: Database, ws: WorkspaceContext, transactionId: string, eventId: string | null): Promise<void> {
   if (eventId !== null) await eventOf(database, ws, eventId);
@@ -177,8 +113,7 @@ export interface EventCandidate {
  */
 export async function suggestForEvent(database: Database, ws: WorkspaceContext, eventId: string): Promise<EventCandidate[]> {
   const event = await eventOf(database, ws, eventId);
-  const budgets = await listEventBudgets(database, ws, eventId);
-  const categoryIds = budgets.map((row) => row.categoryAccountId);
+  const categoryIds = await eventCategories(database, ws, eventId);
   if (categoryIds.length === 0) return [];
 
   const rows = await database.db
@@ -206,13 +141,42 @@ export async function suggestForEvent(database: Database, ws: WorkspaceContext, 
   return rows.map((row) => ({ ...row, amountBaseMinor: Math.abs(row.amountBaseMinor) }));
 }
 
-/** What the event was expected to cost, against what it did. */
-export async function eventSheetFor(database: Database, ws: WorkspaceContext, eventId: string): Promise<EventSheet> {
+/**
+ * The categories an event draws on: the ones its items name, and the ones in its category set when it has one.
+ *
+ * The set half is what lets an event with no plan still offer suggestions — a holiday planned as a set of categories
+ * suggests inside them from the first day, before a single item exists.
+ */
+export async function eventCategories(database: Database, ws: WorkspaceContext, eventId: string): Promise<string[]> {
   const event = await eventOf(database, ws, eventId);
-  const planned = await listEventBudgets(database, ws, eventId);
+  const items = await listEventItems(database, ws, eventId);
+  const fromItems = items.map((item) => item.categoryAccountId).filter((id): id is string => id !== null);
+  const fromSet = event.setId ? (await listSetCategories(database, ws, event.setId)).map((row) => row.id) : [];
+  return [...new Set([...fromItems, ...fromSet])];
+}
 
+/** What the event meant to buy, against what it actually bought. */
+export async function eventPlanFor(database: Database, ws: WorkspaceContext, eventId: string): Promise<EventPlan> {
+  await eventOf(database, ws, eventId);
+  const items = await listEventItems(database, ws, eventId);
+  // A tab narrows the plan the same way it narrows the money: by the category the item is filed under. An item filed
+  // nowhere belongs to no workspace, so it is read under every tab.
+  const mine = ws.bookId && (await hasBooks(database.db)) ? await keepInBook(database, ws, items) : items;
+
+  // One row per expense entry, not one per category: a purchase split across two categories has to be readable as
+  // both the item that holds it and the money in each of them.
+  //
+  // Posted only. Voiding a purchase deliberately leaves the item's link where it is, so that correcting a receipt
+  // does not untick everything it answered; the reading is where a void has to count for nothing, or the event
+  // would show money that was never spent and an item ticked off by a payment that no longer exists.
   const actualRows = await database.db
-    .select({ categoryId: entries.accountId, total: sql<number>`sum(${entries.amountBaseMinor})` })
+    .select({
+      transactionId: transactions.id,
+      occurredOn: transactions.occurredOn,
+      description: transactions.description,
+      categoryId: entries.accountId,
+      amountBaseMinor: entries.amountBaseMinor,
+    })
     .from(entries)
     .innerJoin(transactions, eq(entries.transactionId, transactions.id))
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
@@ -224,21 +188,31 @@ export async function eventSheetFor(database: Database, ws: WorkspaceContext, ev
         eq(accounts.kind, 'expense'),
         ...(await ofBook(database, ws, entries.accountId)),
       ),
-    )
-    .groupBy(entries.accountId);
+    );
 
   const names = await database.db
     .select({ id: accounts.id, name: accounts.name })
     .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense'), ...(await ofBook(database, ws, accounts.id))));
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'expense')));
 
-  return eventSheet({
-    planned: planned.map((row) => ({ categoryId: row.categoryAccountId, plannedMinor: row.plannedMinor })),
-    actuals: actualRows.map((row) => ({ categoryId: row.categoryId, amountBaseMinor: Number(row.total) })),
+  return eventPlan({
+    items: mine.map((item) => ({
+      id: item.id,
+      name: item.name,
+      quantity: item.quantity,
+      unitPriceMinor: item.unitPriceMinor,
+      categoryId: item.categoryAccountId,
+      link: item.link,
+      note: item.note,
+      purchase: item.transactionId && item.shareMinor !== null ? { transactionId: item.transactionId, shareMinor: item.shareMinor } : null,
+    })),
+    actuals: actualRows.map((row) => ({ ...row, amountBaseMinor: Math.abs(row.amountBaseMinor) })),
     categoryNames: Object.fromEntries(names.map((row) => [row.id, row.name])),
-    // One figure for the whole event is exactly that — the whole event's. Measuring one workspace's share
-    // against the trip's own figure would read as wildly under plan on every tab, so a tab is measured
-    // against the part of the plan filed in it instead.
-    totalPlannedMinor: ws.bookId ? null : event.plannedMinor,
   });
+}
+
+/** The items whose category is filed in the open workspace, plus the ones filed in no category at all. */
+async function keepInBook(database: Database, ws: WorkspaceContext, items: EventItemRow[]): Promise<EventItemRow[]> {
+  const ids = new Set(await categoryIdsOfBook(database, ws.bookId!));
+  return items.filter((item) => item.categoryAccountId === null || ids.has(item.categoryAccountId));
 }

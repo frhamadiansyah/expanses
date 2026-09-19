@@ -47,7 +47,14 @@ SELECT b.id,
        NULL,
        NULL,
        NULL,
-       (SELECT count(*) FROM event_budgets b2 WHERE b2.event_id = b.event_id AND b2.planned_minor IS NOT NULL AND b2.created_at < b.created_at),
+       /* Its place in the list: how many caps of the same event were written before it. Two caps written inside one
+          millisecond carry the same created_at — the ordinary case when a plan is typed in one sitting — so the id
+          breaks the tie. Without it every such item would land at nought and the order would be lost for good: the
+          table is dropped below, and no later migration could read it back. */
+       (SELECT count(*) FROM event_budgets b2
+         WHERE b2.event_id = b.event_id
+           AND b2.planned_minor IS NOT NULL
+           AND (b2.created_at < b.created_at OR (b2.created_at = b.created_at AND b2.id < b.id))),
        b.created_at
 FROM event_budgets b
 JOIN accounts a ON a.id = b.category_account_id

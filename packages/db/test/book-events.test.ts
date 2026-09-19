@@ -6,15 +6,15 @@ import {
   categoryTotalsBetween,
   createAccount,
   createBook,
-  eventSheetFor,
+  eventPlanFor,
   inBook,
-  listEventBudgets,
+  linkEventItem,
   listTransactions,
   ownerScope,
   personalBook,
   postTransaction,
   saveEvent,
-  setEventBudget,
+  saveEventItem,
   tagTransaction,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -49,28 +49,68 @@ describe('an event across workspaces', () => {
 
     expect((await booksInEvent(database, ws, eventId)).map((book) => book.name)).toEqual(['Personal', 'Business']);
     // All: the whole trip. One tab: that workspace's share, and only its categories.
-    expect((await eventSheetFor(database, ownerScope(ws), eventId)).actualMinor).toBe(11_840_000);
-    expect((await eventSheetFor(database, inBook(ws, business), eventId)).actualMinor).toBe(640_000);
-    expect((await eventSheetFor(database, inBook(ws, business), eventId)).lines.map((line) => line.name)).toEqual(['Restaurants']);
-    // Rp 15.000.000 was set for the trip, not for Business's part of it, so its tab is not measured against it.
-    expect((await eventSheetFor(database, ownerScope(ws), eventId)).plannedMinor).toBe(15_000_000);
-    expect((await eventSheetFor(database, inBook(ws, business), eventId)).plannedMinor).toBeNull();
+    expect((await eventPlanFor(database, ownerScope(ws), eventId)).spentMinor).toBe(11_840_000);
+    expect((await eventPlanFor(database, inBook(ws, business), eventId)).spentMinor).toBe(640_000);
+    expect((await eventPlanFor(database, inBook(ws, business), eventId)).lines.map((line) => line.name)).toEqual(['Restaurants']);
   });
 
-  it('shows each workspace only the part of the plan it can spend against', async () => {
+  it('reads the plan whole, and one workspace at a time, with the figures adding up in each', async () => {
     const { database, ws, personal, business } = await copy();
+    const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
     const eventId = await saveEvent(database, ws, { name: 'Singapore holiday', startsOn: '2026-08-13', endsOn: '2026-08-17' });
-    const mine = (await categoryIdsByKey(database, inBook(ws, personal)))['travel.hotels']!;
-    const theirs = (await categoryIdsByKey(database, inBook(ws, business)))['food_beverage.restaurants']!;
-    await setEventBudget(database, ws, eventId, { categoryAccountId: mine, plannedMinor: 11_000_000 });
-    await setEventBudget(database, ws, eventId, { categoryAccountId: theirs, plannedMinor: 1_000_000 });
+    const keysOf = (bookId: string) => categoryIdsByKey(database, inBook(ws, bookId));
+    const hotels = (await keysOf(personal))['travel.hotels']!;
+    const meals = (await keysOf(business))['food_beverage.restaurants']!;
 
-    // All is the whole plan; a tab is the part of it filed in that workspace.
-    expect((await listEventBudgets(database, ownerScope(ws), eventId)).map((row) => row.categoryAccountId).sort()).toEqual([mine, theirs].sort());
-    expect(await listEventBudgets(database, inBook(ws, business), eventId)).toEqual([{ categoryAccountId: theirs, plannedMinor: 1_000_000 }]);
-    // So Business's ring is measured against its own share of the plan, not the whole trip's.
-    expect((await eventSheetFor(database, inBook(ws, business), eventId)).plannedMinor).toBe(1_000_000);
-    expect((await eventSheetFor(database, ownerScope(ws), eventId)).plannedMinor).toBe(12_000_000);
+    const mine = await saveEventItem(database, ws, eventId, { name: 'Hotel Jen', quantity: 4, unitPriceMinor: 2_750_000, categoryAccountId: hotels });
+    await saveEventItem(database, ws, eventId, { name: 'Client dinner', unitPriceMinor: 1_000_000, categoryAccountId: meals });
+    const spend = async (bookId: string, categoryId: string, amountMinor: number) => {
+      const id = await postTransaction(database, inBook(ws, bookId), {
+        occurredOn: '2026-08-15',
+        description: 'x',
+        lines: [
+          { accountId: categoryId, amountMinor, currency: 'IDR' },
+          { accountId: card.id, amountMinor: -amountMinor, currency: 'IDR' },
+        ],
+      });
+      await tagTransaction(database, ws, id, eventId);
+      return id;
+    };
+    // The whole hotel bill is the hotel item, so it answers for all of it: the default share is the estimate.
+    await linkEventItem(database, ws, mine, await spend(personal, hotels, 11_200_000), 11_200_000);
+    await spend(business, meals, 640_000);
+
+    const whole = await eventPlanFor(database, ownerScope(ws), eventId);
+    const theirs = await eventPlanFor(database, inBook(ws, business), eventId);
+    const ours = await eventPlanFor(database, inBook(ws, personal), eventId);
+
+    expect(whole).toMatchObject({ plannedMinor: 12_000_000, spentMinor: 11_840_000, toBuyMinor: 1_000_000, differenceMinor: 200_000, notPlannedMinor: 640_000 });
+    // One tab: that workspace's items and that workspace's money, and nothing of the other's.
+    expect(theirs).toMatchObject({ plannedMinor: 1_000_000, spentMinor: 640_000, toBuyMinor: 1_000_000, notPlannedMinor: 640_000 });
+    expect(theirs.lines.map((line) => line.name)).toEqual(['Restaurants']);
+    expect(ours).toMatchObject({ plannedMinor: 11_000_000, spentMinor: 11_200_000, toBuyMinor: 0, differenceMinor: 200_000, notPlannedMinor: 0 });
+
+    /*
+     * The two identities the screen relies on, checked against figures worked out by hand from the fixture rather
+     * than against the subtractions that produced them — an assertion reading `toBuy + boughtEstimate === planned`
+     * is true of any arithmetic at all, since toBuy is defined as that difference.
+     *
+     * Whole:    plan 4 × 2.750.000 + 1.000.000 = 12.000.000; the hotel was bought for 11.200.000, the dinner is not;
+     *           so still to buy 1.000.000, bought at its estimate 11.000.000, and 640.000 of restaurant money that
+     *           answers no item at all. Spent 11.200.000 + 640.000.
+     * Business: only the dinner and only the restaurant money.
+     * Personal: only the hotel — bought, nothing left to buy, nothing unplanned.
+     */
+    const byHand = [
+      [whole, { plannedMinor: 12_000_000, toBuyMinor: 1_000_000, boughtEstimateMinor: 11_000_000, boughtActualMinor: 11_200_000, notPlannedMinor: 640_000, spentMinor: 11_840_000 }],
+      [theirs, { plannedMinor: 1_000_000, toBuyMinor: 1_000_000, boughtEstimateMinor: 0, boughtActualMinor: 0, notPlannedMinor: 640_000, spentMinor: 640_000 }],
+      [ours, { plannedMinor: 11_000_000, toBuyMinor: 0, boughtEstimateMinor: 11_000_000, boughtActualMinor: 11_200_000, notPlannedMinor: 0, spentMinor: 11_200_000 }],
+    ] as const;
+    for (const [plan, hand] of byHand) {
+      expect(plan).toMatchObject(hand);
+      expect(hand.toBuyMinor + hand.boughtEstimateMinor).toBe(hand.plannedMinor);
+      expect(hand.boughtActualMinor + hand.notPlannedMinor).toBe(hand.spentMinor);
+    }
   });
 
   it('leaves out a workspace that only planned, and one that has nothing to do with it', async () => {
@@ -78,7 +118,7 @@ describe('an event across workspaces', () => {
     const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
     const eventId = await saveEvent(database, ws, { name: 'Singapore holiday', startsOn: '2026-08-13', endsOn: '2026-08-17' });
     const theirs = (await categoryIdsByKey(database, inBook(ws, business)))['food_beverage.restaurants']!;
-    await setEventBudget(database, ws, eventId, { categoryAccountId: theirs, plannedMinor: 1_000_000 });
+    await saveEventItem(database, ws, eventId, { name: 'Client dinner', unitPriceMinor: 1_000_000, categoryAccountId: theirs });
 
     // A plan is not spending: no tab appears until money is actually tagged to the event from that workspace.
     expect(await booksInEvent(database, ws, eventId)).toEqual([]);

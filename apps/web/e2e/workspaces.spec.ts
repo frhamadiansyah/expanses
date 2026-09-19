@@ -258,6 +258,8 @@ async function spendOn(page: Page, description: string, category: string, amount
  */
 async function planAndTag(page: Page, category: string, description: string, option = category) {
   await page.getByLabel('Category').selectOption({ label: option });
+  // What it is expected to cost: a plan is a list of things to buy, and an item without a price is not one.
+  await page.getByLabel('Planned', { exact: true }).fill('1000000');
   await page.getByRole('button', { name: 'Add category' }).click();
   await expect(page.getByRole('button', { name: `Stop drawing on ${category}` })).toBeVisible();
   await page.getByTestId('event-suggestions').getByRole('button', { name: `Tag ${description}` }).click();

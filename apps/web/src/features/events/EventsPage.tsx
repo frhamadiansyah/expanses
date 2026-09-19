@@ -7,7 +7,7 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
 import { useCategorySets } from '../categories/set-queries';
-import { useEvents, useEventSheet } from './queries';
+import { useEventPlan, useEvents } from './queries';
 
 /** "13 – 17 Aug 2026", or one date when the event is a single day. */
 export function eventDates(event: Pick<EventRow, 'startsOn' | 'endsOn'>): string {
@@ -39,9 +39,10 @@ export function StatusChip({ status }: { status: 'Upcoming' | 'Now' | 'Done' }) 
 /** One event as a card: what it cost against what it planned, and a thin bar when it planned anything. */
 function EventCard({ event, today }: { event: EventRow; today: string }) {
   const { ws } = useApp();
-  const sheet = useEventSheet(event.id).data;
-  const planned = sheet?.plannedMinor ?? null;
-  const spent = sheet?.actualMinor ?? 0;
+  const plan = useEventPlan(event.id).data;
+  // No items is no plan at all, not a plan of nought: the card then says what it cost and nothing it is measured against.
+  const planned = plan?.hasPlan ? plan.plannedMinor : null;
+  const spent = plan?.spentMinor ?? 0;
   const over = planned !== null && spent > planned;
   return (
     <Link to="/events/$eventId" params={{ eventId: event.id }} className="block" data-testid="event-row">

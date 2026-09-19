@@ -1,5 +1,5 @@
 import { expenseLines, formatMinor, isoDate, parseMajor } from '@expanses/core';
-import { deleteEvent, finishEvent, postTransaction, removeEventBudget, setEventBudget, tagTransaction } from '@expanses/db';
+import { deleteEvent, finishEvent, postTransaction, removeEventItem, saveEventItem, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { ChevronLeft, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -16,7 +16,7 @@ import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
 import { useCategoryWorkspaces } from '../workspaces/queries';
-import { useBooksInEvent, useEventBudgets, useEventHistory, useEvents, useEventSheet, useEventSuggestions } from './queries';
+import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
 
 /** A month has budgets; an event has a plan. */
 const PLAN_WORDS: GaugeWords = {
@@ -48,8 +48,7 @@ export function EventDetailPage() {
   // A tab whose workspace has since been archived, or whose last tagged payment has gone, would read as an
   // empty event rather than as nothing at all; the whole trip is the honest answer while that is true.
   const openTab = books.some((book) => book.id === tab) ? tab : null;
-  const sheet = useEventSheet(eventId, openTab);
-  const budgets = useEventBudgets(eventId, openTab);
+  const plan = useEventPlan(eventId, openTab);
   const suggestions = useEventSuggestions(eventId, openTab);
   const history = useEventHistory(eventId, openTab);
   const accounts = useAccounts().data ?? [];
@@ -64,7 +63,7 @@ export function EventDetailPage() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  // Planning a category.
+  // Planning a category: one item named after it, until the item list itself lands on this screen.
   const [planCategoryId, setPlanCategoryId] = useState('');
   const [planned, setPlanned] = useState('');
   // Recording spending into the event.
@@ -98,12 +97,20 @@ export function EventDetailPage() {
     }
   }
 
-  async function plan(submitted: FormEvent) {
+  /**
+   * Adds what a category is expected to cost, as one thing to buy named after the category.
+   *
+   * A plan is a list of items now, and this screen still asks the old question — the item list, with its own names,
+   * quantities and prices each, is the next piece of work. One item per category is exactly what migration 0049 made
+   * of the caps that were there before, so what is planned here reads the same way as what was already planned.
+   */
+  async function addToPlan(submitted: FormEvent) {
     submitted.preventDefault();
     await run(async () => {
-      await setEventBudget(database, ws, eventId, {
+      await saveEventItem(database, ws, eventId, {
+        name: nameOf(planCategoryId),
+        unitPriceMinor: parseMajor(planned, ws.baseCurrency),
         categoryAccountId: planCategoryId,
-        plannedMinor: planned.trim() === '' ? null : parseMajor(planned, ws.baseCurrency),
       });
       setPlanCategoryId('');
       setPlanned('');
@@ -136,11 +143,12 @@ export function EventDetailPage() {
 
   if (events.isSuccess && !event) return <Empty>That event is no longer here.</Empty>;
 
-  const data = sheet.data;
-  const lines = (data?.lines ?? []).filter((line) => line.actualMinor > 0 || line.plannedMinor !== null);
+  const data = plan.data;
+  const lines = (data?.lines ?? []).filter((line) => line.actualMinor > 0 || line.planned);
   const spentLines = lines.filter((line) => line.actualMinor > 0);
-  const spent = data?.actualMinor ?? 0;
-  const plannedTotal = data?.plannedMinor ?? null;
+  const plannedLines = lines.filter((line) => line.planned);
+  const spent = data?.spentMinor ?? 0;
+  const plannedTotal = data?.hasPlan ? data.plannedMinor : null;
   const hasPlan = plannedTotal !== null && plannedTotal > 0;
   const onPlan = hasPlan && page === 1;
   const transactions = history.data?.length ?? 0;
@@ -174,7 +182,7 @@ export function EventDetailPage() {
   const donut = (
     <div data-testid="event-total">
       <Donut
-        slices={spentLines.map((line) => ({ key: line.categoryId, label: line.name, totalMinor: line.actualMinor, colour: categoryColour(line.categoryId) }))}
+        slices={spentLines.map((line) => ({ key: line.categoryId ?? 'none', label: line.name, totalMinor: line.actualMinor, colour: categoryColour(line.categoryId ?? 'none') }))}
         totalMinor={spent}
         middle={formatMinor(spent, ws.baseCurrency)}
         label="Total spent"
@@ -204,7 +212,7 @@ export function EventDetailPage() {
         <ChevronLeft size={16} aria-hidden />
         All events
       </button>
-      <ErrorBox error={error ?? events.error ?? sheet.error} />
+      <ErrorBox error={error ?? events.error ?? plan.error} />
 
       {adding && event?.setId && (
         <Card>
@@ -270,8 +278,10 @@ export function EventDetailPage() {
                 currency={ws.baseCurrency}
                 progress={{
                   capsMinor: plannedTotal,
-                  spentMinor: spent,
-                  overCount: lines.filter((line) => (line.overMinor ?? 0) > 0).length,
+                  // Only the categories that have items: a trip that planned the flights and not the food would
+                  // otherwise read every unplanned rupiah as over a plan that never meant to cover it.
+                  spentMinor: data?.plannedSpentMinor ?? 0,
+                  overCount: plannedLines.filter((line) => line.actualMinor > line.plannedMinor).length,
                   any: true,
                 }}
                 month={today.slice(0, 7)}
@@ -287,19 +297,19 @@ export function EventDetailPage() {
           {lines.length > 0 && (
             <div className="mt-2 divide-y divide-slate-100 border-t border-slate-100" data-testid="event-detail-sheet">
               {(onPlan ? lines : spentLines).map((line) => (
-                <div key={line.categoryId} className="flex min-h-12 flex-col justify-center py-2.5">
+                <div key={line.categoryId ?? 'none'} className="flex min-h-12 flex-col justify-center py-2.5">
                   {onPlan ? (
                     <CapLine
-                      colour={categoryColour(line.categoryId)}
+                      colour={categoryColour(line.categoryId ?? 'none')}
                       name={line.name}
                       amountMinor={line.actualMinor}
-                      capMinor={line.plannedMinor}
+                      capMinor={line.planned ? line.plannedMinor : null}
                       currency={ws.baseCurrency}
                       chevron={false}
                       noCap="not planned"
                     />
                   ) : (
-                    <ShareLine colour={categoryColour(line.categoryId)} name={line.name} amountMinor={line.actualMinor} wholeMinor={spent} currency={ws.baseCurrency} chevron={false} />
+                    <ShareLine colour={categoryColour(line.categoryId ?? 'none')} name={line.name} amountMinor={line.actualMinor} wholeMinor={spent} currency={ws.baseCurrency} chevron={false} />
                   )}
                 </div>
               ))}
@@ -313,7 +323,7 @@ export function EventDetailPage() {
       {!adding && (
       <Card className="space-y-2">
         <h2 className="text-sm font-semibold">Plan</h2>
-        <form onSubmit={plan} className="flex flex-wrap items-end gap-2">
+        <form onSubmit={addToPlan} className="flex flex-wrap items-end gap-2">
           <Field label="Category" className="min-w-48">
             <Select value={planCategoryId} onChange={(e) => setPlanCategoryId(e.target.value)}>
               <option value="">Choose a category</option>
@@ -324,25 +334,28 @@ export function EventDetailPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Planned" hint="Leave empty to include the category without a figure.">
+          <Field label="Planned" hint="What it is expected to cost.">
             <Input value={planned} onChange={(e) => setPlanned(e.target.value)} inputMode="decimal" placeholder="3000000" />
           </Field>
           <Button type="submit" variant="secondary">
             Add category
           </Button>
         </form>
-        {(budgets.data?.length ?? 0) > 0 && (
+        {plannedLines.length > 0 && (
           <p className="text-xs text-slate-500">
             Draws on{' '}
-            {(budgets.data ?? []).map((row, index) => (
-              <span key={row.categoryAccountId}>
+            {plannedLines.map((line, index) => (
+              <span key={line.categoryId ?? 'none'}>
                 {index > 0 && ', '}
-                {planName(row.categoryAccountId)}{' '}
+                {line.categoryId === null ? line.name : planName(line.categoryId)}{' '}
                 <button
                   type="button"
-                  aria-label={`Stop drawing on ${nameOf(row.categoryAccountId)}`}
+                  aria-label={`Stop drawing on ${line.categoryId === null ? line.name : nameOf(line.categoryId)}`}
                   className="underline"
-                  onClick={() => void run(() => removeEventBudget(database, ws, eventId, row.categoryAccountId))}
+                  // A category is only its items, so it stops being drawn on when they are gone.
+                  onClick={() => void run(async () => {
+                    for (const item of line.items) await removeEventItem(database, ws, item.id);
+                  })}
                 >
                   remove
                 </button>
