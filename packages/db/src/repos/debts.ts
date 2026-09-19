@@ -301,6 +301,12 @@ export interface SplitBillInput {
   spendCategoryId?: string | null;
   mcc?: string | null;
   ratesToBase?: Record<string, number>;
+  /** Online or offline, when the user said; null when they did not. Never guessed. */
+  channel?: 'online' | 'offline' | null;
+  /** Leaves the chart, the budgets and the category totals; balances, statements, points and net worth keep it. */
+  excludedFromReport?: boolean;
+  /** The event this belongs to. */
+  eventId?: string | null;
 }
 
 /** Money handed to a person, from a bank account or on a card. */
@@ -439,6 +445,9 @@ export async function splitBill(database: Database, ws: WorkspaceContext, input:
       lines,
       ratesToBase: input.ratesToBase,
       mcc: input.mcc ?? null,
+      channel: input.channel,
+      excludedFromReport: input.excludedFromReport,
+      eventId: input.eventId,
     });
     return { transactionId, debtAccountIds };
   });

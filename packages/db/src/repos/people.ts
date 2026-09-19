@@ -1,5 +1,5 @@
 import { type DebtDirection, type DebtStatus, type DueState, dueLabel, dueStateFor, statusFor } from '@expanses/core';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -116,6 +116,55 @@ export async function peopleDebts(database: Database, ws: WorkspaceContext, onDa
     youOwe: cards.filter((card) => card.direction === 'borrowed' && open(card)),
     settled: cards.filter((card) => !open(card)),
   };
+}
+
+export interface RecentPersonRow {
+  accountId: string;
+  personName: string;
+  direction: DebtDirection;
+  currency: string;
+  /** The last day money moved on their account: what "recent" means here. */
+  lastOn: string;
+}
+
+/** Who to offer as a chip under With: people already on the books, the most recently used first. */
+export async function recentPeople(database: Database, ws: WorkspaceContext, limit = 8): Promise<RecentPersonRow[]> {
+  const profiles = await database.db
+    .select({ accountId: debtProfiles.accountId, personName: debtProfiles.personName, createdAt: debtProfiles.createdAt })
+    .from(debtProfiles)
+    .where(eq(debtProfiles.workspaceId, ws.workspaceId));
+  if (profiles.length === 0) return [];
+
+  const accountIds = profiles.map((profile) => profile.accountId);
+  const accountRows = await database.db
+    .select({ id: accounts.id, subtype: accounts.subtype, currency: accounts.currency })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, accountIds)));
+  const accountById = new Map(accountRows.map((row) => [row.id, row]));
+
+  // The newest posted movement on each account; a person nothing has happened on yet has none.
+  const movement = await database.db
+    .select({ accountId: entries.accountId, lastOn: sql<string>`max(${transactions.occurredOn})` })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .where(and(eq(entries.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), inArray(entries.accountId, accountIds)))
+    .groupBy(entries.accountId);
+  const lastMovedOn = new Map(movement.map((row) => [row.accountId, row.lastOn]));
+
+  return profiles
+    .map((profile) => {
+      const account = accountById.get(profile.accountId);
+      return {
+        accountId: profile.accountId,
+        personName: profile.personName,
+        direction: DIRECTION_BY_SUBTYPE[account?.subtype ?? ''] ?? 'lent',
+        currency: account?.currency ?? ws.baseCurrency,
+        // No movement yet: fall back to the day the profile was opened.
+        lastOn: lastMovedOn.get(profile.accountId) ?? profile.createdAt.slice(0, 10),
+      };
+    })
+    .sort((a, b) => (a.lastOn === b.lastOn ? a.personName.localeCompare(b.personName) : a.lastOn < b.lastOn ? 1 : -1))
+    .slice(0, limit);
 }
 
 export interface DebtHistoryRow {
