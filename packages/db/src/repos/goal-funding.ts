@@ -134,7 +134,9 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
   const links = await goalLinksFor(database, ws, date);
   // What you can put away is yours, not one workspace's, and it is counted in your own currency.
   const flows = await periodFlows(database, ownerScope(ws), { from: `${addMonths(monthOf(date), -11)}-01`, to: date });
-  const monthlyOutgoingMinor = perMonth(flows.spendingMinor + flows.debtPaymentsMinor, flows.months);
+  // The same denominator the emergency ratio card divides by: spending already holds the loan interest,
+  // so only the principal is added to it. Adding the whole payment would count the interest twice.
+  const monthlyOutgoingMinor = perMonth(flows.spendingMinor + flows.debtPrincipalMinor, flows.months);
   const capacityMonthlyMinor = Math.max(0, perMonth(flows.incomeMinor - flows.spendingMinor - flows.debtPaymentsMinor, flows.months));
 
   const templates = (await listTradeTemplates(database, ws)).filter((template) => template.active && template.goalId);
