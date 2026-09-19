@@ -72,8 +72,10 @@ export async function addItem(page: Page, options: ItemFields) {
  * migration 0049 made of the caps that came before it.
  */
 export async function planFor(page: Page, category: string, amount: string, option = category) {
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  // By test id, not by words: the card's link says "Plan what to buy" while nothing is planned and "See the whole
+  // plan" once there are items, and this helper is called both before and after the first one.
+  await page.getByTestId('open-plan').click();
   await addItem(page, { name: category, price: amount, category: option });
   await page.getByRole('link', { name: 'Back to the event' }).click();
-  await expect(page.getByRole('link', { name: 'Plan what to buy' })).toBeVisible();
+  await expect(page.getByTestId('open-plan')).toBeVisible();
 }

@@ -298,7 +298,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await planAndTag(page, 'Client lunches', 'Supplier lunch', 'Client lunches · Business');
   // The item form says which workspace each category belongs to: two workspaces can hold a category of the same
   // name, and the name alone would make the choice a coin toss. selectOption throws when the label is not offered.
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByTestId('open-plan').click();
   await page.getByRole('link', { name: 'Add an item' }).first().click();
   await page.getByLabel('Category').selectOption({ label: 'Restaurants · Personal' });
   await page.getByRole('link', { name: 'Cancel' }).click();

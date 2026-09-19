@@ -66,9 +66,98 @@ test('what was tagged before the plan sits under its category as not planned', a
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Hampers' }).click();
   await expect(page.getByTestId('event-sheet')).toContainText('4.200.000');
 
-  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  // One item is planned by now, so the card's link has changed from an invitation into a way back in.
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
   await expect(page.getByTestId('plan-totals')).toContainText('Not planned');
   // The amber pill on the receipt's own row, beside the item it did not buy — not the summary's "Not planned".
   await expect(page.getByText('not planned', { exact: true })).toBeVisible();
   await expect(page.getByTestId('plan-totals')).toContainText('4.200.000');
+});
+
+/**
+ * Buying, and what one receipt covers.
+ *
+ * "Buy it now" is the ordinary case — one receipt, one thing — and it fills the payment in from the item so only the
+ * real price has to be typed. A shopping trip that answered three items cannot be ticked off three times, because the
+ * first tick claims what is left of the receipt; it is settled on "What it covers", where the shares are typed
+ * together and checked against the one payment. Nothing here splits the transaction: the shares are a reading of it.
+ */
+test('an item is bought at the real price, and one receipt can answer three', async ({ page }) => {
+  await addWallet(page);
+  // Recorded before the event exists, so it is there to be tagged and then shared out.
+  await spend(page, 'Mothercare', '4150000');
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
+  await addItem(page, { name: 'Newborn clothes', quantity: '10', price: '150000', category: 'Food and beverage' });
+  await addItem(page, { name: 'Muslin wraps', quantity: '4', price: '175000', category: 'Food and beverage' });
+
+  // Buy it now: pre-filled from the item, and only the real price changes.
+  await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
+  await page.getByRole('button', { name: 'Buy it now' }).click();
+  await expect(page.getByLabel('Amount', { exact: true })).toHaveValue('7500000');
+  await page.getByLabel('Amount', { exact: true }).fill('7200000');
+  await page.getByRole('button', { name: 'Save' }).click();
+  const crib = page.getByTestId('plan-item').filter({ hasText: 'Crib' });
+  await expect(crib).toContainText('7.200.000');
+  await expect(crib).toContainText('−Rp 300.000');
+
+  // One receipt over two items, with what is left reading as not planned.
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: /Mothercare/ }).click();
+  await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
+  await expect(page.getByTestId('cover-totals')).toContainText('2.200.000'); // given to items
+  await expect(page.getByTestId('cover-totals')).toContainText('1.950.000'); // left on this receipt
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByTestId('plan-totals')).toContainText('Still to buy');
+  await expect(page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' })).toContainText('exactly');
+  // The leftover is spending in its category, marked as part of a receipt that did answer something.
+  await expect(page.getByText('part of this receipt')).toBeVisible();
+
+  // Unticking one leaves the other, and hands its share back to the receipt.
+  await page.getByRole('button', { name: 'Unlink Muslin wraps' }).click();
+  await expect(page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' })).toContainText('1.500.000');
+});
+
+/**
+ * A receipt already spoken for is carried to the screen that can settle it, rather than told about in a sentence.
+ *
+ * Ticking an item off claims what is *left* of its receipt, so the second tick against a shared one finds nothing
+ * there. That is the normal path for a shopping trip, not an error: the app cannot know a receipt is shared until it
+ * is told, and "What it covers" is where it is told.
+ */
+test('a receipt that is already spoken for is shown as fully accounted for, not offered again', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
+  await addItem(page, { name: 'Muslin wraps', quantity: '4', price: '175000', category: 'Food and beverage' });
+
+  // The crib's own receipt takes the whole of itself, which is what one tick means.
+  await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
+  await page.getByRole('button', { name: 'Buy it now' }).click();
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  // So the other item is not offered it: the row is there, said plainly, and is not a link to click.
+  await page.getByTestId('plan-item').filter({ hasText: 'Muslin wraps' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await expect(page.getByText('fully accounted for')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Crib/ })).toHaveCount(0);
+
+  // And the crib's own page carries the same receipt to the screen where it can be split between items.
+  await page.getByRole('link', { name: 'Back to the item' }).click();
+  await page.getByRole('link', { name: 'Back to the plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Say what it covers' }).click();
+  await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Muslin wraps' }).check();
+  await expect(page.getByTestId('cover-totals')).toContainText('that is more than the receipt');
+  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
 });

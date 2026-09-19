@@ -6,10 +6,14 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Money, PageHeader, Row, RowGroup, RowHint } from '../../ui';
+import { buyTarget, coverTarget } from './buy-item';
 import { differenceWords } from './plan-view';
 import { useEventPlan } from './queries';
 
 const TONE = { over: 'text-red-700', under: 'text-emerald-700', exact: 'text-slate-500' } as const;
+
+/** A link that reads as the quiet twin of a secondary Button beside it. */
+const ACTION_QUIET = 'inline-flex min-h-11 items-center justify-center rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100';
 
 /** A read-only row's value, so "—" for nothing said reads the same everywhere. */
 const said = (value: ReactNode | null) => value ?? '—';
@@ -155,16 +159,39 @@ export function ItemPage() {
                 </span>
                 <Money minor={item.actualMinor!} currency={ws.baseCurrency} className="font-semibold" />
               </p>
-              <Button variant="secondary" onClick={() => void run(() => unlinkEventItem(database, ws, item.id))}>
-                Remove the link
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {/* One receipt often answers several items; this is where its shares are set side by side. */}
+                {item.purchase && (
+                  <Link {...coverTarget(eventId, item.purchase.transactionId, { item: item.id, ws: tab })} className={ACTION_QUIET}>
+                    Say what it covers
+                  </Link>
+                )}
+                <Button variant="secondary" onClick={() => void run(() => unlinkEventItem(database, ws, item.id))}>
+                  Remove the link
+                </Button>
+              </div>
               <p className="text-xs text-slate-500">The purchase stays on the event; it simply stops answering this item.</p>
             </Card>
           ) : (
             <Card className="space-y-2">
               <h2 className="text-sm font-semibold">Already bought it?</h2>
+              <div className="flex flex-wrap gap-2">
+                {/*
+                 * Two ways, and both of them real buttons on this page rather than a gesture anywhere.
+                 *
+                 * "Buy it now" records the payment and ties it to this item in one go, which is the ordinary case of
+                 * one receipt for one thing. "Link a purchase" is for a payment already on the event — and since
+                 * ticking an item off claims what is *left* of a receipt, a shopping trip that answered three items
+                 * goes that way, through the screen where the three shares are typed together.
+                 */}
+                <Button onClick={() => void navigate(buyTarget(eventId, item.id))}>Buy it now</Button>
+                <Link to="/events/$eventId/plan/link" params={{ eventId }} search={{ ws: tab, item: item.id }} className={ACTION_QUIET}>
+                  Link a purchase
+                </Link>
+              </div>
               <p className="text-xs text-slate-500">
-                Tick it off on the plan when the receipt is this item, or say what one receipt covers when it answers several. Both come from the event.
+                Buying it records the payment against this item. Linking picks something already tagged to the event, and says what else the same receipt
+                covers.
               </p>
             </Card>
           )}

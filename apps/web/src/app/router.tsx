@@ -2,10 +2,12 @@ import { parsePeriod } from '@expanses/core';
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router';
 import { AccountsPage } from '../features/accounts/AccountsPage';
 import { BackupPage } from '../features/backup/BackupPage';
+import { CoverPage } from '../features/events/CoverPage';
 import { EventDetailPage } from '../features/events/EventDetailPage';
 import { EventsPage } from '../features/events/EventsPage';
 import { EditItemRoute, NewItemRoute } from '../features/events/ItemFormPage';
 import { ItemPage } from '../features/events/ItemPage';
+import { PickPurchasePage } from '../features/events/PickPurchasePage';
 import { PlanPage } from '../features/events/PlanPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
 import { CalculatorsPage } from '../features/calculators/CalculatorsPage';
@@ -53,7 +55,21 @@ export interface EventPlanSearch {
   ws?: string;
 }
 
-const planSearch = (search: Record<string, unknown>): EventPlanSearch => ({ ws: typeof search.ws === 'string' ? search.ws : undefined });
+/** The event screen itself: the same tab, plus the item "Buy it now" arrived from, which seeds the Add spending card. */
+export interface EventSearch extends EventPlanSearch {
+  buy?: string;
+}
+
+/** Choosing and reading a receipt: the item being answered is carried through both screens so Cancel knows the way back. */
+export interface EventLinkSearch extends EventPlanSearch {
+  item?: string;
+}
+
+const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+
+const planSearch = (search: Record<string, unknown>): EventPlanSearch => ({ ws: text(search.ws) });
+const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: text(search.ws), buy: text(search.buy) });
+const linkSearch = (search: Record<string, unknown>): EventLinkSearch => ({ ws: text(search.ws), item: text(search.item) });
 
 const rootRoute = createRootRoute({ component: Layout });
 
@@ -84,12 +100,14 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId', component: BillRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/edit', component: EditBillRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage }),
-  // The plan and its items: four screens, every one of them a real route, so a desktop reaches each by URL and by
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage, validateSearch: eventSearch }),
+  // The plan and its items: six screens, every one of them a real route, so a desktop reaches each by URL and by
   // keyboard exactly as a phone reaches it by thumb. No nav.ts entry — these hang off an event, and /events is in
-  // MORE_GROUPS already.
+  // MORE_GROUPS already. "link" is a static segment, so it outranks `$itemId` however they are ordered here.
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan', component: PlanPage, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/new', component: NewItemRoute, validateSearch: planSearch }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/link', component: PickPurchasePage, validateSearch: linkSearch }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/link/$transactionId', component: CoverPage, validateSearch: linkSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId', component: ItemPage, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId/edit', component: EditItemRoute, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators', component: CalculatorsPage }),

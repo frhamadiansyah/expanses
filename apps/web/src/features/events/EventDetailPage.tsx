@@ -1,14 +1,15 @@
-import { expenseLines, formatMinor, isoDate, parseMajor } from '@expanses/core';
-import { deleteEvent, finishEvent, postTransaction, tagTransaction } from '@expanses/db';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { expenseLines, formatMinor, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
+import { deleteEvent, finishEvent, linkEventItem, postTransaction, tagTransaction } from '@expanses/db';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ChevronLeft, Plus } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
+import { coverTarget, isNothingLeft } from './buy-item';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { useCategorySets, useSetCategories } from '../categories/set-queries';
+import { useCategorySetMembership, useCategorySets, useSetCategories } from '../categories/set-queries';
 import { BudgetGauge } from '../transactions/BudgetGauge';
 import { CapLine, ShareLine } from '../transactions/CategoryLines';
 import { categoryColour } from '../transactions/category-colours';
@@ -30,13 +31,16 @@ const dayCount = (from: string, to: string) => Math.round((Date.parse(`${to}T00:
  */
 export function EventDetailPage() {
   const { eventId } = useParams({ from: '/events/$eventId' });
+  // `ws` here is the workspace tab a plan screen was reading in; `ws` from useApp below is the workspace context.
+  const { ws: openedIn, buy } = useSearch({ from: '/events/$eventId' });
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
-  // Which workspace the event is being read in: null is the whole trip, an id is one workspace's share of it.
-  const [tab, setTab] = useState<string | null>(null);
+  // Which workspace the event is being read in: null is the whole trip, an id is one workspace's share of it. A
+  // screen that was reading one workspace's share hands it back in the URL, so coming back lands where you left.
+  const [tab, setTab] = useState<string | null>(openedIn ?? null);
   const books = useBooksInEvent(eventId).data ?? [];
   // A tab whose workspace has since been archived, or whose last tagged payment has gone, would read as an
   // empty event rather than as nothing at all; the whole trip is the honest answer while that is true.
@@ -49,6 +53,7 @@ export function EventDetailPage() {
   const money = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a));
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const setCategories = useSetCategories(event?.setId ?? null).data ?? [];
+  const membership = useCategorySetMembership().data ?? {};
   const today = isoDate();
 
   const [page, setPage] = useState(0);
@@ -62,6 +67,13 @@ export function EventDetailPage() {
   const [categoryId, setCategoryId] = useState('');
   const [amount, setAmount] = useState('');
 
+  /*
+   * An event records spending in its own set's categories when it draws on one, so a renovation is recorded in
+   * renovation terms. Without a set it uses the monthly tree, which leaves other sets out, or the list would offer
+   * two Flights — the same expression the item form plans against, so what is planned and what is recorded agree.
+   */
+  const monthly = accounts.filter((account) => account.kind === 'expense' && account.subtype === 'category' && membership[account.id] === undefined);
+  const planCategories = event?.setId ? setCategories : monthly;
   const nameOf = (id: string) => accounts.find((account) => account.id === id)?.name ?? id;
   // The plan is the owner's, so it offers every workspace's categories — and two workspaces can hold copies of
   // one category, the same word twice. Each is said with the workspace it belongs to, so the choice is a real one.
@@ -71,6 +83,25 @@ export function EventDetailPage() {
     return workspace ? `${nameOf(id)} · ${workspace}` : nameOf(id);
   };
   const setName = sets.find((row) => row.id === event?.setId)?.name ?? null;
+
+  /**
+   * "Buy it now" arrives here: the card opens filled in from the item, and saving ties the payment to what it
+   * answered. The item is found in the plan already on screen, so the two readings can never disagree.
+   */
+  const buying = (plan.data?.lines ?? []).flatMap((line) => line.items).find((item) => item.id === buy) ?? null;
+  useEffect(() => {
+    if (!buying) return;
+    setAdding(true);
+    setDescription(buying.name);
+    setAmount(minorToMajorString(buying.estimateMinor, ws.baseCurrency));
+    setCategoryId(buying.categoryId ?? '');
+    // Keyed on the item's own values rather than on the object: the plan refetches as things are tagged, and a new
+    // object carrying the same item would wipe out an amount half typed.
+  }, [buying?.id, buying?.name, buying?.estimateMinor, buying?.categoryId, ws.baseCurrency]);
+
+  // A choice with one option is not a choice: with one account to pay from, asking again is only a step to forget.
+  // Derived rather than written into state, so the answer follows the accounts instead of a stale first render.
+  const payingWith = moneyId || (money.length === 1 ? money[0]!.id : '');
 
   async function run(work: () => Promise<unknown>) {
     setError(null);
@@ -85,7 +116,7 @@ export function EventDetailPage() {
   async function record(submitted: FormEvent) {
     submitted.preventDefault();
     await run(async () => {
-      const paidWith = accounts.find((account) => account.id === moneyId);
+      const paidWith = accounts.find((account) => account.id === payingWith);
       if (!paidWith) throw new Error('Choose what it was paid with');
       if (!categoryId) throw new Error('Choose a category');
       const transactionId = await postTransaction(database, ws, {
@@ -103,6 +134,24 @@ export function EventDetailPage() {
       await tagTransaction(database, ws, transactionId, eventId);
       setDescription('');
       setAmount('');
+      if (buying) {
+        /*
+         * The payment it just made is this item and nothing else, so it takes the whole amount as its share.
+         *
+         * A receipt already spoken for is the one refusal with somewhere to go — ticking an item off claims what is
+         * left of its receipt, so a receipt answering several items is settled on "What it covers" and not by a
+         * second tick. The payment is posted and tagged by now either way, so carrying the user to that screen loses
+         * nothing and asks them for exactly what the app could not know.
+         */
+        try {
+          await linkEventItem(database, ws, buying.id, transactionId);
+        } catch (e) {
+          if (!isNothingLeft(e)) throw e;
+          await navigate(coverTarget(eventId, transactionId, { item: buying.id, ws: openTab ?? undefined }));
+          return;
+        }
+        await navigate({ to: '/events/$eventId/plan', params: { eventId }, search: { ws: openTab ?? undefined } });
+      }
     });
   }
 
@@ -163,14 +212,14 @@ export function EventDetailPage() {
     <div className="space-y-4">
       <PageHeader
         title={event?.name ?? 'Event'}
+        // No longer gated on a category set: an event without one plans against the monthly tree, and it may record
+        // spending against that same tree. Gating it left such an event able to plan and unable to pay.
         controls={
-          event?.setId ? (
-            <RoundButton label="Add spending" pressed={adding} onClick={() => setAdding((was) => !was)}>
-              <Plus size={22} aria-hidden />
-            </RoundButton>
-          ) : undefined
+          <RoundButton label="Add spending" pressed={adding} onClick={() => setAdding((was) => !was)}>
+            <Plus size={22} aria-hidden />
+          </RoundButton>
         }
-        action={event?.setId && !adding ? <Button onClick={() => setAdding(true)}>Add spending</Button> : undefined}
+        action={!adding ? <Button onClick={() => setAdding(true)}>Add spending</Button> : undefined}
       />
       <button type="button" onClick={() => void navigate({ to: '/events' })} className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
         <ChevronLeft size={16} aria-hidden />
@@ -178,9 +227,9 @@ export function EventDetailPage() {
       </button>
       <ErrorBox error={error ?? events.error ?? plan.error} />
 
-      {adding && event?.setId && (
+      {adding && (
         <Card>
-          <h2 className="mb-2 text-sm font-semibold">Add spending to this event</h2>
+          <h2 className="mb-2 text-sm font-semibold">{buying ? `Buy ${buying.name}` : 'Add spending to this event'}</h2>
           <form onSubmit={record} className="grid gap-3 md:grid-cols-2">
             <Field label="Date">
               <Input type="date" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} />
@@ -189,7 +238,7 @@ export function EventDetailPage() {
               <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Keramik lantai" />
             </Field>
             <Field label="Paid with">
-              <Select value={moneyId} onChange={(e) => setMoneyId(e.target.value)}>
+              <Select value={payingWith} onChange={(e) => setMoneyId(e.target.value)}>
                 <option value="">Choose…</option>
                 {money.map((account) => (
                   <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
@@ -199,14 +248,14 @@ export function EventDetailPage() {
             <Field label="Category">
               <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
                 <option value="">Choose…</option>
-                {setCategories.map((category) => (
+                {planCategories.map((category) => (
                   <option key={category.id} value={category.id}>
-                    {category.name}
+                    {planName(category.id)}
                   </option>
                 ))}
               </Select>
             </Field>
-            <Field label="Amount">
+            <Field label="Amount" hint={buying ? 'Filled in from the estimate. Change it to what the receipt really says.' : undefined}>
               <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="1500000" />
             </Field>
             <div className="flex items-end gap-2">
@@ -302,13 +351,15 @@ export function EventDetailPage() {
            * asked for a category and a total and *appended* an item each time, so naming one twice quietly doubled it
            * with no list on screen to show why. The plan screen is that list.
            */}
+          {/* The words change with the card: nothing planned is an invitation, a list of items is a way in to it. */}
           <Link
             to="/events/$eventId/plan"
             params={{ eventId }}
             search={{ ws: openTab ?? undefined }}
+            data-testid="open-plan"
             className="flex min-h-11 w-full items-center justify-center rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100"
           >
-            Plan what to buy
+            {data?.itemCount ? 'See the whole plan' : 'Plan what to buy'}
           </Link>
           <p className="text-xs text-slate-500">A plan is a list of things to buy — how many of each and roughly what one costs. A category line is their sum.</p>
         </Card>
