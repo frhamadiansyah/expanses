@@ -1,6 +1,6 @@
 import { expenseLines, formatMinor, isoDate, parseMajor } from '@expanses/core';
-import { deleteEvent, finishEvent, postTransaction, removeEventItem, saveEventItem, tagTransaction } from '@expanses/db';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { deleteEvent, finishEvent, postTransaction, tagTransaction } from '@expanses/db';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { ChevronLeft, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -8,23 +8,16 @@ import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { useCategorySetMembership, useCategorySets, useSetCategories } from '../categories/set-queries';
-import { BudgetGauge, type GaugeWords } from '../transactions/BudgetGauge';
+import { useCategorySets, useSetCategories } from '../categories/set-queries';
+import { BudgetGauge } from '../transactions/BudgetGauge';
 import { CapLine, ShareLine } from '../transactions/CategoryLines';
 import { categoryColour } from '../transactions/category-colours';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
+import { gaugeFor, PLAN_WORDS, plannedLabel, planCardRows } from './plan-view';
 import { useCategoryWorkspaces } from '../workspaces/queries';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
-
-/** A month has budgets; an event has a plan. */
-const PLAN_WORDS: GaugeWords = {
-  left: 'Left of the plan',
-  over: 'Over the plan by',
-  set: 'Planned',
-  overCount: (count) => `${count} ${count === 1 ? 'category' : 'categories'} over`,
-};
 
 const dayCount = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00`) - Date.parse(`${from}T00:00:00`)) / 86_400_000) + 1;
 
@@ -56,16 +49,12 @@ export function EventDetailPage() {
   const money = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a));
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const setCategories = useSetCategories(event?.setId ?? null).data ?? [];
-  const membership = useCategorySetMembership().data ?? {};
   const today = isoDate();
 
   const [page, setPage] = useState(0);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  // Planning a category: one item named after it, until the item list itself lands on this screen.
-  const [planCategoryId, setPlanCategoryId] = useState('');
-  const [planned, setPlanned] = useState('');
   // Recording spending into the event.
   const [occurredOn, setOccurredOn] = useState(today);
   const [description, setDescription] = useState('');
@@ -73,10 +62,6 @@ export function EventDetailPage() {
   const [categoryId, setCategoryId] = useState('');
   const [amount, setAmount] = useState('');
 
-  // An event plans against its own set when it has one, so a renovation is planned in renovation terms. Without
-  // one it plans against the monthly tree, which leaves other sets out, or the list would offer two Flights.
-  const monthly = accounts.filter((account) => account.kind === 'expense' && account.subtype === 'category' && membership[account.id] === undefined);
-  const planCategories = event?.setId ? setCategories : monthly;
   const nameOf = (id: string) => accounts.find((account) => account.id === id)?.name ?? id;
   // The plan is the owner's, so it offers every workspace's categories — and two workspaces can hold copies of
   // one category, the same word twice. Each is said with the workspace it belongs to, so the choice is a real one.
@@ -95,26 +80,6 @@ export function EventDetailPage() {
     } catch (e) {
       setError(e);
     }
-  }
-
-  /**
-   * Adds what a category is expected to cost, as one thing to buy named after the category.
-   *
-   * A plan is a list of items now, and this screen still asks the old question — the item list, with its own names,
-   * quantities and prices each, is the next piece of work. One item per category is exactly what migration 0049 made
-   * of the caps that were there before, so what is planned here reads the same way as what was already planned.
-   */
-  async function addToPlan(submitted: FormEvent) {
-    submitted.preventDefault();
-    await run(async () => {
-      await saveEventItem(database, ws, eventId, {
-        name: nameOf(planCategoryId),
-        unitPriceMinor: parseMajor(planned, ws.baseCurrency),
-        categoryAccountId: planCategoryId,
-      });
-      setPlanCategoryId('');
-      setPlanned('');
-    });
   }
 
   async function record(submitted: FormEvent) {
@@ -146,7 +111,6 @@ export function EventDetailPage() {
   const data = plan.data;
   const lines = (data?.lines ?? []).filter((line) => line.actualMinor > 0 || line.planned);
   const spentLines = lines.filter((line) => line.actualMinor > 0);
-  const plannedLines = lines.filter((line) => line.planned);
   const spent = data?.spentMinor ?? 0;
   const plannedTotal = data?.hasPlan ? data.plannedMinor : null;
   const hasPlan = plannedTotal !== null && plannedTotal > 0;
@@ -276,17 +240,14 @@ export function EventDetailPage() {
               <BudgetGauge
                 // An event is read whole, in the owner's own money, whichever workspace's tab is open.
                 currency={ws.baseCurrency}
-                progress={{
-                  capsMinor: plannedTotal,
-                  // Only the categories that have items: a trip that planned the flights and not the food would
-                  // otherwise read every unplanned rupiah as over a plan that never meant to cover it.
-                  spentMinor: data?.plannedSpentMinor ?? 0,
-                  overCount: plannedLines.filter((line) => line.actualMinor > line.plannedMinor).length,
-                  any: true,
-                }}
+                // Only the categories that have items: a trip that planned the flights and not the food would
+                // otherwise read every unplanned rupiah as over a plan that never meant to cover it.
+                progress={gaugeFor(data!)}
                 month={today.slice(0, 7)}
                 today={today}
-                words={PLAN_WORDS}
+                // `set` is the caps label the gauge prints, and PLAN_WORDS cannot hold "Planned so far" as a
+                // constant — so it is overridden here, or the gauge would contradict the card above it.
+                words={{ ...PLAN_WORDS, set: plannedLabel(data!) }}
                 last={{ label: 'Long', value: `${dayCount(event.startsOn, event.endsOn)} ${dayCount(event.startsOn, event.endsOn) === 1 ? 'day' : 'days'}` }}
               />
             </Deck>
@@ -319,51 +280,38 @@ export function EventDetailPage() {
         </div>
       )}
 
-      {/* Put away while spending is being recorded: both forms ask for a category, and one question at a time is enough. */}
+      {/* Put away while spending is being recorded: the plan is a screen of its own, and one question at a time is enough. */}
       {!adding && (
-      <Card className="space-y-2">
-        <h2 className="text-sm font-semibold">Plan</h2>
-        <form onSubmit={addToPlan} className="flex flex-wrap items-end gap-2">
-          <Field label="Category" className="min-w-48">
-            <Select value={planCategoryId} onChange={(e) => setPlanCategoryId(e.target.value)}>
-              <option value="">Choose a category</option>
-              {planCategories.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {planName(account.id)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Planned" hint="What it is expected to cost.">
-            <Input value={planned} onChange={(e) => setPlanned(e.target.value)} inputMode="decimal" placeholder="3000000" />
-          </Field>
-          <Button type="submit" variant="secondary">
-            Add category
-          </Button>
-        </form>
-        {plannedLines.length > 0 && (
-          <p className="text-xs text-slate-500">
-            Draws on{' '}
-            {plannedLines.map((line, index) => (
-              <span key={line.categoryId ?? 'none'}>
-                {index > 0 && ', '}
-                {line.categoryId === null ? line.name : planName(line.categoryId)}{' '}
-                <button
-                  type="button"
-                  aria-label={`Stop drawing on ${line.categoryId === null ? line.name : nameOf(line.categoryId)}`}
-                  className="underline"
-                  // A category is only its items, so it stops being drawn on when they are gone.
-                  onClick={() => void run(async () => {
-                    for (const item of line.items) await removeEventItem(database, ws, item.id);
-                  })}
-                >
-                  remove
-                </button>
+        <Card className="space-y-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold">Plan</h2>
+            <span className="text-xs text-slate-500">
+              {data?.itemCount ? `${data.itemCount} ${data.itemCount === 1 ? 'item' : 'items'} · ${data.boughtCount} bought` : 'Nothing planned yet'}
+            </span>
+          </div>
+          {(data ? planCardRows(data) : []).map((row) => (
+            <p key={row.categoryId ?? 'none'} className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate">
+                {row.categoryId === null ? row.name : planName(row.categoryId)} <span className="text-xs text-slate-500">{row.subline}</span>
               </span>
-            ))}
-          </p>
-        )}
-      </Card>
+              <Money minor={row.plannedMinor} currency={ws.baseCurrency} className="font-semibold" />
+            </p>
+          ))}
+          {/*
+           * The figure for a category is the sum of its items and is set nowhere else. The form that used to sit here
+           * asked for a category and a total and *appended* an item each time, so naming one twice quietly doubled it
+           * with no list on screen to show why. The plan screen is that list.
+           */}
+          <Link
+            to="/events/$eventId/plan"
+            params={{ eventId }}
+            search={{ ws: openTab ?? undefined }}
+            className="flex min-h-11 w-full items-center justify-center rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100"
+          >
+            Plan what to buy
+          </Link>
+          <p className="text-xs text-slate-500">A plan is a list of things to buy — how many of each and roughly what one costs. A category line is their sum.</p>
+        </Card>
       )}
 
       {(suggestions.data?.length ?? 0) > 0 && event && (

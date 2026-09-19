@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { planFor } from './event-plan';
 
 /**
  * An account is yours, not a workspace's, so its history holds every workspace and each row says which one it
@@ -257,11 +258,8 @@ async function spendOn(page: Page, description: string, category: string, amount
  * each option belongs to, since two workspaces can hold copies of one category and the name alone is a coin toss.
  */
 async function planAndTag(page: Page, category: string, description: string, option = category) {
-  await page.getByLabel('Category').selectOption({ label: option });
   // What it is expected to cost: a plan is a list of things to buy, and an item without a price is not one.
-  await page.getByLabel('Planned', { exact: true }).fill('1000000');
-  await page.getByRole('button', { name: 'Add category' }).click();
-  await expect(page.getByRole('button', { name: `Stop drawing on ${category}` })).toBeVisible();
+  await planFor(page, category, '1000000', option);
   await page.getByTestId('event-suggestions').getByRole('button', { name: `Tag ${description}` }).click();
 }
 
@@ -298,9 +296,13 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
 
   await page.goto(url);
   await planAndTag(page, 'Client lunches', 'Supplier lunch', 'Client lunches · Business');
-  // The plan says which workspace each category it draws on belongs to, in the same words as the picker: two
-  // workspaces can hold a category of the same name, and the name alone would make the choice a coin toss.
-  await expect(page.getByRole('button', { name: 'Stop drawing on Restaurants' }).locator('xpath=..')).toContainText('Restaurants · Personal');
+  // The item form says which workspace each category belongs to: two workspaces can hold a category of the same
+  // name, and the name alone would make the choice a coin toss. selectOption throws when the label is not offered.
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add an item' }).first().click();
+  await page.getByLabel('Category').selectOption({ label: 'Restaurants · Personal' });
+  await page.getByRole('link', { name: 'Cancel' }).click();
+  await page.getByRole('link', { name: 'Back to the event' }).click();
 
   // All: the whole trip, both workspaces added up.
   const tabs = page.getByTestId('event-workspaces');

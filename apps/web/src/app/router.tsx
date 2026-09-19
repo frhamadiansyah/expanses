@@ -4,6 +4,9 @@ import { AccountsPage } from '../features/accounts/AccountsPage';
 import { BackupPage } from '../features/backup/BackupPage';
 import { EventDetailPage } from '../features/events/EventDetailPage';
 import { EventsPage } from '../features/events/EventsPage';
+import { EditItemRoute, NewItemRoute } from '../features/events/ItemFormPage';
+import { ItemPage } from '../features/events/ItemPage';
+import { PlanPage } from '../features/events/PlanPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
 import { CalculatorsPage } from '../features/calculators/CalculatorsPage';
 import { ImportPage } from '../features/import/ImportPage';
@@ -45,6 +48,13 @@ export interface TransactionsSearch {
   view?: 'list' | 'table';
 }
 
+export interface EventPlanSearch {
+  /** The workspace tab the plan was opened from, so it keeps reading in it. */
+  ws?: string;
+}
+
+const planSearch = (search: Record<string, unknown>): EventPlanSearch => ({ ws: typeof search.ws === 'string' ? search.ws : undefined });
+
 const rootRoute = createRootRoute({ component: Layout });
 
 const routeTree = rootRoute.addChildren([
@@ -75,6 +85,13 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/bills/$billId/edit', component: EditBillRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events', component: EventsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId', component: EventDetailPage }),
+  // The plan and its items: four screens, every one of them a real route, so a desktop reaches each by URL and by
+  // keyboard exactly as a phone reaches it by thumb. No nav.ts entry — these hang off an event, and /events is in
+  // MORE_GROUPS already.
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan', component: PlanPage, validateSearch: planSearch }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/new', component: NewItemRoute, validateSearch: planSearch }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId', component: ItemPage, validateSearch: planSearch }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId/edit', component: EditItemRoute, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators', component: CalculatorsPage }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),

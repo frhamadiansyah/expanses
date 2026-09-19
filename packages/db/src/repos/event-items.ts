@@ -296,6 +296,16 @@ export async function linkEventItem(
     // What is left is always a figure this receipt can answer, so the default needs no clamping of its own. Nought
     // left is not a share but the absence of one, and `checkShare` refuses it: a receipt already spoken for cannot
     // also buy this, and saying so is better than writing a share nobody could read.
+    /*
+     * Nothing left is its own refusal, not a bad figure. `checkShare` would call this `SHARE_RANGE` — "a share is a
+     * whole figure above nought" — at somebody who typed no figure at all and only ticked a box, which is nonsense
+     * as a message and useless as a code: a screen cannot tell it apart from a genuinely malformed share, so it
+     * cannot route the one case that has somewhere to go. A receipt already spoken for is answered on "What it
+     * covers", where every share is typed together against the one payment.
+     */
+    if (shareMinor === undefined && left <= 0 && cover.totalMinor > 0) {
+      throw new EventError('NOTHING_LEFT', 'That payment already answers other items. Say what the receipt covers to split it between them.');
+    }
     const share = shareMinor ?? left;
     checkShare(share);
     if (share > left) throw new EventError('OVER_ALLOCATED', `Only ${left} of this payment is still unaccounted for`);

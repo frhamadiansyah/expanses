@@ -118,6 +118,8 @@ describe('a receipt with a discount line on it', () => {
     );
 
     expect(await purchaseCover(h.database, h.ws, refund)).toMatchObject({ totalMinor: 0, leftMinor: 0 });
+    // Not NOTHING_LEFT: nothing of this receipt is spoken for, there was simply never any money on it, and sending
+    // someone to a screen that splits a payment between items would be sending them nowhere.
     await expect(linkEventItem(h.database, h.ws, cot, refund)).rejects.toMatchObject({ code: 'SHARE_RANGE' });
     await expect(setPurchaseCover(h.database, h.ws, refund, [{ itemId: cot, shareMinor: 1 }])).rejects.toMatchObject({ code: 'OVER_ALLOCATED' });
     expect(await coverPairs(h.database)).toEqual([[null, null]]);
@@ -233,7 +235,17 @@ describe('linking one item at a time', () => {
     const receipt = await h.buy(h.clothes.id, 1_800_000, 'Mothercare');
 
     await linkEventItem(h.database, h.ws, clothes, receipt);
-    await expect(linkEventItem(h.database, h.ws, wraps, receipt)).rejects.toMatchObject({ code: 'SHARE_RANGE' });
+    /*
+     * Its own code, not SHARE_RANGE: nobody typed a share, so "a share is a whole figure above nought" would be a
+     * message about a figure that does not exist. NOTHING_LEFT is the one refusal a screen can route somewhere —
+     * to the cover screen the next three lines then use.
+     */
+    await expect(linkEventItem(h.database, h.ws, wraps, receipt)).rejects.toMatchObject({
+      code: 'NOTHING_LEFT',
+      message: expect.stringContaining('what the receipt covers'),
+    });
+    // A share someone did type is still judged as a figure: nought is malformed wherever the receipt stands.
+    await expect(linkEventItem(h.database, h.ws, wraps, receipt, 0)).rejects.toMatchObject({ code: 'SHARE_RANGE' });
     // The two shares together, checked against the one receipt in one write: this is what a shared receipt needs.
     await setPurchaseCover(h.database, h.ws, receipt, [
       { itemId: clothes, shareMinor: 1_100_000 },
@@ -622,7 +634,9 @@ describe('a cover is refused rather than half written', () => {
     // The cot's tick took the whole receipt, so the mattress can have none of it — neither a figure someone typed
     // nor the default, which is what is left and here is nought.
     await expect(linkEventItem(h.database, h.ws, mattress, receipt, 1_500_000)).rejects.toMatchObject({ code: 'OVER_ALLOCATED' });
-    await expect(linkEventItem(h.database, h.ws, mattress, receipt)).rejects.toMatchObject({ code: 'SHARE_RANGE' });
+    // A tick with nothing left is NOTHING_LEFT, which a screen can route to "What it covers"; a typed figure that
+    // does not fit is still OVER_ALLOCATED, and a malformed one still SHARE_RANGE. Three cases, three codes.
+    await expect(linkEventItem(h.database, h.ws, mattress, receipt)).rejects.toMatchObject({ code: 'NOTHING_LEFT' });
     const cover = await purchaseCover(h.database, h.ws, receipt);
     expect(cover).toMatchObject({ givenMinor: 3_000_000, leftMinor: 0 });
     expect(cover.covers.reduce((total, one) => total + one.shareMinor, 0)).toBe(cover.totalMinor);

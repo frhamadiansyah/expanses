@@ -7,8 +7,10 @@ import {
   eventListLine,
   gaugeFor,
   itemSubline,
+  moneyBackRows,
   planCardRows,
   plannedLabel,
+  planTotals,
   quantityWords,
   whereItWentRows,
 } from './plan-view';
@@ -210,5 +212,75 @@ describe('the figures add up', () => {
     ]);
     expect(plain(differenceWords(-220_000).text)).toBe('−Rp 220.000');
     expect(differenceWords(0).text).toBe('exactly');
+  });
+});
+
+/**
+ * A refund posted as its own transaction and tagged to the event: 3.000.000 of gear fully claimed by the crib, and
+ * 1.000.000 handed back a day later on a receipt of its own. Spending is the net 2.000.000, the share is still
+ * 3.000.000, and the subtraction that makes "Not planned for" therefore lands at −1.000.000.
+ */
+const refunded = eventPlan({
+  categoryNames: { gear: 'Baby gear' },
+  items: [{ id: 'r1', name: 'Crib', quantity: 1, unitPriceMinor: 3_000_000, categoryId: 'gear', link: null, note: null, purchase: { transactionId: 'p1', shareMinor: 3_000_000 } }],
+  actuals: [
+    { transactionId: 'p1', occurredOn: '2026-09-12', description: 'Toko Bayi', categoryId: 'gear', amountBaseMinor: 3_000_000 },
+    { transactionId: 'p2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', categoryId: 'gear', amountBaseMinor: -1_000_000 },
+  ],
+});
+
+describe('nothing on screen reads below nought', () => {
+  it('clamps what a standalone refund drove negative, and hands back what the clamp swallowed', () => {
+    // The raw figure, so the clamp has something real to bite on.
+    expect(refunded.notPlannedMinor).toBe(-1_000_000);
+    expect(planTotals(refunded)).toEqual({
+      plannedMinor: 3_000_000,
+      boughtActualMinor: 3_000_000,
+      toBuyMinor: 0,
+      notPlannedMinor: 0,
+      moneyBackMinor: 1_000_000,
+    });
+  });
+
+  it('leaves an ordinary plan’s figures exactly as they are', () => {
+    expect(planTotals(sharedPlan)).toEqual({
+      plannedMinor: 14_200_000,
+      boughtActualMinor: 1_980_000,
+      toBuyMinor: 12_000_000,
+      notPlannedMinor: 2_790_000,
+      moneyBackMinor: 0,
+    });
+  });
+
+  it('closes the account: spent = the items’ shares + not planned − money back', () => {
+    const totals = planTotals(refunded);
+    // Every figure derived by hand from the fixture: 3.000.000 out, 1.000.000 back, the crib claiming the whole 3m.
+    expect(refunded.spentMinor).toBe(2_000_000);
+    expect(refunded.boughtActualMinor).toBe(3_000_000);
+    expect(2_000_000).toBe(3_000_000 + totals.notPlannedMinor - totals.moneyBackMinor);
+    // And the plan stops calling itself a complete account of the money while a rupiah sits outside it.
+    expect(plannedLabel(refunded)).toBe('Planned so far');
+  });
+
+  it('clamps the figures the form shows after saving, in the view model rather than in each screen', () => {
+    // Editing the crib down to 1.000.000 leaves nothing still to buy and nothing unplanned to show.
+    expect(afterSaving(refunded, { estimateMinor: 1_000_000, replacing: 'r1' })).toEqual({
+      plannedMinor: 1_000_000,
+      toBuyMinor: 0,
+      notPlannedMinor: 0,
+    });
+    // Mid-keystroke the estimate is nought, and a plan of nothing is still not a plan of less than nothing.
+    expect(afterSaving(refunded, { estimateMinor: 0, replacing: 'r1' })).toMatchObject({ plannedMinor: 0, toBuyMinor: 0 });
+  });
+
+  it('names the refund the plan’s own leftover rows cannot carry', () => {
+    // The plan files leftovers under a category only while something is left; a refund has less than nothing left.
+    expect(refunded.lines.flatMap((line) => line.unplanned)).toEqual([]);
+    expect(
+      moneyBackRows([
+        { id: 'p1', occurredOn: '2026-09-12', description: 'Toko Bayi', entries: [{ accountKind: 'expense', amountBaseMinor: 3_000_000 }, { accountKind: 'asset', amountBaseMinor: -3_000_000 }] },
+        { id: 'p2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', entries: [{ accountKind: 'expense', amountBaseMinor: -1_000_000 }, { accountKind: 'asset', amountBaseMinor: 1_000_000 }] },
+      ]),
+    ).toEqual([{ transactionId: 'p2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', amountMinor: 1_000_000 }]);
   });
 });

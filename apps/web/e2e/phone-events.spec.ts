@@ -1,7 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-
-const NOW = new Date();
-const TODAY = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(NOW.getDate()).padStart(2, '0')}`;
+import { planFor, TODAY } from './event-plan';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -14,13 +12,6 @@ async function record(page: Page, description: string, category: string, amount:
   await page.getByLabel('Amount', { exact: true }).fill(amount);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByLabel('Description')).toHaveValue('');
-}
-
-async function planFor(page: Page, category: string, amount: string) {
-  await page.getByLabel('Category').selectOption({ label: category });
-  await page.getByLabel('Planned', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Add category' }).click();
-  await expect(page.getByRole('button', { name: `Stop drawing on ${category}` })).toBeVisible();
 }
 
 test('an event reads like Cashflow: where it went, and a swipe to what it planned', async ({ page }) => {

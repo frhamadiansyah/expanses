@@ -1,4 +1,15 @@
-import { booksInEvent, eventPlanFor, inBook, listEvents, listTransactions, ownerScope, purchaseCover, suggestForEvent, type WorkspaceContext } from '@expanses/db';
+import {
+  booksInEvent,
+  eventItemsExist,
+  eventPlanFor,
+  inBook,
+  listEvents,
+  listTransactions,
+  ownerScope,
+  purchaseCover,
+  suggestForEvent,
+  type WorkspaceContext,
+} from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -34,6 +45,19 @@ export function useEventPlan(eventId: string | null, bookId: string | null = nul
     queryFn: () => eventPlanFor(database, scopeOf(ws, bookId), eventId!),
     enabled: eventId !== null,
   });
+}
+
+/**
+ * Whether this copy of the data has the table a plan's items live in.
+ *
+ * A database stopped before migration 0049 has no `event_items`, and every write to it is a deliberate no-op that
+ * still hands back an id — correct for the repository, and a trap for a screen, which would show a saved item
+ * disappear with nothing said. So the screens ask first and say so plainly, instead of letting a save look like it
+ * worked. Not memoised past a refresh: `migrate()` may run on the same handle, and the answer then changes.
+ */
+export function useEventItemsReady() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['event-items-ready', ws.workspaceId], queryFn: () => eventItemsExist(database.db) });
 }
 
 /**
