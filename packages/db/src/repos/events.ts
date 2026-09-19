@@ -146,13 +146,21 @@ export async function suggestForEvent(database: Database, ws: WorkspaceContext, 
  *
  * The set half is what lets an event with no plan still offer suggestions — a holiday planned as a set of categories
  * suggests inside them from the first day, before a single item exists.
+ *
+ * Narrowed to the open workspace, like every other reading on the event screen. An event is owner-level and its items
+ * may be filed in either workspace, so without this a tab would offer a payment in the other workspace's category —
+ * and tagging it would change nothing in the ring above, because that ring is scoped. Acting with no visible effect is
+ * worse than not being offered the row at all.
  */
 export async function eventCategories(database: Database, ws: WorkspaceContext, eventId: string): Promise<string[]> {
   const event = await eventOf(database, ws, eventId);
   const items = await listEventItems(database, ws, eventId);
   const fromItems = items.map((item) => item.categoryAccountId).filter((id): id is string => id !== null);
   const fromSet = event.setId ? (await listSetCategories(database, ws, event.setId)).map((row) => row.id) : [];
-  return [...new Set([...fromItems, ...fromSet])];
+  const all = [...new Set([...fromItems, ...fromSet])];
+  if (!ws.bookId || !(await hasBooks(database.db))) return all;
+  const inBook = new Set(await categoryIdsOfBook(database, ws.bookId));
+  return all.filter((id) => inBook.has(id));
 }
 
 /** What the event meant to buy, against what it actually bought. */
@@ -206,7 +214,12 @@ export async function eventPlanFor(database: Database, ws: WorkspaceContext, eve
       note: item.note,
       purchase: item.transactionId && item.shareMinor !== null ? { transactionId: item.transactionId, shareMinor: item.shareMinor } : null,
     })),
-    actuals: actualRows.map((row) => ({ ...row, amountBaseMinor: Math.abs(row.amountBaseMinor) })),
+    // Signed, never absolved line by line. An expense entry is debit-positive, so a discount, a partial refund or a
+    // price correction booked back to a spending category is a negative row on the same receipt, and taking each
+    // row's size would report money that never left the account — the same defect `expenseTotalOf` carries a comment
+    // about, in a different function. Summed as they stand, the event's Spent is the figure the category report
+    // gives for the very same transactions, which is the only way the two screens can agree.
+    actuals: actualRows,
     categoryNames: Object.fromEntries(names.map((row) => [row.id, row.name])),
   });
 }

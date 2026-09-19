@@ -258,8 +258,20 @@ async function purchaseFor(tx: Db, ws: WorkspaceContext, eventId: string, transa
 /**
  * Says a purchase answered this item, and how much of it this item is.
  *
- * The share defaults to the estimate, clamped to what is left on the receipt, so ticking something off usually needs no
- * typing. An explicit share bigger than what is left is refused rather than quietly trimmed: a figure someone typed is
+ * The share defaults to **what is left of the receipt** — the whole of it when this is the first item ticked off
+ * against it, which is the ordinary case of one receipt buying one thing. Defaulting to the estimate instead was
+ * tried and is wrong: the estimate is what was *planned* and the receipt is what was *spent*, and the difference
+ * between the two is the only thing "Difference so far" exists to say. Clamping to the estimate reports every under
+ * (the clamp lets a cheaper receipt through whole) and no over (the surplus is trimmed away), so an occasion that
+ * went over on every single purchase would read as exactly on plan while the overspend piled up silently under
+ * "Not planned for" — money the plan would be disowning, item by item, with nowhere on screen saying why.
+ *
+ * The cost of this choice is that a receipt answering several items has its whole amount taken by the first tick,
+ * and the second is then refused with nothing left. That is the honest state of affairs — the app cannot know a
+ * receipt is shared until it is told — and it is what "What it covers" is for: one screen, every share typed
+ * together, checked against the receipt in one write. A tick is for the receipt that is the item.
+ *
+ * An explicit share bigger than what is left is refused rather than quietly trimmed: a figure someone typed is
  * a claim about the receipt, and trimming it would put a number on screen that nobody chose.
  */
 export async function linkEventItem(
@@ -281,11 +293,10 @@ export async function linkEventItem(
     const cover = await coverOf(tx, ws, transactionId);
     // Re-linking the same item does not have to fit twice over: its own share is what it is replacing.
     const left = cover.leftMinor + (item.transactionId === transactionId ? (item.shareMinor ?? 0) : 0);
-    // How many times the price each, in whole numbers: the second of this module's two multiplications, and BigInt for
-    // the same reason as the first — the product passes what a double counts exactly long before either figure looks
-    // large on screen. Clamped to what is left, so the share written is always a figure this receipt can answer.
-    const estimate = BigInt(item.quantity) * BigInt(item.unitPriceMinor);
-    const share = shareMinor ?? Number(estimate < BigInt(left) ? estimate : BigInt(left));
+    // What is left is always a figure this receipt can answer, so the default needs no clamping of its own. Nought
+    // left is not a share but the absence of one, and `checkShare` refuses it: a receipt already spoken for cannot
+    // also buy this, and saying so is better than writing a share nobody could read.
+    const share = shareMinor ?? left;
     checkShare(share);
     if (share > left) throw new EventError('OVER_ALLOCATED', `Only ${left} of this payment is still unaccounted for`);
 

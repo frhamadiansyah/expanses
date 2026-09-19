@@ -1,4 +1,4 @@
-import { booksInEvent, eventPlanFor, inBook, listEvents, listTransactions, ownerScope, suggestForEvent, type WorkspaceContext } from '@expanses/db';
+import { booksInEvent, eventPlanFor, inBook, listEvents, listTransactions, ownerScope, purchaseCover, suggestForEvent, type WorkspaceContext } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -33,6 +33,22 @@ export function useEventPlan(eventId: string | null, bookId: string | null = nul
     queryKey: ['event-plan', ws.workspaceId, eventId, bookId],
     queryFn: () => eventPlanFor(database, scopeOf(ws, bookId), eventId!),
     enabled: eventId !== null,
+  });
+}
+
+/**
+ * One receipt, what it already answers, and what is left on it.
+ *
+ * Owner-level whatever tab is open: a receipt is one payment, and how much of it is still unaccounted for is a fact
+ * about that payment rather than about the workspace it is being read from. Narrowing it would let two tabs disagree
+ * about how much of one receipt is left, and the write that checks the shares does not narrow either.
+ */
+export function usePurchaseCover(transactionId: string | null) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['purchase-cover', ws.workspaceId, transactionId],
+    queryFn: () => purchaseCover(database, ownerScope(ws), transactionId!),
+    enabled: transactionId !== null,
   });
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetSheetFor, createAccount, deleteEvent, eventPlanFor, finishEvent, firstTransactionDate, linkEventItem, listEvents, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, saveEventItem, suggestForEvent, tagTransaction, voidTransaction } from '../src/index';
+import { budgetSheetFor, categoryTotalsBetween, createAccount, deleteEvent, eventPlanFor, finishEvent, firstTransactionDate, linkEventItem, listEvents, listTransactions, postTransaction, replaceTransaction, saveBudget, saveEvent, saveEventItem, suggestForEvent, tagTransaction, voidTransaction } from '../src/index';
 import { setupDb } from './helpers';
 
 const MONTH = '2026-09';
@@ -89,9 +89,9 @@ describe('the plan', () => {
     const item = await saveEventItem(context.database, context.ws, id, { name: 'Hampers', unitPriceMinor: 3_000_000, categoryAccountId: context.gifts.id });
     const bought = await spend(context, context.gifts.id, `${MONTH}-20`, 3_450_000, 'Toko Hampers');
     await tagTransaction(context.database, context.ws, bought, id);
-    // The whole receipt is this one item, so its share is the whole receipt: the default is the estimate, which
-    // would leave the 450.000 it actually cost over as money nobody planned rather than as an item bought over.
-    await linkEventItem(context.database, context.ws, item, bought, 3_450_000);
+    // No share typed: the whole receipt is this one item, and that is what ticking it off claims. The 450.000 it
+    // went over by is therefore an item bought over, not money nobody planned.
+    await linkEventItem(context.database, context.ws, item, bought);
     const extra = await spend(context, context.food.id, `${MONTH}-21`, 200_000, 'Ketupat');
     await tagTransaction(context.database, context.ws, extra, id);
 
@@ -110,6 +110,34 @@ describe('the plan', () => {
       unplannedCategoryCount: 1,
     });
     expect(plan.lines.find((line) => line.categoryId === context.food.id)).toMatchObject({ planned: false, plannedMinor: 0, unplannedMinor: 200_000 });
+  });
+
+  /*
+   * A refund, a discount or a price correction booked back to a spending category is a negative expense line. What
+   * the event spent is the lines added up, never each line's size added up: the second would have the event and the
+   * category report disagreeing about the very same receipts, with the event the one inventing rupiah.
+   */
+  it('nets a refund line off what it spent, agreeing with the category report to the rupiah', async () => {
+    const context = await household();
+    const id = await lebaran(context);
+    const receipt = await postTransaction(context.database, context.ws, {
+      occurredOn: `${MONTH}-20`,
+      description: 'Toko Hampers',
+      lines: [
+        { accountId: context.gifts.id, amountMinor: 3_000_000, currency: 'IDR' },
+        { accountId: context.gifts.id, amountMinor: -1_000_000, currency: 'IDR' },
+        { accountId: context.bca.id, amountMinor: -2_000_000, currency: 'IDR' },
+      ],
+    });
+    await tagTransaction(context.database, context.ws, receipt, id);
+
+    // Rp30.000 of hampers with Rp10.000 handed back: Rp20.000 left the bank, worked out by hand from the lines.
+    const plan = await eventPlanFor(context.database, context.ws, id);
+    expect(plan.spentMinor).toBe(2_000_000);
+    expect(plan.lines.find((line) => line.categoryId === context.gifts.id)!.actualMinor).toBe(2_000_000);
+    // And Cashflow, asked for the same window, reaches the same figure by its own path.
+    const report = await categoryTotalsBetween(context.database, context.ws, 'expense', `${MONTH}-01`, `${MONTH}-30`);
+    expect(report.reduce((total, row) => total + row.amountBaseMinor, 0)).toBe(2_000_000);
   });
 
   it('puts an item back on the list when its purchase is voided', async () => {
@@ -143,7 +171,7 @@ describe('the plan', () => {
     const item = await saveEventItem(context.database, context.ws, id, { name: 'Hampers', unitPriceMinor: 3_000_000, categoryAccountId: context.gifts.id });
     const bought = await spend(context, context.gifts.id, `${MONTH}-20`, 3_450_000, 'Toko Hampers');
     await tagTransaction(context.database, context.ws, bought, id);
-    await linkEventItem(context.database, context.ws, item, bought, 3_450_000);
+    await linkEventItem(context.database, context.ws, item, bought);
     await tagTransaction(context.database, context.ws, bought, other);
 
     expect(await eventPlanFor(context.database, context.ws, id)).toMatchObject({

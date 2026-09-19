@@ -201,18 +201,46 @@ describe('one receipt over several items', () => {
   });
 });
 
+/*
+ * Ticking an item off claims what is left of the receipt — the whole of it when nothing else has been ticked against
+ * it, which is one receipt buying one thing, the ordinary case. The estimate is what was planned and the receipt is
+ * what was spent; a default that took the estimate would report every purchase as exactly on plan and push the
+ * difference into "not planned for", which is the plan disowning money it meant to spend.
+ */
 describe('linking one item at a time', () => {
-  it('defaults the share to the estimate, clamped to what is left', async () => {
+  it('claims the whole receipt, so the item reads as bought over rather than the plan reading as exact', async () => {
+    const h = await mothercare();
+    const clothes = await h.item('Newborn clothes', 10, 150_000, h.clothes.id);
+    const receipt = await h.buy(h.clothes.id, 1_800_000, 'Mothercare');
+
+    await linkEventItem(h.database, h.ws, clothes, receipt);
+    expect((await listEventItems(h.database, h.ws, h.eventId))[0]!.shareMinor).toBe(1_800_000);
+
+    // Rp15.000 planned, Rp18.000 spent, Rp3.000 over — and nothing left over for the plan to call unplanned.
+    expect(await eventPlanFor(h.database, h.ws, h.eventId)).toMatchObject({
+      boughtEstimateMinor: 1_500_000,
+      boughtActualMinor: 1_800_000,
+      differenceMinor: 300_000,
+      overCount: 1,
+      notPlannedMinor: 0,
+    });
+  });
+
+  it('leaves nothing for a second item, because a shared receipt is answered on one screen and not by ticks', async () => {
     const h = await mothercare();
     const clothes = await h.item('Newborn clothes', 10, 150_000, h.clothes.id);
     const wraps = await h.item('Muslin wraps', 4, 175_000, h.clothes.id);
     const receipt = await h.buy(h.clothes.id, 1_800_000, 'Mothercare');
 
     await linkEventItem(h.database, h.ws, clothes, receipt);
-    expect((await listEventItems(h.database, h.ws, h.eventId))[0]!.shareMinor).toBe(1_500_000);
-    // Only Rp300.000 is left, so that is all the wraps can take.
-    await linkEventItem(h.database, h.ws, wraps, receipt);
-    expect((await listEventItems(h.database, h.ws, h.eventId))[1]!.shareMinor).toBe(300_000);
+    await expect(linkEventItem(h.database, h.ws, wraps, receipt)).rejects.toMatchObject({ code: 'SHARE_RANGE' });
+    // The two shares together, checked against the one receipt in one write: this is what a shared receipt needs.
+    await setPurchaseCover(h.database, h.ws, receipt, [
+      { itemId: clothes, shareMinor: 1_100_000 },
+      { itemId: wraps, shareMinor: 700_000 },
+    ]);
+    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor)).toEqual([1_100_000, 700_000]);
+    expect(await purchaseCover(h.database, h.ws, receipt)).toMatchObject({ givenMinor: 1_800_000, leftMinor: 0 });
   });
 
   it('refuses a purchase that is not on this event, and a share bigger than what is left', async () => {
@@ -520,7 +548,8 @@ describe('a purchase and its share are never stored one without the other', () =
     expect(await purchaseCover(h.database, h.ws, receipt)).toMatchObject({ totalMinor: 3_000_000, givenMinor: 0, leftMinor: 3_000_000 });
 
     await linkEventItem(h.database, h.ws, cot, receipt);
-    expect((await coverPairs(h.database))[0]).toEqual([receipt, 2_000_000]);
+    // Nothing of the receipt was spoken for, so the tick claims all of it and the pair is whole again.
+    expect((await coverPairs(h.database))[0]).toEqual([receipt, 3_000_000]);
   });
 
   it('refuses a share with no figure behind it', async () => {
@@ -558,7 +587,7 @@ describe('a cover is refused rather than half written', () => {
       ]),
     ).rejects.toMatchObject({ code: 'ITEM_NOT_FOUND' });
     // The cot keeps the share it had: a refused save is not a half-saved screen.
-    expect(await coverPairs(h.database)).toEqual([[receipt, 2_000_000]]);
+    expect(await coverPairs(h.database)).toEqual([[receipt, 3_000_000]]);
   });
 
   /*
@@ -590,9 +619,10 @@ describe('a cover is refused rather than half written', () => {
     const receipt = await h.buy(h.gear.id, 3_000_000, 'Toko Bayi');
 
     await linkEventItem(h.database, h.ws, cot, receipt);
-    // Rp2.000.000 of Rp3.000.000 is taken, so the mattress can only have the rest, whatever it was estimated at.
+    // The cot's tick took the whole receipt, so the mattress can have none of it — neither a figure someone typed
+    // nor the default, which is what is left and here is nought.
     await expect(linkEventItem(h.database, h.ws, mattress, receipt, 1_500_000)).rejects.toMatchObject({ code: 'OVER_ALLOCATED' });
-    await linkEventItem(h.database, h.ws, mattress, receipt);
+    await expect(linkEventItem(h.database, h.ws, mattress, receipt)).rejects.toMatchObject({ code: 'SHARE_RANGE' });
     const cover = await purchaseCover(h.database, h.ws, receipt);
     expect(cover).toMatchObject({ givenMinor: 3_000_000, leftMinor: 0 });
     expect(cover.covers.reduce((total, one) => total + one.shareMinor, 0)).toBe(cover.totalMinor);

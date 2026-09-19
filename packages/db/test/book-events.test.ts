@@ -15,6 +15,7 @@ import {
   postTransaction,
   saveEvent,
   saveEventItem,
+  suggestForEvent,
   tagTransaction,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -76,8 +77,9 @@ describe('an event across workspaces', () => {
       await tagTransaction(database, ws, id, eventId);
       return id;
     };
-    // The whole hotel bill is the hotel item, so it answers for all of it: the default share is the estimate.
-    await linkEventItem(database, ws, mine, await spend(personal, hotels, 11_200_000), 11_200_000);
+    // The whole hotel bill is the hotel item, so it answers for all of it: with no share typed, ticking it off
+    // claims what is left of the receipt, which here is the receipt.
+    await linkEventItem(database, ws, mine, await spend(personal, hotels, 11_200_000));
     await spend(business, meals, 640_000);
 
     const whole = await eventPlanFor(database, ownerScope(ws), eventId);
@@ -111,6 +113,39 @@ describe('an event across workspaces', () => {
       expect(hand.toBuyMinor + hand.boughtEstimateMinor).toBe(hand.plannedMinor);
       expect(hand.boughtActualMinor + hand.notPlannedMinor).toBe(hand.spentMinor);
     }
+  });
+
+  /*
+   * A tab offers only its own workspace's payments. The categories an event draws on come from its items, and those
+   * may be filed in either workspace, so unscoped they would have the Business tab offering a Personal payment —
+   * and tagging it would change nothing in the ring above, because the ring is scoped. Acting and seeing no effect
+   * is worse than never being offered the row.
+   */
+  it('offers under a tab only that workspace’s payments, never the other’s', async () => {
+    const { database, ws, personal, business } = await copy();
+    const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const eventId = await saveEvent(database, ws, { name: 'Singapore holiday', startsOn: '2026-08-13', endsOn: '2026-08-17' });
+    const hotels = (await categoryIdsByKey(database, inBook(ws, personal)))['travel.hotels']!;
+    const meals = (await categoryIdsByKey(database, inBook(ws, business)))['food_beverage.restaurants']!;
+    await saveEventItem(database, ws, eventId, { name: 'Hotel Jen', unitPriceMinor: 2_750_000, categoryAccountId: hotels });
+    await saveEventItem(database, ws, eventId, { name: 'Client dinner', unitPriceMinor: 1_000_000, categoryAccountId: meals });
+    const untagged = (bookId: string, categoryId: string, amountMinor: number, description: string) =>
+      postTransaction(database, inBook(ws, bookId), {
+        occurredOn: '2026-08-15',
+        description,
+        lines: [
+          { accountId: categoryId, amountMinor, currency: 'IDR' },
+          { accountId: bank.id, amountMinor: -amountMinor, currency: 'IDR' },
+        ],
+      });
+    await untagged(personal, hotels, 11_200_000, 'Hotel Jen');
+    await untagged(business, meals, 640_000, 'Client dinner');
+
+    const offered = async (scope: ReturnType<typeof inBook>) => (await suggestForEvent(database, scope, eventId)).map((row) => row.description).sort();
+    // Whole: both. Under a tab: that workspace's own, and nothing of the other's.
+    expect(await offered(ownerScope(ws))).toEqual(['Client dinner', 'Hotel Jen']);
+    expect(await offered(inBook(ws, personal))).toEqual(['Hotel Jen']);
+    expect(await offered(inBook(ws, business))).toEqual(['Client dinner']);
   });
 
   it('leaves out a workspace that only planned, and one that has nothing to do with it', async () => {
