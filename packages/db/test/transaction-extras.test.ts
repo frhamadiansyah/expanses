@@ -1,6 +1,6 @@
-import { expenseLines } from '@expanses/core';
+import { expenseLines, uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   addPhoto,
   allPhotoFileNames,
@@ -8,13 +8,17 @@ import {
   createAccount,
   createWorkspace,
   deletePhoto,
+  extrasFor,
+  extrasForTx,
   listAccounts,
   listPhotos,
   listTransactions,
+  movePhotosTx,
   notExcluded,
   postTransaction,
   replaceTransaction,
   saveEvent,
+  writeExtrasTx,
 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
@@ -270,4 +274,80 @@ it('names every photo file in the database for the sweep, and one workspace of r
   expect((await allPhotoFileNames(database)).sort()).toEqual(['mine.jpg', 'theirs.jpg']);
   expect((await allPhotoRows(database, ws)).map((row) => row.fileName)).toEqual(['mine.jpg']);
   expect((await allPhotoRows(database, other)).map((row) => row.fileName)).toEqual(['theirs.jpg']);
+});
+
+/*
+ * `notExcluded` and `allPhotoRows` each have a test that bites if their workspace scope is dropped (above). The
+ * rest of the repository does not: an id-by-id read (extrasForTx, extrasFor, listPhotos) returns the same row
+ * whether it is scoped or not, because uuidv7 ids never collide across workspaces — so the only way to make the
+ * scope observable is to call the function with the WRONG workspace for a row that really exists, and check that
+ * nothing is read back or moved. That is what every test below does.
+ */
+describe('workspace scope elsewhere in the repository', () => {
+  async function twoWorkspaces() {
+    current = await setupDb();
+    const { database, ws: mine } = current;
+    const theirs = await createWorkspace(database, { name: 'Office', type: 'personal', baseCurrency: 'IDR' });
+    return { database, mine, theirs };
+  }
+
+  async function post(database: TestDb['database'], ws: TestDb['ws'], extra: { channel?: 'online' | 'offline' | null; excludedFromReport?: boolean } = {}) {
+    const card = await createAccount(database, ws, { name: 'BCA Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    const electronics = (await listAccounts(database, ws)).find((a) => a.systemKey === 'shopping.electronics')!.id;
+    return postTransaction(database, ws, {
+      occurredOn: '2026-09-17',
+      description: 'Something',
+      lines: expenseLines({ categoryAccountId: electronics, paymentAccountId: card.id, amountMinor: 100_000, currency: 'IDR' }),
+      ...extra,
+    });
+  }
+
+  it('extrasForTx reads nothing for a transaction filed under another workspace', async () => {
+    const { database, mine, theirs } = await twoWorkspaces();
+    const id = await post(database, mine, { channel: 'online', excludedFromReport: true });
+    expect(await database.transaction((tx) => extrasForTx(tx, mine, id))).toEqual({ channel: 'online', excluded: true });
+    expect(await database.transaction((tx) => extrasForTx(tx, theirs, id))).toBeNull();
+  });
+
+  it('writeExtrasTx does not delete another workspace\'s flag row', async () => {
+    const { database, mine, theirs } = await twoWorkspaces();
+    const id = await post(database, mine, { channel: 'online', excludedFromReport: true });
+    // Nothing was named, so this hits the delete branch — scoped to `theirs`, which owns no such row.
+    await database.transaction((tx) => writeExtrasTx(tx, theirs, id, {}));
+    expect(await database.transaction((tx) => extrasForTx(tx, mine, id))).toEqual({ channel: 'online', excluded: true });
+  });
+
+  it('extrasFor reads nothing for a transaction filed under another workspace', async () => {
+    const { database, mine, theirs } = await twoWorkspaces();
+    const id = await post(database, mine, { channel: 'online', excludedFromReport: true });
+    await addPhoto(database, mine, { transactionId: id, fileName: 'a.jpg', mime: 'image/jpeg', byteSize: 1 });
+    expect((await extrasFor(database.db, theirs, [id])).size).toBe(0);
+    expect((await extrasFor(database.db, mine, [id])).get(id)).toMatchObject({ channel: 'online', excluded: true, photoCount: 1 });
+  });
+
+  it('movePhotosTx does not move another workspace\'s photo', async () => {
+    const { database, mine, theirs } = await twoWorkspaces();
+    const id = await post(database, mine);
+    const photoId = await addPhoto(database, mine, { transactionId: id, fileName: 'a.jpg', mime: 'image/jpeg', byteSize: 1 });
+    const bogusTarget = uuidv7();
+    await database.transaction((tx) => movePhotosTx(tx, theirs, id, bogusTarget));
+    expect((await listPhotos(database, mine, id)).map((row) => row.id)).toEqual([photoId]);
+    expect(await listPhotos(database, mine, bogusTarget)).toEqual([]);
+  });
+
+  it('writeExtrasTx does not re-key another workspace\'s unowned photo', async () => {
+    const { database, mine, theirs } = await twoWorkspaces();
+    const photoId = await addPhoto(database, mine, { transactionId: '', fileName: 'a.jpg', mime: 'image/jpeg', byteSize: 1 });
+    const bogusTarget = uuidv7();
+    await database.transaction((tx) => writeExtrasTx(tx, theirs, bogusTarget, { photoIds: [photoId] }));
+    expect((await listPhotos(database, mine, '')).map((row) => row.id)).toEqual([photoId]);
+    expect(await listPhotos(database, mine, bogusTarget)).toEqual([]);
+  });
+
+  it('listPhotos returns nothing for a transaction filed under another workspace', async () => {
+    const { database, mine, theirs } = await twoWorkspaces();
+    const id = await post(database, mine);
+    await addPhoto(database, mine, { transactionId: id, fileName: 'a.jpg', mime: 'image/jpeg', byteSize: 1 });
+    expect(await listPhotos(database, theirs, id)).toEqual([]);
+  });
 });
