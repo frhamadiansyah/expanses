@@ -1,5 +1,5 @@
 import { addMonths, displayAmount, monthOf, type PeriodFlows, type PlanGroup } from '@expanses/core';
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -9,6 +9,7 @@ import { categoryIdsOfBook, hasBooks } from './books';
 import { categoryIdsByKeyAll } from './categories';
 import { listInstallments } from './installments';
 import { homeLoanAccountIds } from './loans';
+import { extrasTablesExist } from './transaction-extras';
 
 export interface MonthFlow {
   month: string;
@@ -114,6 +115,21 @@ export async function periodFlows(
   const byMonth = new Map(monthsBetween(range.from, range.to).map((month) => [month, { month, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0 }]));
   const perTransaction = new Map<string, TransactionRoll>();
 
+  // What was marked "not my spending". Narrowed the same two ways `rows` above is: this workspace, this period.
+  const excludedIds = new Set<string>(
+    (await extrasTablesExist(database.db))
+      ? (
+          await database.db.values<[string]>(sql`
+            SELECT tf.transaction_id FROM transaction_flags tf
+            JOIN transactions t ON t.id = tf.transaction_id
+            WHERE tf.excluded = 1
+              AND tf.workspace_id = ${ws.workspaceId}
+              AND t.workspace_id = ${ws.workspaceId}
+              AND t.occurred_on BETWEEN ${range.from} AND ${range.to}`)
+        ).map((row) => String(row[0]))
+      : [],
+  );
+
   for (const row of rows) {
     const month = monthOf(row.occurredOn);
     const bucket = byMonth.get(month);
@@ -121,11 +137,14 @@ export async function periodFlows(
     // and is named in `missing`; which side of the ledger a row is on is still read from the owner's figure, so a
     // missing rate never turns a loan payment into something else.
     const read = (money.converts ? money.convert(row.amountMinor, row.currency, row.occurredOn) : row.amountBaseMinor) ?? 0;
-    if (row.kind === 'income' && !realizedGains.has(row.accountId) && counts(row.accountId)) {
+    const counted = !excludedIds.has(row.transactionId);
+    if (counted && row.kind === 'income' && !realizedGains.has(row.accountId) && counts(row.accountId)) {
       if (bucket) bucket.incomeMinor += displayAmount('income', read);
-    } else if (row.kind === 'expense' && !finalTax.has(row.accountId) && counts(row.accountId)) {
+    } else if (counted && row.kind === 'expense' && !finalTax.has(row.accountId) && counts(row.accountId)) {
       if (bucket) bucket.spendingMinor += displayAmount('expense', read);
     }
+    // The rolls below are a separate statement, not an `else` on this chain, so they are unreachable from it and
+    // go on counting an excluded row — which is what §15.5 asks for: they are facts about balances, not spending.
     const roll: TransactionRoll =
       perTransaction.get(row.transactionId) ??
       { month, principalMinor: 0, interestMinor: 0, touchesHomeLoan: false, intoSavingsMinor: 0, fromSpendingMoney: false };
