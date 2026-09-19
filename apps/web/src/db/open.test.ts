@@ -23,8 +23,8 @@ import { MANIFEST, memorySnapshots, restoreSnapshot } from './snapshots';
 import { createWorkerExecutor } from './worker-executor';
 
 /**
- * The version one update behind the newest. Not `LATEST_VERSION - 1`: migration numbers may skip — 0048 is
- * reserved by another plan and never shipped — so "one behind" is the highest version this build actually carries
+ * The version one update behind the newest. Not `LATEST_VERSION - 1`: migration numbers may skip, and they have —
+ * 0048 landed after 0049, so for a while the list ran 47, 49 with a hole — so "one behind" is the highest version this build actually carries
  * below its newest, which is what a device with a blocked update is really left sitting at.
  */
 const PREVIOUS_VERSION = Math.max(...MIGRATIONS.filter((m) => m.version < LATEST_VERSION).map((m) => m.version));
