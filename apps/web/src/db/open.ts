@@ -2,6 +2,7 @@ import {
   checkDatabase,
   checkStructure,
   type Database,
+  databaseBytes,
   databaseVersion,
   futureVersions,
   type IntegrityProblem,
@@ -68,7 +69,32 @@ export interface Safety {
   snapshots: SnapshotStore;
   /** A file copy of the live database, taken between statements. */
   bytes: () => Promise<Uint8Array>;
+  /**
+   * The schema version the live database is really at, so a copy taken later in the session is named for
+   * what it holds. Deliberately not `LATEST_VERSION`: on a device holding a blocked update the file sits
+   * one or more versions below this build's newest, and a copy labelled with the build would tell the
+   * Backup page and the recovery screen a version those bytes do not have.
+   */
+  schemaVersion: number;
 }
+
+/**
+ * How large a database is still worth a `PRAGMA quick_check(1)` before the app opens.
+ *
+ * Spec §11.4 accepted a check at every open on one measurement — 15 ms on the 1.4 MB sample — and asked
+ * for "a size guard [that] prunes to a post-migration-only check if a real measurement ever exceeds
+ * 400 ms". That measurement is roughly 11 ms per megabyte, which puts 400 ms somewhere near 37 MB; 32 MiB
+ * is the round number below it. Past that the structural check happens only after an update, where the
+ * wait is earned because something has just been written.
+ */
+export const QUICK_CHECK_LIMIT_BYTES = 32 * 1024 * 1024;
+
+/**
+ * Whether a file of this size can afford the pre-open `quick_check`. A file that will not say how big it
+ * is (`null`) is checked regardless: a database too broken to report its own size is exactly one worth
+ * asking SQLite about.
+ */
+export const quickCheckAffordable = (bytes: number | null): boolean => bytes === null || bytes <= QUICK_CHECK_LIMIT_BYTES;
 
 const NOTHING_KEPT = 'This build keeps no copies of your data yet.';
 
@@ -164,6 +190,10 @@ async function rollback(deps: {
 
   if (!deps.restore) return reason(false, deps.detail);
 
+  // A version at or below zero names no migration this build could skip, and recording one would tell the
+  // next open to run nothing at all. It cannot happen from here any more; it must not become possible.
+  const blockable = deps.version > 0;
+
   try {
     /*
      * The worker's `import` op keeps the current bytes and puts them back if the import fails, so a rollback
@@ -177,11 +207,13 @@ async function rollback(deps: {
     return reason(false, `${deps.detail} — and the copy taken before the update could not be put back either: ${say(error)}`);
   }
 
-  try {
-    await deps.snapshots.block(deps.version, deps.build);
-  } catch (error) {
-    // The data is back; the worst a failed block costs is that the next open tries the same update again.
-    console.warn('The failed update could not be recorded as one to skip', error);
+  if (blockable) {
+    try {
+      await deps.snapshots.block(deps.version, deps.build);
+    } catch (error) {
+      // The data is back; the worst a failed block costs is that the next open tries the same update again.
+      console.warn('The failed update could not be recorded as one to skip', error);
+    }
   }
   return reason(true, deps.detail);
 }
@@ -232,11 +264,25 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
    * update again" on the card above the page, which calls `unblock` and reloads.
    */
   const build = Math.max(...migrations.map((m) => m.version));
-  const blocked = await snapshots.blockedVersion(build).catch(() => null);
+  const recorded = await snapshots.blockedVersion(build).catch((error: unknown) => {
+    // Said out loud rather than swallowed: a store that will not answer means every update is attempted,
+    // including one this device has already been told not to try, and that is worth a line in the console.
+    console.warn('The record of a blocked update could not be read, so none will be skipped', error);
+    return null;
+  });
+  // A block at or below zero names no migration; honouring it would filter the list down to nothing and
+  // open an un-migrated app, which is worse than running the update it was meant to skip.
+  const blocked = recorded !== null && recorded > 0 ? recorded : null;
   const allowed = blocked === null ? migrations : migrations.filter((m) => m.version < blocked);
 
-  // An existing file is checked before it is touched; a brand-new one has nothing to check.
-  if (version > 0) {
+  /*
+   * An existing file is checked before it is touched; a brand-new one has nothing to check.
+   *
+   * This is the branch's only structural check on an ordinary launch, and it is size-guarded because it
+   * sits on the path to first paint (spec §11.4). Running it here and *not* again below is also why the
+   * same `quick_check` no longer runs twice per open.
+   */
+  if (version > 0 && quickCheckAffordable(await databaseBytes(database))) {
     const problems = await checkStructure(database);
     if (problems.length) return { ok: false, reason: corrupt(problems.map((p) => p.detail).join('; ')) };
   }
@@ -278,32 +324,50 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
     }
   }
 
-  onStage({ stage: 'checking' });
   /*
-   * A check that will not answer counts as a check that failed. `checkDatabase` catches its own, but the
-   * belt is worth the braces here: whatever escapes it, the one thing that must not happen is a throw
-   * sailing past the rollback below, leaving the user with the half-updated file, nothing blocked, and a
-   * screen that says only that we could not open their data.
+   * The verification is the last stage of an *update*, and only of an update.
+   *
+   * It exists so a migration that finishes but leaves the ledger wrong is undone from the copy taken
+   * minutes earlier. With nothing pending there is no copy, nothing to undo and nothing to blame — and
+   * running it anyway turned one unbalanced transaction, from any cause and any age, into a permanent
+   * lock-out: "Something did not add up after the update" on a launch where no update ran, offering a
+   * restore of a copy carrying the same rows, or Start fresh. That is the deletion this branch exists to
+   * prevent. Spec §3.1 stage 7 and §5.1 both place this check after `migrate()`, and here it is.
+   *
+   * An ordinary launch still asks SQLite about the file itself, once, above. What it deliberately does
+   * not do is walk the ledger: nothing found there can keep a user out of data they can still read and
+   * export, so looking for it on the way in would only cost every launch the time it takes.
    */
-  let problems: IntegrityProblem[];
-  try {
-    problems = await checkDatabase(database, { deep: applied.length > 0 });
-  } catch (error) {
-    problems = [{ kind: 'ledger-unreadable', detail: say(error) }];
-  }
-  if (problems.length) {
-    return rollback({
-      snapshots,
-      database,
-      restore,
-      kind: 'verify-failed',
-      headline: 'We checked your data after the update and something did not add up.',
-      detail: problems.map((p) => `${p.kind}: ${p.detail}`).join('; '),
-      // The whole run is blocked, not one step of it: which migration of the batch left the ledger wrong is
-      // not knowable from a check made after all of them ran.
-      version: applied[0] ?? 0,
-      build,
-    });
+  if (applied.length) {
+    onStage({ stage: 'checking' });
+    /*
+     * A check that will not answer counts as a check that failed. `checkDatabase` catches its own, but the
+     * belt is worth the braces here: whatever escapes it, the one thing that must not happen is a throw
+     * sailing past the rollback below, leaving the user with the half-updated file, nothing blocked, and a
+     * screen that says only that we could not open their data.
+     */
+    let problems: IntegrityProblem[];
+    try {
+      // `deep` because something has just been written: `integrity_check` is the one that catches an index
+      // row missing from its table, and it subsumes the `quick_check` already run above.
+      problems = await checkDatabase(database, { deep: true });
+    } catch (error) {
+      problems = [{ kind: 'ledger-unreadable', detail: say(error) }];
+    }
+    if (problems.length) {
+      return rollback({
+        snapshots,
+        database,
+        restore,
+        kind: 'verify-failed',
+        headline: 'We checked your data after the update and something did not add up.',
+        detail: problems.map((p) => `${p.kind}: ${p.detail}`).join('; '),
+        // The whole run is blocked, not one step of it: which migration of the batch left the ledger wrong is
+        // not knowable from a check made after all of them ran. `applied` is never empty inside this branch.
+        version: applied[0]!,
+        build,
+      });
+    }
   }
 
   try {
@@ -313,7 +377,9 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
       ok: true,
       app: {
         ...(await openAppDb(database, allowed)),
-        safety: { snapshots, bytes },
+        // The version the file is really at, so a copy taken later in the session is labelled with what it
+        // holds rather than with what this build could have produced.
+        safety: { snapshots, bytes, schemaVersion: applied.length ? Math.max(...applied) : version },
         // What this open did to the schema, and what it deliberately left alone, for the card above the page.
         update: { applied, from: version, blocked },
       },

@@ -54,9 +54,14 @@ self.onmessage = async (event: MessageEvent<Request>) => {
     } else if (req.op === 'snapshot') {
       /*
        * A file copy, taken between statements. The SAH pool has no WAL (importDb even rewrites the header
-       * to force it off), so the file is complete and self-consistent whenever no transaction is open —
-       * and the worker handles one request at a time, behind the Database mutex. The autocommit check is
-       * the belt: 0 means a transaction is in flight and the bytes would be a torn read.
+       * to force it off), so the file is complete and self-consistent whenever no transaction is open.
+       *
+       * Note what does *not* protect this: `snapshotBytes` goes straight to the worker and never through
+       * `createDatabase`'s mutex, so a copy can be asked for in the middle of a transaction another caller
+       * has open. What makes the guard sufficient is that `exportFile` is synchronous — once autocommit has
+       * answered 1, nothing can start a transaction before the bytes are read, because the worker is single
+       * threaded and yields to nobody in between. The check is therefore the whole guard, not a belt on a
+       * mutex: 0 means a transaction is in flight and the bytes would be a torn read.
        */
       if (!state.sqlite3.capi.sqlite3_get_autocommit(state.db)) throw new Error('busy');
       const bytes = await state.pool.exportFile(FILE);

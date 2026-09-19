@@ -1,6 +1,5 @@
-import { LATEST_VERSION } from '@expanses/db';
 import type { Safety, SnapshotStore } from './open';
-import { dailyDue, keepTwo, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
+import { dailyDue, keepOne, keepTwo, parseSnapshotName, roomFor, type SnapshotInfo, type SnapshotReason, snapshotName } from './snapshot-policy';
 
 /**
  * Where the safety copies live: a **sibling** of the VFS's `.expanses`, never inside it. The sqlite-wasm
@@ -125,20 +124,24 @@ async function writeManifest(slot: Slot, manifest: Manifest): Promise<void> {
 /** Every rule of the store, over whatever `slot` can actually hold files. */
 function storeOver(slot: Slot): SnapshotStore {
   /**
-   * What is really on the device: the manifest filtered down to the files that are still there, and the
-   * files themselves whenever that yields nothing usable.
+   * What is really on the device: the manifest filtered down to the files that are still there, plus
+   * every copy on disk the manifest does not mention.
    *
-   * The fallback is reached on *any* manifest that does not name a copy still on disk — missing,
-   * unparseable, a partial write that closed its brace, a shape from a build that has been changed since.
-   * A manifest that parses is not a manifest that is right, and the rule this serves is about the file
-   * being gone in either sense: a copy must stay restorable when `manifest.json` is the thing that broke.
+   * The directory is the authority on what exists; the manifest only adds what the names cannot say — why
+   * a copy was taken. So a manifest that is missing, unparseable, half-written or from a shape this build
+   * changed costs the user nothing: a copy must stay restorable when `manifest.json` is the thing that
+   * broke. And an *orphan* — a file written before a crash took the manifest update with it, or one left
+   * by a prune that stopped half way — is listed, restorable and, crucially, a pruning candidate. Invisible
+   * orphans leaked storage permanently, because nothing could ever name them for deletion.
    */
   const present = async (): Promise<SnapshotInfo[]> => {
     const names = new Set(await slot.names());
     const manifest = await readManifest(slot);
     // A manifest that names a file which is gone must never offer a Restore that cannot happen.
     const listed = (manifest?.snapshots ?? []).filter((snapshot) => names.has(snapshot.file));
-    return listed.length ? listed : await fromDirectory(slot);
+    const known = new Set(listed.map((snapshot) => snapshot.file));
+    const orphans = (await fromDirectory(slot)).filter((snapshot) => !known.has(snapshot.file));
+    return [...listed, ...orphans];
   };
 
   const rewrite = async (snapshots: SnapshotInfo[]): Promise<void> => {
@@ -156,14 +159,16 @@ function storeOver(slot: Slot): SnapshotStore {
     },
 
     write: async (bytes, reason: SnapshotReason, schemaVersion) => {
+      /*
+       * `prune-first` says there is room for this copy but not for three. It does NOT mean "delete first":
+       * a copy is never deleted before its replacement is on the device and has been read back, or a
+       * crash, a full disk or a torn write between the two leaves a user with nothing at all. So the
+       * decision is remembered here and acted on below, after the new copy has proved itself — and
+       * through `keepOne`, which honours the same seven-day grace for a before-start-fresh copy that
+       * `keepTwo` does.
+       */
       const room = roomFor(await slot.estimate(), bytes.length);
       if (room === 'no') throw new SnapshotSpaceError();
-      if (room === 'prune-first') {
-        // Room for one more copy but not for three: everything but the newest goes before the new one
-        // is written, so the device is never asked for space it has not got.
-        const [, ...older] = [...(await present())].sort((a, b) => b.takenAt.localeCompare(a.takenAt));
-        for (const snapshot of older) await slot.remove(snapshot.file).catch(() => undefined);
-      }
 
       const takenAt = new Date().toISOString();
       const file = snapshotName(takenAt, schemaVersion);
@@ -181,7 +186,7 @@ function storeOver(slot: Slot): SnapshotStore {
       const info: SnapshotInfo = { file, reason, schemaVersion, bytes: bytes.length, takenAt };
       // Written first, pruned second, so there is never a moment with zero copies on the device.
       const others = (await present()).filter((snapshot) => snapshot.file !== file);
-      const doomed = keepTwo(others, info);
+      const doomed = room === 'prune-first' ? keepOne(others, info) : keepTwo(others, info);
       await rewrite([info, ...others.filter((snapshot) => !doomed.some((gone) => gone.file === snapshot.file))]);
       for (const snapshot of doomed) await slot.remove(snapshot.file).catch(() => undefined);
       return info;
@@ -192,11 +197,28 @@ function storeOver(slot: Slot): SnapshotStore {
      * was current when the block was written, the answer is "nothing is blocked": that build ships migrations
      * past the broken one, and it deserves the one attempt this app gave the version before it. Asked with no
      * build at all — by the recovery screen, or a test — the record is reported as it stands.
+     *
+     * Two things are cleared rather than merely answered around, because a record that can never again be
+     * true is worse than none: it feeds the "this update is being skipped" card for ever on a device where
+     * the update has long since gone in.
+     *
+     * - A block a *different* build set is spent the moment this build asks. Leaving it on the device meant
+     *   every later launch re-derived "not mine" from a record nothing would ever remove.
+     * - A block with no build recorded at all cannot be attributed, so it could be lifted by nothing and was
+     *   held against everything. It is dropped on sight.
      */
     blockedVersion: async (build) => {
       const manifest = await readManifest(slot);
       if (!manifest || manifest.blockedVersion === null) return null;
-      if (build !== undefined && manifest.blockedBuild !== null && manifest.blockedBuild !== build) return null;
+      if (build === undefined) return manifest.blockedVersion;
+      if (manifest.blockedBuild === null || manifest.blockedBuild !== build) {
+        // Self-healing, and never at the cost of the answer: a store that will not take the write still
+        // reports "nothing is blocked", which is the judgement this build has just made.
+        await writeManifest(slot, { snapshots: manifest.snapshots, blockedVersion: null, blockedBuild: null }).catch((error: unknown) => {
+          console.warn('A spent block could not be cleared from the manifest', error);
+        });
+        return null;
+      }
       return manifest.blockedVersion;
     },
     block: async (version, build) => {
@@ -268,7 +290,11 @@ export function opfsSnapshots(): SnapshotStore {
  * `files` can be passed in so a test can reach behind the store — to corrupt the manifest, say, which is
  * the one thing no method of the store will do for it.
  */
-export function memorySnapshots(files = new Map<string, Uint8Array>()): SnapshotStore {
+export function memorySnapshots(
+  files = new Map<string, Uint8Array>(),
+  /** What `navigator.storage.estimate()` would say, so a test can put the store on a device that is nearly full. */
+  estimate: () => Promise<{ quota?: number; usage?: number }> = async () => ({}),
+): SnapshotStore {
   return storeOver({
     read: async (file) => files.get(file) ?? null,
     size: async (file) => files.get(file)?.length ?? null,
@@ -279,8 +305,8 @@ export function memorySnapshots(files = new Map<string, Uint8Array>()): Snapshot
       files.delete(file);
     },
     names: async () => [...files.keys()],
-    // No quota to speak of, and `roomFor` answers 'yes' to an estimate it cannot read.
-    estimate: async () => ({}),
+    // No quota to speak of by default, and `roomFor` answers 'yes' to an estimate it cannot read.
+    estimate,
   });
 }
 
@@ -339,7 +365,9 @@ export function scheduleDailyCopy(safety: Safety, now: () => Date = () => new Da
     void (async () => {
       try {
         if (!dailyDue(await safety.snapshots.list(), now())) return;
-        await safety.snapshots.write(await safety.bytes(), 'daily', LATEST_VERSION);
+        // The version these bytes are really at, not the newest this build could produce: a device holding
+        // a blocked update sits below it, and the copy would be listed under a version it does not have.
+        await safety.snapshots.write(await safety.bytes(), 'daily', safety.schemaVersion);
       } catch (error) {
         // Nobody's day is interrupted because a safety copy could not be taken; the next open tries again.
         console.warn('The daily safety copy could not be taken', error);

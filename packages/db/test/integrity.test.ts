@@ -1,7 +1,7 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkDatabase, checkLedgerHealth, checkStructure, createAccount, listAccounts, postTransaction } from '../src/index';
+import { checkDatabase, checkLedgerHealth, checkStructure, createAccount, databaseBytes, listAccounts, postTransaction } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -106,5 +106,19 @@ describe('checkDatabase', () => {
 
     const problems = await checkDatabase(h.database);
     expect(problems.map((p) => p.kind)).toEqual(['ledger-unreadable']);
+  });
+});
+
+describe('databaseBytes', () => {
+  it('reports the size from the file’s own header, without exporting it', async () => {
+    const h = await household();
+    await h.spend(120_000);
+
+    const size = await databaseBytes(h.database);
+    expect(size).not.toBeNull();
+    // The same number the file really is: this is what the size guard before `quick_check` is asked to trust.
+    expect(size).toBe((await h.database.exportBytes()).length);
+    // And a page count's worth of it, not a rounded guess.
+    expect(size! % 4096).toBe(0);
   });
 });

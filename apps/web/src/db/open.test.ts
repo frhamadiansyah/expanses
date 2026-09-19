@@ -11,10 +11,12 @@ import {
   MIGRATIONS,
   type Migration,
   postTransaction,
+  type SqlExecutor,
 } from '@expanses/db';
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NO_SNAPSHOTS, openSafely, type OpenStage } from './open';
+import { NO_SNAPSHOTS, openSafely, type OpenStage, quickCheckAffordable, QUICK_CHECK_LIMIT_BYTES } from './open';
+import { snapshotName } from './snapshot-policy';
 import { MANIFEST, memorySnapshots, restoreSnapshot } from './snapshots';
 
 let executor: NodeExecutor | undefined;
@@ -137,6 +139,85 @@ describe('openSafely', () => {
     });
     expect(second.ok).toBe(false);
     if (!second.ok) expect(second.reason.kind).toBe('verify-failed');
+  });
+
+  /**
+   * The blocking finding of the whole-branch review, as a test.
+   *
+   * A ledger that does not add up is not a reason to keep someone out of their own money. With nothing
+   * pending there is no copy taken and nothing to roll back to, so the verification could only ever end in
+   * `verify-failed / rolledBack: false` — a permanent lock-out, on every launch, offering a restore of a
+   * copy carrying the same rows or the button that deletes everything. The check belongs after `migrate()`
+   * (spec §3.1 stage 7, §5.1) and nowhere else.
+   */
+  it('opens a database whose ledger does not add up, when no update ran', async () => {
+    const o = opened();
+    const first = await o.run();
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    const { database, ws } = first.app;
+    const bank = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const groceries = (await listAccounts(database, ws)).find((a) => a.systemKey === 'household.groceries')!.id;
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-03',
+      description: 'Superindo',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank.id, amountMinor: 120_000, currency: 'IDR' }),
+    });
+    // The exact damage the review locked a user out with: one side of a posted transaction gone.
+    await database.execScript('DELETE FROM entries WHERE amount_minor < 0');
+
+    const stages: OpenStage[] = [];
+    const store = memorySnapshots();
+    const second = await openSafely({ database: o.database, snapshots: store, onStage: (stage) => stages.push(stage) });
+
+    expect(second.ok).toBe(true);
+    // Nothing was updated, so there is no post-update verification to run — and no `checking` stage.
+    expect(stages.map((s) => s.stage)).toEqual(['opening']);
+    // Nothing was blocked and nothing was replaced: the problem is still there, and so is every row.
+    expect(await store.blockedVersion()).toBe(null);
+    expect(await databaseVersion(o.database)).toBe(LATEST_VERSION);
+    expect((await checkLedgerHealth(o.database, ws)).unbalanced.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * Spec §11.4 bought a per-open `quick_check` with a measurement and a size guard. It was being charged
+   * twice — once before the migrations and once inside `checkDatabase` afterwards — on the path to first
+   * paint, with a full ledger scan on top of it on every launch.
+   */
+  it('asks SQLite about the file once an open, never twice', async () => {
+    executor = createNodeExecutor();
+    const asked: string[] = [];
+    const inner = executor;
+    const watching: SqlExecutor = {
+      query: (sql, params, method) => {
+        const pragma = /PRAGMA\s+(quick_check|integrity_check)/i.exec(sql);
+        if (pragma) asked.push(pragma[1]!.toLowerCase());
+        return inner.query(sql, params, method);
+      },
+      execScript: (sql) => inner.execScript(sql),
+      exportBytes: () => inner.exportBytes(),
+      importBytes: (bytes) => inner.importBytes(bytes),
+    };
+    const database = createDatabase(watching);
+
+    // A brand-new file: nothing to check on the way in, one deep check after the update that just ran.
+    await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(asked).toEqual(['integrity_check']);
+
+    // An ordinary launch: exactly one structural check, and no ledger scan behind it.
+    asked.length = 0;
+    await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(asked).toEqual(['quick_check']);
+  });
+
+  it('gives the pre-open check up on a database too big to check before first paint', () => {
+    // The guard §11.4 asked for, as a decision anyone can read: a file this side of the limit is checked,
+    // one past it waits for an update to earn the wait, and one that will not say is checked regardless.
+    expect(quickCheckAffordable(1_372_160)).toBe(true);
+    expect(quickCheckAffordable(QUICK_CHECK_LIMIT_BYTES)).toBe(true);
+    expect(quickCheckAffordable(QUICK_CHECK_LIMIT_BYTES + 1)).toBe(false);
+    expect(quickCheckAffordable(null)).toBe(true);
   });
 
   it('copies the database before it migrates, and only when there is something to migrate', async () => {
@@ -312,7 +393,7 @@ describe('openSafely', () => {
     if (second.ok) expect(second.app.update).toMatchObject({ blocked: NEXT });
   });
 
-  it('lifts the block when a build arrives with migrations past the one that failed', async () => {
+  it('lifts the block when a build arrives with migrations past the one that failed, and forgets it', async () => {
     const store = memorySnapshots();
     await store.block(NEXT, LATEST_VERSION);
     expect(await store.blockedVersion()).toBe(NEXT); // asked with no build: whatever is on the device
@@ -320,6 +401,53 @@ describe('openSafely', () => {
     // A build that ships one migration more is a different build: the update it was told not to attempt was
     // that older app's judgement, and holding it would keep a fixed migration out for ever.
     expect(await store.blockedVersion(LATEST_VERSION + 1)).toBe(null);
+    // And the record goes with it. Left on the device it would go on telling the card above the page that
+    // an update is being skipped, on a device where that update went in long ago and nothing would clear it.
+    expect(await store.blockedVersion()).toBe(null);
+  });
+
+  it('runs the update anyway when the record names a version no build could skip', async () => {
+    const files = new Map<string, Uint8Array>();
+    const store = memorySnapshots(files);
+    // Honouring a block at version 0 would filter every migration out of the run and open an app with no
+    // schema in it at all — far worse than attempting the update it claims to skip.
+    files.set(MANIFEST, new TextEncoder().encode(`{"snapshots":[],"blockedVersion":0,"blockedBuild":${LATEST_VERSION}}`));
+
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    const result = await openSafely({ database, snapshots: store, onStage: () => undefined });
+
+    expect(result.ok).toBe(true);
+    expect(await databaseVersion(database)).toBe(LATEST_VERSION);
+    if (result.ok) expect(result.app.update).toMatchObject({ blocked: null });
+  });
+
+  it('opens, and says out loud, when the record of blocked updates cannot be read', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    const store = memorySnapshots();
+    store.blockedVersion = async () => {
+      throw new Error('the manifest would not read');
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const result = await openSafely({ database, snapshots: store, onStage: () => undefined });
+
+    expect(result.ok).toBe(true);
+    // Swallowed silently, this meant a device quietly re-attempting an update it had been told to skip.
+    expect(warn.mock.calls.some((call) => String(call[0]).includes('blocked update'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('holds no block that does not say which build set it', async () => {
+    const files = new Map<string, Uint8Array>();
+    const store = memorySnapshots(files);
+    // The shape an older build of this branch wrote: a version, and no record of who decided.
+    files.set(MANIFEST, new TextEncoder().encode(`{"snapshots":[],"blockedVersion":${NEXT},"blockedBuild":null}`));
+    // It could be lifted by no build and was held against every one of them, for ever.
+    expect(await store.blockedVersion(LATEST_VERSION)).toBe(null);
+    expect(await store.blockedVersion(LATEST_VERSION + 1)).toBe(null);
+    expect(await store.blockedVersion()).toBe(null); // dropped on sight, not merely answered around
   });
 
   it('says so plainly when the rollback itself cannot be done', async () => {
@@ -421,6 +549,93 @@ describe('the snapshot store', () => {
       expect(await databaseVersion(copy)).toBe(LATEST_VERSION);
     });
   }
+
+  /** A Map that remembers the order it was written to and deleted from, which is the whole point below. */
+  class Recording extends Map<string, Uint8Array> {
+    readonly order: string[] = [];
+    override set(key: string, value: Uint8Array) {
+      this.order.push(`write ${key}`);
+      return super.set(key, value);
+    }
+    override delete(key: string) {
+      this.order.push(`delete ${key}`);
+      return super.delete(key);
+    }
+  }
+
+  it('writes the replacement before it deletes anything, even with room for only one copy', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+    const bytes = await database.exportBytes();
+    const files = new Recording();
+    // Room for one more copy but not for three: `prune-first`. It used to mean "delete the older copies
+    // first", which left a window — a crash, a full disk, a torn write — with no copy on the device at all.
+    const store = memorySnapshots(files, async () => ({ quota: bytes.length * 12, usage: bytes.length * 10 }));
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-17T10:00:00.000Z'));
+    const older = await store.write(bytes, 'before-migration', LATEST_VERSION);
+    files.order.length = 0;
+    vi.setSystemTime(new Date('2026-09-18T10:00:00.000Z'));
+    const newest = await store.write(bytes, 'daily', LATEST_VERSION);
+    vi.useRealTimers();
+
+    const copies = files.order.filter((step) => step.includes('snapshot-'));
+    expect(copies[0]).toBe(`write ${newest.file}`);
+    expect(copies).toContain(`delete ${older.file}`);
+    expect(copies.indexOf(`write ${newest.file}`)).toBeLessThan(copies.indexOf(`delete ${older.file}`));
+    // And the tight case really does prune down to the one copy there is room for.
+    expect((await store.list()).map((s) => s.file)).toEqual([newest.file]);
+  });
+
+  it('spares a Start fresh copy for seven days even when space is tight', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+    const bytes = await database.exportBytes();
+    const files = new Map<string, Uint8Array>();
+    const store = memorySnapshots(files, async () => ({ quota: bytes.length * 12, usage: bytes.length * 10 }));
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-16T10:00:00.000Z'));
+    const undo = await store.write(bytes, 'before-start-fresh', LATEST_VERSION);
+    vi.setSystemTime(new Date('2026-09-17T10:00:00.000Z'));
+    const middle = await store.write(bytes, 'daily', LATEST_VERSION);
+    vi.setSystemTime(new Date('2026-09-18T10:00:00.000Z'));
+    const newest = await store.write(bytes, 'daily', LATEST_VERSION);
+    vi.useRealTimers();
+
+    // The tight path used to sweep everything but the newest, grace and all — and the copy it swept is the
+    // only way back for someone who has just wiped the device. The ordinary day's copy goes instead.
+    expect((await store.list()).map((s) => s.file).sort()).toEqual([newest.file, undo.file].sort());
+    expect(files.has(middle.file)).toBe(false);
+  });
+
+  it('lists and prunes a copy the manifest never heard of', async () => {
+    const { bytes, files, newest, older, store } = await twoCopies();
+    /*
+     * A file on the device that no manifest mentions: written just before a crash took the manifest update
+     * with it, or left behind by a prune that stopped half way. It used to be invisible — never offered for
+     * Restore, and never a candidate for deletion, so it sat there taking room for ever.
+     */
+    const orphan = snapshotName('2026-09-16T10:00:00.000Z', LATEST_VERSION);
+    files.set(orphan, bytes.slice());
+
+    expect((await store.list()).map((s) => s.file)).toContain(orphan);
+    // Restorable, not merely listed.
+    expect((await store.read(orphan)).length).toBe(bytes.length);
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-19T10:00:00.000Z'));
+    const fresh = await store.write(bytes, 'daily', LATEST_VERSION);
+    vi.useRealTimers();
+
+    // The oldest two go, the orphan among them, and the manifest is the truth again.
+    expect(files.has(orphan)).toBe(false);
+    expect(files.has(older.file)).toBe(false);
+    expect((await store.list()).map((s) => s.file).sort()).toEqual([fresh.file, newest.file].sort());
+  });
 
   it('keeps a copy of what Restore is about to overwrite', async () => {
     const { newest, store } = await twoCopies();

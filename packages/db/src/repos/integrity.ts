@@ -44,6 +44,27 @@ export async function checkStructure(database: Database, pragma: 'quick_check' |
   return [{ kind: pragma, detail: answers.join('; ') || 'no answer' }];
 }
 
+/**
+ * How many bytes the database says it is, from its own header: `page_count * page_size`.
+ *
+ * Two pragmas, no export, no page walk — which is the whole point. It is asked *before* `quick_check` so
+ * the caller can decide whether that check is still affordable on the path to first paint (spec §11.4's
+ * size guard). `null` is the answer from a file that will not say, and a caller should read that as
+ * "ask anyway": a database too broken to report its own size is exactly one worth checking.
+ */
+export async function databaseBytes(database: Database): Promise<number | null> {
+  try {
+    const [countRow] = await database.db.values<[number]>(sql.raw('PRAGMA page_count'));
+    const [sizeRow] = await database.db.values<[number]>(sql.raw('PRAGMA page_size'));
+    const pages = Number(countRow?.[0] ?? 0);
+    const pageSize = Number(sizeRow?.[0] ?? 0);
+    if (!pages || !pageSize || !Number.isFinite(pages) || !Number.isFinite(pageSize)) return null;
+    return pages * pageSize;
+  } catch {
+    return null;
+  }
+}
+
 /** What the ledger says about itself: every posted transaction balances, and nothing dangles. */
 export async function checkLedgerHealth(database: Database, ws: WorkspaceContext): Promise<LedgerHealth> {
   const unbalanced = await checkLedgerIntegrity(database, ws);

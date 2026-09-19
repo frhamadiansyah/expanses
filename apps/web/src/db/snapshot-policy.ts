@@ -68,10 +68,35 @@ export function keepTwo(list: SnapshotInfo[], incoming: SnapshotInfo, now: Date 
   return rest.filter((snapshot) => !withinStartFreshGrace(snapshot, now));
 }
 
-/** True once a full calendar day (UTC) has passed without any copy being taken. */
+/**
+ * Which of `list` to delete when the device has room for the copy just written but not for three: all of
+ * them, except a copy taken before "Start fresh" that is still inside its seven-day grace. `incoming` is
+ * never a candidate, for the same reason it is never one in {@link keepTwo} — and because this runs only
+ * after that copy has been written and read back, there is never a moment with no copy on the device.
+ */
+export function keepOne(list: SnapshotInfo[], incoming: SnapshotInfo, now: Date = new Date()): SnapshotInfo[] {
+  return list.filter((snapshot) => snapshot.file !== incoming.file && !withinStartFreshGrace(snapshot, now));
+}
+
+/**
+ * The user's own calendar day, from `Date`'s local getters. Pure: the Date is the only input, and no
+ * ambient clock or zone is read beyond the one the device is already set to.
+ */
+const localDay = (when: Date): string => {
+  const month = `${when.getMonth() + 1}`.padStart(2, '0');
+  const day = `${when.getDate()}`.padStart(2, '0');
+  return `${when.getFullYear()}-${month}-${day}`;
+};
+
+/**
+ * True once a full calendar day has passed, **in the user's own time zone**, without any copy being
+ * taken. Not UTC: for a user at UTC+7 a UTC day rolls over at seven in the morning, so "once a day"
+ * would mean "once a working day, some time after breakfast". The rest of the branch counts local days;
+ * this is the same day.
+ */
 export function dailyDue(list: SnapshotInfo[], now: Date = new Date()): boolean {
-  const today = now.toISOString().slice(0, 10);
-  return !list.some((snapshot) => snapshot.takenAt.slice(0, 10) === today);
+  const today = localDay(now);
+  return !list.some((snapshot) => localDay(new Date(snapshot.takenAt)) === today);
 }
 
 export type Room = 'yes' | 'prune-first' | 'no';
