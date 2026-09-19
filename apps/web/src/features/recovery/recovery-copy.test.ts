@@ -37,6 +37,14 @@ describe('recoveryCopy', () => {
     expect(copy.body).toContain('Nothing was lost');
   });
 
+  it('says the same of an update that threw part-way and was put back', () => {
+    const copy = recoveryCopy(reason('migration-failed', { rolledBack: true }), { hasSnapshot: true });
+    expect(copy.headline).toBe('Your update was undone');
+    expect(copy.body).toContain('exactly as it was');
+    // Not rolled back is a different sentence: nothing may claim the data was put back when it was not.
+    expect(recoveryCopy(reason('migration-failed'), { hasSnapshot: true }).headline).toBe('The update to your data could not be finished');
+  });
+
   it('does not offer a restore or a wipe when storage is not working at all', () => {
     const copy = recoveryCopy(reason('cannot-open', { exportable: false }), { hasSnapshot: false });
     expect(copy.actions).toEqual(['retry']);

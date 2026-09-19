@@ -102,10 +102,15 @@ function words(reason: RecoveryReason): { headline: string; body: string } {
         body: 'Your data is safe and untouched. This copy of the app is older than the data on this device, so it will not open it rather than risk changing it. Update Expanses — or reopen it in the browser or device you last used — and it will open as usual.',
       };
     case 'migration-failed':
-      return {
-        headline: 'The update to your data could not be finished',
-        body: 'Your data has not been left half-changed: the update stopped rather than carry on. You can take a copy, or put back the copy taken just before the update, and then try again.',
-      };
+      return reason.rolledBack
+        ? {
+            headline: 'Your update was undone',
+            body: 'The update stopped part-way, so your data was put back exactly as it was before it started. Nothing was lost. Take a copy if you would like one, then try again — Expanses will open on your data as it was and leave that update alone.',
+          }
+        : {
+            headline: 'The update to your data could not be finished',
+            body: 'Your data has not been left half-changed: the update stopped rather than carry on. You can take a copy, or put back the copy taken just before the update, and then try again.',
+          };
     case 'verify-failed':
       return reason.rolledBack
         ? {

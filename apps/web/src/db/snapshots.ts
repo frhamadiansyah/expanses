@@ -32,8 +32,10 @@ export class SnapshotSpaceError extends Error {
  */
 interface Manifest {
   snapshots: SnapshotInfo[];
-  /** A schema version that must not be attempted again until the user says so. Written by Task 8. */
+  /** A schema version that must not be attempted again until the user says so, or a newer build arrives. */
   blockedVersion: number | null;
+  /** The highest version the build that set the block knew. A different build's block is not this build's. */
+  blockedBuild: number | null;
 }
 
 /**
@@ -80,7 +82,11 @@ async function readManifest(slot: Slot): Promise<Manifest | null> {
   try {
     const parsed = JSON.parse(decode(raw)) as Partial<Manifest>;
     if (!Array.isArray(parsed.snapshots)) return null;
-    return { snapshots: parsed.snapshots.filter(isSnapshotInfo), blockedVersion: typeof parsed.blockedVersion === 'number' ? parsed.blockedVersion : null };
+    return {
+      snapshots: parsed.snapshots.filter(isSnapshotInfo),
+      blockedVersion: typeof parsed.blockedVersion === 'number' ? parsed.blockedVersion : null,
+      blockedBuild: typeof parsed.blockedBuild === 'number' ? parsed.blockedBuild : null,
+    };
   } catch {
     return null;
   }
@@ -118,7 +124,8 @@ function storeOver(slot: Slot): SnapshotStore {
   };
 
   const rewrite = async (snapshots: SnapshotInfo[]): Promise<void> => {
-    await writeManifest(slot, { snapshots, blockedVersion: (await readManifest(slot))?.blockedVersion ?? null });
+    const manifest = await readManifest(slot);
+    await writeManifest(slot, { snapshots, blockedVersion: manifest?.blockedVersion ?? null, blockedBuild: manifest?.blockedBuild ?? null });
   };
 
   return {
@@ -162,12 +169,23 @@ function storeOver(slot: Slot): SnapshotStore {
       return info;
     },
 
-    blockedVersion: async () => (await readManifest(slot))?.blockedVersion ?? null,
-    block: async (version) => {
-      await writeManifest(slot, { snapshots: await present(), blockedVersion: version });
+    /*
+     * A block belongs to the build that set it. Asked by a build whose newest migration is not the one that
+     * was current when the block was written, the answer is "nothing is blocked": that build ships migrations
+     * past the broken one, and it deserves the one attempt this app gave the version before it. Asked with no
+     * build at all — by the recovery screen, or a test — the record is reported as it stands.
+     */
+    blockedVersion: async (build) => {
+      const manifest = await readManifest(slot);
+      if (!manifest || manifest.blockedVersion === null) return null;
+      if (build !== undefined && manifest.blockedBuild !== null && manifest.blockedBuild !== build) return null;
+      return manifest.blockedVersion;
+    },
+    block: async (version, build) => {
+      await writeManifest(slot, { snapshots: await present(), blockedVersion: version, blockedBuild: build });
     },
     unblock: async () => {
-      await writeManifest(slot, { snapshots: await present(), blockedVersion: null });
+      await writeManifest(slot, { snapshots: await present(), blockedVersion: null, blockedBuild: null });
     },
   };
 }

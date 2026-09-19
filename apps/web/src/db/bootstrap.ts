@@ -11,6 +11,7 @@ import {
   inBook,
   listWorkspaces,
   migrate,
+  type Migration,
   syncLinkedPrograms,
   type WorkspaceContext,
 } from '@expanses/db';
@@ -18,16 +19,29 @@ import { type OpenResult, type OpenStage, openSafely, type Safety, say } from '.
 import { opfsSnapshots } from './snapshots';
 import { createWorkerExecutor } from './worker-executor';
 
+/** What the open did to the schema on the way in, and what it chose not to do. Read by the card above the page. */
+export interface UpdateOutcome {
+  /** Versions applied during this open. Empty on an ordinary launch. */
+  applied: number[];
+  /** The version the file was at before. 0 means this device had no data: a first run is not an update. */
+  from: number;
+  /** An update that failed once and is being skipped, or null. Non-null means the app is deliberately behind. */
+  blocked: number | null;
+}
+
 export interface AppDb {
   database: Database;
   ws: WorkspaceContext;
   workspaceName: string;
   /** Where this app's safety copies go. Absent only where a caller opened a database without a store. */
   safety?: Safety;
+  /** Absent only where a caller opened a database without going through `openSafely`. */
+  update?: UpdateOutcome;
 }
 
-export async function openAppDb(database: Database): Promise<AppDb> {
-  await migrate(database);
+export async function openAppDb(database: Database, migrations?: Migration[]): Promise<AppDb> {
+  // The same list the opener was allowed to run: a blocked update must not be slipped in through the back door.
+  await migrate(database, migrations);
   let [workspace] = await listWorkspaces(database);
   if (!workspace) {
     await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });

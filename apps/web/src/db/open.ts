@@ -42,8 +42,14 @@ export interface SnapshotStore {
   list(): Promise<SnapshotInfo[]>;
   write(bytes: Uint8Array, reason: SnapshotReason, schemaVersion: number): Promise<SnapshotInfo>;
   read(file: string): Promise<Uint8Array>;
-  blockedVersion(): Promise<number | null>;
-  block(version: number): Promise<void>;
+  /**
+   * The update that must not be attempted, or null. `build` is the highest version the *asking* build
+   * knows: a block is one app version's judgement about one broken migration, so a build that ships
+   * migrations past it is told there is no block, and its fixed migration gets its chance.
+   */
+  blockedVersion(build?: number): Promise<number | null>;
+  /** Records `version` as not to be attempted, and the build (its highest known version) that decided so. */
+  block(version: number, build: number): Promise<void>;
   unblock(): Promise<void>;
 }
 
@@ -125,9 +131,14 @@ async function takeSnapshot(deps: {
 }
 
 /**
- * Undoing a failed update from the copy taken before it. Layer 3 (the next task) gives this a body: it
- * already receives the copy this open took, and until it puts those bytes back it only names what went
- * wrong and says plainly that nothing was undone.
+ * Undoing a failed update from the copy taken before it.
+ *
+ * The bytes go back exactly as they were taken, so what the user ends up with is their database at the old
+ * schema version with the whole ledger in it — not a repaired one, and never a half-updated one presented as
+ * fine. Three things can be true afterwards and each is said plainly: there was no copy to go back to; the
+ * copy would not go back; or it did, in which case the update that broke is recorded as one not to attempt
+ * again. A block is only ever written after a rollback that worked: blocking an update we could not undo
+ * would leave the user on a half-updated file and tell the next open to leave it alone.
  */
 async function rollback(deps: {
   snapshots: SnapshotStore;
@@ -137,8 +148,35 @@ async function rollback(deps: {
   headline: string;
   detail: string;
   version: number;
+  build: number;
 }): Promise<OpenResult> {
-  return { ok: false, reason: { kind: deps.kind, headline: deps.headline, detail: deps.detail, exportable: true, rolledBack: false } };
+  const reason = (rolledBack: boolean, detail: string): OpenResult => ({
+    ok: false,
+    reason: { kind: deps.kind, headline: deps.headline, detail, exportable: true, rolledBack },
+  });
+
+  if (!deps.restore) return reason(false, deps.detail);
+
+  try {
+    /*
+     * The worker's `import` op keeps the current bytes and puts them back if the import fails, so a rollback
+     * that cannot be done leaves the half-updated file rather than nothing at all — which is why the screen
+     * this returns to can still offer Export either way.
+     */
+    await deps.database.importBytes(await deps.snapshots.read(deps.restore.file));
+    const problems = await checkStructure(deps.database);
+    if (problems.length) throw new Error(problems.map((p) => p.detail).join('; '));
+  } catch (error) {
+    return reason(false, `${deps.detail} — and the copy taken before the update could not be put back either: ${say(error)}`);
+  }
+
+  try {
+    await deps.snapshots.block(deps.version, deps.build);
+  } catch (error) {
+    // The data is back; the worst a failed block costs is that the next open tries the same update again.
+    console.warn('The failed update could not be recorded as one to skip', error);
+  }
+  return reason(true, deps.detail);
 }
 
 /**
@@ -178,22 +216,40 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
     };
   }
 
+  /*
+   * An update that was undone once must not be attempted at every launch: it would fail the same way, cost
+   * another snapshot each time, and leave the user staring at the recovery screen instead of their money. A
+   * block means "skip this update and open at the version below it", never "refuse to start" — the app at
+   * last month's schema is worth incomparably more than no app at all. It lifts when a build arrives with
+   * migrations past the blocked one (`blockedVersion` compares builds), or when the user presses "Try the
+   * update again" on the card above the page, which calls `unblock` and reloads.
+   */
+  const build = Math.max(...migrations.map((m) => m.version));
+  const blocked = await snapshots.blockedVersion(build).catch(() => null);
+  const allowed = blocked === null ? migrations : migrations.filter((m) => m.version < blocked);
+
   // An existing file is checked before it is touched; a brand-new one has nothing to check.
   if (version > 0) {
     const problems = await checkStructure(database);
     if (problems.length) return { ok: false, reason: corrupt(problems.map((p) => p.detail).join('; ')) };
   }
 
-  const pending = await pendingMigrations(database, migrations);
+  const pending = await pendingMigrations(database, allowed);
   let applied: number[] = [];
   // Held across the check below too: a verify-failed open goes back to the same copy a migration-failed one would.
   let restore: SnapshotInfo | null = null;
+  // Which migration is in the engine's hands right now, so a failure blocks the one that broke rather than
+  // the whole run: `migrate` reports the count finished before each step, and that indexes this same list.
+  let attempting = pending[0]?.version ?? 0;
   if (pending.length) {
     const copy = await takeSnapshot({ snapshots, bytes, version, onStage });
     restore = copy.snapshot;
     try {
-      applied = await migrate(database, migrations, {
-        onProgress: (done, total, name) => onStage({ stage: 'migrating', done, total, name }),
+      applied = await migrate(database, allowed, {
+        onProgress: (done, total, name) => {
+          attempting = pending[done]?.version ?? attempting;
+          onStage({ stage: 'migrating', done, total, name });
+        },
       });
     } catch (error) {
       return rollback({
@@ -204,7 +260,8 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
         headline: 'The update could not be finished.',
         // The missing copy is said here, where it matters: this is the screen where the user goes looking for one.
         detail: copy.skipped ? `${say(error)} — and no safety copy was taken first: ${copy.skipped}` : say(error),
-        version: pending[0]!.version,
+        version: attempting,
+        build,
       });
     }
   }
@@ -219,14 +276,26 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
       kind: 'verify-failed',
       headline: 'We checked your data after the update and something did not add up.',
       detail: problems.map((p) => `${p.kind}: ${p.detail}`).join('; '),
+      // The whole run is blocked, not one step of it: which migration of the batch left the ledger wrong is
+      // not knowable from a check made after all of them ran.
       version: applied[0] ?? 0,
+      build,
     });
   }
 
   try {
     // The store rides along on the opened app: the day's copy is taken from the first idle callback after
     // the first paint, which is the one place that knows a screen has actually appeared.
-    return { ok: true, app: { ...(await openAppDb(database)), safety: { snapshots, bytes } }, applied };
+    return {
+      ok: true,
+      app: {
+        ...(await openAppDb(database, allowed)),
+        safety: { snapshots, bytes },
+        // What this open did to the schema, and what it deliberately left alone, for the card above the page.
+        update: { applied, from: version, blocked },
+      },
+      applied,
+    };
   } catch (error) {
     return { ok: false, reason: { kind: 'cannot-open', headline: 'We could not finish opening your data.', detail: say(error), exportable: true } };
   }

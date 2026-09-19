@@ -1,7 +1,9 @@
 import { expenseLines } from '@expanses/core';
 import {
+  checkLedgerHealth,
   createAccount,
   createDatabase,
+  createWorkspace,
   databaseVersion,
   LATEST_VERSION,
   listAccounts,
@@ -186,6 +188,99 @@ describe('openSafely', () => {
     const kept = await store.list();
     expect(kept.map((s) => s.file)).toEqual([written[2]!.file, written[1]!.file]);
     await expect(store.read(written[0]!.file)).rejects.toThrow(/no longer on this device/);
+  });
+
+  /**
+   * A database one build behind, with a posted transaction in it: the ledger has to have something in it
+   * for a rollback to be worth anything, and something a broken update can be caught unbalancing.
+   */
+  async function seeded() {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(
+      database,
+      MIGRATIONS.filter((m) => m.version <= 45),
+    );
+    const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const groceries = (await listAccounts(database, ws)).find((a) => a.systemKey === 'household.groceries')!.id;
+    await postTransaction(database, ws, {
+      occurredOn: '2026-09-03',
+      description: 'Superindo',
+      lines: expenseLines({ categoryAccountId: groceries, paymentAccountId: bank.id, amountMinor: 120_000, currency: 'IDR' }),
+    });
+    return { database, ws };
+  }
+
+  /** Never a literal: a fake migration has to sit past everything this build really ships. */
+  const NEXT = LATEST_VERSION + 1;
+
+  it('puts the database back when a migration throws part-way', async () => {
+    const { database } = await seeded();
+    const before = await database.exportBytes();
+    const boom: Migration = { version: NEXT, name: 'boom', sql: 'CREATE TABLE boom (x TEXT);\nINSERT INTO nope (x) VALUES (1);' };
+    const store = memorySnapshots();
+
+    const result = await openSafely({ database, migrations: [...MIGRATIONS, boom], snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'migration-failed', rolledBack: true });
+    // Back at 45: the real 46 and 47 that had already gone in were undone with the broken one.
+    expect(await databaseVersion(database)).toBe(45);
+    expect(Array.from(await database.exportBytes())).toEqual(Array.from(before));
+    expect(await store.blockedVersion()).toBe(NEXT);
+  });
+
+  it('puts the database back when the update finishes but the ledger does not add up', async () => {
+    const { database, ws } = await seeded();
+    const wrecker: Migration = { version: NEXT, name: 'wrecker', sql: 'DELETE FROM entries WHERE amount_minor < 0;' };
+    const store = memorySnapshots();
+
+    const result = await openSafely({ database, migrations: [...MIGRATIONS, wrecker], snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'verify-failed', rolledBack: true });
+    expect(await checkLedgerHealth(database, ws)).toEqual({ unbalanced: [], orphanEntries: [], orphanTransactions: [] });
+    expect(await databaseVersion(database)).toBe(45);
+    // Nothing in the batch is tried again: which of them wrecked the ledger is not knowable from here.
+    expect(await store.blockedVersion()).toBe(46);
+  });
+
+  it('does not try the same failed update again on the next open', async () => {
+    const { database } = await seeded();
+    const boom: Migration = { version: NEXT, name: 'boom', sql: 'INSERT INTO nope (x) VALUES (1);' };
+    const store = memorySnapshots();
+    await openSafely({ database, migrations: [...MIGRATIONS, boom], snapshots: store, onStage: () => undefined });
+
+    const stages: OpenStage[] = [];
+    const second = await openSafely({ database, migrations: [...MIGRATIONS, boom], snapshots: store, onStage: (s) => stages.push(s) });
+    expect(second.ok).toBe(true); // it opens, at the version below the broken update, rather than failing again
+    expect(await databaseVersion(database)).toBe(LATEST_VERSION);
+    expect(stages.some((s) => s.stage === 'migrating' && s.name === 'boom')).toBe(false);
+    if (second.ok) expect(second.app.update).toMatchObject({ blocked: NEXT });
+  });
+
+  it('lifts the block when a build arrives with migrations past the one that failed', async () => {
+    const store = memorySnapshots();
+    await store.block(NEXT, LATEST_VERSION);
+    expect(await store.blockedVersion()).toBe(NEXT); // asked with no build: whatever is on the device
+    expect(await store.blockedVersion(LATEST_VERSION)).toBe(NEXT); // the build that set it, still held
+    // A build that ships one migration more is a different build: the update it was told not to attempt was
+    // that older app's judgement, and holding it would keep a fixed migration out for ever.
+    expect(await store.blockedVersion(LATEST_VERSION + 1)).toBe(null);
+  });
+
+  it('says so plainly when the rollback itself cannot be done', async () => {
+    const { database } = await seeded();
+    const boom: Migration = { version: NEXT, name: 'boom', sql: 'INSERT INTO nope (x) VALUES (1);' };
+    const store = memorySnapshots();
+    store.read = async () => {
+      throw new Error('the copy is gone');
+    };
+
+    const result = await openSafely({ database, migrations: [...MIGRATIONS, boom], snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'migration-failed', rolledBack: false, exportable: true });
+    // Nothing is blocked that was not put back: the next open must be free to try, and to fail honestly again.
+    expect(await store.blockedVersion()).toBe(null);
   });
 
   it('refuses a copy that does not read back as the database it was given', async () => {
