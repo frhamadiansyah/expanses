@@ -100,9 +100,10 @@ describe('a device sitting below the newest schema, because an update was blocke
     const store = makePhotoStore(() => memoryDirectory());
 
     // What the form does: the bytes to OPFS, then the index row. The row cannot be written here — there is no
-    // table for it — and `addPhoto` says nothing about that, which is the other half of the trap.
+    // table for it — and `addPhoto` refuses rather than answering an id for a row it did not write, so the form
+    // learns the truth. The bytes are on the device either way, which is what the sweep must not touch.
     const photo = await store.savePhotoBytes(bytes('a receipt'), 'image/jpeg');
-    await addPhoto(database, ws, { transactionId: id, fileName: photo.fileName, mime: 'image/jpeg', byteSize: photo.byteSize });
+    await expect(addPhoto(database, ws, { transactionId: id, fileName: photo.fileName, mime: 'image/jpeg', byteSize: photo.byteSize })).rejects.toThrow();
 
     // The database is asked, and answers that it cannot say — not that there are no photos.
     const kept = await allPhotoFileNames(database);

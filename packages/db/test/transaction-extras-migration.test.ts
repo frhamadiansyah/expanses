@@ -147,9 +147,18 @@ describe('migration 0048', () => {
       return { database, ws, id };
     }
 
-    it('addPhoto does not throw', async () => {
+    /*
+     * It throws, and that is the point. There is no table to write to here, so there is no row and no id; an id
+     * answered anyway is one a draft would carry into `photoIds`, where `writeExtrasTx` would match nothing and
+     * the user would be shown a form that accepted a photograph the transaction does not have. `savePhotoBytes`
+     * throws on a missing OPFS for the same reason. A caller must hear "no", not a plausible identifier.
+     */
+    it('addPhoto refuses, rather than answering an id for a row it did not write', async () => {
       const { database, ws, id } = await stoppedAt47();
-      await expect(addPhoto(database, ws, { transactionId: id, fileName: 'a.jpg', mime: 'image/jpeg', byteSize: 1 })).resolves.toEqual(expect.any(String));
+      const attempt = addPhoto(database, ws, { transactionId: id, fileName: 'a.jpg', mime: 'image/jpeg', byteSize: 1 });
+      await expect(attempt).rejects.toThrow(/transaction_photos/);
+      // And nothing was left behind for a later reader to find.
+      await expect(listPhotos(database, ws, id)).resolves.toEqual([]);
     });
 
     it('listPhotos does not throw', async () => {

@@ -147,11 +147,26 @@ export interface AddPhotoInput {
   byteSize: number;
 }
 
-/** Writes the index row for one picture and returns its id — a transaction_photos.id, never an OPFS file name. */
+/**
+ * Writes the index row for one picture and returns its id — a transaction_photos.id, never an OPFS file name.
+ *
+ * The one function here that **throws** rather than answering quietly when migration 0048 has not run, for the
+ * same reason `savePhotoBytes` throws when OPFS is missing (`apps/web/src/photos/store.ts`): there is no honest
+ * empty answer. A device sitting below `LATEST_VERSION` because an update is blocked is a real state
+ * (`apps/web/src/db/open.ts`), and on such a device there is no `transaction_photos` table to write to. An id
+ * handed back from a write that never happened is a phantom: a draft carries it into `photoIds`, `writeExtrasTx`
+ * re-keys zero rows, and the user is shown a form that accepted a photograph attached to a transaction that has
+ * none of it. Throwing lets the form say "photos are not available on this device", which is the truth.
+ *
+ * `listPhotos`, `deletePhoto` and `allPhotoRows` still answer empty, because empty is what they really mean:
+ * a database with no table holds no photos, and there is nothing to delete.
+ */
 export async function addPhoto(database: Database, ws: WorkspaceContext, input: AddPhotoInput): Promise<string> {
   const id = uuidv7();
   await database.transaction(async (tx) => {
-    if (!(await extrasTablesExist(tx))) return;
+    if (!(await extrasTablesExist(tx))) {
+      throw new Error('This device cannot keep photos yet: the database is at a version with no transaction_photos table.');
+    }
     await tx.insert(transactionPhotos).values({
       id,
       workspaceId: ws.workspaceId,
