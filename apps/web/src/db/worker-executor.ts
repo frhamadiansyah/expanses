@@ -6,7 +6,15 @@ interface Reply {
   error?: string;
 }
 
-export function createWorkerExecutor(worker: Worker): SqlExecutor {
+export interface SnapshotExecutor extends SqlExecutor {
+  /**
+   * A file copy of the database, taken between statements behind the worker's autocommit guard. Separate
+   * from `exportBytes` because it is allowed to refuse: a safety copy is never worth a torn read.
+   */
+  snapshotBytes(): Promise<Uint8Array>;
+}
+
+export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
   let nextId = 0;
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
 
@@ -35,6 +43,17 @@ export function createWorkerExecutor(worker: Worker): SqlExecutor {
       await call({ op: 'script', sql });
     },
     exportBytes: async () => (await call({ op: 'export' })) as Uint8Array,
+    snapshotBytes: async () => {
+      try {
+        return (await call({ op: 'snapshot' })) as Uint8Array;
+      } catch (error) {
+        if (!/busy/i.test(error instanceof Error ? error.message : String(error))) throw error;
+        // One macrotask later whatever was in flight has committed. If it has not, the copy is given up
+        // on rather than waited for: the open carries on without one and the user is told.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return (await call({ op: 'snapshot' })) as Uint8Array;
+      }
+    },
     importBytes: async (bytes) => {
       const copy = bytes.slice();
       await call({ op: 'import', bytes: copy }, [copy.buffer]);

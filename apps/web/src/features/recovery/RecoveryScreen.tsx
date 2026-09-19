@@ -88,7 +88,7 @@ export function RecoveryScreen({
         {copy.actions.includes('restore') && newest && (
           <Button
             variant="primary"
-            className="min-h-11 w-full"
+            className="min-h-11 w-full flex-col gap-0 py-2"
             disabled={busy}
             onClick={() =>
               run('Restore', async () => {
@@ -97,7 +97,11 @@ export function RecoveryScreen({
               })
             }
           >
-            Put back the copy from {formatWhen(newest.takenAt)}
+            <span className="block">Restore the last good copy</span>
+            {/* What is actually being put back, so nobody presses this without knowing what they lose. */}
+            <span className="mt-0.5 block text-xs font-normal opacity-80">
+              From {formatWhen(newest.takenAt)} · {formatBytes(newest.bytes)}
+            </span>
           </Button>
         )}
         {copy.actions.includes('export') && (

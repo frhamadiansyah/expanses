@@ -2,12 +2,17 @@ import { type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { bootstrap } from './db/bootstrap';
+import { opfsSnapshots } from './db/snapshots';
 import { OpeningScreen } from './features/recovery/OpeningScreen';
 import { RecoveryScreen } from './features/recovery/RecoveryScreen';
 import { registerServiceWorker } from './lib/pwa';
 import './styles.css';
 
 registerServiceWorker();
+
+// One store for the whole page: the recovery screen reads it on every path, whether it was reached by a
+// failure or asked for on purpose.
+const snapshots = opfsSnapshots();
 
 const root = createRoot(document.getElementById('root')!);
 
@@ -30,7 +35,7 @@ async function start() {
   try {
     const result = await bootstrap((stage) => root.render(<OpeningScreen stage={stage} />));
     if (!result.ok) {
-      root.render(<RecoveryScreen reason={result.reason} />);
+      root.render(<RecoveryScreen reason={result.reason} snapshots={snapshots} />);
       return;
     }
     const app = result.app;
@@ -59,6 +64,7 @@ async function start() {
           detail: error instanceof Error ? error.message : String(error),
           exportable: true,
         }}
+        snapshots={snapshots}
       />,
     );
   }
@@ -71,6 +77,7 @@ if (recoveryMode) {
     <RecoveryScreen
       reason={{ kind: 'cannot-open', headline: 'Recovery', detail: 'Opened in recovery mode. Nothing has failed.', exportable: true }}
       requested
+      snapshots={snapshots}
     />,
   );
 } else if ('locks' in navigator) {

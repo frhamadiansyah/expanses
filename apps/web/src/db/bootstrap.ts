@@ -14,13 +14,16 @@ import {
   syncLinkedPrograms,
   type WorkspaceContext,
 } from '@expanses/db';
-import { NO_SNAPSHOTS, type OpenResult, type OpenStage, openSafely, say } from './open';
+import { type OpenResult, type OpenStage, openSafely, type Safety, say } from './open';
+import { opfsSnapshots } from './snapshots';
 import { createWorkerExecutor } from './worker-executor';
 
 export interface AppDb {
   database: Database;
   ws: WorkspaceContext;
   workspaceName: string;
+  /** Where this app's safety copies go. Absent only where a caller opened a database without a store. */
+  safety?: Safety;
 }
 
 export async function openAppDb(database: Database): Promise<AppDb> {
@@ -55,9 +58,13 @@ export function createWorker(): Worker {
  * because it is the one failure with nothing to export: there is no database yet to hand back.
  */
 export async function bootstrap(onStage: (stage: OpenStage) => void): Promise<OpenResult> {
+  let worker: Worker;
+  let executor: ReturnType<typeof createWorkerExecutor>;
   let database: Database;
   try {
-    database = createDatabase(createWorkerExecutor(createWorker()));
+    worker = createWorker();
+    executor = createWorkerExecutor(worker);
+    database = createDatabase(executor);
   } catch (error) {
     return {
       ok: false,
@@ -69,5 +76,24 @@ export async function bootstrap(onStage: (stage: OpenStage) => void): Promise<Op
       },
     };
   }
-  return openSafely({ database, snapshots: NO_SNAPSHOTS, onStage });
+
+  const result = await openSafely({
+    database,
+    snapshots: opfsSnapshots(),
+    snapshotBytes: () => executor.snapshotBytes(),
+    onStage,
+  });
+
+  /*
+   * A failed open ends with the worker terminated, and this is not tidiness.
+   *
+   * The SAH pool takes a *sync access handle* on every slot file it owns and holds it for the life of the
+   * worker. A worker that is alive but useless — its database corrupt, its migration half-done — still
+   * holds them, and OPFS then refuses every write to those files from anywhere else. That is what made
+   * "Delete everything on this device" fail with "modifications are not allowed" when it was pressed from
+   * `/` rather than from `?recover`, and it would have made Restore fail the same way. Terminating the
+   * worker drops the handles, so the fresh worker that the recovery screen borrows can take them.
+   */
+  if (!result.ok) worker.terminate();
+  return result;
 }

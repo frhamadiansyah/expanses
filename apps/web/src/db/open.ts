@@ -34,9 +34,9 @@ export type OpenStage =
   | { stage: 'migrating'; done: number; total: number; name: string };
 
 /**
- * The copies kept beside the live database. Task 5 implements it over OPFS; until then the only
- * store is `NO_SNAPSHOTS`. `block`/`unblock` record a version that must not be tried again, so an
- * update that failed once does not fail the same way on every reload.
+ * The copies kept beside the live database, implemented over OPFS in `snapshots.ts`. `block`/`unblock`
+ * record a version that must not be tried again, so an update that failed once does not fail the same
+ * way on every reload.
  */
 export interface SnapshotStore {
   list(): Promise<SnapshotInfo[]>;
@@ -47,9 +47,19 @@ export interface SnapshotStore {
   unblock(): Promise<void>;
 }
 
+/**
+ * Where an open app's copies go, and how to get the bytes for one. Carried on `AppDb` so the screen that
+ * has just painted can take the day's copy without reaching back into the bootstrap.
+ */
+export interface Safety {
+  snapshots: SnapshotStore;
+  /** A file copy of the live database, taken between statements. */
+  bytes: () => Promise<Uint8Array>;
+}
+
 const NOTHING_KEPT = 'This build keeps no copies of your data yet.';
 
-/** A store that keeps nothing — the behaviour before Task 6 lands, and what the unit tests use. */
+/** A store that keeps nothing. Still the honest answer for a build or a test that keeps no copies. */
 export const NO_SNAPSHOTS: SnapshotStore = {
   list: async () => [],
   // Loud rather than silent: a caller that thinks it took a copy must not be told it did.
@@ -69,6 +79,12 @@ export interface OpenDeps {
   migrations?: Migration[];
   snapshots: SnapshotStore;
   onStage: (stage: OpenStage) => void;
+  /**
+   * The bytes of the live database, for a safety copy. The worker's `snapshot` op when there is a worker
+   * — it refuses mid-transaction rather than hand over a torn read — and a plain export otherwise, which
+   * is what the Node-backed unit tests get.
+   */
+  snapshotBytes?: () => Promise<Uint8Array>;
 }
 
 export type OpenResult = { ok: true; app: AppDb; applied: number[] } | { ok: false; reason: RecoveryReason };
@@ -84,16 +100,34 @@ const corrupt = (detail: string): RecoveryReason => ({
 });
 
 /**
- * The copy taken before an update, so a failed one can be undone. Task 6 gives this a body; until
- * then no copy exists and every caller must cope with `null`.
+ * The copy taken before an update, so a failed one can be undone.
+ *
+ * It is never a gate. If there is no room for it, or the engine will not hand the bytes over between
+ * statements, the open carries on without a copy and says so — nobody is kept from their own data
+ * because a safety net could not be strung. `skipped` is the sentence that then rides into the failure
+ * text, so a user who does hit a broken update knows there is nothing to go back to.
  */
-async function takeSnapshot(_deps: { database: Database; snapshots: SnapshotStore; version: number; onStage: (stage: OpenStage) => void }): Promise<SnapshotInfo | null> {
-  return null;
+async function takeSnapshot(deps: {
+  snapshots: SnapshotStore;
+  bytes: () => Promise<Uint8Array>;
+  version: number;
+  onStage: (stage: OpenStage) => void;
+}): Promise<{ snapshot: SnapshotInfo | null; skipped: string | null }> {
+  // A file with no schema in it yet has nothing worth copying: a first open on a new device copies nothing.
+  if (deps.version <= 0) return { snapshot: null, skipped: null };
+  deps.onStage({ stage: 'snapshotting' });
+  try {
+    return { snapshot: await deps.snapshots.write(await deps.bytes(), 'before-migration', deps.version), skipped: null };
+  } catch (error) {
+    console.warn('No safety copy could be taken before the update', error);
+    return { snapshot: null, skipped: say(error) };
+  }
 }
 
 /**
- * Undoing a failed update from the copy taken before it. Task 7 gives this a body; until then there
- * is no copy to go back to, so it only names what went wrong and says plainly that nothing was undone.
+ * Undoing a failed update from the copy taken before it. Layer 3 (the next task) gives this a body: it
+ * already receives the copy this open took, and until it puts those bytes back it only names what went
+ * wrong and says plainly that nothing was undone.
  */
 async function rollback(deps: {
   snapshots: SnapshotStore;
@@ -112,8 +146,9 @@ async function rollback(deps: {
  * than a thrown error. Nothing before `migrate` writes a byte: the version is read, the future is
  * refused, and the file is checked, all read-only.
  */
-export async function openSafely({ database, migrations = MIGRATIONS, snapshots, onStage }: OpenDeps): Promise<OpenResult> {
+export async function openSafely({ database, migrations = MIGRATIONS, snapshots, onStage, snapshotBytes }: OpenDeps): Promise<OpenResult> {
   onStage({ stage: 'opening' });
+  const bytes = snapshotBytes ?? (() => database.exportBytes());
 
   let version: number;
   try {
@@ -151,8 +186,11 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
 
   const pending = await pendingMigrations(database, migrations);
   let applied: number[] = [];
+  // Held across the check below too: a verify-failed open goes back to the same copy a migration-failed one would.
+  let restore: SnapshotInfo | null = null;
   if (pending.length) {
-    const restore = await takeSnapshot({ database, snapshots, version, onStage });
+    const copy = await takeSnapshot({ snapshots, bytes, version, onStage });
+    restore = copy.snapshot;
     try {
       applied = await migrate(database, migrations, {
         onProgress: (done, total, name) => onStage({ stage: 'migrating', done, total, name }),
@@ -164,7 +202,8 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
         restore,
         kind: 'migration-failed',
         headline: 'The update could not be finished.',
-        detail: say(error),
+        // The missing copy is said here, where it matters: this is the screen where the user goes looking for one.
+        detail: copy.skipped ? `${say(error)} — and no safety copy was taken first: ${copy.skipped}` : say(error),
         version: pending[0]!.version,
       });
     }
@@ -176,7 +215,7 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
     return rollback({
       snapshots,
       database,
-      restore: null,
+      restore,
       kind: 'verify-failed',
       headline: 'We checked your data after the update and something did not add up.',
       detail: problems.map((p) => `${p.kind}: ${p.detail}`).join('; '),
@@ -185,7 +224,9 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
   }
 
   try {
-    return { ok: true, app: await openAppDb(database), applied };
+    // The store rides along on the opened app: the day's copy is taken from the first idle callback after
+    // the first paint, which is the one place that knows a screen has actually appeared.
+    return { ok: true, app: { ...(await openAppDb(database)), safety: { snapshots, bytes } }, applied };
   } catch (error) {
     return { ok: false, reason: { kind: 'cannot-open', headline: 'We could not finish opening your data.', detail: say(error), exportable: true } };
   }

@@ -5,6 +5,7 @@ type Request =
   | { id: number; op: 'query'; sql: string; params: unknown[]; method: Method }
   | { id: number; op: 'script'; sql: string }
   | { id: number; op: 'export' }
+  | { id: number; op: 'snapshot' }
   | { id: number; op: 'import'; bytes: Uint8Array }
   | { id: number; op: 'wipe' };
 
@@ -18,7 +19,8 @@ const ready = (async () => {
     db.exec('PRAGMA foreign_keys = ON');
     return db;
   };
-  return { pool, open, db: open() };
+  // `sqlite3` is kept so the snapshot op can reach `capi` for the autocommit guard.
+  return { sqlite3, pool, open, db: open() };
 })();
 
 const reply = (message: unknown, transfer: Transferable[] = []) => postMessage(message, { transfer });
@@ -40,6 +42,16 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       state.db.exec(req.sql);
       reply({ id: req.id, result: null });
     } else if (req.op === 'export') {
+      const bytes = await state.pool.exportFile(FILE);
+      reply({ id: req.id, result: bytes }, [bytes.buffer]);
+    } else if (req.op === 'snapshot') {
+      /*
+       * A file copy, taken between statements. The SAH pool has no WAL (importDb even rewrites the header
+       * to force it off), so the file is complete and self-consistent whenever no transaction is open —
+       * and the worker handles one request at a time, behind the Database mutex. The autocommit check is
+       * the belt: 0 means a transaction is in flight and the bytes would be a torn read.
+       */
+      if (!state.sqlite3.capi.sqlite3_get_autocommit(state.db)) throw new Error('busy');
       const bytes = await state.pool.exportFile(FILE);
       reply({ id: req.id, result: bytes }, [bytes.buffer]);
     } else if (req.op === 'import') {

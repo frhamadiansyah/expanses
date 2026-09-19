@@ -2,6 +2,7 @@ import { expenseLines } from '@expanses/core';
 import {
   createAccount,
   createDatabase,
+  databaseVersion,
   LATEST_VERSION,
   listAccounts,
   migrate,
@@ -10,13 +11,24 @@ import {
   postTransaction,
 } from '@expanses/db';
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NO_SNAPSHOTS, openSafely, type OpenStage } from './open';
+import { memorySnapshots } from './snapshots';
 
 let executor: NodeExecutor | undefined;
+/** Every extra engine a test starts, closed whatever the test did. */
+const spares: NodeExecutor[] = [];
+const spare = (): NodeExecutor => {
+  const made = createNodeExecutor();
+  spares.push(made);
+  return made;
+};
+
 afterEach(() => {
+  vi.useRealTimers();
   executor?.close();
   executor = undefined;
+  while (spares.length) spares.pop()!.close();
 });
 
 function opened(migrations: Migration[] = MIGRATIONS) {
@@ -86,7 +98,7 @@ describe('openSafely', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reason.kind).toBe('migration-failed');
-      expect(result.reason.rolledBack).toBe(false); // no snapshot store yet; Task 7 makes this true
+      expect(result.reason.rolledBack).toBe(false); // NO_SNAPSHOTS: nothing was kept, so nothing was undone
       expect(result.reason.exportable).toBe(true);
     }
   });
@@ -116,5 +128,70 @@ describe('openSafely', () => {
     });
     expect(second.ok).toBe(false);
     if (!second.ok) expect(second.reason.kind).toBe('verify-failed');
+  });
+
+  it('copies the database before it migrates, and only when there is something to migrate', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    const store = memorySnapshots();
+    await openSafely({ database, snapshots: store, onStage: () => undefined });
+    const [first] = await store.list();
+    expect(first).toBeUndefined(); // a brand-new database has nothing worth copying
+
+    // Now a real upgrade: stop at 44, then open with the full list.
+    executor.close();
+    executor = createNodeExecutor();
+    const older = createDatabase(executor);
+    await migrate(older, MIGRATIONS.filter((m) => m.version <= 44));
+    const store2 = memorySnapshots();
+    const result = await openSafely({ database: older, snapshots: store2, onStage: () => undefined });
+    expect(result.ok).toBe(true);
+    const [snapshot] = await store2.list();
+    expect(snapshot).toMatchObject({ reason: 'before-migration', schemaVersion: 44 });
+    // The copy really is the database as it was — version 44 — while the live one has moved on to this build's newest.
+    const copy = createDatabase(spare());
+    await copy.importBytes(await store2.read(snapshot!.file));
+    expect(await databaseVersion(copy)).toBe(44);
+    expect(await databaseVersion(older)).toBe(LATEST_VERSION);
+  });
+
+  it('opens anyway when no copy can be taken, and says so if the update then fails', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database, MIGRATIONS.filter((m) => m.version <= 44));
+
+    const boom: Migration = { version: LATEST_VERSION + 53, name: 'boom', sql: 'INSERT INTO nope (x) VALUES (1);' };
+    const result = await openSafely({ database, migrations: [...MIGRATIONS, boom], snapshots: NO_SNAPSHOTS, onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    // A store that refuses is never a wall — but the user is told there is nothing to go back to.
+    if (!result.ok) expect(result.reason.detail).toContain('no safety copy was taken first');
+  });
+
+  it('keeps two copies and prunes the rest, and never hands back one that is gone', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+    const store = memorySnapshots();
+    const bytes = await database.exportBytes();
+
+    // Three in a row, on three different days, so the names cannot collide the way same-second copies do.
+    vi.useFakeTimers();
+    const written = [];
+    for (const takenAt of ['2026-09-16T10:00:00.000Z', '2026-09-17T10:00:00.000Z', '2026-09-18T10:00:00.000Z']) {
+      vi.setSystemTime(new Date(takenAt));
+      written.push(await store.write(bytes, 'daily', LATEST_VERSION));
+    }
+    vi.useRealTimers();
+
+    const kept = await store.list();
+    expect(kept.map((s) => s.file)).toEqual([written[2]!.file, written[1]!.file]);
+    await expect(store.read(written[0]!.file)).rejects.toThrow(/no longer on this device/);
+  });
+
+  it('refuses a copy that does not read back as the database it was given', async () => {
+    const store = memorySnapshots();
+    await expect(store.write(new TextEncoder().encode('not a database at all'), 'daily', LATEST_VERSION)).rejects.toThrow(/did not verify/);
+    // Nothing is advertised that is not there: a failed copy leaves the manifest exactly as it was.
+    expect(await store.list()).toEqual([]);
   });
 });

@@ -1,8 +1,9 @@
 import { setActiveBook } from '@expanses/db';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AppDb } from '../db/bootstrap';
+import { scheduleDailyCopy } from '../db/snapshots';
 import { type AppState, AppContext } from './context';
 import { router } from './router';
 
@@ -13,6 +14,12 @@ export function App({ app }: { app: AppDb }) {
   // The open workspace is state rather than something read once at startup, so choosing another one re-reads
   // every book-scoped screen without reloading the app.
   const [bookId, setBookId] = useState(app.ws.bookId);
+  // The day's safety copy, queued for the first idle moment after this screen has painted. It never
+  // blocks a paint, and it is what stands behind "Restore the last good copy" on a device that has not
+  // had an update in months.
+  useEffect(() => {
+    if (app.safety) scheduleDailyCopy(app.safety);
+  }, [app.safety]);
   const value = useMemo<AppState>(
     () => ({
       ...app,

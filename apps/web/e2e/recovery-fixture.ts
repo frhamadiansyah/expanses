@@ -9,6 +9,40 @@ export const CORRUPT_HEADLINE = 'Part of your data would not read';
 /** The one place the export button is named, so a copy change moves one line. */
 export const EXPORT_BUTTON = 'Download a copy of my data';
 
+/** The safety copies sitting in `expanses-safety/` right now, by name, read from the page itself. */
+export function safetyCopies(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle('expanses-safety').catch(() => null);
+    if (!dir) return [];
+    const found: string[] = [];
+    for await (const entry of dir.values()) if (entry.name.endsWith('.sqlite3')) found.push(entry.name);
+    return found;
+  });
+}
+
+/**
+ * Waits for the day's copy to land, and answers with its name. It is taken in an idle callback after the
+ * first paint, deliberately, so it is never there the instant a screen appears — a test that assumes
+ * otherwise is a flake waiting to happen.
+ */
+export async function waitForSafetyCopy(page: Page): Promise<string> {
+  await expect.poll(() => safetyCopies(page), { timeout: 20_000 }).not.toHaveLength(0);
+  return (await safetyCopies(page))[0]!;
+}
+
+/**
+ * Throws away the copies this origin holds, so the next open takes a fresh one. Only a test needs this:
+ * the day's copy is taken once per calendar day, and a test that wants a copy of what it has *just*
+ * entered has to look like a device that has not had one today.
+ */
+export async function forgetSafetyCopies(page: Page) {
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    await root.removeEntry('expanses-safety', { recursive: true }).catch(() => undefined);
+  });
+}
+
 export async function addBank(page: Page, name: string, balance: string) {
   await page.goto('/accounts');
   await page.getByLabel('Name', { exact: true }).fill(name);

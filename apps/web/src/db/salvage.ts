@@ -1,4 +1,5 @@
 import { createWorker } from './bootstrap';
+import { SAFETY_DIR } from './snapshots';
 
 /** The first 16 bytes of every SQLite file: "SQLite format 3" and a NUL. */
 const MAGIC = 'SQLite format 3\0';
@@ -90,14 +91,19 @@ export async function restoreBytes(bytes: Uint8Array): Promise<void> {
  * Removes everything this app stores on the device, at the user's explicit request and nowhere else.
  * The engine is asked first, because it holds the slot files open; if it will not start, the directory
  * itself is removed, so "start fresh" still works on the device where opening is what breaks.
+ *
+ * Both directories go. The pool's own wipe cannot reach `expanses-safety/` — it is deliberately a sibling,
+ * outside everything the VFS owns — and a clean slate that quietly kept two copies of the data the user
+ * just asked to be rid of would be a lie. The dialog in front of this already forces a backup first.
  */
 export async function wipeEverything(directory = '.expanses'): Promise<void> {
+  const root = navigator.storage?.getDirectory ? await navigator.storage.getDirectory() : null;
   try {
     await askWorker({ op: 'wipe' });
-    return;
   } catch (error) {
-    if (!navigator.storage?.getDirectory) throw error;
-    const root = await navigator.storage.getDirectory();
+    if (!root) throw error;
     await root.removeEntry(directory, { recursive: true });
   }
+  // Best effort, and after the pool: a device with no copies is not a failure to start fresh.
+  await root?.removeEntry(SAFETY_DIR, { recursive: true }).catch(() => undefined);
 }
