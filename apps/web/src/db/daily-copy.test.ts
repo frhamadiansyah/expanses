@@ -48,7 +48,7 @@ describe('the day’s safety copy', () => {
      * not have — and on a device holding a block, that is every daily copy it ever takes.
      */
     expect(copy?.schemaVersion).toBe(LATEST_VERSION - 1);
-    expect(copy?.file).toContain(`-v${LATEST_VERSION - 1}.`);
+    expect(copy?.file).toContain(`-v${LATEST_VERSION - 1}-daily.`);
     expect(copy?.reason).toBe('daily');
 
     // And once a session, whatever else mounts: React's StrictMode mounts twice in development, and two

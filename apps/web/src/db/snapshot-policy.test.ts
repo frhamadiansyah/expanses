@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { dailyDue, keepOne, keepTwo, parseSnapshotName, roomFor, type SnapshotInfo, snapshotName } from './snapshot-policy';
 
 const snap = (takenAt: string, reason: SnapshotInfo['reason'] = 'daily'): SnapshotInfo => ({
-  file: snapshotName(takenAt, 46),
+  file: snapshotName(takenAt, 46, reason),
   takenAt,
   schemaVersion: 46,
   bytes: 1_372_160,
@@ -11,9 +11,28 @@ const snap = (takenAt: string, reason: SnapshotInfo['reason'] = 'daily'): Snapsh
 
 describe('names', () => {
   it('writes a name that can be read back', () => {
-    expect(snapshotName('2026-09-18T09:12:00.412Z', 46)).toBe('snapshot-20260918T091200Z-v46.sqlite3');
-    expect(parseSnapshotName('snapshot-20260918T091200Z-v46.sqlite3')).toEqual({ takenAt: '2026-09-18T09:12:00.000Z', schemaVersion: 46 });
+    expect(snapshotName('2026-09-18T09:12:00.412Z', 46, 'before-migration')).toBe('snapshot-20260918T091200Z-v46-before-migration.sqlite3');
+    expect(parseSnapshotName('snapshot-20260918T091200Z-v46-before-migration.sqlite3')).toEqual({
+      takenAt: '2026-09-18T09:12:00.000Z',
+      schemaVersion: 46,
+      reason: 'before-migration',
+    });
     expect(parseSnapshotName('sample.sqlite3')).toBeNull();
+  });
+
+  /**
+   * The reason is in the name so that the directory can answer without the manifest. Read back as
+   * `before-migration`, a copy taken before a restore would be offered as "the last good copy" on the one
+   * device where the manifest is what broke — and that copy is a copy of whatever was just replaced.
+   */
+  it('carries why the copy was taken, and still reads a name written before it did', () => {
+    for (const reason of ['before-migration', 'before-restore', 'before-start-fresh', 'daily'] as const) {
+      expect(parseSnapshotName(snapshotName('2026-09-18T09:12:00.412Z', 46, reason))?.reason).toBe(reason);
+    }
+    // An older build's name: still a copy, still restorable, only the reason unknown.
+    expect(parseSnapshotName('snapshot-20260918T091200Z-v46.sqlite3')).toMatchObject({ schemaVersion: 46, reason: null });
+    // And nothing that merely looks close is taken for one of ours.
+    expect(parseSnapshotName('snapshot-20260918T091200Z-v46-before-lunch.sqlite3')).toBeNull();
   });
 });
 

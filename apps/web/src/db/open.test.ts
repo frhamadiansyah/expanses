@@ -15,6 +15,7 @@ import {
 } from '@expanses/db';
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { lastGoodCopy } from '../features/recovery/recovery-copy';
 import { NO_SNAPSHOTS, openSafely, type OpenStage, quickCheckAffordable, QUICK_CHECK_LIMIT_BYTES } from './open';
 import { snapshotName } from './snapshot-policy';
 import { MANIFEST, memorySnapshots, restoreSnapshot } from './snapshots';
@@ -211,6 +212,48 @@ describe('openSafely', () => {
     expect(asked).toEqual(['quick_check']);
   });
 
+  /**
+   * The guard above, wired: the decision is only worth anything if the opener actually asks it. A pure
+   * function with a test beside it proved the arithmetic and nothing else — deleting `quickCheckAffordable`
+   * from `open.ts` left every unit test in this app green, so "size-guarded" was a claim about code nobody
+   * was checking. This test drives `openSafely` against a database that *says* it is past the limit.
+   */
+  it('asks a database too big to check on the way in nothing at all, and a smaller one the usual question', async () => {
+    executor = createNodeExecutor();
+    const inner = executor;
+    const asked: string[] = [];
+    // The size the file claims, in pages of `PAGE`. Both are derived from the exported limit: a literal here
+    // would go stale the day the limit moves, and pass for the wrong reason.
+    const PAGE = 4096;
+    let pages = Math.ceil(QUICK_CHECK_LIMIT_BYTES / PAGE) + 1;
+    const watching: SqlExecutor = {
+      query: (sql, params, method) => {
+        const pragma = /PRAGMA\s+(quick_check|integrity_check)/i.exec(sql);
+        if (pragma) asked.push(pragma[1]!.toLowerCase());
+        // The two pragmas the size guard reads, answered for a file of the size this test wants.
+        if (/PRAGMA\s+page_count/i.test(sql)) return Promise.resolve([[pages]]);
+        if (/PRAGMA\s+page_size/i.test(sql)) return Promise.resolve([[PAGE]]);
+        return inner.query(sql, params, method);
+      },
+      execScript: (sql) => inner.execScript(sql),
+      exportBytes: () => inner.exportBytes(),
+      importBytes: (bytes) => inner.importBytes(bytes),
+    };
+    const database = createDatabase(watching);
+    await migrate(database);
+
+    // One byte past the limit: the check that sits before first paint is given up, exactly as §11.4 allows.
+    await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(asked).toEqual([]);
+
+    // And the same launch of the same database, one page smaller, is still checked — so the empty answer
+    // above is the guard's doing and not a test that quietly stopped opening anything.
+    asked.length = 0;
+    pages = Math.floor(QUICK_CHECK_LIMIT_BYTES / PAGE) - 1;
+    await openSafely({ database, snapshots: memorySnapshots(), onStage: () => undefined });
+    expect(asked).toEqual(['quick_check']);
+  });
+
   it('gives the pre-open check up on a database too big to check before first paint', () => {
     // The guard §11.4 asked for, as a decision anyone can read: a file this side of the limit is checked,
     // one past it waits for an update to earn the wait, and one that will not say is checked regardless.
@@ -393,6 +436,36 @@ describe('openSafely', () => {
     if (second.ok) expect(second.app.update).toMatchObject({ blocked: NEXT });
   });
 
+  /**
+   * A block is only worth having if the app can really run at the version below it.
+   *
+   * `allowed` stops one short of the blocked update, and then every repo in this build — written against
+   * this build's schema — runs on a file one version behind it. That holds for today's newest migration
+   * because it only adds tables, and nothing said so out loud: the day someone adds a column an opening
+   * read selects, a block on that migration stops being "open one version behind" and becomes
+   * `cannot-open`, on the one device that has already had an update go wrong. So this opens with the real
+   * newest migration blocked and then uses the app: seeding, the catalogue sync, an account written and
+   * read back. Nothing here is a literal — it is whatever this build's newest migration happens to be.
+   */
+  it('opens and works one version behind, when this build’s own newest update is the blocked one', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    const store = memorySnapshots();
+    // The shape a device is left in by an update of this build that failed once and was put back.
+    await store.block(LATEST_VERSION, LATEST_VERSION);
+
+    const result = await openSafely({ database, snapshots: store, onStage: () => undefined });
+
+    expect(result.ok).toBe(true);
+    expect(await databaseVersion(database)).toBe(LATEST_VERSION - 1);
+    if (!result.ok) return;
+    expect(result.app.update).toMatchObject({ blocked: LATEST_VERSION });
+    // Not merely open: usable. `openAppDb` has already seeded categories and synced the catalogue against
+    // this older schema; a write and a read prove the repos of this build still speak to it.
+    const account = await createAccount(database, result.app.ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    expect((await listAccounts(database, result.app.ws)).some((a) => a.id === account.id)).toBe(true);
+  });
+
   it('lifts the block when a build arrives with migrations past the one that failed, and forgets it', async () => {
     const store = memorySnapshots();
     await store.block(NEXT, LATEST_VERSION);
@@ -448,6 +521,35 @@ describe('openSafely', () => {
     expect(await store.blockedVersion(LATEST_VERSION)).toBe(null);
     expect(await store.blockedVersion(LATEST_VERSION + 1)).toBe(null);
     expect(await store.blockedVersion()).toBe(null); // dropped on sight, not merely answered around
+  });
+
+  /**
+   * Spec §5.1 check 3, the one the branch had never implemented: the update landed.
+   *
+   * `migrate` writes each version row inside the same transaction as the change it makes, so this is not
+   * how an update ordinarily goes wrong — which is exactly why nothing else would catch it. A file left
+   * disagreeing with itself about what has run gets migrated again on the next launch, over a schema that
+   * already has the change in it, and fails then: long after the copy that could have put it back was
+   * pruned. Caught here, the copy is minutes old.
+   */
+  it('puts the database back when the update finishes without recording everything it ran', async () => {
+    const { database } = await seeded();
+    const before = await database.exportBytes();
+    // A migration that takes an earlier version's row with it: the schema is changed, the record is not.
+    const forgetful: Migration = { version: NEXT, name: 'forgetful', sql: 'DELETE FROM schema_migrations WHERE version = 44;' };
+    const store = memorySnapshots();
+
+    const result = await openSafely({ database, migrations: [...MIGRATIONS, forgetful], snapshots: store, onStage: () => undefined });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toMatchObject({ kind: 'verify-failed', rolledBack: true });
+      expect(result.reason.detail).toContain('44');
+    }
+    // Put back byte for byte, at the version it was at before the run.
+    expect(await databaseVersion(database)).toBe(45);
+    expect(Array.from(await database.exportBytes())).toEqual(Array.from(before));
+    expect(await store.blockedVersion()).toBe(46);
   });
 
   it('says so plainly when the rollback itself cannot be done', async () => {
@@ -635,6 +737,35 @@ describe('the snapshot store', () => {
     expect(files.has(orphan)).toBe(false);
     expect(files.has(older.file)).toBe(false);
     expect((await store.list()).map((s) => s.file).sort()).toEqual([fresh.file, newest.file].sort());
+  });
+
+  /**
+   * The seam between "orphans are listed" and "a copy taken before a restore is never offered as the last
+   * good one". Both are right on their own; together they had a hole. `present()` surfaces files the
+   * manifest does not name, and the name used to carry no reason, so every orphan was reported as
+   * `before-migration` — and a `before-restore` copy whose manifest entry was lost walked straight back
+   * into the candidates for "Restore the last good copy". That copy is a copy of whatever was replaced: on
+   * the device where the manifest is the thing that broke, the button would have handed back the corruption.
+   */
+  it('remembers why an orphaned copy was taken, so the undo of a restore is never offered as the last good copy', async () => {
+    const { bytes, files, store } = await twoCopies();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-19T10:00:00.000Z'));
+    // The newest copy on the device, and the one kind of copy that must never be restored by the big button.
+    const undo = await store.write(bytes, 'before-restore', LATEST_VERSION);
+    vi.useRealTimers();
+
+    // The manifest goes, exactly as a crash or a half-written file takes it. Everything is an orphan now.
+    files.delete(MANIFEST);
+    const listed = await store.list();
+
+    // Still listed and still restorable by hand — that promise is untouched.
+    expect(listed.map((s) => s.file)).toContain(undo.file);
+    expect(listed.find((s) => s.file === undo.file)?.reason).toBe('before-restore');
+    // But not the one the screen offers, even though it is the newest thing on the device.
+    const good = lastGoodCopy(listed);
+    expect(good).not.toBeNull();
+    expect(good!.file).not.toBe(undo.file);
   });
 
   it('keeps a copy of what Restore is about to overwrite', async () => {

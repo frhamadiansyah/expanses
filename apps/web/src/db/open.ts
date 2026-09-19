@@ -374,6 +374,41 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
         build,
       });
     }
+
+    /*
+     * Spec §5.1 check 3 — the update landed.
+     *
+     * `migrate` records each version in the same transaction as the change it makes, so this is not the
+     * usual way an update goes wrong; it is the one thing neither check above can see. A file whose
+     * `schema_migrations` no longer agrees with what just ran would be migrated again on the next launch,
+     * over a schema that already holds the change, and would fail *then* — with the copy taken minutes ago
+     * long gone — rather than here, where it can still be put back.
+     *
+     * Asked against `allowed` rather than the whole build, because the spec's "equals this build's highest"
+     * is not the question on a device holding a block: an update this open deliberately skipped has not
+     * gone missing. What must be true is narrower and always true: nothing this open was allowed to apply
+     * is still outstanding.
+     */
+    let outstanding: string | null = null;
+    try {
+      const left = await pendingMigrations(database, allowed);
+      if (left.length) outstanding = `the update finished but did not record ${left.map((m) => m.version).join(', ')}`;
+    } catch (error) {
+      // Unreadable is not "fine": the versions are the one record of what this open did to the file.
+      outstanding = `the versions this update recorded could not be read back: ${say(error)}`;
+    }
+    if (outstanding) {
+      return rollback({
+        snapshots,
+        database,
+        restore,
+        kind: 'verify-failed',
+        headline: 'We checked your data after the update and something did not add up.',
+        detail: outstanding,
+        version: applied[0]!,
+        build,
+      });
+    }
   }
 
   try {
@@ -392,6 +427,14 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
       applied,
     };
   } catch (error) {
-    return { ok: false, reason: { kind: 'cannot-open', headline: 'We could not finish opening your data.', detail: say(error), exportable: true } };
+    /*
+     * A skipped update is worth naming here. The app is running at the version below a blocked one, and
+     * every repo in this build is written against this build's schema — which holds today, and is enforced
+     * by a test that opens with this build's own newest update blocked and then uses the app. If a future
+     * migration ever adds a column an opening read selects, the failure lands exactly here, and the one
+     * fact that explains it must not be missing from the Details a user copies into a bug report.
+     */
+    const detail = blocked === null ? say(error) : `${say(error)} — running at update ${blocked - 1}, with ${blocked} skipped after it failed once`;
+    return { ok: false, reason: { kind: 'cannot-open', headline: 'We could not finish opening your data.', detail, exportable: true } };
   }
 }

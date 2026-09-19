@@ -103,16 +103,24 @@ async function readManifest(slot: Slot): Promise<Manifest | null> {
 
 /**
  * What is on the device, read from the file names alone. This is the fallback for a missing or unreadable
- * manifest: a copy must be restorable even when the manifest is the thing that broke. The name does not
- * carry the reason — only the date and the schema version — so the reason is reported as the common one,
- * `before-migration`, which is also the conservative choice for pruning (it claims no grace period).
+ * manifest: a copy must be restorable even when the manifest is the thing that broke.
+ *
+ * The name carries why the copy was taken, so this answer is the manifest's answer and not a guess. Only a
+ * name written before reasons were part of one falls back to the common reason, `before-migration`, which
+ * is also the conservative choice for pruning (it claims no grace period).
  */
 async function fromDirectory(slot: Slot): Promise<SnapshotInfo[]> {
   const found: SnapshotInfo[] = [];
   for (const file of await slot.names()) {
     const parsed = parseSnapshotName(file);
     if (!parsed) continue;
-    found.push({ file, reason: 'before-migration', schemaVersion: parsed.schemaVersion, bytes: (await slot.size(file)) ?? 0, takenAt: parsed.takenAt });
+    found.push({
+      file,
+      reason: parsed.reason ?? 'before-migration',
+      schemaVersion: parsed.schemaVersion,
+      bytes: (await slot.size(file)) ?? 0,
+      takenAt: parsed.takenAt,
+    });
   }
   return found;
 }
@@ -171,7 +179,7 @@ function storeOver(slot: Slot): SnapshotStore {
       if (room === 'no') throw new SnapshotSpaceError();
 
       const takenAt = new Date().toISOString();
-      const file = snapshotName(takenAt, schemaVersion);
+      const file = snapshotName(takenAt, schemaVersion, reason);
       await slot.write(file, bytes);
 
       // Read back off the device, not trusted because the write resolved.

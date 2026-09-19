@@ -21,29 +21,43 @@ export interface SnapshotInfo {
   takenAt: string;
 }
 
-const NAME_PATTERN = /^snapshot-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-v(\d+)\.sqlite3$/;
+const REASONS: SnapshotReason[] = ['before-migration', 'before-restore', 'before-start-fresh', 'daily'];
+
+const NAME_PATTERN = new RegExp(`^snapshot-(\\d{4})(\\d{2})(\\d{2})T(\\d{2})(\\d{2})(\\d{2})Z-v(\\d+)(?:-(${REASONS.join('|')}))?\\.sqlite3$`);
 
 /**
- * The file name for a copy taken at `takenAt` (ISO, any precision) of schema `schemaVersion`.
- * Sub-second precision is dropped: two copies taken within the same second collide on purpose,
+ * The file name for a copy taken at `takenAt` (ISO, any precision) of schema `schemaVersion`, for
+ * `reason`. Sub-second precision is dropped: two copies taken within the same second collide on purpose,
  * since a caller writing a second one that fast is almost certainly retrying the same copy.
+ *
+ * The reason is in the name because the directory has to be able to answer without the manifest. A copy
+ * whose manifest entry is lost is still listed and still restorable — that is the point of the fallback —
+ * and until the name carried it, every such copy was reported as the common reason, `before-migration`.
+ * That is the one answer that must never be guessed: a `before-restore` copy is the undo net for a restore
+ * that went wrong, so reading it as `before-migration` put a copy of whatever was just replaced back into
+ * the running for "the last good copy". A name written by an older build has no reason in it and still
+ * parses; only the reason is then unknown.
  */
-export function snapshotName(takenAt: string, schemaVersion: number): string {
+export function snapshotName(takenAt: string, schemaVersion: number, reason?: SnapshotReason): string {
   const compact = new Date(takenAt)
     .toISOString()
     .slice(0, 19)
     .replace(/[-:]/g, '');
-  return `snapshot-${compact}Z-v${schemaVersion}.sqlite3`;
+  return `snapshot-${compact}Z-v${schemaVersion}${reason ? `-${reason}` : ''}.sqlite3`;
 }
 
-/** The inverse of {@link snapshotName}, or `null` for anything that is not one of our names. */
-export function parseSnapshotName(file: string): { takenAt: string; schemaVersion: number } | null {
+/**
+ * The inverse of {@link snapshotName}, or `null` for anything that is not one of our names. `reason` is
+ * `null` for a name written before reasons were part of one.
+ */
+export function parseSnapshotName(file: string): { takenAt: string; schemaVersion: number; reason: SnapshotReason | null } | null {
   const match = NAME_PATTERN.exec(file);
   if (!match) return null;
-  const [, year, month, day, hour, minute, second, version] = match;
+  const [, year, month, day, hour, minute, second, version, reason] = match;
   return {
     takenAt: `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`,
     schemaVersion: Number(version),
+    reason: (reason as SnapshotReason | undefined) ?? null,
   };
 }
 
