@@ -4,6 +4,7 @@ import {
   type Database,
   databaseVersion,
   futureVersions,
+  type IntegrityProblem,
   migrate,
   MIGRATIONS,
   type Migration,
@@ -238,16 +239,21 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
   let applied: number[] = [];
   // Held across the check below too: a verify-failed open goes back to the same copy a migration-failed one would.
   let restore: SnapshotInfo | null = null;
-  // Which migration is in the engine's hands right now, so a failure blocks the one that broke rather than
-  // the whole run: `migrate` reports the count finished before each step, and that indexes this same list.
+  /*
+   * Which migration is in the engine's hands right now, so a failure blocks the one that broke rather than
+   * the whole run. It is the version `migrate` names as it picks each step up, never this list indexed by
+   * the count finished: `migrate` recomputes its own list of work — a version recorded under a name this
+   * build does not use is dropped and run again — so the two lists can differ in length, and counting into
+   * this one would block the migration *after* the culprit and let the broken one run again on the next open.
+   */
   let attempting = pending[0]?.version ?? 0;
   if (pending.length) {
     const copy = await takeSnapshot({ snapshots, bytes, version, onStage });
     restore = copy.snapshot;
     try {
       applied = await migrate(database, allowed, {
-        onProgress: (done, total, name) => {
-          attempting = pending[done]?.version ?? attempting;
+        onProgress: (done, total, name, migrationVersion) => {
+          attempting = migrationVersion;
           onStage({ stage: 'migrating', done, total, name });
         },
       });
@@ -267,7 +273,18 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
   }
 
   onStage({ stage: 'checking' });
-  const problems = await checkDatabase(database, { deep: applied.length > 0 });
+  /*
+   * A check that will not answer counts as a check that failed. `checkDatabase` catches its own, but the
+   * belt is worth the braces here: whatever escapes it, the one thing that must not happen is a throw
+   * sailing past the rollback below, leaving the user with the half-updated file, nothing blocked, and a
+   * screen that says only that we could not open their data.
+   */
+  let problems: IntegrityProblem[];
+  try {
+    problems = await checkDatabase(database, { deep: applied.length > 0 });
+  } catch (error) {
+    problems = [{ kind: 'ledger-unreadable', detail: say(error) }];
+  }
   if (problems.length) {
     return rollback({
       snapshots,

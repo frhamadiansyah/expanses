@@ -5,7 +5,7 @@ import { checkLedgerIntegrity } from './ledger';
 import { contextOf, listWorkspaces } from './workspaces';
 
 export interface IntegrityProblem {
-  kind: 'quick_check' | 'integrity_check' | 'unbalanced' | 'orphan-entries' | 'orphan-transactions';
+  kind: 'quick_check' | 'integrity_check' | 'unbalanced' | 'orphan-entries' | 'orphan-transactions' | 'ledger-unreadable';
   /** One line, safe to show under "Details". Never a stack trace. */
   detail: string;
 }
@@ -65,15 +65,37 @@ export async function checkLedgerHealth(database: Database, ws: WorkspaceContext
   };
 }
 
-/** Everything, in the order that costs least: the file first, then each workspace's ledger. */
+/**
+ * Everything, in the order that costs least: the file first, then each workspace's ledger.
+ *
+ * Like `checkStructure`, this answers rather than throws. A ledger table that an update dropped, renamed
+ * or reshaped makes these queries fail, and that *is* the finding — the one this check exists to catch. A
+ * caller that undoes a bad update on a failed check has to be given the failure as a problem, or the throw
+ * would sail past its rollback and leave the half-updated file in place.
+ */
 export async function checkDatabase(database: Database, options: { deep?: boolean } = {}): Promise<IntegrityProblem[]> {
   const structure = await checkStructure(database, options.deep ? 'integrity_check' : 'quick_check');
   // A malformed file cannot be asked anything else; asking would only throw.
   if (structure.length) return structure;
 
   const problems: IntegrityProblem[] = [];
-  for (const workspace of await listWorkspaces(database)) {
-    const health = await checkLedgerHealth(database, contextOf(workspace));
+  let workspaces: Awaited<ReturnType<typeof listWorkspaces>>;
+  try {
+    workspaces = await listWorkspaces(database);
+  } catch (error) {
+    // Without the workspace list there is no ledger to check: this is the whole answer, not one entry in it.
+    return [{ kind: 'ledger-unreadable', detail: message(error) }];
+  }
+
+  for (const workspace of workspaces) {
+    let health: LedgerHealth;
+    try {
+      health = await checkLedgerHealth(database, contextOf(workspace));
+    } catch (error) {
+      // One workspace that cannot be read is a problem, not the end of the check: the rest are still asked.
+      problems.push({ kind: 'ledger-unreadable', detail: message(error) });
+      continue;
+    }
     if (health.unbalanced.length) {
       problems.push({
         kind: 'unbalanced',

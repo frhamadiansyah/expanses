@@ -84,4 +84,27 @@ describe('checkDatabase', () => {
     expect(problems.map((p) => p.kind)).toEqual(['orphan-transactions']);
     expect(problems[0]!.detail).toContain(id);
   });
+
+  it('answers rather than throws when a ledger table is not there to read', async () => {
+    const h = await household();
+    await h.spend(120_000);
+    // What a broken update leaves behind: the file itself is sound, the ledger is not there to ask.
+    await h.database.execScript('DROP TABLE entries');
+
+    const problems = await checkDatabase(h.database);
+    expect(problems.map((p) => p.kind)).toEqual(['ledger-unreadable']);
+    expect(problems[0]!.detail).toMatch(/no such table/i);
+  });
+
+  it('answers rather than throws when the workspace list itself cannot be read', async () => {
+    const h = await household();
+    await h.spend(120_000);
+    // The list of workspaces is the first thing the ledger check asks for; take it away and even that throws.
+    await h.database.execScript('PRAGMA foreign_keys = OFF');
+    await h.database.execScript('DROP TABLE workspaces');
+    await h.database.execScript('PRAGMA foreign_keys = ON');
+
+    const problems = await checkDatabase(h.database);
+    expect(problems.map((p) => p.kind)).toEqual(['ledger-unreadable']);
+  });
 });

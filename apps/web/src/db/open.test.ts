@@ -230,6 +230,33 @@ describe('openSafely', () => {
     expect(await store.blockedVersion()).toBe(NEXT);
   });
 
+  it('blocks the update that threw, not the one after it, when this build re-runs a renamed migration', async () => {
+    const { database } = await seeded();
+    /*
+     * A build that renames 45. `migrate` drops the row recorded under the old name and runs its own 45
+     * again, so its list of work is one longer than `pendingMigrations` — the skew that used to make the
+     * block land on the migration *above* the culprit, and let the broken one run a second time.
+     */
+    const renamed: Migration = { version: 45, name: 'account_types_v2', sql: 'CREATE TABLE IF NOT EXISTS account_types_marker (x TEXT);' };
+    const boom: Migration = { version: NEXT, name: 'boom', sql: 'INSERT INTO nope (x) VALUES (1);' };
+    // One more past the broken one, so an off-by-one has somewhere wrong to land.
+    const after: Migration = { version: NEXT + 1, name: 'after_boom', sql: 'CREATE TABLE after_boom (x TEXT);' };
+    const migrations = [...MIGRATIONS.filter((m) => m.version !== 45), renamed, boom, after];
+    const store = memorySnapshots();
+
+    const result = await openSafely({ database, migrations, snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'migration-failed', rolledBack: true });
+    // The version the engine was holding when it threw, named by the migration itself.
+    expect(await store.blockedVersion()).toBe(NEXT);
+
+    // And the point of naming it correctly: the next open never reaches the broken one again.
+    const stages: OpenStage[] = [];
+    const second = await openSafely({ database, migrations, snapshots: store, onStage: (s) => stages.push(s) });
+    expect(second.ok).toBe(true);
+    expect(stages.some((s) => s.stage === 'migrating' && s.name === 'boom')).toBe(false);
+  });
+
   it('puts the database back when the update finishes but the ledger does not add up', async () => {
     const { database, ws } = await seeded();
     const wrecker: Migration = { version: NEXT, name: 'wrecker', sql: 'DELETE FROM entries WHERE amount_minor < 0;' };
@@ -241,6 +268,26 @@ describe('openSafely', () => {
     expect(await checkLedgerHealth(database, ws)).toEqual({ unbalanced: [], orphanEntries: [], orphanTransactions: [] });
     expect(await databaseVersion(database)).toBe(45);
     // Nothing in the batch is tried again: which of them wrecked the ledger is not knowable from here.
+    expect(await store.blockedVersion()).toBe(46);
+  });
+
+  it('puts the database back when the check after the update throws instead of answering', async () => {
+    const { database, ws } = await seeded();
+    const before = await database.exportBytes();
+    /*
+     * The check reads the ledger, so an update that takes a ledger table away does not hand back problems —
+     * it throws. A throw has to be the same outcome as a failed check: put back, blocked, and said plainly.
+     * Left unguarded it escaped the rollback altogether and left a half-updated file behind.
+     */
+    const wrecker: Migration = { version: NEXT, name: 'wrecker', sql: 'DROP TABLE entries;' };
+    const store = memorySnapshots();
+
+    const result = await openSafely({ database, migrations: [...MIGRATIONS, wrecker], snapshots: store, onStage: () => undefined });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'verify-failed', rolledBack: true });
+    expect(await databaseVersion(database)).toBe(45);
+    expect(Array.from(await database.exportBytes())).toEqual(Array.from(before));
+    expect(await checkLedgerHealth(database, ws)).toEqual({ unbalanced: [], orphanEntries: [], orphanTransactions: [] });
     expect(await store.blockedVersion()).toBe(46);
   });
 

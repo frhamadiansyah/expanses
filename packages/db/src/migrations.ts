@@ -136,8 +136,14 @@ export async function pendingMigrations(database: Database, migrations: Migratio
 }
 
 export interface MigrateOptions {
-  /** Called before each migration with (finished so far, total, the name about to run), and once at the end. */
-  onProgress?: (done: number, total: number, name: string) => void;
+  /**
+   * Called before each migration with (finished so far, total, the name about to run, its version), and
+   * once at the end. The version is reported by the migration itself rather than left to be looked up by
+   * the count: the list this walks is recomputed here — a version recorded under another name is dropped
+   * and put back into it — so a caller that indexed its own list with `done` would name the wrong one,
+   * and a caller that blocks a failed update would block a migration that never ran.
+   */
+  onProgress?: (done: number, total: number, name: string, version: number) => void;
 }
 
 /** Applies pending migrations in order, each atomically. Returns applied versions. */
@@ -170,7 +176,7 @@ export async function migrate(
   const todo = [...migrations].sort((a, b) => a.version - b.version).filter((m) => !done.has(m.version));
   const applied: number[] = [];
   for (const m of todo) {
-    options.onProgress?.(applied.length, todo.length, m.name);
+    options.onProgress?.(applied.length, todo.length, m.name, m.version);
     const script = `BEGIN IMMEDIATE;\n${m.sql}\nINSERT INTO schema_migrations (version, name, applied_at) VALUES (${m.version}, '${m.name}', '${new Date().toISOString()}');\nCOMMIT;`;
     try {
       await database.execScript(script);
@@ -181,6 +187,6 @@ export async function migrate(
     applied.push(m.version);
   }
   // A last call with the finished count, so a watching screen can show the run complete rather than stopping a step short.
-  if (todo.length) options.onProgress?.(todo.length, todo.length, todo[todo.length - 1]!.name);
+  if (todo.length) options.onProgress?.(todo.length, todo.length, todo[todo.length - 1]!.name, todo[todo.length - 1]!.version);
   return applied;
 }
