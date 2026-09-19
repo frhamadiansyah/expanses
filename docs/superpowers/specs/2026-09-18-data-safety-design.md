@@ -185,15 +185,20 @@ deleted by it).
 ```
 expanses-safety/
   manifest.json
-  snapshot-20260918T091200Z-v46.sqlite3
-  snapshot-20260917T203311Z-v46.sqlite3
+  snapshot-20260918T091200Z-v46-before-migration.sqlite3
+  snapshot-20260917T203311Z-v46-daily.sqlite3
 ```
 
-`manifest.json` is the truth; the file names are only for humans:
+`manifest.json` holds the bookkeeping, but the directory is the authority on what exists — a copy has to
+stay listable and restorable on the day `manifest.json` is itself what broke. So the name carries
+everything a decision is made on: when, at which schema version, and **why** (amended 2026-09-19). The
+reason was originally left out as "only for humans", and a copy whose manifest entry was lost then had to
+be guessed at as the common one, `before-migration` — which put a `before-restore` copy, the undo net
+holding whatever a restore replaced, back among the candidates for "Restore the last good copy".
 
 ```json
 { "snapshots": [
-  { "file": "snapshot-20260918T091200Z-v46.sqlite3", "takenAt": "2026-09-18T09:12:00.412Z",
+  { "file": "snapshot-20260918T091200Z-v46-before-migration.sqlite3", "takenAt": "2026-09-18T09:12:00.412Z",
     "schemaVersion": 46, "bytes": 1372160, "reason": "before-migration" }
 ] }
 ```
@@ -213,13 +218,14 @@ the snapshot must be listable and restorable when the worker is dead. Bytes come
 | Before a migration | Whenever `pendingMigrations()` is non-empty — every migration, not only table-rebuilding ones. At 1.4 MB a copy costs single-digit milliseconds; the asymmetry between that and a lost ledger is not close. |
 | Daily | After a successful open, at most once per calendar day, in an idle callback after the first screen has painted. Without this, "Restore the last good copy" after a corruption that no migration caused would hand back a copy from whenever the last update was. *(Not in the decisions file — see §11.)* |
 | Before restoring a file | The existing safety-copy download stays; a snapshot is taken as well, because a download the user cannot find is not a safety net. |
-| Before "Start fresh" | Always, even though the user asked to lose it. It costs one file and it is the difference between a mistake and a catastrophe. |
+| Before "Start fresh" | **Not taken, and the reason is not written by any code path** (amended 2026-09-19). "Start fresh" deletes both `.expanses/` and `expanses-safety/` — it has to, or a clean slate would quietly keep two copies of the data the user just asked to be rid of — so a copy taken here would be destroyed by the very action that took it. What stands between a mistake and a catastrophe is the dialog in front of it: two presses, and the red button stays disabled until the user has downloaded a backup there or ticked that they already hold one. The `before-start-fresh` reason and its seven-day grace stay in the code, unwritten, for a later phase that keeps such a copy somewhere the wipe does not reach. |
 
 ### 4.3 How many, and what it costs
 
 Two are kept (the decision), pruned oldest-first immediately after a new one is written — written first,
 pruned second, so there is never a moment with zero snapshots. `before-start-fresh` is exempt from the
-prune for 7 days.
+prune for 7 days — implemented on both prune paths, and unreachable while nothing writes that reason
+(§4.2).
 
 Cost, measured against `apps/web/dev-data/sample.sqlite3` (1,372,160 bytes, 335 pages):
 
@@ -278,7 +284,14 @@ Run in this order, immediately after `migrate()` reports applied versions, befor
    - `orphanEntries` — `entries` whose `transaction_id` has no `transactions` row, or whose `account_id`
      has no `accounts` row (the decisions file names orphans explicitly; nothing checks for them today);
    - `orphanTransactions` — posted `transactions` with no `entries` at all.
-3. **The version landed** — `MAX(version)` in `schema_migrations` equals this build's highest migration.
+3. **The version landed** — nothing this open was *allowed* to apply is still outstanding
+   (`pendingMigrations(database, allowed)` is empty). Written first as "`MAX(version)` equals this build's
+   highest migration", which is not true on a device holding a blocked update: the do-not-loop guard
+   deliberately opens one version below the update it is skipping, and an update this open never attempted
+   has not gone missing. The narrower question is the one that is always true after a successful run, and
+   it still catches the case the check exists for — a file that no longer agrees with itself about what has
+   run, which would otherwise be migrated again on the next launch, over a schema that already holds the
+   change, long after the copy that could have put it back was pruned.
 
 ### 5.2 What counts as failure
 
@@ -476,8 +489,8 @@ user-chosen folder, and any server-side component.
 | Database newer than the app | Refusal screen (§6.2). No Restore, no Start fresh. | Everything, untouched, exportable. |
 | Restoring a damaged backup file | "That backup is damaged — your data on this device is untouched." | The device's data, via the worker's existing rollback to the previous bytes. |
 | Restoring a newer backup file | The §6.2 message, before adoption. | Both the device's data and the file. |
-| No room for a snapshot | "We need room to keep a copy before updating" with [Download a backup] and [Update anyway]. | Everything; the update does not start without an explicit press. |
-| User presses Start fresh | Two presses, an export or an explicit tick, and a `before-start-fresh` snapshot kept 7 days. | The snapshot, for 7 days, restorable from recovery mode. |
+| No room for a snapshot | **Amended 2026-09-19:** the screen is not built. The update runs with no copy, and says so — the opener carries "no safety copy was taken first: …" into the failure text, where a user who does hit a broken update goes looking for one. The principle that a failed safety copy must never stand between a user and their own data was judged to outweigh a gate that could keep a device with no quota out of its own app; the [Download a backup] / [Update anyway] screen belongs to a later phase. | Everything, unless the update itself then fails — in which case there is nothing to go back to, and the screen says so. |
+| User presses Start fresh | Two presses, and an export or an explicit tick. **Amended 2026-09-19:** no `before-start-fresh` snapshot is taken — the wipe removes `expanses-safety/` too, so the copy would not survive the press that took it (§4.2). | The backup the user downloaded or confirmed they already hold. Nothing on the device: that is what was asked for. |
 | Browser evicts the origin (PWA, Safari 7-day rule) | A first-run app: "It looks like this is a new start." with a prominent Restore from file. | Nothing on-device — which is what the export reminders and the iOS wrapper exist to prevent. |
 
 ## 10. Testing
@@ -519,8 +532,9 @@ Everything below is a real test in the repository, not a manual pass.
   press **Restore the last good copy**; assert the account is back. This is the whole feature in one test.
 - **Export from a broken database**: same corruption, press **Export what is there**, assert a download
   whose bytes open in better-sqlite3 (imported into the Playwright process) and contain the account.
-- **Start fresh** needs two presses and leaves a `before-start-fresh` snapshot that recovery mode can
-  still restore.
+- **Start fresh** needs two presses — the red button stays disabled until a backup has been downloaded
+  there or ticked for — and leaves an empty app with nothing of the old data on the device, neither the
+  database nor the kept copies (amended 2026-09-19; see §4.2).
 - **The newer database**: build a file in the test process with better-sqlite3 (hoisted at the repo root;
   added to `apps/web` devDependencies) — take a real export, insert `(999, 'from-the-future')` into
   `schema_migrations`, restore it through the Backup page, and assert the refusal message, that Export

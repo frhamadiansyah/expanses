@@ -1,6 +1,7 @@
 import { Link, Outlet } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
 import { useState } from 'react';
+import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
 import { usePendingDraftCount } from '../features/review/queries';
@@ -110,6 +111,8 @@ export function Layout() {
       <main className="flex-1 pb-32 md:pb-8" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="mx-auto max-w-4xl p-4 md:p-8">
           <InstallHint />
+          {/* What just happened to their data comes before the standing reminder about backing it up. */}
+          <AfterUpdateCard />
           <BackupBanner />
           <Outlet />
         </div>

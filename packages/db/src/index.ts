@@ -1,6 +1,15 @@
 export type { SqlExecutor, SqlMethod } from './executor';
 export { createDatabase, type Database, type Db } from './database';
-export { migrate, MIGRATIONS, type Migration } from './migrations';
+export {
+  databaseVersion,
+  futureVersions,
+  LATEST_VERSION,
+  migrate,
+  MIGRATIONS,
+  type Migration,
+  type MigrateOptions,
+  pendingMigrations,
+} from './migrations';
 export * as schema from './schema';
 export { inBook, ownerScope, type WorkspaceContext } from './context';
 export { DEFAULT_CATEGORIES, SYSTEM_ACCOUNTS, type SystemAccountKey } from './seed';
@@ -12,6 +21,7 @@ export * from './repos/categories';
 export * from './repos/mcc';
 export * from './repos/point-actuals';
 export * from './repos/ledger';
+export * from './repos/integrity';
 export * from './repos/fx';
 export * from './repos/reports';
 export * as pointsSchema from './schema-points';

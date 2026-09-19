@@ -14,7 +14,82 @@ import {
 } from '@expanses/db';
 import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it } from 'vitest';
-import { openAppDb } from './bootstrap';
+import { type AppDb, bootstrap, openAppDb } from './bootstrap';
+import type { OpenResult } from './open';
+
+/**
+ * A worker that does nothing but count the one thing this file cares about. The engine is never started:
+ * what is under test is which exits from `bootstrap` let go of the sync access handles a real worker holds.
+ */
+function fakeWorker() {
+  let terminated = 0;
+  const worker = {
+    postMessage: () => undefined,
+    terminate: () => {
+      terminated += 1;
+    },
+  } as unknown as Worker;
+  return { worker, released: () => terminated };
+}
+
+describe('bootstrap', () => {
+  it('releases the worker when the open throws, not only when it returns a failure', async () => {
+    const { worker, released } = fakeWorker();
+    // `openSafely` reads the version, refuses the future and checks the ledger outside any `try`, so a
+    // file that answers one of those with an exception leaves it by throwing rather than returning.
+    await expect(
+      bootstrap(() => undefined, {
+        spawn: () => worker,
+        open: async () => {
+          throw new Error('SQLITE_IOERR: disk I/O error');
+        },
+      }),
+    ).rejects.toThrow(/disk I\/O error/);
+    // Still held, and Restore and Start fresh both meet "modifications are not allowed" on the screen
+    // `main.tsx` renders for exactly this throw.
+    expect(released()).toBe(1);
+  });
+
+  it('releases the worker on a failure it was handed rather than thrown', async () => {
+    const { worker, released } = fakeWorker();
+    const failure: OpenResult = { ok: false, reason: { kind: 'corrupt', headline: 'no', detail: 'no', exportable: true } };
+    const result = await bootstrap(() => undefined, { spawn: () => worker, open: async () => failure });
+    expect(result).toBe(failure);
+    expect(released()).toBe(1);
+  });
+
+  it('keeps the worker when the app actually opens', async () => {
+    const { worker, released } = fakeWorker();
+    const result = await bootstrap(() => undefined, { spawn: () => worker, open: async () => ({ ok: true, app: {} as AppDb, applied: [] }) });
+    expect(result.ok).toBe(true);
+    expect(released()).toBe(0);
+  });
+
+  /**
+   * The way out the React error boundary needs, and the one nothing else provides.
+   *
+   * A render that throws never reaches `onFatal` — the engine did not complain, a screen did — so nothing
+   * strikes and nothing terminates the worker, and the SAH pool goes on holding a sync access handle on
+   * every slot file. The recovery screen that replaces the app offers Restore and Start fresh, and both
+   * write to those files: without this they fail with "Access Handles cannot be created", which is exactly
+   * what the `locked` screen withholds them to avoid.
+   */
+  it('hands the app a way to let go of the engine, for a screen that crashed with nothing struck', async () => {
+    const { worker, released } = fakeWorker();
+    const app = {} as AppDb;
+    const result = await bootstrap(() => undefined, { spawn: () => worker, open: async () => ({ ok: true, app, applied: [] }) });
+
+    expect(result.ok).toBe(true);
+    expect(released()).toBe(0);
+    expect(app.release).toBeTypeOf('function');
+
+    app.release?.();
+    expect(released()).toBe(1);
+    // Safe to call twice: a boundary handling a crash must not be the thing that throws next.
+    app.release?.();
+    expect(released()).toBe(2);
+  });
+});
 
 describe('openAppDb', () => {
   it('migrates a database of its own, up to the newest schema the build carries', async () => {
