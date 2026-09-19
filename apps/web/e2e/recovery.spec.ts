@@ -1,5 +1,18 @@
-import { expect, test } from '@playwright/test';
-import { addBank, corruptTheDatabase, CORRUPT_HEADLINE, EXPORT_BUTTON, forgetSafetyCopies, safetyCopies, waitForSafetyCopy } from './recovery-fixture';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { expect, type Page, test } from '@playwright/test';
+import BetterSqlite3 from 'better-sqlite3';
+import {
+  addBank,
+  corruptTheDatabase,
+  CORRUPT_HEADLINE,
+  EXPORT_BUTTON,
+  forgetSafetyCopies,
+  replaceTheDatabase,
+  safetyCopies,
+  waitForSafetyCopy,
+} from './recovery-fixture';
 
 // The feature is not real until a genuinely corrupt OPFS database produces the screen, so nothing here
 // is stubbed: a bank account is entered, the slot file behind it is overwritten, and the app is reopened.
@@ -97,4 +110,142 @@ test('start fresh from the recovery tools empties a device whose file will not o
   // A clean slate is clean: the copy of the old data went with the pool, not just the database the VFS
   // owns. (A fresh copy of the new, empty database may already have been taken — that one is not it.)
   expect(await safetyCopies(page)).not.toContain(copy);
+});
+
+/*
+ * What the user sees while a long update runs.
+ *
+ * Nothing here is stubbed either. A real database is taken out of the running app, wound back to the very
+ * first version this project ever shipped, and handed back through OPFS — so the app really does run the
+ * whole chain of migrations on the way in, with a real safety copy taken first and the real check after.
+ *
+ * Every number is read off the migrations directory rather than written down here: the step count and the
+ * version reached move with the project, and a test that hard-codes today's highest version is a test that
+ * fails on the day someone adds one.
+ */
+const MIGRATION_FILES = readdirSync(fileURLToPath(new URL('../../../packages/db/migrations/', import.meta.url)))
+  .filter((name) => name.endsWith('.sql'))
+  .sort();
+const FIRST = MIGRATION_FILES[0]!;
+/** The one migration the wound-back file keeps, so the app sees data it must update rather than a new device. */
+const FIRST_MIGRATION = { version: Number(FIRST.slice(0, 4)), name: FIRST.slice(5, -4), file: FIRST };
+const LATEST_VERSION = Number(MIGRATION_FILES.at(-1)!.slice(0, 4));
+/** Everything above the first one: exactly what the app has to run, and the total the screen counts to. */
+const STEPS = MIGRATION_FILES.length - 1;
+
+/** The app's own backup, downloaded the way a user downloads it. */
+async function downloadBackup(page: Page, target: string): Promise<string> {
+  await page.goto('/backup');
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download backup' }).click();
+  // The test's own output directory is only created when something is attached to it; this is first.
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, readFileSync((await (await downloaded).path())!));
+  return target;
+}
+
+/**
+ * The same file, wound back to the first version.
+ *
+ * Deleting rows from `schema_migrations` would not do: the migrations would run again over the schema they
+ * already built, and the ones that create a table rather than an index would fail on the first statement.
+ * The schema itself has to go back — so every table is dropped and the first migration is applied over the
+ * top, leaving a file at version 1 that the app must carry all the way forward.
+ *
+ * No VACUUM, deliberately: the freed pages stay in the file, so it is still the size the slot it goes back
+ * into expects.
+ */
+function woundBackToTheFirstVersion(source: string, target: string): string {
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, readFileSync(source));
+  const db = new BetterSqlite3(target);
+  try {
+    db.pragma('foreign_keys = OFF');
+    const objects = db
+      .prepare("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'")
+      .all() as { name: string; type: string }[];
+    for (const object of objects) db.exec(`DROP ${object.type === 'view' ? 'VIEW' : 'TABLE'} IF EXISTS "${object.name}"`);
+    db.exec(readFileSync(fileURLToPath(new URL(`../../../packages/db/migrations/${FIRST_MIGRATION.file}`, import.meta.url)), 'utf8'));
+    db.exec('CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)');
+    db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)').run(
+      FIRST_MIGRATION.version,
+      FIRST_MIGRATION.name,
+      '2024-01-01T00:00:00.000Z',
+    );
+  } finally {
+    db.close();
+  }
+  return target;
+}
+
+/**
+ * Records every distinct thing the app puts on screen, from before its own script runs.
+ *
+ * The opening screen is by design transient — it is there for as long as the work takes and not a moment
+ * longer — so polling for it is a race the test would sometimes lose. This watches instead, and the
+ * assertions read the list afterwards. Reinstalled on every navigation, and reset with the page.
+ */
+async function watchTheOpening(page: Page) {
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { __openingSeen: string[] }).__openingSeen = seen;
+    const record = () => {
+      const text = document.getElementById('root')?.textContent ?? '';
+      if (text && text !== seen[seen.length - 1]) seen.push(text);
+    };
+    // `document` itself, not `documentElement`: this runs before the page's own scripts, early enough
+    // that the <html> element may not be there yet to observe.
+    new MutationObserver(record).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+}
+
+const whatWasOnScreen = (page: Page): Promise<string[]> =>
+  page.evaluate(() => (window as unknown as { __openingSeen?: string[] }).__openingSeen ?? []);
+
+test('a long update says which step it is on, then offers a backup of the updated data', async ({ page }, testInfo) => {
+  await watchTheOpening(page);
+  await addBank(page, 'Replaced wholesale', '1000000');
+  const backup = await downloadBackup(page, join(testInfo.outputDir, 'now.sqlite3'));
+  await replaceTheDatabase(page, readFileSync(woundBackToTheFirstVersion(backup, join(testInfo.outputDir, 'old.sqlite3'))));
+
+  await page.goto('/');
+  // The card above the page is the proof the update finished, and it names the version it reached.
+  await expect(page.getByText(`Your data was updated to version ${LATEST_VERSION}`)).toBeVisible({ timeout: 45_000 });
+
+  const seen = await whatWasOnScreen(page);
+  const updating = seen.filter((text) => text.includes('Updating your data…'));
+  const context = `screens seen: ${seen.join(' | ')}`;
+  expect(updating.length, context).toBeGreaterThan(0);
+  // The total is the work there really is, and the step moves: a bar that never moved would pass neither.
+  expect(updating.some((text) => text.includes(`of ${STEPS} ·`)), context).toBe(true);
+  expect(new Set(updating).size, context).toBeGreaterThan(1);
+  // The reassurance is only said because a copy really was taken: this file had data, so there was one.
+  expect(updating.some((text) => text.includes('Do not close the app. Your data was copied before we started.')), context).toBe(true);
+
+  // A backup is offered because the one the user holds is now older than their data.
+  await expect(page.getByRole('button', { name: 'Download a backup' })).toBeEnabled();
+});
+
+/**
+ * The open after an update has nothing to say, and says nothing.
+ *
+ * It is also what an interrupted update looks like from the next launch: each migration commits on its own,
+ * so a closed tab leaves the versions that finished recorded and the one in flight rolled back, and the
+ * next open picks up from there. That the run resumes rather than half-applies is proved in
+ * `packages/db/test/migration-safety.test.ts`; what is asserted here is the other half — that an open with
+ * no work to do never shows a progress screen at all.
+ */
+test('an open with nothing to update shows no progress screen', async ({ page }) => {
+  await watchTheOpening(page);
+  await addBank(page, 'Nothing to do', '1000000');
+
+  await page.goto('/accounts');
+  await expect(page.getByRole('link', { name: 'Nothing to do' })).toBeVisible();
+  const seen = await whatWasOnScreen(page);
+  // The watcher was awake for this load — otherwise the three assertions below would pass on an empty list.
+  expect(seen.some((text) => text.includes('Add account')), `screens seen: ${seen.join(' | ')}`).toBe(true);
+  expect(seen.filter((text) => text.includes('Updating your data…')), `screens seen: ${seen.join(' | ')}`).toEqual([]);
+  expect(seen.filter((text) => text.includes('Taking a copy first…'))).toEqual([]);
+  expect(seen.filter((text) => text.includes('Checking your data…'))).toEqual([]);
+  await expect(page.getByText(/Your data was updated to version/)).toHaveCount(0);
 });

@@ -32,7 +32,13 @@ export interface RecoveryReason {
 
 export type OpenStage =
   | { stage: 'opening' | 'snapshotting' | 'checking' }
-  | { stage: 'migrating'; done: number; total: number; name: string };
+  /**
+   * `done` is the count *finished*, reported before the next one is picked up, so the step being worked
+   * on is `done + 1`. `copied` says whether a safety copy was really taken before any of this ran — a
+   * first open on a new device has nothing to copy, and a copy can fail — so the screen never reassures
+   * anyone about a copy that is not there.
+   */
+  | { stage: 'migrating'; done: number; total: number; name: string; copied: boolean };
 
 /**
  * The copies kept beside the live database, implemented over OPFS in `snapshots.ts`. `block`/`unblock`
@@ -254,7 +260,7 @@ export async function openSafely({ database, migrations = MIGRATIONS, snapshots,
       applied = await migrate(database, allowed, {
         onProgress: (done, total, name, migrationVersion) => {
           attempting = migrationVersion;
-          onStage({ stage: 'migrating', done, total, name });
+          onStage({ stage: 'migrating', done, total, name, copied: restore !== null });
         },
       });
     } catch (error) {

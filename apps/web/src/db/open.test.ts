@@ -57,7 +57,14 @@ describe('openSafely', () => {
     expect(o.stages.at(-1)).toEqual({ stage: 'checking' });
     const middle = o.stages.slice(1, -1);
     expect(middle.map((s) => s.stage)).toEqual(Array.from({ length: MIGRATIONS.length + 1 }, () => 'migrating'));
-    expect(middle.at(-1)).toEqual({ stage: 'migrating', done: MIGRATIONS.length, total: MIGRATIONS.length, name: MIGRATIONS.at(-1)!.name });
+    // `copied` is false and must be: a device with no data yet has nothing to copy before the first update.
+    expect(middle.at(-1)).toEqual({
+      stage: 'migrating',
+      done: MIGRATIONS.length,
+      total: MIGRATIONS.length,
+      name: MIGRATIONS.at(-1)!.name,
+      copied: false,
+    });
     if (result.ok) expect(result.applied).toEqual(versions());
   });
 

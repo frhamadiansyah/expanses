@@ -4,6 +4,7 @@ import { App } from './app/App';
 import { bootstrap } from './db/bootstrap';
 import { opfsSnapshots } from './db/snapshots';
 import { OpeningScreen } from './features/recovery/OpeningScreen';
+import { paceStages } from './features/recovery/opening-copy';
 import { RecoveryScreen } from './features/recovery/RecoveryScreen';
 import { registerServiceWorker } from './lib/pwa';
 import './styles.css';
@@ -31,9 +32,18 @@ function Message({ title, body, children }: { title: string; body: string; child
 
 async function start() {
   // Something is on screen before the engine is even asked for, so a slow device never shows a blank page.
+  // This first paint is not a flash: there is nothing underneath it to flash over.
   root.render(<OpeningScreen stage={{ stage: 'opening' }} />);
+  /*
+   * Every stage after it goes through the pacer, which holds the short ones back so an ordinary launch
+   * does not stutter through three headings on its way to the app, and paints an update at once. `stop`
+   * is the other half of it: a stage still waiting when the app appears must never paint over the top of
+   * it, so nothing below returns without stopping the pacer first.
+   */
+  const paced = paceStages((stage) => root.render(<OpeningScreen stage={stage} />));
   try {
-    const result = await bootstrap((stage) => root.render(<OpeningScreen stage={stage} />));
+    const result = await bootstrap(paced.onStage);
+    paced.stop();
     if (!result.ok) {
       root.render(<RecoveryScreen reason={result.reason} snapshots={snapshots} />);
       return;
@@ -56,6 +66,7 @@ async function start() {
   } catch (error) {
     // openSafely names every failure it knows about; anything that still lands here is unnamed, so it is
     // shown the same way as the rest rather than as a blank page.
+    paced.stop();
     root.render(
       <RecoveryScreen
         reason={{
