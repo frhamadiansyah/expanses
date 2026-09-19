@@ -62,11 +62,32 @@ describe('a screen that threw while it was drawing', () => {
 
   describe('letting go of the engine', () => {
     it('lets go once, and says it did, so the screen can offer the buttons that write', () => {
-      const release = vi.fn();
+      // The ordinary path: the engine has nothing in flight, so it lets go before this returns.
+      const release = vi.fn((letGo: () => void) => letGo());
       const failures: unknown[] = [];
       expect(releaseEngine(release, (error) => failures.push(error))).toBe(true);
       expect(release).toHaveBeenCalledTimes(1);
       expect(failures).toEqual([]);
+    });
+
+    /*
+     * A release the engine defers, because a restore this app started is still rewriting the live slot and
+     * terminating the worker there would tear the file and lose the bytes held to undo it. The handles are
+     * therefore still held when this screen is drawn, and the screen says so by not offering the two
+     * buttons that would fail on them. Try again is never withheld, so this is not a dead end.
+     */
+    it('says the handles are still held while the engine is waiting for a restore to finish', () => {
+      let letGo: (() => void) | undefined;
+      const failures: unknown[] = [];
+      const released = releaseEngine((done) => {
+        letGo = done;
+      }, (error) => failures.push(error));
+
+      expect(released).toBe(false);
+      expect(failures).toEqual([]);
+      expect(recoveryCopy(screenFailureReason(new Error('boom'), { released }), { hasSnapshot: true }).actions).toEqual(['export', 'retry']);
+      // And the engine really does let go afterwards — it is deferred, not dropped.
+      expect(letGo).toBeTypeOf('function');
     });
 
     it('never throws out of a boundary that is already handling a crash, and says the handles may still be held', () => {

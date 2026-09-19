@@ -55,9 +55,12 @@ export interface AppDb {
    * and both fail with "Access Handles cannot be created" until this is called. Nothing is written and
    * nothing is deleted by it; whatever was still reading is rejected with a sentence saying why.
    *
-   * Synchronous, and safe to call twice.
+   * `letGo` says when the engine has really gone, which is the moment the caller may promise the two
+   * buttons that write. Synchronous — called before this returns — on every ordinary path. It is deferred
+   * only while a restore this app started is still rewriting the live slot, because terminating the worker
+   * there would leave a torn file and throw away the bytes it was holding to undo it. Safe to call twice.
    */
-  release?: () => void;
+  release?: (letGo?: () => void) => void;
 }
 
 export async function openAppDb(database: Database, migrations?: Migration[]): Promise<AppDb> {
@@ -175,11 +178,17 @@ export async function bootstrap(onStage: (stage: OpenStage) => void, deps: Boots
        * so nothing strikes and nothing terminates, and the recovery screen the boundary draws would offer
        * Restore and Start fresh over a worker still holding a sync access handle on every slot file. Both
        * would fail with "Access Handles cannot be created", which is precisely what the `locked` screen
-       * withholds those two buttons to avoid. So the boundary is given the same way out the strike takes.
+       * withholds those two buttons to avoid. So the boundary is given the same way out the strike takes —
+       * including the one thing the strike waits for. The terminate is the executor's to schedule: a
+       * restore already inside `importDb` is rewriting the live slot, and cutting it off here would leave a
+       * torn file and lose the previous bytes the worker holds to put back. Immediate when nothing is in
+       * flight, which is every ordinary crash; behind the restore, bounded, when something is.
        */
-      result.app.release = () => {
-        executor.release();
-        worker.terminate();
+      result.app.release = (letGo) => {
+        executor.release(() => {
+          worker.terminate();
+          letGo?.();
+        });
       };
       result.app.onFatal = (handler) =>
         executor.onFatal((reason) => {

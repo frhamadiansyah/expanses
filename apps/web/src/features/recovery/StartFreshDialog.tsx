@@ -3,6 +3,7 @@ import { Sheet } from '../../app/Sheet';
 import type { SnapshotInfo } from '../../db/open';
 import { wipeEverything } from '../../db/salvage';
 import { Button, ErrorBox } from '../../ui';
+import { disabledWhileBusy } from './busy-controls';
 import { formatBytes, formatWhen } from './recovery-copy';
 
 /**
@@ -73,7 +74,7 @@ export function StartFreshDialog({
         </ul>
         <p>Backups you have already downloaded are files on your computer or phone. They are not touched.</p>
 
-        <Button variant="secondary" onClick={downloadFirst} disabled={busy} className="min-h-11 w-full">
+        <Button variant="secondary" onClick={downloadFirst} disabled={disabledWhileBusy('download-backup', busy)} className="min-h-11 w-full">
           {exported ? 'Backup downloaded' : 'Download a backup first'}
         </Button>
         <label className="flex items-start gap-2 text-sm text-slate-700">
@@ -83,10 +84,10 @@ export function StartFreshDialog({
 
         <ErrorBox error={error} />
 
-        <Button variant="danger" onClick={deleteEverything} disabled={busy || !(exported || confirmed)} className="min-h-11 w-full">
+        <Button variant="danger" onClick={deleteEverything} disabled={disabledWhileBusy('delete-everything', busy) || !(exported || confirmed)} className="min-h-11 w-full">
           Delete everything on this device
         </Button>
-        <Button variant="ghost" onClick={onClose} disabled={busy} className="min-h-11 w-full">
+        <Button variant="ghost" onClick={onClose} disabled={disabledWhileBusy('keep-my-data', busy)} className="min-h-11 w-full">
           Keep my data
         </Button>
       </div>

@@ -55,17 +55,24 @@ export function screenFailureReason(error: unknown, { released = false }: Screen
  * stop and the handles it holds go with it — so it is safe on the one path where the app has already
  * failed and the user is about to be offered a way back.
  *
- * It answers whether it really happened, because that is what the screen has to know. A build with no
- * worker behind it (the Node-backed tests), and a terminate that throws, both mean the files may still be
- * held, and the answer is the same in either case: say so, and let `actionsFor` withhold the two buttons
- * that would fail. Never a thrown error of its own — the app has already crashed once, and a boundary that
- * crashes while handling a crash is the white page all over again.
+ * It answers whether it really happened *by the time this screen is drawn*, because that is what the screen
+ * has to know, and the answer is not always yes. A build with no worker behind it (the Node-backed tests)
+ * and a terminate that throws both leave the files held; so does a release deferred behind a restore that
+ * is still rewriting the live slot, which the engine waits out rather than cut in half. The three are the
+ * same answer to the screen: say the handles may still be there, and let `actionsFor` withhold the two
+ * buttons that would fail on them. Never a thrown error of its own — the app has already crashed once, and
+ * a boundary that crashes while handling a crash is the white page all over again.
  */
-export function releaseEngine(release: (() => void) | undefined, onFailure: (error: unknown) => void): boolean {
+export function releaseEngine(release: ((letGo: () => void) => void) | undefined, onFailure: (error: unknown) => void): boolean {
   if (!release) return false;
   try {
-    release();
-    return true;
+    // Set from inside the call on every ordinary path. Still false afterwards means the engine has not let
+    // go yet, and this screen does not offer what it cannot promise.
+    let letGo = false;
+    release(() => {
+      letGo = true;
+    });
+    return letGo;
   } catch (error) {
     onFailure(error);
     return false;

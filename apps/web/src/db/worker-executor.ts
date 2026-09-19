@@ -45,14 +45,21 @@ export interface SnapshotExecutor extends SqlExecutor {
    * offers Restore and Start fresh, both of which write to files this worker is still holding a sync access
    * handle on. Nothing is written here and nothing is diagnosed: every waiter is rejected with a sentence
    * saying why, nothing more is posted, and the caller terminates the worker.
+   *
+   * `letGo` is when it is safe to terminate, and it is not always now. A restore already posted is
+   * rewriting the live slot, and terminating the worker in the middle of that is the one way letting go can
+   * damage data — the same hazard `strike()` was taught to wait out, and the same wait, so the two ways out
+   * of a session behave alike. Called synchronously when nothing is in flight, which is every ordinary
+   * case; called once the restore has stopped writing, or after `RESTORE_GRACE_MS`, when one is.
    */
-  release(): void;
+  release(letGo?: () => void): void;
 }
 
 /**
  * How long a strike waits for a restore that is already writing the file, in milliseconds.
  *
- * A strike ends with `bootstrap` terminating the worker, and the SAH pool's `importDb` is the one op that
+ * A strike — and a deliberate `release()`, which ends the same way — has `bootstrap` terminating the
+ * worker, and the SAH pool's `importDb` is the one op that
  * is *rewriting the live slot* while it runs: terminated half-way it leaves a torn file and throws away
  * the previous bytes the worker was holding in memory for exactly that rollback. A fatal must never
  * destroy data on its own, so the hand-over waits for the restore to finish putting bytes somewhere — its
@@ -90,11 +97,18 @@ const BUSY_RETRY_MS = [25, 75, 200, 500, 1200, 3000];
  * one thing this branch forbids. Before the engine has answered once, nothing of the sort can be in
  * flight: every op `openSafely` issues before the first reply is a read.
  *
- * Thirty seconds because the first reply on a brand-new device includes `installOpfsSAHPoolVfs` creating
- * the pool's slot files, which a slow phone can take several seconds over. A bound nobody reaches is still
- * a bound.
+ * A minute, and not the half-minute it started as, because of what the window actually contains. The timer
+ * is armed at the first `postMessage`, which happens before the worker module has even been fetched: a cold
+ * first load has to pull the worker chunk and `sqlite3.wasm` — about 1.1 MB, and the service worker's
+ * cache cannot help the *first* load, which is exactly the slow-phone case this is sized for — compile the
+ * wasm, and then let `installOpfsSAHPoolVfs` create the pool's slot files. A page frozen by an OS sleep or
+ * a backgrounded tab resumes its timer promptly on wake, too, so a user who launches the app and pockets
+ * the phone inside the window can come back to a fired watchdog over a perfectly healthy database. Firing
+ * costs nothing but a trip through the recovery screen — nothing has been written, and Try again reloads
+ * into a working app — but a bound nobody reaches is still a bound, and this one should be reached only by
+ * an engine that really is never going to speak.
  */
-const HANDSHAKE_MS = 30_000;
+const HANDSHAKE_MS = 60_000;
 
 const isBusy = (error: unknown): boolean => /busy/i.test(error instanceof Error ? error.message : String(error));
 
@@ -160,6 +174,37 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
     listener(fatal);
   };
 
+  /**
+   * The one way this engine is ever closed, whichever of the two ways out asked for it.
+   *
+   * Everything still waiting is rejected with `detail` — a promise on an engine nobody holds any more is
+   * the permanent spinner by another name — and then `then` runs: the hand-over, for a strike, or the
+   * caller's terminate, for a deliberate `release()`. Both end in `bootstrap` calling `worker.terminate()`,
+   * so both have the same one thing they must not interrupt: a restore already inside `importDb`, which is
+   * rewriting the live slot and holding the previous bytes in memory for its own rollback. Cut off there it
+   * leaves a torn file and loses the copy that would have undone it — a safety mechanism destroying data,
+   * which is the one thing this branch forbids. So the close waits for the restore to stop writing, and is
+   * bounded by `RESTORE_GRACE_MS`, because the alternative to a torn file must not be a screen that never
+   * changes. Written once and shared, so the two ways out cannot drift apart again.
+   */
+  const closeDown = (detail: string, then: () => void) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let closed = false;
+    const finish = () => {
+      if (closed) return;
+      closed = true;
+      if (timer !== undefined) clearTimeout(timer);
+      for (const waiter of pending.values()) waiter.reject(new Error(detail));
+      pending.clear();
+      then();
+    };
+    if (!restoring) return finish();
+    void restoring.then(finish, finish);
+    timer = setTimeout(finish, RESTORE_GRACE_MS);
+    // Node's timer would hold a test process open for fifteen seconds; the browser's has no such method.
+    (timer as unknown as { unref?: () => void }).unref?.();
+  };
+
   const strike = (reason: RecoveryReason) => {
     // Only the first one: the ones after it are the same failure arriving again through other queries.
     if (fatal) return;
@@ -171,21 +216,10 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
       waiter.reject(new Error(reason.detail));
       pending.delete(id);
     }
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const release = () => {
-      if (handOverReady) return;
+    closeDown(reason.detail, () => {
       handOverReady = true;
-      if (timer !== undefined) clearTimeout(timer);
-      for (const waiter of pending.values()) waiter.reject(new Error(reason.detail));
-      pending.clear();
       handOver();
-    };
-    if (!restoring) return release();
-    void restoring.then(release, release);
-    timer = setTimeout(release, RESTORE_GRACE_MS);
-    // Node's timer would hold a test process open for fifteen seconds; the browser's has no such method.
-    (timer as unknown as { unref?: () => void }).unref?.();
+    });
   };
 
   /** The handshake watchdog, or undefined once the engine has spoken (or the watchdog has fired). */
@@ -291,8 +325,10 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
     arm: () => {
       armed = true;
     },
-    release: () => {
-      if (gone) return;
+    release: (letGo = () => undefined) => {
+      // Already closed — struck, or let go once before. Nothing more to shut, but the caller still
+      // terminates: a boundary reached after `worker.onerror` must drop the handles like any other.
+      if (gone) return closeDown(RELEASED, letGo);
       gone = true;
       if (handshake !== undefined) {
         clearTimeout(handshake);
@@ -300,11 +336,14 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
       }
       // Rejected rather than left hanging, for the same reason the strike rejects: a promise waiting on an
       // engine nobody is holding any more is the permanent spinner by another name. The screen that asked
-      // for this is already drawn over whatever was reading.
+      // for this is already drawn over whatever was reading. A restore in flight is skipped here exactly as
+      // the strike skips it — `closeDown` is what waits for it, and what tells the caller when to terminate.
       for (const [id, waiter] of pending) {
+        if (waiter.op === 'import') continue;
         waiter.reject(new Error(RELEASED));
         pending.delete(id);
       }
+      closeDown(RELEASED, letGo);
     },
   };
 }

@@ -8,6 +8,7 @@ import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes } from '../../lib/download';
 import { Button, ErrorBox } from '../../ui';
 import { copyReasonWords } from '../backup/backupState';
+import { disabledWhileBusy } from './busy-controls';
 import { formatBytes, formatWhen, lastGoodCopy, recoveryCopy } from './recovery-copy';
 import { StartFreshDialog } from './StartFreshDialog';
 
@@ -110,7 +111,7 @@ export function RecoveryScreen({
       {/* Stacked and 44px tall: on a phone this is the one screen where a missed tap costs the most. */}
       <div className="space-y-2">
         {canRestore && lastGood && (
-          <Button variant="primary" className="min-h-11 w-full flex-col gap-0 py-2" disabled={busy} onClick={() => void putBack(lastGood)}>
+          <Button variant="primary" className="min-h-11 w-full flex-col gap-0 py-2" disabled={disabledWhileBusy('restore', busy)} onClick={() => void putBack(lastGood)}>
             <span className="block">Restore the last good copy</span>
             {/* What is actually being put back, so nobody presses this without knowing what they lose. */}
             <span className="mt-0.5 block text-xs font-normal opacity-80">
@@ -119,12 +120,12 @@ export function RecoveryScreen({
           </Button>
         )}
         {copy.actions.includes('export') && (
-          <Button variant="secondary" className="min-h-11 w-full" disabled={busy} onClick={() => run('Export', onExport)}>
+          <Button variant="secondary" className="min-h-11 w-full" disabled={disabledWhileBusy('export', busy)} onClick={() => run('Export', onExport)}>
             Download a copy of my data
           </Button>
         )}
         {copy.actions.includes('retry') && (
-          <Button variant={copy.actions.includes('restore') ? 'secondary' : 'primary'} className="min-h-11 w-full" disabled={busy} onClick={reopen}>
+          <Button variant={copy.actions.includes('restore') ? 'secondary' : 'primary'} className="min-h-11 w-full" disabled={disabledWhileBusy('retry', busy)} onClick={reopen}>
             Try again
           </Button>
         )}
@@ -148,7 +149,7 @@ export function RecoveryScreen({
                     {copyReasonWords(candidate.reason)} · {formatBytes(candidate.bytes)}
                   </span>
                 </span>
-                <Button variant="secondary" className="min-h-11" disabled={busy} onClick={() => void putBack(candidate)}>
+                <Button variant="secondary" className="min-h-11" disabled={disabledWhileBusy('restore', busy)} onClick={() => void putBack(candidate)}>
                   Restore this one
                 </Button>
               </li>
@@ -176,7 +177,7 @@ export function RecoveryScreen({
 
       {copy.actions.includes('start-fresh') && (
         <div className="mt-6 border-t border-slate-200 pt-4">
-          <Button variant="ghost" onClick={() => setFresh(true)} disabled={busy} className="px-0 text-xs font-normal text-red-700 underline underline-offset-2 hover:bg-transparent">
+          <Button variant="ghost" onClick={() => setFresh(true)} disabled={disabledWhileBusy('start-fresh', busy)} className="px-0 text-xs font-normal text-red-700 underline underline-offset-2 hover:bg-transparent">
             Start fresh on this device
           </Button>
         </div>

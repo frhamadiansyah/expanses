@@ -9,7 +9,7 @@ interface Props {
    * Lets go of the app's engine, from `AppDb.release`. Optional because a caller may have no worker to let
    * go of; without it the screen withholds the two buttons that write. See `releaseEngine`.
    */
-  release?: () => void;
+  release?: (letGo?: () => void) => void;
   children: ReactNode;
 }
 

@@ -301,7 +301,9 @@ describe('a failure the session cannot carry on past', () => {
       (error: unknown) => (error instanceof Error ? error.message : String(error)),
     );
 
-    await vi.advanceTimersByTimeAsync(60_000);
+    // Comfortably past `HANDSHAKE_MS`, whatever it is set to: the assertion is that the silence ends, not
+    // where the constant sits this week.
+    await vi.advanceTimersByTimeAsync(90_000);
 
     expect(await first).toMatch(/did not answer/);
     expect(heard).toHaveLength(1);
@@ -364,6 +366,88 @@ describe('a failure the session cannot carry on past', () => {
     expect(worker.sent).toHaveLength(sentBefore);
     // Safe to call twice: the boundary that asks for this is already handling one crash.
     expect(() => executor.release()).not.toThrow();
+  });
+
+  /**
+   * Letting go is the other way a session ends, and it ends the same way: `bootstrap` terminates the worker.
+   * So it has the same one thing it must not interrupt. `strike()` was taught to wait out a restore already
+   * inside `importDb` — cut off there it leaves a torn slot file and throws away the previous bytes the
+   * worker is holding for its own rollback — and `release()` had none of that, though `BackupPage` does put
+   * an import on this very executor. A safety mechanism must never destroy data on its own, whichever of
+   * the two asked for it.
+   */
+  it('waits for a restore that is already writing the file before it lets the caller terminate', async () => {
+    vi.useFakeTimers();
+    let answer: ((reply: Record<string, unknown>) => void) | undefined;
+    const worker = {
+      onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      postMessage(message: { id: number; op: string }) {
+        answer = (reply) => worker.onmessage?.({ data: { id: message.id, ...reply } } as MessageEvent<unknown>);
+      },
+    };
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+
+    const restore = executor.importBytes(new Uint8Array([1, 2, 3]));
+    await vi.advanceTimersByTimeAsync(0);
+
+    let terminated = 0;
+    executor.release(() => {
+      terminated += 1;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Not yet: terminating here is what leaves a half-written slot behind.
+    expect(terminated).toBe(0);
+    // The engine is closed to everything else all the same — nothing new is posted, and the screen that
+    // asked for this is already drawn.
+    await expect(executor.query('select 1', [], 'all')).rejects.toThrow(/let go of the database/);
+
+    answer?.({ result: null });
+    await expect(restore).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(terminated).toBe(1);
+  });
+
+  it('gives a restore that never answers up rather than holding the files for ever', async () => {
+    vi.useFakeTimers();
+    const worker = {
+      onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      postMessage: () => undefined,
+    };
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+
+    const restore = executor.importBytes(new Uint8Array([1, 2, 3]));
+    const settled = restore.then(
+      () => 'done',
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+    let terminated = 0;
+    executor.release(() => {
+      terminated += 1;
+    });
+
+    // The bound: a torn file must not be traded for a screen whose buttons can never come true.
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(terminated).toBe(1);
+    expect(await settled).toMatch(/let go of the database/);
+  });
+
+  it('tells the caller to terminate at once when nothing is in flight, and again if it is asked twice', async () => {
+    const worker = scriptedWorker((message) => ({ id: message.id, result: [] }));
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+    await executor.query('select 1', [], 'all');
+
+    let terminated = 0;
+    const letGo = () => {
+      terminated += 1;
+    };
+    executor.release(letGo);
+    // Synchronously, which is what keeps the boundary able to promise Restore and Start fresh.
+    expect(terminated).toBe(1);
+    executor.release(letGo);
+    expect(terminated).toBe(2);
   });
 
   it('rejects what a screen was still reading rather than leaving it hanging on an engine nobody holds', async () => {
