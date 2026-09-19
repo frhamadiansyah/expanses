@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addEvent, addWallet, fillItem } from './event-plan';
+import { addEvent, addWallet, expectFigures, fillItem } from './event-plan';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -38,7 +38,13 @@ test('planning one category never calls the rest of the trip over plan', async (
   await expect(sheet).toContainText('3.500.000');
   // And the ring says which spending it is counting, beside the whole-trip total the chart behind it shows.
   await expect(sheet).toContainText('Spent on plan');
-  await expect(sheet).toContainText('Total spent');
+  /*
+   * Read as label → figure, and not as `toContainText('Total spent')`, which proved nothing: the donut one swipe
+   * behind prints "Total spent" as its own label, so that assertion passed off the chart and would have passed with
+   * this row deleted — the very reconciliation it was written to hold. Here the row is a key with the chart's own
+   * figure beside it, so a row that is gone is a key that is missing.
+   */
+  await expectFigures(sheet, { 'Not planned': 'Rp 9.200.000', 'Total spent': 'Rp 9.200.000' });
 
   // Where it went keeps every category, and says which ones were never planned.
   await sheet.getByRole('button', { name: 'Where it went' }).click();

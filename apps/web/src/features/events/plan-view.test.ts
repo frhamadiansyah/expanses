@@ -10,6 +10,7 @@ import {
   moneyBackRows,
   planCardRows,
   plannedLabel,
+  PLAN_WORDS,
   planTotals,
   quantityWords,
   spentLabel,
@@ -135,6 +136,43 @@ describe('what a receipt covers', () => {
   it('adds up what has been given out and what is left', () => {
     expect(coverTotals(4_150_000, [1_280_000, 700_000, 900_000])).toEqual({ totalMinor: 4_150_000, givenMinor: 2_880_000, leftMinor: 1_270_000, over: false });
     expect(coverTotals(1_500_000, [1_280_000, 700_000])).toMatchObject({ leftMinor: -480_000, over: true });
+  });
+
+  /*
+   * The boundary the Save button hangs on, one minor unit either side of it.
+   *
+   * A receipt whose shares come to exactly what it cost is the *ordinary* save — a shopping trip in which every
+   * rupiah answered something — so `over` at `>=` would turn Save off on the commonest thing this screen is for,
+   * and nothing above would notice: 4.150.000 out of 4.150.000 leaves nought, which is what `leftMinor` says either
+   * way. Only the flag parts them, so only the flag is asserted at the three figures around the edge.
+   */
+  it('calls the exactly-covered receipt covered, and one unit more over', () => {
+    expect(coverTotals(4_150_000, [2_200_000, 1_950_000])).toEqual({ totalMinor: 4_150_000, givenMinor: 4_150_000, leftMinor: 0, over: false });
+    expect(coverTotals(4_150_000, [2_200_000, 1_950_001])).toMatchObject({ leftMinor: -1, over: true });
+    expect(coverTotals(4_150_000, [2_200_000, 1_949_999])).toMatchObject({ leftMinor: 1, over: false });
+    // Nothing ticked at all is not over either: it is a receipt nobody has claimed yet.
+    expect(coverTotals(4_150_000, [])).toMatchObject({ givenMinor: 0, leftMinor: 4_150_000, over: false });
+  });
+});
+
+/*
+ * The plan's vocabulary, which is the one thing separating this gauge from the Budget page's.
+ *
+ * The same `BudgetGauge` draws both, handed either `MONTH_WORDS` or `PLAN_WORDS`; a card that reverted to the
+ * month's would say "Over budget by" and "3 budgets over" on a trip, with every figure still correct. So each word
+ * is pinned, and the whole set is checked to carry none of the month's — a budget is a monthly cap, a plan is a
+ * list of things to buy, and "RAB" is nowhere in this app at all.
+ */
+describe('the words a plan is read in', () => {
+  it('is the plan’s own vocabulary and never the month’s', () => {
+    expect(PLAN_WORDS.left).toBe('Left of the plan');
+    expect(PLAN_WORDS.over).toBe('Over the plan by');
+    expect(PLAN_WORDS.set).toBe('Planned');
+    expect(PLAN_WORDS.spent).toBe('Spent');
+    expect(PLAN_WORDS.overCount(1)).toBe('1 item over');
+    expect(PLAN_WORDS.overCount(3)).toBe('3 items over');
+    const every = [PLAN_WORDS.left, PLAN_WORDS.over, PLAN_WORDS.set, PLAN_WORDS.spent, PLAN_WORDS.overCount(1), PLAN_WORDS.overCount(3)];
+    for (const word of every) expect(word).not.toMatch(/budget|cap\b|RAB/i);
   });
 });
 
