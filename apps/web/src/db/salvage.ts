@@ -1,3 +1,4 @@
+import { LATEST_VERSION } from '@expanses/db';
 import { createWorker } from './bootstrap';
 import { SAFETY_DIR } from './snapshots';
 
@@ -61,7 +62,7 @@ export async function salvageBytes(directory = '.expanses'): Promise<Uint8Array 
   return best;
 }
 
-type SalvageRequest = { op: 'wipe' } | { op: 'import'; bytes: Uint8Array };
+type SalvageRequest = { op: 'wipe' } | { op: 'import'; bytes: Uint8Array; latestVersion: number };
 
 /**
  * One request to a worker of its own, which is then thrown away. The recovery screen never holds the
@@ -81,10 +82,14 @@ function askWorker(request: SalvageRequest, transfer: Transferable[] = []): Prom
   });
 }
 
-/** Puts saved bytes back as the live database. The engine checks they are an Expanses file before keeping them. */
+/**
+ * Puts saved bytes back as the live database. The engine checks they are an Expanses file, that its pages
+ * read, and that it was not written by a newer build than this one, before keeping them — a copy from the
+ * future is refused here rather than adopted and then refused by every open afterwards.
+ */
 export async function restoreBytes(bytes: Uint8Array): Promise<void> {
   const copy = bytes.slice();
-  await askWorker({ op: 'import', bytes: copy }, [copy.buffer]);
+  await askWorker({ op: 'import', bytes: copy, latestVersion: LATEST_VERSION }, [copy.buffer]);
 }
 
 /**

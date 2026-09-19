@@ -1,4 +1,5 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
+import { NEWER_DATABASE } from './newer-database';
 
 type Method = 'run' | 'all' | 'values' | 'get';
 type Request =
@@ -6,7 +7,13 @@ type Request =
   | { id: number; op: 'script'; sql: string }
   | { id: number; op: 'export' }
   | { id: number; op: 'snapshot' }
-  | { id: number; op: 'import'; bytes: Uint8Array }
+  /**
+   * `latestVersion` is the highest migration the *asking* build knows. It rides in on the request because
+   * `LATEST_VERSION` lives in `@expanses/db`, which this worker deliberately does not bundle. A caller
+   * that leaves it out gets no version check — never a silent adoption of a newer file, because every
+   * caller in the app passes it.
+   */
+  | { id: number; op: 'import'; bytes: Uint8Array; latestVersion?: number }
   | { id: number; op: 'wipe' };
 
 const FILE = '/expanses.sqlite3';
@@ -72,6 +79,17 @@ self.onmessage = async (event: MessageEvent<Request>) => {
          */
         const structure = state.db.selectValue('PRAGMA quick_check(1)');
         if (structure !== 'ok') throw new Error(`That copy did not check out: ${String(structure)}`);
+        /*
+         * And last, the one question that cannot be asked after adopting: was this written by a build that
+         * knows more than we do? An older app on a newer schema writes rows the new columns do not
+         * describe and drops the ones it has never heard of — the file survives and the ledger does not.
+         * Asked here, inside the rollback window, it costs the user nothing: the throw lands in the catch
+         * below and the database they already had goes straight back.
+         */
+        if (req.latestVersion !== undefined) {
+          const highest = Number(state.db.selectValue('SELECT max(version) FROM schema_migrations') ?? 0);
+          if (highest > req.latestVersion) throw new Error(`${NEWER_DATABASE}${highest}`);
+        }
       } catch (error) {
         try {
           state.db.close();

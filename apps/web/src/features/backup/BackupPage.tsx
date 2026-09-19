@@ -1,7 +1,9 @@
 import { isoDate } from '@expanses/core';
+import { LATEST_VERSION } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type ChangeEvent, useState } from 'react';
 import { useApp } from '../../app/context';
+import { refusedCopy } from '../../db/newer-database';
 import { saveBytes } from '../../lib/download';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, PageHeader } from '../../ui';
@@ -72,7 +74,15 @@ export function BackupPage() {
       await database.importBytes(pending.bytes);
       window.location.reload();
     } catch (e) {
-      setError(e);
+      /*
+       * A file from a newer build is refused before it is adopted, so this device's data is exactly where
+       * it was. The waiting restore is dropped with it: pressing the same button again cannot succeed
+       * until the app is updated, and while it waits it holds "Download backup" disabled — and export is
+       * the one thing that must always stay within reach.
+       */
+      const refused = refusedCopy(e, LATEST_VERSION);
+      if (refused) setPending(null);
+      setError(refused ?? e);
       setBusy(false);
     }
   }

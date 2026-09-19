@@ -1,4 +1,4 @@
-import type { SqlExecutor } from '@expanses/db';
+import { LATEST_VERSION, type SqlExecutor } from '@expanses/db';
 
 interface Reply {
   id: number;
@@ -56,7 +56,9 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
     },
     importBytes: async (bytes) => {
       const copy = bytes.slice();
-      await call({ op: 'import', bytes: copy }, [copy.buffer]);
+      // What this build knows goes with the file, so the engine can refuse one written by a newer build
+      // before it becomes the live database rather than after.
+      await call({ op: 'import', bytes: copy, latestVersion: LATEST_VERSION }, [copy.buffer]);
     },
   };
 }

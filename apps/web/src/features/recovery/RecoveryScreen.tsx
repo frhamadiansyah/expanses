@@ -1,5 +1,7 @@
 import { isoDate } from '@expanses/core';
+import { LATEST_VERSION } from '@expanses/db';
 import { useEffect, useState } from 'react';
+import { refusedCopy } from '../../db/newer-database';
 import { NO_SNAPSHOTS, type RecoveryReason, type SnapshotInfo, type SnapshotStore } from '../../db/open';
 import { restoreBytes, salvageBytes } from '../../db/salvage';
 import { restoreSnapshot } from '../../db/snapshots';
@@ -61,7 +63,9 @@ export function RecoveryScreen({
     try {
       await action();
     } catch (e) {
-      setError(e);
+      // A copy written by a newer build is refused by the engine rather than put back; that refusal
+      // arrives as a marker, and is the one failure here with words of its own.
+      setError(refusedCopy(e, LATEST_VERSION) ?? e);
       console.warn(`${what} failed`, e);
     } finally {
       setBusy(false);

@@ -52,20 +52,31 @@ export async function addBank(page: Page, name: string, balance: string) {
   await expect(page.getByRole('link', { name })).toBeVisible();
 }
 
+/** Where the SAH pool's own header ends and the database's first page begins, in every slot file. */
+const DATA_OFFSET = 4096;
+
 /**
- * Writes rubbish over the middle of the database, from the page itself. Recovery mode never opens the
- * VFS, so the pool holds no sync access handles and the slot files can be written here.
+ * Writes bytes into the live database's slot file, from the page itself. Recovery mode never opens the
+ * VFS, so the pool holds no sync access handles and the slot files can be written here — that is the
+ * whole trick, and both the corruption and the from-the-future tests turn on it.
  *
  * Layout, as the running browser actually has it: `.expanses/.opaque/<random>`, each slot file a
  * 4096-byte SAH header followed by the database's own pages. The walk is recursive and the slot is
  * picked by the SQLite magic after that header, so neither the subdirectory nor the names matter.
+ * `keepExistingData` leaves that header alone, so the pool still knows which file this is.
+ *
+ * The payload travels as base64 because a megabyte of database crosses the CDP boundary as a string in
+ * one message, where the same bytes as an array of numbers would be a million JSON values.
  */
-export async function corruptTheDatabase(page: Page) {
+async function writeOverTheDatabase(page: Page, payload: { position: number; base64: string; minSize: number }) {
   await page.goto('/?recover');
   await expect(page.getByRole('heading', { name: 'Recovery tools', exact: true })).toBeVisible();
-  const report = await page.evaluate(async () => {
-    const DATA = 4096;
+  const report = await page.evaluate(async ({ position, base64, minSize, DATA }) => {
     const seen: string[] = [];
+    const binary = atob(base64);
+    const data = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) data[i] = binary.charCodeAt(i);
+
     const root = await navigator.storage.getDirectory();
     const slots: { name: string; handle: FileSystemFileHandle }[] = [];
     const todo: { dir: FileSystemDirectoryHandle; prefix: string }[] = [{ dir: await root.getDirectoryHandle('.expanses'), prefix: '.expanses/' }];
@@ -83,16 +94,36 @@ export async function corruptTheDatabase(page: Page) {
     for (const { name, handle } of slots) {
       const file = await handle.getFile();
       seen.push(`${name}:${file.size}`);
-      if (file.size < DATA + 4096 * 40) continue;
+      if (file.size < minSize) continue;
       const magic = new Uint8Array(await file.slice(DATA, DATA + 16).arrayBuffer());
       if (new TextDecoder().decode(magic.subarray(0, 15)) !== 'SQLite format 3') continue;
       const writable = await handle.createWritable({ keepExistingData: true });
-      await writable.write({ type: 'write', position: DATA + 4096 * 10, data: new Uint8Array(4096 * 20).fill(0xff) });
+      await writable.write({ type: 'write', position, data });
       await writable.close();
-      return { wrecked: file.size, seen };
+      return { written: file.size, seen };
     }
-    return { wrecked: 0, seen };
+    return { written: 0, seen };
+  }, { ...payload, DATA: DATA_OFFSET });
+  // A test that silently passes on a database it never touched is worse than no test: say what was there.
+  expect(report.written, `no database slot in .expanses — files were ${report.seen.join(', ') || '(none)'}`).toBeGreaterThan(0);
+}
+
+/** Writes rubbish over the middle of the database, leaving a file SQLite will not read. */
+export async function corruptTheDatabase(page: Page) {
+  await writeOverTheDatabase(page, {
+    position: DATA_OFFSET + 4096 * 10,
+    base64: Buffer.alloc(4096 * 20, 0xff).toString('base64'),
+    minSize: DATA_OFFSET + 4096 * 40,
   });
-  // A test that silently passes on a database it never broke is worse than no test: say what was there.
-  expect(report.wrecked, `no database slot in .expanses — files were ${report.seen.join(', ') || '(none)'}`).toBeGreaterThan(0);
+}
+
+/**
+ * Puts a whole database file into the slot, as the bytes a different build of the app would have left
+ * there. The SAH header survives; everything after it is the given file.
+ *
+ * The replacement is the same size or smaller than what was there (it differs by rows, not by design),
+ * so anything left at the tail lies past `pageSize × pageCount` and SQLite never reads it.
+ */
+export async function replaceTheDatabase(page: Page, bytes: Buffer) {
+  await writeOverTheDatabase(page, { position: DATA_OFFSET, base64: bytes.toString('base64'), minSize: DATA_OFFSET + 16 });
 }
