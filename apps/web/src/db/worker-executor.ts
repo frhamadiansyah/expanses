@@ -37,6 +37,16 @@ export interface SnapshotExecutor extends SqlExecutor {
    * is the thing holding it.
    */
   arm(): void;
+  /**
+   * Closes the engine to the app deliberately, without a failure having been detected.
+   *
+   * The strike is the automatic way out; this is the one a caller asks for. It exists for the React error
+   * boundary, which replaces the whole app with the recovery screen after a render throws — and that screen
+   * offers Restore and Start fresh, both of which write to files this worker is still holding a sync access
+   * handle on. Nothing is written here and nothing is diagnosed: every waiter is rejected with a sentence
+   * saying why, nothing more is posted, and the caller terminates the worker.
+   */
+  release(): void;
 }
 
 /**
@@ -65,7 +75,31 @@ const RESTORE_GRACE_MS = 15_000;
  */
 const BUSY_RETRY_MS = [25, 75, 200, 500, 1200, 3000];
 
+/**
+ * How long to wait for the engine's very first reply of any kind, in milliseconds.
+ *
+ * Defence in depth behind `gone`. `worker.onerror` covers the module that fails to load, but it is a
+ * signal the browser has to send: a worker that starts and then simply never answers — a VFS install that
+ * hangs instead of rejecting, a message lost between the two sides — raises nothing at all, and the open
+ * would wait on it for the life of the tab. That is the same permanent spinner by a quieter route, so the
+ * wait is bounded and the silence is named: `unreadable`, with Export, Restore and Try again on the screen.
+ *
+ * It watches the *handshake only* and stops for good at the first reply, which is what makes it safe to
+ * have at all. A blanket per-call timeout would eventually fire on a long migration over a large database
+ * and terminate the worker in the middle of writing it — a fatal destroying data on its own, which is the
+ * one thing this branch forbids. Before the engine has answered once, nothing of the sort can be in
+ * flight: every op `openSafely` issues before the first reply is a read.
+ *
+ * Thirty seconds because the first reply on a brand-new device includes `installOpfsSAHPoolVfs` creating
+ * the pool's slot files, which a slow phone can take several seconds over. A bound nobody reaches is still
+ * a bound.
+ */
+const HANDSHAKE_MS = 30_000;
+
 const isBusy = (error: unknown): boolean => /busy/i.test(error instanceof Error ? error.message : String(error));
+
+/** What a query still in flight is told when the app lets go of the engine on purpose. Never shown above the fold. */
+const RELEASED = 'Expanses let go of the database so this screen could offer to put a copy back.';
 
 export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
   let nextId = 0;
@@ -88,6 +122,25 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
   let fatal: RecoveryReason | null = null;
   let listener: ((reason: RecoveryReason) => void) | null = null;
   let armed = false;
+  /**
+   * The engine itself is gone — `worker.onerror` fired — and nothing may be posted to it again, ever,
+   * armed or not.
+   *
+   * This is deliberately a second flag rather than the `fatal` one above, because the two strikers are not
+   * the same event. A reply-tagged fatal means *the database is bad while the worker still answers*, and
+   * that one must stay postable until `arm()` so §5.3's rollback can put the pre-update bytes back through
+   * the worker's own `import`. `worker.onerror` means *there is nobody on the other side*: the worker's
+   * module never evaluated — a precached chunk gone bad, a module fetch that failed on the first load after
+   * an update, an uncaught top-level throw — so `self.onmessage` was never installed and no message will
+   * ever be answered. An `import` posted there hangs exactly as surely as a `query` does.
+   *
+   * Sharing the `armed` gate between them is what left the opening screen on the page for ever: the strike
+   * rejected what was pending, `databaseVersion`'s catch then asked `checkStructure`, and that query went to
+   * an engine that could not reply. Nothing on the open path times out, so `openSafely` never returned and
+   * the user was left on a spinner with no button on it. Refused here instead, the same failure comes back
+   * as a typed `unreadable` reason and the recovery screen.
+   */
+  let gone = false;
   /** True once the fatal may be handed over: at once, or after a restore in flight has stopped writing. */
   let handOverReady = false;
   let handedOver = false;
@@ -135,7 +188,18 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
     (timer as unknown as { unref?: () => void }).unref?.();
   };
 
+  /** The handshake watchdog, or undefined once the engine has spoken (or the watchdog has fired). */
+  let handshake: ReturnType<typeof setTimeout> | undefined;
+  let answered = false;
+
   worker.onmessage = (event: MessageEvent<Reply>) => {
+    // Any reply at all, for any id, proves there is a worker on the other side listening. From here the
+    // engine is judged by what it says, never by the clock.
+    answered = true;
+    if (handshake !== undefined) {
+      clearTimeout(handshake);
+      handshake = undefined;
+    }
     const waiter = pending.get(event.data.id);
     if (!waiter) return;
     pending.delete(event.data.id);
@@ -155,15 +219,29 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
   };
   worker.onerror = (event) => {
     // The engine itself is gone: nothing pending can be answered, and nothing new can be asked either.
+    // Set before the strike, so a listener told synchronously inside it already sees a closed engine.
+    gone = true;
     strike(fatalReason('unreadable', event.message || 'SQLite worker failed'));
   };
 
   const call = (message: Record<string, unknown>, transfer: Transferable[] = []) =>
     new Promise<unknown>((resolve, reject) => {
-      if (armed && fatal) return reject(new Error(fatal.detail));
+      // `gone` is unconditional and `armed && fatal` is not: see `gone` above for why they differ.
+      // `fatal` is null only when `release()` was what closed the engine: nothing went wrong, we let go.
+      if (gone || (armed && fatal)) return reject(new Error(fatal?.detail ?? RELEASED));
       const id = ++nextId;
       pending.set(id, { resolve, reject, op: message.op });
       worker.postMessage({ ...message, id }, transfer);
+      if (answered || handshake !== undefined) return;
+      handshake = setTimeout(() => {
+        handshake = undefined;
+        // Nothing has ever come back, so nothing has ever been written: this is safe to call from a timer
+        // in a way a per-call timeout would not be. See `HANDSHAKE_MS`.
+        gone = true;
+        strike(fatalReason('unreadable', `The database engine did not answer within ${HANDSHAKE_MS / 1000} seconds`));
+      }, HANDSHAKE_MS);
+      // Node's timer would hold a test process open for half a minute; the browser's has no such method.
+      (handshake as unknown as { unref?: () => void }).unref?.();
     });
 
   return {
@@ -212,6 +290,21 @@ export function createWorkerExecutor(worker: Worker): SnapshotExecutor {
     },
     arm: () => {
       armed = true;
+    },
+    release: () => {
+      if (gone) return;
+      gone = true;
+      if (handshake !== undefined) {
+        clearTimeout(handshake);
+        handshake = undefined;
+      }
+      // Rejected rather than left hanging, for the same reason the strike rejects: a promise waiting on an
+      // engine nobody is holding any more is the permanent spinner by another name. The screen that asked
+      // for this is already drawn over whatever was reading.
+      for (const [id, waiter] of pending) {
+        waiter.reject(new Error(RELEASED));
+        pending.delete(id);
+      }
     },
   };
 }

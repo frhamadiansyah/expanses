@@ -30,6 +30,20 @@ export interface RecoveryReason {
   /** Whether the database was put back the way it was before an update. */
   rolledBack?: boolean;
   /**
+   * Whether something is still holding the database's files open, so nothing can be written to them.
+   *
+   * The SAH pool takes a sync access handle on every slot file it owns and keeps it for the life of the
+   * worker holding it, and OPFS then refuses every write to those files from anywhere else. Restore and
+   * Start fresh both write, so both fail with "Access Handles cannot be created" while this is true — and
+   * a button that cannot succeed is worse on this screen than anywhere else in the app. Export is not
+   * affected: `salvageBytes` reads straight through a held handle.
+   *
+   * The second tab says the same thing through `kind: 'locked'`, where the holder is another tab and there
+   * is nothing this one can do about it. This field is for the case where the holder is *us* and letting go
+   * was tried: a render crash whose engine could not be released. Absent means nothing is holding them.
+   */
+  held?: boolean;
+  /**
    * Whether this was found with the app already open and running, rather than on the way in (spec §3.4).
    * It changes nothing about what is offered — the file is the file — and only what the screen says: the
    * user was looking at their money a second ago and is owed a sentence about where it went.

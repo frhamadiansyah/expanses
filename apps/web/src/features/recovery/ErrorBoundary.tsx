@@ -1,16 +1,23 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import type { SnapshotStore } from '../../db/open';
 import { RecoveryScreen } from './RecoveryScreen';
-import { screenFailureReason } from './screen-failure';
+import { releaseEngine, screenFailureReason } from './screen-failure';
 
 interface Props {
   snapshots: SnapshotStore;
+  /**
+   * Lets go of the app's engine, from `AppDb.release`. Optional because a caller may have no worker to let
+   * go of; without it the screen withholds the two buttons that write. See `releaseEngine`.
+   */
+  release?: () => void;
   children: ReactNode;
 }
 
 interface State {
   failed: boolean;
   error: unknown;
+  /** Whether the engine's handles on the files are really gone, decided in `componentDidCatch`. */
+  released: boolean;
 }
 
 /**
@@ -31,9 +38,9 @@ interface State {
  * because `guardMount` swaps the screen before the failure can reach a render.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  override state: State = { failed: false, error: null };
+  override state: State = { failed: false, error: null, released: false };
 
-  static getDerivedStateFromError(error: unknown): State {
+  static getDerivedStateFromError(error: unknown): Pick<State, 'failed' | 'error'> {
     return { failed: true, error };
   }
 
@@ -41,10 +48,26 @@ export class ErrorBoundary extends Component<Props, State> {
     // The one place this is recorded. The user gets the reason's `detail` under "Details"; a developer
     // gets the component that threw, which the reason has no honest way to carry.
     console.error('A screen stopped before it could finish', error, info.componentStack);
+    /*
+     * And then the engine is let go of, because two of the four buttons below cannot work until it is.
+     * Nothing struck on this path — the engine never complained; a screen did — so nothing terminated the
+     * worker, and it is still holding a sync access handle on every slot file the SAH pool owns. Restore
+     * and Start fresh both write to those files.
+     *
+     * Done here rather than in `getDerivedStateFromError`, which React may call more than once and asks to
+     * be pure, and here rather than in `render`, which must not have side effects at all. `setState` from
+     * a commit-phase lifecycle is flushed before the browser paints, so the screen is drawn once, with the
+     * buttons it has earned.
+     */
+    this.setState({
+      released: releaseEngine(this.props.release, (failure) => console.warn('The database engine could not be let go of', failure)),
+    });
   }
 
   override render() {
     if (!this.state.failed) return this.props.children;
-    return <RecoveryScreen reason={screenFailureReason(this.state.error)} snapshots={this.props.snapshots} />;
+    return (
+      <RecoveryScreen reason={screenFailureReason(this.state.error, { released: this.state.released })} snapshots={this.props.snapshots} />
+    );
   }
 }

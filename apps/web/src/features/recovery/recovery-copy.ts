@@ -72,9 +72,13 @@ export function recoveryCopy(reason: RecoveryReason, options: RecoveryOptions): 
  * there first holds the file open and nothing can be written. `start-fresh` is withheld from exactly the
  * two failures that are not about the file: an app that is behind its data, and a second tab. `retry` is
  * always there, because a screen with no way forward is the white screen this replaces.
+ *
+ * `held` is the same rule as the second tab's, by a different route: something still has a sync access
+ * handle on every slot file, so everything that writes would fail on it. The screen says so by not
+ * offering it, rather than by letting the user press it and read an OPFS exception.
  */
 function actionsFor(reason: RecoveryReason, { hasSnapshot }: RecoveryOptions): RecoveryAction[] {
-  const writable = reason.exportable && reason.kind !== 'locked';
+  const writable = reason.exportable && reason.kind !== 'locked' && !reason.held;
   const actions: RecoveryAction[] = [];
   if (reason.exportable) actions.push('export');
   if (writable && hasSnapshot && reason.kind !== 'newer-database' && !reason.rolledBack) actions.push('restore');

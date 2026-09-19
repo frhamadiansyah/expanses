@@ -64,6 +64,31 @@ describe('bootstrap', () => {
     expect(result.ok).toBe(true);
     expect(released()).toBe(0);
   });
+
+  /**
+   * The way out the React error boundary needs, and the one nothing else provides.
+   *
+   * A render that throws never reaches `onFatal` — the engine did not complain, a screen did — so nothing
+   * strikes and nothing terminates the worker, and the SAH pool goes on holding a sync access handle on
+   * every slot file. The recovery screen that replaces the app offers Restore and Start fresh, and both
+   * write to those files: without this they fail with "Access Handles cannot be created", which is exactly
+   * what the `locked` screen withholds them to avoid.
+   */
+  it('hands the app a way to let go of the engine, for a screen that crashed with nothing struck', async () => {
+    const { worker, released } = fakeWorker();
+    const app = {} as AppDb;
+    const result = await bootstrap(() => undefined, { spawn: () => worker, open: async () => ({ ok: true, app, applied: [] }) });
+
+    expect(result.ok).toBe(true);
+    expect(released()).toBe(0);
+    expect(app.release).toBeTypeOf('function');
+
+    app.release?.();
+    expect(released()).toBe(1);
+    // Safe to call twice: a boundary handling a crash must not be the thing that throws next.
+    app.release?.();
+    expect(released()).toBe(2);
+  });
 });
 
 describe('openAppDb', () => {

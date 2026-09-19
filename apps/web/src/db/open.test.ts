@@ -501,6 +501,47 @@ describe('openSafely', () => {
     expect(await store.blockedVersion()).toBe(46);
   });
 
+  /**
+   * The open path, over a worker whose module never evaluated.
+   *
+   * A precached worker chunk that has gone bad, a module fetch that fails on the first load after an
+   * update, an uncaught top-level throw: `self.onmessage` is never installed, so no message is ever
+   * answered and `worker.onerror` is the only thing the browser says about it. The strike records the
+   * fatal and rejects what is pending — and then `databaseVersion`'s catch asks `checkStructure`, which
+   * posts a second query. Gated behind `armed`, that post was accepted by an engine that could not answer
+   * it: `openSafely` never returned, `bootstrap` never returned, and `main.tsx` was left awaiting a
+   * bootstrap that never finished, with the opening screen on the page and no button on it.
+   *
+   * The race is the assertion. Without the unconditional refusal this test does not fail, it hangs — which
+   * is the defect, stated as precisely as it can be stated.
+   */
+  it('reaches a recovery screen rather than the opening screen for ever, when the worker never evaluates', async () => {
+    const posted: string[] = [];
+    const worker = {
+      onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      terminate: () => undefined,
+      postMessage(message: { op: string }) {
+        posted.push(message.op);
+        // The browser's one signal about a worker whose module threw on the way up. Nothing is ever replied to.
+        if (posted.length === 1) setTimeout(() => worker.onerror?.({ message: 'Failed to fetch worker module' } as ErrorEvent), 0);
+      },
+    };
+    const wx = createWorkerExecutor(worker as unknown as Worker);
+    const database = createDatabase(wx);
+
+    const outcome = await Promise.race([
+      openSafely({ database, snapshots: NO_SNAPSHOTS, onStage: () => undefined }).then((r) => (r.ok ? 'ok' : `reason:${r.reason.kind}`)),
+      new Promise<string>((resolve) => setTimeout(() => resolve('HUNG'), 1_000)),
+    ]);
+
+    expect(outcome).not.toBe('HUNG');
+    // A typed reason, with Export, Restore and Try again on the screen it draws.
+    expect(outcome).toBe('reason:corrupt');
+    // The second post is the point: nothing is issued to an engine that has already gone.
+    expect(posted).toHaveLength(1);
+  });
+
   it('does not try the same failed update again on the next open', async () => {
     const { database } = await seeded();
     const boom: Migration = { version: NEXT, name: 'boom', sql: 'INSERT INTO nope (x) VALUES (1);' };

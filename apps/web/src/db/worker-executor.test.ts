@@ -275,6 +275,111 @@ describe('a failure the session cannot carry on past', () => {
     expect(await settled).toMatch(/SQLite worker failed/);
   });
 
+  /**
+   * The other half of finding A, and the reason `gone` is not the whole answer.
+   *
+   * `worker.onerror` is a signal the browser has to send. A worker that starts, installs nothing and then
+   * simply never answers — a VFS install that hangs rather than rejecting, a message lost between the two
+   * sides — raises no event at all, and the open would then wait on it for the life of the tab. The
+   * handshake is bounded instead, and the silence is named.
+   */
+  it('stops waiting on an engine that has never said anything at all, and names the silence', async () => {
+    vi.useFakeTimers();
+    const worker = {
+      onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      posts: 0,
+      postMessage() {
+        worker.posts += 1;
+      },
+    };
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+    const heard: RecoveryReason[] = [];
+    executor.onFatal((reason) => heard.push(reason));
+    const first = executor.query('select 1', [], 'all').then(
+      () => 'answered',
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(await first).toMatch(/did not answer/);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]?.kind).toBe('unreadable');
+    // And nothing is posted into the silence afterwards, however long the caller keeps asking.
+    await expect(executor.query('select 1', [], 'all')).rejects.toThrow(/did not answer/);
+    expect(worker.posts).toBe(1);
+  });
+
+  it('judges an engine that has answered once by what it says, never by the clock', async () => {
+    vi.useFakeTimers();
+    // A migration over a large database is one message with no reply for as long as it takes; a blanket
+    // timeout would terminate the worker in the middle of writing it. The handshake stops at the first reply.
+    const worker = {
+      onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      held: [] as number[],
+      postMessage(message: { id: number }) {
+        // The first is answered at once; the long write afterwards is left in flight.
+        if (message.id === 1) return queueMicrotask(() => worker.onmessage?.({ data: { id: message.id, result: [] } } as MessageEvent<unknown>));
+        worker.held.push(message.id);
+      },
+    };
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+    const heard: RecoveryReason[] = [];
+    executor.onFatal((reason) => heard.push(reason));
+    await executor.query('select 1', [], 'all');
+
+    const slow = executor.execScript('a migration that takes a while');
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    // Two minutes of silence from an engine that has spoken once is a long write, not a dead worker.
+    expect(heard).toEqual([]);
+    worker.onmessage?.({ data: { id: worker.held[0]!, result: null } } as MessageEvent<unknown>);
+    await expect(slow).resolves.toBeUndefined();
+  });
+
+  /**
+   * Letting go on purpose, which is not a failure and must not be dressed as one.
+   *
+   * The React error boundary asks for this: the engine never complained, so nothing struck and nothing
+   * terminated the worker, and the screen replacing the app needs the slot files free before it can offer
+   * to put a copy back. Nothing is diagnosed, nothing is handed to `onFatal`, and nothing more is posted.
+   */
+  it('closes the engine when the app asks it to, without inventing a failure', async () => {
+    const worker = scriptedWorker((message) => ({ id: message.id, result: [] }));
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+    const heard: RecoveryReason[] = [];
+    executor.onFatal((reason) => heard.push(reason));
+    await executor.query('select 1', [], 'all');
+    const sentBefore = worker.sent.length;
+
+    executor.release();
+
+    // Nothing failed, so nobody is told a screen has to change: the caller has already drawn one.
+    expect(heard).toEqual([]);
+    await expect(executor.query('select 1', [], 'all')).rejects.toThrow(/let go of the database/);
+    // Not armed, and still refused: this is the gate `worker.onerror` uses, and it does not ask about `arm()`.
+    await expect(executor.importBytes(new Uint8Array([1, 2, 3]))).rejects.toThrow(/let go of the database/);
+    expect(worker.sent).toHaveLength(sentBefore);
+    // Safe to call twice: the boundary that asks for this is already handling one crash.
+    expect(() => executor.release()).not.toThrow();
+  });
+
+  it('rejects what a screen was still reading rather than leaving it hanging on an engine nobody holds', async () => {
+    const worker = {
+      onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      postMessage: () => undefined,
+    };
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+    const reading = executor.query('select * from transactions', [], 'all');
+
+    executor.release();
+
+    await expect(reading).rejects.toThrow(/let go of the database/);
+  });
+
   it('counts the engine dying as the same thing, and hands it to a listener that arrives late', async () => {
     const worker = scriptedWorker((message) => ({ id: message.id, result: [] }));
     const executor = createWorkerExecutor(worker as unknown as Worker);

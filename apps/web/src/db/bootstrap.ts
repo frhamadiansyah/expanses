@@ -45,6 +45,19 @@ export interface AppDb {
    * rejected rather than left to hang.
    */
   onFatal?: (handler: (reason: RecoveryReason) => void) => void;
+  /**
+   * Lets go of the engine on purpose, so the files it holds can be written by something else.
+   *
+   * Absent for a database opened without a worker, and never called on an ordinary path: the app holds its
+   * engine for the life of the tab. It exists for the React error boundary, which replaces the whole app
+   * with the recovery screen after a render throws — with the worker still alive and still holding a sync
+   * access handle on every slot file the SAH pool owns. Restore and Start fresh both write to those files,
+   * and both fail with "Access Handles cannot be created" until this is called. Nothing is written and
+   * nothing is deleted by it; whatever was still reading is rejected with a sentence saying why.
+   *
+   * Synchronous, and safe to call twice.
+   */
+  release?: () => void;
 }
 
 export async function openAppDb(database: Database, migrations?: Migration[]): Promise<AppDb> {
@@ -155,6 +168,19 @@ export async function bootstrap(onStage: (stage: OpenStage) => void, deps: Boots
        * answer for each of them; from this line the app is holding the engine, and §3.4 applies.
        */
       executor.arm();
+      /*
+       * The same terminate the strike does, asked for rather than triggered.
+       *
+       * A render that throws reaches the React error boundary, not `onFatal`: the engine never complained,
+       * so nothing strikes and nothing terminates, and the recovery screen the boundary draws would offer
+       * Restore and Start fresh over a worker still holding a sync access handle on every slot file. Both
+       * would fail with "Access Handles cannot be created", which is precisely what the `locked` screen
+       * withholds those two buttons to avoid. So the boundary is given the same way out the strike takes.
+       */
+      result.app.release = () => {
+        executor.release();
+        worker.terminate();
+      };
       result.app.onFatal = (handler) =>
         executor.onFatal((reason) => {
           worker.terminate();

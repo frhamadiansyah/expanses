@@ -19,9 +19,23 @@ import type { RecoveryReason } from '../../db/open';
  * every tool without claiming anything went wrong with the bytes. `midSession` is true because it is: the
  * app was open and being used a moment ago, and the user is owed that sentence.
  */
-export function screenFailureReason(error: unknown): RecoveryReason {
+export interface ScreenFailureOptions {
+  /**
+   * Whether the app's engine has been let go of before this screen is drawn.
+   *
+   * It decides two of the four buttons. The boundary is reached with the worker alive and idle — nothing
+   * struck, so nothing terminated it — and the SAH pool holds a sync access handle on every slot file for
+   * as long as that worker lives. Restore and Start fresh both write to those files and both fail on a
+   * held handle, so they are offered only once the handles are really gone. Left out, the honest answer is
+   * "we do not know", and this screen does not offer what it cannot promise.
+   */
+  released?: boolean;
+}
+
+export function screenFailureReason(error: unknown, { released = false }: ScreenFailureOptions = {}): RecoveryReason {
+  const held = !released;
   const kind = fatalKind(error);
-  if (kind) return fatalReason(kind, messageOf(error));
+  if (kind) return { ...fatalReason(kind, messageOf(error)), held };
   return {
     kind: 'cannot-open',
     // A log line, not a screen line: `recoveryCopy` writes what the user reads. See `fatal.ts`.
@@ -29,5 +43,31 @@ export function screenFailureReason(error: unknown): RecoveryReason {
     detail: messageOf(error),
     exportable: true,
     midSession: true,
+    held,
   };
+}
+
+/**
+ * Letting go of the engine before the screen that replaces the app is drawn.
+ *
+ * The one thing the boundary does besides diagnose and render, and it is not tidiness: it is what makes
+ * the screen's own buttons true. Nothing is written by it and nothing is removed — the worker is asked to
+ * stop and the handles it holds go with it — so it is safe on the one path where the app has already
+ * failed and the user is about to be offered a way back.
+ *
+ * It answers whether it really happened, because that is what the screen has to know. A build with no
+ * worker behind it (the Node-backed tests), and a terminate that throws, both mean the files may still be
+ * held, and the answer is the same in either case: say so, and let `actionsFor` withhold the two buttons
+ * that would fail. Never a thrown error of its own — the app has already crashed once, and a boundary that
+ * crashes while handling a crash is the white page all over again.
+ */
+export function releaseEngine(release: (() => void) | undefined, onFailure: (error: unknown) => void): boolean {
+  if (!release) return false;
+  try {
+    release();
+    return true;
+  } catch (error) {
+    onFailure(error);
+    return false;
+  }
 }

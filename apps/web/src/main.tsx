@@ -85,8 +85,12 @@ async function start() {
     if (!gate.mountable()) return;
     root.render(
       <StrictMode>
-        {/* The floor under every screen: a render that throws draws the recovery screen, never a white page. */}
-        <ErrorBoundary snapshots={snapshots}>
+        {/*
+          The floor under every screen: a render that throws draws the recovery screen, never a white page.
+          `release` is the engine itself, handed over so that screen's Restore and Start fresh can touch
+          files this app's worker is still holding open — nothing strikes on this path, so nothing else lets go.
+        */}
+        <ErrorBoundary snapshots={snapshots} release={app.release}>
           <App app={app} />
         </ErrorBoundary>
       </StrictMode>,

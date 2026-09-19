@@ -499,3 +499,56 @@ test('a database that goes wrong while the app is open swaps the app for the rec
     rescued.close();
   }
 });
+
+/**
+ * The React error boundary, with a real engine behind it — the one recovery screen nothing terminates for.
+ *
+ * Every other way to this screen goes through a strike, and a strike ends with `bootstrap` terminating the
+ * worker. A render that throws goes through none of that: the engine never complained, a screen did, so the
+ * worker is alive and idle behind the screen and the SAH pool is still holding a sync access handle on
+ * every slot file. Restore and Start fresh both write to those files, and both failed on them with
+ * "Access Handles cannot be created" — a screen whose only repair button could not repair anything, which
+ * is exactly what the `locked` screen withholds those buttons to avoid. `AppDb.release` is the way out,
+ * and this is the journey that proves it: the crash, the screen, the copy actually going back, and the app.
+ *
+ * The crash is deterministic and it is above the router — `App`'s own effect, so the boundary catches it
+ * rather than a route's error component — and it is gated on the query string, because "Try again" and the
+ * restore both reload the same page and a crash on every load would prove nothing about coming back.
+ */
+test('a screen that crashes lets go of the engine, so the copy it offers can really go back', async ({ page }) => {
+  await addBank(page, 'Entered before the copy', '1000000');
+  await forgetSafetyCopies(page);
+  await page.goto('/');
+  await waitForSafetyCopy(page);
+  // Entered after the copy was taken, so putting the copy back is something that can be seen.
+  await addBank(page, 'Entered after the copy', '2000000');
+
+  await page.addInitScript(() => {
+    if (!window.location.search.includes('crash')) return;
+    Object.defineProperty(window, 'requestIdleCallback', {
+      configurable: true,
+      value: () => {
+        throw new Error('a screen stopped while it was drawing');
+      },
+    });
+  });
+  await page.goto('/?crash');
+
+  // Not a white page, and the words are about a screen rather than about their money.
+  await expect(page.getByRole('heading', { name: 'That screen stopped before it could finish' })).toBeVisible();
+  await expect(page.getByText(/what you have lost is that screen, not your money/i)).toBeVisible();
+
+  // All four tools, because the engine has let go and every one of them can now succeed.
+  await expect(page.getByRole('button', { name: EXPORT_BUTTON, exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start fresh on this device' })).toBeVisible();
+  const restore = page.getByRole('button', { name: /Restore the last good copy/ });
+  await expect(restore).toBeVisible();
+
+  await Promise.all([page.waitForEvent('load'), restore.click()]);
+
+  // The copy really went back: the app reopens on it, with the row that predates the copy and without
+  // the one entered after it. No OPFS exception, and nothing left on the screen to say there was one.
+  await page.goto('/accounts');
+  await expect(page.getByRole('link', { name: 'Entered before the copy' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Entered after the copy' })).toHaveCount(0);
+});
