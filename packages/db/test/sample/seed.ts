@@ -314,7 +314,7 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
     await tagTransaction(database, ws, id, trip);
     cardPurchases.push({ id, account: krisflyer.id, on });
   }
-  await saveEvent(database, ws, { name: 'Office end-of-year dinner', startsOn: addDays(today, 70), endsOn: addDays(today, 70), plannedMinor: 1_500_000 });
+  await saveEvent(database, ws, { name: 'Office end-of-year dinner', startsOn: addDays(today, 70), endsOn: addDays(today, 70) });
 
   // ---- A phone on 12 months at 0% ----
   const phoneOn = withDay(monthStart(today, 2), 6);

@@ -19,7 +19,6 @@ export interface SaveEventInput {
   name: string;
   startsOn: string;
   endsOn: string;
-  plannedMinor?: number | null;
   goalId?: string | null;
   setId?: string | null;
 }
@@ -32,9 +31,6 @@ export async function saveEvent(database: Database, ws: WorkspaceContext, input:
   if (!name) throw new EventError('NAME_REQUIRED', 'An event needs a name');
   if (!DATE.test(input.startsOn) || !DATE.test(input.endsOn)) throw new EventError('INVALID_DATE', 'An event needs a start and an end');
   if (input.endsOn < input.startsOn) throw new EventError('BACKWARDS', 'An event cannot end before it starts');
-  const plannedMinor = input.plannedMinor ?? null;
-  if (plannedMinor !== null && !(plannedMinor > 0)) throw new EventError('AMOUNT_RANGE', 'Leave the figure empty, or give one above nought');
-
   const id = input.id ?? uuidv7();
   await database.db
     .insert(events)
@@ -44,7 +40,9 @@ export async function saveEvent(database: Database, ws: WorkspaceContext, input:
       name,
       startsOn: input.startsOn,
       endsOn: input.endsOn,
-      plannedMinor,
+      // `planned_minor` is written by nobody: a plan is a list of things to buy, and its total is those items' sum.
+      // The column stays in the table for the databases that already carry a figure in it, and is read by nothing.
+      plannedMinor: null,
       goalId: input.goalId ?? null,
       setId: input.setId ?? null,
       finishedAt: null,
@@ -53,7 +51,7 @@ export async function saveEvent(database: Database, ws: WorkspaceContext, input:
     })
     .onConflictDoUpdate({
       target: events.id,
-      set: { name, startsOn: input.startsOn, endsOn: input.endsOn, plannedMinor, goalId: input.goalId ?? null, setId: input.setId ?? null },
+      set: { name, startsOn: input.startsOn, endsOn: input.endsOn, goalId: input.goalId ?? null, setId: input.setId ?? null },
     });
   return id;
 }

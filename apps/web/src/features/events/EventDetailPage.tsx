@@ -229,6 +229,19 @@ export function EventDetailPage() {
   const days = new Map<string, NonNullable<typeof history.data>>();
   for (const tx of history.data ?? []) days.set(tx.occurredOn, [...(days.get(tx.occurredOn) ?? []), tx]);
 
+  /*
+   * What each payment in the history answered, read off the plan rather than worked out again here.
+   *
+   * `purchase` is the item's side of the link and `unplanned` the plan's own leftover rows — the very rows the plan
+   * screen prints — so a history row says what the plan says, in the plan's words, and the two cannot drift apart.
+   */
+  const answers = new Map<string, string[]>();
+  for (const item of (data?.lines ?? []).flatMap((line) => line.items)) {
+    const id = item.purchase?.transactionId;
+    if (id) answers.set(id, [...(answers.get(id) ?? []), item.name]);
+  }
+  const leftovers = new Set((data?.lines ?? []).flatMap((line) => line.unplanned).map((row) => row.transactionId));
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -462,8 +475,16 @@ export function EventDetailPage() {
                   {txs.map((tx) => {
                     const expense = tx.entries.find((entry) => entry.accountKind === 'expense');
                     const paidWith = tx.entries.find((entry) => entry.accountKind === 'asset' || entry.accountKind === 'liability');
+                    /*
+                     * What this payment answered, in the plan's own words: one pill per item it settled, and an
+                     * amber one when it still has something left on it that no item claims. A receipt that bought
+                     * two things and left a little over says all three, which is exactly what it did — and a
+                     * payment nobody planned at all says only "not planned", which is the honest whole of it.
+                     */
+                    const answered = answers.get(tx.id) ?? [];
+                    const leftover = leftovers.has(tx.id);
                     return (
-                      <li key={tx.id} className="flex items-center gap-3 py-2.5">
+                      <li key={tx.id} className="flex items-center gap-3 py-2.5" data-testid="event-history">
                         <CategoryIcon categoryId={expense?.accountId ?? null} accounts={accounts} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium">{expense?.accountName ?? tx.description}</span>
@@ -471,6 +492,17 @@ export function EventDetailPage() {
                             {tx.description}
                             {paidWith && ` · ${paidWith.accountName}`}
                           </span>
+                          {(answered.length > 0 || leftover) && (
+                            <span className="mt-1 flex flex-wrap items-center gap-1">
+                              {answered.map((name) => (
+                                <span key={name} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                  {name}
+                                </span>
+                              ))}
+                              {/* Amber, like the leftover rows on the plan screen it is the same fact as. */}
+                              {leftover && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">not planned</span>}
+                            </span>
+                          )}
                         </span>
                         <Money minor={expense?.amountBaseMinor ?? 0} currency={ws.baseCurrency} className="shrink-0 text-sm font-semibold text-red-700" />
                       </li>

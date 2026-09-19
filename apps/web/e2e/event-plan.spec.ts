@@ -194,3 +194,39 @@ test('a receipt that is already spoken for is shown as fully accounted for, not 
   await expect(page.getByTestId('cover-totals')).toContainText('that is more than the receipt');
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
+
+/**
+ * The two readings a plan owes outside its own screen.
+ *
+ * On the list an event says what is still to buy, and its figure is read against the plan rather than against
+ * nothing. In the history each payment says what it answered: the items it settled, and — when there is still
+ * something left on the receipt — that the remainder was not planned. A receipt can honestly say both.
+ */
+test('the list says what is still to buy, and the history says what each payment answered', async ({ page }) => {
+  await addWallet(page);
+  await spend(page, 'Mothercare', '4150000');
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await fillItem(page, { name: 'Newborn clothes', quantity: '10', price: '150000', category: 'Food and beverage' });
+  await addItem(page, { name: 'Car seat', price: '6500000', category: 'Food and beverage' });
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: /Mothercare/ }).click();
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await expect(page.getByRole('heading', { name: 'Transaction history' })).toBeVisible();
+  const mothercare = page.getByTestId('event-history').filter({ hasText: 'Mothercare' });
+  // It answered one item and left Rp2.650.000 on the receipt, so it says both.
+  await expect(mothercare).toContainText('Newborn clothes');
+  await expect(mothercare).toContainText('not planned');
+
+  await page.getByRole('button', { name: 'All events' }).click();
+  // The line says what is left to buy, and the figure is read against the plan rather than against nothing.
+  await expect(page.getByTestId('event-row')).toContainText('6.500.000 still to buy');
+  await expect(page.getByTestId('event-row')).toContainText('8.000.000');
+});

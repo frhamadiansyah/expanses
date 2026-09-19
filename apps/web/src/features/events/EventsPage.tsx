@@ -1,4 +1,4 @@
-import { isoDate, parseMajor } from '@expanses/core';
+import { isoDate } from '@expanses/core';
 import { type EventRow, saveEvent } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { CalendarRange, ChevronRight, Plus } from 'lucide-react';
@@ -7,6 +7,7 @@ import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
 import { useCategorySets } from '../categories/set-queries';
+import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
 
 /** "13 – 17 Aug 2026", or one date when the event is a single day. */
@@ -36,14 +37,19 @@ export function StatusChip({ status }: { status: 'Upcoming' | 'Now' | 'Done' }) 
   );
 }
 
-/** One event as a card: what it cost against what it planned, and a thin bar when it planned anything. */
+/**
+ * One event as a card: what it is still to buy, what it has spent against the plan, and a thin bar when it has one.
+ *
+ * Every word and every figure is `eventListLine`'s — the same reading the event's own screens use, so a card and the
+ * page it opens can never disagree. No items is no plan at all, not a plan of nought: such an event says what it
+ * cost, says "spent", and is measured against nothing, because there is nothing to measure it against.
+ */
 function EventCard({ event, today }: { event: EventRow; today: string }) {
   const { ws } = useApp();
   const plan = useEventPlan(event.id).data;
-  // No items is no plan at all, not a plan of nought: the card then says what it cost and nothing it is measured against.
-  const planned = plan?.hasPlan ? plan.plannedMinor : null;
-  const spent = plan?.spentMinor ?? 0;
-  const over = planned !== null && spent > planned;
+  const line = plan ? eventListLine(plan, ws.baseCurrency) : null;
+  const of = line?.ofMinor ?? null;
+  const over = line !== null && of !== null && line.amountMinor > of;
   return (
     <Link to="/events/$eventId" params={{ eventId: event.id }} className="block" data-testid="event-row">
       <Card>
@@ -56,18 +62,24 @@ function EventCard({ event, today }: { event: EventRow; today: string }) {
             <span className="flex items-center gap-1.5 text-xs text-slate-500">
               {eventDates(event)} <StatusChip status={eventStatus(event, today)} />
             </span>
+            {line && <span className="block truncate text-xs text-slate-500">{line.subline}</span>}
           </span>
-          <span className="shrink-0 text-right">
-            <Money minor={spent} currency={ws.baseCurrency} className="block text-sm font-semibold" />
-            <span className="block text-xs text-slate-500">
-              {planned === null ? 'no plan' : <>of <Money minor={planned} currency={ws.baseCurrency} /></>}
+          {line && (
+            <span className="shrink-0 text-right">
+              <Money minor={line.amountMinor} currency={ws.baseCurrency} className="block text-sm font-semibold" />
+              <span className="block text-xs text-slate-500">{of === null ? 'spent' : <>of <Money minor={of} currency={ws.baseCurrency} /></>}</span>
             </span>
-          </span>
+          )}
           <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
         </span>
-        {planned !== null && (
+        {plan?.hasPlan && (
           <span className="mt-2 mr-7 ml-12 block h-1 overflow-hidden rounded-full bg-slate-100">
-            <span className={cx('block h-1 rounded-full', over ? 'bg-red-700' : 'bg-emerald-600')} style={{ width: `${Math.min(1, spent / planned) * 100}%` }} />
+            {/* A plan can add up to nought — a list of things each priced at nothing — and nothing is not a bar
+                that is full. The width is read from the plan itself, never from a division by nought. */}
+            <span
+              className={cx('block h-1 rounded-full', over ? 'bg-red-700' : 'bg-emerald-600')}
+              style={{ width: `${of !== null && of > 0 ? Math.min(1, Math.max(0, line!.amountMinor) / of) * 100 : 0}%` }}
+            />
           </span>
         )}
       </Card>
@@ -94,7 +106,6 @@ export function EventsPage() {
   const [name, setName] = useState('');
   const [startsOn, setStartsOn] = useState(today);
   const [endsOn, setEndsOn] = useState(today);
-  const [plannedTotal, setPlannedTotal] = useState('');
   const [setId, setSetId] = useState('');
 
   const all = events.data ?? [];
@@ -110,7 +121,6 @@ export function EventsPage() {
         name,
         startsOn,
         endsOn,
-        plannedMinor: plannedTotal.trim() === '' ? null : parseMajor(plannedTotal, ws.baseCurrency),
         setId: setId === '' ? null : setId,
       });
       await invalidate();
@@ -140,9 +150,6 @@ export function EventsPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <Field label="Name">
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Lebaran, the wedding, the renovation" />
-              </Field>
-              <Field label="Planned total" hint="Optional. Leave it empty and the category figures add up instead.">
-                <Input value={plannedTotal} onChange={(e) => setPlannedTotal(e.target.value)} inputMode="decimal" placeholder="20000000" />
               </Field>
               <Field label="Categories" hint="A set keeps an event's categories out of your monthly tree.">
                 <Select value={setId} onChange={(e) => setSetId(e.target.value)}>

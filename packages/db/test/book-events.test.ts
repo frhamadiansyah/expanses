@@ -31,7 +31,7 @@ describe('an event across workspaces', () => {
   it('names the workspaces that spent in it, and narrows the ring to one at a time', async () => {
     const { database, ws, personal, business } = await copy();
     const card = await createAccount(database, ws, { name: 'KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
-    const eventId = await saveEvent(database, ws, { name: 'Singapore holiday', startsOn: '2026-08-13', endsOn: '2026-08-17', plannedMinor: 15_000_000 });
+    const eventId = await saveEvent(database, ws, { name: 'Singapore holiday', startsOn: '2026-08-13', endsOn: '2026-08-17' });
     const spend = async (bookId: string, key: string, amountMinor: number) => {
       const keys = await categoryIdsByKey(database, inBook(ws, bookId));
       const id = await postTransaction(database, inBook(ws, bookId), {
