@@ -4,6 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openSafely, type Safety } from './open';
 import { memorySnapshots, scheduleDailyCopy } from './snapshots';
 
+/**
+ * The version one update behind the newest. Not `LATEST_VERSION - 1`: migration numbers may skip — 0048 is
+ * reserved by another plan and never shipped — so "one behind" is the highest version this build actually carries
+ * below its newest.
+ */
+const PREVIOUS_VERSION = Math.max(...MIGRATIONS.filter((m) => m.version < LATEST_VERSION).map((m) => m.version));
+
 let executor: NodeExecutor | undefined;
 afterEach(() => {
   vi.useRealTimers();
@@ -17,7 +24,7 @@ async function heldBack() {
   const database = createDatabase(executor);
   await migrate(
     database,
-    MIGRATIONS.filter((m) => m.version <= LATEST_VERSION - 1),
+    MIGRATIONS.filter((m) => m.version <= PREVIOUS_VERSION),
   );
   return database;
 }
@@ -34,7 +41,7 @@ describe('the day’s safety copy', () => {
     if (!result.ok) return;
 
     const safety = result.app.safety!;
-    expect(safety.schemaVersion).toBe(LATEST_VERSION - 1);
+    expect(safety.schemaVersion).toBe(PREVIOUS_VERSION);
 
     vi.useFakeTimers();
     scheduleDailyCopy(safety);
@@ -47,8 +54,8 @@ describe('the day’s safety copy', () => {
      * `-v<LATEST>`, so the Backup page and the recovery screen both stated a schema version those bytes do
      * not have — and on a device holding a block, that is every daily copy it ever takes.
      */
-    expect(copy?.schemaVersion).toBe(LATEST_VERSION - 1);
-    expect(copy?.file).toContain(`-v${LATEST_VERSION - 1}-daily.`);
+    expect(copy?.schemaVersion).toBe(PREVIOUS_VERSION);
+    expect(copy?.file).toContain(`-v${PREVIOUS_VERSION}-daily.`);
     expect(copy?.reason).toBe('daily');
 
     // And once a session, whatever else mounts: React's StrictMode mounts twice in development, and two
