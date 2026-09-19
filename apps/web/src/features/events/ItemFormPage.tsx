@@ -8,7 +8,7 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { useCategorySetMembership, useSetCategories } from '../categories/set-queries';
 import { useCategoryWorkspaces } from '../workspaces/queries';
-import { afterSaving } from './plan-view';
+import { afterSaving, itemFormGate } from './plan-view';
 import { useEventItemsReady, useEventPlan, useEvents } from './queries';
 
 /** The way back off a screen whose subject has gone, styled as the back link every other plan screen carries. */
@@ -110,16 +110,8 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
   const backTo = itemId
     ? ({ to: '/events/$eventId/plan/$itemId', params: { eventId, itemId }, search } as const)
     : ({ to: '/events/$eventId/plan', params: { eventId }, search } as const);
-  const blocked = ready.isSuccess && !ready.data;
-  /*
-   * Save waits for the answer, not only for a No.
-   *
-   * `blocked` can only be true once the question has been answered, so between the first paint and that one round
-   * trip Save was live and the warning below was not yet drawn — and a Save landing in that window on a copy of the
-   * data from before migration 0049 is the very silent no-op the guard exists to close. A save that cannot happen
-   * must never look like it worked, so the button is off until the app knows whether it can.
-   */
-  const unsure = !ready.isSuccess;
+  // The warning waits for a No; Save waits for the answer. `itemFormGate` holds the reasoning and is tested there.
+  const { blocked, saveOff } = itemFormGate(ready);
 
   async function save(submitted: FormEvent) {
     submitted.preventDefault();
@@ -177,7 +169,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     );
 
   const saveButton = (
-    <Button type="submit" form="item-form" disabled={blocked || unsure}>
+    <Button type="submit" form="item-form" disabled={saveOff}>
       Save
     </Button>
   );

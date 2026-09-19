@@ -577,10 +577,17 @@ test('a purchase can be unticked from either screen, and the item itself removed
  * A refusal that leaves nothing behind.
  *
  * "Buy it now" posts the payment, tags it to the event, and only then asks the item to claim it — and a share is a
- * whole figure above nought, so buying a thing for nothing was refused by the repository *after* two writes had
- * already happened. The user was shown the repository's words about shares, and left holding a payment of Rp0 tagged
- * to their trip that they never asked for and were never offered a way to undo. So the figure is asked about first,
- * and the ledger is read on both sides of the refusal to prove that nothing was written at all.
+ * whole figure above nought, so buying a thing for less than nothing was refused by the repository *after* two writes
+ * had already happened. The user was shown the repository's words about shares, and left holding a payment tagged to
+ * their trip that they never asked for and were never offered a way to undo. So the figure is asked about first, and
+ * the ledger is read on both sides of the refusal to prove that nothing was written at all.
+ *
+ * The amount is **negative**, and that is the whole point of the fixture. At nought the ledger was never at risk:
+ * `planPosting` refuses a zero line (`ZERO_AMOUNT`) before anything is inserted, so the three ledger assertions
+ * below could not fail with the guard or without it, and a guard narrowed to `amountMinor === 0` sailed through
+ * them. Below nought the line is a perfectly good posting and the refusal comes from the *share*, two writes later
+ * — so here, and only here, does reading the ledger on both sides mean anything. The zero case is checked after,
+ * for its words; it is the negative case that holds the ledger.
  */
 test('buying something for nothing is refused before a rupiah is written', async ({ page }) => {
   await addWallet(page);
@@ -597,15 +604,27 @@ test('buying something for nothing is refused before a rupiah is written', async
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
   await page.getByRole('button', { name: 'Buy it now' }).click();
-  await page.getByLabel('Amount', { exact: true }).fill('0');
+  await page.getByLabel('Amount', { exact: true }).fill('-5000');
   await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByRole('alert')).toContainText('above nought');
+  // The screen's own words, not the repository's: `SHARE_RANGE` also says "above nought", so a refusal arriving
+  // two writes too late would read almost the same. This sentence is only ever said before anything is posted.
+  await expect(page.getByRole('alert')).toContainText('What it cost is a figure above nought');
 
   // Nothing posted, nothing tagged, nothing claimed: the ledger is byte for byte what it was.
   const after = await ledgerOf(page);
   expect(after.entries).toEqual(before.entries);
   expect(after.postings).toEqual(before.postings);
   expect(after.claimed).toBe(0);
+
+  // And nought is refused by the same sentence rather than by the ledger's, which would name lines and not money.
+  await page.goto('/events');
+  await page.getByTestId('event-row').click();
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
+  await page.getByRole('button', { name: 'Buy it now' }).click();
+  await page.getByLabel('Amount', { exact: true }).fill('0');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('alert')).toContainText('What it cost is a figure above nought');
 });
 
 /**
@@ -648,4 +667,45 @@ test('data from before the plan says so, instead of losing what is typed into it
   await page.getByLabel('What', { exact: true }).fill('Crib');
   await page.getByLabel('Price each').fill('7500000');
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+});
+
+/**
+ * A receipt that answered four items says all four of them — on the wide screen, which has room.
+ *
+ * The history's pills were capped at three with a "+N more" on both shells at once, to stop eight pills wrapping
+ * and growing a row taller than the day card around it. That is a 390px problem: a desktop day card fits them.
+ * Desktop is this product's strongest tier and is never made poorer to fix the phone, so the cap lives in the phone
+ * shell alone — `phone-event-plan.spec.ts` holds the other half of this, where the cap is what is asserted.
+ */
+test('the desktop history names every item a receipt answered, with nothing folded into a count', async ({ page }) => {
+  await addWallet(page);
+  await spend(page, 'Mothercare', '4150000');
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await fillItem(page, { name: 'Newborn clothes', price: '1000000', category: 'Food and beverage' });
+  for (const item of [
+    { name: 'Muslin wraps', price: '700000' },
+    { name: 'Bottle steriliser', price: '800000' },
+    { name: 'Nappies', price: '500000' },
+  ]) {
+    await addItem(page, { ...item, category: 'Food and beverage' });
+  }
+
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: /Mothercare/ }).click();
+  for (const name of ['Muslin wraps', 'Bottle steriliser', 'Nappies']) await page.getByRole('checkbox', { name }).check();
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  const receipt = page.getByTestId('event-history').filter({ hasText: 'Mothercare' });
+  await expect(receipt).toBeVisible();
+  for (const name of ['Newborn clothes', 'Muslin wraps', 'Bottle steriliser', 'Nappies']) await expect(receipt).toContainText(name);
+  // Nothing folded away, and the leftover still said: four pills and the amber one, never a count in place of a name.
+  await expect(receipt.getByText(/\+\d+ more/)).toHaveCount(0);
+  await expect(receipt).toContainText('not planned');
 });

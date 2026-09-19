@@ -178,3 +178,66 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   await expect(page.getByRole('heading', { name: 'Newborn', exact: true })).toBeVisible();
 });
+
+/**
+ * The other half of the desktop test in `event-plan.spec.ts`: at 390px the pills are capped, and only here.
+ *
+ * Eight pills on one row wrapped and grew the row taller than the day card around it — a width problem, so a width
+ * answer. Three names then a count, and the row stays inside its card and inside the screen. The wide shell keeps
+ * all four names; that is asserted over there, and the two tests together are what stops the cap spreading back on
+ * to a screen that never needed it.
+ */
+test('a receipt answering more items than a phone row can hold says three and counts the rest', async ({ page }) => {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Current balance').fill('50000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+
+  await page.goto('/cards');
+  await settle(page);
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
+  const add = page.getByRole('dialog', { name: 'Add a transaction' });
+  await add.getByLabel('Description').fill('Mothercare');
+  await add.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await add.getByLabel('Category').selectOption({ label: 'Food and beverage (general)' });
+  await add.getByLabel('Amount', { exact: true }).fill('4150000');
+  await add.getByRole('button', { name: 'Save' }).click();
+  await expect(add).toHaveCount(0);
+
+  await page.goto('/events');
+  await page.getByRole('button', { name: 'New event' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Newborn');
+  await page.getByLabel('Starts on').fill(TODAY);
+  await page.getByLabel('Ends on').fill(TODAY);
+  await page.getByRole('button', { name: 'Save event' }).click();
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await fillItem(page, { name: 'Newborn clothes', price: '1000000', category: 'Food and beverage' });
+  for (const item of [
+    { name: 'Muslin wraps', price: '700000' },
+    { name: 'Bottle steriliser', price: '800000' },
+    { name: 'Nappies', price: '500000' },
+  ]) {
+    await page.getByRole('link', { name: 'Add an item' }).first().click();
+    await fillItem(page, { ...item, category: 'Food and beverage' });
+  }
+
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Newborn clothes' }).getByRole('link').click();
+  await page.getByRole('link', { name: 'Link a purchase' }).click();
+  await page.getByRole('link', { name: /Mothercare/ }).click();
+  for (const name of ['Muslin wraps', 'Bottle steriliser', 'Nappies']) await page.getByRole('checkbox', { name }).check();
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  const receipt = page.getByTestId('event-history').filter({ hasText: 'Mothercare' });
+  await expect(receipt).toBeVisible();
+  await expect(receipt).toContainText('+1 more');
+  // The fourth name is not merely hidden — it is not in the page, so nothing reads it out either.
+  await expect(receipt).not.toContainText('Nappies');
+  await noSideways(page, 'a receipt that answered four items');
+});

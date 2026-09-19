@@ -32,6 +32,14 @@ async function coverPairs(database: Database) {
   return rows.map(([, transactionId, shareMinor]) => [transactionId, shareMinor]);
 }
 
+/** The same pair for one named item, for the tests that span two occasions and cannot sort by one's order. */
+async function coverOfItem(database: Database, itemId: string) {
+  const rows = await database.db.values<[string | null, number | null]>(
+    sql`SELECT transaction_id, share_minor FROM event_items WHERE id = ${itemId}`,
+  );
+  return rows[0]!;
+}
+
 async function mothercare() {
   const { database, ws } = await setupDb();
   const bca = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' });
@@ -736,5 +744,69 @@ describe('a receipt retagged to another occasion', () => {
     await expect(linkEventItem(h.database, h.ws, cot, receipt)).rejects.toMatchObject({ code: 'NOT_TAGGED' });
     // The share it already carries is untouched by the reading either way.
     expect(await coverPairs(h.database)).toEqual([[receipt, 1_000_000]]);
+  });
+});
+
+/*
+ * The write side of the same move. "What it covers" shows the items of the occasion the payment is tagged to now, so
+ * that is the only scope it may unpick: saving on the new occasion must not reach back and pull the tick off the old
+ * one's item, which is invisible on that screen and can therefore never be in the list being saved. Unscoped, the
+ * sweep set that row to (null, null) and tagging the payment back no longer brought the share home — a figure the
+ * user typed, destroyed by a save they made somewhere else.
+ */
+describe('a cover saved on the occasion a receipt has moved to', () => {
+  const moved = async () => {
+    const h = await mothercare();
+    const cot = await h.item('Cot', 1, 2_000_000, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 3_000_000, 'Toko Bayi');
+    await linkEventItem(h.database, h.ws, cot, receipt, 1_000_000);
+
+    const shower = await saveEvent(h.database, h.ws, { name: 'Baby shower', startsOn: '2026-09-01', endsOn: '2026-09-30' });
+    const hampers = await saveEventItem(h.database, h.ws, shower, { name: 'Hampers', unitPriceMinor: 2_000_000, categoryAccountId: h.gear.id });
+    const cake = await saveEventItem(h.database, h.ws, shower, { name: 'Cake', unitPriceMinor: 500_000, categoryAccountId: h.gear.id });
+    await tagTransaction(h.database, h.ws, receipt, shower);
+    return { ...h, cot, receipt, shower, hampers, cake };
+  };
+
+  it('leaves the occasion it came from holding exactly the share that was typed there', async () => {
+    const h = await moved();
+    await setPurchaseCover(h.database, h.ws, h.receipt, [{ itemId: h.hampers, shareMinor: 3_000_000 }]);
+
+    // Untouched in the table, not merely unread: the cot still names the receipt and still holds its Rp10.000.
+    expect(await coverOfItem(h.database, h.cot)).toEqual([h.receipt, 1_000_000]);
+    expect(await coverOfItem(h.database, h.hampers)).toEqual([h.receipt, 3_000_000]);
+
+    // And tagging the payment back brings the tick home, which is the whole reason the link is left standing.
+    await tagTransaction(h.database, h.ws, h.receipt, h.eventId);
+    expect(await purchaseCover(h.database, h.ws, h.receipt)).toMatchObject({ givenMinor: 1_000_000, leftMinor: 2_000_000 });
+    expect(await eventPlanFor(h.database, h.ws, h.eventId)).toMatchObject({
+      boughtCount: 1,
+      boughtActualMinor: 1_000_000,
+      notPlannedMinor: 2_000_000,
+    });
+  });
+
+  it('still unpicks the ticks on its own occasion that the save leaves out', async () => {
+    const h = await moved();
+    await setPurchaseCover(h.database, h.ws, h.receipt, [
+      { itemId: h.hampers, shareMinor: 2_000_000 },
+      { itemId: h.cake, shareMinor: 500_000 },
+    ]);
+
+    await setPurchaseCover(h.database, h.ws, h.receipt, [{ itemId: h.hampers, shareMinor: 2_000_000 }]);
+    expect(await coverOfItem(h.database, h.cake)).toEqual([null, null]);
+    expect(await coverOfItem(h.database, h.hampers)).toEqual([h.receipt, 2_000_000]);
+    expect(await purchaseCover(h.database, h.ws, h.receipt)).toMatchObject({ givenMinor: 2_000_000, leftMinor: 1_000_000 });
+  });
+
+  it('saves an empty cover against an untagged payment without reaching any occasion at all', async () => {
+    const h = await moved();
+    await setPurchaseCover(h.database, h.ws, h.receipt, [{ itemId: h.hampers, shareMinor: 2_000_000 }]);
+    await tagTransaction(h.database, h.ws, h.receipt, null);
+
+    // Nothing is on screen to untick, so nothing is unticked — on either occasion.
+    await setPurchaseCover(h.database, h.ws, h.receipt, []);
+    expect(await coverOfItem(h.database, h.cot)).toEqual([h.receipt, 1_000_000]);
+    expect(await coverOfItem(h.database, h.hampers)).toEqual([h.receipt, 2_000_000]);
   });
 });

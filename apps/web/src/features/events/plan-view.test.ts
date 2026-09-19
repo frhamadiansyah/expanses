@@ -9,6 +9,7 @@ import {
   differenceWords,
   eventListLine,
   gaugeFor,
+  itemFormGate,
   itemSubline,
   moneyBackRows,
   moneyBackUnder,
@@ -265,6 +266,7 @@ describe('the words a plan is read in', () => {
       differenceWords(0).text,
       moneyBackUnder(1_000_000, []) ?? '',
       moneyBackUnder(1_000_000, [{ amountMinor: 400_000 }]) ?? '',
+      moneyBackUnder(400_000, [{ amountMinor: 600_000 }]) ?? '',
       answeredElsewhere(plan.lines[0]!.items[1]!, 'somewhere-else') ?? '',
     ].filter((word) => word !== '');
     // A sweep over one word repeated is no sweep at all.
@@ -679,10 +681,18 @@ describe('whether the money-back rows add up to their heading', () => {
     expect(moneyBackUnder(1_000_000, [])).toBe('More came back than any item accounts for.');
   });
 
+  /*
+   * The other direction is a different sentence, not the same one turned round. When the rows come to more than the
+   * heading there is no "rest" to go looking for — the rows are the larger reading and the unaccounted-for money is
+   * on the heading's side of the gap. Sending the user off to find payments "this list does not reach" while the
+   * list is showing more than the heading is the one thing the sentence must not do.
+   */
   it('says so the other way round too, when the rows come to more than the heading', () => {
     expect(plain(moneyBackUnder(400_000, [{ amountMinor: 600_000 }])!)).toBe(
-      'These rows come to Rp 600.000. The rest came back on payments this list does not reach.',
+      'These rows come to Rp 600.000, more than the figure above. The difference is money the figure above does not count.',
     );
+    expect(moneyBackUnder(400_000, [{ amountMinor: 600_000 }])).not.toMatch(/the rest/i);
+    expect(moneyBackUnder(400_000, [{ amountMinor: 600_000 }])).not.toMatch(/does not reach/i);
   });
 });
 
@@ -715,5 +725,24 @@ describe('an item another receipt already answers', () => {
     const item = elsewhere.lines[0]!.items[0]!;
     expect(item.bought).toBe(false);
     expect(answeredElsewhere(item, 't9')).toBe('answered by another payment — ticking it here moves it');
+  });
+});
+
+/*
+ * The item form's two gates, which are not the same gate.
+ *
+ * A copy of the data from before migration 0049 has no `event_items`, and a save against it is a no-op that still
+ * hands back an id. The warning about that may only be drawn once the app has asked and been told No. Save may not
+ * wait for a No: until the answer lands the app does not know, and that window — the first paint through one round
+ * trip — is precisely where a save on such a copy would have looked like it worked, with no warning yet beside it.
+ */
+describe('what the item form may do while it is still asking whether it can keep an item', () => {
+  it('keeps Save off until the answer arrives, and draws the warning only once the answer is no', () => {
+    // Still asking: Save off, and nothing accused.
+    expect(itemFormGate({ isSuccess: false })).toEqual({ blocked: false, saveOff: true });
+    // Answered yes: an ordinary form.
+    expect(itemFormGate({ isSuccess: true, data: true })).toEqual({ blocked: false, saveOff: false });
+    // Answered no: both.
+    expect(itemFormGate({ isSuccess: true, data: false })).toEqual({ blocked: true, saveOff: true });
   });
 });

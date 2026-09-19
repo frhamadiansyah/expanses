@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { ChevronLeft, Plus } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
@@ -45,6 +46,8 @@ export function EventDetailPage() {
   // `ws` here is the workspace tab a plan screen was reading in; `ws` from useApp below is the workspace context.
   const { ws: openedIn, buy } = useSearch({ from: '/events/$eventId' });
   const { database, ws } = useApp();
+  // Which shell is drawing this page. The history's item pills are capped on the phone and whole on the desktop.
+  const phone = usePhone();
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
   const events = useEvents();
@@ -566,17 +569,34 @@ export function EventDetailPage() {
                           {(answered.length > 0 || leftover) && (
                             <span className="mt-1 flex flex-wrap items-center gap-1">
                               {/*
-                               * At most three, then a count: a shopping trip answering eight items printed eight
-                               * pills that wrapped, and the row grew taller than the day card around it. Keyed by
-                               * position as well as name, because two items on one plan may share a name — "Nappies"
-                               * bought twice is two items, and two pills keyed alike is one pill React drops.
+                               * On a phone, at most three and then a count: a shopping trip answering eight items
+                               * printed eight pills that wrapped, and the row grew taller than the day card around
+                               * it. That is a 390px problem and nothing else — a desktop day card has room for all
+                               * eight — so the desktop keeps every pill and the whole of every name. Capping both
+                               * shells for one shell's sake takes the answer away from the wider one, and the wide
+                               * screen is never made poorer to fix the narrow one.
+                               *
+                               * `usePhone` rather than a `md:` class, because this is which pills exist and not how
+                               * they look: hidden by CSS they are still in the page, where a screen reader reads out
+                               * the three the eye is being spared. It is the same mechanism the shell itself uses.
+                               *
+                               * Keyed by position as well as name, because two items on one plan may share a name —
+                               * "Nappies" bought twice is two items, and two pills keyed alike is one pill React
+                               * drops.
                                */}
-                              {answered.slice(0, 3).map((name, at) => (
-                                <span key={`${name}-${at}`} className="max-w-[10rem] truncate rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                              {(phone ? answered.slice(0, 3) : answered).map((name, at) => (
+                                <span
+                                  key={`${name}-${at}`}
+                                  className={cx(
+                                    'truncate rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600',
+                                    // Bounded by the row either way, so nothing overflows; the phone's bound is tighter.
+                                    phone ? 'max-w-[10rem]' : 'max-w-full',
+                                  )}
+                                >
                                   {name}
                                 </span>
                               ))}
-                              {answered.length > 3 && (
+                              {phone && answered.length > 3 && (
                                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{`+${answered.length - 3} more`}</span>
                               )}
                               {/* Amber, like the leftover rows on the plan screen it is the same fact as. */}

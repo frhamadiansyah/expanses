@@ -301,13 +301,24 @@ export function moneyBackRows(purchases: readonly TaggedPurchase[]) {
  * by the workspace a transaction is filed in and cut off at the list's own limit. Where the two narrowings differ —
  * or past that limit — the heading stands over rows that do not come to it, and the whole point of printing the rows
  * is that a user can add them up. Saying nothing unless they are *entirely* gone leaves the commoner case, a short
- * list, silently wrong; so the shortfall is named whenever there is one, with the figure the rows do come to.
+ * list, silently wrong; so the gap is named whenever there is one, with the figure the rows do come to.
+ *
+ * The gap has two directions and they are not the same sentence. Short of the heading, there is a rest, and it came
+ * back somewhere this list cannot show. Over the heading there is no rest at all — the rows are the larger reading,
+ * and what is unaccounted for is on the heading's side. Under a workspace tab that is the ordinary way round: the
+ * heading is narrowed by category and the rows are not. Saying "the rest came back on payments this list does not
+ * reach" while the list is showing *more* than the heading tells the user to go looking for money that is already
+ * in front of them.
  */
 export function moneyBackUnder(headingMinor: number, rows: readonly { amountMinor: number }[], currency = 'IDR'): string | null {
   const rowsMinor = rows.reduce((total, row) => total + row.amountMinor, 0);
   if (rowsMinor === headingMinor) return null;
-  if (rows.length === 0) return 'More came back than any item accounts for.';
-  return `These rows come to ${formatMinor(rowsMinor, currency)}. The rest came back on payments this list does not reach.`;
+  if (rowsMinor < headingMinor) {
+    return rows.length === 0
+      ? 'More came back than any item accounts for.'
+      : `These rows come to ${formatMinor(rowsMinor, currency)}. The rest came back on payments this list does not reach.`;
+  }
+  return `These rows come to ${formatMinor(rowsMinor, currency)}, more than the figure above. The difference is money the figure above does not count.`;
 }
 
 /**
@@ -333,4 +344,22 @@ export function answeredElsewhere(item: EventPlanItemView, transactionId: string
 export function coverTotals(totalMinor: number, shares: readonly number[]) {
   const givenMinor = shares.reduce((total, share) => total + share, 0);
   return { totalMinor, givenMinor, leftMinor: totalMinor - givenMinor, over: givenMinor > totalMinor };
+}
+
+/**
+ * What the item form may do, given what the app knows so far about this copy of the data.
+ *
+ * Two different questions off one answer, and running them together is what went wrong. A database stopped before
+ * migration 0049 has no `event_items`, and every write against it is a deliberate no-op that still hands back an
+ * id — so the warning is drawn and Save is off once the answer is **No**.
+ *
+ * But the answer takes a round trip, and `blocked` can only be true after it lands. Between the first paint and
+ * that answer the app does not know, and Save spent that window live with no warning beside it — a save made there,
+ * on exactly the copy of the data the guard exists for, is the silent no-op the guard exists to close. So Save
+ * waits for the answer and not merely for a No: not-yet-known is not yes. The warning does the opposite and waits
+ * for the No, because a warning shown while the app is still asking accuses a perfectly good database of being old
+ * for as long as the round trip takes.
+ */
+export function itemFormGate(ready: { isSuccess: boolean; data?: boolean }): { blocked: boolean; saveOff: boolean } {
+  return { blocked: ready.isSuccess && ready.data === false, saveOff: !ready.isSuccess || ready.data === false };
 }

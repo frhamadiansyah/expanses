@@ -278,6 +278,16 @@ async function purchaseFor(tx: Db, ws: WorkspaceContext, eventId: string, transa
   }
 }
 
+/** The occasion a payment is tagged to right now, or null. The one scope a cover screen may read or write. */
+async function taggedEventOf(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<string | null> {
+  const [purchase] = await tx
+    .select({ eventId: transactions.eventId })
+    .from(transactions)
+    .where(and(eq(transactions.workspaceId, ws.workspaceId), eq(transactions.id, transactionId)));
+  if (!purchase) throw new EventError('NOT_FOUND', 'That payment is not in this workspace');
+  return purchase.eventId;
+}
+
 /**
  * Says a purchase answered this item, and how much of it this item is.
  *
@@ -347,6 +357,13 @@ export async function linkEventItem(
  * for" is the receipt less its shares, so shares adding to more than the receipt would drive that below nought and
  * quietly lose the row. A share is a reading of a purchase, never an edit of one; nothing here posts, moves or splits
  * an entry.
+ *
+ * The sweep that unlinks is narrowed to the occasion the payment is tagged to now, exactly as `coverOf` reads it.
+ * Unscoped, it destroyed typing: a receipt retagged from one occasion to another leaves the first occasion's item
+ * still pointing at it — on purpose, so tagging it back puts the tick back — and that item is invisible to the new
+ * occasion's cover screen, so it can never be in `wanted`. An unscoped sweep therefore set it to (null, null) on the
+ * first save made on the new occasion, and tagging back no longer brought it home. A screen may only unpick what it
+ * could show. A payment tagged to no occasion is the same rule at its limit: it shows nothing, so it unpicks nothing.
  */
 export async function setPurchaseCover(
   database: Database,
@@ -360,6 +377,7 @@ export async function setPurchaseCover(
   const wanted = new Map(covers.map((cover) => [cover.itemId, cover.shareMinor]));
 
   await database.transaction(async (tx) => {
+    const taggedTo = await taggedEventOf(tx, ws, transactionId);
     const totalMinor = await expenseTotalOf(tx, ws, transactionId);
     let given = 0;
     for (const share of wanted.values()) given += share;
@@ -374,10 +392,19 @@ export async function setPurchaseCover(
       await purchaseFor(tx, ws, item.eventId, transactionId);
     }
 
-    const rows = await tx
-      .select({ id: eventItems.id })
-      .from(eventItems)
-      .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.transactionId, transactionId)));
+    const rows =
+      taggedTo === null
+        ? []
+        : await tx
+            .select({ id: eventItems.id })
+            .from(eventItems)
+            .where(
+              and(
+                eq(eventItems.workspaceId, ws.workspaceId),
+                eq(eventItems.transactionId, transactionId),
+                eq(eventItems.eventId, taggedTo),
+              ),
+            );
     for (const row of rows) if (!wanted.has(row.id)) await writeCover(tx, ws, row.id, null);
     for (const [itemId, shareMinor] of wanted) await writeCover(tx, ws, itemId, { transactionId, shareMinor });
   });
