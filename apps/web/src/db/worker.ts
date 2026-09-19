@@ -5,7 +5,8 @@ type Request =
   | { id: number; op: 'query'; sql: string; params: unknown[]; method: Method }
   | { id: number; op: 'script'; sql: string }
   | { id: number; op: 'export' }
-  | { id: number; op: 'import'; bytes: Uint8Array };
+  | { id: number; op: 'import'; bytes: Uint8Array }
+  | { id: number; op: 'wipe' };
 
 const FILE = '/expanses.sqlite3';
 
@@ -60,6 +61,17 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         state.db = state.open();
         throw error;
       }
+      reply({ id: req.id, result: null });
+    } else if (req.op === 'wipe') {
+      // Only ever reached from "Start fresh", after the user has said so twice. Every slot the pool owns
+      // goes, not just the database file, so what opens next is a device that has never run Expanses.
+      try {
+        state.db.close();
+      } catch {
+        // already closed
+      }
+      await state.pool.wipeFiles();
+      state.db = state.open();
       reply({ id: req.id, result: null });
     }
   } catch (error) {

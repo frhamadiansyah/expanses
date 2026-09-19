@@ -1,7 +1,9 @@
-import { StrictMode } from 'react';
+import { type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { bootstrap } from './db/bootstrap';
+import { OpeningScreen } from './features/recovery/OpeningScreen';
+import { RecoveryScreen } from './features/recovery/RecoveryScreen';
 import { registerServiceWorker } from './lib/pwa';
 import './styles.css';
 
@@ -9,22 +11,26 @@ registerServiceWorker();
 
 const root = createRoot(document.getElementById('root')!);
 
-function Message({ title, body }: { title: string; body: string }) {
+const params = new URLSearchParams(window.location.search);
+const recoveryMode = params.has('recover') || window.location.hash === '#recover';
+
+function Message({ title, body, children }: { title: string; body: string; children?: ReactNode }) {
   return (
     <div className="mx-auto max-w-md p-8 text-center">
       <h1 className="text-lg font-semibold">{title}</h1>
       <p className="mt-2 text-sm text-slate-600">{body}</p>
+      {children}
     </div>
   );
 }
 
 async function start() {
-  root.render(<Message title="Opening your data…" body="Starting the local database on this device." />);
+  // Something is on screen before the engine is even asked for, so a slow device never shows a blank page.
+  root.render(<OpeningScreen stage={{ stage: 'opening' }} />);
   try {
-    // Task 4 replaces this with the recovery screen; until then a named reason at least says what happened.
-    const result = await bootstrap(() => undefined);
+    const result = await bootstrap((stage) => root.render(<OpeningScreen stage={stage} />));
     if (!result.ok) {
-      root.render(<Message title={result.reason.headline} body={result.reason.detail} />);
+      root.render(<RecoveryScreen reason={result.reason} />);
       return;
     }
     const app = result.app;
@@ -43,15 +49,43 @@ async function start() {
       </StrictMode>,
     );
   } catch (error) {
-    root.render(<Message title="Could not open the database" body={error instanceof Error ? error.message : String(error)} />);
+    // openSafely names every failure it knows about; anything that still lands here is unnamed, so it is
+    // shown the same way as the rest rather than as a blank page.
+    root.render(
+      <RecoveryScreen
+        reason={{
+          kind: 'cannot-open',
+          headline: 'We could not finish opening your data.',
+          detail: error instanceof Error ? error.message : String(error),
+          exportable: true,
+        }}
+      />,
+    );
   }
 }
 
-// opfs-sahpool allows one connection; a second tab must not open the database.
-if ('locks' in navigator) {
+if (recoveryMode) {
+  // Recovery mode never opens the database, and never waits for the single-tab lock either: the VFS keeps
+  // no handles, so a user (or a test) can export, restore and start fresh even when opening is what breaks.
+  root.render(
+    <RecoveryScreen
+      reason={{ kind: 'cannot-open', headline: 'Recovery', detail: 'Opened in recovery mode. Nothing has failed.', exportable: true }}
+      requested
+    />,
+  );
+} else if ('locks' in navigator) {
+  // opfs-sahpool allows one connection; a second tab must not open the database.
   void navigator.locks.request('expanses-db', { ifAvailable: true }, async (lock) => {
     if (!lock) {
-      root.render(<Message title="Already open in another tab" body="Close the other Expanses tab, then reload this one." />);
+      root.render(
+        <Message title="Already open in another tab" body="Close the other Expanses tab, then reload this one.">
+          <p className="mt-4 text-sm">
+            <a className="text-slate-900 underline underline-offset-2" href="?recover">
+              Or open the recovery tools
+            </a>
+          </p>
+        </Message>,
+      );
       return;
     }
     await start();
