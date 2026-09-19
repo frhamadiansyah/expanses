@@ -37,6 +37,34 @@ export async function expectFigures(scope: Locator, expected: Record<string, str
 }
 
 /**
+ * A card's `<p>` rows read as label → figure, the same pairing `figures` gives a `<dl>`.
+ *
+ * The plan screen's "Not planned" sits outside the summary grid, under a rule of its own, so it is a `<p>` and not
+ * a `<dl>` row — and it was asserted with `toContainText('Not planned')` beside a sweep of every rupiah in the card
+ * for the right number *somewhere*. That is the weaker pattern the diff's own comments criticise: the two halves
+ * never meet, so the figure could belong to any row on the card, or to no row at all. Read as a pair, the label
+ * carries its own figure and a row that is gone is a key that is missing.
+ */
+export function rowFigures(scope: Locator): Promise<Record<string, string>> {
+  return scope
+    .locator('p')
+    .evaluateAll((nodes) =>
+      Object.fromEntries(
+        nodes
+          .filter((node) => node.children.length >= 2)
+          .map((node) => [
+            (node.firstElementChild?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+            (node.lastElementChild?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          ]),
+      ),
+    );
+}
+
+export async function expectRows(scope: Locator, expected: Record<string, string>) {
+  await expect.poll(() => rowFigures(scope)).toEqual(expected);
+}
+
+/**
  * The three figures under the gauge's arc, as label → figure.
  *
  * They are the gauge's own `<b>`/`<span>` pairs rather than a `<dl>`, and they are the only place `PLAN_WORDS`

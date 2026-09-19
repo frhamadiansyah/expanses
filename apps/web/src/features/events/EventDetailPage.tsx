@@ -137,14 +137,28 @@ export function EventDetailPage() {
       const paidWith = accounts.find((account) => account.id === payingWith);
       if (!paidWith) throw new Error('Choose what it was paid with');
       if (!categoryId) throw new Error('Choose a category');
+      const currency = paidWith.currency ?? ws.baseCurrency;
+      const amountMinor = parseMajor(amount, currency);
+      /*
+       * Asked before a rupiah is written, because the link that follows can refuse and the payment cannot be taken
+       * back. A share is a whole figure above nought, so buying a thing for nought or for less posted the payment,
+       * tagged it to the event, and only then failed with the repository's own words about shares — leaving behind
+       * a transaction the user never got the thing they asked for. A refusal must leave no transaction behind.
+       *
+       * Only when something is being bought: money coming back is recorded here as spending of its own, and that is
+       * a figure below nought on purpose. It simply answers no item.
+       */
+      if (buying && amountMinor <= 0) {
+        throw new Error('What it cost is a figure above nought. Money coming back is recorded on its own, without buying an item.');
+      }
       const transactionId = await postTransaction(database, ws, {
         occurredOn,
         description,
         lines: expenseLines({
           categoryAccountId: categoryId,
           paymentAccountId: paidWith.id,
-          amountMinor: parseMajor(amount, paidWith.currency ?? ws.baseCurrency),
-          currency: paidWith.currency ?? ws.baseCurrency,
+          amountMinor,
+          currency,
         }),
       });
       // The ledger does not take an event, so the tag is a second write; an untagged payment would
@@ -183,6 +197,15 @@ export function EventDetailPage() {
   const totals = data ? planTotals(data) : null;
   // Every figure this card prints is `planTotals`', clamped once and in one place.
   const spent = totals?.spentMinor ?? 0;
+  /*
+   * What the ring and its rows are drawn against, which is not the figure in the middle of it.
+   *
+   * A category's share is clamped at nought — nothing can take a share of less than nothing — so measuring those
+   * shares against the event's *net* drew Travel at 125 % of a ring whose middle said Rp4.000.000. The whole is
+   * therefore what went out, and what came back is named under the ring by `chartUnder` rather than left as the
+   * difference between a ring that adds to one figure and a middle that says another.
+   */
+  const whole = totals?.wentOutMinor ?? 0;
   // The raw total, and only ever to ask whether anything was tagged at all: an event whose refunds outweigh its
   // purchases has money in it, and "Nothing spent on it yet" would be the page hiding a refund rather than a total.
   const anyMoney = (data?.spentMinor ?? 0) !== 0;
@@ -190,6 +213,23 @@ export function EventDetailPage() {
   const hasPlan = data?.hasPlan === true;
   const onPlan = hasPlan && page === 1;
   const transactions = history.data?.length ?? 0;
+  // Worked out once rather than at each of the two places it is printed: the words and the tone are one reading.
+  const difference = data && data.boughtCount > 0 ? differenceWords(data.differenceMinor, ws.baseCurrency) : null;
+  /*
+   * Whether the list under the ring has anything in it at all.
+   *
+   * Every line of it is conditional, so a planned event that has spent nothing drew an empty `<dl>` — a bordered
+   * strip with nothing inside, which reads as a row that failed to load rather than as nothing to say.
+   */
+  const quotesTheChart = data !== undefined && totals !== null && data.spentMinor !== data.plannedSpentMinor && totals.netBackMinor === 0;
+  const underRing =
+    totals !== null &&
+    (difference !== null ||
+      totals.notPlannedMinor > 0 ||
+      totals.moneyBackMinor > 0 ||
+      quotesTheChart ||
+      totals.netBackMinor > 0 ||
+      (totals.planNetBackMinor > 0 && totals.planNetBackMinor !== totals.netBackMinor));
 
   /**
    * All, then one button per workspace that spent in the event.
@@ -221,7 +261,9 @@ export function EventDetailPage() {
     <div data-testid="event-total">
       <Donut
         slices={spentLines.map((line) => ({ key: line.categoryId ?? 'none', label: line.name, totalMinor: line.actualMinor, colour: categoryColour(line.categoryId ?? 'none') }))}
-        totalMinor={spent}
+        // What went out, not the net: the slices are what the categories spent, and a slice may never be longer
+        // than the ring it is drawn on. The middle stays the event's own total, with the difference said under it.
+        totalMinor={whole}
         middle={formatMinor(spent, ws.baseCurrency)}
         label="Total spent"
         // How many payments make the figure up — or, when the figure is a nought a refund drove it to, what
@@ -346,12 +388,17 @@ export function EventDetailPage() {
                   last={{ label: 'Still to buy', value: formatMinor(totals!.toBuyMinor, ws.baseCurrency) }}
                 />
                 {/* The mockup's order under the ring: how the bought things went, and what nobody planned. Every
-                    figure is `planTotals`', never recomputed here, so no two screens can disagree about one event —
-                    the ring above included, since `gaugeFor` is the same reading of the same figures. */}
+                    *money* figure is `planTotals`', never recomputed here, so no two screens can disagree about one
+                    event — the ring above included, since `gaugeFor` is the same reading of the same figures. The
+                    three that are not are the plan's own counts and its signed difference (`boughtCount`,
+                    `differenceMinor`, and the `spentMinor`/`plannedSpentMinor` comparison that decides whether the
+                    chart is worth quoting): none is a figure a clamp could ever apply to.
+                    Drawn at all only when it has a line in it: an empty `<dl>` is a bordered strip saying nothing. */}
+                {underRing && (
                 <dl className="mt-2 space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-500">
-                  {data!.boughtCount > 0 && (
+                  {difference && (
                     <Figure label="Difference so far">
-                      <span className={TONE[differenceWords(data!.differenceMinor, ws.baseCurrency).tone]}>{differenceWords(data!.differenceMinor, ws.baseCurrency).text}</span>
+                      <span className={TONE[difference.tone]}>{difference.text}</span>
                     </Figure>
                   )}
                   {totals!.notPlannedMinor > 0 && (
@@ -371,7 +418,7 @@ export function EventDetailPage() {
                    * Where those differ the other page's figure is printed here under the other page's own words, so
                    * the two totals are one reading with a reason, rather than two numbers for one trip.
                    */}
-                  {data!.spentMinor !== data!.plannedSpentMinor && totals!.netBackMinor === 0 && (
+                  {quotesTheChart && (
                     <Figure label="Total spent">
                       <Money minor={totals!.spentMinor} currency={ws.baseCurrency} />
                     </Figure>
@@ -393,6 +440,7 @@ export function EventDetailPage() {
                     </Figure>
                   )}
                 </dl>
+                )}
               </div>
             </Deck>
           ) : (
@@ -414,7 +462,7 @@ export function EventDetailPage() {
                     // Clamped: a category whose refunds outweigh its purchases still cannot have spent less than
                     // nothing. What came back is named under the ring, on the page that can explain it.
                     amountMinor={Math.max(0, row.actualMinor)}
-                    wholeMinor={spent}
+                    wholeMinor={whole}
                     currency={ws.baseCurrency}
                     chevron={false}
                     // A planned row is read against its own plan; an unplanned one has nothing to be read against.
@@ -517,11 +565,20 @@ export function EventDetailPage() {
                           </span>
                           {(answered.length > 0 || leftover) && (
                             <span className="mt-1 flex flex-wrap items-center gap-1">
-                              {answered.map((name) => (
-                                <span key={name} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                              {/*
+                               * At most three, then a count: a shopping trip answering eight items printed eight
+                               * pills that wrapped, and the row grew taller than the day card around it. Keyed by
+                               * position as well as name, because two items on one plan may share a name — "Nappies"
+                               * bought twice is two items, and two pills keyed alike is one pill React drops.
+                               */}
+                              {answered.slice(0, 3).map((name, at) => (
+                                <span key={`${name}-${at}`} className="max-w-[10rem] truncate rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                                   {name}
                                 </span>
                               ))}
+                              {answered.length > 3 && (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{`+${answered.length - 3} more`}</span>
+                              )}
                               {/* Amber, like the leftover rows on the plan screen it is the same fact as. */}
                               {leftover && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">not planned</span>}
                             </span>

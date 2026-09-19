@@ -2,6 +2,7 @@ import { eventPlan, type EventPlanInput } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   afterSaving,
+  answeredElsewhere,
   BACK_WORDS,
   chartUnder,
   coverTotals,
@@ -10,6 +11,7 @@ import {
   gaugeFor,
   itemSubline,
   moneyBackRows,
+  moneyBackUnder,
   planCardRows,
   plannedLabel,
   PLAN_WORDS,
@@ -111,8 +113,70 @@ describe('the cards', () => {
   it('says on the events list what is still to buy, or how many purchases there were', () => {
     const line = eventListLine(plan);
     expect(plain(line.subline)).toBe('Planned · Rp 12.700.000 still to buy');
+    expect(line).toMatchObject({ amountMinor: 7_800_000, ofMinor: 20_200_000, backLine: null });
+    expect(eventListLine(eventPlan({ ...input, items: [] }))).toEqual({
+      subline: 'No plan · 1 purchase',
+      amountMinor: 7_800_000,
+      ofMinor: null,
+      backLine: null,
+    });
+  });
+
+  /*
+   * The branch's headline guarantee, on the one surface that had no test for it.
+   *
+   * The fixture above is planned end to end, so `plannedSpentMinor` and `spentMinor` are the same figure there and
+   * the card passed against either. They part company the moment a category has money and no items — which is the
+   * whole case §5.6 exists for — and then reading the wrong one puts "Rp 12.800.000 of Rp 20.200.000" on a card
+   * whose plan is genuinely under, with the bar beside it red. So the two are pinned apart first, and the card is
+   * read against the one that belongs to the plan.
+   */
+  it('measures a partly-planned event against its plan, never against the whole trip', () => {
+    const partly = withFood();
+    expect(partly.spentMinor).toBe(12_800_000);
+    expect(partly.plannedSpentMinor).toBe(7_800_000);
+    const line = eventListLine(partly);
     expect(line).toMatchObject({ amountMinor: 7_800_000, ofMinor: 20_200_000 });
-    expect(eventListLine(eventPlan({ ...input, items: [] }))).toEqual({ subline: 'No plan · 1 purchase', amountMinor: 7_800_000, ofMinor: null });
+    // And so the card reads as under its plan, which is the truth about it.
+    expect(line.amountMinor).toBeLessThan(line.ofMinor!);
+  });
+});
+
+/*
+ * The card on the events list, when an event's only money came back.
+ *
+ * Reachable the moment a refund is tagged to an event whose purchase never was, and the card is the one surface
+ * that had no clamp: it printed −Rp1.000.000 beside a bar drawn from a negative. Clamping it in the screen would
+ * only have hidden it, so the figure comes back clamped and what the clamp swallowed comes back beside it, named
+ * for the figure it explains — the whole event's when the card reads the whole event, the ring's when it reads the
+ * plan. Never a negative, and never a silence either.
+ */
+describe('an event whose card would read below nought', () => {
+  const crib = { id: 'g1', name: 'Crib', quantity: 1, unitPriceMinor: 5_000_000, categoryId: 'gear', link: null, note: null, purchase: null };
+  const givenBack = (items: EventPlanInput['items']) =>
+    eventPlan({
+      categoryNames: { gear: 'Baby gear' },
+      items,
+      actuals: [{ transactionId: 'g1', occurredOn: '2026-09-13', description: 'Toko Bayi refund', categoryId: 'gear', amountBaseMinor: -1_000_000 }],
+    });
+
+  it('clamps the figure the card prints, and hands back what the clamp swallowed', () => {
+    const unplanned = givenBack([]);
+    // The raw figure, so the clamp has something real to bite on.
+    expect(unplanned.spentMinor).toBe(-1_000_000);
+    const line = eventListLine(unplanned);
+    expect(line).toMatchObject({ amountMinor: 0, ofMinor: null });
+    expect(plain(line.backLine!)).toBe('Rp 1.000.000 more came back than went out');
+  });
+
+  it('names the plan’s own shortfall when the card is reading the plan', () => {
+    const planned = givenBack([crib]);
+    expect(planned.plannedSpentMinor).toBe(-1_000_000);
+    const line = eventListLine(planned);
+    expect(line).toMatchObject({ amountMinor: 0, ofMinor: 5_000_000 });
+    expect(plain(line.backLine!)).toBe('Rp 1.000.000 more came back than the plan spent');
+    // Nothing is still to buy any less for a refund: the subline is the plan's, in full.
+    expect(plain(line.subline)).toBe('Planned · Rp 5.000.000 still to buy');
   });
 });
 
@@ -173,8 +237,39 @@ describe('the words a plan is read in', () => {
     expect(PLAN_WORDS.spent).toBe('Spent');
     expect(PLAN_WORDS.overCount(1)).toBe('1 item over');
     expect(PLAN_WORDS.overCount(3)).toBe('3 items over');
-    const every = [PLAN_WORDS.left, PLAN_WORDS.over, PLAN_WORDS.set, PLAN_WORDS.spent, PLAN_WORDS.overCount(1), PLAN_WORDS.overCount(3)];
-    for (const word of every) expect(word).not.toMatch(/budget|cap\b|RAB/i);
+  });
+
+  /*
+   * The sweep, over everything this module can put in front of a user — and not over the six words above it.
+   *
+   * Sweeping only `PLAN_WORDS` was a test that could not fail: the six assertions above pin each of those words to
+   * a literal, so no mutation reaches the sweep that has not already failed twice. What the sweep is *for* is the
+   * word nobody thought to pin — a label computed rather than declared, a sentence added to this file next month —
+   * so it gathers every string the module hands a screen, across fixtures chosen to make each branch speak, and
+   * checks the count so it cannot quietly degenerate into sweeping the same word ten times.
+   */
+  it('says everything in the plan’s own words, including the ones no assertion names', () => {
+    const said = [
+      ...Object.values(PLAN_WORDS).flatMap((word) => (typeof word === 'function' ? [word(1), word(3)] : [word])),
+      ...Object.values(BACK_WORDS),
+      ...[plan, withFood(), refunded].flatMap((each) => [
+        plannedLabel(each),
+        spentLabel(each),
+        eventListLine(each).subline,
+        eventListLine(each).backLine ?? '',
+        chartUnder(planTotals(each), 2) ?? '',
+      ]),
+      ...[plan.lines[0]!.items[0]!, plan.lines[0]!.items[1]!].map((item) => itemSubline(item)),
+      differenceWords(450_000).text,
+      differenceWords(-220_000).text,
+      differenceWords(0).text,
+      moneyBackUnder(1_000_000, []) ?? '',
+      moneyBackUnder(1_000_000, [{ amountMinor: 400_000 }]) ?? '',
+      answeredElsewhere(plan.lines[0]!.items[1]!, 'somewhere-else') ?? '',
+    ].filter((word) => word !== '');
+    // A sweep over one word repeated is no sweep at all.
+    expect(new Set(said).size).toBeGreaterThanOrEqual(16);
+    for (const word of said) expect(word).not.toMatch(/budget|cap\b|RAB/i);
   });
 });
 
@@ -296,6 +391,8 @@ describe('nothing on screen reads below nought', () => {
       toBuyMinor: 0,
       spentMinor: 2_000_000,
       plannedSpentMinor: 2_000_000,
+      wentOutMinor: 2_000_000,
+      cameBackMinor: 0,
       netBackMinor: 0,
       planNetBackMinor: 0,
       notPlannedMinor: 0,
@@ -310,6 +407,8 @@ describe('nothing on screen reads below nought', () => {
       toBuyMinor: 12_000_000,
       spentMinor: 4_770_000,
       plannedSpentMinor: 4_150_000,
+      wentOutMinor: 4_770_000,
+      cameBackMinor: 0,
       netBackMinor: 0,
       planNetBackMinor: 0,
       notPlannedMinor: 2_790_000,
@@ -454,6 +553,9 @@ describe('an event whose refunds outran it', () => {
       toBuyMinor: 5_000_000,
       spentMinor: 0,
       plannedSpentMinor: 0,
+      // Nothing went out anywhere: both categories net below nought, so the ring has no slice to draw at all.
+      wentOutMinor: 0,
+      cameBackMinor: 1_000_000,
       netBackMinor: 1_000_000,
       // The planned categories spent nothing at all, which is a nought nobody clamped and nothing to explain.
       planNetBackMinor: 0,
@@ -466,6 +568,9 @@ describe('an event whose refunds outran it', () => {
       toBuyMinor: 5_000_000,
       spentMinor: 0,
       plannedSpentMinor: 0,
+      // Nothing went out anywhere: both categories net below nought, so the ring has no slice to draw at all.
+      wentOutMinor: 0,
+      cameBackMinor: 1_000_000,
       netBackMinor: 1_000_000,
       planNetBackMinor: 1_000_000,
       notPlannedMinor: 2_000_000,
@@ -498,6 +603,117 @@ describe('an event whose refunds outran it', () => {
   it('names what came back rather than a total, and says so in this page’s own words', () => {
     expect(BACK_WORDS.event).toBe('More came back than went out');
     expect(BACK_WORDS.plan).toBe('More came back than the plan spent');
-    for (const words of Object.values(BACK_WORDS)) expect(words).not.toMatch(/budget|cap\b|RAB/i);
+  });
+});
+
+/*
+ * The ring on "Where it went", and the whole its slices are a share of.
+ *
+ * Each slice is a category clamped at nought — nothing draws a share of less than nothing — but the whole they were
+ * drawn against was the event's *net*, so a refund landing in one category while another spent gave the spending
+ * category a slice longer than the ring: Travel Rp5.000.000 at 125 % of a ring whose middle read Rp4.000.000. Two
+ * numbers for one quantity, on the page whose job is to reconcile them. The whole is what went out; what came back
+ * is handed back beside it, because a figure a clamp swallowed has to be said somewhere.
+ */
+describe('the ring on "Where it went"', () => {
+  /** Travel spends, Hotels refunds: the arrangement in which the net is not what the slices add up to. */
+  const split = eventPlan({
+    categoryNames: { travel: 'Travel', hotels: 'Hotels' },
+    items: [{ id: 'w1', name: 'Flights', quantity: 1, unitPriceMinor: 6_000_000, categoryId: 'travel', link: null, note: null, purchase: null }],
+    actuals: [
+      { transactionId: 'w1', occurredOn: '2026-09-12', description: 'Garuda', categoryId: 'travel', amountBaseMinor: 5_000_000 },
+      { transactionId: 'w2', occurredOn: '2026-09-13', description: 'Hotel refund', categoryId: 'hotels', amountBaseMinor: -1_000_000 },
+    ],
+  });
+
+  it('is drawn against what went out, so no slice can be longer than the ring', () => {
+    const totals = planTotals(split);
+    // By hand: Rp5.000.000 out of Travel, Rp1.000.000 back out of Hotels, and the event nets Rp4.000.000.
+    expect(split.spentMinor).toBe(4_000_000);
+    expect(totals.wentOutMinor).toBe(5_000_000);
+    expect(totals.cameBackMinor).toBe(1_000_000);
+    // The slices the screen draws, clamped as it clamps them, against the whole it now hands the ring.
+    const slices = whereItWentRows(split).map((row) => Math.max(0, row.actualMinor));
+    expect(slices).toEqual([5_000_000, 0]);
+    expect(slices.reduce((total, part) => total + part, 0)).toBe(totals.wentOutMinor);
+    for (const part of slices) expect(part).toBeLessThanOrEqual(totals.wentOutMinor);
+    // Against the net it was 125 %; against what went out it is the whole ring and no more.
+    expect(Math.round((slices[0]! / totals.wentOutMinor) * 100)).toBe(100);
+  });
+
+  it('closes over the middle figure: what went out less what came back is what the event spent', () => {
+    for (const each of [split, sharedPlan, refunded]) {
+      const totals = planTotals(each);
+      expect(totals.wentOutMinor - totals.cameBackMinor).toBe(each.spentMinor);
+    }
+  });
+
+  it('says under the ring what the slices cannot draw', () => {
+    // Nothing is clamped on the event's own total here, so the old line said only "3 transactions" and the
+    // Rp1.000.000 gap between the ring and its middle was left for the reader to find.
+    expect(planTotals(split).netBackMinor).toBe(0);
+    expect(plain(chartUnder(planTotals(split), 3)!)).toBe('3 transactions · Rp 1.000.000 came back');
+    // And an ordinary event says nothing of the sort.
+    expect(chartUnder(planTotals(sharedPlan), 3)).toBe('3 transactions');
+  });
+});
+
+/*
+ * The heading over the "Money back" rows, and the rows themselves — two readings of one event.
+ *
+ * The heading is the plan's own subtraction, narrowed by the category an entry is filed in; the rows are the
+ * transactions the history lists, narrowed by the workspace a transaction is filed in and cut off at that list's own
+ * limit. Where the two differ the heading stands over rows that do not come to it, and adding the rows up is the one
+ * check a user has. Saying so only when the rows were *entirely* gone left the commoner case silently wrong.
+ */
+describe('whether the money-back rows add up to their heading', () => {
+  it('says nothing at all when they do', () => {
+    expect(moneyBackUnder(1_000_000, [{ amountMinor: 600_000 }, { amountMinor: 400_000 }])).toBeNull();
+    expect(moneyBackUnder(0, [])).toBeNull();
+  });
+
+  it('names the shortfall when the rows are short, not only when they are gone', () => {
+    expect(plain(moneyBackUnder(1_000_000, [{ amountMinor: 600_000 }])!)).toBe(
+      'These rows come to Rp 600.000. The rest came back on payments this list does not reach.',
+    );
+    expect(moneyBackUnder(1_000_000, [])).toBe('More came back than any item accounts for.');
+  });
+
+  it('says so the other way round too, when the rows come to more than the heading', () => {
+    expect(plain(moneyBackUnder(400_000, [{ amountMinor: 600_000 }])!)).toBe(
+      'These rows come to Rp 600.000. The rest came back on payments this list does not reach.',
+    );
+  });
+});
+
+/*
+ * A row on "What it covers" whose item is already answered by a different receipt.
+ *
+ * Ticking it here re-points the item and takes its money with it — often exactly what is meant, since the wrong
+ * receipt gets picked and receipts get corrected. What was wrong is that it happened in silence: the row said the
+ * item's estimate and its category and nothing about where its money actually was.
+ */
+describe('an item another receipt already answers', () => {
+  it('says which payment holds it, and that ticking it here moves it', () => {
+    const crib = plan.lines[0]!.items[1]!;
+    expect(crib.purchase!.transactionId).toBe('t1');
+    expect(answeredElsewhere(crib, 't2')).toBe('answered by Toko Bayi · 12 Sep — ticking it here moves it');
+    // On its own receipt there is nothing to move and nothing to say.
+    expect(answeredElsewhere(crib, 't1')).toBeNull();
+    // An item nothing has answered yet is the ordinary row.
+    expect(answeredElsewhere(plan.lines[0]!.items[0]!, 't1')).toBeNull();
+  });
+
+  it('still says it when the purchase sits outside the reading, where its description is not known', () => {
+    // A tab, or a workspace, can put the answering receipt out of scope: `bought` is false and the description is
+    // null, and the one thing still true — that something else holds this item — is the thing that must be said.
+    const elsewhere = eventPlan({
+      categoryNames: { gear: 'Baby gear' },
+      items: [{ id: 'e1', name: 'Crib', quantity: 1, unitPriceMinor: 3_000_000, categoryId: 'gear', link: null, note: null, purchase: { transactionId: 'gone', shareMinor: 3_000_000 } }],
+      actuals: [],
+    });
+    const item = elsewhere.lines[0]!.items[0]!;
+    expect(item.bought).toBe(false);
+    expect(answeredElsewhere(item, 't9')).toBe('answered by another payment — ticking it here moves it');
   });
 });

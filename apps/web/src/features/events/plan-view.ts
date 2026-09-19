@@ -79,10 +79,20 @@ const lower = (words: string) => words.charAt(0).toLowerCase() + words.slice(1);
  * above it is a clamped nought, and a nought nothing on the page explains is as wrong as the negative it replaced —
  * so the line says how much more came back, beside the very figure it accounts for.
  */
-export function chartUnder(totals: { netBackMinor: number }, transactions: number, currency = 'IDR'): string | undefined {
+export function chartUnder(totals: { netBackMinor: number; cameBackMinor: number }, transactions: number, currency = 'IDR'): string | undefined {
   const counted = transactions > 0 ? `${transactions} transaction${transactions === 1 ? '' : 's'}` : null;
+  /*
+   * And what came back inside the categories, which is a second gap on the same ring.
+   *
+   * The slices are drawn against what went out — a category cannot draw a share of less than nothing — so a refund
+   * that lands in one category while another spent leaves the slices adding to more than the figure in the middle.
+   * Said only when it is not already said: where nothing went out, "more came back than went out" is the whole of it
+   * and printing the same figure twice under one ring is two lines for one fact.
+   */
+  const inCategories =
+    totals.cameBackMinor > 0 && totals.cameBackMinor !== totals.netBackMinor ? `${formatMinor(totals.cameBackMinor, currency)} came back` : null;
   const back = totals.netBackMinor > 0 ? `${formatMinor(totals.netBackMinor, currency)} ${lower(BACK_WORDS.event)}` : null;
-  return [counted, back].filter(Boolean).join(' · ') || undefined;
+  return [counted, inCategories, back].filter(Boolean).join(' · ') || undefined;
 }
 
 /**
@@ -133,15 +143,33 @@ export function whereItWentRows(plan: EventPlan) {
   }));
 }
 
-/** The events list: a planned event says what is still to buy, an unplanned one how many purchases it holds. */
+/**
+ * The events list: a planned event says what is still to buy, an unplanned one how many purchases it holds.
+ *
+ * The figure is `planTotals`', like every other figure of this feature, so a card cannot print a negative where the
+ * event's own screens print a clamped nought — an event whose only money is a refund reached this card at less than
+ * nothing. Clamping it in the card would only have hidden it, so what the clamp swallowed comes back with it in one
+ * ready line, in the same words the event page says it in: never a negative, and never a silence either.
+ *
+ * Which figure was clamped follows which figure is shown: a planned event's card reads the planned categories, so
+ * it is the ring's own shortfall that has to be explained, and an unplanned one's is the whole event's.
+ */
 export function eventListLine(plan: EventPlan, currency = 'IDR') {
+  const totals = planTotals(plan);
+  const said = (backMinor: number, words: string) => (backMinor > 0 ? `${formatMinor(backMinor, currency)} ${lower(words)}` : null);
   if (!plan.hasPlan) {
-    return { subline: `No plan · ${plural(plan.purchaseCount, 'purchase')}`, amountMinor: plan.spentMinor, ofMinor: null as number | null };
+    return {
+      subline: `No plan · ${plural(plan.purchaseCount, 'purchase')}`,
+      amountMinor: totals.spentMinor,
+      ofMinor: null as number | null,
+      backLine: said(totals.netBackMinor, BACK_WORDS.event),
+    };
   }
   return {
-    subline: `Planned · ${formatMinor(plan.toBuyMinor, currency)} still to buy`,
-    amountMinor: plan.plannedSpentMinor,
-    ofMinor: plan.plannedMinor,
+    subline: `Planned · ${formatMinor(totals.toBuyMinor, currency)} still to buy`,
+    amountMinor: totals.plannedSpentMinor,
+    ofMinor: totals.plannedMinor,
+    backLine: said(totals.planNetBackMinor, BACK_WORDS.plan),
   };
 }
 
@@ -202,6 +230,18 @@ export function afterSaving(plan: EventPlan, typed: { estimateMinor: number; rep
 export function planTotals(plan: EventPlan) {
   // Exactly the rows `PlanPage` prints under each category: every purchase with something still left on it.
   const leftoverMinor = plan.lines.reduce((total, line) => total + line.unplannedMinor, 0);
+  /*
+   * The two halves of the ring on "Where it went", which the event's own net is not.
+   *
+   * Each slice is a category clamped at nought, because a category cannot take a share of less than nothing. Drawn
+   * against the event's *net* they no longer add up to it: Travel +5.000.000 beside Hotels −1.000.000 gave Travel a
+   * slice of 125 % of a ring whose middle read Rp4.000.000. So the whole the slices are drawn against is what went
+   * out before anything came back, and what came back is handed over beside it to be said under the ring.
+   *
+   *     wentOutMinor − cameBackMinor = plan.spentMinor, exactly and at every arrangement.
+   */
+  const wentOutMinor = plan.lines.reduce((total, line) => total + Math.max(0, line.actualMinor), 0);
+  const cameBackMinor = plan.lines.reduce((total, line) => total + Math.max(0, -line.actualMinor), 0);
   return {
     plannedMinor: Math.max(0, plan.plannedMinor),
     boughtActualMinor: Math.max(0, plan.boughtActualMinor),
@@ -210,6 +250,10 @@ export function planTotals(plan: EventPlan) {
     spentMinor: Math.max(0, plan.spentMinor),
     /** What the categories with items spent: the ring's middle figure, and the Plan card's header, clamped once. */
     plannedSpentMinor: Math.max(0, plan.plannedSpentMinor),
+    /** What the categories spent before any of it came back: the whole every slice of "Where it went" is a share of. */
+    wentOutMinor,
+    /** What came back inside those categories, which no slice can draw — said under the ring instead. */
+    cameBackMinor,
     /** What the clamp on the event's own total swallowed: how much more came back than the event ever spent. */
     netBackMinor: Math.max(0, -plan.spentMinor),
     /** The same for the ring, which counts the planned categories alone and can go under by a route of its own. */
@@ -247,6 +291,36 @@ export function moneyBackRows(purchases: readonly TaggedPurchase[]) {
     }))
     .filter((row) => row.amountMinor > 0)
     .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
+}
+
+/**
+ * Whether the rows under "Money back" add up to the heading above them, and what to say when they do not.
+ *
+ * The heading and the rows are two different readings of one event: the heading is the plan's own subtraction,
+ * narrowed by the category each entry is filed in, while the rows are the transactions the history lists, narrowed
+ * by the workspace a transaction is filed in and cut off at the list's own limit. Where the two narrowings differ —
+ * or past that limit — the heading stands over rows that do not come to it, and the whole point of printing the rows
+ * is that a user can add them up. Saying nothing unless they are *entirely* gone leaves the commoner case, a short
+ * list, silently wrong; so the shortfall is named whenever there is one, with the figure the rows do come to.
+ */
+export function moneyBackUnder(headingMinor: number, rows: readonly { amountMinor: number }[], currency = 'IDR'): string | null {
+  const rowsMinor = rows.reduce((total, row) => total + row.amountMinor, 0);
+  if (rowsMinor === headingMinor) return null;
+  if (rows.length === 0) return 'More came back than any item accounts for.';
+  return `These rows come to ${formatMinor(rowsMinor, currency)}. The rest came back on payments this list does not reach.`;
+}
+
+/**
+ * What a row on "What it covers" says about an item another receipt already answers.
+ *
+ * Ticking it here moves its money: the write sets one purchase against one item, so the share the other receipt
+ * holds is given up. That is often exactly what is meant — a receipt was corrected, or the wrong one was picked —
+ * but it happened silently, with the row saying nothing about where the item's money currently is.
+ */
+export function answeredElsewhere(item: EventPlanItemView, transactionId: string): string | null {
+  if (!item.purchase || item.purchase.transactionId === transactionId) return null;
+  const where = item.bought && item.description ? `${item.description}${item.occurredOn ? ` · ${dayMonth(item.occurredOn)}` : ''}` : 'another payment';
+  return `answered by ${where} — ticking it here moves it`;
 }
 
 /**

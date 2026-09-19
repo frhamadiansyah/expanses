@@ -7,7 +7,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Card, cx, Empty, ErrorBox, Money, PageHeader } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { differenceWords, itemSubline, moneyBackRows, plannedLabel, planTotals, TONE } from './plan-view';
+import { differenceWords, itemSubline, moneyBackRows, moneyBackUnder, plannedLabel, planTotals, TONE } from './plan-view';
 import { useEventHistory, useEventItemsReady, useEventPlan, useEvents } from './queries';
 
 /** The dark full-width link that is the one thing to do on an empty plan, and the quiet one at the foot of a full one. */
@@ -72,6 +72,9 @@ export function PlanPage() {
   const data = plan.data;
   const totals = data ? planTotals(data) : null;
   const moneyBack = moneyBackRows(history.data ?? []);
+  const shortfall = totals ? moneyBackUnder(totals.moneyBackMinor, moneyBack, ws.baseCurrency) : null;
+  // Worked out once rather than at each of the two places it is read: the words and the tone are one reading.
+  const difference = data && data.boughtCount > 0 ? differenceWords(data.differenceMinor, ws.baseCurrency) : null;
   const search = { ws: tab };
   const addLabel = 'Add an item';
 
@@ -150,19 +153,19 @@ export function PlanPage() {
                 <Figure label="Still to buy">
                   <Money minor={totals.toBuyMinor} currency={ws.baseCurrency} />
                 </Figure>
-                {data.boughtCount > 0 && (
+                {difference && (
                   <Figure label="Difference so far">
-                    <span className={TONE[differenceWords(data.differenceMinor, ws.baseCurrency).tone]}>
-                      {differenceWords(data.differenceMinor, ws.baseCurrency).text}
-                    </span>
+                    <span className={TONE[difference.tone]}>{difference.text}</span>
                   </Figure>
                 )}
               </dl>
               {totals.notPlannedMinor > 0 && (
-                <p className="mt-3 flex items-baseline justify-between gap-3 border-t border-slate-100 pt-3 text-sm">
-                  <span className="text-slate-500">Not planned</span>
-                  <Money minor={totals.notPlannedMinor} currency={ws.baseCurrency} className="font-semibold" />
-                </p>
+                <div data-testid="plan-not-planned">
+                  <p className="mt-3 flex items-baseline justify-between gap-3 border-t border-slate-100 pt-3 text-sm">
+                    <span className="text-slate-500">Not planned</span>
+                    <Money minor={totals.notPlannedMinor} currency={ws.baseCurrency} className="font-semibold" />
+                  </p>
+                </div>
               )}
               {/*
                * A refund posted as its own transaction answers no item, so it moves the totals above without
@@ -186,8 +189,13 @@ export function PlanPage() {
                     </p>
                   ))}
                   <p className="text-xs text-slate-500">Money that came back and answers no item. It is off what the event spent, and off nothing else.</p>
-                  {/* Only when the rows are gone — a voided or retagged refund still leaves the figure to explain. */}
-                  {moneyBack.length === 0 && <p className="text-xs text-slate-500">More came back than any item accounts for.</p>}
+                  {/*
+                   * The heading and these rows are two different readings — the heading narrowed by the category an
+                   * entry is filed in, the rows by the workspace a transaction is filed in and cut off at the list's
+                   * own limit — so whenever they do not come to the same figure the difference is named. Saying it
+                   * only when the rows were *entirely* gone left the commoner case, a short list, silently wrong.
+                   */}
+                  {shortfall && <p className="text-xs text-slate-500">{shortfall}</p>}
                 </div>
               )}
             </Card>

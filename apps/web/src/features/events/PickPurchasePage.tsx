@@ -30,7 +30,15 @@ export function PickPurchasePage() {
   const { ws } = useApp();
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
-  const plan = useEventPlan(eventId, tab ?? null);
+  /*
+   * The whole plan, whatever tab the event is being read in.
+   *
+   * A plan belongs to the owner: `eventPlanFor` under a workspace drops the items filed in *another* workspace's
+   * categories altogether, so a receipt already spoken for by one of them looked free here — offered, and then
+   * refused by a write that does not narrow. What is left of a payment is a fact about the payment, exactly as
+   * `usePurchaseCover` says, so it is read owner-wide and the tab is kept only for the journey back.
+   */
+  const plan = useEventPlan(eventId, null);
   const history = useEventHistory(eventId, tab ?? null);
 
   if (events.isSuccess && !event) return <Empty>That event is no longer here.</Empty>;

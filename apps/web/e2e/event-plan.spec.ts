@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
-import { addEvent, addItem, addWallet, expectCover, expectFigures, expectGauge, fillItem, moneyIn, spend } from './event-plan';
+import { addEvent, addItem, addWallet, expectCover, expectFigures, expectGauge, expectRows, fillItem, moneyIn, spend } from './event-plan';
 import { replaceTheDatabase } from './recovery-fixture';
 
 test.beforeEach(({ page }) => {
@@ -75,7 +75,7 @@ test('a plan is a list of things to buy, and a category is only their sum', asyn
  * Rp 0 and then wrote one of the thing at the full price — the user shown one figure and given another, with no error
  * anywhere. It also put the repository's own `QUANTITY_RANGE` out of reach of the only form that can produce it.
  */
-test('a quantity that is not a whole number is refused, never silently turned into one', async ({ page }) => {
+test('a quantity that is not a whole number is refused, and so is a price of nothing', async ({ page }) => {
   await addWallet(page);
   await addEvent(page, 'Newborn');
   await page.getByRole('link', { name: 'Plan what to buy' }).click();
@@ -92,6 +92,20 @@ test('a quantity that is not a whole number is refused, never silently turned in
     // Still on the form, and nothing was written: 1 × Rp 500.000 never happened.
     await expect(page.getByLabel('How many')).toHaveValue(typed);
   }
+
+  /*
+   * And a price of nothing is refused the same way, by the same door.
+   *
+   * An event "has a plan" when something is on the list, whatever it adds up to — so a list of free things would be
+   * a plan whose ring is all nought and whose every item is exactly on estimate for ever. The repository refuses it
+   * (`PRICE_RANGE`), and this is the only form that can reach that refusal, so it is held here.
+   */
+  await page.getByLabel('How many').fill('1');
+  await page.getByLabel('Price each').fill('0');
+  await expect(page.getByLabel('Estimate')).toHaveValue(/Rp\s*0$/);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('alert')).toContainText('A price each is a figure above nought');
+  await page.getByLabel('Price each').fill('500000');
 
   // A whole number above nought saves, at the estimate the form showed all along.
   await page.getByLabel('How many').fill('6');
@@ -144,10 +158,11 @@ test('what was tagged before the plan sits under its category as not planned', a
 
   // One item is planned by now, so the card's link has changed from an invitation into a way back in.
   await page.getByRole('link', { name: 'See the whole plan' }).click();
-  await expect(page.getByTestId('plan-totals')).toContainText('Not planned');
+  // Label to figure, not two substring assertions that never meet: `toContainText('Not planned')` beside
+  // `toContainText('4.200.000')` passes on a card holding both words anywhere, the figure belonging to any row.
+  await expectRows(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 4.200.000' });
   // The amber pill on the receipt's own row, beside the item it did not buy — not the summary's "Not planned".
   await expect(page.getByText('not planned', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('plan-totals')).toContainText('4.200.000');
 });
 
 /**
@@ -326,9 +341,9 @@ test('the figures agree with each other', async ({ page }) => {
     'Still to buy': 'Rp 7.200.000',
     'Difference so far': '−Rp 300.000',
   });
-  // Outside the grid, under a rule of its own: money spent on the event that no item on the plan claims.
-  await expect(totals).toContainText('Not planned');
-  expect(await moneyIn(totals)).toContain(900_000);
+  // Outside the grid, under a rule of its own: money spent on the event that no item on the plan claims — and
+  // read as label → figure like every other, rather than as a sweep of the card for that number somewhere in it.
+  await expectRows(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 900.000' });
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   const sheet = page.getByTestId('event-sheet');
@@ -439,8 +454,7 @@ test('money back is named with the rows it adds up, beside spending nobody plann
   expect(heading).toBe(rows.reduce((total, row) => total + row, 0));
 
   // And "Not planned" is the hampers alone — never the hampers with a refund netted off them.
-  await expect(totals).toContainText('Not planned');
-  expect(await moneyIn(totals)).toContain(5_000_000);
+  await expectRows(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 5.000.000' });
   await expect(page.getByText('Hampers')).toBeVisible();
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -557,6 +571,41 @@ test('a purchase can be unticked from either screen, and the item itself removed
     'Still to buy': 'Rp 7.500.000',
   });
   await expect(page.getByText('not planned', { exact: true })).toHaveCount(2);
+});
+
+/**
+ * A refusal that leaves nothing behind.
+ *
+ * "Buy it now" posts the payment, tags it to the event, and only then asks the item to claim it — and a share is a
+ * whole figure above nought, so buying a thing for nothing was refused by the repository *after* two writes had
+ * already happened. The user was shown the repository's words about shares, and left holding a payment of Rp0 tagged
+ * to their trip that they never asked for and were never offered a way to undo. So the figure is asked about first,
+ * and the ledger is read on both sides of the refusal to prove that nothing was written at all.
+ */
+test('buying something for nothing is refused before a rupiah is written', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await fillItem(page, { name: 'Crib', price: '7500000', category: 'Food and beverage' });
+
+  const before = await ledgerOf(page);
+  expect(before.entries.length).toBeGreaterThan(0);
+
+  await page.goto('/events');
+  await page.getByTestId('event-row').click();
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
+  await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
+  await page.getByRole('button', { name: 'Buy it now' }).click();
+  await page.getByLabel('Amount', { exact: true }).fill('0');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('alert')).toContainText('above nought');
+
+  // Nothing posted, nothing tagged, nothing claimed: the ledger is byte for byte what it was.
+  const after = await ledgerOf(page);
+  expect(after.entries).toEqual(before.entries);
+  expect(after.postings).toEqual(before.postings);
+  expect(after.claimed).toBe(0);
 });
 
 /**

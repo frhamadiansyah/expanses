@@ -5,7 +5,7 @@ import { useEffect, useId, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Input, Money, PageHeader } from '../../ui';
-import { coverTotals, differenceWords, TONE } from './plan-view';
+import { answeredElsewhere, coverTotals, differenceWords, TONE } from './plan-view';
 import { useEventHistory, useEventPlan, useEvents, usePurchaseCover } from './queries';
 
 /** Half-typed digits are not an error, only a figure that is not there yet: nought until the whole of it parses. */
@@ -43,7 +43,15 @@ export function CoverPage() {
   const invalidate = useInvalidateAll();
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
-  const plan = useEventPlan(eventId, tab ?? null);
+  /*
+   * The whole plan, whatever tab the event is being read in.
+   *
+   * The shares this screen seeds itself from are read owner-wide, because what a receipt already answers is a fact
+   * about the receipt. Reading the *items* through a workspace tab as well left the two disagreeing: an item filed
+   * in another workspace's category is dropped by `eventPlanFor`, so its share counted in "Given to items" with no
+   * row on the page to show it or to hand it back — totals describing money the user could neither see nor free.
+   */
+  const plan = useEventPlan(eventId, null);
   const cover = usePurchaseCover(transactionId);
   const history = useEventHistory(eventId, tab ?? null);
   const accounts = useAccounts().data ?? [];
@@ -162,6 +170,7 @@ export function CoverPage() {
             {items.map((row) => {
               const on = shares[row.id] !== undefined;
               const difference = differenceWords(typedMinor(row.id) - row.estimateMinor, currency);
+              const elsewhere = answeredElsewhere(row, transactionId);
               return (
                 <li key={row.id} className="flex flex-wrap items-center gap-3 py-2.5">
                   <input
@@ -177,6 +186,10 @@ export function CoverPage() {
                       estimate {formatMinor(row.estimateMinor, currency)}
                       {row.categoryId && ` · ${nameOf(row.categoryId)}`}
                     </span>
+                    {/* An item another receipt already answers is re-pointed by ticking it here, and its money goes
+                        with it. That is often what is meant — the wrong receipt was picked, or one was corrected —
+                        but it happened in silence, with nothing on the row saying where the money currently is. */}
+                    {elsewhere && <span className="block truncate text-xs text-amber-800">{elsewhere}</span>}
                   </label>
                   {on ? (
                     <span className="flex shrink-0 items-center gap-2">

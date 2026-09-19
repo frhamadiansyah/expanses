@@ -111,6 +111,15 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     ? ({ to: '/events/$eventId/plan/$itemId', params: { eventId, itemId }, search } as const)
     : ({ to: '/events/$eventId/plan', params: { eventId }, search } as const);
   const blocked = ready.isSuccess && !ready.data;
+  /*
+   * Save waits for the answer, not only for a No.
+   *
+   * `blocked` can only be true once the question has been answered, so between the first paint and that one round
+   * trip Save was live and the warning below was not yet drawn — and a Save landing in that window on a copy of the
+   * data from before migration 0049 is the very silent no-op the guard exists to close. A save that cannot happen
+   * must never look like it worked, so the button is off until the app knows whether it can.
+   */
+  const unsure = !ready.isSuccess;
 
   async function save(submitted: FormEvent) {
     submitted.preventDefault();
@@ -168,7 +177,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     );
 
   const saveButton = (
-    <Button type="submit" form="item-form" disabled={blocked}>
+    <Button type="submit" form="item-form" disabled={blocked || unsure}>
       Save
     </Button>
   );

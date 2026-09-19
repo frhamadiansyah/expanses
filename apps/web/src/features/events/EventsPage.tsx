@@ -63,6 +63,9 @@ function EventCard({ event, today }: { event: EventRow; today: string }) {
               {eventDates(event)} <StatusChip status={eventStatus(event, today)} />
             </span>
             {line && <span className="block truncate text-xs text-slate-500">{line.subline}</span>}
+            {/* The figure on the right is clamped at nought, so what the clamp swallowed is said here rather than
+                left as a silent nought — the same both-sided rule the event's own screens keep under their ring. */}
+            {line?.backLine && <span className="block truncate text-xs text-emerald-700">{line.backLine}</span>}
           </span>
           {line && (
             <span className="shrink-0 text-right">
@@ -75,10 +78,11 @@ function EventCard({ event, today }: { event: EventRow; today: string }) {
         {plan?.hasPlan && (
           <span className="mt-2 mr-7 ml-12 block h-1 overflow-hidden rounded-full bg-slate-100">
             {/* A plan can add up to nought — a list of things each priced at nothing — and nothing is not a bar
-                that is full. The width is read from the plan itself, never from a division by nought. */}
+                that is full. The width is read from the plan itself, never from a division by nought; the figure
+                arrives clamped from `eventListLine`, so this screen has no clamp of its own to remember. */}
             <span
               className={cx('block h-1 rounded-full', over ? 'bg-red-700' : 'bg-emerald-600')}
-              style={{ width: `${of !== null && of > 0 ? Math.min(1, Math.max(0, line!.amountMinor) / of) * 100 : 0}%` }}
+              style={{ width: `${of !== null && of > 0 ? Math.min(1, line!.amountMinor / of) * 100 : 0}%` }}
             />
           </span>
         )}

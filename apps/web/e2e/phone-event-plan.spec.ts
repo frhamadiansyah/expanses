@@ -77,7 +77,10 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await expect(page.getByRole('heading', { name: 'Newborn', exact: true })).toBeVisible();
   await noSideways(page, 'the event');
 
-  await page.getByTestId('open-plan').click();
+  // By its accessible name, like everything else here: the card's link reads "Plan what to buy" while nothing is
+  // planned and "See the whole plan" once there are items, and this spec's whole claim is that nothing on a phone
+  // is reached by anything a desktop cannot reach by name.
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
   await expect(page.getByText('Nothing planned yet')).toBeVisible();
   await noSideways(page, 'an empty plan');
 
@@ -120,7 +123,7 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   await page.getByTestId('event-suggestions').getByRole('button', { name: 'Tag Mothercare' }).click();
   await expect(page.getByTestId('event-total')).toContainText('4.150.000');
   await noSideways(page, 'an event with a plan');
-  await page.getByTestId('open-plan').click();
+  await page.getByRole('link', { name: 'See the whole plan' }).click();
 
   // Buying: the item's page, then the event's own card filled in from the estimate, with the real price typed over it.
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
