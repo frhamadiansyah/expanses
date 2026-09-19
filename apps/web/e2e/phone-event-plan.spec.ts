@@ -134,6 +134,9 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   // Ticked, at what it really cost, with the difference beside it.
   const crib = page.getByTestId('plan-item').filter({ hasText: 'Crib' });
   await expect(page.getByRole('button', { name: 'Unlink Crib' })).toBeVisible();
+  // The tick undoes a purchase, so it is a control like any other: it was the one thing on these screens drawn at
+  // the dot's own 24px, under the 44 the ＋, the wide links and the way back are all held to above.
+  await bigEnough(page.getByRole('button', { name: 'Unlink Crib' }), 'the plan’s tick');
   await expect(crib).toContainText('7.200.000');
   await expect(crib).toContainText('−Rp 300.000');
 

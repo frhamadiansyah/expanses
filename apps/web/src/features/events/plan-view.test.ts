@@ -2,6 +2,8 @@ import { eventPlan, type EventPlanInput } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   afterSaving,
+  BACK_WORDS,
+  chartUnder,
   coverTotals,
   differenceWords,
   eventListLine,
@@ -292,6 +294,10 @@ describe('nothing on screen reads below nought', () => {
       plannedMinor: 3_000_000,
       boughtActualMinor: 3_000_000,
       toBuyMinor: 0,
+      spentMinor: 2_000_000,
+      plannedSpentMinor: 2_000_000,
+      netBackMinor: 0,
+      planNetBackMinor: 0,
       notPlannedMinor: 0,
       moneyBackMinor: 1_000_000,
     });
@@ -302,6 +308,10 @@ describe('nothing on screen reads below nought', () => {
       plannedMinor: 14_200_000,
       boughtActualMinor: 1_980_000,
       toBuyMinor: 12_000_000,
+      spentMinor: 4_770_000,
+      plannedSpentMinor: 4_150_000,
+      netBackMinor: 0,
+      planNetBackMinor: 0,
       notPlannedMinor: 2_790_000,
       moneyBackMinor: 0,
     });
@@ -396,5 +406,98 @@ describe('nothing on screen reads below nought', () => {
         { id: 'p2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', entries: [{ accountKind: 'expense', amountBaseMinor: -1_000_000 }, { accountKind: 'asset', amountBaseMinor: 1_000_000 }] },
       ]),
     ).toEqual([{ transactionId: 'p2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', amountMinor: 1_000_000 }]);
+  });
+});
+
+/*
+ * An event that got more back than it ever spent.
+ *
+ * Reachable the moment a refund is tagged to an event whose original purchase never was — a receipt handed back on
+ * a trip somebody tagged on the way home. Spending is then below nought, and three figures on one page each used to
+ * answer for it separately: the chart's middle printed the negative, the row under the ring meant to quote that
+ * chart printed a clamped Rp0, and the ring's own middle printed the negative again beside a Plan card printing
+ * nought. One quantity, two answers, on the very page built to reconcile them.
+ *
+ * The rule is both-sided — never show a negative, never hide one either — so every figure comes back through
+ * `planTotals` and what each clamp swallowed comes back with it, to be said in the page's own words for money
+ * coming back. Both arrangements are built: the refund in a category the plan never names, and the refund in a
+ * category it does, which is the one that drove the ring itself under.
+ */
+describe('an event whose refunds outran it', () => {
+  const crib = { id: 'n1', name: 'Crib', quantity: 1, unitPriceMinor: 5_000_000, categoryId: 'gear', link: null, note: null, purchase: null };
+  const netNegative = (categoryId: string) =>
+    eventPlan({
+      categoryNames: { gear: 'Baby gear', food: 'Restaurants' },
+      items: [crib],
+      actuals: [
+        { transactionId: 'q1', occurredOn: '2026-09-12', description: 'Hampers', categoryId, amountBaseMinor: 2_000_000 },
+        { transactionId: 'q2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', categoryId, amountBaseMinor: -3_000_000 },
+      ],
+    });
+  /** The refund lands where no item is: the event nets −1.000.000 while the planned categories spent nothing. */
+  const outsidePlan = netNegative('food');
+  /** The refund lands in the one category that has items, so the ring's own figure goes under with the event's. */
+  const insidePlan = netNegative('gear');
+
+  it('is genuinely below nought before anything on screen reads it', () => {
+    // The raw figures, by hand from the fixtures, so every clamp below has something real to bite on.
+    expect(outsidePlan.spentMinor).toBe(-1_000_000);
+    expect(outsidePlan.plannedSpentMinor).toBe(0);
+    expect(insidePlan.spentMinor).toBe(-1_000_000);
+    expect(insidePlan.plannedSpentMinor).toBe(-1_000_000);
+  });
+
+  it('hands both screens one clamped total each, and says what each clamp swallowed', () => {
+    expect(planTotals(outsidePlan)).toEqual({
+      plannedMinor: 5_000_000,
+      boughtActualMinor: 0,
+      toBuyMinor: 5_000_000,
+      spentMinor: 0,
+      plannedSpentMinor: 0,
+      netBackMinor: 1_000_000,
+      // The planned categories spent nothing at all, which is a nought nobody clamped and nothing to explain.
+      planNetBackMinor: 0,
+      notPlannedMinor: 2_000_000,
+      moneyBackMinor: 3_000_000,
+    });
+    expect(planTotals(insidePlan)).toEqual({
+      plannedMinor: 5_000_000,
+      boughtActualMinor: 0,
+      toBuyMinor: 5_000_000,
+      spentMinor: 0,
+      plannedSpentMinor: 0,
+      netBackMinor: 1_000_000,
+      planNetBackMinor: 1_000_000,
+      notPlannedMinor: 2_000_000,
+      moneyBackMinor: 3_000_000,
+    });
+    for (const plan of [outsidePlan, insidePlan]) for (const figure of Object.values(planTotals(plan))) expect(figure).toBeGreaterThanOrEqual(0);
+  });
+
+  /*
+   * The arc drew `formatMinor(spentMinor)` straight off the plan, so this read "Spent −Rp1.000.000" — a negative on
+   * screen — while the Plan card a few lines below clamped the same quantity to Rp0 for itself. Both go through
+   * `planTotals` now, so the two cannot be given different answers to give.
+   */
+  it('never draws the ring’s own middle below nought, and draws the Plan card’s header figure', () => {
+    expect(gaugeFor(insidePlan)).toEqual({ capsMinor: 5_000_000, spentMinor: 0, overCount: 0, any: true });
+    expect(gaugeFor(insidePlan).spentMinor).toBe(planTotals(insidePlan).plannedSpentMinor);
+    expect(gaugeFor(outsidePlan).spentMinor).toBe(planTotals(outsidePlan).plannedSpentMinor);
+    // And what is left of the plan is the whole plan: a refund cannot leave more of a plan than the plan holds.
+    expect(gaugeFor(insidePlan).capsMinor - gaugeFor(insidePlan).spentMinor).toBe(5_000_000);
+  });
+
+  it('says under the chart how much more came back than went out', () => {
+    expect(plain(chartUnder(planTotals(insidePlan), 2)!)).toBe('2 transactions · Rp 1.000.000 more came back than went out');
+    // An ordinary event is unchanged: the line is what it always was, and no clamp is claimed where none happened.
+    expect(chartUnder(planTotals(sharedPlan), 2)).toBe('2 transactions');
+    expect(chartUnder(planTotals(sharedPlan), 1)).toBe('1 transaction');
+    expect(chartUnder(planTotals(sharedPlan), 0)).toBeUndefined();
+  });
+
+  it('names what came back rather than a total, and says so in this page’s own words', () => {
+    expect(BACK_WORDS.event).toBe('More came back than went out');
+    expect(BACK_WORDS.plan).toBe('More came back than the plan spent');
+    for (const words of Object.values(BACK_WORDS)) expect(words).not.toMatch(/budget|cap\b|RAB/i);
   });
 });

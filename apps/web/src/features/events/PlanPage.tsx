@@ -111,7 +111,8 @@ export function PlanPage() {
 
       {/*
        * A save on a database from before migration 0049 is a deliberate no-op that still hands back an id, so an
-       * item would appear to save and then vanish. Said out loud here, and the form refuses to open below.
+       * item would appear to save and then vanish. Said out loud here, and said again on the item form, which opens
+       * as it always does, repeats this warning and keeps Save turned off until the data has finished updating.
        */}
       {ready.isSuccess && !ready.data && (
         <Card className="text-sm text-amber-900 ring-amber-200">
@@ -213,18 +214,28 @@ export function PlanPage() {
             <ul className="divide-y divide-slate-100">
               {line.items.map((item) => (
                 <li key={item.id} className="flex items-center gap-3 py-2.5" data-testid="plan-item">
-                  {/* The tick is its own control, never nested inside the link, so both are reachable by keyboard. */}
+                  {/*
+                   * The tick is its own control, never nested inside the link, so both are reachable by keyboard.
+                   *
+                   * The dot stays the 24px the row is drawn around and the button around it is 44 — the least a
+                   * thumb may be asked to find, and what every other control on these screens already is. The
+                   * placeholder takes the same slot, so nothing shifts sideways when an item is ticked off.
+                   */}
                   {item.bought ? (
                     <button
                       type="button"
                       aria-label={`Unlink ${item.name}`}
                       onClick={() => void run(() => unlinkEventItem(database, ws, item.id))}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white"
+                      className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center"
                     >
-                      <Check size={13} aria-hidden />
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white">
+                        <Check size={13} aria-hidden />
+                      </span>
                     </button>
                   ) : (
-                    <span className="h-6 w-6 shrink-0 rounded-full border border-slate-200" aria-hidden />
+                    <span className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center" aria-hidden>
+                      <span className="h-6 w-6 rounded-full border border-slate-200" />
+                    </span>
                   )}
                   <Link
                     to="/events/$eventId/plan/$itemId"

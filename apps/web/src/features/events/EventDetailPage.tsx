@@ -17,7 +17,7 @@ import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
 import { PlanCard } from './PlanCard';
-import { differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
+import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
 import { useCategoryWorkspaces } from '../workspaces/queries';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
 
@@ -181,7 +181,11 @@ export function EventDetailPage() {
   // Where it went keeps every category, planned or not — this is the page that must never hide what was spent.
   const rows = data ? whereItWentRows(data) : [];
   const totals = data ? planTotals(data) : null;
-  const spent = data?.spentMinor ?? 0;
+  // Every figure this card prints is `planTotals`', clamped once and in one place.
+  const spent = totals?.spentMinor ?? 0;
+  // The raw total, and only ever to ask whether anything was tagged at all: an event whose refunds outweigh its
+  // purchases has money in it, and "Nothing spent on it yet" would be the page hiding a refund rather than a total.
+  const anyMoney = (data?.spentMinor ?? 0) !== 0;
   // An event has a plan when something is on the list, whatever it adds up to — not when a figure was set for it.
   const hasPlan = data?.hasPlan === true;
   const onPlan = hasPlan && page === 1;
@@ -220,7 +224,9 @@ export function EventDetailPage() {
         totalMinor={spent}
         middle={formatMinor(spent, ws.baseCurrency)}
         label="Total spent"
-        under={transactions > 0 ? `${transactions} transaction${transactions === 1 ? '' : 's'}` : undefined}
+        // How many payments make the figure up — or, when the figure is a nought a refund drove it to, what
+        // came back, said right under it rather than left for the plan screen one swipe away.
+        under={totals ? chartUnder(totals, transactions, ws.baseCurrency) : undefined}
       />
     </div>
   );
@@ -319,7 +325,7 @@ export function EventDetailPage() {
             </span>
           </div>
 
-          {spent === 0 && !hasPlan ? (
+          {!anyMoney && !hasPlan ? (
             /* A category is no longer something one plans: a plan is a list of things, and the card below is the way in. */
             <p className="py-6 text-center text-sm text-slate-500">Nothing spent on it yet. Plan what to buy below, or record the first payment.</p>
           ) : hasPlan ? (
@@ -340,7 +346,8 @@ export function EventDetailPage() {
                   last={{ label: 'Still to buy', value: formatMinor(totals!.toBuyMinor, ws.baseCurrency) }}
                 />
                 {/* The mockup's order under the ring: how the bought things went, and what nobody planned. Every
-                    figure is `planTotals`', never recomputed here, so no two screens can disagree about one event. */}
+                    figure is `planTotals`', never recomputed here, so no two screens can disagree about one event —
+                    the ring above included, since `gaugeFor` is the same reading of the same figures. */}
                 <dl className="mt-2 space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-500">
                   {data!.boughtCount > 0 && (
                     <Figure label="Difference so far">
@@ -364,9 +371,25 @@ export function EventDetailPage() {
                    * Where those differ the other page's figure is printed here under the other page's own words, so
                    * the two totals are one reading with a reason, rather than two numbers for one trip.
                    */}
-                  {data!.spentMinor !== data!.plannedSpentMinor && (
+                  {data!.spentMinor !== data!.plannedSpentMinor && totals!.netBackMinor === 0 && (
                     <Figure label="Total spent">
-                      <Money minor={Math.max(0, data!.spentMinor)} currency={ws.baseCurrency} />
+                      <Money minor={totals!.spentMinor} currency={ws.baseCurrency} />
+                    </Figure>
+                  )}
+                  {/*
+                   * And when more came back than went out there is no total to quote: "Total spent Rp0" was the page
+                   * clamping a −Rp1.000.000 chart to nought and calling the nought a quotation of it. What is true is
+                   * said instead, the right way round and in the page's own words for money coming back — first of
+                   * the whole event, then of the ring alone when the two went under by different amounts.
+                   */}
+                  {totals!.netBackMinor > 0 && (
+                    <Figure label={BACK_WORDS.event}>
+                      <Money minor={totals!.netBackMinor} currency={ws.baseCurrency} className="text-emerald-700" />
+                    </Figure>
+                  )}
+                  {totals!.planNetBackMinor > 0 && totals!.planNetBackMinor !== totals!.netBackMinor && (
+                    <Figure label={BACK_WORDS.plan}>
+                      <Money minor={totals!.planNetBackMinor} currency={ws.baseCurrency} className="text-emerald-700" />
                     </Figure>
                   )}
                 </dl>

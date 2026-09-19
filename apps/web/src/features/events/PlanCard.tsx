@@ -6,7 +6,7 @@ import { useAccounts } from '../../lib/queries';
 import { Card, Money } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCategoryWorkspaces } from '../workspaces/queries';
-import { planCardRows } from './plan-view';
+import { planCardRows, planTotals } from './plan-view';
 
 /** A row that is a way on: the same height and the same reach whether it is tapped or tabbed to. */
 const ROW = 'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left ring-1 ring-slate-200 hover:bg-slate-50';
@@ -19,7 +19,7 @@ const ROW = 'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-l
  * chart above — which is the whole point, since the plan is per category and an unplanned category has no figure
  * for anything to be over.
  *
- * Every figure comes from `planCardRows`; nothing is added up on this screen.
+ * Every figure comes from `planCardRows` or `planTotals`; nothing is added up or clamped on this screen.
  */
 export function PlanCard({ eventId, plan, bookId }: { eventId: string; plan: EventPlan; bookId: string | null }) {
   const { ws } = useApp();
@@ -30,6 +30,9 @@ export function PlanCard({ eventId, plan, bookId }: { eventId: string; plan: Eve
   // The tab the event is being read in travels with the link, so the plan screens open in the same reading.
   const search = { ws: bookId ?? undefined };
   const rows = planCardRows(plan);
+  // The header's two figures, from the one place that says what they are: clamping here for itself is how this
+  // card came to print Rp0 beside a ring drawing −Rp1.000.000 of the very same quantity.
+  const totals = planTotals(plan);
 
   return (
     <div data-testid="event-plan-card">
@@ -40,8 +43,8 @@ export function PlanCard({ eventId, plan, bookId }: { eventId: string; plan: Eve
               <h2 className="text-sm font-semibold">Plan</h2>
               {/* The two figures of the ring's own page, so the card and the chart cannot say different things. */}
               <span className="text-xs text-slate-500">
-                <Money minor={Math.max(0, plan.plannedSpentMinor)} currency={currency} className="font-semibold text-slate-900" /> of{' '}
-                <Money minor={plan.plannedMinor} currency={currency} />
+                <Money minor={totals.plannedSpentMinor} currency={currency} className="font-semibold text-slate-900" /> of{' '}
+                <Money minor={totals.plannedMinor} currency={currency} />
               </span>
             </div>
             {rows.map((row) => (

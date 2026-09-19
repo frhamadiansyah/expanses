@@ -450,6 +450,52 @@ test('money back is named with the rows it adds up, beside spending nobody plann
 });
 
 /**
+ * An event that got more back than it ever spent, which is where both halves of the rule broke at once.
+ *
+ * Reachable whenever a refund is tagged to an event whose original purchase never was. Spending then sits below
+ * nought, and this page used to give one quantity three answers: the chart drew −Rp1.000.000, the row under the ring
+ * built to quote that chart drew a clamped Rp0, and the ring's own middle drew the negative again beside a Plan card
+ * drawing nought. A negative on screen and a clamp nothing explained, on the page whose whole job is to reconcile
+ * the two totals.
+ *
+ * So: nothing below nought anywhere, no nought passed off as a total, and what actually happened said in the words
+ * this page already keeps for money coming back. The refund lands in the category the plan names, so the ring goes
+ * under with the chart and all three figures are read in one arrangement.
+ */
+test('an event whose refunds outran it says what came back, and shows no negative and no bare nought', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await fillItem(page, { name: 'Crib', price: '5000000', category: 'Food and beverage' });
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+
+  // Nothing is ticked off: the refund answers no item, and 3.000.000 back against 2.000.000 out is 1.000.000 more
+  // than the event ever spent.
+  await recordInto(page, 'Hampers', '2000000');
+  await recordInto(page, 'Toko Bayi refund', '-3000000');
+
+  const sheet = page.getByTestId('event-sheet');
+  const chart = page.getByTestId('event-total');
+  // The chart: nought, and never −Rp1.000.000 — with what came back written under the figure it accounts for, so
+  // the nought is not a number the page leaves the user to explain to themselves.
+  await expect(chart.getByRole('img')).toHaveAttribute('aria-label', /^Rp\s?0 Total spent$/);
+  await expect(chart).toContainText('Rp 1.000.000 more came back than went out');
+  await expect(sheet).not.toContainText(/[-−]Rp/);
+
+  await sheet.getByRole('button', { name: 'Against the plan' }).click();
+  // The ring: Rp0, the very figure the Plan card prints for the very same quantity.
+  await expectGauge(sheet, { 'Planned so far': 'Rp 5.000.000', Spent: 'Rp 0', 'Still to buy': 'Rp 5.000.000' });
+  await expect(page.getByTestId('event-plan-card')).toContainText(/Rp\s?0 of Rp\s?5\.000\.000/);
+  /*
+   * And under the ring, read as label → figure, so a row that is gone is a key that is missing: there is no
+   * "Total spent" at all. Quoting the chart as Rp0 was the chart being misquoted; what came back is quoted instead.
+   */
+  await expectFigures(sheet, { 'Not planned': 'Rp 2.000.000', 'Money back': 'Rp 3.000.000', 'More came back than went out': 'Rp 1.000.000' });
+  await expect(sheet).not.toContainText(/[-−]Rp/);
+});
+
+/**
  * Taking it back, from either screen — and taking the item away altogether.
  *
  * The tick on the plan and "Remove the link" on the item are the same undoing reached two ways, and neither may

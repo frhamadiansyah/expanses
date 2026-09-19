@@ -28,12 +28,17 @@ export const TONE = { over: 'text-red-700', under: 'text-emerald-700', exact: 't
  * A trip with Rp18.400.000 tagged to it and Rp3.500.000 of tickets planned is not Rp14.900.000 over plan: the food was
  * never planned, so there is nothing for it to be over. The first chart page still shows every rupiah.
  */
-export const gaugeFor = (plan: EventPlan): BudgetProgress => ({
-  capsMinor: plan.plannedMinor,
-  spentMinor: plan.plannedSpentMinor,
-  overCount: plan.overCount,
-  any: plan.hasPlan,
-});
+export const gaugeFor = (plan: EventPlan): BudgetProgress => {
+  /*
+   * Through `planTotals`, which owns what a figure on these screens may be.
+   *
+   * The arc's middle is a figure on screen like any other: an event whose refunds outweigh what its planned
+   * categories ever spent drew "Spent −Rp1.000.000" here while the Plan card printed Rp0 for that same quantity a
+   * few lines below — one number, two answers, because each place clamped for itself or forgot to.
+   */
+  const totals = planTotals(plan);
+  return { capsMinor: totals.plannedMinor, spentMinor: totals.plannedSpentMinor, overCount: plan.overCount, any: plan.hasPlan };
+};
 
 /**
  * "Planned so far" admits that the figure is not the whole trip.
@@ -54,6 +59,31 @@ export const plannedLabel = (plan: EventPlan) => (plan.unplannedCategoryCount > 
  * own figure is named for what it counts, and the page prints the chart's total beneath it under the chart's words.
  */
 export const spentLabel = (plan: EventPlan) => (plan.spentMinor === plan.plannedSpentMinor ? 'Spent' : 'Spent on plan');
+
+/**
+ * What a clamped nought is hiding, in the "Money back" vocabulary these screens already file a refund under.
+ *
+ * Refunds tagged to an event can outrun the purchases tagged to it, and then a total is less than nothing. The rule
+ * is both-sided — never print a negative, and never hide one either — so the figure is turned round and said as what
+ * it is: money that came back. Two readings can go under by different routes, the whole event's and the ring's,
+ * which counts the planned categories alone, so each is named for what it outran.
+ */
+export const BACK_WORDS = { event: 'More came back than went out', plan: 'More came back than the plan spent' } as const;
+
+const lower = (words: string) => words.charAt(0).toLowerCase() + words.slice(1);
+
+/**
+ * The quiet line under the chart's middle figure.
+ *
+ * Ordinarily how many payments that figure is made of. When more came back than the event ever spent the figure
+ * above it is a clamped nought, and a nought nothing on the page explains is as wrong as the negative it replaced —
+ * so the line says how much more came back, beside the very figure it accounts for.
+ */
+export function chartUnder(totals: { netBackMinor: number }, transactions: number, currency = 'IDR'): string | undefined {
+  const counted = transactions > 0 ? `${transactions} transaction${transactions === 1 ? '' : 's'}` : null;
+  const back = totals.netBackMinor > 0 ? `${formatMinor(totals.netBackMinor, currency)} ${lower(BACK_WORDS.event)}` : null;
+  return [counted, back].filter(Boolean).join(' · ') || undefined;
+}
 
 /**
  * What one item cost against what it was estimated at, said in words and in a tone.
@@ -163,6 +193,11 @@ export function afterSaving(plan: EventPlan, typed: { estimateMinor: number; rep
  *
  * Nothing here links a refund to an item: an item is answered by the purchase that bought it, and what a standalone
  * refund means to an occasion is a question the spec never asked. Naming it is the honest interim.
+ *
+ * The two totals the screens print are clamped here as well, with the amount each clamp swallowed handed back
+ * beside it. Clamping in the screens instead is what let one quantity read two ways on one page: the ring drew a
+ * negative while the card beside it drew nought, and the row that quotes the chart quoted nought for a chart
+ * showing −Rp1.000.000. There is one definition of each, and `BACK_WORDS` is how a clamp gets said out loud.
  */
 export function planTotals(plan: EventPlan) {
   // Exactly the rows `PlanPage` prints under each category: every purchase with something still left on it.
@@ -171,6 +206,14 @@ export function planTotals(plan: EventPlan) {
     plannedMinor: Math.max(0, plan.plannedMinor),
     boughtActualMinor: Math.max(0, plan.boughtActualMinor),
     toBuyMinor: Math.max(0, plan.toBuyMinor),
+    /** Every rupiah tagged to the event — the chart's own middle figure — and never less than nothing. */
+    spentMinor: Math.max(0, plan.spentMinor),
+    /** What the categories with items spent: the ring's middle figure, and the Plan card's header, clamped once. */
+    plannedSpentMinor: Math.max(0, plan.plannedSpentMinor),
+    /** What the clamp on the event's own total swallowed: how much more came back than the event ever spent. */
+    netBackMinor: Math.max(0, -plan.spentMinor),
+    /** The same for the ring, which counts the planned categories alone and can go under by a route of its own. */
+    planNetBackMinor: Math.max(0, -plan.plannedSpentMinor),
     /** Money spent that no item claims — the leftover rows, and never a figure that has a refund netted off it. */
     notPlannedMinor: leftoverMinor,
     /** Money that came back and answers no item: the leftovers the plan files under no category because they are
