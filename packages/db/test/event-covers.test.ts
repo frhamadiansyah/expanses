@@ -772,7 +772,7 @@ describe('a cover saved on the occasion a receipt has moved to', () => {
     const h = await moved();
     await setPurchaseCover(h.database, h.ws, h.receipt, [{ itemId: h.hampers, shareMinor: 3_000_000 }]);
 
-    // Untouched in the table, not merely unread: the cot still names the receipt and still holds its Rp10.000.
+    // Untouched in the table, not merely unread: the cot still names the receipt and still holds its Rp1.000.000.
     expect(await coverOfItem(h.database, h.cot)).toEqual([h.receipt, 1_000_000]);
     expect(await coverOfItem(h.database, h.hampers)).toEqual([h.receipt, 3_000_000]);
 
