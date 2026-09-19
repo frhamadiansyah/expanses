@@ -7,7 +7,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Money, PageHeader, RoundButton } from '../../ui';
 import { BillRow } from './BillRow';
-import { amountOf, isSettled, paidText, sectionsOf, skippedText, summaryOf } from './bill-view';
+import { amountOf, billsInReadCurrency, isSettled, paidText, sectionsOf, skippedText, summaryOf } from './bill-view';
 import { PaySeveralSheet } from './PaySeveralSheet';
 import { PaySheet } from './PaySheet';
 import { useMonthlyBills } from './queries';
@@ -63,19 +63,7 @@ export function RecurringPage() {
   // of the sum and named above it, rather than added in as though a dollar were a rupiah.
   const money = useBookMoney().data;
   const readCurrency = money?.currency ?? ws.baseCurrency;
-  const unconverted = new Map<string, string>();
-  const inReadCurrency = (bill: MonthlyBill): MonthlyBill => {
-    if (!money?.converts) return bill;
-    const from = currencyOf(bill);
-    const at = (minor: number | null) => {
-      if (minor === null) return null;
-      const converted = money.convert(minor, from, today);
-      if (converted === null) unconverted.set(from, today);
-      return converted ?? 0;
-    };
-    return { ...bill, amountMinor: at(bill.amountMinor), paidMinor: at(bill.paidMinor), estimateMinor: at(bill.estimateMinor) };
-  };
-  const readRows = rows.map(inReadCurrency);
+  const { rows: readRows, unconverted } = billsInReadCurrency(rows, money, currencyOf);
 
   const pay = (bill: MonthlyBill) => setPaying(bill);
 
@@ -161,7 +149,7 @@ export function RecurringPage() {
 
       {rows.length > 0 && (
         <div data-testid="bills-summary" className="space-y-2">
-          <Unconverted missing={[...unconverted].map(([currency, onDate]) => ({ currency, onDate }))} currency={readCurrency} />
+          <Unconverted missing={unconverted} currency={readCurrency} />
           <Card className="space-y-1">
             <span className="block text-xs text-slate-500">Still to pay in {summary.monthLabel}</span>
             <span className="block text-3xl font-semibold tabular">

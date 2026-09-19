@@ -263,6 +263,8 @@ export function SpendingReport({
   const currency = totals.data?.currency ?? ws.baseCurrency;
   const missing = mergeUnconverted(totals.data?.missing ?? [], alsoMissing);
   const progress = budgetProgress(budgets.data?.lines ?? []);
+  // The gauge adds up the budget sheet's own figures, so it is labelled in the currency that sheet answered in.
+  const gaugeCurrency = budgets.data?.currency ?? currency;
   // The budget page exists only where there is a budget to measure, and only for money going out.
   const hasBudgets = kind === 'expense' && isMonth && progress.any;
   const onBudgets = hasBudgets && page === 1;
@@ -384,7 +386,7 @@ export function SpendingReport({
               transactions={transactions}
               caps={onBudgets ? caps : undefined}
               header={header}
-              second={hasBudgets ? <BudgetGauge progress={progress} month={month} today={isoDate()} /> : undefined}
+              second={hasBudgets ? <BudgetGauge progress={progress} currency={gaugeCurrency} month={month} today={isoDate()} /> : undefined}
               page={page}
               onPage={setPage}
               showRows={showAll}

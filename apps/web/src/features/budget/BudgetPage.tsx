@@ -5,7 +5,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { useCategorySetMembership } from '../categories/set-queries';
-import { useOpenBook } from '../workspaces/queries';
+import { useBooks, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { useBudgets, useBudgetSheet, useCommittedBills } from './queries';
 
@@ -90,6 +90,10 @@ export function BudgetPage() {
   // figure is parsed in must not depend on a query still being in flight.
   const openBook = useOpenBook();
   const planCurrency = openBook?.baseCurrency ?? ws.baseCurrency;
+  // …and not until that row has actually been read: while the workspaces are still in flight every workspace looks
+  // like the owner's own, and a cap typed into a workspace that reads in dollars would be parsed as rupiah — a
+  // hundredfold error, silently stored. The forms wait rather than guess.
+  const planReady = useBooks().isSuccess;
   // The sheet answers in the open workspace's own currency; the workspace's own row is the answer until it arrives.
   const currency = sheet?.currency ?? planCurrency;
 
@@ -104,6 +108,7 @@ export function BudgetPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!planReady) return;
     try {
       const target = categoryId || options[0]?.id;
       if (!target) throw new Error('There are no categories to budget for yet');
@@ -120,6 +125,7 @@ export function BudgetPage() {
   async function submitIncome(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!planReady) return;
     try {
       const minor = parseMajor(income, planCurrency);
       if (incomeThisMonthOnly) await setIncomeOverride(database, ws, { month, amountMinor: minor });
@@ -250,7 +256,9 @@ export function BudgetPage() {
             Bonus month
           </label>
           <div className="pb-1">
-            <Button type="submit">Set income</Button>
+            <Button type="submit" disabled={!planReady}>
+              Set income
+            </Button>
           </div>
         </form>
       </Card>
@@ -274,7 +282,9 @@ export function BudgetPage() {
             Just this month
           </label>
           <div className="flex gap-2 pb-1">
-            <Button type="submit">Set budget</Button>
+            <Button type="submit" disabled={!planReady}>
+              Set budget
+            </Button>
             <Button type="button" variant="secondary" onClick={remove}>
               Remove
             </Button>

@@ -79,7 +79,7 @@ export function PurchaseList({ cp, run, currency }: { cp: CardPoints; run: Run; 
   // Worked out before the early return, since the badges are asked for with a hook and hooks cannot be skipped.
   const purchases = result ? purchasesOf(result.lines) : [];
   // A card is yours, so its cycle holds every workspace's purchases; each says which it was filed in.
-  const badgeOf = useWorkspaceBadges(purchases.map((purchase) => purchase.transactionId));
+  const badgeOf = useWorkspaceBadges(purchases.map((purchase) => purchase.transactionId)).of;
   if (!result || !program) return null;
   const unit = program.unit;
   const perPurchase = cp.crediting === 'per_transaction';

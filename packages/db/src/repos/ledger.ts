@@ -13,7 +13,7 @@ import { bookOfCategory, hasBooks } from './books';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'INVALID_BILL_MONTH';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -60,6 +60,24 @@ async function audit(tx: Db, ws: WorkspaceContext, action: string, entityId: str
   });
 }
 
+/**
+ * The book a posting belongs to: the one its income and expense lines are filed in, or none when it has no
+ * category lines at all. Refuses a posting whose categories come from two books.
+ */
+async function bookOfCategories(tx: Db, lineAccounts: readonly { id: string; kind: string }[]): Promise<string | undefined> {
+  const bookIds = new Set<string>();
+  for (const account of lineAccounts) {
+    if (account.kind !== 'income' && account.kind !== 'expense') continue;
+    const owner = await bookOfCategory(tx, account.id);
+    if (owner) bookIds.add(owner);
+  }
+  // "Spend" would be wrong for the income and refund sides this also guards, and for a form that mixed the
+  // two by accident the fix is the same: pick the categories from one workspace.
+  if (bookIds.size > 1) throw new LedgerError('TWO_BOOKS', 'A transaction cannot belong to two workspaces at once. Pick categories from one workspace.');
+  const [bookId] = bookIds;
+  return bookId;
+}
+
 /** Posts inside an open transaction. Throws PostingError or LedgerError without writing on invalid input. */
 export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: PostTransactionInput): Promise<string> {
   if (!DATE.test(input.occurredOn)) {
@@ -98,20 +116,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // A transaction that spends or earns belongs to the book of its categories; one that only moves money between
   // your own accounts (a transfer, a card payment) belongs to none. It may not straddle two books. Computed and
   // checked before any insert below, so a refused posting leaves nothing behind.
-  const booksEnabled = await hasBooks(tx);
-  let bookId: string | undefined;
-  if (booksEnabled) {
-    const categoryIds = found.filter((a) => a.kind === 'income' || a.kind === 'expense').map((a) => a.id);
-    const bookIds = new Set<string>();
-    for (const categoryId of categoryIds) {
-      const owner = await bookOfCategory(tx, categoryId);
-      if (owner) bookIds.add(owner);
-    }
-    // "Spend" would be wrong for the income and refund sides this also guards, and for a form that mixed the
-    // two by accident the fix is the same: pick the categories from one workspace.
-    if (bookIds.size > 1) throw new LedgerError('TWO_BOOKS', 'A transaction cannot belong to two workspaces at once. Pick categories from one workspace.');
-    [bookId] = bookIds;
-  }
+  const bookId = (await hasBooks(tx)) ? await bookOfCategories(tx, found) : undefined;
 
   const id = uuidv7();
   await tx.insert(transactions).values({
@@ -209,6 +214,28 @@ export function replaceTransaction(
     const [settles] = (await billTablesExist(tx))
       ? await tx.select({ billMonth: billPayments.billMonth }).from(billPayments).where(eq(billPayments.transactionId, id))
       : [];
+    // Two workspaces can hold copies of one category, alike on any screen. An edit is a correction to the same
+    // spending, so it stays where it was filed: a category from another workspace is refused here, before
+    // anything is voided, whatever form or import offered it.
+    if (await hasBooks(tx)) {
+      const [filed] = await tx
+        .select({ bookId: bookTransactions.bookId })
+        .from(bookTransactions)
+        .where(and(eq(bookTransactions.transactionId, id), eq(bookTransactions.workspaceId, ws.workspaceId)));
+      if (filed) {
+        const lineIds = [...new Set(input.lines.map((line) => line.accountId))];
+        const lineAccounts = lineIds.length
+          ? await tx
+              .select({ id: accounts.id, kind: accounts.kind })
+              .from(accounts)
+              .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, lineIds)))
+          : [];
+        const replacementBook = await bookOfCategories(tx, lineAccounts);
+        if (replacementBook && replacementBook !== filed.bookId) {
+          throw new LedgerError('OTHER_BOOK', 'That category belongs to another workspace. A transaction stays in the workspace it was filed in.');
+        }
+      }
+    }
     await voidTransactionTx(tx, ws, id);
     // Keep import identity so re-importing the same statement still recognises the row.
     const replacement = await postTransactionTx(tx, ws, {
@@ -313,6 +340,13 @@ export interface ListTransactionsOptions {
   includeVoid?: boolean;
   limit?: number;
   eventId?: string;
+  /**
+   * One book's rows without reading in that book's money: the narrowing `ws.bookId` does, and nothing else.
+   *
+   * An event spans workspaces, so it is read owner-wide and shown in the owner's own currency; a tab on it asks
+   * for one workspace's share of the same trip, which must not also change what currency the figures are in.
+   */
+  bookId?: string;
 }
 
 async function listWith(database: Database, ws: WorkspaceContext, opts: ListTransactionsOptions, money: BookMoney): Promise<TransactionView[]> {
@@ -330,8 +364,9 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     conds.push(sql`${transactions.id} IN (SELECT transaction_id FROM entries WHERE account_id IN ${opts.accountIds})`);
   }
   // A book's list: what was filed in it, and what was filed nowhere — moving your own money shows in every book.
-  if (ws.bookId) {
-    conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM book_transactions WHERE book_id <> ${ws.bookId})`);
+  const bookId = opts.bookId ?? ws.bookId;
+  if (bookId) {
+    conds.push(sql`${transactions.id} NOT IN (SELECT transaction_id FROM book_transactions WHERE book_id <> ${bookId})`);
   }
   const txs = await database.db
     .select()

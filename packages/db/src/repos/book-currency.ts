@@ -1,5 +1,5 @@
 import { convertMinor, type DatedRate, pickRate } from '@expanses/core';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { fxRates } from '../schema';
@@ -48,15 +48,23 @@ export async function bookMoneyFor(database: Database, ws: WorkspaceContext): Pr
   }
   // One snapshot: fx_rates holds a handful of rows per pair, and a month's list would otherwise be a query an
   // amount. Rows are picked in memory with the same "exact day, else the latest earlier" rule findRate uses.
+  //
+  // Both directions are taken: a rate is stored one way round, and what the user's own data holds is whatever a
+  // purchase needed at the time — foreign→rupiah rows, mostly. A workspace in another currency reading only
+  // <from>→<its own> would find nothing for almost every amount it has.
   const rows = await database.db
-    .select({ from: fxRates.fromCurrency, onDate: fxRates.onDate, rate: fxRates.rate })
+    .select({ from: fxRates.fromCurrency, to: fxRates.toCurrency, onDate: fxRates.onDate, rate: fxRates.rate })
     .from(fxRates)
-    .where(eq(fxRates.toCurrency, currency));
-  const byCurrency = new Map<string, DatedRate[]>();
+    .where(or(eq(fxRates.toCurrency, currency), eq(fxRates.fromCurrency, currency)));
+  const into = new Map<string, DatedRate[]>();
+  const outOf = new Map<string, DatedRate[]>();
   for (const row of rows) {
-    const held = byCurrency.get(row.from);
+    // A row both ways round (currency→currency) would say nothing; `convert` answers that case before asking.
+    const side = row.to === currency ? into : outOf;
+    const key = row.to === currency ? row.from : row.to;
+    const held = side.get(key);
     if (held) held.push({ onDate: row.onDate, rate: row.rate });
-    else byCurrency.set(row.from, [{ onDate: row.onDate, rate: row.rate }]);
+    else side.set(key, [{ onDate: row.onDate, rate: row.rate }]);
   }
 
   return {
@@ -64,13 +72,15 @@ export async function bookMoneyFor(database: Database, ws: WorkspaceContext): Pr
     currency,
     convert(amountMinor, from, onDate) {
       if (from === currency) return amountMinor;
-      const found = pickRate(byCurrency.get(from) ?? [], onDate);
-      if (!found) {
+      // The rate stored the way it is asked for first; the other direction, turned over, only when there is none.
+      const found = pickRate(into.get(from) ?? [], onDate);
+      const back = found ? null : pickRate(outOf.get(from) ?? [], onDate);
+      if (!found && !back) {
         const earliest = missed.get(from);
         if (!earliest || onDate < earliest) missed.set(from, onDate);
         return null;
       }
-      return convertMinor(amountMinor, from, currency, found.rate);
+      return convertMinor(amountMinor, from, currency, found ? found.rate : 1 / back!.rate);
     },
     missing: () => [...missed].map(([currency, onDate]) => ({ currency, onDate })).sort((a, b) => a.currency.localeCompare(b.currency)),
   };

@@ -1,5 +1,4 @@
 import { formatMinor } from '@expanses/core';
-import { useApp } from '../../app/context';
 import type { BudgetProgress } from './budget-progress';
 
 /** Where a point sits on a circle, measured clockwise from twelve. */
@@ -45,12 +44,15 @@ const MONTH_WORDS: GaugeWords = {
  */
 export function BudgetGauge({
   progress,
+  currency,
   month,
   today,
   words = MONTH_WORDS,
   last,
 }: {
   progress: BudgetProgress;
+  /** The money the figures are in: the workspace's own on a month, the owner's on an event. */
+  currency: string;
   month: string;
   today: string;
   /** How the gauge talks: a month has budgets, an event has a plan. */
@@ -58,7 +60,6 @@ export function BudgetGauge({
   /** The third figure under the arc. Left out, it is the days left in the month. */
   last?: { label: string; value: string };
 }) {
-  const { ws } = useApp();
   const size = 320;
   const height = 182;
   const centre = size / 2;
@@ -77,7 +78,7 @@ export function BudgetGauge({
 
   return (
     <div>
-      <svg viewBox={`0 0 ${size} ${height}`} className="mx-auto block w-full max-w-[300px]" role="img" aria-label={`${formatMinor(Math.abs(left), ws.baseCurrency)} ${(left < 0 ? words.over : words.left).toLowerCase()}`}>
+      <svg viewBox={`0 0 ${size} ${height}`} className="mx-auto block w-full max-w-[300px]" role="img" aria-label={`${formatMinor(Math.abs(left), currency)} ${(left < 0 ? words.over : words.left).toLowerCase()}`}>
         <path d={arc(centre, middle, radius, from, from + span)} stroke="#e8ecf1" strokeWidth={width} strokeLinecap="round" fill="none" />
         <path d={arc(centre, middle, radius, from, from + Math.max(0.02, used * span))} stroke={tone} strokeWidth={width} strokeLinecap="round" fill="none" />
         <circle cx={knobX} cy={knobY} r={7.5} fill="#ffffff" stroke={tone} strokeWidth={4} />
@@ -85,7 +86,7 @@ export function BudgetGauge({
           {left < 0 ? words.over : words.left}
         </text>
         <text x={centre} y={middle - 16} textAnchor="middle" className="text-[25px] font-bold" fill={tone}>
-          {formatMinor(Math.abs(left), ws.baseCurrency)}
+          {formatMinor(Math.abs(left), currency)}
         </text>
         {progress.overCount > 0 && (
           <text x={centre} y={middle} textAnchor="middle" className="text-[11px] font-semibold" fill="#b91c1c">
@@ -95,8 +96,8 @@ export function BudgetGauge({
       </svg>
       <div className="flex text-center">
         {[
-          [words.set, formatMinor(progress.capsMinor, ws.baseCurrency)],
-          ['Spent', formatMinor(progress.spentMinor, ws.baseCurrency)],
+          [words.set, formatMinor(progress.capsMinor, currency)],
+          ['Spent', formatMinor(progress.spentMinor, currency)],
           last ? [last.label, last.value] : ['Left in month', days === 1 ? '1 day' : `${days} days`],
         ].map(([label, value]) => (
           <div key={label} className="flex-1 px-1 not-first:border-l not-first:border-slate-200">

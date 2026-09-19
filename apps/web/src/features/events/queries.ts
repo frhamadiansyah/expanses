@@ -60,12 +60,18 @@ export function useEventSuggestions(eventId: string | null, bookId: string | nul
   });
 }
 
-/** What was tagged to the event, newest first: its own transaction history. */
+/**
+ * What was tagged to the event, newest first: its own transaction history.
+ *
+ * The tab narrows the rows, never the money they are read in: the list is asked for owner-wide and the book is
+ * passed as a filter, so the figures stay in the owner's currency — which is what the page's labels say, and what
+ * the ring above them is already adding up.
+ */
 export function useEventHistory(eventId: string | null, bookId: string | null = null) {
   const { database, ws } = useApp();
   return useQuery({
     queryKey: ['event-history', ws.workspaceId, eventId, bookId],
-    queryFn: () => listTransactions(database, scopeOf(ws, bookId), { eventId: eventId! }),
+    queryFn: () => listTransactions(database, ownerScope(ws), { eventId: eventId!, ...(bookId ? { bookId } : {}) }),
     enabled: eventId !== null,
   });
 }

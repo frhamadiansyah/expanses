@@ -28,6 +28,11 @@ export interface TableHandlers {
   tradeIds: ReadonlySet<string>;
   /** The workspace a row has to be opened in before it can be edited; null when this one will do. */
   elsewhereOf: (transactionId: string) => RowBook | null;
+  /**
+   * False while an owner-wide list is still finding out which workspace each row belongs to: no badge has come
+   * back yet, so no row may be edited — an edit made in that window could re-file another workspace's spending.
+   */
+  filingKnown: boolean;
 }
 
 const same = (a: QuickValues, b: QuickValues) => (Object.keys(a) as (keyof QuickValues)[]).every((key) => a[key] === b[key]);
@@ -207,6 +212,8 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
   const why = row.type === 'expense' ? 'split or priced in another currency' : row.type === 'income' ? 'income' : 'money moving between accounts';
   // Only a row that could be edited at all is sent off to another workspace to do it.
   const elsewhere = row.deleted || !isEditable(tx) ? null : handlers.elsewhereOf(tx.id);
+  // The form behind "Open in form" saves like any other edit, so it waits for the filing too.
+  const editable = !row.deleted && isEditable(tx) && handlers.filingKnown;
   return (
     <div data-testid="table-row" className={cx('border-b border-slate-100', row.deleted && 'opacity-50')}>
       <div className={cx(ROW_GRID, 'p-0.5 text-sm', row.deleted && 'line-through')}>
@@ -236,8 +243,7 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
           ) : elsewhere ? (
             <SwitchToEdit book={elsewhere} className="px-2 text-right" />
           ) : (
-            !row.deleted &&
-            isEditable(tx) && (
+            editable && (
               <button type="button" onClick={() => setForm((open) => !open)} title={`Edited in the form: ${why}`} className="inline-flex items-center gap-1 px-2 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-900">
                 <Lock size={12} aria-hidden />
                 Open in form
@@ -296,7 +302,7 @@ export function TransactionsTable({
           const key = row.kind === 'draft' ? `d:${row.id}` : `t:${row.id}`;
           // A row filed in another workspace is shown but not edited: the cells here offer this workspace's
           // categories, so saving one would move it. It waits for its own workspace to be opened.
-          if (row.kind === 'draft' || (!row.deleted && !handlers.tradeIds.has(row.id) && !handlers.elsewhereOf(row.id) && isQuickEditable(row.tx!))) {
+          if (row.kind === 'draft' || (!row.deleted && handlers.filingKnown && !handlers.tradeIds.has(row.id) && !handlers.elsewhereOf(row.id) && isQuickEditable(row.tx!))) {
             return <EditableRow key={key} row={row} options={options} accounts={accounts} today={today} baseCurrency={baseCurrency} handlers={handlers} />;
           }
           return <LockedRow key={key} row={row} today={today} handlers={handlers} />;

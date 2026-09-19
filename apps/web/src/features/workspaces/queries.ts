@@ -1,5 +1,5 @@
 import { isoDate, monthOf, monthRange } from '@expanses/core';
-import { bookMoneyFor, bookNamesOf, listBooks, spentThisMonthByBook } from '@expanses/db';
+import { bookMoneyFor, bookNamesByCategory, bookNamesOf, listBooks, spentThisMonthByBook } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -53,5 +53,31 @@ export function useWorkspaceBadges(transactionIds: readonly string[]) {
     enabled: many && ids.length > 0,
     queryFn: () => bookNamesOf(database, ws, ids),
   });
-  return (transactionId: string) => (many ? (query.data?.[transactionId] ?? null) : null);
+  return {
+    of: (transactionId: string) => (many ? (query.data?.[transactionId] ?? null) : null),
+    /**
+     * Whether "no badge" means "filed here" yet.
+     *
+     * Until the answer arrives every row looks unfiled, which on an owner-wide list reads as "this workspace's,
+     * edit away". A row of another workspace must not be editable for that window, so the pages that decide
+     * editability wait for this rather than for the absence of a badge.
+     */
+    ready: !many || ids.length === 0 || query.isSuccess,
+  };
+}
+
+/**
+ * Which workspace each category belongs to, by category id — for the owner-level pickers, where two workspaces'
+ * copies of one category otherwise appear as the same word twice. Null while the owner has only one workspace,
+ * since naming it on every option says nothing.
+ */
+export function useCategoryWorkspaces() {
+  const { database, ws } = useApp();
+  const many = (useBooks().data ?? []).length > 1;
+  const query = useQuery({
+    queryKey: ['category-books', ws.workspaceId],
+    enabled: many,
+    queryFn: () => bookNamesByCategory(database, ws),
+  });
+  return (categoryAccountId: string) => (many ? (query.data?.[categoryAccountId]?.name ?? null) : null);
 }
