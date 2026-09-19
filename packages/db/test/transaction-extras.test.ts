@@ -298,7 +298,7 @@ it('names every photo file in the database for the sweep, and one workspace of r
   const other = await createWorkspace(database, { name: 'Office', type: 'personal', baseCurrency: 'IDR' });
   await addPhoto(database, ws, { transactionId: '', fileName: 'mine.jpg', mime: 'image/jpeg', byteSize: 1 });
   await addPhoto(database, other, { transactionId: '', fileName: 'theirs.jpg', mime: 'image/jpeg', byteSize: 2 });
-  expect((await allPhotoFileNames(database)).sort()).toEqual(['mine.jpg', 'theirs.jpg']);
+  expect((await allPhotoFileNames(database))!.sort()).toEqual(['mine.jpg', 'theirs.jpg']);
   expect((await allPhotoRows(database, ws)).map((row) => row.fileName)).toEqual(['mine.jpg']);
   expect((await allPhotoRows(database, other)).map((row) => row.fileName)).toEqual(['theirs.jpg']);
 });

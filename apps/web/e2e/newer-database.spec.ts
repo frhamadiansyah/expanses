@@ -53,7 +53,7 @@ test('a restore of data from a newer app is refused before it is adopted, and th
 
   page.once('dialog', (dialog) => void dialog.accept());
   const safety = page.waitForEvent('download');
-  await page.locator('input[type=file]').setInputFiles(future);
+  await page.locator('input[accept*="sqlite3"]').setInputFiles(future);
   await safety;
   await page.getByRole('button', { name: /Replace my data with/ }).click();
 

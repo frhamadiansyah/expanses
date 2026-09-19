@@ -1,6 +1,8 @@
+import { allPhotoFileNames } from '@expanses/db';
 import { Link, Outlet } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { photos } from '../photos/store';
 import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
@@ -55,7 +57,7 @@ function ReviewLink() {
 }
 
 export function Layout() {
-  const { workspaceName, ws } = useApp();
+  const { workspaceName, ws, database } = useApp();
   const [more, setMore] = useState(false);
   const [adding, setAdding] = useState(false);
   // The phone reaches the switcher from Cashflow's ⋯; the sidebar is on every screen, so a wide screen
@@ -63,6 +65,24 @@ export function Layout() {
   const [choosing, setChoosing] = useState(false);
   const openBook = useOpenBook();
   const phone = usePhone();
+
+  /*
+   * A form abandoned halfway leaves a picture in OPFS that no row names. Tidying them at start is the only
+   * moment nobody is looking at a form, and it reads every workspace's rows: a sweep that knew only the open
+   * workspace would count another workspace's pictures as orphans and delete them.
+   *
+   * `allPhotoFileNames` answers null where the database cannot say which files are in use — a device opened
+   * below a blocked update has no `transaction_photos` table — and `sweepOrphanPhotos` then deletes nothing.
+   * That pair is load-bearing: photos have no second copy, so the sweep only ever removes a file it can show
+   * is unreferenced. It also answers 0 and breaks nothing where OPFS is absent, so a private window is fine.
+   */
+  useEffect(() => {
+    if (!database) return;
+    void allPhotoFileNames(database)
+      .then((kept) => photos.sweepOrphanPhotos(kept))
+      .catch((error: unknown) => console.warn('Photos were not swept', error));
+  }, [database]);
+
   return (
     <div
       className="min-h-dvh md:flex"

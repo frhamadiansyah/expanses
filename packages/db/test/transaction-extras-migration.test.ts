@@ -167,9 +167,15 @@ describe('migration 0048', () => {
       await expect(allPhotoRows(database, ws)).resolves.toEqual([]);
     });
 
-    it('allPhotoFileNames does not throw', async () => {
+    /*
+     * Not `[]`. An empty list would say "this database holds no photos", and the orphan sweep — the only caller
+     * — would then read every file on the device as unreferenced and delete it, including a picture taken a
+     * minute ago on this very device. Null says "there is no table to ask", which is the fact, and the sweep
+     * refuses to delete anything on it.
+     */
+    it('allPhotoFileNames says it cannot tell, rather than saying there are none', async () => {
       const { database } = await stoppedAt47();
-      await expect(allPhotoFileNames(database)).resolves.toEqual([]);
+      await expect(allPhotoFileNames(database)).resolves.toBeNull();
     });
   });
 });

@@ -23,7 +23,7 @@ test('restore replaces data only after a safety copy downloads and is confirmed'
   await page.goto('/backup');
   page.once('dialog', (dialog) => void dialog.accept());
   const safetyDownload = page.waitForEvent('download');
-  await page.locator('input[type=file]').setInputFiles(backupPath);
+  await page.locator('input[accept*="sqlite3"]').setInputFiles(backupPath);
   const safety = await safetyDownload;
   expect(safety.suggestedFilename()).toMatch(/^expanses-before-restore-\d{4}-\d{2}-\d{2}\.sqlite3$/);
 

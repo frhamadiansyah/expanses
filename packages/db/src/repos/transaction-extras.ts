@@ -198,15 +198,25 @@ export async function allPhotoRows(database: Database, ws: WorkspaceContext): Pr
 }
 
 /**
- * Every file name in the database, whatever workspace it belongs to, for the orphan sweep and nothing else.
+ * Every file name in the database, whatever workspace it belongs to, for the orphan sweep and nothing else —
+ * or **null**, meaning this database cannot say.
  *
- * It deliberately takes no WorkspaceContext. The sweep deletes the files no row names; a workspace-scoped read
- * would hand it another workspace's pictures as orphans and it would delete them — user data with no second copy.
- * Rows for pictures a form wrote before its transaction had an id are returned too, so a picture waiting on an
- * unsaved form is never swept away while the form is open.
+ * Null is the whole point of the signature, and it is not the same fact as `[]`.
+ *
+ * `[]` says "there are no photos"; null says "there is no table to ask". Both are true states of a real device,
+ * and the sweep's only job is to delete the files no row names — so if the second were reported as the first,
+ * the sweep would read it as "no file on this device is referenced" and delete every one of them. That is not
+ * hypothetical: a device holding a blocked update opens at the version below it (see `db/open.ts`), which on
+ * this branch is a version with no `transaction_photos` table, while the photo store writes files without ever
+ * asking the database anything. The picture taken a minute ago would go, and a photo has no second copy — not
+ * in the sqlite backup, not anywhere. So the difference is carried in the type, and the sweep refuses on null.
+ *
+ * It deliberately takes no WorkspaceContext. A workspace-scoped read would hand the sweep another workspace's
+ * pictures as orphans and it would delete them. Rows for pictures a form wrote before its transaction had an id
+ * are returned too, so a picture waiting on an unsaved form is never swept away while the form is open.
  */
-export async function allPhotoFileNames(database: Database): Promise<string[]> {
-  if (!(await extrasTablesExist(database.db))) return [];
+export async function allPhotoFileNames(database: Database): Promise<string[] | null> {
+  if (!(await extrasTablesExist(database.db))) return null;
   const rows = await database.db.select({ fileName: transactionPhotos.fileName }).from(transactionPhotos);
   return rows.map((row) => row.fileName);
 }
