@@ -38,9 +38,16 @@ export function EventDetailPage() {
   const navigate = useNavigate();
   const events = useEvents();
   const event = (events.data ?? []).find((row) => row.id === eventId) ?? null;
-  // Which workspace the event is being read in: null is the whole trip, an id is one workspace's share of it. A
-  // screen that was reading one workspace's share hands it back in the URL, so coming back lands where you left.
-  const [tab, setTab] = useState<string | null>(openedIn ?? null);
+  /*
+   * Which workspace the event is being read in: null is the whole trip, an id is one workspace's share of it.
+   *
+   * Kept in the URL rather than in state, because it travels: the plan screens carry it in and hand it back on the
+   * way out, and a tab held in `useState` was overwritten by that homecoming — Business → the plan → back landed on
+   * "All". In the URL there is one answer, and it survives a reload and a shared link too.
+   */
+  const tab = openedIn ?? null;
+  const setTab = (choice: string | null) =>
+    void navigate({ to: '/events/$eventId', params: { eventId }, search: { ws: choice ?? undefined, buy }, replace: true });
   const books = useBooksInEvent(eventId).data ?? [];
   // A tab whose workspace has since been archived, or whose last tagged payment has gone, would read as an
   // empty event rather than as nothing at all; the whole trip is the honest answer while that is true.
@@ -282,7 +289,8 @@ export function EventDetailPage() {
           </div>
 
           {spent === 0 && !hasPlan ? (
-            <p className="py-6 text-center text-sm text-slate-500">Nothing spent on it yet. Plan a category below, or record the first payment.</p>
+            /* A category is no longer something one plans: a plan is a list of things, and the card below is the way in. */
+            <p className="py-6 text-center text-sm text-slate-500">Nothing spent on it yet. Plan what to buy below, or record the first payment.</p>
           ) : hasPlan ? (
             <Deck page={page} onPage={setPage} labels={['Where it went', 'Against the plan']}>
               {donut}

@@ -57,7 +57,19 @@ export function PlanPage() {
     }
   }
 
-  if (events.isSuccess && !event) return <Empty>That event is no longer here.</Empty>;
+  if (events.isSuccess && !event) {
+    // Not a bare sentence: a screen whose subject has gone still owes the user a way on from it.
+    return (
+      <div className="mx-auto max-w-2xl space-y-4">
+        <PageHeader title="Plan" />
+        <Link to="/events" className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
+          <ChevronLeft size={16} aria-hidden />
+          All events
+        </Link>
+        <Empty>That event is no longer here.</Empty>
+      </div>
+    );
+  }
 
   const data = plan.data;
   const totals = data ? planTotals(data) : null;
@@ -86,9 +98,11 @@ export function PlanPage() {
           </Link>
         }
       />
+      {/* The tab the plan was opened in goes back with it, or the event would reset to "All" on the way home. */}
       <Link
         to="/events/$eventId"
         params={{ eventId }}
+        search={search}
         aria-label="Back to the event"
         className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800"
       >
@@ -154,8 +168,9 @@ export function PlanPage() {
               {/*
                * A refund posted as its own transaction answers no item, so it moves the totals above without
                * appearing in any row below — the plan's leftover rows skip a purchase with nothing left on it, and a
-               * refund has less than nothing left. The figure here is exactly what the clamp took off "Not planned",
-               * so spending = bought + not planned − money back, and the rows beneath say which purchases it was.
+               * refund has less than nothing left. The figure here is the sum of the rows beneath it and nothing
+               * else, so the heading can be checked against them; "Not planned" above is the sum of its own rows in
+               * the same way, and spending = bought + not planned − money back closes over the two.
                */}
               {totals.moneyBackMinor > 0 && (
                 <div className="mt-3 space-y-1 border-t border-slate-100 pt-3" data-testid="plan-money-back">
@@ -181,7 +196,12 @@ export function PlanPage() {
         )
       )}
 
-      {(data?.lines ?? []).map((line) => (
+      {/*
+       * Only once something is planned. The empty state above says the money already tagged "reads as 'not planned'
+       * beside it once there is an item" — printing those rows anyway put that promise directly above the state it
+       * promises, under a category heading reading "Rp 4.200.000 of Rp 0".
+       */}
+      {(data && data.itemCount > 0 ? data.lines : []).map((line) => (
         <section key={line.categoryId ?? 'none'} className="space-y-2">
           <h2 className="flex items-center gap-2 px-1">
             <CategoryIcon categoryId={line.categoryId} accounts={accounts} size="sm" />

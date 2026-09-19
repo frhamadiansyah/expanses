@@ -1,7 +1,8 @@
 import { formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
 import { listEventItems, saveEventItem } from '@expanses/db';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { type FormEvent, useEffect, useState } from 'react';
+import { ChevronLeft } from 'lucide-react';
+import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
@@ -9,6 +10,9 @@ import { useCategorySetMembership, useSetCategories } from '../categories/set-qu
 import { useCategoryWorkspaces } from '../workspaces/queries';
 import { afterSaving } from './plan-view';
 import { useEventItemsReady, useEventPlan, useEvents } from './queries';
+
+/** The way back off a screen whose subject has gone, styled as the back link every other plan screen carries. */
+const BACK = '-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800';
 
 export function NewItemRoute() {
   const { eventId } = useParams({ from: '/events/$eventId/plan/new' });
@@ -31,7 +35,13 @@ function minorOf(typed: string, currency: string): number {
   }
 }
 
-/** How many is a whole count, so anything else reads as none yet rather than as a fraction of a thing. */
+/**
+ * How many is a whole count, so anything else reads as none yet rather than as a fraction of a thing.
+ *
+ * Nought is what the screen shows for `0`, `2.5` or `abc`, and nought is what is sent to be saved — the repository
+ * refuses it as `QUANTITY_RANGE` and says so. Substituting 1 here instead showed an estimate of Rp 0 and wrote
+ * 1 × the price, which is the one thing a form may never do: give the user a figure other than the one it showed.
+ */
 const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.trim()) : 0);
 
 /**
@@ -109,7 +119,7 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
       const id = await saveEventItem(database, ws, eventId, {
         id: itemId,
         name,
-        quantity: wholeOf(quantity) || 1,
+        quantity: wholeOf(quantity),
         unitPriceMinor: parseMajor(price, ws.baseCurrency),
         categoryAccountId: categoryId || null,
         link,
@@ -131,8 +141,31 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     }
   }
 
-  if (events.isSuccess && !event) return <Empty>That event is no longer here.</Empty>;
-  if (itemId && plan.isSuccess && !existing) return <Empty>That item is no longer on this plan.</Empty>;
+  /** A dead end is not an answer: whatever went missing, there is a way out that is not the browser's back button. */
+  const gone = (said: string, out: ReactNode) => (
+    <div className="mx-auto max-w-lg space-y-4">
+      <PageHeader title={itemId ? 'Edit item' : 'New item'} />
+      {out}
+      <Empty>{said}</Empty>
+    </div>
+  );
+
+  if (events.isSuccess && !event)
+    return gone(
+      'That event is no longer here.',
+      <Link to="/events" className={BACK}>
+        <ChevronLeft size={16} aria-hidden />
+        All events
+      </Link>,
+    );
+  if (itemId && plan.isSuccess && !existing)
+    return gone(
+      'That item is no longer on this plan.',
+      <Link to="/events/$eventId/plan" params={{ eventId }} search={search} className={BACK}>
+        <ChevronLeft size={16} aria-hidden />
+        Back to the plan
+      </Link>,
+    );
 
   const saveButton = (
     <Button type="submit" form="item-form" disabled={blocked}>
@@ -191,19 +224,27 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
       {after && event && (
         <Card className="space-y-1">
           <h2 className="text-sm font-semibold">After saving</h2>
+          {/* Not clamped again here: `afterSaving` clamps, so that the four screens do not each remember to. */}
           <p className="flex items-baseline justify-between gap-3 text-sm">
             <span className="text-slate-500">{event.name}, planned</span>
-            <Money minor={Math.max(0, after.plannedMinor)} currency={ws.baseCurrency} className="font-semibold" />
+            <Money minor={after.plannedMinor} currency={ws.baseCurrency} className="font-semibold" />
           </p>
           <p className="flex items-baseline justify-between gap-3 text-sm">
             <span className="text-slate-500">Still to buy</span>
-            <Money minor={Math.max(0, after.toBuyMinor)} currency={ws.baseCurrency} className="font-semibold" />
+            <Money minor={after.toBuyMinor} currency={ws.baseCurrency} className="font-semibold" />
           </p>
-          {/* Shown only above nought: a standalone refund can drive it below, and money nobody planned is never less than nothing. */}
           {after.notPlannedMinor > 0 && (
             <p className="flex items-baseline justify-between gap-3 text-sm">
               <span className="text-slate-500">Not planned</span>
               <Money minor={after.notPlannedMinor} currency={ws.baseCurrency} className="font-semibold" />
+            </p>
+          )}
+          {/* Money that came back answers no item, so saving one cannot move it — but leaving it out would under-state
+              the event by exactly the refund, with nothing on the card to say where it went. */}
+          {after.moneyBackMinor > 0 && (
+            <p className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="text-slate-500">Money back</span>
+              <Money minor={after.moneyBackMinor} currency={ws.baseCurrency} className="font-semibold text-emerald-700" />
             </p>
           )}
         </Card>

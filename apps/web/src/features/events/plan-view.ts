@@ -34,11 +34,12 @@ export const gaugeFor = (plan: EventPlan): BudgetProgress => ({
 /**
  * "Planned so far" admits that the figure is not the whole trip.
  *
- * True the moment a category has money and no items — and true again, by a different route, when a refund posted as
- * its own transaction drives `notPlannedMinor` below nought: the event then holds a rupiah that belongs to no item
- * and to no leftover row either, so "Planned" would be claiming an account of the money that does not close.
+ * True the moment a category has money and no items — and true again, by a different route, whenever money came back
+ * on a receipt of its own: a refund answers no item, so "Planned" would be claiming an account of the event's money
+ * that the plan alone does not give. Asked of the money back rather than of the sign of a subtraction, so an event
+ * whose refund is outweighed by other unplanned spending says it just as plainly as one whose refund is not.
  */
-export const plannedLabel = (plan: EventPlan) => (plan.unplannedCategoryCount > 0 || plan.notPlannedMinor < 0 ? 'Planned so far' : 'Planned');
+export const plannedLabel = (plan: EventPlan) => (plan.unplannedCategoryCount > 0 || planTotals(plan).moneyBackMinor > 0 ? 'Planned so far' : 'Planned');
 
 /**
  * What one item cost against what it was estimated at, said in words and in a tone.
@@ -111,44 +112,56 @@ export function eventListLine(plan: EventPlan, currency = 'IDR') {
 export function afterSaving(plan: EventPlan, typed: { estimateMinor: number; replacing?: string }) {
   const old = plan.lines.flatMap((line) => line.items).find((item) => item.id === typed.replacing);
   const wasBought = old?.bought === true;
+  // The two figures an item cannot move come from the one place that reads them, so the form and the plan agree —
+  // money back included, or this card would quietly drop a refund the plan screen names.
+  const { notPlannedMinor, moneyBackMinor } = planTotals(plan);
   return {
     plannedMinor: Math.max(0, plan.plannedMinor - (old?.estimateMinor ?? 0) + typed.estimateMinor),
     // Editing something already bought does not put it back on the list of things to buy.
     toBuyMinor: Math.max(0, plan.toBuyMinor - (wasBought ? 0 : (old?.estimateMinor ?? 0)) + (wasBought ? 0 : typed.estimateMinor)),
-    notPlannedMinor: Math.max(0, plan.notPlannedMinor),
+    notPlannedMinor,
+    moneyBackMinor,
   };
 }
 
 /**
- * The summary figures as a screen may show them: never below nought, and never quietly.
+ * The summary figures as a screen may show them: never below nought, and every line equal to the rows beneath it.
  *
- * `notPlannedMinor` is spending minus the shares items claim, and a refund posted as its *own* transaction and tagged
- * to the event takes money off the spending without touching any share — so the subtraction can go below nought. A
- * negative "Not planned for" is unreadable (money nobody planned cannot be less than nothing), and simply clamping it
- * would hide the refund inside a figure that no longer adds up. So it is clamped **and** what the clamp swallowed is
- * handed back as `moneyBackMinor`, for the screen to name on a line of its own beside the purchases it came off.
+ * `plan.notPlannedMinor` is spending minus the shares items claim — one subtraction over the whole event. Per
+ * purchase it is the same subtraction, and the plan already does it: what is left of a receipt once its items have
+ * had their shares. A purchase with something left becomes a leftover row under its category; a refund posted as its
+ * *own* transaction has **less than nothing** left, so it becomes no row at all while still moving the total. The
+ * event's subtraction is therefore the positive leftovers plus the negative ones, and those two are different things
+ * that must be said separately:
  *
- * The account still closes, and this is the arithmetic that closes it:
+ *     notPlannedMinor  = Σ of the leftover rows the screen prints — money spent that no item claims
+ *     moneyBackMinor   = −Σ of the negative ones — money that came back, which `moneyBackRows` names
+ *
+ * Taking `moneyBackMinor` as "whatever the clamp swallowed" instead reconciles only when a refund is the event's
+ * *sole* unplanned money: with Rp1.000.000 back and Rp5.000.000 unplanned the clamp swallows nothing, so the refund
+ * would be named nowhere and "Not planned" would read Rp4.000.000 above rows adding to Rp5.000.000; with Rp1.500.000
+ * back and Rp800.000 unplanned it would head a row of Rp1.500.000 with the figure Rp700.000. Each line here is the
+ * sum of its own rows in every arrangement, which is the only way a user can check one.
+ *
+ * The account still closes, because the positive and negative leftovers are the whole of the subtraction:
  *
  *     spent = shares of bought items + notPlannedMinor − moneyBackMinor
- *
- * `moneyBackMinor` is the whole of the correction — it is the clamped-away remainder and nothing else — so a screen
- * that shows it beside the two figures either side of it is showing the user every rupiah the event holds. The plan's
- * own leftover rows cannot do this job: that loop skips a purchase with `left <= 0`, and a refund has less than
- * nothing left, so it appears in no row while moving every total. `moneyBackRows` names which purchases they were.
  *
  * Nothing here links a refund to an item: an item is answered by the purchase that bought it, and what a standalone
  * refund means to an occasion is a question the spec never asked. Naming it is the honest interim.
  */
 export function planTotals(plan: EventPlan) {
-  const notPlanned = Math.max(0, plan.notPlannedMinor);
+  // Exactly the rows `PlanPage` prints under each category: every purchase with something still left on it.
+  const leftoverMinor = plan.lines.reduce((total, line) => total + line.unplannedMinor, 0);
   return {
     plannedMinor: Math.max(0, plan.plannedMinor),
     boughtActualMinor: Math.max(0, plan.boughtActualMinor),
     toBuyMinor: Math.max(0, plan.toBuyMinor),
-    notPlannedMinor: notPlanned,
-    /** What the clamp is holding back: money that came back and answers no item. Nought when nothing is held back. */
-    moneyBackMinor: Math.max(0, -plan.notPlannedMinor),
+    /** Money spent that no item claims — the leftover rows, and never a figure that has a refund netted off it. */
+    notPlannedMinor: leftoverMinor,
+    /** Money that came back and answers no item: the leftovers the plan files under no category because they are
+     * less than nothing. `max` guards the arithmetic only; the rows can never add to more than the subtraction. */
+    moneyBackMinor: Math.max(0, leftoverMinor - plan.notPlannedMinor),
   };
 }
 

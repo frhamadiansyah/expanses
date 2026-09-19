@@ -26,6 +26,39 @@ test('a plan is a list of things to buy, and a category is only their sum', asyn
 });
 
 /**
+ * What the form shows is what the form saves.
+ *
+ * "How many" used to fall back to 1 on anything that was not a whole number, so a `0` or a `2.5` showed an Estimate of
+ * Rp 0 and then wrote one of the thing at the full price — the user shown one figure and given another, with no error
+ * anywhere. It also put the repository's own `QUANTITY_RANGE` out of reach of the only form that can produce it.
+ */
+test('a quantity that is not a whole number is refused, never silently turned into one', async ({ page }) => {
+  await addWallet(page);
+  await addEvent(page, 'Newborn');
+  await page.getByRole('link', { name: 'Plan what to buy' }).click();
+  await page.getByRole('link', { name: 'Add the first item' }).click();
+  await page.getByLabel('What', { exact: true }).fill('Bottles');
+  await page.getByLabel('Price each').fill('500000');
+
+  for (const typed of ['0', '2.5', 'abc']) {
+    await page.getByLabel('How many').fill(typed);
+    // Nothing of it parses, so the estimate is nought — and nought is what the save is asked for.
+    await expect(page.getByLabel('Estimate')).toHaveValue(/Rp\s*0$/);
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByRole('alert')).toContainText('How many must be a whole number above nought');
+    // Still on the form, and nothing was written: 1 × Rp 500.000 never happened.
+    await expect(page.getByLabel('How many')).toHaveValue(typed);
+  }
+
+  // A whole number above nought saves, at the estimate the form showed all along.
+  await page.getByLabel('How many').fill('6');
+  await expect(page.getByLabel('Estimate')).toHaveValue(/3\.000\.000/);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('plan-item').filter({ hasText: 'Bottles' })).toContainText('6 × Rp 500.000');
+  await expect(page.getByTestId('plan-totals')).toContainText('3.000.000');
+});
+
+/**
  * The item list is the whole answer to a figure that moved: editing changes the row that is there, and adding makes
  * a row of its own. The card this screen replaced had neither — it took a category and a total and appended, so
  * naming a category twice doubled its planned figure with nothing on screen to show why.

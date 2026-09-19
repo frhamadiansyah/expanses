@@ -98,7 +98,7 @@ describe('the cards', () => {
 
 describe('what a new item does', () => {
   it('shows the event, what is left to buy, and what is still unclaimed', () => {
-    expect(afterSaving(plan, { estimateMinor: 6_500_000 })).toEqual({ plannedMinor: 26_700_000, toBuyMinor: 19_200_000, notPlannedMinor: 0 });
+    expect(afterSaving(plan, { estimateMinor: 6_500_000 })).toEqual({ plannedMinor: 26_700_000, toBuyMinor: 19_200_000, notPlannedMinor: 0, moneyBackMinor: 0 });
   });
 
   it('takes the old estimate out first when an item is being edited', () => {
@@ -110,7 +110,7 @@ describe('what a new item does', () => {
   });
 
   it('is the plan as it stands while nothing has been typed', () => {
-    expect(afterSaving(plan, { estimateMinor: 0 })).toEqual({ plannedMinor: 20_200_000, toBuyMinor: 12_700_000, notPlannedMinor: 0 });
+    expect(afterSaving(plan, { estimateMinor: 0 })).toEqual({ plannedMinor: 20_200_000, toBuyMinor: 12_700_000, notPlannedMinor: 0, moneyBackMinor: 0 });
   });
 });
 
@@ -263,14 +263,73 @@ describe('nothing on screen reads below nought', () => {
   });
 
   it('clamps the figures the form shows after saving, in the view model rather than in each screen', () => {
-    // Editing the crib down to 1.000.000 leaves nothing still to buy and nothing unplanned to show.
+    // Editing the crib down to 1.000.000 leaves nothing still to buy and nothing unplanned to show — but the
+    // 1.000.000 that came back is still the event's, and the form says so rather than dropping it.
     expect(afterSaving(refunded, { estimateMinor: 1_000_000, replacing: 'r1' })).toEqual({
       plannedMinor: 1_000_000,
       toBuyMinor: 0,
       notPlannedMinor: 0,
+      moneyBackMinor: 1_000_000,
     });
     // Mid-keystroke the estimate is nought, and a plan of nothing is still not a plan of less than nothing.
     expect(afterSaving(refunded, { estimateMinor: 0, replacing: 'r1' })).toMatchObject({ plannedMinor: 0, toBuyMinor: 0 });
+  });
+
+  /*
+   * The case the fixture above cannot reach: a refund *alongside* ordinary unplanned spending.
+   *
+   * With a refund as the event's only unplanned money, "what the clamp swallowed" and "what came back" are the same
+   * number, and a test built on that fixture passes against either definition. They part company the moment
+   * something else is unplanned too, and then one of them is wrong on screen — so both orders of magnitude are
+   * checked here, and each line is asserted to equal the sum of the rows printed beneath it rather than a literal
+   * reached by the same subtraction the code makes.
+   */
+  const alongside = (refundMinor: number, unplannedMinor: number) =>
+    eventPlan({
+      categoryNames: { gear: 'Baby gear', food: 'Restaurants' },
+      items: [{ id: 'a1', name: 'Crib', quantity: 1, unitPriceMinor: 3_000_000, categoryId: 'gear', link: null, note: null, purchase: { transactionId: 'p1', shareMinor: 3_000_000 } }],
+      actuals: [
+        { transactionId: 'p1', occurredOn: '2026-09-12', description: 'Toko Bayi', categoryId: 'gear', amountBaseMinor: 3_000_000 },
+        { transactionId: 'p2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', categoryId: 'gear', amountBaseMinor: -refundMinor },
+        { transactionId: 'p3', occurredOn: '2026-09-14', description: 'Hampers', categoryId: 'food', amountBaseMinor: unplannedMinor },
+      ],
+    });
+
+  /** What `moneyBackRows` is handed on the page: the same transactions, as the history lists them. */
+  const asHistory = (refundMinor: number, unplannedMinor: number) => [
+    { id: 'p1', occurredOn: '2026-09-12', description: 'Toko Bayi', entries: [{ accountKind: 'expense', amountBaseMinor: 3_000_000 }] },
+    { id: 'p2', occurredOn: '2026-09-13', description: 'Toko Bayi refund', entries: [{ accountKind: 'expense', amountBaseMinor: -refundMinor }] },
+    { id: 'p3', occurredOn: '2026-09-14', description: 'Hampers', entries: [{ accountKind: 'expense', amountBaseMinor: unplannedMinor }] },
+  ];
+
+  const bothWaysRound: [string, number, number][] = [
+    ['the refund is the smaller', 1_000_000, 5_000_000],
+    ['the refund is the larger', 1_500_000, 800_000],
+  ];
+
+  it.each(bothWaysRound)('each heading is the sum of its own rows when %s', (_case, refundMinor, unplannedMinor) => {
+    const plan = alongside(refundMinor, unplannedMinor);
+    const totals = planTotals(plan);
+    const leftovers = plan.lines.flatMap((line) => line.unplanned);
+    const back = moneyBackRows(asHistory(refundMinor, unplannedMinor));
+
+    // The rows the screen prints, by hand: the hampers are nobody's item, the refund is the only money coming back.
+    expect(leftovers.map((row) => [row.description, row.amountBaseMinor])).toEqual([['Hampers', unplannedMinor]]);
+    expect(back.map((row) => [row.description, row.amountMinor])).toEqual([['Toko Bayi refund', refundMinor]]);
+
+    // Each figure equals the rows under it — the one thing a user can check, and the thing the old definition broke:
+    // it read notPlanned 4.000.000 over rows of 5.000.000, and money back 700.000 over a row of 1.500.000.
+    expect(totals.notPlannedMinor).toBe(leftovers.reduce((total, row) => total + row.amountBaseMinor, 0));
+    expect(totals.moneyBackMinor).toBe(back.reduce((total, row) => total + row.amountMinor, 0));
+    expect(totals.notPlannedMinor).toBe(unplannedMinor);
+    expect(totals.moneyBackMinor).toBe(refundMinor);
+
+    // And the account still closes over the two, with every figure at or above nought.
+    expect(plan.spentMinor).toBe(3_000_000 - refundMinor + unplannedMinor);
+    expect(plan.spentMinor).toBe(totals.boughtActualMinor + totals.notPlannedMinor - totals.moneyBackMinor);
+    for (const figure of Object.values(totals)) expect(figure).toBeGreaterThanOrEqual(0);
+    // The hampers are in a category with no items, so the plan does not claim to be the whole account of the money.
+    expect(plannedLabel(plan)).toBe('Planned so far');
   });
 
   it('names the refund the plan’s own leftover rows cannot carry', () => {

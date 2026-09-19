@@ -318,6 +318,18 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   // And its own history: the dinner is Personal's, so it is not under this tab.
   await expect(page.getByText('Hotel dinner')).toHaveCount(0);
 
+  /*
+   * The tab travels into the plan and back out of it.
+   *
+   * It was carried in and lost coming home: the plan read in Business, and "Back to the event" landed on All,
+   * because the event held its tab in a screen's memory rather than in the URL the plan hands back.
+   */
+  await page.getByTestId('open-plan').click();
+  await expect(page.getByRole('heading', { name: 'Plan · Singapore holiday' })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to the event' }).click();
+  await expect(tabs.getByRole('button', { name: 'Business' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('event-total')).toContainText('640.000');
+
   // Back to All, and the whole trip is there again.
   await tabs.getByRole('button', { name: 'All' }).click();
   await expect(page.getByTestId('event-total')).toContainText('4.840.000');
