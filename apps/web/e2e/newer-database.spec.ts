@@ -65,7 +65,7 @@ test('a restore of data from a newer app is refused before it is adopted, and th
    */
   await expect(page.getByText(REFUSAL)).toBeVisible();
   await expect(page.getByText(`Nothing on this device was changed: that copy was written by update ${FUTURE}`)).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Backup' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
   // Export is never taken away from someone whose only problem is an out-of-date app.
   await expect(page.getByRole('button', { name: 'Download backup' })).toBeEnabled();
 

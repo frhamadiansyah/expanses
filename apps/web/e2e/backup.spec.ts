@@ -29,7 +29,7 @@ test('restore replaces data only after a safety copy downloads and is confirmed'
 
   // Restore reloads the page; wait for the new document before navigating.
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with/ }).click()]);
-  await expect(page.getByRole('heading', { name: 'Backup' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
 
   await page.goto('/accounts');
   await expect(page.getByRole('link', { name: 'Before backup' })).toBeVisible();

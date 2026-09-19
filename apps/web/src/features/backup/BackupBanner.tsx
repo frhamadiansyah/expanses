@@ -1,23 +1,113 @@
-import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { isoDate } from '@expanses/core';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useMatchRoute } from '@tanstack/react-router';
+import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { saveBytes } from '../../lib/download';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
-import { cx } from '../../ui';
-import { backupUrgency, daysSince, getLastBackupAt } from './backupState';
+import { Button, cx, ErrorBox } from '../../ui';
+import { afterUpdate } from './after-update';
+import { type BackupSnooze, backupUrgency, bannerWords, daysSince, getLastBackupAt, reminderDue, setLastBackupAt, snoozeUntil } from './backupState';
 
+const SNOOZE_KEY = 'expanses.backup-reminder.snoozed';
+
+/** A "Not now" is about this screen on this device, so it lives here and not in the data a backup carries. */
+function readSnooze(): BackupSnooze | null {
+  try {
+    const raw = localStorage.getItem(SNOOZE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BackupSnooze>;
+    return typeof parsed?.until === 'string' && typeof parsed.urgency === 'string' ? { until: parsed.until, urgency: parsed.urgency } : null;
+  } catch {
+    return null;
+  }
+}
+
+const TONE: Record<string, string> = {
+  overdue: 'bg-amber-100 text-amber-900 ring-1 ring-amber-300',
+  warn: 'bg-amber-100 text-amber-900',
+  remind: 'bg-slate-100 text-slate-700',
+};
+
+/**
+ * The standing reminder to keep a copy of your own.
+ *
+ * It is about the user's own export — a file they hold, off this device — and never about the safety
+ * copies the app keeps for itself, which would be lost by everything that loses the database. At its
+ * loudest it does the export in place: a reminder a month overdue should be one press from done, not a
+ * trip to another screen. And it is always dismissible, for a week, because a message that cannot be
+ * put off is one the user learns to read past.
+ */
 export function BackupBanner() {
-  const { database } = useApp();
+  const { database, update } = useApp();
+  const queryClient = useQueryClient();
+  const matchRoute = useMatchRoute();
   const accounts = useAccounts();
   const last = useQuery({ queryKey: ['last-backup'], queryFn: () => getLastBackupAt(database) });
+  const [snooze, setSnooze] = useState(readSnooze);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
   if (!accounts.isSuccess || !last.isSuccess) return null;
-  const urgency = backupUrgency(last.data, (accounts.data ?? []).some(isMoneyAccount));
-  if (urgency === 'ok') return null;
+  // Not on the screen that answers it: a reminder on top of the thing it is reminding you to do is noise.
+  if (matchRoute({ to: '/backup' })) return null;
+  // The card above the page has just said more about their data than this can, and offers the same
+  // backup. Two messages about one thing is the nagging this branch is meant to avoid.
+  if (afterUpdate(update)) return null;
+
+  const level = backupUrgency(last.data, (accounts.data ?? []).some(isMoneyAccount));
+  if (level === 'ok' || !reminderDue(level, snooze)) return null;
+
+  const onDismiss = () => {
+    const next: BackupSnooze = { until: snoozeUntil(), urgency: level };
+    try {
+      localStorage.setItem(SNOOZE_KEY, JSON.stringify(next));
+    } catch {
+      // Storage unavailable: put it off for this session, which is all this device can remember.
+    }
+    setSnooze(next);
+  };
+
+  const onDownload = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const bytes = await database.exportBytes();
+      saveBytes(bytes, `expanses-backup-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
+      await setLastBackupAt(database, new Date().toISOString());
+      // The date this banner reads is the one just written; without this it goes on saying the old number.
+      await queryClient.invalidateQueries({ queryKey: ['last-backup'] });
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className={cx('mb-4 flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm', urgency === 'warn' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700')} role="status">
-      <span>{last.data ? `No backup in ${daysSince(last.data)} days.` : 'You have not backed up yet.'} Your data exists only on this device.</span>
-      <Link to="/backup" className="whitespace-nowrap font-medium underline">
-        Back up now
-      </Link>
+    <div className={cx('mb-4 rounded-lg px-3 py-2 text-sm', TONE[level])} role="status">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <span className="min-w-0 flex-1">{bannerWords(level, last.data ? daysSince(last.data) : null)}</span>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {level === 'overdue' ? (
+            <Button className="min-h-11" disabled={busy} onClick={() => void onDownload()}>
+              Download backup
+            </Button>
+          ) : (
+            <Link to="/backup" className="inline-flex min-h-11 items-center px-1 font-medium whitespace-nowrap underline">
+              Back up now
+            </Link>
+          )}
+          <Button variant="ghost" className="min-h-11" disabled={busy} onClick={onDismiss}>
+            Not now
+          </Button>
+        </div>
+      </div>
+      {error != null && (
+        <div className="mt-2">
+          <ErrorBox error={error} />
+        </div>
+      )}
     </div>
   );
 }
