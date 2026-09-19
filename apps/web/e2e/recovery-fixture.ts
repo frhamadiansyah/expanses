@@ -10,7 +10,13 @@ export const CORRUPT_HEADLINE = 'Part of your data would not read';
 /** The one place the export button is named, so a copy change moves one line. */
 export const EXPORT_BUTTON = 'Download a copy of my data';
 
-/** The safety copies sitting in `expanses-safety/` right now, by name, read from the page itself. */
+/**
+ * Every name in `expanses-safety/` right now, whether or not the file behind it holds anything yet.
+ *
+ * This is the wide answer, and it is the right one for saying a copy is *gone*: a wipe that left a stray
+ * empty file behind has not emptied the device, and a check that overlooked it would say it had.
+ * For "a copy I can restore", use `restorableCopies` — see it for why the two are not the same.
+ */
 export function safetyCopies(page: Page): Promise<string[]> {
   return page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
@@ -23,13 +29,45 @@ export function safetyCopies(page: Page): Promise<string[]> {
 }
 
 /**
+ * The copies that are really copies: a name *and* a database behind it.
+ *
+ * The store writes a copy in two steps — `getFileHandle(name, { create: true })`, which puts the name in
+ * the directory at once, and then the bytes. Between those two the copy exists by name and holds nothing.
+ * A test that waits on the name alone therefore carries on while the copy is still being written, and the
+ * very next thing these journeys do is navigate — which tears the page down mid-write and leaves a copy
+ * that is empty or half there. Restoring it then hands back nothing, and the failure surfaces as the
+ * restore "losing" the data: the flake that makes the one suite guarding against data loss untrustworthy.
+ *
+ * So the bytes are read and checked for SQLite's own magic. That is the same question the app asks before
+ * it records a copy, and it is strictly more than the name was proving.
+ */
+export function restorableCopies(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle('expanses-safety').catch(() => null);
+    if (!dir) return [];
+    const found: string[] = [];
+    for await (const entry of dir.values()) {
+      if (entry.kind !== 'file' || !entry.name.endsWith('.sqlite3')) continue;
+      const file = await (entry as FileSystemFileHandle).getFile();
+      if (file.size < 16) continue;
+      const magic = new TextDecoder().decode(new Uint8Array(await file.slice(0, 15).arrayBuffer()));
+      if (magic === 'SQLite format 3') found.push(entry.name);
+    }
+    return found;
+  });
+}
+
+/**
  * Waits for the day's copy to land, and answers with its name. It is taken in an idle callback after the
  * first paint, deliberately, so it is never there the instant a screen appears — a test that assumes
  * otherwise is a flake waiting to happen.
+ *
+ * "Landed" means restorable, not merely named: see `restorableCopies`.
  */
 export async function waitForSafetyCopy(page: Page): Promise<string> {
-  await expect.poll(() => safetyCopies(page), { timeout: 20_000 }).not.toHaveLength(0);
-  return (await safetyCopies(page))[0]!;
+  await expect.poll(() => restorableCopies(page), { timeout: 20_000 }).not.toHaveLength(0);
+  return (await restorableCopies(page))[0]!;
 }
 
 /**
