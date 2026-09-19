@@ -116,6 +116,9 @@ describe('a failure the session cannot carry on past', () => {
       },
     };
     const executor = createWorkerExecutor(worker as unknown as Worker);
+    // Armed, the way `bootstrap` arms it the moment an open succeeds and the app is handed the engine.
+    // Before that the opener still owns the engine — see "a strike during the open" below.
+    executor.arm();
     const heard: RecoveryReason[] = [];
     executor.onFatal((reason) => heard.push(reason));
 
@@ -180,9 +183,102 @@ describe('a failure the session cannot carry on past', () => {
     expect(worker.sent).toHaveLength(2);
   });
 
+  /**
+   * Spec §5.3's rollback, and the reason the strike is not armed until the open has succeeded.
+   *
+   * A post-migration `integrity_check` that answers "malformed" is a fatal by every rule in `fatal.ts` —
+   * and it is also the one moment the bytes taken before the update have to go back. The worker's `import`
+   * op byte-replaces the file and needs no readable database at all, so a strike armed from the first
+   * message refused, on this side of the boundary, the one call that could still have saved the user:
+   * `rolledBack: false` on a half-updated file with a good copy sitting right there.
+   */
+  it('lets the opener put the bytes back after a strike, and closes the engine only once the app holds it', async () => {
+    const worker = scriptedWorker((message) =>
+      message.op === 'query' ? { id: message.id, error: 'database disk image is malformed', fatal: 'corrupt' } : { id: message.id, result: null },
+    );
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+
+    await expect(executor.query('PRAGMA integrity_check(1)', [], 'get')).rejects.toThrow(/malformed/);
+
+    // The rollback reaches the worker, because `openSafely` still owns every failure until the open returns.
+    await expect(executor.importBytes(new Uint8Array([1, 2, 3]))).resolves.toBeUndefined();
+    expect(worker.sent.some((message) => message.op === 'import')).toBe(true);
+
+    // And once the app is holding the engine, §3.4 applies and nothing more is posted to it.
+    executor.arm();
+    const sentBefore = worker.sent.length;
+    await expect(executor.query('select 1', [], 'all')).rejects.toThrow(/malformed/);
+    await expect(executor.importBytes(new Uint8Array([1, 2, 3]))).rejects.toThrow(/malformed/);
+    expect(worker.sent).toHaveLength(sentBefore);
+  });
+
+  /**
+   * The one path on which the swap itself could damage data. A strike ends with `bootstrap` terminating the
+   * worker, and `importDb` is the only op that is rewriting the live slot while it runs — cut off half-way
+   * it leaves a torn file and loses the previous bytes the worker was holding for its own rollback.
+   */
+  it('waits for a restore that is already writing the file before it hands the failure over', async () => {
+    vi.useFakeTimers();
+    let answer: ((reply: Record<string, unknown>) => void) | undefined;
+    const worker = {
+      onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      postMessage(message: { id: number; op: string }) {
+        // The restore is accepted and left in flight: the worker is inside `importDb`.
+        answer = (reply) => worker.onmessage?.({ data: { id: message.id, ...reply } } as MessageEvent<unknown>);
+      },
+    };
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+    executor.arm();
+    const heard: RecoveryReason[] = [];
+    executor.onFatal((reason) => heard.push(reason));
+
+    const restore = executor.importBytes(new Uint8Array([1, 2, 3]));
+    await vi.advanceTimersByTimeAsync(0);
+    worker.onerror?.({ message: 'SQLite worker failed' } as ErrorEvent);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Not yet: terminating here is what leaves a half-written slot behind.
+    expect(heard).toEqual([]);
+    // The worker finishes putting bytes somewhere — its own `catch` restores the previous ones — and only
+    // then is the screen swapped.
+    answer?.({ result: null });
+    await expect(restore).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]?.kind).toBe('unreadable');
+  });
+
+  it('gives a restore that never answers up rather than leaving the screen as it was', async () => {
+    vi.useFakeTimers();
+    const worker = {
+      onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+      onerror: null as ((event: ErrorEvent) => void) | null,
+      postMessage: () => undefined,
+    };
+    const executor = createWorkerExecutor(worker as unknown as Worker);
+    executor.arm();
+    const heard: RecoveryReason[] = [];
+    executor.onFatal((reason) => heard.push(reason));
+
+    const restore = executor.importBytes(new Uint8Array([1, 2, 3]));
+    const settled = restore.then(
+      () => 'done',
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    worker.onerror?.({ message: 'SQLite worker failed' } as ErrorEvent);
+
+    // The bound: a torn file must not be traded for a screen that never changes.
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(heard).toHaveLength(1);
+    expect(await settled).toMatch(/SQLite worker failed/);
+  });
+
   it('counts the engine dying as the same thing, and hands it to a listener that arrives late', async () => {
     const worker = scriptedWorker((message) => ({ id: message.id, result: [] }));
     const executor = createWorkerExecutor(worker as unknown as Worker);
+    executor.arm();
 
     worker.onerror?.({ message: 'SQLite worker failed' } as ErrorEvent);
 

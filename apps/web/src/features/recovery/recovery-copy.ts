@@ -37,6 +37,17 @@ export interface RecoveryOptions {
  */
 export const MID_SESSION_NOTE = 'Expanses stopped here rather than keep writing to it, so what you have lost is the screen you were on, not your money.';
 
+/**
+ * The same sentence for the other mid-session arrival: a screen that threw while it was drawing.
+ *
+ * The engine never complained there, so `MID_SESSION_NOTE`'s "rather than keep writing to it" would be
+ * saying something about the data that is not true. What is true is smaller and worth saying plainly:
+ * one screen stopped, the file was never touched, and the rest of the app is still here.
+ */
+export const SCREEN_STOPPED_NOTE = 'One screen stopped before it could finish drawing, so what you have lost is that screen, not your money.';
+
+const noteFor = (reason: RecoveryReason): string => (reason.kind === 'cannot-open' ? SCREEN_STOPPED_NOTE : MID_SESSION_NOTE);
+
 export function recoveryCopy(reason: RecoveryReason, options: RecoveryOptions): RecoveryCopy {
   const { headline, body } = words(reason);
   return {
@@ -44,7 +55,7 @@ export function recoveryCopy(reason: RecoveryReason, options: RecoveryOptions): 
     body: options.requested
       ? 'Nothing has gone wrong. This screen never opens your data, so you can take a copy of it, put back the last good copy, or start again from here even when opening is what breaks.'
       : reason.midSession
-        ? `${MID_SESSION_NOTE} ${body}`
+        ? `${noteFor(reason)} ${body}`
         : body,
     actions: actionsFor(reason, options),
   };
@@ -109,10 +120,18 @@ function words(reason: RecoveryReason): { headline: string; body: string } {
   const kind: RecoveryKind = reason.kind;
   switch (kind) {
     case 'cannot-open':
-      return {
-        headline: 'We could not open your data this time',
-        body: 'Your transactions, accounts and cards are still stored on this device. Something went wrong while opening them, which is usually temporary. Try again first — and take a copy while you are here, so you have one whatever happens next.',
-      };
+      // Mid-session it did open, and the data was never the problem: a screen ran into something it could
+      // not finish. Saying "we could not open your data" there would name the wrong thing, and would worry
+      // someone about a file that is exactly as they left it.
+      return reason.midSession
+        ? {
+            headline: 'That screen stopped before it could finish',
+            body: 'Your transactions, accounts and cards are on this device exactly as they were, and nothing has been changed. Try again — it usually comes straight back — and take a copy while you are here, so you have one whatever happens next.',
+          }
+        : {
+            headline: 'We could not open your data this time',
+            body: 'Your transactions, accounts and cards are still stored on this device. Something went wrong while opening them, which is usually temporary. Try again first — and take a copy while you are here, so you have one whatever happens next.',
+          };
     case 'unreadable':
       // Mid-session it did open — it stopped answering afterwards — so the headline has to say the true
       // thing rather than the near one. The body is the same either way: it is the same file, in the same

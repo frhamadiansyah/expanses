@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MID_SESSION_NOTE, recoveryCopy } from '../features/recovery/recovery-copy';
 import { fatalKind, fatalReason } from './fatal';
 import { NEWER_DATABASE } from './newer-database';
 
@@ -41,22 +42,30 @@ describe('what counts as a failure the session cannot carry on past', () => {
 });
 
 describe('the reason a mid-session failure is shown as', () => {
-  it('names itself as mid-session, keeps the technical text out of the headline, and still offers the bytes', () => {
+  it('names itself as mid-session, keeps the technical text where it belongs, and still offers the bytes', () => {
     const reason = fatalReason('corrupt', 'database disk image is malformed');
     expect(reason.kind).toBe('corrupt');
     expect(reason.midSession).toBe(true);
     // Exportable is not optimism: the recovery screen reads the VFS slot files straight off OPFS.
     expect(reason.exportable).toBe(true);
     expect(reason.detail).toBe('database disk image is malformed');
-    expect(reason.headline).toContain('still on this device');
-    expect(reason.headline).not.toMatch(/malformed|SQLITE/);
   });
 
-  it('says the data stopped answering when the engine could not reach it, and never blames the user', () => {
-    const reason = fatalReason('unreadable', 'disk I/O error');
-    expect(reason.kind).toBe('unreadable');
-    expect(reason.midSession).toBe(true);
-    expect(reason.headline).toMatch(/stopped answering/);
-    expect(reason.headline).not.toMatch(/delete|reinstall|you /i);
+  /*
+   * The words a person reads are `recoveryCopy`'s, never `reason.headline` — which is a log line the screen
+   * does not render, the same as every headline `open.ts` builds. Asserted here against the copy that is
+   * actually drawn, so these rules are pinned where they can be broken rather than on a string nobody sees.
+   */
+  it('reaches the user as the mid-session copy, for both kinds', () => {
+    for (const kind of ['corrupt', 'unreadable'] as const) {
+      const copy = recoveryCopy(fatalReason(kind, 'database disk image is malformed'), { hasSnapshot: true });
+      expect(copy.body.startsWith(MID_SESSION_NOTE)).toBe(true);
+      expect(copy.body).toContain('not your money');
+      // Never alarming, never an instruction to delete anything, and never the engine's own words up front.
+      expect(copy.headline).not.toMatch(/malformed|SQLITE/);
+      expect(copy.body).not.toMatch(/delete|reinstall|corrupt/i);
+      expect(copy.actions).toEqual(['export', 'restore', 'retry', 'start-fresh']);
+    }
+    expect(recoveryCopy(fatalReason('unreadable', 'disk I/O error'), { hasSnapshot: true }).headline).toBe('Your data stopped answering');
   });
 });

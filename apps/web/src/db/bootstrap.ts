@@ -144,7 +144,17 @@ export async function bootstrap(onStage: (stage: OpenStage) => void, deps: Boots
        * exists: it holds a sync access handle on every slot file the pool owns, and the recovery screen's
        * Restore and Start fresh cannot touch those files until it lets go. Nothing is reloaded — a reload
        * would race the failure and could land back on the same broken query — the screen is simply swapped.
+       *
+       * The strike is armed *here*, and not when the executor was made. Armed earlier it closes the engine
+       * to the opener as well, and the opener is the one caller that still has work to do after a fatal:
+       * spec §5.3's rollback puts the pre-update bytes back through the worker's own `import` op, which
+       * needs no readable database at all. A post-migration `integrity_check` answering "malformed" is both
+       * a fatal and the moment that rollback matters most, and an executor armed from the first message
+       * refused it on this side of the boundary — `rolledBack: false` on a half-updated file with a good
+       * copy sitting right there. Until this line every failure belongs to `openSafely`, which has a typed
+       * answer for each of them; from this line the app is holding the engine, and §3.4 applies.
        */
+      executor.arm();
       result.app.onFatal = (handler) =>
         executor.onFatal((reason) => {
           worker.terminate();

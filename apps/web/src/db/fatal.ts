@@ -65,14 +65,16 @@ export function fatalKind(error: unknown): FatalKind | null {
  * SQLite will not look at it. `midSession` is what lets the copy say the one thing this screen has to say
  * and the open-time screens do not — that the app was open a moment ago, and that what went is the screen,
  * not the money.
+ *
+ * `headline` is a **log line, not a screen line**, the same as every headline `open.ts` builds. The screen
+ * writes its own words from `recoveryCopy(reason, …)` and never reads this one, so tuning it changes
+ * nothing a user will ever see: what they read for these two kinds lives in `recovery-copy.ts`. It is kept
+ * short and factual for the console and for a bug report.
  */
 export function fatalReason(kind: FatalKind, detail: string): RecoveryReason {
   return {
     kind,
-    headline:
-      kind === 'corrupt'
-        ? 'Your data is still on this device, but part of it stopped reading while the app was open.'
-        : 'Your data stopped answering while the app was open.',
+    headline: kind === 'corrupt' ? 'A page would not read while the app was open.' : 'The database stopped answering while the app was open.',
     detail,
     exportable: true,
     midSession: true,

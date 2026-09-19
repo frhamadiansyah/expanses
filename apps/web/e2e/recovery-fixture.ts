@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { QUICK_CHECK_LIMIT_BYTES } from '../src/db/size-guard';
 
 // Not a spec: shared by `recovery.spec.ts` (chromium) and `phone-recovery.spec.ts` (phone), because
 // breaking a real database is fiddly enough that the two projects must break it exactly the same way.
@@ -58,13 +59,13 @@ const DATA_OFFSET = 4096;
 /**
  * How large a database has to be before the open stops checking its structure on the way in.
  *
- * `QUICK_CHECK_LIMIT_BYTES` in `src/db/open.ts` is 32 MiB (spec §11.4's size guard): past that, a
- * `quick_check` on the path to first paint costs more than it is worth, and the structural check happens
- * only after an update. 34 MiB is comfortably the other side of that line, and it is what makes the
- * mid-session journey reachable: a big ledger with a bad page in it opens, and says nothing at all until
- * something actually reads that page.
+ * Derived from the limit itself rather than restated beside it: `QUICK_CHECK_LIMIT_BYTES` is spec §11.4's
+ * size guard, past which a `quick_check` on the path to first paint costs more than it is worth and the
+ * structural check happens only after an update. Two megabytes the other side of it is what makes the
+ * mid-session journey reachable — a big ledger with a bad page in it opens, and says nothing at all until
+ * something actually reads that page — and the day the guard moves, this moves with it.
  */
-export const PAST_THE_SIZE_GUARD_BYTES = 34 * 1024 * 1024;
+export const PAST_THE_SIZE_GUARD_BYTES = QUICK_CHECK_LIMIT_BYTES + 2 * 1024 * 1024;
 
 /**
  * Writes bytes into the live database's slot file, from the page itself. Recovery mode never opens the

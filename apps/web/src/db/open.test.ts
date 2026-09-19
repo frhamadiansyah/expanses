@@ -16,9 +16,11 @@ import {
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { lastGoodCopy } from '../features/recovery/recovery-copy';
+import { fatalKind } from './fatal';
 import { NO_SNAPSHOTS, openSafely, type OpenStage, quickCheckAffordable, QUICK_CHECK_LIMIT_BYTES } from './open';
 import { snapshotName } from './snapshot-policy';
 import { MANIFEST, memorySnapshots, restoreSnapshot } from './snapshots';
+import { createWorkerExecutor } from './worker-executor';
 
 let executor: NodeExecutor | undefined;
 /** Every extra engine a test starts, closed whatever the test did. */
@@ -35,6 +37,41 @@ afterEach(() => {
   executor = undefined;
   while (spares.length) spares.pop()!.close();
 });
+
+/**
+ * The worker's side of the boundary, over a real engine: every op answered the way `worker.ts` answers it,
+ * including the fatal tag it puts on a `query` or a `script` that SQLite says is malformed. It exists so the
+ * open can be driven through `createWorkerExecutor` — the executor the app really runs on, strike and all —
+ * rather than straight against a `SqlExecutor` that has no such thing.
+ */
+function workerOver(inner: SqlExecutor) {
+  const worker = {
+    onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+    onerror: null as ((event: ErrorEvent) => void) | null,
+    ops: [] as string[],
+    terminate: () => undefined,
+    postMessage(message: { id: number; op: string; sql?: string; params?: unknown[]; method?: 'run' | 'all' | 'values' | 'get'; bytes?: Uint8Array }) {
+      worker.ops.push(message.op);
+      void (async () => {
+        let reply: Record<string, unknown>;
+        try {
+          let result: unknown = null;
+          if (message.op === 'query') result = await inner.query(message.sql!, message.params!, message.method!);
+          else if (message.op === 'script') await inner.execScript(message.sql!);
+          else if (message.op === 'export' || message.op === 'snapshot') result = await inner.exportBytes();
+          else if (message.op === 'import') await inner.importBytes(message.bytes!);
+          reply = { id: message.id, result };
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          const kind = message.op === 'query' || message.op === 'script' ? fatalKind(detail) : null;
+          reply = kind ? { id: message.id, error: detail, fatal: kind } : { id: message.id, error: detail };
+        }
+        worker.onmessage?.({ data: reply } as MessageEvent<unknown>);
+      })();
+    },
+  };
+  return worker;
+}
 
 function opened(migrations: Migration[] = MIGRATIONS) {
   executor = createNodeExecutor();
@@ -419,6 +456,48 @@ describe('openSafely', () => {
     expect(await databaseVersion(database)).toBe(45);
     expect(Array.from(await database.exportBytes())).toEqual(Array.from(before));
     expect(await checkLedgerHealth(database, ws)).toEqual({ unbalanced: [], orphanEntries: [], orphanTransactions: [] });
+    expect(await store.blockedVersion()).toBe(46);
+  });
+
+  /**
+   * Spec §5.3's rollback, over the engine the app really runs on — the worker executor, with §3.4's strike
+   * armed inside it.
+   *
+   * A post-migration `integrity_check` that answers "malformed" is the case the strike was written for and
+   * the case the rollback was written for, at the same moment. If the strike wins, `importBytes` is refused
+   * on the main thread without ever reaching the worker, and the user is left on a half-updated file with a
+   * good copy of the old one sitting right there. The bytes go back instead: a database that failed its
+   * post-migration check is exactly when putting them back matters most.
+   */
+  it('still puts the database back when the check after the update comes back malformed', async () => {
+    executor = createNodeExecutor();
+    const inner = executor;
+    const malformed = 'database disk image is malformed';
+    const holed: SqlExecutor = {
+      query: (sql, params, method) =>
+        /PRAGMA\s+integrity_check/i.test(sql) ? Promise.reject(new Error(malformed)) : inner.query(sql, params, method),
+      execScript: (sql) => inner.execScript(sql),
+      exportBytes: () => inner.exportBytes(),
+      importBytes: (bytes) => inner.importBytes(bytes),
+    };
+    const worker = workerOver(holed);
+    const wx = createWorkerExecutor(worker as unknown as Worker);
+    const database = createDatabase(wx);
+    await migrate(
+      database,
+      MIGRATIONS.filter((m) => m.version <= 45),
+    );
+    const before = await database.exportBytes();
+    const store = memorySnapshots();
+
+    const result = await openSafely({ database, snapshots: store, onStage: () => undefined, snapshotBytes: () => wx.snapshotBytes() });
+
+    expect(result.ok).toBe(false);
+    // Not `rolledBack: false` on a half-updated file: the copy taken minutes earlier really went back.
+    if (!result.ok) expect(result.reason).toMatchObject({ kind: 'verify-failed', rolledBack: true });
+    expect(worker.ops).toContain('import');
+    expect(await databaseVersion(database)).toBe(45);
+    expect(Array.from(await database.exportBytes())).toEqual(Array.from(before));
     expect(await store.blockedVersion()).toBe(46);
   });
 

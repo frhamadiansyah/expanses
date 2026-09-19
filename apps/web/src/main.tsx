@@ -2,8 +2,10 @@ import { type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { bootstrap } from './db/bootstrap';
+import { guardMount } from './db/fatal-gate';
 import type { OpenStage } from './db/open';
 import { opfsSnapshots } from './db/snapshots';
+import { ErrorBoundary } from './features/recovery/ErrorBoundary';
 import { OpeningScreen } from './features/recovery/OpeningScreen';
 import { paceStages } from './features/recovery/opening-copy';
 import { RecoveryScreen } from './features/recovery/RecoveryScreen';
@@ -62,9 +64,15 @@ async function start() {
      * swaps the tree rather than reloading: a reload would race the failure, and could just as easily land
      * on the same broken query again with nothing on screen to press.
      */
-    app.onFatal?.((reason) => {
-      root.render(<RecoveryScreen reason={reason} snapshots={snapshots} />);
-    });
+    const gate = guardMount(app.onFatal, (reason) => root.render(<RecoveryScreen reason={reason} snapshots={snapshots} />));
+    /*
+     * Asked, rather than assumed. A fatal already recorded by the time the handler registers is handed over
+     * inside `guardMount` — the swallowed catalogue sync of spec §5.2 is one real way to get there — and the
+     * unconditional render below would then paint the app straight over the recovery screen it had just
+     * drawn, on a terminated worker, with no second chance at the swap. Asked again after the `await` too:
+     * a fatal that lands while the dev sample module loads must win the same way.
+     */
+    if (!gate.mountable()) return;
     if (import.meta.env.DEV) {
       const { loadSample, pushOverBudget, wantsOverBudget, wantsSample } = await import('./db/dev-sample');
       if (wantsSample()) {
@@ -74,9 +82,13 @@ async function start() {
       }
       if (wantsOverBudget()) await pushOverBudget(app.database, app.ws);
     }
+    if (!gate.mountable()) return;
     root.render(
       <StrictMode>
-        <App app={app} />
+        {/* The floor under every screen: a render that throws draws the recovery screen, never a white page. */}
+        <ErrorBoundary snapshots={snapshots}>
+          <App app={app} />
+        </ErrorBoundary>
       </StrictMode>,
     );
   } catch (error) {
