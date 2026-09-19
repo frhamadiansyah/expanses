@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createAccount,
   type Database,
+  eventPlanFor,
   linkEventItem,
   listEventItems,
   postTransaction,
@@ -51,8 +52,92 @@ async function mothercare() {
     if (tagged) await tagTransaction(database, ws, id, eventId);
     return id;
   };
-  return { database, ws, bca, clothes, gear, eventId, item, buy };
+  /** A receipt whose lines are written out, for the ones that are not one category against one bank. */
+  const receiptOf = async (lines: { accountId: string; amountMinor: number }[], description: string) => {
+    const id = await postTransaction(database, ws, {
+      occurredOn: '2026-09-14',
+      description,
+      lines: lines.map((line) => ({ ...line, currency: 'IDR' })),
+    });
+    await tagTransaction(database, ws, id, eventId);
+    return id;
+  };
+  return { database, ws, bca, clothes, gear, eventId, item, buy, receiptOf };
 }
+
+/*
+ * A discount, a partial refund or a price correction booked back to a spending category is a negative expense line on
+ * the same receipt. The money that left the account is the lines added up, not each line's size added up, so the
+ * ceiling has to be the net — otherwise a share larger than the payment is accepted and the plan reports rupiah that
+ * were never spent.
+ */
+describe('a receipt with a discount line on it', () => {
+  /** Rp50.000 of gear, Rp10.000 off, Rp40.000 out of the bank. */
+  const discounted = async () => {
+    const h = await mothercare();
+    const receipt = await h.receiptOf(
+      [
+        { accountId: h.gear.id, amountMinor: 5_000_000 },
+        { accountId: h.gear.id, amountMinor: -1_000_000 },
+        { accountId: h.bca.id, amountMinor: -4_000_000 },
+      ],
+      'Toko Bayi',
+    );
+    return { ...h, receipt };
+  };
+
+  it('counts the discount against the receipt rather than adding its size to it', async () => {
+    const h = await discounted();
+    expect(await purchaseCover(h.database, h.ws, h.receipt)).toMatchObject({ totalMinor: 4_000_000, givenMinor: 0, leftMinor: 4_000_000 });
+  });
+
+  it('refuses a share larger than the money that actually left', async () => {
+    const h = await discounted();
+    const cot = await h.item('Cot', 1, 6_000_000, h.gear.id);
+
+    await expect(setPurchaseCover(h.database, h.ws, h.receipt, [{ itemId: cot, shareMinor: 6_000_000 }])).rejects.toMatchObject({
+      code: 'OVER_ALLOCATED',
+    });
+    await expect(linkEventItem(h.database, h.ws, cot, h.receipt, 6_000_000)).rejects.toMatchObject({ code: 'OVER_ALLOCATED' });
+    expect(await coverPairs(h.database)).toEqual([[null, null]]);
+
+    // The whole of it is still answerable — it is only the invented Rp20.000 that is refused.
+    await setPurchaseCover(h.database, h.ws, h.receipt, [{ itemId: cot, shareMinor: 4_000_000 }]);
+    expect(await purchaseCover(h.database, h.ws, h.receipt)).toMatchObject({ givenMinor: 4_000_000, leftMinor: 0 });
+  });
+
+  it('answers nothing at all when the receipt is a refund on balance', async () => {
+    const h = await mothercare();
+    const cot = await h.item('Cot', 1, 2_000_000, h.gear.id);
+    const refund = await h.receiptOf(
+      [
+        { accountId: h.gear.id, amountMinor: -1_000_000 },
+        { accountId: h.bca.id, amountMinor: 1_000_000 },
+      ],
+      'Toko Bayi refund',
+    );
+
+    expect(await purchaseCover(h.database, h.ws, refund)).toMatchObject({ totalMinor: 0, leftMinor: 0 });
+    await expect(linkEventItem(h.database, h.ws, cot, refund)).rejects.toMatchObject({ code: 'SHARE_RANGE' });
+    await expect(setPurchaseCover(h.database, h.ws, refund, [{ itemId: cot, shareMinor: 1 }])).rejects.toMatchObject({ code: 'OVER_ALLOCATED' });
+    expect(await coverPairs(h.database)).toEqual([[null, null]]);
+  });
+
+  it('never lets the plan read back more bought than the event spent', async () => {
+    const h = await discounted();
+    const cot = await h.item('Cot', 1, 6_000_000, h.gear.id);
+    // The most the receipt will answer, whatever the item was estimated at.
+    const { totalMinor } = await purchaseCover(h.database, h.ws, h.receipt);
+    await linkEventItem(h.database, h.ws, cot, h.receipt, totalMinor);
+
+    const plan = await eventPlanFor(h.database, h.ws, h.eventId);
+    // Rp40.000 left the bank, so that is the most the item can have cost — and what is not planned for is a remainder,
+    // never a debt: `spentMinor − boughtActualMinor` cannot go below nought.
+    expect(plan.boughtActualMinor).toBe(4_000_000);
+    expect(plan.notPlannedMinor).toBeGreaterThanOrEqual(0);
+    expect(plan.boughtActualMinor + plan.notPlannedMinor).toBe(plan.spentMinor);
+  });
+});
 
 describe('one receipt over several items', () => {
   it('gives each ticked item a share, and says what is left', async () => {
@@ -271,6 +356,101 @@ describe('shares that do not divide evenly', () => {
     expect(await purchaseCover(h.database, h.ws, corrected)).toMatchObject({ leftMinor: 0 });
   });
 
+  /*
+   * The case above exercises the magnitude but cannot see the arithmetic: the odd rupiah handed to the largest share
+   * hides a floor that came out one short, so the total is exact either way. This one can see it. At a third of
+   * Rp300.000.000 the double product 9.000.000.015 × 10.000.000.000 is past what a double counts in whole numbers, and
+   * it rounds down across an integer boundary: `Math.floor((was * now) / old)` gives the fittings 3.000.000.004 where
+   * the true third is 3.000.000.005, and the rupiah it lost reappears on the land, which is not where it was spent.
+   * Each share is checked on its own, not merely the total.
+   */
+  it('cuts every share exactly at figures past what a float can count', async () => {
+    const h = await mothercare();
+    const land = await h.item('Land', 1, 12_000_000_000, h.gear.id);
+    const fittings = await h.item('Fittings', 1, 9_000_000_015, h.gear.id);
+    const build = await h.item('Building', 1, 8_999_999_985, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 30_000_000_000, 'Notaris');
+    await setPurchaseCover(h.database, h.ws, receipt, [
+      { itemId: land, shareMinor: 12_000_000_000 },
+      { itemId: fittings, shareMinor: 9_000_000_015 },
+      { itemId: build, shareMinor: 8_999_999_985 },
+    ]);
+
+    const corrected = await replaceTransaction(h.database, h.ws, receipt, {
+      occurredOn: '2026-09-14',
+      description: 'Notaris',
+      lines: [
+        { accountId: h.gear.id, amountMinor: 10_000_000_000, currency: 'IDR' },
+        { accountId: h.bca.id, amountMinor: -10_000_000_000, currency: 'IDR' },
+      ],
+    });
+
+    const shares = (await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor!);
+    // Each is exactly a third of what it was, so a third of the receipt divides with nothing left over at all.
+    expect(shares).toEqual([4_000_000_000, 3_000_000_005, 2_999_999_995]);
+    expect(shares.reduce((total, share) => total + share, 0)).toBe(10_000_000_000);
+    expect(await purchaseCover(h.database, h.ws, corrected)).toMatchObject({ leftMinor: 0 });
+  });
+
+  /*
+   * The odd rupiah goes to the largest share, not to the first one on the list — largest because a rupiah is least
+   * visible there. The tests above cannot tell the two apart: their shares are equal, or the first is also the largest.
+   */
+  it('hands the odd rupiah to the largest share, not the first one', async () => {
+    const h = await mothercare();
+    const bib = await h.item('Bib', 1, 1_000_000, h.gear.id);
+    const cot = await h.item('Cot', 1, 2_000_001, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 3_000_001, 'Toko Bayi');
+    await setPurchaseCover(h.database, h.ws, receipt, [
+      { itemId: bib, shareMinor: 1_000_000 },
+      { itemId: cot, shareMinor: 2_000_001 },
+    ]);
+
+    const corrected = await replaceTransaction(h.database, h.ws, receipt, {
+      occurredOn: '2026-09-14',
+      description: 'Toko Bayi',
+      lines: [
+        { accountId: h.gear.id, amountMinor: 1_000_000, currency: 'IDR' },
+        { accountId: h.bca.id, amountMinor: -1_000_000, currency: 'IDR' },
+      ],
+    });
+
+    // Both floor short by a fraction; the rupiah between them belongs to the cot, which is second on the list.
+    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => row.shareMinor)).toEqual([333_333, 666_667]);
+    expect(await purchaseCover(h.database, h.ws, corrected)).toMatchObject({ givenMinor: 1_000_000, leftMinor: 0 });
+  });
+
+  /*
+   * Nothing in this module writes a negative share, but the column permits one and `coverOf` already reads a half-set
+   * row defensively. BigInt division truncates toward nought rather than flooring, so a hand-written negative row taken
+   * at face value would shrink the total it is dividing by and leave the shares written adding to more than the
+   * corrected receipt — the one thing the cut in proportion exists to prevent.
+   */
+  it('adds back exactly even when a share was written negative behind its back', async () => {
+    const h = await mothercare();
+    const cot = await h.item('Cot', 1, 3_000_000, h.gear.id);
+    const bib = await h.item('Bib', 1, 1_000_000, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 3_000_000, 'Toko Bayi');
+    await linkEventItem(h.database, h.ws, cot, receipt, 3_000_000);
+    await h.database.db.run(sql`UPDATE event_items SET transaction_id = ${receipt}, share_minor = -1000000 WHERE id = ${bib}`);
+
+    const corrected = await replaceTransaction(h.database, h.ws, receipt, {
+      occurredOn: '2026-09-14',
+      description: 'Toko Bayi',
+      lines: [
+        { accountId: h.gear.id, amountMinor: 1_000_000, currency: 'IDR' },
+        { accountId: h.bca.id, amountMinor: -1_000_000, currency: 'IDR' },
+      ],
+    });
+
+    // The negative reads as nothing, so the cot takes the whole of the corrected figure and the bib is simply untied.
+    expect((await listEventItems(h.database, h.ws, h.eventId)).map((row) => [row.transactionId, row.shareMinor])).toEqual([
+      [corrected, 1_000_000],
+      [null, null],
+    ]);
+    expect(await purchaseCover(h.database, h.ws, corrected)).toMatchObject({ totalMinor: 1_000_000, givenMinor: 1_000_000, leftMinor: 0 });
+  });
+
   it('drops an item whose share rounds away, and still adds back exactly', async () => {
     const h = await mothercare();
     const cot = await h.item('Cot', 1, 4_000_000, h.gear.id);
@@ -378,6 +558,28 @@ describe('a cover is refused rather than half written', () => {
       ]),
     ).rejects.toMatchObject({ code: 'ITEM_NOT_FOUND' });
     // The cot keeps the share it had: a refused save is not a half-saved screen.
+    expect(await coverPairs(h.database)).toEqual([[receipt, 2_000_000]]);
+  });
+
+  /*
+   * A screen that sends the same item twice — a double tap, a stale row merged with a fresh one — must not have its
+   * figure counted twice. The check is made over the same map that is written, so the figure checked is the figure
+   * written: one share, and a leftover that matches it.
+   */
+  it('writes one share for an item named twice, and checks the figure it writes', async () => {
+    const h = await mothercare();
+    const cot = await h.item('Cot', 1, 2_000_000, h.gear.id);
+    const receipt = await h.buy(h.gear.id, 3_000_000, 'Toko Bayi');
+
+    // Two entries of Rp20.000 against a Rp30.000 receipt: doubled they would not fit, and yet this is not too much.
+    await setPurchaseCover(h.database, h.ws, receipt, [
+      { itemId: cot, shareMinor: 2_000_000 },
+      { itemId: cot, shareMinor: 2_000_000 },
+    ]);
+
+    const cover = await purchaseCover(h.database, h.ws, receipt);
+    expect(cover).toMatchObject({ totalMinor: 3_000_000, givenMinor: 2_000_000, leftMinor: 1_000_000 });
+    expect(cover.covers).toEqual([{ itemId: cot, shareMinor: 2_000_000 }]);
     expect(await coverPairs(h.database)).toEqual([[receipt, 2_000_000]]);
   });
 

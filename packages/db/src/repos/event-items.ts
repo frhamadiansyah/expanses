@@ -186,14 +186,25 @@ export async function unlinkEventItem(database: Database, ws: WorkspaceContext, 
   await writeCover(database.db, ws, itemId, null);
 }
 
-/** What a purchase's expense side comes to, in base minor units. The shares can never add to more than this. */
+/**
+ * What a purchase's expense side comes to, in base minor units. The shares can never add to more than this.
+ *
+ * Summed first and clamped after, never absolved line by line: a receipt carrying a discount, a partial refund or a
+ * price correction booked back to a spending category spends the *net*, and taking each line's size would report a
+ * ceiling larger than the money that ever left the account — rupiah invented on the one axis this module exists to
+ * protect. A receipt that is a refund on balance comes to nought and can answer nothing, which is the honest reading:
+ * `Math.max(0, …)` rather than the total's own size, so nothing is settled by money that came back.
+ */
 async function expenseTotalOf(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<number> {
   const rows = await tx
     .select({ amount: entries.amountBaseMinor })
     .from(entries)
     .innerJoin(accounts, eq(entries.accountId, accounts.id))
     .where(and(eq(entries.workspaceId, ws.workspaceId), eq(entries.transactionId, transactionId), eq(accounts.kind, 'expense')));
-  return rows.reduce((total, row) => total + Math.abs(row.amount), 0);
+  return Math.max(
+    0,
+    rows.reduce((total, row) => total + row.amount, 0),
+  );
 }
 
 export interface PurchaseCover {
@@ -270,7 +281,11 @@ export async function linkEventItem(
     const cover = await coverOf(tx, ws, transactionId);
     // Re-linking the same item does not have to fit twice over: its own share is what it is replacing.
     const left = cover.leftMinor + (item.transactionId === transactionId ? (item.shareMinor ?? 0) : 0);
-    const share = shareMinor ?? Math.min(item.quantity * item.unitPriceMinor, left);
+    // How many times the price each, in whole numbers: the second of this module's two multiplications, and BigInt for
+    // the same reason as the first — the product passes what a double counts exactly long before either figure looks
+    // large on screen. Clamped to what is left, so the share written is always a figure this receipt can answer.
+    const estimate = BigInt(item.quantity) * BigInt(item.unitPriceMinor);
+    const share = shareMinor ?? Number(estimate < BigInt(left) ? estimate : BigInt(left));
     checkShare(share);
     if (share > left) throw new EventError('OVER_ALLOCATED', `Only ${left} of this payment is still unaccounted for`);
 
@@ -345,7 +360,14 @@ export async function carryEventItemTx(tx: Db, ws: WorkspaceContext, from: strin
     .where(and(eq(eventItems.workspaceId, ws.workspaceId), eq(eventItems.transactionId, from)));
   if (rows.length === 0) return;
 
-  const shares = rows.map((row) => ({ id: row.id, was: row.shareMinor ?? 0, share: row.shareMinor ?? 0 }));
+  // Read as nought below nought, the same defensiveness `coverOf` shows a half-set row. Nothing here can write a
+  // negative share, but the schema permits one, and the cut in proportion only adds back to the corrected figure
+  // exactly while every share is non-negative: BigInt division truncates toward nought rather than flooring, so one
+  // negative row would leave the shares written adding to more than the receipt.
+  const shares = rows.map((row) => {
+    const was = Math.max(0, row.shareMinor ?? 0);
+    return { id: row.id, was, share: was };
+  });
   const old = shares.reduce((total, row) => total + row.was, 0);
   const now = await expenseTotalOf(tx, ws, to);
   if (old > now && old > 0) {
