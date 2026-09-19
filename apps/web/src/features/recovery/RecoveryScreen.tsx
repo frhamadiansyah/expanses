@@ -2,6 +2,7 @@ import { isoDate } from '@expanses/core';
 import { useEffect, useState } from 'react';
 import { NO_SNAPSHOTS, type RecoveryReason, type SnapshotInfo, type SnapshotStore } from '../../db/open';
 import { restoreBytes, salvageBytes } from '../../db/salvage';
+import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes } from '../../lib/download';
 import { Button, ErrorBox } from '../../ui';
 import { formatBytes, formatWhen, recoveryCopy } from './recovery-copy';
@@ -92,7 +93,14 @@ export function RecoveryScreen({
             disabled={busy}
             onClick={() =>
               run('Restore', async () => {
-                await restoreBytes(await snapshots.read(newest.file));
+                // What is on the device now is kept first, so restoring the wrong copy is an undo and
+                // not the end of everything entered since that copy was taken.
+                await restoreSnapshot({
+                  snapshots,
+                  file: newest.file,
+                  live: async () => bytes ?? (await salvageBytes().catch(() => null)),
+                  restore: restoreBytes,
+                });
                 reopen();
               })
             }

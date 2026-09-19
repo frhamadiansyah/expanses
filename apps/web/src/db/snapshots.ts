@@ -9,7 +9,8 @@ import { dailyDue, keepTwo, parseSnapshotName, roomFor, type SnapshotInfo, type 
  */
 export const SAFETY_DIR = 'expanses-safety';
 
-const MANIFEST = 'manifest.json';
+/** The file the store's own bookkeeping lives in. Exported so the tests can break it the way a device does. */
+export const MANIFEST = 'manifest.json';
 
 /** The first 16 bytes of every SQLite file: "SQLite format 3" and a NUL. */
 const MAGIC = 'SQLite format 3\0';
@@ -53,8 +54,17 @@ interface Slot {
 
 /**
  * Whether `bytes` really are the database that was handed over. A copy is not a copy until it has been
- * read back off the device: the length must match, it must start like a SQLite file, and the header's
- * own page arithmetic must account for every byte. Returns what is wrong, or null when nothing is.
+ * read back off the device: the length must match what was written, it must start like a SQLite file,
+ * and the header's own page arithmetic must fit inside it. Returns what is wrong, or null when nothing is.
+ *
+ * "Fit inside", not "account for every byte". What the engine hands over is `sah.getSize()` less the
+ * pool's header — the size of the *slot*, which is the database's size only until something makes the
+ * slot bigger. `importDb` is exactly that: it writes the new database at offset 4096 and never truncates,
+ * so a slot that once held a larger file keeps its stale tail until SQLite's next commit trims it. After
+ * every Restore and every backup import, therefore, the export is the database followed by rubbish. It is
+ * still a whole database — the header says where it ends — and refusing it would switch the safety net
+ * off, silently, on precisely the device that has just been through a recovery. A file *shorter* than its
+ * own header claims is a different matter: that one is truncated, and is refused.
  */
 function whatIsWrongWith(bytes: Uint8Array, expected: number): string | null {
   if (bytes.length !== expected) return `the copy is ${bytes.length} bytes where the database was ${expected}`;
@@ -65,7 +75,7 @@ function whatIsWrongWith(bytes: Uint8Array, expected: number): string | null {
   const declared = view.getUint16(16);
   const pageSize = declared === 1 ? 65536 : declared;
   const pages = view.getUint32(28);
-  if (pageSize * pages !== bytes.length) return `the header says ${pages} pages of ${pageSize} bytes, but the copy is ${bytes.length}`;
+  if (pageSize * pages > bytes.length) return `the header says ${pages} pages of ${pageSize} bytes, but the copy is only ${bytes.length}`;
   return null;
 }
 
@@ -114,13 +124,21 @@ async function writeManifest(slot: Slot, manifest: Manifest): Promise<void> {
 
 /** Every rule of the store, over whatever `slot` can actually hold files. */
 function storeOver(slot: Slot): SnapshotStore {
-  /** What is really on the device: the manifest filtered down to the files that are still there. */
+  /**
+   * What is really on the device: the manifest filtered down to the files that are still there, and the
+   * files themselves whenever that yields nothing usable.
+   *
+   * The fallback is reached on *any* manifest that does not name a copy still on disk — missing,
+   * unparseable, a partial write that closed its brace, a shape from a build that has been changed since.
+   * A manifest that parses is not a manifest that is right, and the rule this serves is about the file
+   * being gone in either sense: a copy must stay restorable when `manifest.json` is the thing that broke.
+   */
   const present = async (): Promise<SnapshotInfo[]> => {
-    const manifest = await readManifest(slot);
-    const listed = manifest?.snapshots ?? (await fromDirectory(slot));
     const names = new Set(await slot.names());
+    const manifest = await readManifest(slot);
     // A manifest that names a file which is gone must never offer a Restore that cannot happen.
-    return listed.filter((snapshot) => names.has(snapshot.file));
+    const listed = (manifest?.snapshots ?? []).filter((snapshot) => names.has(snapshot.file));
+    return listed.length ? listed : await fromDirectory(slot);
   };
 
   const rewrite = async (snapshots: SnapshotInfo[]): Promise<void> => {
@@ -245,9 +263,12 @@ export function opfsSnapshots(): SnapshotStore {
   });
 }
 
-/** The same store over a Map. Exported for the unit tests, which must exercise the real rules. */
-export function memorySnapshots(): SnapshotStore {
-  const files = new Map<string, Uint8Array>();
+/**
+ * The same store over a Map. Exported for the unit tests, which must exercise the real rules.
+ * `files` can be passed in so a test can reach behind the store — to corrupt the manifest, say, which is
+ * the one thing no method of the store will do for it.
+ */
+export function memorySnapshots(files = new Map<string, Uint8Array>()): SnapshotStore {
   return storeOver({
     read: async (file) => files.get(file) ?? null,
     size: async (file) => files.get(file)?.length ?? null,
@@ -261,6 +282,44 @@ export function memorySnapshots(): SnapshotStore {
     // No quota to speak of, and `roomFor` answers 'yes' to an estimate it cannot read.
     estimate: async () => ({}),
   });
+}
+
+/**
+ * Putting a kept copy back, keeping what it replaces first.
+ *
+ * Restore overwrites the live database, and what it overwrites is everything the user has entered since
+ * that copy was taken. Without this, someone who presses Restore and only then realises the copy was
+ * older than they thought has nowhere to go: the bytes they had are gone. So a `before-restore` copy goes
+ * down before the live file is touched, and the undo is the newest copy the screen offers next time.
+ *
+ * Two orderings matter. The chosen bytes are read *first*, because writing a copy can prune, and pruning
+ * must never take the file being restored from. And the copy is never a gate: a store with no room, or
+ * a device with no readable file, does not stand between a user and their restore — it is warned about
+ * and stepped over, the same way the copy before an update is.
+ *
+ * The schema version is recorded as 0, not guessed. This runs on the screen that never opens the
+ * database, so the version inside those bytes is genuinely unknown here, and a number that looks right
+ * would be worse than one that plainly says "not known".
+ */
+export async function restoreSnapshot(deps: {
+  snapshots: SnapshotStore;
+  /** The kept copy to put back. */
+  file: string;
+  /** The live bytes about to be replaced, or null when none can be read off the device. */
+  live: () => Promise<Uint8Array | null>;
+  /** Hands the chosen bytes to the engine. `restoreBytes` in the app. */
+  restore: (bytes: Uint8Array) => Promise<void>;
+}): Promise<void> {
+  const chosen = await deps.snapshots.read(deps.file);
+  try {
+    const live = await deps.live();
+    if (live?.length) await deps.snapshots.write(live, 'before-restore', 0);
+  } catch (error) {
+    // Warned, not shown: the page reloads the instant the restore below lands, so there is no screen left
+    // to tell. What the user loses is the undo, never the restore they asked for.
+    console.warn('No copy could be kept of the database being replaced', error);
+  }
+  await deps.restore(chosen);
 }
 
 let dailyScheduled = false;

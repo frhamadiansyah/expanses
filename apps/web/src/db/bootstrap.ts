@@ -68,15 +68,26 @@ export function createWorker(): Worker {
 }
 
 /**
+ * The seams the unit test needs. The app never passes either: it starts a real worker and runs the real
+ * opener. They exist so that "a failed open releases the worker" can be asserted without OPFS.
+ */
+export interface BootstrapDeps {
+  spawn?: () => Worker;
+  open?: typeof openSafely;
+}
+
+/**
  * The one entry point the app starts from. Starting the engine is the only step outside `openSafely`,
  * because it is the one failure with nothing to export: there is no database yet to hand back.
  */
-export async function bootstrap(onStage: (stage: OpenStage) => void): Promise<OpenResult> {
+export async function bootstrap(onStage: (stage: OpenStage) => void, deps: BootstrapDeps = {}): Promise<OpenResult> {
+  const spawn = deps.spawn ?? createWorker;
+  const open = deps.open ?? openSafely;
   let worker: Worker;
   let executor: ReturnType<typeof createWorkerExecutor>;
   let database: Database;
   try {
-    worker = createWorker();
+    worker = spawn();
     executor = createWorkerExecutor(worker);
     database = createDatabase(executor);
   } catch (error) {
@@ -91,15 +102,8 @@ export async function bootstrap(onStage: (stage: OpenStage) => void): Promise<Op
     };
   }
 
-  const result = await openSafely({
-    database,
-    snapshots: opfsSnapshots(),
-    snapshotBytes: () => executor.snapshotBytes(),
-    onStage,
-  });
-
   /*
-   * A failed open ends with the worker terminated, and this is not tidiness.
+   * Anything but a working app ends with the worker terminated, and this is not tidiness.
    *
    * The SAH pool takes a *sync access handle* on every slot file it owns and holds it for the life of the
    * worker. A worker that is alive but useless — its database corrupt, its migration half-done — still
@@ -107,7 +111,23 @@ export async function bootstrap(onStage: (stage: OpenStage) => void): Promise<Op
    * "Delete everything on this device" fail with "modifications are not allowed" when it was pressed from
    * `/` rather than from `?recover`, and it would have made Restore fail the same way. Terminating the
    * worker drops the handles, so the fresh worker that the recovery screen borrows can take them.
+   *
+   * The `finally` is the point: `openSafely` does not only *return* failures. The version read, the
+   * future check, the pending list and the post-update check all issue raw queries outside any `try`, so
+   * a file that answers one of them with an exception leaves this function by throwing. `main.tsx` then
+   * renders the same recovery screen — and its Restore and Start fresh would meet exactly the handles
+   * this releases. Released on every exit that is not a working app, thrown or returned.
    */
-  if (!result.ok) worker.terminate();
-  return result;
+  let result: OpenResult | undefined;
+  try {
+    result = await open({
+      database,
+      snapshots: opfsSnapshots(),
+      snapshotBytes: () => executor.snapshotBytes(),
+      onStage,
+    });
+    return result;
+  } finally {
+    if (!result?.ok) worker.terminate();
+  }
 }

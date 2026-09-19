@@ -63,6 +63,15 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         state.db = state.open();
         const hasSchema = state.db.selectValue("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'");
         if (!hasSchema) throw new Error('That file is not an Expanses backup.');
+        /*
+         * And ask SQLite what it makes of the pages, not just of the schema. The rollback window is
+         * already open and still holds `previous`, so this is the one moment where "these bytes do not
+         * check out" costs the user nothing: it throws into the catch below and the database they had is
+         * put straight back. Without it the only question asked of a restored file is whether one table
+         * name exists in it, and a file whose b-trees are broken replaces a file that was merely old.
+         */
+        const structure = state.db.selectValue('PRAGMA quick_check(1)');
+        if (structure !== 'ok') throw new Error(`That copy did not check out: ${String(structure)}`);
       } catch (error) {
         try {
           state.db.close();

@@ -97,13 +97,19 @@ export async function restoreBytes(bytes: Uint8Array): Promise<void> {
  * just asked to be rid of would be a lie. The dialog in front of this already forces a backup first.
  */
 export async function wipeEverything(directory = '.expanses'): Promise<void> {
-  const root = navigator.storage?.getDirectory ? await navigator.storage.getDirectory() : null;
+  // Resolved only where it is needed, and never ahead of the engine: a browser that will not hand over
+  // its private directory must not stop the wipe the worker would have done perfectly well on its own.
+  const rootDirectory = async (): Promise<FileSystemDirectoryHandle | null> =>
+    navigator.storage?.getDirectory ? await navigator.storage.getDirectory().catch(() => null) : null;
+
   try {
     await askWorker({ op: 'wipe' });
   } catch (error) {
+    const root = await rootDirectory();
+    // The worker's failure is the one worth reporting: it is the reason we are down here at all.
     if (!root) throw error;
     await root.removeEntry(directory, { recursive: true });
   }
   // Best effort, and after the pool: a device with no copies is not a failure to start fresh.
-  await root?.removeEntry(SAFETY_DIR, { recursive: true }).catch(() => undefined);
+  await (await rootDirectory())?.removeEntry(SAFETY_DIR, { recursive: true }).catch(() => undefined);
 }

@@ -15,7 +15,7 @@ import {
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NO_SNAPSHOTS, openSafely, type OpenStage } from './open';
-import { memorySnapshots } from './snapshots';
+import { MANIFEST, memorySnapshots, restoreSnapshot } from './snapshots';
 
 let executor: NodeExecutor | undefined;
 /** Every extra engine a test starts, closed whatever the test did. */
@@ -288,5 +288,128 @@ describe('openSafely', () => {
     await expect(store.write(new TextEncoder().encode('not a database at all'), 'daily', LATEST_VERSION)).rejects.toThrow(/did not verify/);
     // Nothing is advertised that is not there: a failed copy leaves the manifest exactly as it was.
     expect(await store.list()).toEqual([]);
+  });
+});
+
+describe('the snapshot store', () => {
+  /** A real database, and two copies of it taken on two different days, over a Map the test can reach into. */
+  async function twoCopies() {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+    const bytes = await database.exportBytes();
+    const files = new Map<string, Uint8Array>();
+    const store = memorySnapshots(files);
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-17T10:00:00.000Z'));
+    const older = await store.write(bytes, 'before-migration', LATEST_VERSION);
+    vi.setSystemTime(new Date('2026-09-18T10:00:00.000Z'));
+    const newest = await store.write(bytes, 'daily', LATEST_VERSION);
+    vi.useRealTimers();
+    return { bytes, database, files, newest, older, store };
+  }
+
+  it('keeps a copy whose file is longer than the database its own header declares', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+    const bytes = await database.exportBytes();
+    /*
+     * What the engine really hands over after a Restore or a backup import: `importDb` writes the new
+     * database into the slot at offset 4096 and never truncates, so the slot keeps the tail of the larger
+     * file it used to hold until SQLite's next commit trims it. Refusing that export would switch the
+     * safety net off on exactly the device that has just been through a recovery.
+     */
+    const withTail = new Uint8Array(bytes.length + 8192);
+    withTail.set(bytes);
+    withTail.fill(0xff, bytes.length);
+
+    const store = memorySnapshots();
+    const info = await store.write(withTail, 'daily', LATEST_VERSION);
+    expect((await store.list()).map((s) => s.file)).toEqual([info.file]);
+
+    // A copy, not a shape: the database that header describes still opens at this build's newest version.
+    const stored = await store.read(info.file);
+    expect(stored.length).toBe(withTail.length);
+    const copy = createDatabase(spare());
+    await copy.importBytes(stored.subarray(0, bytes.length));
+    expect(await databaseVersion(copy)).toBe(LATEST_VERSION);
+
+    // A file *shorter* than its header claims is a different thing, and is still refused.
+    await expect(memorySnapshots().write(bytes.slice(0, bytes.length - 4096), 'daily', LATEST_VERSION)).rejects.toThrow(/did not verify/);
+  });
+
+  /**
+   * The manifest fallback, which is a named constraint of this branch: a copy must stay restorable when
+   * `manifest.json` is the thing that broke. Three ways for it to be broken, and the third — a file that
+   * parses but says nothing usable — is the one a partial write actually leaves behind.
+   */
+  const brokenManifests: [string, string | null][] = [
+    ['is missing', null],
+    ['will not parse', 'not json at all'],
+    ['parses into entries that are not snapshots', '{"snapshots":[{},{"file":42}],"blockedVersion":null,"blockedBuild":null}'],
+  ];
+
+  for (const [what, contents] of brokenManifests) {
+    it(`lists and restores the files on the device when the manifest ${what}`, async () => {
+      const { bytes, files, newest, older, store } = await twoCopies();
+      if (contents === null) files.delete(MANIFEST);
+      else files.set(MANIFEST, new TextEncoder().encode(contents));
+
+      const kept = await store.list();
+      expect(kept.map((s) => s.file).sort()).toEqual([newest.file, older.file].sort());
+      // Restorable, not merely listed: the bytes come back whole and open as the database they were taken from.
+      const restored = await store.read(newest.file);
+      expect(restored.length).toBe(bytes.length);
+      const copy = createDatabase(spare());
+      await copy.importBytes(restored);
+      expect(await databaseVersion(copy)).toBe(LATEST_VERSION);
+    });
+  }
+
+  it('keeps a copy of what Restore is about to overwrite', async () => {
+    const { newest, store } = await twoCopies();
+    // The live database is one build behind the copies, so the copy kept of it can be told apart by version.
+    const live = createDatabase(spare());
+    await migrate(live, MIGRATIONS.filter((m) => m.version <= 44));
+    const liveBytes = await live.exportBytes();
+
+    const handed: Uint8Array[] = [];
+    await restoreSnapshot({
+      snapshots: store,
+      file: newest.file,
+      live: async () => liveBytes,
+      restore: async (b) => {
+        handed.push(b);
+      },
+    });
+
+    // The restore happened, with the copy that was asked for.
+    expect(handed).toHaveLength(1);
+    expect(Array.from(handed[0]!)).toEqual(Array.from(await store.read(newest.file)));
+    // And the way back: the database as it stood a moment before, kept under its own reason.
+    const before = (await store.list()).find((s) => s.reason === 'before-restore');
+    expect(before).toBeDefined();
+    const undo = createDatabase(spare());
+    await undo.importBytes(await store.read(before!.file));
+    expect(await databaseVersion(undo)).toBe(44);
+  });
+
+  it('restores anyway when no copy of the live database can be kept', async () => {
+    const { newest, store } = await twoCopies();
+    store.write = async () => {
+      throw new Error('There is not enough free space on this device to keep a safety copy.');
+    };
+
+    const handed: Uint8Array[] = [];
+    await restoreSnapshot({ snapshots: store, file: newest.file, live: async () => new Uint8Array([1, 2, 3]), restore: async (b) => void handed.push(b) });
+    // A safety copy that cannot be taken is never a wall between a user and their own data.
+    expect(handed).toHaveLength(1);
+
+    // The same holds when there is nothing on the device to copy at all.
+    handed.length = 0;
+    await restoreSnapshot({ snapshots: store, file: newest.file, live: async () => null, restore: async (b) => void handed.push(b) });
+    expect(handed).toHaveLength(1);
   });
 });
