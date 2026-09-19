@@ -336,6 +336,12 @@ export interface TransactionView {
   /** Goal a tagged transfer funds. Ordinary payments never carry one. */
   goalId: string | null;
   /**
+   * The event this was tagged to, or null. The column is already what `opts.eventId` filters on; carrying it on
+   * the view is what lets a receipt name the trip a purchase belongs to without a second query per row.
+   * Optional in the same way `billMonth` is, so a view built by hand in a test need not name it.
+   */
+  eventId?: string | null;
+  /**
    * YYYY-MM: the month's bill a bill payment settles, which can differ from the month it was paid in. Null for
    * anything else, and on a database without bill_payments. Optional so a view built by hand need not name it.
    */
@@ -459,6 +465,7 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     mcc: t.mcc,
     cardId: t.cardId,
     goalId: t.goalId,
+    eventId: t.eventId,
     billMonth: billMonths.get(t.id) ?? null,
     channel: extras?.get(t.id)?.channel ?? null,
     excluded: extras?.get(t.id)?.excluded ?? false,

@@ -16,6 +16,7 @@ import { useDrafts } from '../review/queries';
 import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { isEditable } from './draft';
+import { ReceiptLink } from './ReceiptLink';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
@@ -48,8 +49,13 @@ function rememberedView(): View {
   }
 }
 
-/** Turns an expense already recorded into the purchase it really was, keeping its date and amount. */
-function ConvertForm({
+/**
+ * Turns an expense already recorded into the purchase it really was, keeping its date and amount.
+ *
+ * Exported because the receipt screen opens the very same form in a sheet. One form, two ways in — a second
+ * copy of it would be two places for "what it bought" to drift apart.
+ */
+export function ConvertForm({
   tx,
   holdings,
   goals,
@@ -726,6 +732,7 @@ export function TransactionsPage() {
         ) : (
           clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
         )}
+        <ReceiptLink description={row.description} transactionId={tx.id} />
       </li>
     );
   }

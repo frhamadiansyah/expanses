@@ -9,6 +9,7 @@ import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { isEditable } from './draft';
 import { billTagOf, type ListRow } from './list-model';
 import { QuickRowEditor, ROW_GRID, type RowOptions } from './QuickRowEditor';
+import { ReceiptLink } from './ReceiptLink';
 import { isQuickEditable, parsePastedRows, quickFromDraft, quickFromTransaction, type QuickValues, readQuick, shortDate, valuesFromCells } from './quick-row';
 
 export interface TableHandlers {
@@ -190,6 +191,7 @@ function EditableRow({ row, options, accounts, today, baseCurrency, handlers }: 
           ) : (
             <>
               {billTag && <BillTag text={billTag} />}
+              <ReceiptLink transactionId={row.id} description={row.description} />
               <TwoTap busy={busy} label="Delete" onConfirm={() => void handlers.deleteRecorded(row.id)} />
             </>
           )
@@ -235,7 +237,8 @@ function LockedRow({ row, today, handlers }: { row: ListRow; today: string; hand
           {row.last4 && <span className="tabular ml-1 text-xs font-semibold">{row.last4}</span>}
         </span>
         <span className="truncate px-2 text-slate-600">{kind ? <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-500">{kind}</span> : row.categoryName}</span>
-        <span className="flex justify-end pl-1">
+        <span className="flex items-center justify-end gap-1 pl-1">
+          <ReceiptLink transactionId={tx.id} description={row.description} />
           {handlers.tradeIds.has(tx.id) ? (
             <Link to="/net-worth/trades" className="px-2 text-xs text-slate-500 underline">
               Buy &amp; sell

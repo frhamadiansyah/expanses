@@ -34,6 +34,7 @@ import { TradesPage } from '../features/networth/TradesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
+import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { SettingsPage } from '../features/workspaces/SettingsPage';
 import { Layout } from './Layout';
@@ -86,6 +87,9 @@ const routeTree = rootRoute.addChildren([
       view: search.view === 'table' || search.view === 'list' ? search.view : undefined,
     }),
   }),
+  // One transaction, whole. `/transactions/new` and `/transactions/$transactionId/edit` arrive in Task 10 and
+  // both outrank this: a static segment beats a dynamic one wherever it sits in this array.
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
   // Spending was its own page; the chart it held now leads the transactions it adds up.
   createRoute({
     getParentRoute: () => rootRoute,

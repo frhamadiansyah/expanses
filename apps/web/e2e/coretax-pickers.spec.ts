@@ -60,7 +60,9 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   // It comes back with a transfer, which is the only honest way out.
   await page.getByRole('button', { name: 'Transfer' }).click();
   await page.getByLabel('From').selectOption({ label: 'Deposito BCA 6 bulan (IDR)' });
-  await page.getByLabel('To').selectOption({ label: 'BCA Tahapan (IDR)' });
+  // Exact, as every other transfer spec asks: rows now end in a "Receipt for …" ⓘ, and a loose "To" matches
+  // any description with "to" in it — "Deposito BCA 6 bulan", here.
+  await page.getByLabel('To', { exact: true }).selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByLabel('Amount', { exact: true }).fill('100000000');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByLabel('From')).toBeHidden();
