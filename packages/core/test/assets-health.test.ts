@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { healthRatios, type HealthRatio, type PeriodFlows, type RatioKey, type RatioSettings, type SheetTotals, WATCH_BAND } from '../src/index';
 
-/** Rp 61,2 jt take-home, Rp 46,8 jt spent, Rp 14,973 jt of debt payments, Rp 7,8 jt actually put away, each month. */
+/**
+ * Rp 61,2 jt take-home, Rp 46,8 jt spent, Rp 14,973 jt of debt payments — of which Rp 4,973 jt is
+ * principal and the rest interest, already inside the spending — and Rp 7,8 jt put away, each month.
+ */
 const flows = (overrides: Partial<PeriodFlows> = {}): PeriodFlows => ({
   months: 12,
   incomeMinor: 734_400_000,
   spendingMinor: 561_600_000,
   debtPaymentsMinor: 179_676_000,
   nonMortgageDebtPaymentsMinor: 79_800_000,
+  debtPrincipalMinor: 59_676_000,
   putAwayMinor: 93_600_000,
   ...overrides,
 });
@@ -88,27 +92,36 @@ describe('surplus', () => {
 });
 
 describe('emergency fund', () => {
-  it('divides cash by spending and debt payments, which is what the emergency goal counts too', () => {
+  it('divides cash by spending and loan principal, which is what the emergency goal counts too', () => {
     const ratio = by(healthRatios(flows(), totals()), 'emergency_fund');
-    expect(ratio.value).toBeCloseTo(200_000_000 / (46_800_000 + 14_973_000), 2);
+    expect(ratio.value).toBeCloseTo(200_000_000 / (46_800_000 + 4_973_000), 2);
     expect(ratio.status).toBe('good');
   });
 
-  it('drops debt payments from the denominator when the setting is turned off', () => {
+  it('counts loan interest once: it is spending, not a second outgoing beside it', () => {
+    const ratio = by(healthRatios(flows(), totals()), 'emergency_fund');
+    // The interest is Rp 10 jt of the Rp 14,973 jt paid each month, and it is already inside the spending.
+    expect(ratio.value).not.toBeCloseTo(200_000_000 / (46_800_000 + 14_973_000), 2);
+    // Doubling the interest alone, with the principal untouched, must not move the target at all.
+    const sameSpendingMoreInterest = flows({ debtPaymentsMinor: 179_676_000 + 120_000_000 });
+    expect(by(healthRatios(sameSpendingMoreInterest, totals()), 'emergency_fund').value).toBe(ratio.value);
+  });
+
+  it('drops loan principal from the denominator when the setting is turned off', () => {
     const looser = by(healthRatios(flows(), totals(), { emergencyIncludesDebtPayments: false }), 'emergency_fund');
     expect(looser.value).toBeCloseTo(200_000_000 / 46_800_000, 2);
     expect(looser.value!).toBeGreaterThan(by(healthRatios(flows(), totals()), 'emergency_fund').value!);
   });
 
   it('says which denominator it used, so the card is not ambiguous', () => {
-    expect(by(healthRatios(flows(), totals()), 'emergency_fund').guide).toContain('spending and debt payments');
+    expect(by(healthRatios(flows(), totals()), 'emergency_fund').guide).toContain('spending plus loan principal');
     expect(by(healthRatios(flows(), totals(), { emergencyIncludesDebtPayments: false }), 'emergency_fund').guide).toContain('monthly spending.');
   });
 
   it('grades against three months, watching down to three divided by 1,2', () => {
     expect(statusOf('emergency_fund', {}, { liquidMinor: 186_000_000 })).toBe('good');
-    expect(statusOf('emergency_fund', {}, { liquidMinor: 170_000_000 })).toBe('watch');
-    expect(statusOf('emergency_fund', {}, { liquidMinor: 140_000_000 })).toBe('act');
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 140_000_000 })).toBe('watch');
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 120_000_000 })).toBe('act');
   });
 });
 
@@ -162,8 +175,8 @@ describe('the balance-sheet ratios', () => {
   it('is unknown when there is nothing to divide by', () => {
     expect(statusOf('liquidity', {}, { netWorthMinor: 0 })).toBe('unknown');
     expect(statusOf('debt_to_assets', {}, { assetsMinor: 0 })).toBe('unknown');
-    // Both, now that debt payments are in the denominator: either one alone still leaves something to divide by.
-    expect(statusOf('emergency_fund', { spendingMinor: 0, debtPaymentsMinor: 0 })).toBe('unknown');
+    // Both, now that loan principal is in the denominator: either one alone still leaves something to divide by.
+    expect(statusOf('emergency_fund', { spendingMinor: 0, debtPrincipalMinor: 0 })).toBe('unknown');
   });
 });
 
@@ -173,7 +186,7 @@ describe('bands', () => {
   });
 
   it('treats a period with no data as unknown throughout', () => {
-    const ratios = healthRatios(flows({ months: 0, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, putAwayMinor: 0 }), totals());
+    const ratios = healthRatios(flows({ months: 0, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, debtPrincipalMinor: 0, putAwayMinor: 0 }), totals());
     for (const key of ['emergency_fund', 'savings_ratio', 'surplus', 'debt_payments', 'consumer_debt_payments'] as RatioKey[]) {
       expect(by(ratios, key).status, key).toBe('unknown');
     }

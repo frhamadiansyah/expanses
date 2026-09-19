@@ -14,6 +14,12 @@ export interface PeriodFlows {
   debtPaymentsMinor: number;
   /** The same, leaving out home loans. */
   nonMortgageDebtPaymentsMinor: number;
+  /**
+   * The part of those payments that is not already inside `spendingMinor`: loan principal, and
+   * instalments billed on a card. Loan interest is an expense entry, so spending carries it
+   * already; adding the whole payment beside spending would count the interest twice.
+   */
+  debtPrincipalMinor: number;
   /** Money that actually moved into holdings, savings or loan principal over the period. */
   putAwayMinor: number;
 }
@@ -27,7 +33,11 @@ export interface SheetTotals {
 }
 
 export interface RatioSettings {
-  /** Adds debt payments to the emergency fund denominator. On by default, because the emergency goal counts them too. */
+  /**
+   * Adds what is left to pay on a debt each month — the principal — to the emergency fund denominator.
+   * On by default, because the emergency goal counts it too. The interest needs no setting: it is an
+   * expense, so it is inside spending either way.
+   */
   emergencyIncludesDebtPayments?: boolean;
   /** 3500 by the guide; 3000 is what OJK and Indonesian lenders quote. */
   debtServiceBenchmarkBps?: number;
@@ -87,11 +97,15 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
   const spending = monthly(flows.spendingMinor, flows.months);
   const debtPayments = monthly(flows.debtPaymentsMinor, flows.months);
   const consumerDebtPayments = monthly(flows.nonMortgageDebtPaymentsMinor, flows.months);
+  const debtPrincipal = monthly(flows.debtPrincipalMinor, flows.months);
   const putAway = monthly(flows.putAwayMinor, flows.months);
   // On unless turned off. A loan payment is the least skippable outgoing when income stops, and the
-  // emergency goal already sizes itself on spending plus debt payments, so the card agrees with it.
+  // emergency goal already sizes itself the same way, so the card agrees with it.
   const countsDebtPayments = settings.emergencyIncludesDebtPayments ?? true;
-  const emergencyOutgoing = spending + (countsDebtPayments ? debtPayments : 0);
+  // Only the principal is added: the interest is an expense entry, so `spending` already carries it, and
+  // the whole payment here would count the interest twice — on a young mortgage, nearly the whole of it.
+  // The debt-servicing ratios below still take the whole payment, which is what they are meant to divide.
+  const emergencyOutgoing = spending + (countsDebtPayments ? debtPrincipal : 0);
   const debtBenchmark = (settings.debtServiceBenchmarkBps ?? DEFAULT_DEBT_SERVICE_BPS) / 100;
   const hasIncome = hasPeriod && income > 0;
   const hasNetWorth = totals.netWorthMinor > 0;
@@ -130,7 +144,7 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       false,
       '3–6 months',
       countsDebtPayments
-        ? 'Cash & equivalents ÷ monthly spending and debt payments. The guide asks 3–6 months, 12 with dependants.'
+        ? 'Cash & equivalents ÷ monthly spending plus loan principal — the interest is already inside spending. The guide asks 3–6 months, 12 with dependants.'
         : 'Cash & equivalents ÷ monthly spending. The guide asks 3–6 months, 12 with dependants.',
     ),
     ratio(

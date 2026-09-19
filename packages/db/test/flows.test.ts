@@ -1,3 +1,4 @@
+import { healthRatios, type SheetTotals } from '@expanses/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   type AccountRow,
@@ -113,6 +114,21 @@ describe('periodFlows debt payments', () => {
     const flows = await periodFlows(database, ws, YEAR);
     expect(flows.debtPaymentsMinor).toBe(8_000_000);
     expect(flows.spendingMinor).toBe(6_000_000);
+    // The interest is already in spending, so only the principal is kept beside it.
+    expect(flows.debtPrincipalMinor).toBe(2_000_000);
+  });
+
+  it('sizes the emergency fund on spending and principal, counting the interest once', async () => {
+    await loanPayment('2026-01-25', 2_000_000, 6_000_000);
+    await groceries('2026-01-15', 4_000_000);
+
+    const flows = await periodFlows(database, ws, YEAR);
+    const totals: SheetTotals = { liquidMinor: 60_000_000, investMinor: 0, assetsMinor: 60_000_000, liabilitiesMinor: 0, netWorthMinor: 60_000_000 };
+    const months = healthRatios(flows, totals).find((ratio) => ratio.key === 'emergency_fund')!.value!;
+
+    // One month of data: Rp 10 jt spent, of which Rp 6 jt is the interest, plus Rp 2 jt of principal.
+    expect(months).toBeCloseTo(60_000_000 / 12_000_000, 6);
+    expect(months).not.toBeCloseTo(60_000_000 / 18_000_000, 6);
   });
 
   it('does not count a credit card bill paid in full', async () => {

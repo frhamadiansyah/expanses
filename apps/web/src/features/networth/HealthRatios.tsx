@@ -16,7 +16,7 @@ const STATUS_BAR: Record<RatioStatus, string> = {
   unknown: 'bg-slate-300',
 };
 
-const EMPTY_FLOWS: PeriodFlows = { months: 0, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, putAwayMinor: 0 };
+const EMPTY_FLOWS: PeriodFlows = { months: 0, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, debtPrincipalMinor: 0, putAwayMinor: 0 };
 
 export function HealthRatios({
   flows,
@@ -98,7 +98,7 @@ export function HealthRatios({
             checked={!!settings.emergencyIncludesDebtPayments}
             onChange={(e) => setSettings((current) => ({ ...current, emergencyIncludesDebtPayments: e.target.checked }))}
           />
-          Count debt payments in the emergency fund
+          Count loan principal in the emergency fund
         </label>
         <label className="flex items-center gap-2">
           Debt servicing guide

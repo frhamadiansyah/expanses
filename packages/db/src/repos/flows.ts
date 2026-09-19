@@ -161,6 +161,7 @@ export async function periodFlows(
 
   let debtPaymentsMinor = 0;
   let nonMortgageDebtPaymentsMinor = 0;
+  let debtPrincipalMinor = 0;
   let putAwayMinor = 0;
 
   for (const [transactionId, roll] of perTransaction) {
@@ -171,8 +172,10 @@ export async function periodFlows(
       if (!roll.touchesHomeLoan) nonMortgageDebtPaymentsMinor += total;
       const bucket = byMonth.get(roll.month);
       if (bucket) bucket.debtPaymentsMinor += total;
-      // Principal builds equity, so it is money put away; the interest is spending.
+      // Principal builds equity, so it is money put away; the interest is spending. That is also why the
+      // principal is kept on its own: it is the only half of the payment spending does not already hold.
       putAwayMinor += roll.principalMinor;
+      debtPrincipalMinor += roll.principalMinor;
     }
     if (tradeTransactions.has(transactionId) || roll.intoSavingsMinor === 0) continue;
     // Money moved from everyday accounts into a savings pot or broker cash, and money taken back out.
@@ -203,6 +206,9 @@ export async function periodFlows(
       const billed = intoRead(plan.monthlyMinor, `${month}-01`);
       debtPaymentsMinor += billed;
       nonMortgageDebtPaymentsMinor += billed;
+      // A plan books no interest of its own, and the purchase was spent in the month it happened, so the
+      // whole instalment sits outside this period's spending.
+      debtPrincipalMinor += billed;
       bucket.debtPaymentsMinor += billed;
     }
   }
@@ -222,6 +228,7 @@ export async function periodFlows(
     spendingMinor: totals.spendingMinor,
     debtPaymentsMinor,
     nonMortgageDebtPaymentsMinor,
+    debtPrincipalMinor,
     putAwayMinor,
     byMonth: [...byMonth.values()],
     currency: money.currency,

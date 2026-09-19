@@ -188,6 +188,23 @@ describe('goalPlansFor', () => {
     }
   }
 
+  /** Rp 4 jt a month off a car loan, the way the Loans slice posts it: Rp 1 jt principal, Rp 3 jt interest. */
+  async function carLoanPayments() {
+    const categories = await categoryIdsByKey(database, ws);
+    const kkb = await createAccount(database, ws, { name: 'Car loan', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 84_000_000, openedOn: '2026-01-01' });
+    for (const month of ['06', '07', '08']) {
+      await postTransaction(database, ws, {
+        occurredOn: `2026-${month}-05`,
+        description: 'Car installment',
+        lines: [
+          { accountId: kkb.id, amountMinor: 1_000_000, currency: 'IDR' },
+          { accountId: categories['miscellaneous.interest']!, amountMinor: 3_000_000, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: -4_000_000, currency: 'IDR' },
+        ],
+      });
+    }
+  }
+
   it('gives each goal its plan, ranked, with what it needs each month', async () => {
     await buyGold('2026-03-09', 10, hajjId);
     await salaryAndSpending();
@@ -236,6 +253,32 @@ describe('goalPlansFor', () => {
     const summary = await goalPlansFor(database, ws, TODAY);
     const plan = summary.plans.find((row) => row.goalId === emergencyId)!;
     expect(plan.stages[0]!.todayMinor).toBe(6 * 20_000_000);
+  });
+
+  it('sizes an emergency goal on spending and principal, so the interest is not counted twice', async () => {
+    await salaryAndSpending();
+    await carLoanPayments();
+    const emergencyId = await saveGoal(database, ws, {
+      name: 'Emergency fund',
+      kind: 'emergency',
+      growthBps: 0,
+      returnBps: 200,
+      stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2028-12-31' }],
+    });
+
+    const summary = await goalPlansFor(database, ws, TODAY);
+    const plan = summary.plans.find((row) => row.goalId === emergencyId)!;
+    // Rp 20 jt of living plus Rp 3 jt of interest is the spending; only the Rp 1 jt of principal is added.
+    expect(plan.stages[0]!.todayMinor).toBe(6 * 24_000_000);
+  });
+
+  it('takes a loan payment out of what you can save once, not the interest twice', async () => {
+    await salaryAndSpending();
+    await carLoanPayments();
+
+    const summary = await goalPlansFor(database, ws, TODAY);
+    // Rp 30 jt in; Rp 23 jt spent, the interest included; Rp 1 jt of principal left the account beside it.
+    expect(summary.capacityMonthlyMinor).toBe(6_000_000);
   });
 
   it('warns when more is set aside than the account holds', async () => {
