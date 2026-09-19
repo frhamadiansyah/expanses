@@ -104,8 +104,48 @@ export const MIGRATIONS: Migration[] = [
   { version: 47, name: 'cash_equivalents', sql: cashEquivalents },
 ];
 
+/** The highest version this build of the app knows how to produce. */
+export const LATEST_VERSION: number = Math.max(...MIGRATIONS.map((m) => m.version));
+
+/** Versions already recorded in the file. Empty for a database that has never been migrated. */
+async function recordedVersions(database: Database): Promise<number[]> {
+  const tables = await database.db.values<[string]>(
+    sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'`,
+  );
+  if (!tables.length) return [];
+  const rows = await database.db.values<[number]>(sql`SELECT version FROM schema_migrations ORDER BY version`);
+  return rows.map((r) => Number(r[0]));
+}
+
+/** The highest version recorded in the file, or 0. Read before anything runs, so a newer file is never touched. */
+export async function databaseVersion(database: Database): Promise<number> {
+  const versions = await recordedVersions(database);
+  return versions.length ? versions[versions.length - 1]! : 0;
+}
+
+/** Versions the file records that this build does not know. Non-empty means: do not run, do not write. */
+export async function futureVersions(database: Database, migrations: Migration[] = MIGRATIONS): Promise<number[]> {
+  const latest = Math.max(...migrations.map((m) => m.version));
+  return (await recordedVersions(database)).filter((version) => version > latest);
+}
+
+/** What this build would apply next, in order. Used to decide whether a snapshot is needed. */
+export async function pendingMigrations(database: Database, migrations: Migration[] = MIGRATIONS): Promise<Migration[]> {
+  const done = new Set(await recordedVersions(database));
+  return [...migrations].sort((a, b) => a.version - b.version).filter((m) => !done.has(m.version));
+}
+
+export interface MigrateOptions {
+  /** Called before each migration with (finished so far, total, the name about to run), and once at the end. */
+  onProgress?: (done: number, total: number, name: string) => void;
+}
+
 /** Applies pending migrations in order, each atomically. Returns applied versions. */
-export async function migrate(database: Database, migrations: Migration[] = MIGRATIONS): Promise<number[]> {
+export async function migrate(
+  database: Database,
+  migrations: Migration[] = MIGRATIONS,
+  options: MigrateOptions = {},
+): Promise<number[]> {
   await database.execScript(
     'CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)',
   );
@@ -127,9 +167,10 @@ export async function migrate(database: Database, migrations: Migration[] = MIGR
   }
 
   const done = new Set(recorded.keys());
+  const todo = [...migrations].sort((a, b) => a.version - b.version).filter((m) => !done.has(m.version));
   const applied: number[] = [];
-  for (const m of [...migrations].sort((a, b) => a.version - b.version)) {
-    if (done.has(m.version)) continue;
+  for (const m of todo) {
+    options.onProgress?.(applied.length, todo.length, m.name);
     const script = `BEGIN IMMEDIATE;\n${m.sql}\nINSERT INTO schema_migrations (version, name, applied_at) VALUES (${m.version}, '${m.name}', '${new Date().toISOString()}');\nCOMMIT;`;
     try {
       await database.execScript(script);
@@ -139,5 +180,7 @@ export async function migrate(database: Database, migrations: Migration[] = MIGR
     }
     applied.push(m.version);
   }
+  // A last call with the finished count, so a watching screen can show the run complete rather than stopping a step short.
+  if (todo.length) options.onProgress?.(todo.length, todo.length, todo[todo.length - 1]!.name);
   return applied;
 }
