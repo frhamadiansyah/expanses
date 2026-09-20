@@ -287,3 +287,42 @@ test('a transaction left out of the chart says so on its receipt', async ({ page
   // The line the flag also writes, so the receipt is reading the restored row and not a constant.
   await expect(page.locator('div', { hasText: /^Channel/ }).last()).toContainText('Offline');
 });
+
+/**
+ * §9 and §2's row-actions table: **a desktop keeps edit in place**, and an edit is still a replacement.
+ *
+ * The phone gained a sheet in Task 14; the desktop's click-the-row editor is the faster way and was never to be
+ * taken away for it. The half nothing asserted is what an edit leaves behind: `replaceTransaction` voids the
+ * original and posts a new id, so the row the correction was made from is still on the device — under Show
+ * deleted, struck through — and that is the only reason a correction made by mistake can be read back at all.
+ */
+test('a desktop still edits a row in place, and the original is under Show deleted', async ({ page }) => {
+  await addCard(page);
+  await spend(page, 'Superindo', '500000');
+
+  await page.goto('/transactions');
+  // The row's own face, not the ⓘ: on a desktop a click opens `QuickRowEditor` between the rows.
+  await page.locator('li', { hasText: 'Superindo' }).click();
+  const description = page.getByLabel('Row description');
+  await expect(description).toHaveValue('Superindo');
+  const amount = page.getByLabel(/^Row amount/);
+  await amount.fill('575000');
+  await amount.press('Enter');
+  await expect(page.getByLabel(/^Row amount/)).toHaveCount(0);
+
+  // One row on the list, carrying the new figure — not two, which is what a correction that posted beside the
+  // original rather than replacing it would leave.
+  const row = page.getByTestId('transaction-row').filter({ hasText: 'Superindo' });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('575.000');
+  // In the database, not only on the screen.
+  await page.reload();
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('575.000');
+
+  // And the original is still here to be read: voided, struck through, under Show deleted.
+  await page.getByLabel('Show deleted').check();
+  const both = page.getByTestId('transaction-row').filter({ hasText: 'Superindo' });
+  await expect(both).toHaveCount(2);
+  await expect(both.filter({ hasText: '500.000' })).toHaveCount(1);
+  await expect(both.filter({ hasText: '575.000' })).toHaveCount(1);
+});
