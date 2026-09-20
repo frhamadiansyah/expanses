@@ -21,7 +21,8 @@ import { TransactionRow, useRecategorise } from '../transactions/TransactionRow'
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
 import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
-import { useCategoryWorkspaces } from '../workspaces/queries';
+import { editInsteadIn } from '../workspaces/filing';
+import { useCategoryWorkspaces, useWorkspaceBadges } from '../workspaces/queries';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
 
 const dayCount = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00`) - Date.parse(`${from}T00:00:00`)) / 86_400_000) + 1;
@@ -80,6 +81,16 @@ export function EventDetailPage() {
   const today = isoDate();
   // One copy of the category gesture for this screen: the sheet it opens and the Undo toast it leaves.
   const recategorise = useRecategorise();
+  /*
+   * An event's history is owner-wide on purpose — one trip is paid for out of several workspaces — but the
+   * sheet the circle opens offers the **open** workspace's categories, as every picker in the app does. So a
+   * payment filed in another workspace must not be offered the gesture at all: re-filing it there is a write
+   * `replaceTransaction` refuses, and a refusal met after the choice is a choice that should not have been
+   * offered. The same rule Cashflow states as `clickable`, said here where the history is always multi-workspace.
+   */
+  const historyBadges = useWorkspaceBadges((history.data ?? []).map((tx) => tx.id));
+  // Until the filing is known every row looks unfiled, which would read as "this workspace's" for that window.
+  const filedHere = (transactionId: string) => historyBadges.ready && editInsteadIn(historyBadges.of(transactionId), ws.bookId) === null;
 
   const [page, setPage] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -578,7 +589,7 @@ export function EventDetailPage() {
                         className="py-2.5"
                         title="Open the receipt"
                         onOpen={() => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } })}
-                        onRecategorise={recategorise.offers(listRow) ? recategorise.start : undefined}
+                        onRecategorise={recategorise.offers(listRow) && filedHere(tx.id) ? recategorise.start : undefined}
                         label={expense?.accountName ?? tx.description}
                         subtitle={
                           <>

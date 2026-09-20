@@ -50,6 +50,9 @@ test('a row opens its receipt, swipes to Edit and Delete, and its icon fixes the
 
   // Swipe → Edit and Delete. Both live inside the element carrying the test id, so a row-scoped locator reaches them.
   const steak = row(page, 'Warung Steak');
+  // The content layer is opaque here, and only here: it slides over the action layer, and a see-through row
+  // would show Edit and Delete through the words on top of them. The desktop's row is the other way round.
+  await expect(steak.locator('div').filter({ has: page.getByRole('button', { name: 'Category for Warung Steak' }) }).last()).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(steak.getByRole('button', { name: 'Delete' })).toHaveCount(0);
   await swipeLeft(page, steak);
   await expect(steak.getByRole('button', { name: 'Edit' })).toBeVisible();
@@ -74,4 +77,37 @@ test('a row opens its receipt, swipes to Edit and Delete, and its icon fixes the
   await expect(row(page, 'Superindo')).toContainText('Restaurants');
   await toast(page).getByRole('button', { name: 'Undo' }).click();
   await expect(row(page, 'Superindo')).toContainText('Groceries');
+});
+
+/**
+ * The phone is not the looser shell. A desktop refuses to edit, delete or re-file an opening balance — it posts
+ * against system equity and has no form that could represent it — and the phone refuses exactly the same things:
+ * no swipe actions, and no category circle. Tapping it still opens the receipt, because on a phone the tap is
+ * the only way to a receipt at all (the ⓘ is `hidden md:inline-flex`); looking is not writing, and the receipt
+ * refuses in the same place, by the same test.
+ */
+test('a phone refuses what a desktop refuses, and still lets the row be read', async ({ page }) => {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Current balance').fill('20000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+
+  await page.goto('/transactions');
+  const opening = row(page, 'Opening balance');
+  await expect(opening).toHaveCount(1);
+  // No circle: an opening balance has no category to fix, and offering the gesture would open a sheet whose
+  // every button the ledger refuses. Dropping the `clickable` gate on the row puts one here.
+  await expect(opening.getByRole('button', { name: /^Category for/ })).toHaveCount(0);
+
+  // And no swipe layer to reveal: with no Edit and no Delete the row is not a `SwipeRow` at all, so the drag
+  // is read as a tap and opens the receipt. A row that did offer them would suppress that click and show Edit.
+  await swipeLeft(page, opening);
+  await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+$/);
+  await expect(page.getByTestId('receipt-hero')).toBeVisible();
+  // Looking is not writing, and the receipt carries the same refusal: nothing here edits or deletes it either.
+  await expect(page.getByRole('button', { name: 'Edit this transaction' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
 });

@@ -10,11 +10,13 @@ import { CurrencySheet } from './CurrencySheet';
 import { Keypad } from './Keypad';
 import {
   amountAfterEnter,
+  amountFields,
   chargedHint,
   chargedInNeeded,
   currencyFlag,
   estimatedCharge,
   type FormDraft,
+  type MoneyFieldSpec,
   suggestedRate,
   typedCurrency,
 } from './tx-form';
@@ -66,24 +68,24 @@ export function useSuggestedRate(from: string, to: string, onDate: string): Sugg
  * screen — including the "Charged in …" row, which is the figure that actually posts. On a desktop it is a real
  * text input whose blur and Enter run the same evaluator the keypad's DONE runs, so `272400+5000` works in
  * either field at either width. A field with no evaluator is a second, weaker way to enter money.
+ *
+ * The label, the text and the currency arrive together as one `MoneyFieldSpec` from `amountFields`, so this
+ * component never decides which currency it is reading in — that decision is made once, in the kit.
  */
 function MoneyField({
-  label,
-  value,
-  currency,
+  field,
   phone,
   onChange,
   onKeypad,
   className,
 }: {
-  label: string;
-  value: string;
-  currency: string;
+  field: MoneyFieldSpec;
   phone: boolean;
   onChange: (value: string) => void;
   onKeypad: () => void;
   className: string;
 }) {
+  const { label, value, currency } = field;
   if (phone) {
     return (
       <button type="button" aria-label={label} onClick={onKeypad} className={cx(className, 'truncate text-left')}>
@@ -143,6 +145,8 @@ export function AmountRow({
   const currency = typedCurrency(draft, accounts);
   const settled = account?.currency ?? '';
   const needsCharged = chargedInNeeded(draft, accounts);
+  // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
+  const fields = amountFields(draft, accounts, ws.baseCurrency);
   const { rate, stale } = useSuggestedRate(needsCharged ? currency : '', needsCharged ? settled : '', draft.occurredOn);
 
   // §3.3: "pre-filled with an estimate at that day's rate". Only into an empty row, and only when the figure or
@@ -155,7 +159,9 @@ export function AmountRow({
   }, [estimate]);
 
   const fieldClass = 'min-w-0 flex-1 text-2xl tabular focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900';
-  const toggle = (which: 'amount' | 'charged') => setKeypad((open) => (open === which ? null : which));
+  const toggle = (which: 'amount' | 'charged') => setKeypad((was) => (was === which ? null : which));
+  /** The field the dock is typing into, or null when it is shut. */
+  const open = keypad === null ? null : keypad === 'amount' ? fields.amount : fields.charged;
 
   return (
     <div className="rounded-xl bg-white ring-1 ring-slate-200">
@@ -169,9 +175,7 @@ export function AmountRow({
           <span aria-hidden>{currencyFlag(currency)}</span>
         </button>
         <MoneyField
-          label="Amount"
-          value={draft.amount}
-          currency={currency || ws.baseCurrency}
+          field={fields.amount}
           phone={phone}
           onChange={(amount) => set({ amount })}
           onKeypad={() => toggle('amount')}
@@ -190,16 +194,14 @@ export function AmountRow({
         )}
       </div>
 
-      {needsCharged && (
+      {fields.charged && (
         <div className="border-t border-slate-200 px-3 py-2">
           <div className="flex h-10 items-center gap-2 text-sm">
             <span className="shrink-0 text-slate-600">
               Charged in <em className="not-italic font-medium text-slate-900">{settled}</em>
             </span>
             <MoneyField
-              label={`Charged in ${settled}`}
-              value={draft.chargedAmount}
-              currency={settled || ws.baseCurrency}
+              field={fields.charged}
               phone={phone}
               onChange={(chargedAmount) => set({ chargedAmount })}
               onKeypad={() => toggle('charged')}
@@ -221,11 +223,13 @@ export function AmountRow({
           onClose={() => setPicking(false)}
         />
       )}
-      {keypad && (
+      {/* The dock types into whichever field opened it, in that field's own currency — the same record the
+          field itself was drawn from, so the two can never read one figure at two different scales. */}
+      {open && (
         <Keypad
-          value={keypad === 'amount' ? draft.amount : draft.chargedAmount}
-          currency={(keypad === 'amount' ? currency : settled) || ws.baseCurrency}
-          onChange={(text) => set(keypad === 'amount' ? { amount: text } : { chargedAmount: text })}
+          value={open.value}
+          currency={open.currency}
+          onChange={(text) => set(open.which === 'amount' ? { amount: text } : { chargedAmount: text })}
           onClose={() => setKeypad(null)}
         />
       )}

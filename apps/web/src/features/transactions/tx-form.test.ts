@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   amountAfterDone,
   amountAfterEnter,
+  amountFields,
   canEditInSheet,
   chargedHint,
   chargedInNeeded,
@@ -24,6 +25,9 @@ const accounts = [
   { id: 'acct-bank', name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' },
   { id: 'acct-card', name: 'BCA KrisFlyer', kind: 'liability', subtype: 'credit_card', currency: 'IDR' },
   { id: 'acct-cny', name: 'Alipay', kind: 'asset', subtype: 'cash', currency: 'CNY' },
+  // Exponent 2, so a figure read in the wrong currency is off by 100 rather than quietly identical. Every
+  // split assertion used to be IDR, which has exponent 0 and cannot tell a currency mistake from a correct read.
+  { id: 'acct-usd', name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' },
   { id: 'cat-restaurants', name: 'Restaurants', kind: 'expense', subtype: 'category', currency: null },
 ] as AccountRow[];
 
@@ -273,6 +277,75 @@ describe('a bill spread over several categories', () => {
     });
   });
 
+  it('reads each split row in the account’s own currency, not in rupiah', () => {
+    // USD has exponent 2 and IDR has none, so `10.50` is 1050 minor units here and unreadable as IDR. Every
+    // other split case on this page is IDR, where a currency mistake and a correct read give the same number.
+    expect(
+      formToPost(
+        {
+          ...emptyForm('ws-1'),
+          moneyId: 'acct-usd',
+          currency: 'USD',
+          splits: [
+            { categoryId: 'cat-restaurants', amount: '10.50' },
+            { categoryId: 'cat-groceries', amount: '5.25' },
+          ],
+        },
+        accounts,
+      ),
+    ).toMatchObject({
+      kind: 'post',
+      input: {
+        lines: splitExpenseLines({
+          paymentAccountId: 'acct-usd',
+          currency: 'USD',
+          splits: [
+            { categoryAccountId: 'cat-restaurants', amountMinor: 1050 },
+            { categoryAccountId: 'cat-groceries', amountMinor: 525 },
+          ],
+        }),
+      },
+    });
+  });
+
+  it('agrees with a sum typed in the amount row, in the currency that row is read in', () => {
+    // The amount row accepts an expression — that is what the keypad and the desktop's Enter are for — so the
+    // check that the rows add up must read it the same way, through `evaluateAmount`, and not through a
+    // second, weaker reader that answers `250000+150000` with "Invalid amount".
+    const sum = {
+      ...draft,
+      amount: '250000+150000',
+      splits: [
+        { categoryId: 'cat-restaurants', amount: '250000' },
+        { categoryId: 'cat-groceries', amount: '150000' },
+      ],
+    };
+    expect(formToPost(sum, accounts)).toMatchObject({ kind: 'post', input: { lines: [expect.objectContaining({ amountMinor: 250_000 }), expect.objectContaining({ amountMinor: 150_000 }), expect.objectContaining({ amountMinor: -400_000 })] } });
+    // An expression that comes out somewhere else is still a disagreement, said in the same words.
+    expect(() => formToPost({ ...sum, amount: '250000+150001' }, accounts)).toThrow('The splits must add up to the amount');
+    // And one that cannot be read at all is refused in words rather than as a raw MoneyError.
+    expect(() => formToPost({ ...sum, amount: '400.000,00,00' }, accounts)).toThrow('The splits must add up to the amount');
+    // In USD too: `10.50+5.25` is 1575 and agrees, where read as IDR it could not be read at all.
+    expect(
+      formToPost(
+        { ...emptyForm('ws-1'), moneyId: 'acct-usd', currency: 'USD', amount: '10.50+5.25', splits: [{ categoryId: 'cat-restaurants', amount: '10.50' }, { categoryId: 'cat-groceries', amount: '5.25' }] },
+        accounts,
+      ),
+    ).toMatchObject({ kind: 'post' });
+  });
+
+  it('refuses a split typed in a currency the account does not settle in, in words', () => {
+    // A split's rows *are* the figure and they post in the account's own currency; there is no second row to
+    // carry what the merchant charged, so the pair §3.3 keeps has nowhere to live. Reachable since the currency
+    // sheet arrived, and it used to answer with a core error about decimal places.
+    expect(() =>
+      formToPost(
+        { ...emptyForm('ws-1'), moneyId: 'acct-bank', currency: 'USD', splits: [{ categoryId: 'cat-restaurants', amount: '10.50' }, { categoryId: 'cat-groceries', amount: '5.25' }] },
+        accounts,
+      ),
+    ).toThrow('A split is entered in IDR. Change the currency back to IDR, or remove the split.');
+  });
+
   it('will not let the amount row and the splits disagree in silence', () => {
     const split = {
       ...draft,
@@ -450,6 +523,31 @@ describe('the keypad', () => {
   });
 });
 
+describe('which currency each money field is read in', () => {
+  it('reads the typed figure in the flag’s currency and the charged figure in the account’s', () => {
+    // The 100x class, one layer over the arithmetic: `settledAmount` made the *reading* single, and this makes
+    // the *units* single. The field, the keypad and the label all take one record, so no two readers of one
+    // figure can disagree about its scale — CNY has two decimals and IDR none, so a swap here is a 100x error.
+    const fields = amountFields(foreign, accounts, 'IDR');
+    expect(fields.amount).toEqual({ which: 'amount', label: 'Amount', value: '120', currency: 'CNY' });
+    expect(fields.charged).toEqual({ which: 'charged', label: 'Charged in IDR', value: '272400', currency: 'IDR' });
+    // And what each field says it is worth is what the kit's one reader makes of it, at that scale.
+    expect(evaluateAmount(fields.amount.value, fields.amount.currency)).toBe(12_000);
+    expect(evaluateAmount(fields.charged!.value, fields.charged!.currency)).toBe(272_400);
+  });
+
+  it('offers no charged field when the figure is typed in the account’s own currency', () => {
+    expect(amountFields(draft, accounts, 'IDR')).toEqual({ amount: { which: 'amount', label: 'Amount', value: '120000', currency: 'IDR' }, charged: null });
+    // A USD account typed in USD: still one field, and still read in USD rather than in the workspace's base.
+    expect(amountFields({ ...draft, moneyId: 'acct-usd', currency: 'USD', amount: '10.50' }, accounts, 'IDR').amount.currency).toBe('USD');
+  });
+
+  it('falls back to the workspace’s own currency before an account is chosen', () => {
+    // Never empty: `parseMajor` needs a currency to know the scale, and '' is not one.
+    expect(amountFields({ ...emptyForm('ws-1'), amount: '12' }, accounts, 'KWD').amount.currency).toBe('KWD');
+  });
+});
+
 describe('what the charged row opens with', () => {
   it('converts the typed figure at the day’s rate into the account’s own currency', () => {
     // 120 CNY at 2.270 IDR per CNY. IDR has no decimals and CNY has two, so this is the exponent shift too.
@@ -502,6 +600,17 @@ describe('the quiet line under the charged row', () => {
     expect(chargedHint({ rate: null, currency: 'CNY', accountCurrency: 'IDR', onDate: '2026-09-17', accountName: 'BCA Tahapan' })).toBe(
       'No CNY→IDR rate is known for 2026-09-17. Enter what BCA Tahapan charged.',
     );
+  });
+
+  it('can be told which locale to write the number in', () => {
+    // Country-neutral: only the tax report is Indonesia's. The function took six named parameters and could
+    // not be told a locale, so `1,234.5` was unreachable however the app was read. `formatMinor` has always
+    // taken its locale this way, with the same default, so this is that convention rather than a new one.
+    const named = { rate: 1234.5, currency: 'USD', accountCurrency: 'IDR', onDate: '2026-09-17', accountName: 'Wise USD' };
+    expect(chargedHint({ ...named, locale: 'en-US' })).toContain('≈ 1,234.5 per 1 USD');
+    expect(chargedHint({ ...named, locale: 'de-DE' })).toContain('≈ 1.234,5 per 1 USD');
+    // Unasked, it still writes the way the rest of this app writes numbers.
+    expect(chargedHint(named)).toContain('≈ 1.234,5 per 1 USD');
   });
 });
 

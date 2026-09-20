@@ -8,7 +8,7 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { loadPurchasePoints } from '../../lib/purchase-points';
-import { isCategoryOf, isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { categoryChoices, isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
@@ -351,8 +351,7 @@ export function TransactionsPage() {
   ];
   const categoryOptions: ChipOption[] = [
     { value: '', label: 'Any category' },
-    ...accounts
-      .filter((a) => (isCategoryOf('expense')(a) || isCategoryOf('income')(a)) && inOpenBook(a))
+    ...[...categoryChoices(accounts, 'expense', inOpenBook), ...categoryChoices(accounts, 'income', inOpenBook)]
       .map((a) => ({ value: a.id, label: categoryPath(accounts, a.id), icon: <CategoryIcon categoryId={a.id} accounts={accounts} size="xs" />, indent: a.parentId !== null }))
       .sort((x, y) => x.label.localeCompare(y.label)),
   ];
@@ -670,8 +669,12 @@ export function TransactionsPage() {
     const reachable = !trade && isEditable(tx);
     const elsewhere = reachable ? elsewhereOf(tx.id) : null;
     const clickable = reachable && !elsewhere && filingKnown;
-    // Every way in inherits the same refusals. A trade, an opening balance, a voided row and a purchase filed
-    // in another workspace may not be edited, deleted or re-filed from here — by swipe no less than by click.
+    // Every way in that *writes* inherits the same refusals. A trade, an opening balance, a voided row and a
+    // purchase filed in another workspace may not be edited, deleted or re-filed from here — by swipe no less
+    // than by click. Looking is not writing: on a phone the tap opens the receipt for all of them, because the
+    // ⓘ that a desktop reaches a receipt by is `hidden md:inline-flex` and the tap is the only way in. The
+    // receipt refuses exactly what this row refuses — `isEditable && !elsewhere && !isTrade` gates its Edit and
+    // its Delete, and a row of another workspace is answered there with the same "open that workspace" line.
     const openReceipt = () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } });
     return (
       <TransactionRow

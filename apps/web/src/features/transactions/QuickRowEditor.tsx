@@ -1,7 +1,7 @@
 import { categoryPath, matchCategory, matchPayment, type PaymentOption } from '@expanses/core';
 import type { AccountRow, CardRow } from '@expanses/db';
 import type { ReactNode } from 'react';
-import { isCategoryOf, isMoneyAccount } from '../../lib/queries';
+import { categoryChoices, isMoneyAccount } from '../../lib/queries';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CellCombo, type ComboOption } from './CellCombo';
@@ -30,7 +30,7 @@ export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly
   // The cell says what paid, so it offers only what can: never a locked deposit, never a house.
   const payments = payerOptions(money, cards, '');
   const paid: ComboOption[] = payments.map(toCombo);
-  const categoryRows = accounts.filter((a) => isCategoryOf('expense')(a) && inOpenBook(a));
+  const categoryRows = categoryChoices(accounts, 'expense', inOpenBook);
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const categories: ComboOption[] = categoryRows
     .map((a) => ({

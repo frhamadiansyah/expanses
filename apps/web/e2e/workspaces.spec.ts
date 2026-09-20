@@ -110,6 +110,44 @@ test('a new workspace copies the categories, opens empty, and leaves the other a
 });
 
 /**
+ * Two workspaces can hold copies of one category: the same name, the same path, different ids. So the sheet the
+ * category circle opens must offer the open workspace's copy and no other — unnarrowed it shows two buttons
+ * nothing on screen tells apart, and picking the wrong one re-files this spending outside the workspace it
+ * belongs to. `replaceTransaction` refuses that write, but a refusal met after the choice is a choice that
+ * should never have been offered.
+ */
+test('the category gesture offers the open workspace’s categories and no others', async ({ page }) => {
+  await addBank(page);
+  await spend(page, 'Supplier dinner', '640000');
+  await newWorkspace(page, 'Business', 'Copy from Personal');
+  await spend(page, 'Client lunch', '640000');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Category for Client lunch' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Category for Client lunch' });
+  // Exactly one. Two workspaces' copies are named alike and their title paths read alike, so a second button
+  // here is both a strict-mode violation and a cross-workspace write one tap away.
+  await expect(sheet.getByRole('button', { name: 'Restaurants', exact: true })).toHaveCount(1);
+  await expect(sheet.getByRole('button', { name: 'Groceries', exact: true })).toHaveCount(1);
+
+  await sheet.getByRole('button', { name: 'Groceries', exact: true }).click();
+  await expect(page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) })).toContainText('Moved to Groceries');
+  // And the purchase is still Business's: re-filing corrects the category, it never moves the workspace.
+  await page.reload();
+  const row = page.getByTestId('transaction-row').filter({ hasText: 'Client lunch' });
+  await expect(row).toContainText('Groceries');
+  await expect(row.getByTestId('workspace-badge')).toHaveText('Business');
+
+  // The account's history holds both workspaces, and Personal's row is not offered the gesture at all: the
+  // sheet speaks for the open workspace, so re-filing a row from another one could only move it.
+  await page.goto('/accounts');
+  await page.getByRole('link', { name: 'BCA Tahapan', exact: true }).click();
+  await expect(page.getByTestId('workspace-badge').filter({ hasText: 'Personal' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Category for Supplier dinner' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Category for Client lunch' })).toHaveCount(1);
+});
+
+/**
  * An account is yours, so its history holds every workspace — badged, and read-only for the rows that are not the
  * open workspace's, since saving one here would re-file it into the workspace being looked from.
  */
@@ -309,6 +347,12 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await expect(tabs.getByRole('button')).toHaveText(['All', 'Personal', 'Business']);
   await expect(page.getByTestId('event-total')).toContainText('4.840.000');
   await expect(page.getByTestId('event-detail-sheet')).toContainText('Restaurants');
+  // The history is owner-wide on purpose — one trip is paid for out of several workspaces — but the category
+  // gesture is not: the sheet it opens offers the *open* workspace's categories, so Personal's dinner is not
+  // offered the circle while Business is open. A refusal met after the choice is a choice not to offer.
+  await expect(page.getByTestId('event-history').filter({ hasText: 'Hotel dinner' })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Category for Hotel dinner' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Category for Supplier lunch' })).toHaveCount(1);
 
   // Business: its own share, and only the categories filed in it.
   await tabs.getByRole('button', { name: 'Business' }).click();

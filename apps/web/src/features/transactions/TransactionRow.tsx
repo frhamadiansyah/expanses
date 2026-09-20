@@ -3,7 +3,7 @@ import { type AccountRow, replaceTransaction } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { isCategoryOf, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { categoryChoices, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { SwipeRow } from '../../ui/SwipeRow';
 import { UndoToast } from '../../ui/UndoToast';
@@ -84,8 +84,13 @@ export function TransactionRow({
     <CategoryIcon categoryId={row.categoryId} accounts={accounts} transfer={transfer} label={iconLabel} />
   );
 
-  const face = (suppressClick?: () => boolean) => (
-    <div className={cx('flex items-center gap-3 bg-white py-2', className)}>
+  /**
+   * The row's content. `swiped` only on the phone's swipe layer, where the content must be opaque to cover the
+   * Edit and Delete buttons behind it — on a desktop that same `bg-white` painted over the `<li>`'s
+   * `hover:bg-slate-50` and left the tint showing in the gutters alone.
+   */
+  const face = (swiped?: { suppressClick: () => boolean }) => (
+    <div className={cx('flex items-center gap-3 py-2', swiped && 'bg-white', className)}>
       {onRecategorise ? (
         <button
           type="button"
@@ -94,7 +99,7 @@ export function TransactionRow({
           onClick={(event) => {
             // The row around it may be clickable too; re-filing is not opening.
             event.stopPropagation();
-            if (suppressClick?.()) return;
+            if (swiped?.suppressClick()) return;
             onRecategorise(row);
           }}
           className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-slate-900"
@@ -111,7 +116,7 @@ export function TransactionRow({
         title={title}
         onClick={(event) => {
           event.stopPropagation();
-          if (suppressClick?.()) return;
+          if (swiped?.suppressClick()) return;
           onOpen?.(row);
         }}
         className="block w-full min-w-0 text-left focus-visible:outline-2 focus-visible:outline-slate-900 disabled:cursor-default"
@@ -183,7 +188,7 @@ export function TransactionRow({
             </>
           }
         >
-          {(suppressClick) => face(suppressClick)}
+          {(suppressClick) => face({ suppressClick })}
         </SwipeRow>
       </li>
     );
@@ -224,6 +229,8 @@ export function useRecategorise(): {
 } {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
+  // `useAccounts` answers with every book's categories; a picker may only offer the open book's.
+  const inOpenBook = useInOpenBook();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const [picking, setPicking] = useState<ListRow | null>(null);
@@ -264,7 +271,9 @@ export function useRecategorise(): {
     }
   }
 
-  const expenses = accounts.filter(isCategoryOf('expense'));
+  // The same narrowing the form's own Category select and the list's filter use: every picker on every screen
+  // that opens this sheet — the list, an event's history — offers the open workspace's categories and no others.
+  const expenses = categoryChoices(accounts, 'expense', inOpenBook);
 
   return {
     offers,

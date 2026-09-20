@@ -116,6 +116,37 @@ export function chargedInNeeded(draft: FormDraft, accounts: readonly AccountRow[
   return draft.currency !== account.currency;
 }
 
+/** One money field of the amount row: what it is called, what is in it, and the currency it is read in. */
+export interface MoneyFieldSpec {
+  which: 'amount' | 'charged';
+  label: string;
+  value: string;
+  /** Never empty: the workspace's own currency stands in until an account is chosen. */
+  currency: string;
+}
+
+/**
+ * The amount row's money fields, each carrying the currency it is read in.
+ *
+ * **Which currency a figure is read in is decided here, once.** The desktop input, the phone's button and the
+ * keypad all take the same record, so no two readers of one field can disagree about its scale — and a keypad
+ * handed the account's currency while the field above it shows the typed one is a 100x error on a path no test
+ * walks. That is the same fault as a second copy of the arithmetic, one layer over: `settledAmount` made the
+ * *reading* single, and this makes the *units* single.
+ *
+ * The typed figure is in whatever the flag says; the "Charged in …" figure is always in the account's own
+ * currency, because that is the one that posts. The charged field is absent unless the two differ.
+ */
+export function amountFields(draft: FormDraft, accounts: readonly AccountRow[], baseCurrency: string): { amount: MoneyFieldSpec; charged: MoneyFieldSpec | null } {
+  const settled = accountOf(draft, accounts)?.currency ?? '';
+  const amount: MoneyFieldSpec = { which: 'amount', label: 'Amount', value: draft.amount, currency: typedCurrency(draft, accounts) || baseCurrency };
+  if (!chargedInNeeded(draft, accounts)) return { amount, charged: null };
+  return {
+    amount,
+    charged: { which: 'charged', label: `Charged in ${settled}`, value: draft.chargedAmount, currency: settled || baseCurrency },
+  };
+}
+
 export type ExtraRow = 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos' | 'exclude' | 'rate';
 
 /**
@@ -157,8 +188,16 @@ function positive(value: string, currency: string, label: string): number {
 /**
  * A split by category, read once. The lines are built from these rows and the total is their sum, so the split
  * is parsed in one place rather than once for the lines and once for the figure that posts.
+ *
+ * The rows are read in `currency` — the account's own, because that is what posts. A split has no second row
+ * to carry what the merchant charged, so §3.3's original pair has nowhere to live and a figure typed in
+ * another currency is refused in words here, before `parseMajor` answers a USD figure on an IDR account with
+ * "IDR allows 0 decimal places": a core error about exponents, where what the user chose was a currency.
  */
-function splitRowsOf(draft: FormDraft, currency: string): { categoryAccountId: string; amountMinor: number }[] {
+function splitRowsOf(draft: FormDraft, currency: string, typed: string): { categoryAccountId: string; amountMinor: number }[] {
+  if (typed && typed !== currency) {
+    throw new Error(`A split is entered in ${currency}. Change the currency back to ${currency}, or remove the split.`);
+  }
   return draft.splits.map((row, i) => {
     if (!row.categoryId) throw new Error(`Choose a category for split ${i + 1}`);
     return { categoryAccountId: row.categoryId, amountMinor: positive(row.amount, currency, `Split ${i + 1} amount`) };
@@ -189,7 +228,10 @@ function amounts(
 ): { amountMinor: number; originalCurrency: string | null; originalAmountMinor: number | null } {
   const settled = account.currency!;
   if (splitTotalMinor !== null) {
-    if (draft.amount.trim() && parseMajor(draft.amount, settled) !== splitTotalMinor) {
+    // `splitRowsOf` has already refused a split typed in another currency, so the figure here is in `settled`.
+    // The kit's one reader, not a second weaker one. `parseMajor` cannot read `250000+150000`, which the amount
+    // row is built to accept, so a sum that agrees perfectly well was refused with a raw `MoneyError`.
+    if (draft.amount.trim() && evaluateAmount(draft.amount, settled) !== splitTotalMinor) {
       throw new Error('The splits must add up to the amount');
     }
     return { amountMinor: splitTotalMinor, originalCurrency: null, originalAmountMinor: null };
@@ -347,7 +389,7 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
 
   // The split is read before the figure is asked for, because on a split the rows *are* the figure — the order
   // `draftToLines` had, and losing it is what made a split impossible to save.
-  const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency) : null;
+  const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency, typed) : null;
   const splitTotalMinor = splits ? splits.reduce((sum, row) => sum + row.amountMinor, 0) : null;
   const { amountMinor, originalCurrency, originalAmountMinor } = amounts(draft, account, typed, splitTotalMinor);
 
@@ -584,6 +626,7 @@ export function chargedHint({
   onDate,
   accountName,
   stale = false,
+  locale = 'id-ID',
 }: {
   rate: number | null;
   currency: string;
@@ -591,9 +634,11 @@ export function chargedHint({
   onDate: string;
   accountName: string;
   stale?: boolean;
+  /** Told, not assumed: the app is country-neutral, and `formatMinor` takes its locale the same way. */
+  locale?: string;
 }): string {
   if (rate === null) return `No ${currency}→${accountCurrency} rate is known for ${onDate}. Enter what ${accountName} charged.`;
-  const shown = rate.toLocaleString('id-ID', { maximumFractionDigits: 4 });
+  const shown = rate.toLocaleString(locale, { maximumFractionDigits: 4 });
   const source = stale ? `the last ${currency}→${accountCurrency} rate known` : `suggested from ${onDate}`;
   return `≈ ${shown} per 1 ${currency} · ${source}, change it to what ${accountName} charged`;
 }
