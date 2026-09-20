@@ -14,3 +14,6 @@ dist-preview/
 
 # Agent worktrees — scratch, never committed
 .claude/
+
+# SDD ledgers, review packages and design-audit captures — scratch, never committed
+.superpowers/
