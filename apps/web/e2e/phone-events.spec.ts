@@ -59,7 +59,7 @@ test('an event reads like Cashflow: where it went, and a swipe to what it planne
   await expect(page.getByText('Garuda')).toBeVisible();
 
   // And the list shows it as a card with what it cost against its plan.
-  await page.getByRole('button', { name: 'All events' }).click();
+  await page.getByRole('link', { name: 'All events' }).click();
   await expect(page.getByTestId('event-row')).toContainText('8.180.000');
   await expect(page.getByTestId('event-row')).toContainText('7.500.000');
 });

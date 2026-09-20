@@ -283,7 +283,7 @@ test('the list says what is still to buy, and the history says what each payment
   await expect(mothercare).toContainText('Newborn clothes');
   await expect(mothercare).toContainText('not planned');
 
-  await page.getByRole('button', { name: 'All events' }).click();
+  await page.getByRole('link', { name: 'All events' }).click();
   // The line says what is left to buy, and the figure is read against the plan rather than against nothing.
   await expect(page.getByTestId('event-row')).toContainText('6.500.000 still to buy');
   await expect(page.getByTestId('event-row')).toContainText('8.000.000');
