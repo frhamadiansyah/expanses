@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { installmentTotals, listInstallments, listLoans, loanFor, nextPaymentDue, scheduleFor } from '@expanses/db';
+import { installmentTotals, listInstallments, listLoans, loanFor, nextPaymentDue, scheduledPayments, scheduleFor } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 
@@ -23,6 +23,13 @@ export function useNextPayment(accountId: string, date?: string) {
   const { database, ws } = useApp();
   const fromDate = date ?? isoDate();
   return useQuery({ queryKey: ['loan-next-payment', ws.workspaceId, accountId, fromDate], queryFn: () => nextPaymentDue(database, ws, accountId, fromDate) });
+}
+
+/** The instalment each loan is due next, by account — what the list prints beside every loan. */
+export function useScheduledPayments(date?: string) {
+  const { database, ws } = useApp();
+  const fromDate = date ?? isoDate();
+  return useQuery({ queryKey: ['loan-payments', ws.workspaceId, fromDate], queryFn: () => scheduledPayments(database, ws, fromDate) });
 }
 
 export function useInstallments(cardAccountId?: string) {

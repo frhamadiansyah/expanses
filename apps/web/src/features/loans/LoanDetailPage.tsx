@@ -1,4 +1,4 @@
-import { extraPaymentEffect, flatToEffectiveBps, formatMinor, isoDate, minorToMajorString, utangLabel } from '@expanses/core';
+import { extraPaymentEffect, flatToEffectiveBps, formatMinor, isoDate, minorToMajorString, periodOn, utangLabel } from '@expanses/core';
 import { addRatePeriod, type LoanTermsRow, recordExtraPayment, recordLoanPayment, setLoanCode } from '@expanses/db';
 import { Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -350,7 +350,9 @@ export function LoanDetailPage() {
   const rows = schedule.data ?? [];
   const interestLeft = rows.reduce((total, row) => total + row.interestMinor, 0);
   const terms = loan.data;
-  const rateBps = terms?.periods.at(-1)?.rateBps ?? 0;
+  // The period running today, not the latest one recorded: a rate change dated next year is not this year's rate.
+  const current = terms ? periodOn(terms.periods, isoDate()) : undefined;
+  const rateBps = current?.rateBps ?? 0;
   const effective = terms?.method === 'flat' && terms.tenorMonths > 1 ? flatToEffectiveBps(rateBps, terms.tenorMonths) : null;
   const repaidMinor = terms ? terms.originalMinor - balanceMinor : 0;
 
@@ -375,7 +377,7 @@ export function LoanDetailPage() {
               <Money minor={balanceMinor} currency={currency} />
             </div>
             <div className="text-sm text-slate-600">
-              {terms.lenderName} · {rateBps / 100}% {terms.periods.at(-1)?.kind === 'floating' ? 'floating' : 'fixed'}
+              {terms.lenderName} · {rateBps / 100}% {current?.kind === 'floating' ? 'floating' : 'fixed'}
               {effective && ` · about ${(effective / 100).toFixed(2)}% effective`}
             </div>
           </div>

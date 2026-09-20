@@ -33,6 +33,15 @@ test('onboards a loan already running and reads its next twelve months', async (
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '700000000');
   await addKpr(page);
 
+  // The list's own figure, before clicking through. `addKpr` never fills "Payment each month" — the form
+  // invites you to leave it blank — and the list used to read that stored blank back as `Rp 0`. It is the
+  // instalment, the same one the detail screen shows, worked out from what the ledger says is owed.
+  const stillPaying = page.getByRole('heading', { name: 'Still being paid' }).locator('..');
+  await expect(stillPaying).toContainText(/7\.\d{3}\.\d{3}/);
+  await expect(stillPaying).not.toContainText(/Rp\s0(?!\d)/);
+  // And the summary card above it, which is gated on that same figure being greater than zero.
+  await expect(page.getByText('The instalments the banks ask for each month')).toBeVisible();
+
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await expect(page.getByText('Still owed')).toBeVisible();
   await expect(page.getByText(/700\.000\.000/).first()).toBeVisible();

@@ -12,6 +12,7 @@ import {
   recordExtraPayment,
   recordLoanPayment,
   saveLoanTerms,
+  scheduledPayments,
   scheduleFor,
   type WorkspaceContext,
 } from '../src/index';
@@ -124,6 +125,75 @@ describe('the schedule beside the ledger', () => {
     await recordLoanPayment(database, ws, { accountId: kpr.id, occurredOn: '2026-02-25', moneyAccountId: bca.id, principalMinor: 700_000_000, interestMinor: 0 });
 
     await expect(nextPaymentDue(database, ws, kpr.id, '2026-03-01')).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * The figure the Loans list prints beside each loan.
+ *
+ * `periods[].paymentMinor` is *the payment the bank named, when it named one* — the form invites you to leave
+ * it blank and 0 is stored, which is correct and asserted in `loans.test.ts`. The list read that stored field
+ * and so printed `Rp 0` for the very loan whose detail screen showed ~Rp 7.101.000. This is the reading the
+ * list uses now, and it is tested where the fault was: the layer between the repository and the screen.
+ */
+describe('the instalment each loan is due', () => {
+  /** The same terms back with the bank's own figure filled in — it rewrites the opening period in place. */
+  const namedPayment = (paymentMinor: number) =>
+    saveLoanTerms(database, ws, {
+      accountId: kpr.id,
+      lenderName: 'Bank BTN',
+      originalMinor: 700_000_000,
+      firstPaymentOn: '2026-01-25',
+      tenorMonths: 180,
+      method: 'annuity',
+      paymentDay: 25,
+      rateBps: 900,
+      paymentMinor,
+    });
+
+  it('works it out from the balance when the bank named no figure', async () => {
+    const loan = await loanFor(database, ws, kpr.id);
+    expect(loan!.periods[0]!.paymentMinor).toBe(0);
+
+    const payments = await scheduledPayments(database, ws, '2026-01-01');
+
+    expect(payments[kpr.id]).toBe((await nextPaymentDue(database, ws, kpr.id, '2026-01-01'))!.paymentMinor);
+    expect(payments[kpr.id]).toBeGreaterThan(7_000_000);
+    expect(payments[kpr.id]).toBeLessThan(7_200_000);
+  });
+
+  it('keeps the bank\'s own figure when the bank named one', async () => {
+    const avanza = await createAccount(database, ws, { name: 'Avanza credit', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 60_000_000, openedOn: '2026-01-01' });
+    await saveLoanTerms(database, ws, {
+      accountId: avanza.id,
+      lenderName: 'BCA Finance',
+      originalMinor: 60_000_000,
+      firstPaymentOn: '2026-01-10',
+      tenorMonths: 36,
+      method: 'annuity',
+      paymentDay: 10,
+      rateBps: 1200,
+      paymentMinor: 1_993_000,
+    });
+
+    await expect(scheduledPayments(database, ws, '2026-01-01')).resolves.toMatchObject({ [avanza.id]: 1_993_000 });
+  });
+
+  it('falls back to the figure the bank named once nothing is owed', async () => {
+    await namedPayment(7_101_000);
+    await recordLoanPayment(database, ws, { accountId: kpr.id, occurredOn: '2026-02-25', moneyAccountId: bca.id, principalMinor: 700_000_000, interestMinor: 0 });
+
+    await expect(scheduledPayments(database, ws, '2026-03-01')).resolves.toMatchObject({ [kpr.id]: 7_101_000 });
+  });
+
+  /** A rate change dated three years out is not this year's rate, and must not become this year's instalment. */
+  it('reads the period running on the date, not the latest one recorded', async () => {
+    await namedPayment(7_101_000);
+    await recordLoanPayment(database, ws, { accountId: kpr.id, occurredOn: '2026-02-25', moneyAccountId: bca.id, principalMinor: 700_000_000, interestMinor: 0 });
+    await addRatePeriod(database, ws, { accountId: kpr.id, fromOn: '2029-01-25', rateBps: 1100, kind: 'fixed', paymentMinor: 8_400_000 });
+
+    await expect(scheduledPayments(database, ws, '2026-03-01')).resolves.toMatchObject({ [kpr.id]: 7_101_000 });
+    await expect(scheduledPayments(database, ws, '2029-03-01')).resolves.toMatchObject({ [kpr.id]: 8_400_000 });
   });
 });
 

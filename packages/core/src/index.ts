@@ -254,7 +254,7 @@ export {
 } from './debts/postings';
 export { type DebtStatus, DUE_SOON_DAYS, type DueState, dueLabel, dueStateFor, statusFor } from './debts/status';
 export { equalShares, yourShare } from './debts/shares';
-export { annuityPaymentMinor, type LoanMethod, type LoanTerms, loanSchedule, type RatePeriod, type ScheduleRow } from './loans/schedule';
+export { annuityPaymentMinor, type LoanMethod, type LoanTerms, loanSchedule, periodOn, type RatePeriod, type ScheduleRow } from './loans/schedule';
 export {
   type ExtraPayment,
   type ExtraPaymentEffect,
