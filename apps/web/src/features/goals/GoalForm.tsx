@@ -54,16 +54,29 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
         }))
       : [draftFromTemplate(starting!, today)],
   );
-  const [setAside, setSetAside] = useState<Record<string, string>>(
-    Object.fromEntries(
-      earmarks.filter((earmark) => earmark.goalId === goal?.id).map((earmark) => [earmark.accountId, minorToMajorString(earmark.amountMinor, ws.baseCurrency)]),
-    ),
-  );
+  // Only what has been typed. What each box *opens* with is read at render, from the earmark and the
+  // account's own currency — which is not known here: `accounts` may still be loading when this runs once.
+  const [setAside, setSetAside] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
   const template = GOAL_TEMPLATES.find((row) => row.kind === kind);
   const savingsAccounts = (accounts.data ?? []).filter((account) => isMoneyAccount(account) && SPENDABLE_SUBTYPES.includes(account.subtype));
+
+  /**
+   * A set-aside is in the account's own money, so the box is labelled, read and written in that currency.
+   *
+   * The label already said "(USD)" while the parse said `ws.baseCurrency`, so typing `100,03` into a dollar
+   * box met `IDR allows 0 decimal places` and a foreign set-aside could not be entered on this form at all.
+   */
+  const currencyOf = (account: { currency: string | null }) => account.currency ?? ws.baseCurrency;
+  const earmarkOf = (accountId: string) => earmarks.find((earmark) => earmark.goalId === goal?.id && earmark.accountId === accountId);
+  const setAsideText = (account: { id: string; currency: string | null }) => {
+    const typed = setAside[account.id];
+    if (typed !== undefined) return typed;
+    const earmark = earmarkOf(account.id);
+    return earmark ? minorToMajorString(earmark.amountMinor, currencyOf(account)) : '';
+  };
 
   function pickKind(next: GoalKind) {
     setKind(next);
@@ -100,9 +113,9 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
         })),
       });
       for (const account of savingsAccounts) {
-        const typed = (setAside[account.id] ?? '').trim();
+        const typed = setAsideText(account).trim();
         if (typed === '' || Number(typed.replace(/[^\d]/g, '')) === 0) await removeEarmark(database, ws, goalId, account.id);
-        else await saveEarmark(database, ws, { goalId, accountId: account.id, amountMinor: parseMajor(typed, ws.baseCurrency) });
+        else await saveEarmark(database, ws, { goalId, accountId: account.id, amountMinor: parseMajor(typed, currencyOf(account)) });
       }
       await invalidate();
       onDone();
@@ -189,8 +202,8 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
             <p className="text-xs text-slate-500">From savings, cash or a deposit. Holdings are tagged on each purchase instead.</p>
             <div className="grid gap-3 md:grid-cols-2">
               {savingsAccounts.map((account) => (
-                <Field key={account.id} label={`${account.name} (${account.currency})`}>
-                  <Input value={setAside[account.id] ?? ''} onChange={(e) => setSetAside({ ...setAside, [account.id]: e.target.value })} inputMode="decimal" />
+                <Field key={account.id} label={`${account.name} (${currencyOf(account)})`}>
+                  <Input value={setAsideText(account)} onChange={(e) => setSetAside({ ...setAside, [account.id]: e.target.value })} inputMode="decimal" />
                 </Field>
               ))}
             </div>
