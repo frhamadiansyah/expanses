@@ -11,7 +11,7 @@ import { PhotosSheet, photosSummary } from './PhotosSheet';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { EventSheet } from './EventSheet';
 import { WithSheet, withSummary } from './WithSheet';
-import { extraRows, type FormDraft } from './tx-form';
+import { extraRowRefusal, extraRows, type FormDraft } from './tx-form';
 
 /** The pair a rate is missing for, as `resolveRates` reported it, and the day it is wanted for. */
 export interface MissingRate {
@@ -53,13 +53,28 @@ export function MoreDetails({
   // A split is typed, read and posted in the paying account's own currency — `formToPost` refuses any other — so
   // the row's total is read in that one, never in the currency the amount row happens to be showing.
   const currency = accounts.find((a) => a.id === draft.moneyId)?.currency ?? ws.baseCurrency;
+  /*
+   * Split by category and With are exclusive, and whichever was set first is the one that stays: the other row
+   * is greyed, and the reason stands under the group in the words the save would refuse it with. The rule is
+   * `extraRowRefusal`'s alone — this screen only draws what it answers — and the greying is the pattern the
+   * card's own Workspace row already uses for an offer that cannot be honoured.
+   *
+   * Refused *before* Save on purpose: both rows were drawn, both could be set, and the combination then threw
+   * the split's categories away and filed their money under one of them without a word.
+   */
+  const splitRefusal = extraRowRefusal('split', draft);
+  const withRefusal = extraRowRefusal('with', draft);
 
   return (
     <>
       <FormRows>
         {rows.includes('event') && <FormRow label="Event" value={eventName} onClick={() => setSheet('event')} />}
-        {rows.includes('split') && <FormRow label="Split" value={splitSummary(draft.splits, currency)} onClick={() => setSheet('split')} />}
-        {rows.includes('with') && <FormRow label="With" value={withSummary(draft, accounts, currency)} onClick={() => setSheet('with')} />}
+        {rows.includes('split') && (
+          <FormRow label="Split" value={splitSummary(draft.splits, currency)} disabled={!!splitRefusal} onClick={() => setSheet('split')} />
+        )}
+        {rows.includes('with') && (
+          <FormRow label="With" value={withSummary(draft, accounts, currency)} disabled={!!withRefusal} onClick={() => setSheet('with')} />
+        )}
         {rows.includes('mcc') && <FormRow label="MCC" value={draft.mcc} onClick={() => setSheet('mcc')} />}
         {rows.includes('channel') && (
           <FormRow label="Channel" value={draft.channel === 'online' ? 'Online' : draft.channel === 'offline' ? 'Offline' : ''} onClick={() => setSheet('channel')} />
@@ -74,6 +89,13 @@ export function MoreDetails({
           />
         )}
       </FormRows>
+
+      {/* The words themselves, under the group the greyed row is in — drawn the way the rate row's hint is. */}
+      {(splitRefusal ?? withRefusal) && (
+        <div className="mt-1">
+          <RowHint>{splitRefusal ?? withRefusal}</RowHint>
+        </div>
+      )}
 
       {/*
         §3.3: the manual rate lives here and only here, and only when `resolveRates` came back without one for the

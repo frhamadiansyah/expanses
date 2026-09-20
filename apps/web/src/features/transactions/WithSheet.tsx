@@ -4,10 +4,7 @@ import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { Button, Input } from '../../ui';
 import { useRecentPeople } from '../debts/queries';
-import { billMinor, type FormDraft, type WithRow, withShares } from './tx-form';
-
-/** A row names somebody once it carries an account or a typed name; an empty row is not yet a person. */
-const named = (rows: readonly WithRow[]) => rows.filter((row) => row.debtAccountId || row.name.trim());
+import { billMinor, type FormDraft, peopleOn, type WithRow, withShares } from './tx-form';
 
 /**
  * "None", or "3 people · They owe you Rp 300.000" — what the With row says without being opened.
@@ -17,7 +14,7 @@ const named = (rows: readonly WithRow[]) => rows.filter((row) => row.debtAccount
  * as eighty-five thousand.
  */
 export function withSummary(draft: FormDraft, accounts: readonly AccountRow[], currency: string): string {
-  const people = named(draft.with);
+  const people = peopleOn(draft);
   if (people.length === 0) return 'None';
   const { each } = withShares(draft, currency, billMinor(draft, accounts) ?? 0, { lenient: true });
   const theirs = each.reduce((sum, share) => sum + share, 0);
@@ -92,7 +89,9 @@ export function WithSheet({
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return;
-              // A sheet inside a form: Enter here would otherwise submit the transaction behind it.
+              // Enter means Add here, and nothing else. `Sheet` is not a portal, so this input is not inside
+              // the card's `<form>` — but `Button` below defaults to `type="button"` for the same reason, and
+              // an Enter left to the browser in a box beside it would do nothing at all.
               e.preventDefault();
               addTyped();
             }}

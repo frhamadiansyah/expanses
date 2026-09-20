@@ -136,7 +136,6 @@ function CardBody({
   const choices = useMemo(() => buyChoices(assetValues.data ?? [], assetProfiles.data ?? []), [assetValues.data, assetProfiles.data]);
   const money = accounts.filter(isMoneyAccount);
   const account = byId.get(draft.moneyId);
-  const onCard = draft.mode === 'expense' && account?.subtype === 'credit_card';
   const purchase = draft.purchase;
   const chosen = [...choices.buys, ...choices.sells].find((option) => option.value === `${purchase.mode}:${purchase.accountId}`);
   const purchaseMoney = byId.get(purchase.moneyId);
@@ -478,16 +477,21 @@ function CardBody({
             </RowGroup>
           )}
 
-          {/*
-            §4's rows, every one of them, behind one way in. The card used to carry "Someone owes part of this"
-            here as well — one name, one figure, the shape the form had before `splitBill` learned to take
-            several people. It is now the With row inside this sheet, where a dinner for four can be recorded.
-          */}
-          <FormRows>
-            <FormRow label="Add more details" tone="muted" onClick={() => setSheet('details')} />
-          </FormRows>
         </>
       )}
+
+      {/*
+        §4's rows, every one of them, behind one way in. The card used to carry "Someone owes part of this"
+        here as well — one name, one figure, the shape the form had before `splitBill` learned to take
+        several people. It is now the With row inside this sheet, where a dinner for four can be recorded.
+
+        Outside the tab branch, because Buy or sell has extras too: `extraRows` answers Photos and Exclude for
+        every mode, and this row used to be drawn in the expense branch alone — so a trade computed two rows
+        that nothing drew, and a contract note could not be kept with the purchase it belongs to.
+      */}
+      <FormRows>
+        <FormRow label="Add more details" tone="muted" onClick={() => setSheet('details')} />
+      </FormRows>
 
       <ErrorBox error={error} />
       <div className="flex gap-2">

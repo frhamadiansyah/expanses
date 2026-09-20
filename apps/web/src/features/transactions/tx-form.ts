@@ -150,6 +150,43 @@ export function amountFields(draft: FormDraft, accounts: readonly AccountRow[], 
 export type ExtraRow = 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos' | 'exclude' | 'rate';
 
 /**
+ * The With rows that name somebody. A row being typed into is not yet a person on the bill.
+ *
+ * One filter, three readers — `withShares`, the With sheet's own list and the Split/With refusal below. It was
+ * written out twice already, and a fourth copy is how "somebody is on this bill" comes to mean two things.
+ */
+export const peopleOn = (draft: FormDraft): WithRow[] => draft.with.filter((row) => row.debtAccountId || row.name.trim());
+
+/**
+ * Why a split bill cannot also be split by category, in the words the save refuses it with.
+ *
+ * `splitBill` files your own share under **one** category (`ownCategoryId`), because that is the only shape a
+ * receivable-and-spending posting has: each friend's share waits in their own account, and what is left is your
+ * spending under a single heading. A split by category names several. There is no honest way to file one share
+ * across two categories — which of Andi's Rp 42.500 was groceries? — so the two are offered apart rather than
+ * one of them being dropped, which is what used to happen: the Groceries row and its money were filed under
+ * Restaurants, in silence.
+ */
+export const SPLIT_WITH_REFUSAL =
+  'A bill split by category cannot also be shared with someone: each share is filed under one category, and the split names several. Remove the splits, or remove the people.';
+
+/**
+ * Why this row is refused right now — null when it is free to be used.
+ *
+ * **The one place that knows Split by category and With are exclusive.** The screen reads it to grey the second
+ * row out with the reason in it, before Save; `formToPost` reads the same function as the backstop that makes
+ * the combination impossible to post. A refusal stated twice is a refusal one of the two readers will one day
+ * stop making.
+ */
+export function extraRowRefusal(row: ExtraRow, draft: FormDraft): string | null {
+  // On an edit With is not offered at all (§15.6), so there is nothing to refuse and nothing to grey out.
+  if (draft.mode !== 'expense' || draft.editing) return null;
+  if (row === 'split' && peopleOn(draft).length > 0) return SPLIT_WITH_REFUSAL;
+  if (row === 'with' && draft.splits.length > 0) return SPLIT_WITH_REFUSAL;
+  return null;
+}
+
+/**
  * The rows under "Add more details", in the order they are drawn — §4's table, and only what is in it.
  *
  * Event belongs to money that left for the outside world, so §4 scopes it to Expense and Income, as it does
@@ -370,7 +407,7 @@ export interface WithShares {
 export function withShares(draft: FormDraft, currency: string, totalMinor: number, options: { lenient: false }): WithShares & { ownShareMinor: number };
 export function withShares(draft: FormDraft, currency: string, totalMinor: number, options: { lenient: boolean }): WithShares;
 export function withShares(draft: FormDraft, currency: string, totalMinor: number, { lenient }: { lenient: boolean }): WithShares {
-  const people = draft.with.filter((row) => row.debtAccountId || row.name.trim());
+  const people = peopleOn(draft);
   if (people.length === 0) {
     if (!lenient) throw new Error('Say who owes you');
     // Nobody named yet: the whole bill is still yours, which is what the card should say while it fills up.
@@ -414,7 +451,17 @@ export type FormPost =
 export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): FormPost {
   if (draft.mode === 'trade') {
     const currency = accounts.find((a) => a.id === draft.purchase.accountId)?.currency ?? draft.currency;
-    return { kind: 'trade', input: purchaseDraftToInput(draft.purchase, currency, isoDate()) };
+    return {
+      kind: 'trade',
+      input: {
+        ...purchaseDraftToInput(draft.purchase, currency, isoDate()),
+        // §4: Photos and Exclude from report appear "always", and `extraRows` offers both on this tab. Buying
+        // something is the one purchase with a contract note to keep, and the tab used to have nowhere to put
+        // it: the rows were computed and never drawn. The trade's own fields stay `purchase`'s.
+        excludedFromReport: draft.excluded,
+        photoIds: draft.photoIds,
+      },
+    };
   }
 
   const account = accountOf(draft, accounts);
@@ -460,6 +507,20 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
         photoIds: draft.photoIds,
       },
     };
+  }
+
+  /*
+   * Split by category and With, refused together before either is read.
+   *
+   * The screen greys the second row out with these very words, so this is only ever reached by a draft the
+   * screen did not build. It is kept all the same, and kept *first*: a post that got this far would send
+   * `splitBill` one category and the sum of the rows, filing the other categories' money under the first one —
+   * money in the wrong place, with nothing on screen to say so. `extraRowRefusal` is the one statement of the
+   * rule; this asks it rather than restating it.
+   */
+  if (peopleOn(draft).length > 0) {
+    const refusal = extraRowRefusal('with', draft);
+    if (refusal) throw new Error(refusal);
   }
 
   // The split is read before the figure is asked for, because on a split the rows *are* the figure — the order

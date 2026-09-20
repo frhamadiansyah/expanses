@@ -352,6 +352,14 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   // The receipt carries the event and the channel it was given, and says it is out of the chart.
   await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
   await expect(page.getByTestId('receipt-hero')).toBeVisible();
+  /*
+   * And the split itself reached the ledger as **two** categories. This spec set a two-row split up in ten
+   * lines and then asserted nothing about where the money was filed: collapsing `splitExpenseLines` to a
+   * single line — all 85.000 to Groceries, Restaurants' 45.000 gone — passed this file, the receipt file and
+   * lend-borrow, 27 tests, without a murmur. The purchase is excluded, so the chart cannot show the two
+   * categories; the receipt names both of them, and names only one when the split has been collapsed.
+   */
+  await expect(page.getByTestId('receipt-hero')).toContainText('Restaurants · Groceries');
   await expect(page.getByText('Lebaran')).toBeVisible();
   await expect(page.getByText('Offline')).toBeVisible();
   await expect(page.getByText('Excluded from the chart and budgets')).toBeVisible();
@@ -420,6 +428,126 @@ test('a split is read in the paying account’s own currency, exponent and all',
   await expect(split.getByText('Total US$85,00')).toBeVisible();
   await split.getByRole('button', { name: 'Close' }).click();
   await expect(more.getByRole('button', { name: 'Split' })).toContainText('2 splits · Total US$85,00');
+  // One row taken away leaves one row, counted as one: "1 splits" is what this used to say.
+  await more.getByRole('button', { name: 'Split' }).click();
+  await split.getByRole('button', { name: 'Remove split 2' }).click();
+  await split.getByRole('button', { name: 'Close' }).click();
+  await expect(more.getByRole('button', { name: 'Split' })).toContainText('1 split · Total US$40,50');
+});
+
+/**
+ * Where a split by category actually lands: one ledger line per category, each with its own figure.
+ *
+ * The extras spec above sets a two-row split up and its purchase is *excluded*, so no chart can show where the
+ * money went. This one is not excluded, and it reads the two figures back off the month's own chart — which is
+ * built from the ledger, not from the draft. Deliberately uneven (40.000 and 45.000) and deliberately under two
+ * different parents, so a split collapsed onto one category, or one whose figures were swapped, reads wrong here
+ * rather than reading like a rounding.
+ */
+test('a split by category posts one line per category, each with its own figure', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', async () => {
+    await page.getByLabel('Current balance').fill('50000000');
+  });
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await form.getByLabel('Note').fill('Superindo');
+
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+  await more.getByRole('button', { name: 'Split' }).click();
+  const split = page.getByRole('dialog', { name: 'Split' });
+  await split.getByRole('button', { name: '+ Split' }).click();
+  await split.getByLabel('Split 1 category').selectOption({ label: 'Groceries' });
+  await split.getByLabel('Split 1 amount').fill('40000');
+  await split.getByLabel('Split 2 category').selectOption({ label: 'Restaurants' });
+  await split.getByLabel('Split 2 amount').fill('45000');
+  await split.getByRole('button', { name: 'Close' }).click();
+  await more.getByRole('button', { name: 'Close' }).click();
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  // The whole bill left the account, once.
+  await page.goto('/accounts');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('49.915.000');
+
+  // And the month knows which 40.000 was groceries and which 45.000 was a restaurant: Groceries sits under
+  // Household and Restaurants under Food and beverage, so the two figures cannot hide in one row.
+  await page.goto('/transactions');
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 85.000');
+  await page.getByTestId('see-categories').click();
+  await expect(page.getByTestId('report-row').filter({ hasText: 'Household' })).toContainText('Rp 40.000');
+  await expect(page.getByTestId('report-row').filter({ hasText: 'Food and beverage' })).toContainText('Rp 45.000');
+});
+
+/**
+ * Split by category and With, offered side by side and refused together — in words, before Save.
+ *
+ * `splitBill` files your own share under one category, so a bill split across several has nowhere to put the
+ * rest. Both rows used to be live: setting both posted the bill under the *first* split's category and threw
+ * the others away, money and all, with nothing on screen to say so. Now whichever was set first stands and the
+ * other row is greyed with the reason under it, so nothing has to be discovered at Save.
+ */
+test('Split by category and With refuse each other in words, before Save', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', async () => {
+    await page.getByLabel('Current balance').fill('50000000');
+  });
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('85000');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+  // Both rows are live while neither is set: the combination is offered, and refused only once it is made.
+  await expect(more.getByRole('button', { name: 'Split' })).toBeEnabled();
+  await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
+
+  await more.getByRole('button', { name: 'Split' }).click();
+  const split = page.getByRole('dialog', { name: 'Split' });
+  await split.getByRole('button', { name: '+ Split' }).click();
+  await split.getByLabel('Split 1 amount').fill('50000');
+  await split.getByLabel('Split 2 category').selectOption({ label: 'Groceries' });
+  await split.getByLabel('Split 2 amount').fill('35000');
+  await split.getByRole('button', { name: 'Close' }).click();
+
+  // With is shut, and says why — before Save, not as an error after it.
+  await expect(more.getByRole('button', { name: 'With', exact: true })).toBeDisabled();
+  await expect(more).toContainText('Remove the splits, or remove the people');
+  // Split itself stays open: what was set first is the one that can still be corrected.
+  await expect(more.getByRole('button', { name: 'Split' })).toBeEnabled();
+
+  // The way out the words name really is a way out: take the splits off and With is offered again.
+  await more.getByRole('button', { name: 'Split' }).click();
+  await split.getByRole('button', { name: 'Remove split 2' }).click();
+  await split.getByRole('button', { name: 'Remove split 1' }).click();
+  await split.getByRole('button', { name: 'Close' }).click();
+  await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
+
+  // And the refusal goes the other way round too: a person on the bill shuts Split.
+  await more.getByRole('button', { name: 'With', exact: true }).click();
+  const withSheet = page.getByRole('dialog', { name: 'With', exact: true });
+  await withSheet.getByLabel('Add a person').fill('Andi');
+  await withSheet.getByRole('button', { name: 'Add', exact: true }).click();
+  await withSheet.getByRole('button', { name: 'Close' }).click();
+  await expect(more.getByRole('button', { name: 'Split' })).toBeDisabled();
+  await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
+
+  // …and the bill still saves as a shared bill, whole, under the one category it was given.
+  await more.getByRole('button', { name: 'Close' }).click();
+  await form.getByLabel('Note').fill('Warung Steak');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+  await page.goto('/net-worth/debts');
+  await expect(page.getByRole('heading', { name: 'Andi' }).locator('xpath=following-sibling::span')).toContainText('42.500');
 });
 
 test('a missing rate is asked for under Add more details, and the save then goes through', async ({ page }) => {

@@ -15,7 +15,9 @@ import { type FormDraft, type SplitRow, splitTotalMinor } from './tx-form';
  */
 export function splitSummary(splits: readonly SplitRow[], currency: string): string {
   if (splits.length === 0) return 'None';
-  return `${splits.length} splits · Total ${formatMinor(splitTotalMinor(splits, currency), currency)}`;
+  // One row is reachable — **+ Split** makes two and ✕ takes one away — and "1 splits" is what it used to say,
+  // where both of its siblings count in words a person would use.
+  return `${splits.length} ${splits.length === 1 ? 'split' : 'splits'} · Total ${formatMinor(splitTotalMinor(splits, currency), currency)}`;
 }
 
 /**

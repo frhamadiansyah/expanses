@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { addPurchase, addTransaction } from './add-transaction';
+import { addPurchase, addTransaction, attachPhoto } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -287,4 +287,40 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
   await expect(row).toContainText('MCC 5944 · typed');
   // Rp 1.350.000 on this card is 100 miles. Nought would mean the category never reached the engine.
   await expect(row).toContainText('100 miles');
+});
+
+/**
+ * §4 scopes Photos and Exclude from report to "always", and `extraRows` answers both for a trade — but the card
+ * drew "Add more details" inside the expense branch alone, so the Buy or sell tab computed two rows that nothing
+ * ever drew. A contract note could not be kept with the purchase it belongs to, and `purchaseDraftToInput` had
+ * nowhere to take either fact from.
+ *
+ * Both halves are read back off the receipt, which is built from what was stored rather than from the draft.
+ */
+test('a purchase can keep its contract note and be left out of the report', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await addGold(page);
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Buy or sell' }).click();
+  await form.getByLabel('Grams').fill('2');
+  await form.getByLabel(/What it cost, before fees/).fill('3980000');
+  await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
+
+  // The very same row the other three tabs carry, opening the very same sheet.
+  const { more, sheet } = await attachPhoto(page, form, { name: 'note.png', mimeType: 'image/png', buffer: Buffer.from('a contract note') });
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  await more.getByRole('switch', { name: 'Exclude from report' }).click();
+  await more.getByRole('button', { name: 'Close' }).click();
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Receipt for Bought 2 Antam gold bars' }).click();
+  await expect(page.getByTestId('receipt-hero')).toBeVisible();
+  // The picture is on the transaction, and the exclusion was stored with it: neither was dropped on the way.
+  await expect(page.getByTestId('photo-strip').getByRole('img')).toHaveCount(1);
+  await expect(page.getByTestId('excluded-note')).toBeVisible();
 });

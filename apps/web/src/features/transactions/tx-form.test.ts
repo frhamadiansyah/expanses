@@ -11,6 +11,7 @@ import {
   chargedInNeeded,
   emptyForm,
   estimatedCharge,
+  extraRowRefusal,
   extraRows,
   type FormDraft,
   formFromTransaction,
@@ -19,6 +20,7 @@ import {
   keypadAction,
   keypadPress,
   recentCurrencies,
+  SPLIT_WITH_REFUSAL,
   suggestedRate,
   withShares,
 } from './tx-form';
@@ -30,6 +32,8 @@ const accounts = [
   // Exponent 2, so a figure read in the wrong currency is off by 100 rather than quietly identical. Every
   // split assertion used to be IDR, which has exponent 0 and cannot tell a currency mistake from a correct read.
   { id: 'acct-usd', name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' },
+  // Something to buy and sell, so the trade tab's own draft has a holding with a currency of its own.
+  { id: 'acct-gold', name: 'Antam gold', kind: 'asset', subtype: 'investment', currency: 'IDR' },
   { id: 'cat-restaurants', name: 'Restaurants', kind: 'expense', subtype: 'category', currency: null },
 ] as AccountRow[];
 
@@ -362,6 +366,104 @@ describe('a bill spread over several categories', () => {
     expect(formToPost({ ...split, amount: '400000' }, accounts)).toMatchObject({ kind: 'post' });
   });
 
+  /**
+   * A bill split by category and a bill shared with somebody, together.
+   *
+   * `extraRows` offers both rows on any new expense, and the pair used to post `splitBill` one category and the
+   * sum of the rows: an 85.000 bill split Restaurants 50.000 / Groceries 35.000 and shared with Andi posted
+   * `ownCategoryId: cat-restaurants, totalMinor: 85000` — the Groceries row gone and its 35.000 filed under
+   * Restaurants, with no error and both rows still on the screen above Save.
+   */
+  describe('a split by category shared with somebody', () => {
+    const both: FormDraft = {
+      ...draft,
+      amount: '',
+      splits: [
+        { categoryId: 'cat-restaurants', amount: '50000' },
+        { categoryId: 'cat-groceries', amount: '35000' },
+      ],
+      withEqually: true,
+      with: [{ debtAccountId: '', name: 'Andi', amount: '' }],
+    };
+
+    it('is refused in words rather than filing one category’s money under another', () => {
+      expect(() => formToPost(both, accounts)).toThrow(SPLIT_WITH_REFUSAL);
+      // The words name both ways out, because either one is a whole answer on its own.
+      expect(SPLIT_WITH_REFUSAL).toContain('Remove the splits, or remove the people');
+    });
+
+    it('cannot reach splitBill at all, whichever half is dropped', () => {
+      // Neither of the two shapes the old code could post is posted now: no split bill naming one category,
+      // and no plain posting that quietly forgets Andi.
+      expect(() => formToPost(both, accounts)).toThrow();
+      // Take the people away and the split posts, both categories intact — the fix refuses the pair, not Split.
+      expect(formToPost({ ...both, with: [] }, accounts)).toMatchObject({
+        kind: 'post',
+        input: {
+          lines: splitExpenseLines({
+            paymentAccountId: 'acct-bank',
+            currency: 'IDR',
+            splits: [
+              { categoryAccountId: 'cat-restaurants', amountMinor: 50_000 },
+              { categoryAccountId: 'cat-groceries', amountMinor: 35_000 },
+            ],
+          }),
+        },
+      });
+      // Take the splits away and the shared bill posts, all 85.000 of it under the one category chosen.
+      expect(formToPost({ ...both, splits: [], amount: '85000' }, accounts)).toMatchObject({
+        kind: 'split',
+        input: { totalMinor: 85_000, ownCategoryId: 'cat-restaurants', ownShareMinor: 42_500, shares: [{ amountMinor: 42_500 }] },
+      });
+    });
+
+    it('greys out whichever row was not set first, and only that one', () => {
+      // Nothing set: both rows are free, which is the state the combination is offered from.
+      expect(extraRowRefusal('split', draft)).toBeNull();
+      expect(extraRowRefusal('with', draft)).toBeNull();
+      // A split set first closes With, and leaves Split itself open to be corrected.
+      const split = { ...both, with: [] };
+      expect(extraRowRefusal('with', split)).toBe(SPLIT_WITH_REFUSAL);
+      expect(extraRowRefusal('split', split)).toBeNull();
+      // People set first close Split, the same way round.
+      const shared = { ...both, splits: [] };
+      expect(extraRowRefusal('split', shared)).toBe(SPLIT_WITH_REFUSAL);
+      expect(extraRowRefusal('with', shared)).toBeNull();
+      // A row still being typed into names nobody, so it closes nothing.
+      expect(extraRowRefusal('split', { ...both, splits: [], with: [{ debtAccountId: '', name: '  ', amount: '' }] })).toBeNull();
+    });
+
+    it('leaves a split with no category chosen a way out rather than a dead end', () => {
+      // Open Split before choosing a category and the Category row goes; the save then asked for a category
+      // there was no row anywhere to give it, and only deleting every split escaped. It asks for none now.
+      const noCategory = { ...both, categoryId: '', with: [] };
+      expect(formToPost(noCategory, accounts)).toMatchObject({ kind: 'post' });
+      // And with Andi on it the refusal is the one that names the escape, not "Choose a category".
+      expect(() => formToPost({ ...noCategory, with: both.with }, accounts)).toThrow(SPLIT_WITH_REFUSAL);
+    });
+  });
+
+  it('keeps the photos and the exclusion on a buy or sell, which had nowhere to put them', () => {
+    // §4 scopes both to "always" and `extraRows` answers both for a trade — but the card drew the row in the
+    // expense branch alone, so the tab computed two rows nothing drew and `recordTrade` was handed neither.
+    const trade: FormDraft = {
+      ...emptyForm('ws-1'),
+      mode: 'trade',
+      excluded: true,
+      photoIds: ['p1'],
+      purchase: { ...emptyForm('ws-1').purchase, accountId: 'acct-gold', moneyId: 'acct-bank', amount: '3980000', units: '2', occurredOn: '2026-09-17' },
+    };
+    expect(formToPost(trade, accounts)).toMatchObject({
+      kind: 'trade',
+      input: { grossMinor: 3_980_000, excludedFromReport: true, photoIds: ['p1'] },
+    });
+    // Unset, they are not invented: an ordinary trade is in the report like everything else.
+    expect(formToPost({ ...trade, excluded: false, photoIds: [] }, accounts)).toMatchObject({
+      kind: 'trade',
+      input: { excludedFromReport: false, photoIds: [] },
+    });
+  });
+
   it('still names the split row whose category is missing', () => {
     expect(() =>
       formToPost({ ...draft, amount: '', splits: [{ categoryId: 'cat-restaurants', amount: '250000' }, { categoryId: '', amount: '150000' }] }, accounts),
@@ -638,52 +740,58 @@ describe('the currency sheet', () => {
  * the same whether the currency was honoured or ignored. This path was pinned in IDR alone once already.
  */
 describe('withShares', () => {
-  /** US$100.01 on the USD account: uneven in a currency with two decimal places. */
-  const usd: FormDraft = { ...draft, moneyId: 'acct-usd', currency: 'USD', amount: '100.01' };
+  /**
+   * US$100.03 on the USD account: uneven in a currency with two decimal places, and uneven the one way that
+   * separates floor from round. 10001/4 is 2500.25, which floors and rounds to the same 2500 — so the fixture
+   * this replaces survived a `Math.round` put where `Math.floor` is. 10003/4 is 2500.75: floored it is 2500
+   * each and the odd 3 cents come back to you; rounded it would be 2501 each and the shares would come to
+   * more than the bill.
+   */
+  const usd: FormDraft = { ...draft, moneyId: 'acct-usd', currency: 'USD', amount: '100.03' };
   const people = (...names: string[]) => names.map((name) => ({ debtAccountId: '', name, amount: '' }));
 
   it('divides a bill that does not divide evenly, and leaves the odd units with you', () => {
     const bill = billMinor({ ...usd, withEqually: true, with: people('Andi', 'Budi', 'Citra') }, accounts);
-    expect(bill).toBe(10_001);
+    expect(bill).toBe(10_003);
     const shared = withShares({ ...usd, withEqually: true, with: people('Andi', 'Budi', 'Citra') }, 'USD', bill!, { lenient: true });
-    // floor(10001/4) = 2500 each; the odd 1 cent stays with you rather than being asked of anybody.
+    // floor(10003/4) = 2500 each — 2501 if it were rounded — and the odd 3 cents stay with you.
     expect(shared.each).toEqual([2500, 2500, 2500]);
-    expect(shared.ownShareMinor).toBe(2501);
+    expect(shared.ownShareMinor).toBe(2503);
     // And the whole point of the rule: the four shares are the bill again, to the cent.
-    expect(shared.each.reduce((sum, share) => sum + share, 0) + shared.ownShareMinor!).toBe(10_001);
+    expect(shared.each.reduce((sum, share) => sum + share, 0) + shared.ownShareMinor!).toBe(10_003);
   });
 
   it('leaves you what is left when a share is typed, rather than half of anything', () => {
     const typed = { ...usd, with: [{ debtAccountId: '', name: 'Andi', amount: '33.34' }] };
-    const shown = withShares(typed, 'USD', 10_001, { lenient: true });
+    const shown = withShares(typed, 'USD', 10_003, { lenient: true });
     // US$33.34 is 3334 cents, not 33 and not 3334 rupiah: the figure is read in the currency it was typed in.
     expect(shown.each).toEqual([3334]);
-    // 6667, never 5000: what is left of the bill, not half of it.
-    expect(shown.ownShareMinor).toBe(6667);
+    // 6669, never 5001: what is left of the bill, not half of it.
+    expect(shown.ownShareMinor).toBe(6669);
   });
 
   it('reads a half-typed share as nothing for the card, and refuses it at the save', () => {
     const halfTyped = { ...usd, with: [{ debtAccountId: '', name: 'Andi', amount: '' }] };
     // The card is read while the row is still being typed into, so nothing owed yet is nothing owed.
-    expect(withShares(halfTyped, 'USD', 10_001, { lenient: true })).toMatchObject({ each: [0], ownShareMinor: 10_001 });
+    expect(withShares(halfTyped, 'USD', 10_003, { lenient: true })).toMatchObject({ each: [0], ownShareMinor: 10_003 });
     // The save is the opposite bargain: a share of zero must never post as somebody owing nothing. The words
     // are `parseMajor`'s, because an empty box never reaches `positive`'s own "greater than zero" — the same
     // refusal the single-person card has always given, kept rather than reworded here.
-    expect(() => withShares(halfTyped, 'USD', 10_001, { lenient: false })).toThrow('Invalid amount');
+    expect(() => withShares(halfTyped, 'USD', 10_003, { lenient: false })).toThrow('Invalid amount');
   });
 
   it('says so rather than showing a share below zero when the shares come to more than the bill', () => {
     const tooMuch = { ...usd, with: [{ debtAccountId: '', name: 'Andi', amount: '120' }] };
-    expect(withShares(tooMuch, 'USD', 10_001, { lenient: true }).ownShareMinor).toBeNull();
-    expect(() => withShares(tooMuch, 'USD', 10_001, { lenient: false })).toThrow('Their shares come to more than the bill');
+    expect(withShares(tooMuch, 'USD', 10_003, { lenient: true }).ownShareMinor).toBeNull();
+    expect(() => withShares(tooMuch, 'USD', 10_003, { lenient: false })).toThrow('Their shares come to more than the bill');
   });
 
   it('is the same arithmetic the save posts, to the cent', () => {
     const shared = { ...usd, withEqually: true, with: people('Andi', 'Budi', 'Citra') };
-    const shown = withShares(shared, 'USD', 10_001, { lenient: true });
+    const shown = withShares(shared, 'USD', 10_003, { lenient: true });
     expect(formToPost(shared, accounts)).toMatchObject({
       kind: 'split',
-      input: { totalMinor: 10_001, ownShareMinor: shown.ownShareMinor, shares: shown.each.map((amountMinor) => ({ amountMinor })) },
+      input: { totalMinor: 10_003, ownShareMinor: shown.ownShareMinor, shares: shown.each.map((amountMinor) => ({ amountMinor })) },
     });
   });
 
