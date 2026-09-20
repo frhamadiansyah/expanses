@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -44,11 +45,13 @@ test('records a purchase from the transaction window, and it never counts as spe
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('button', { name: 'Buy or sell' }).click();
-  await page.getByLabel('Grams').fill('2');
-  await page.getByLabel(/What it cost, before fees/).fill('3980000');
-  await page.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByRole('button', { name: 'Save' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Buy or sell' }).click();
+  await form.getByLabel('Grams').fill('2');
+  await form.getByLabel(/What it cost, before fees/).fill('3980000');
+  await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
 
   // The purchase shows as a purchase, not as spending.
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
@@ -69,12 +72,14 @@ test('pays for a purchase with the credit card, so the card owes more and the po
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('button', { name: 'Buy or sell' }).click();
-  await page.getByLabel('Grams').fill('2');
-  await page.getByLabel(/What it cost, before fees/).fill('3980000');
-  await page.getByLabel('Paid with').first().selectOption({ label: 'BCA KrisFlyer (IDR)' });
-  await page.getByLabel('MCC').fill('5944');
-  await page.getByRole('button', { name: 'Save' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Buy or sell' }).click();
+  await form.getByLabel('Grams').fill('2');
+  await form.getByLabel(/What it cost, before fees/).fill('3980000');
+  await form.getByLabel('Paid with').first().selectOption({ label: 'BCA KrisFlyer (IDR)' });
+  await form.getByLabel('MCC').fill('5944');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
 
   // The card now owes the purchase, and the bank was never touched.
@@ -89,10 +94,11 @@ test('a transfer cannot land in a holding measured in units', async ({ page }) =
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('button', { name: 'Transfer' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer' }).click();
   // Exactly "To": the chart above the form labels itself "… Total spent", which a loose match also catches.
-  await expect(page.getByLabel('To', { exact: true })).not.toContainText('Antam gold bars');
-  await expect(page.getByText(/Use Buy or sell, so units are counted/)).toBeVisible();
+  await expect(form.getByLabel('To', { exact: true })).not.toContainText('Antam gold bars');
+  await expect(form.getByText(/Use Buy or sell, so units are counted/)).toBeVisible();
 });
 
 test('turns an expense already recorded into the purchase it really was', async ({ page }) => {
@@ -100,12 +106,7 @@ test('turns an expense already recorded into the purchase it really was', async 
   await addGold(page);
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('UBS Gold Store');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Shopping (general)' });
-  await page.getByLabel('Amount').fill('3980000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'UBS Gold Store', paidWith: 'BCA Tahapan', category: 'Shopping', amount: '3980000' });
   await expect(page.getByText('UBS Gold Store')).toBeVisible();
 
   // The row opens where it is; turning it into a purchase is one of the things it offers there.
@@ -142,12 +143,15 @@ test('parks money at the broker for a goal, then buys one lot and the leftover k
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('button', { name: 'Transfer' }).click();
-  await page.getByLabel('From').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('To', { exact: true }).selectOption({ label: 'RDN Stockbit (IDR)' });
-  await page.getByLabel('Amount').fill('2000000');
-  await page.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
-  await page.getByRole('button', { name: 'Save' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer' }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await form.getByLabel('To', { exact: true }).selectOption({ label: 'RDN Stockbit (IDR)' });
+  await form.getByLabel('Amount', { exact: true }).fill('2000000');
+  await form.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
   // The row carries the goal once the write has landed, so the next page cannot read a stale database.
   await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
 
@@ -158,13 +162,15 @@ test('parks money at the broker for a goal, then buys one lot and the leftover k
   // One lot of 100 shares at Rp 9.889,81 leaves Rp 1.011.019 behind.
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('button', { name: 'Buy or sell' }).click();
-  await page.getByLabel('What you bought or sold').selectOption({ label: 'Investments › BBRI shares' });
-  await page.getByLabel('Lots').fill('1');
-  await page.getByLabel(/What it cost, before fees/).fill('988981');
-  await page.getByLabel('Paid with').first().selectOption({ label: 'RDN Stockbit (IDR)' });
-  await page.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
-  await page.getByRole('button', { name: 'Save' }).click();
+  const buying = page.getByRole('dialog', { name: 'Add a transaction' });
+  await buying.getByRole('radio', { name: 'Buy or sell' }).click();
+  await buying.getByLabel('What you bought or sold').selectOption({ label: 'Investments › BBRI shares' });
+  await buying.getByLabel('Lots').fill('1');
+  await buying.getByLabel(/What it cost, before fees/).fill('988981');
+  await buying.getByLabel('Paid with').first().selectOption({ label: 'RDN Stockbit (IDR)' });
+  await buying.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
+  await buying.getByRole('button', { name: 'Save' }).click();
+  await expect(buying).toHaveCount(0);
   await expect(page.getByText('Bought 100 BBRI shares')).toBeVisible();
 
   // The leftover is still waiting at the broker, and the Overview says so.

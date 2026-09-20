@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -41,23 +42,29 @@ interface Purchase {
 
 async function buy(page: Page, p: Purchase) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  if (p.on) await page.getByLabel('Date').fill(p.on);
-  await page.getByLabel('Description').fill(p.description);
-  await page.getByLabel('Paid with').selectOption({ label: `${p.card} (IDR)` });
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: p.category });
-  await page.getByLabel('Amount', { exact: true }).fill(p.amount);
-  if (p.mcc) {
-    await page.getByText('Card purchase details').click();
-    await page.getByLabel('MCC', { exact: true }).fill(p.mcc);
-    if (p.remember) {
-      await page.getByLabel('Remember this MCC for every purchase containing the merchant text').check();
-      await page.getByLabel('Merchant text', { exact: true }).fill(p.remember);
-    }
+  if (!p.mcc) {
+    await addTransaction(page, { description: p.description, paidWith: p.card, category: p.category, amount: p.amount, date: p.on });
+    if (!p.on) await expect(page.getByText(p.description)).toBeVisible();
+    return;
   }
-  await page.getByRole('button', { name: 'Save' }).click();
-  // The form closes once the purchase is saved; a purchase dated in another month is not in this month's list.
-  await expect(page.getByRole('button', { name: 'Add transaction' })).toBeVisible();
+  // The MCC keeps the shape it has today — Task 13 moves it under "Add more details" with the rest of §4.
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: p.card, exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill(p.amount);
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: p.category, exact: true }).click();
+  await form.getByLabel('Note').fill(p.description);
+  if (p.on) await form.getByLabel('Date').fill(p.on);
+  await form.getByText('Card purchase details').click();
+  await form.getByLabel('MCC', { exact: true }).fill(p.mcc);
+  if (p.remember) {
+    await form.getByLabel('Remember this MCC for every purchase containing the merchant text').check();
+    await form.getByLabel('Merchant text', { exact: true }).fill(p.remember);
+  }
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
   if (!p.on) await expect(page.getByText(p.description)).toBeVisible();
 }
 
@@ -109,7 +116,7 @@ test('a per-purchase actual of 0 suggests fast food, and remembering it matches 
 test('a BMW dealer purchase earns 1 TREATS Point per Rp 3.333', async ({ page }) => {
   await addCard(page, 'BMW Card');
   await applyCatalogue(page, 'BMW Card', 'bmw', 'BMW Maybank Kartu Kredit');
-  await buy(page, { card: 'BMW Card', description: 'BMW ASTRA CILANDAK', category: 'Miscellaneous (general)', amount: '3333000' });
+  await buy(page, { card: 'BMW Card', description: 'BMW ASTRA CILANDAK', category: 'Miscellaneous', amount: '3333000' });
   await openCard(page, 'BMW Card');
   await page.getByRole('tab', { name: 'Points' }).click();
   await expect(thisCycle(page)).toContainText(/At BMW dealers\s*Rp\s3\.333\.000 → 1\.000 points/);
@@ -128,7 +135,7 @@ test('a shoe store purchase typed as MCC 5661 earns the Manchester United sports
 test('a BCA statement total that differs lists likely causes', async ({ page }) => {
   await addCard(page, 'KF Signature');
   await applyCatalogue(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
-  await buy(page, { card: 'KF Signature', description: 'PANTI ASUHAN KASIH', category: 'Gift giving (general)', amount: '1350000', on: lastCycleDate() });
+  await buy(page, { card: 'KF Signature', description: 'PANTI ASUHAN KASIH', category: 'Gift giving', amount: '1350000', on: lastCycleDate() });
 
   await openCard(page, 'KF Signature');
   await page.getByRole('tab', { name: 'Points' }).click();

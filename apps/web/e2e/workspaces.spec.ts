@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addItem, moneyIn, planFor } from './event-plan';
+import { addTransaction } from './add-transaction';
 
 /**
  * An account is yours, not a workspace's, so its history holds every workspace and each row says which one it
@@ -14,12 +15,7 @@ test('an account’s history opens from Accounts, and badges nothing while there
   await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Supplier dinner');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
-  await page.getByLabel('Amount', { exact: true }).fill('640000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'Supplier dinner', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '640000' });
   await expect(page.getByText('Supplier dinner')).toBeVisible();
 
   await page.goto('/accounts');
@@ -65,12 +61,7 @@ async function addBank(page: Page) {
 
 async function spend(page: Page, description: string, amount: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: description, paidWith: 'BCA Tahapan', category: 'Restaurants', amount: amount });
   await expect(page.getByText(description)).toBeVisible();
 }
 
@@ -99,8 +90,11 @@ test('a new workspace copies the categories, opens empty, and leaves the other a
   await expect(page.getByText('Supplier dinner')).toHaveCount(0);
   // The tree came with it, so there is somewhere to file a business dinner from the first day.
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await expect(page.getByLabel('Category').locator('option', { hasText: 'Restaurants' })).toHaveCount(1);
-  await page.getByRole('button', { name: 'Cancel' }).click();
+  const card = page.getByRole('dialog', { name: 'Add a transaction' });
+  await card.getByRole('button', { name: 'Category' }).click();
+  await expect(page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true })).toHaveCount(1);
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Close' }).click();
+  await card.getByRole('button', { name: 'Cancel' }).click();
 
   // Back in Personal, the dinner is where it was: a new workspace took nothing away.
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
@@ -189,12 +183,7 @@ async function addCard(page: Page) {
 /** Spends on the card from whatever workspace is open. */
 async function buyOnCard(page: Page, description: string, amount: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Visa (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: description, paidWith: 'BCA Visa', category: 'Restaurants', amount: amount });
   await expect(page.getByText(description).first()).toBeVisible();
 }
 
@@ -280,12 +269,7 @@ const TODAY = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0'
 /** Records spending in whatever workspace is open, against a category of that workspace. */
 async function spendOn(page: Page, description: string, category: string, amount: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: category });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: description, paidWith: 'BCA Tahapan', category: category, amount: amount });
   await expect(page.getByText(description).first()).toBeVisible();
 }
 

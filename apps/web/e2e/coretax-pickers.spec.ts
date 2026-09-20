@@ -53,19 +53,24 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   // But nothing will let it pay for lunch.
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  const payer = page.getByLabel('Paid with');
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const payer = page.getByRole('dialog', { name: 'Paid with' });
   await expect(payer).toContainText('BCA Tahapan');
   await expect(payer).not.toContainText('Deposito BCA 6 bulan');
+  await payer.getByRole('button', { name: 'Close' }).click();
 
-  // It comes back with a transfer, which is the only honest way out.
-  await page.getByRole('button', { name: 'Transfer' }).click();
-  await page.getByLabel('From').selectOption({ label: 'Deposito BCA 6 bulan (IDR)' });
+  // It comes back with a transfer, which is the only honest way out. A transfer may move money between any two
+  // money accounts, so the deposit that cannot pay for lunch is offered here.
+  await form.getByRole('radio', { name: 'Transfer' }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Deposito BCA 6 bulan', exact: true }).click();
   // Exact, as every other transfer spec asks: rows now end in a "Receipt for …" ⓘ, and a loose "To" matches
   // any description with "to" in it — "Deposito BCA 6 bulan", here.
-  await page.getByLabel('To', { exact: true }).selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Amount', { exact: true }).fill('100000000');
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByLabel('From')).toBeHidden();
+  await form.getByLabel('To', { exact: true }).selectOption({ label: 'BCA Tahapan (IDR)' });
+  await form.getByLabel('Amount', { exact: true }).fill('100000000');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
   await page.goto('/accounts');
   await expect(page.locator('li', { has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) })).toContainText('120.000.000');
 });

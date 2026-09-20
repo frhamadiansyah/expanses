@@ -1,18 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
 async function spend(page: Page, what: string, category: string, amount: string) {
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Add a transaction' });
-  await sheet.getByLabel('Description').fill(what);
-  await sheet.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await sheet.getByLabel('Category', { exact: true }).selectOption({ label: category });
-  await sheet.getByLabel('Amount', { exact: true }).fill(amount);
-  await sheet.getByRole('button', { name: 'Save' }).click();
-  await expect(sheet).toHaveCount(0);
+  await addTransaction(page, { description: what, paidWith: 'BCA Tahapan', category, amount });
 }
 
 test('a budget row leads with what is left or over, then what was spent and its share of the budget', async ({ page }) => {

@@ -34,6 +34,7 @@ import { TradesPage } from '../features/networth/TradesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
+import { EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { SettingsPage } from '../features/workspaces/SettingsPage';
@@ -87,9 +88,13 @@ const routeTree = rootRoute.addChildren([
       view: search.view === 'table' || search.view === 'list' ? search.view : undefined,
     }),
   }),
-  // One transaction, whole. `/transactions/new` and `/transactions/$transactionId/edit` arrive in Task 10 and
-  // both outrank this: a static segment beats a dynamic one wherever it sits in this array.
+  // The card as a screen. "new" is a static segment, so it beats `$transactionId` below however the two are
+  // ordered here — asserted in `add-transaction.spec.ts` rather than trusted, since being wrong about it means
+  // opening a receipt for a transaction called "new".
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute }),
+  // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/edit', component: EditTransactionRoute }),
   // Spending was its own page; the chart it held now leads the transactions it adds up.
   createRoute({
     getParentRoute: () => rootRoute,

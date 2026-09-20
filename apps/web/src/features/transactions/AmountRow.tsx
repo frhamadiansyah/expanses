@@ -165,10 +165,18 @@ export function AmountRow({
 
   return (
     <div className="rounded-xl bg-white ring-1 ring-slate-200">
-      <div className="flex h-14 items-center gap-2 px-3">
+      {/* While the dock is open the figure sits above the dock's own backdrop (z-30), so tapping it again
+          puts the dock away rather than being swallowed by the sheet of glass the dock lays over the page —
+          without that, the fourth way out is unreachable, which an e2e now holds in place. Only while the
+          dock is open: raised at all times it would paint over any sheet that opened later. */}
+      <div className={cx('flex h-14 items-center gap-2 px-3', keypad !== null && 'relative z-40')}>
         <button
           type="button"
-          onClick={() => setPicking(true)}
+          onClick={() => {
+            // One thing open at a time: the dock is over the page, and the sheet has to be over the dock.
+            setKeypad(null);
+            setPicking(true);
+          }}
           aria-label="Currency"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
         >
@@ -195,7 +203,7 @@ export function AmountRow({
       </div>
 
       {fields.charged && (
-        <div className="border-t border-slate-200 px-3 py-2">
+        <div className={cx('border-t border-slate-200 px-3 py-2', keypad !== null && 'relative z-40 bg-white')}>
           <div className="flex h-10 items-center gap-2 text-sm">
             <span className="shrink-0 text-slate-600">
               Charged in <em className="not-italic font-medium text-slate-900">{settled}</em>

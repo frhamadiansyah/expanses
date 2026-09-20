@@ -1,13 +1,13 @@
-import { categoryPath, formatMinor, isoDate } from '@expanses/core';
+import { formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, replaceTransaction } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { Sheet } from '../../app/Sheet';
-import { categoryChoices, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { SwipeRow } from '../../ui/SwipeRow';
 import { UndoToast } from '../../ui/UndoToast';
 import { CategoryIcon } from '../categories/CategoryIcon';
+import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { isQuickEditable, quickFromTransaction, quickToInput, type QuickValues, readQuick } from './quick-row';
@@ -229,14 +229,11 @@ export function useRecategorise(): {
 } {
   const { database, ws } = useApp();
   const accounts = useAccounts().data ?? [];
-  // `useAccounts` answers with every book's categories; a picker may only offer the open book's.
-  const inOpenBook = useInOpenBook();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const [picking, setPicking] = useState<ListRow | null>(null);
   const [toast, setToast] = useState<{ text: string; back: () => Promise<void> } | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
   const today = isoDate();
 
   // Only a plain purchase: a split, a transfer, an opening balance or a price in another currency cannot be
@@ -260,20 +257,14 @@ export function useRecategorise(): {
   }
 
   async function run(work: () => Promise<void>) {
-    setBusy(true);
     setError(null);
     try {
       await work();
     } catch (e) {
       setError(e);
-    } finally {
-      setBusy(false);
     }
   }
 
-  // The same narrowing the form's own Category select and the list's filter use: every picker on every screen
-  // that opens this sheet — the list, an event's history — offers the open workspace's categories and no others.
-  const expenses = categoryChoices(accounts, 'expense', inOpenBook);
 
   return {
     offers,
@@ -284,45 +275,29 @@ export function useRecategorise(): {
     overlay: (
       <>
         {picking && (
-          <Sheet title={`Category for ${picking.description}`} onClose={() => setPicking(null)}>
-            {error !== null && <ErrorBox error={error} />}
-            <ul className="divide-y divide-slate-100">
-              {expenses.map((category) => (
-                <li key={category.id}>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      const tx = picking.tx!;
-                      const was = picking.categoryId;
-                      const values = quickFromTransaction(tx, today);
-                      setPicking(null);
-                      void run(async () => {
-                        const moved = await fileAs(tx.id, values, category.id);
-                        setToast({
-                          text: `Moved to ${category.name}`,
-                          back: async () => {
-                            if (was) await fileAs(moved, values, was);
-                          },
-                        });
-                      });
-                    }}
-                    title={categoryPath(accounts, category.id)}
-                    className="flex min-h-11 w-full items-center gap-3 px-1 text-left text-sm hover:bg-slate-50"
-                  >
-                    <CategoryIcon categoryId={category.id} accounts={accounts} size="xs" />
-                    <span className="min-w-0 flex-1 truncate">{category.name}</span>
-                    {/* The path is context for the eye, not part of the button's name: "Restaurants" is what
-                        this button is, and a name reading "Restaurants Food and beverage › Restaurants" is a
-                        name nobody can ask for. The whole path stays reachable as the button's title. */}
-                    <span aria-hidden className="truncate text-xs text-slate-400">
-                      {categoryPath(accounts, category.id)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Sheet>
+          <CategoryPicker
+            kind="expense"
+            // Re-filing posts through `expenseLines`: income is not a place a purchase can be moved to.
+            lockKind
+            title={`Category for ${picking.description}`}
+            value={picking.categoryId ?? undefined}
+            onPick={(categoryId) => {
+              const tx = picking.tx!;
+              const was = picking.categoryId;
+              const values = quickFromTransaction(tx, today);
+              const name = accounts.find((account) => account.id === categoryId)?.name ?? 'that category';
+              void run(async () => {
+                const moved = await fileAs(tx.id, values, categoryId);
+                setToast({
+                  text: `Moved to ${name}`,
+                  back: async () => {
+                    if (was) await fileAs(moved, values, was);
+                  },
+                });
+              });
+            }}
+            onClose={() => setPicking(null)}
+          />
         )}
         {/* Outside the sheet, so it outlives it: the row has already moved by the time this is read. */}
         {toast && (

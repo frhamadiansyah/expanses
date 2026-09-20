@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { zipStore, unzipStore } from '@expanses/core';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
+import { addTransaction } from './add-transaction';
 
 /*
  * The photographs, in the storage they actually live in.
@@ -70,12 +71,7 @@ async function aTransaction(page: Page) {
   await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Superindo');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Visa (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount', { exact: true }).fill('500000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Visa', category: 'Groceries', amount: '500000' });
   await expect(page.getByText('Superindo')).toBeVisible();
 }
 

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { MORE_GROUPS, REACHABLE, TABS } from '../src/app/nav';
+import { addTransaction } from './add-transaction';
 
 /** Anything a finger is meant to hit must be at least this tall or wide. */
 const TAP = 44;
@@ -65,15 +66,7 @@ test('a purchase is recorded from the add button without leaving the screen', as
 
   await page.goto('/cards');
   await settle(page);
-  await page.getByRole('button', { name: 'Add a transaction' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Add a transaction' });
-  await sheet.getByLabel('Description').fill('Superindo');
-  await sheet.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await sheet.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await sheet.getByLabel('Amount', { exact: true }).fill('250000');
-  await sheet.getByRole('button', { name: 'Save' }).click();
-
-  await expect(sheet).toHaveCount(0);
+  await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '250000' });
   await expect(page).toHaveURL(/\/cards$/);
   await page.goto('/transactions');
   await expect(page.getByText('Superindo').first()).toBeVisible();
@@ -105,7 +98,7 @@ test('the phone header adds, searches and filters from three round buttons', asy
 
   // The header's + opens the same form the tab bar's does.
   await page.getByRole('button', { name: 'Add a transaction' }).first().click();
-  await expect(page.getByLabel('Description')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Add a transaction' }).getByLabel('Note')).toBeVisible();
 });
 
 test('the month’s chart leads the list, and a category opens as its own screen', async ({ page }) => {
@@ -119,14 +112,7 @@ test('the month’s chart leads the list, and a category opens as its own screen
   await page.goto('/transactions');
   await settle(page);
   // The tab bar's + opens the form as a sheet over whatever screen you are on.
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Add a transaction' });
-  await sheet.getByLabel('Description').fill('Superindo');
-  await sheet.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await sheet.getByLabel('Category', { exact: true }).selectOption({ label: 'Groceries' });
-  await sheet.getByLabel('Amount', { exact: true }).fill('250000');
-  await sheet.getByRole('button', { name: 'Save' }).click();
-  await expect(sheet).toHaveCount(0);
+  await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '250000' });
 
   // The chart sits above the list, on the same page: no view to switch to.
   const chart = page.getByTestId('spending-report');

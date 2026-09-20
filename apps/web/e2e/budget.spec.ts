@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -13,12 +14,7 @@ async function spendOnDinner(page: Page, amount: string) {
   await expect(page.getByRole('link', { name: 'BCA Checking' })).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Warung Steak');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Checking (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Checking', category: 'Restaurants', amount: amount });
   await expect(page.getByText('Warung Steak')).toBeVisible();
 }
 

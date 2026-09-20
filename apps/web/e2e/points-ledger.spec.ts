@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -27,15 +28,7 @@ async function cardWithAPurchase(page: Page, on?: string) {
   await expect(page.getByText('1 per Rp')).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  if (on) await page.getByLabel('Date').fill(on);
-  await page.getByLabel('Description').fill('Superindo');
-  await page.getByLabel('Paid with').selectOption({ label: 'CIMB Octo (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount', { exact: true }).fill('250000');
-  await page.getByRole('button', { name: 'Save' }).click();
-  // A purchase dated in another month is not in this month's list, so only wait for the form to close.
-  await expect(page.getByRole('button', { name: 'Add transaction' })).toBeVisible();
+  await addTransaction(page, { description: 'Superindo', paidWith: 'CIMB Octo', category: 'Groceries', amount: '250000', date: on });
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'CIMB Octo' }).click();

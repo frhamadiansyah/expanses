@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
+import { addTransaction } from './add-transaction';
 
 /** A credit card, so there is something to charge a purchase to. */
 async function addCard(page: Page, name = 'BCA Visa') {
@@ -15,12 +16,7 @@ async function addCard(page: Page, name = 'BCA Visa') {
 /** One purchase on that card, through the form a user uses. */
 async function spend(page: Page, description: string, amount: string, card = 'BCA Visa') {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: `${card} (IDR)` });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: description, paidWith: `${card}`, category: 'Groceries', amount: amount });
   await expect(page.getByText(description)).toBeVisible();
 }
 
@@ -45,12 +41,7 @@ test('the ⓘ on a row opens the receipt, and the row itself still edits in plac
   await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Superindo');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Visa (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount', { exact: true }).fill('500000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Visa', category: 'Groceries', amount: '500000' });
   await expect(page.getByText('Superindo')).toBeVisible();
 
   await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
@@ -109,11 +100,13 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('button', { name: 'Buy or sell' }).click();
-  await page.getByLabel('Grams').fill('2');
-  await page.getByLabel(/What it cost, before fees/).fill('3980000');
-  await page.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByRole('button', { name: 'Save' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Buy or sell' }).click();
+  await form.getByLabel('Grams').fill('2');
+  await form.getByLabel(/What it cost, before fees/).fill('3980000');
+  await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
   await expect(page.getByText('Bought 2 Antam gold bars')).toBeVisible();
 
   // Cash down 3,98 M, gold up 3,98 M: buying something changes nothing about what you are worth.
@@ -208,12 +201,7 @@ test('a purchase becomes a holding from the receipt', async ({ page }) => {
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('UBS Gold Store');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Shopping (general)' });
-  await page.getByLabel('Amount', { exact: true }).fill('3980000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'UBS Gold Store', paidWith: 'BCA Tahapan', category: 'Shopping', amount: '3980000' });
   await expect(page.getByText('UBS Gold Store')).toBeVisible();
 
   await openReceipt(page, 'UBS Gold Store');
@@ -237,14 +225,18 @@ test('a split bill says which figure is the share and which is the bill', async 
   await addCard(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Dinner at Plataran');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Visa (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount', { exact: true }).fill('400000');
-  await page.getByLabel('Someone owes part of this').check();
-  await page.getByLabel('Who owes you').fill('Andi');
-  await page.getByLabel(/Their share/).fill('300000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  const split = page.getByRole('dialog', { name: 'Add a transaction' });
+  await split.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await split.getByLabel('Amount', { exact: true }).fill('400000');
+  await split.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await split.getByLabel('Note').fill('Dinner at Plataran');
+  await split.getByLabel('Someone owes part of this').check();
+  await split.getByLabel('Who owes you').fill('Andi');
+  await split.getByLabel(/Their share/).fill('300000');
+  await split.getByRole('button', { name: 'Save' }).click();
+  await expect(split).toHaveCount(0);
   await expect(page.getByText('Dinner at Plataran')).toBeVisible();
 
   await openReceipt(page, 'Dinner at Plataran');

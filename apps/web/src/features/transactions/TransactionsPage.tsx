@@ -27,7 +27,7 @@ import { useGoals } from '../goals/queries';
 import { Recurring } from './Recurring';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
-import { TransactionForm } from './TransactionForm';
+import { TransactionCard } from './TransactionCard';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
@@ -632,7 +632,7 @@ export function TransactionsPage() {
     if (editingId === tx.id) {
       return (
         <li key={tx.id} className="py-2">
-          <TransactionForm initial={tx} onDone={close} />
+          <TransactionCard initial={tx} onDone={close} />
           {editHint(<>The original stays under Show deleted</>, <>{purchaseButton}{deleteButton}</>)}
         </li>
       );
@@ -753,7 +753,7 @@ export function TransactionsPage() {
     saveDraft,
     dismissDraft: (id) => run(id, () => dismissDraft(database, ws, id)),
     deleteRecorded: (id) => run(id, () => voidTransaction(database, ws, id)),
-    renderForm: (tx, onDone) => <TransactionForm initial={tx} onDone={onDone} />,
+    renderForm: (tx, onDone) => <TransactionCard initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),
     elsewhereOf,
     filingKnown,
@@ -970,7 +970,11 @@ export function TransactionsPage() {
           All transactions
         </button>
       )}
-      {adding && <TransactionForm onDone={() => setAdding(false)} />}
+      {adding && (
+        <Sheet title="Add a transaction" onClose={() => setAdding(false)}>
+          <TransactionCard onDone={() => setAdding(false)} />
+        </Sheet>
+      )}
 
       <div className="space-y-1">
         {/* On a phone the filters are the ⋯ menu below; the row of chips is a wide screen's. */}

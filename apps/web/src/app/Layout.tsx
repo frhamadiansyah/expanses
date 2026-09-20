@@ -6,7 +6,7 @@ import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
 import { usePendingDraftCount } from '../features/review/queries';
-import { TransactionForm } from '../features/transactions/TransactionForm';
+import { TransactionCard } from '../features/transactions/TransactionCard';
 import { useOpenBook } from '../features/workspaces/queries';
 import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
 import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
@@ -141,7 +141,7 @@ export function Layout() {
           {more && <AccountSheet onClose={() => setMore(false)} />}
           {adding && (
             <Sheet title="Add a transaction" onClose={() => setAdding(false)}>
-              <TransactionForm onDone={() => setAdding(false)} />
+              <TransactionCard onDone={() => setAdding(false)} />
             </Sheet>
           )}
         </>

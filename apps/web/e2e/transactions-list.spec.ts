@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 async function setUp(page: Page) {
   await page.goto('/accounts');
@@ -9,12 +10,7 @@ async function setUp(page: Page) {
   await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Superindo');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount', { exact: true }).fill('500000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '500000' });
   await expect(page.getByText('Superindo')).toBeVisible();
 }
 

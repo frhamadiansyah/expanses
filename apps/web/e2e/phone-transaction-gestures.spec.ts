@@ -1,15 +1,9 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 /** Today's form, from the phone's tab bar. Task 10 replaces this body with a call to `addTransaction`. */
 async function record(page: Page, description: string, category: string, amount: string) {
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Add a transaction' });
-  await sheet.getByLabel('Description').fill(description);
-  await sheet.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await sheet.getByLabel('Category', { exact: true }).selectOption({ label: category });
-  await sheet.getByLabel('Amount', { exact: true }).fill(amount);
-  await sheet.getByRole('button', { name: 'Save' }).click();
-  await expect(sheet).toHaveCount(0);
+  await addTransaction(page, { description, paidWith: 'BCA Tahapan', category, amount });
 }
 
 /** Pointer down, a drag to the left, up — the gesture, not a click. */

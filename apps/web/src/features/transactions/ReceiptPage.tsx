@@ -15,15 +15,14 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { usePeopleDebts } from '../debts/queries';
 import { useEvents } from '../events/queries';
 import { useGoals } from '../goals/queries';
-import { useAssetValues, useTrades } from '../networth/queries';
-import { editInsteadIn } from '../workspaces/filing';
+import { useAssetValues } from '../networth/queries';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
 import { ConvertForm } from './TransactionsPage';
-import { isEditable } from './draft';
+import { useChangeable } from './queries';
 import { heroCaption, receiptLines } from './receipt-view';
-import { TransactionForm } from './TransactionForm';
+import { TransactionCard } from './TransactionCard';
 
 const route = getRouteApi('/transactions/$transactionId');
 
@@ -104,16 +103,6 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const cards = useCards().data ?? [];
   const goals = useGoals().data ?? [];
   const holdings = (useAssetValues().data ?? []).filter((row) => row.mode === 'market');
-  /*
-   * The same question the list and the table ask before they offer anything: is this transaction a trade?
-   *
-   * A trade's units live in `trades`, and the transaction is only its money half. Voiding it hands the cash
-   * back and leaves the units held — net worth rises by the price of something nobody bought — and editing it
-   * posts a **new** id, leaving the trade row pointing at a transaction that no longer exists. `TransactionsPage`
-   * and `TransactionsTable` both refuse for exactly that reason and send the user to Buy & sell instead. A new
-   * way in has to inherit every refusal the old ways carry, or it is a way round them.
-   */
-  const trades = useTrades();
   const today = isoDate();
 
   const [editing, setEditing] = useState(false);
@@ -140,6 +129,13 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const photoRows = useQuery({ queryKey: ['photos', ws.workspaceId, transactionId], queryFn: () => listPhotos(database, ws, transactionId) });
   const badges = useWorkspaceBadges(tx ? [tx.id] : []);
   const urls = usePhotoUrls(photoRows.data ?? []);
+  /*
+   * The three refusals, asked once for the whole app rather than copied onto every way in: a trade is
+   * corrected on Buy & sell so its units stay in step, an opening balance and a deleted row have no form that
+   * could represent them, and another workspace's row is read-only until that workspace is open. The form
+   * route asks the same hook, so the two can never answer differently.
+   */
+  const { changeable, elsewhere, isTrade } = useChangeable(tx);
 
   if (receipt.isSuccess && !tx) {
     return (
@@ -156,7 +152,6 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const kind = classify(tx);
   const categoryNames = kind.categoryIds.map((id) => accounts.find((account) => account.id === id)?.name).filter(Boolean);
   const book = badges.of(tx.id);
-  const elsewhere = editInsteadIn(book, ws.bookId);
   // Who owes what on *this* transaction: its own debt entries, named by the person each debt account belongs to.
   const personByAccount = new Map(
     [...(debts.data?.owedToYou ?? []), ...(debts.data?.settled ?? [])].flatMap((person) => person.loans.map((loan) => [loan.accountId, person.personName] as const)),
@@ -176,17 +171,6 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     goalName: goals.find((goal) => goal.id === tx.goalId)?.name,
   });
 
-  const isTrade = (trades.data ?? []).some((trade) => trade.transactionId === tx.id);
-  /*
-   * Nothing destructive is offered until the trades are in. An unanswered query looks exactly like "not a
-   * trade", and a receipt that offered Delete for the half-second before the answer arrived would be the
-   * same defect with a smaller window — the list guards its own editing the same way, with `filingKnown`.
-   *
-   * `isEditable` carries the other refusal: an opening balance posts against system equity, has no form that
-   * could represent it, and voiding one silently rewrites an account's starting balance. The table gives it
-   * no "Open in form" and therefore no Delete either; here the two now stand or fall together.
-   */
-  const changeable = isEditable(tx) && !elsewhere && trades.isSuccess && !isTrade;
   const caption = heroCaption(tx, kind.amountMinor);
 
   async function remove() {
@@ -307,7 +291,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
 
       {editing && (
         <Sheet title="Edit transaction" onClose={() => void afterEdit()}>
-          <TransactionForm initial={tx} onDone={() => void afterEdit()} />
+          <TransactionCard initial={tx} onDone={() => void afterEdit()} />
         </Sheet>
       )}
 
