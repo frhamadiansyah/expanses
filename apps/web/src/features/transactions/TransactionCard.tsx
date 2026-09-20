@@ -1,6 +1,7 @@
 import { isoDate, parseRate, type PaymentOption } from '@expanses/core';
 import {
   type AccountRow,
+  allPhotoRows,
   type CardRow,
   postTransaction,
   recordTaggedTransfer,
@@ -11,6 +12,7 @@ import {
   type TransactionView,
   upsertRate,
 } from '@expanses/db';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -92,10 +94,30 @@ export function currenciesOf(post: FormPost, accounts: readonly AccountRow[]): s
  */
 export function TransactionCard(props: { initial?: TransactionView; mode?: FormMode; onDone: () => void; full?: boolean }) {
   const accounts = useAccounts();
+  const { database, ws } = useApp();
+  /*
+   * The pictures this transaction already has, so reopening one that has a receipt does not say "Photos: None".
+   * `allPhotoRows` is the reader `PhotosSheet` already uses, under the key it already uses, so the sheet that
+   * opens next finds it in the cache rather than asking a second time — and there is no second repository
+   * function asking the same question a narrower way.
+   */
+  const photos = useQuery({
+    queryKey: ['all-photo-rows', ws.workspaceId],
+    queryFn: () => allPhotoRows(database, ws),
+    // Only a correction has pictures to find. **Adding** a transaction must not wait on this query for the card
+    // to be drawn at all: the figure is the first thing a thumb reaches for, and a card that arrives a query
+    // later is a card whose first tap lands on nothing.
+    enabled: !!props.initial,
+  });
   // The draft is built from the accounts once, so it must not be built before they are here: `formFromTransaction`
   // reads each account's currency, and a draft seeded from an empty list opens a foreign purchase with no currency.
-  if (!accounts.isSuccess) return <Card>Loading…</Card>;
-  return <CardBody {...props} accounts={accounts.data} />;
+  // The same holds for the photo rows: a draft seeded before they arrive opens an edit with none of them.
+  // `isFetchedAfterMount`, not `isSuccess`: the sheet fills this same cache entry while a form is open, so a
+  // correction opened afterwards would otherwise be seeded from rows read **before** the pictures were re-keyed
+  // onto their transaction — and find none of them.
+  if (!accounts.isSuccess || (props.initial && !photos.isFetchedAfterMount)) return <Card>Loading…</Card>;
+  const mine = props.initial ? (photos.data ?? []).filter((row) => row.transactionId === props.initial!.id).map((row) => row.id) : [];
+  return <CardBody {...props} accounts={accounts.data} photoIds={mine} />;
 }
 
 function CardBody({
@@ -104,12 +126,14 @@ function CardBody({
   onDone,
   full,
   accounts,
+  photoIds,
 }: {
   initial?: TransactionView;
   mode?: FormMode;
   onDone: () => void;
   full?: boolean;
   accounts: AccountRow[];
+  photoIds: string[];
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -121,7 +145,7 @@ function CardBody({
   const assetValues = useAssetValues();
   const assetProfiles = useAssetProfiles();
   const [draft, setDraft] = useState<FormDraft>(() =>
-    initial ? formFromTransaction(initial, accounts, bookId) : { ...emptyForm(bookId), mode: mode ?? 'expense' },
+    initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense' },
   );
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'details'>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);

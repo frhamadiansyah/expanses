@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { AccountRow } from '@expanses/db';
 import { useApp } from '../../app/context';
@@ -17,6 +17,7 @@ import {
   estimatedCharge,
   type FormDraft,
   type MoneyFieldSpec,
+  prefilledCharge,
   suggestedRate,
   typedCurrency,
 } from './tx-form';
@@ -88,8 +89,14 @@ function MoneyField({
   const { label, value, currency } = field;
   if (phone) {
     return (
-      <button type="button" aria-label={label} onClick={onKeypad} className={cx(className, 'truncate text-left')}>
-        {value || <span className="text-slate-400">0</span>}
+      /*
+       * The whole height of the row it sits in is the tap target, not the height of the figure printed in it.
+       * A bare button's box is its text — 32px in a 56px row — which is under the 44pt minimum for a thumb, on
+       * the most-pressed control on the card. `self-stretch` gives the button its row's height and the inner
+       * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
+       */
+      <button type="button" aria-label={label} onClick={onKeypad} className={cx(className, 'flex items-center self-stretch text-left')}>
+        <span className="min-w-0 flex-1 truncate">{value || <span className="text-slate-400">0</span>}</span>
       </button>
     );
   }
@@ -149,14 +156,28 @@ export function AmountRow({
   const fields = amountFields(draft, accounts, ws.baseCurrency);
   const { rate, stale } = useSuggestedRate(needsCharged ? currency : '', needsCharged ? settled : '', draft.occurredOn);
 
-  // §3.3: "pre-filled with an estimate at that day's rate". Only into an empty row, and only when the figure or
-  // the rate behind the estimate has changed — a row the user has typed in, or deliberately cleared, is theirs.
+  /*
+   * §3.3: "pre-filled with an estimate at that day's rate", and it tracks the amount for as long as the row is
+   * still the estimate's. A row reopened on an existing transaction already holds what the bank actually took,
+   * so it starts out the user's and is never written over.
+   *
+   * Emptiness is **not** what says the row is free: a figure typed one digit at a time fills the row on its
+   * first keystroke, and reading emptiness as "untouched" is exactly how ¥120 came to post Rp 2.270 — the rate
+   * for ¥1. `touched` is set by the two writers that are the user (the field itself, and the dock while it is
+   * typing into this field) and by nothing else.
+   */
+  const touched = useRef(draft.chargedAmount.trim() !== '');
+  const setCharged = (chargedAmount: string) => {
+    touched.current = true;
+    set({ chargedAmount });
+  };
   const estimate = needsCharged ? estimatedCharge({ amount: draft.amount, currency, accountCurrency: settled, rate }) : null;
+  const prefill = prefilledCharge({ estimate, charged: draft.chargedAmount, touched: touched.current });
   useEffect(() => {
-    if (estimate && !draft.chargedAmount.trim()) set({ chargedAmount: estimate });
-    // The estimate is the only trigger. The row's own text is read but deliberately not a dependency: were it
-    // one, clearing the row by hand would immediately re-fill it.
-  }, [estimate]);
+    if (prefill !== null) set({ chargedAmount: prefill });
+    // `prefill` is already the whole decision — null the moment the row holds what it should — so this settles
+    // in one pass rather than re-filling a row that agrees with the estimate.
+  }, [prefill]);
 
   const fieldClass = 'min-w-0 flex-1 text-2xl tabular focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900';
   const toggle = (which: 'amount' | 'charged') => setKeypad((was) => (was === which ? null : which));
@@ -204,14 +225,16 @@ export function AmountRow({
 
       {fields.charged && (
         <div className={cx('border-t border-slate-200 px-3 py-2', keypad !== null && 'relative z-40 bg-white')}>
-          <div className="flex h-10 items-center gap-2 text-sm">
+          {/* h-11 rather than h-10 for the same reason the row above is h-14: this is the figure that actually
+              posts, and its button takes the row's height, so the row's height is the thumb's target. 44px. */}
+          <div className="flex h-11 items-center gap-2 text-sm">
             <span className="shrink-0 text-slate-600">
               Charged in <em className="not-italic font-medium text-slate-900">{settled}</em>
             </span>
             <MoneyField
               field={fields.charged}
               phone={phone}
-              onChange={(chargedAmount) => set({ chargedAmount })}
+              onChange={setCharged}
               onKeypad={() => toggle('charged')}
               className="min-w-0 flex-1 text-right text-base tabular focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
             />
@@ -227,7 +250,12 @@ export function AmountRow({
           value={currency}
           accountCurrency={settled}
           baseCurrency={ws.baseCurrency}
-          onPick={(code) => set({ currency: code, chargedAmount: code === settled ? '' : draft.chargedAmount })}
+          onPick={(code) => {
+            // A new currency makes whatever is in the charged row a conversion of nothing: it was worked out
+            // from, or typed against, the code that has just been replaced. The row goes back to the estimate's.
+            touched.current = false;
+            set({ currency: code, chargedAmount: code === settled ? '' : draft.chargedAmount });
+          }}
           onClose={() => setPicking(false)}
         />
       )}
@@ -237,7 +265,7 @@ export function AmountRow({
         <Keypad
           value={open.value}
           currency={open.currency}
-          onChange={(text) => set(open.which === 'amount' ? { amount: text } : { chargedAmount: text })}
+          onChange={(text) => (open.which === 'amount' ? set({ amount: text }) : setCharged(text))}
           onClose={() => setKeypad(null)}
         />
       )}

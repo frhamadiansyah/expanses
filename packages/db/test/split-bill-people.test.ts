@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { createAccount, listAccounts, listTransactions, peopleDebts, recentPeople, saveDebtProfile, splitBill } from '../src/index';
+import { addCard, createAccount, createCardAccount, listAccounts, listTransactions, peopleDebts, recentPeople, saveDebtProfile, splitBill } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
 let current: TestDb | undefined;
@@ -101,4 +101,43 @@ it('offers a person with no movement yet, by when their profile was opened', asy
   const people = await recentPeople(d.database, d.ws);
   expect(people.map((p) => p.personName)).toEqual(['Deni']);
   expect(people[0]!.lastOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+});
+
+it('records the card the bill was paid on and what it was charged in before conversion', async () => {
+  current = await setupDb();
+  const { database, ws } = current;
+  const account = await createCardAccount(database, ws, {
+    name: 'BCA KrisFlyer', issuer: 'BCA', subtype: 'credit_card', currency: 'IDR', last4: '1467', holderName: 'Fandrian',
+  });
+  // Two cards on one account: which of them was used is the only thing the single statement cannot tell you,
+  // and it is exactly what a shared bill used to drop.
+  const supplement = await addCard(database, ws, { accountId: account.id, last4: '8802', holderName: 'Spouse' });
+  const restaurants = (await listAccounts(database, ws)).find((a) => a.systemKey === 'food_beverage.restaurants')!.id;
+  // ¥120 charged to the IDR card as Rp 272.400, split down the middle with Andi. Both facts are the purchase's,
+  // not the table's: without them the row prints no card digits and the receipt has no "Original amount" line.
+  await splitBill(database, ws, {
+    occurredOn: '2026-09-17',
+    description: 'Dinner with Andi',
+    totalMinor: 272_400,
+    moneyAccountId: account.id,
+    ownCategoryId: restaurants,
+    ownShareMinor: 136_200,
+    shares: [{ person: { name: 'Andi', currency: 'IDR' }, amountMinor: 136_200 }],
+    cardId: supplement,
+    originalCurrency: 'CNY',
+    originalAmountMinor: 12_000,
+  });
+
+  const [tx] = await listTransactions(database, ws);
+  expect(tx).toMatchObject({ cardId: supplement, originalCurrency: 'CNY', originalAmountMinor: 12_000 });
+});
+
+it('names no card and no original currency on a bill that had neither', async () => {
+  const d = await dinner();
+  await splitBill(d.database, d.ws, {
+    occurredOn: '2026-09-17', description: 'Coffee', totalMinor: 100_000, moneyAccountId: d.card.id,
+    ownCategoryId: d.restaurants, ownShareMinor: 50_000, shares: [{ person: { name: 'Andi', currency: 'IDR' }, amountMinor: 50_000 }],
+  });
+  const [tx] = await listTransactions(d.database, d.ws);
+  expect(tx).toMatchObject({ cardId: null, originalCurrency: null, originalAmountMinor: null });
 });

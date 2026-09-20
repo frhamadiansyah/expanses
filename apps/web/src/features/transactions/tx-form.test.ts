@@ -19,6 +19,7 @@ import {
   KEYPAD_KEYS,
   keypadAction,
   keypadPress,
+  prefilledCharge,
   recentCurrencies,
   SPLIT_WITH_REFUSAL,
   suggestedRate,
@@ -801,5 +802,100 @@ describe('withShares', () => {
     expect(billMinor(bySplit, accounts)).toBe(8500);
     // 120 CNY charged to the IDR account as 272.400: the bill is what the account paid, not what was typed.
     expect(billMinor(foreign, accounts)).toBe(272_400);
+  });
+});
+
+describe('the charged row while it still belongs to the estimate', () => {
+  /** How a person enters ¥120: three separate amounts, each a whole figure the moment it is on screen. */
+  const typeDigitByDigit = (digits: string, rate: number | null) => {
+    let charged = '';
+    for (let i = 1; i <= digits.length; i += 1) {
+      const estimate = estimatedCharge({ amount: digits.slice(0, i), currency: 'CNY', accountCurrency: 'IDR', rate });
+      charged = prefilledCharge({ estimate, charged, touched: false }) ?? charged;
+    }
+    return charged;
+  };
+
+  it('tracks the amount through every keystroke, not only the first', () => {
+    // Rp 272.400 — the conversion of ¥120. **Not Rp 2.270**, which is the rate for ¥1: the row used to lock
+    // onto the first keystroke, because "the row is empty" was read as "the user has not touched it" and the
+    // first digit is what stops it being empty. That figure is the one that posts.
+    expect(typeDigitByDigit('120', 2270)).toBe('272400');
+    // And it is the same figure a paste of the whole amount gives, which is all `fill()` ever exercised.
+    expect(estimatedCharge({ amount: '120', currency: 'CNY', accountCurrency: 'IDR', rate: 2270 })).toBe('272400');
+  });
+
+  it('leaves the row empty while there is no rate to convert at, however much is typed', () => {
+    expect(typeDigitByDigit('120', null)).toBe('');
+  });
+
+  it('is the user’s from the moment they write in it — or clear it', () => {
+    // A figure the bank really took overrules the estimate, and a later keystroke in the amount cannot undo that.
+    expect(prefilledCharge({ estimate: '272400', charged: '270000', touched: true })).toBeNull();
+    // Cleared on purpose stays cleared: an empty row that is the user's is not an empty row that is free.
+    expect(prefilledCharge({ estimate: '272400', charged: '', touched: true })).toBeNull();
+  });
+
+  it('follows the amount down to nothing as well as up, and then stops', () => {
+    // The amount was deleted, so the conversion of it has no business still sitting in the row that posts.
+    expect(prefilledCharge({ estimate: null, charged: '272400', touched: false })).toBe('');
+    // Already right: nothing to write, so the effect settles in one pass rather than re-filling for ever.
+    expect(prefilledCharge({ estimate: '272400', charged: '272400', touched: false })).toBeNull();
+    expect(prefilledCharge({ estimate: null, charged: '', touched: false })).toBeNull();
+  });
+});
+
+describe('what a shared bill and a tagged transfer carry', () => {
+  /** A ¥120 dinner on the IDR credit card, charged as Rp 272.400, with Andi on it for half. */
+  const sharedForeign: FormDraft = {
+    ...foreign,
+    moneyId: 'acct-card',
+    cardId: 'card-8802',
+    with: [{ debtAccountId: '', name: 'Andi', amount: '136200' }],
+  };
+
+  it('keeps the card a shared bill was paid on', () => {
+    // §2: "Choosing it never changes the account or card." Without this the row prints no digits and the
+    // receipt's "Paid with" names the bare account, so the points for the dinner belong to no card at all.
+    expect(formToPost(sharedForeign, accounts)).toMatchObject({ kind: 'split', input: { cardId: 'card-8802' } });
+    // A bill paid from a bank account has no card to name, exactly as a plain expense has none.
+    expect(formToPost({ ...sharedForeign, moneyId: 'acct-bank' }, accounts)).toMatchObject({ kind: 'split', input: { cardId: null } });
+  });
+
+  it('keeps the original currency pair on a shared bill', () => {
+    // The same pair `amounts()` worked out for the plain expense, off the same fields: ¥120 charged as Rp 272.400.
+    expect(formToPost(sharedForeign, accounts)).toMatchObject({
+      kind: 'split',
+      input: { totalMinor: 272_400, originalCurrency: 'CNY', originalAmountMinor: 12_000 },
+    });
+    // A bill in the account's own currency has no original pair, and does not invent one.
+    expect(formToPost({ ...sharedForeign, currency: 'IDR', amount: '272400', chargedAmount: '' }, accounts)).toMatchObject({
+      kind: 'split',
+      input: { originalCurrency: null, originalAmountMinor: null },
+    });
+  });
+
+  it('carries the Received amount of a cross-currency transfer tagged to a goal', () => {
+    // §2's "To · For goal · Received amount", all three at once. US$100,03 — an odd number of cents, so a
+    // figure read at the wrong scale or rounded the wrong way cannot pass for the right one.
+    const crossing: FormDraft = { ...transfer, moneyId: 'acct-bank', toId: 'acct-usd', amount: '1600000', toAmount: '100.03', goalId: 'goal-1' };
+    expect(formToPost(crossing, accounts)).toMatchObject({
+      kind: 'transfer-goal',
+      input: { amountMinor: 1_600_000, toAmountMinor: 10_003, fromAccountId: 'acct-bank', toAccountId: 'acct-usd', goalId: 'goal-1' },
+    });
+    // Same currency on both sides: there is no second figure, and the screen draws no row for one.
+    expect(formToPost({ ...transfer, moneyId: 'acct-bank', goalId: 'goal-1' }, accounts)).toMatchObject({
+      kind: 'transfer-goal',
+      input: { toAmountMinor: null },
+    });
+  });
+});
+
+describe('a transaction reopened for correction', () => {
+  it('opens with the pictures it already has, so the Photos row does not say None', () => {
+    const dinner = view({ entries: [paid(-120_000), spent('cat-restaurants', 120_000)] as TransactionView['entries'] });
+    expect(formFromTransaction(dinner, accounts, 'ws-1', ['photo-1', 'photo-2']).photoIds).toEqual(['photo-1', 'photo-2']);
+    // A transaction with no pictures opens with none, and a caller that knows of none says so by saying nothing.
+    expect(formFromTransaction(dinner, accounts, 'ws-1').photoIds).toEqual([]);
   });
 });

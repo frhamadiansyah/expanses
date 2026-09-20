@@ -482,6 +482,11 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
           amountMinor,
           fromAccountId: account.id,
           toAccountId: to.id,
+          // §2's "To · For goal · Received amount", which the screen draws together and this branch used to
+          // walk past: the goal was taken and `draft.toAmount` — a field the screen marks required — was
+          // ignored, so both legs posted the source figure and the user met `Lines in USD sum to …` after
+          // pressing Save. The row the screen asked for is the row that posts.
+          toAmountMinor: to.currency === account.currency ? null : positive(draft.toAmount, to.currency, 'Received amount'),
           goalId: draft.goalId,
           // §4: Photos and Exclude from report appear "always". Tagging the transfer to a goal cannot be what
           // throws them away — the untagged branch below carries the same three facts.
@@ -544,6 +549,12 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
         shares,
         spendCategoryId: onCard ? draft.categoryId : null,
         mcc: onCard ? mcc : null,
+        // §2's "Choosing it never changes the account or card", and §3.3's original pair. Both are facts about
+        // the purchase, not about who else was at the table: they are carried here exactly as the plain expense
+        // below carries them, off the very same `amounts()` result, so one way in cannot record less than the other.
+        cardId: onCard ? draft.cardId.trim() || null : null,
+        originalCurrency,
+        originalAmountMinor,
         channel: draft.channel || null,
         excludedFromReport: draft.excluded,
         eventId: draft.eventId || null,
@@ -588,13 +599,22 @@ export function canEditInSheet(tx: TransactionView): boolean {
   return c.categoryIds.length === 1;
 }
 
-/** A transaction reopened as a draft: the typed currency is what the merchant charged, when there was one. */
-export function formFromTransaction(tx: TransactionView, accounts: readonly AccountRow[], bookId = ''): FormDraft {
+/**
+ * A transaction reopened as a draft: the typed currency is what the merchant charged, when there was one.
+ *
+ * `photoIds` are the pictures the transaction already has, in the order they were taken. They are a caller's
+ * argument rather than something read off `TransactionView`, which carries only a `photoCount` — but they have
+ * to be carried, because without them the Photos row of a transaction that has a receipt says **None**. The
+ * picture is not lost (`movePhotosTx` carries it), yet the one screen that could show or remove it says there
+ * is nothing there, which is what data loss looks like from the outside.
+ */
+export function formFromTransaction(tx: TransactionView, accounts: readonly AccountRow[], bookId = '', photoIds: readonly string[] = []): FormDraft {
   const c = classify(tx);
   const money = tx.entries.filter((e) => e.accountKind === 'asset' || e.accountKind === 'liability');
   const base: FormDraft = {
     ...emptyForm(bookId, tx.occurredOn),
     description: tx.description,
+    photoIds: [...photoIds],
     mcc: tx.mcc ?? '',
     cardId: tx.cardId ?? '',
     eventId: tx.eventId ?? '',
@@ -746,6 +766,26 @@ export function estimatedCharge({
   const charged = convertMinor(minor, currency, accountCurrency, rate);
   if (charged <= 0) return null;
   return minorToMajorString(charged, accountCurrency);
+}
+
+/**
+ * What the "Charged in …" row should hold right now, or null to leave it exactly as it is.
+ *
+ * **The row that posts must never show a conversion of an amount the user has already typed past.** The rule is
+ * one line: while the row still belongs to the estimate, it *is* the estimate — every keystroke of the amount,
+ * and no keystroke later. `touched` is what hands the row to the user; nothing else does, and in particular
+ * "the row is empty" does not. That was the old test, and it is why `¥120` pre-filled Rp 2.270: the first
+ * keystroke — `1` — filled the row, and from the second keystroke on the row was no longer empty, so the
+ * estimate stopped being written and the figure for ¥1 stayed there to be posted.
+ *
+ * A row the user has written in, or deliberately cleared, is theirs and is never written over again; an
+ * untouched row follows the amount down to empty as well as up, because a leftover conversion of an amount that
+ * is no longer on screen is the same lie in the other direction.
+ */
+export function prefilledCharge({ estimate, charged, touched }: { estimate: string | null; charged: string; touched: boolean }): string | null {
+  if (touched) return null;
+  const next = estimate ?? '';
+  return next === charged ? null : next;
 }
 
 /**

@@ -226,18 +226,24 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
   /*
    * The row is here, and the rate behind it is the one this device stored: ¥120 at 2.270 is Rp 272.400.
    *
-   * **The pre-filled figure itself is deliberately not asserted, because it is wrong.** `AmountRow`'s pre-fill
-   * writes into the charged row only while that row is empty, and it runs on every change to the amount — so a
-   * figure *typed* rather than pasted locks the estimate onto its first keystroke: ¥120 pre-fills Rp 2.270, the
-   * rate for one yuan. Nothing caught it because the desktop spec uses Playwright's `fill()`, which sets the
-   * whole amount in a single change, where a thumb on the dock and a human on a keyboard both type one digit at
-   * a time. This task is a verification pass, so it is reported rather than repaired — and since the charged row
-   * is the figure that **posts**, the hint and the typed-over figure below are what hold the row in place until
-   * it is. Asserting 272400 here would fail; asserting 2270 would enshrine the defect.
+   * The figure is asserted, and the digits above were tapped **one at a time**, which is the whole point: the
+   * pre-fill used to write into the charged row only while that row was empty, so a figure typed rather than
+   * pasted locked the estimate onto its first keystroke and ¥120 pre-filled **Rp 2.270** — the rate for one
+   * yuan, in the row that actually posts. Nothing caught it because the desktop spec used Playwright's
+   * `fill()`, which sets the whole amount in a single change, where a thumb and a keyboard do not.
    */
   const charged = page.getByRole('button', { name: 'Charged in IDR' });
   await expect(charged).toBeVisible();
+  await expect(charged).toHaveText('272400');
   await expect(page.getByText(`≈ 2.270 per 1 CNY · suggested from ${TODAY}`)).toBeVisible();
+
+  // And the thumb's targets on the two money rows are targets a thumb can hit: 44px, Apple's minimum, measured
+  // rather than assumed. The figure is the most-pressed control on the card and its button used to be the
+  // height of its own text — 32px in a 56px row.
+  for (const name of ['Amount', 'Charged in IDR']) {
+    const box = (await page.getByRole('button', { name, exact: true }).boundingBox())!;
+    expect(box.height, `${name} is a thumb target`).toBeGreaterThanOrEqual(44);
+  }
 
   // The row is a suggestion, not the answer: what the bank really took is typed over it, on its own dock.
   await charged.click();

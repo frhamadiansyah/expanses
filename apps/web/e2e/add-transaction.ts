@@ -164,8 +164,17 @@ export async function attachPhoto(page: Page, form: Locator, file: { name: strin
  * draft did — fails every chromium spec at the first field.
  */
 async function openAmount(form: Locator) {
+  // The card first, whichever shape it takes here: `getByLabel` answers the phone's button and the desktop's
+  // input alike. Asking "is there a button?" before the card is drawn answers **no** for the phone too, and the
+  // helper then walks past the dock and types into a button — which is how a green spec came to type nothing.
+  await form.getByLabel('Amount', { exact: true }).waitFor();
   const button = form.getByRole('button', { name: 'Amount', exact: true });
-  if ((await button.count()) > 0) await button.click();
+  if ((await button.count()) === 0) return;
+  await button.click();
+  // The dock is drawn a tick after the press, and `fillAmount` below asks for it with a non-retrying
+  // `isVisible()`. Waiting for it here is the difference between typing on the keypad and typing into nothing:
+  // a person presses the figure, waits for the dock to come up, and only then types.
+  await form.page().getByTestId('keypad').waitFor({ state: 'visible' });
 }
 
 /** The amount row is open. Type into whichever thing this viewport gave us. */

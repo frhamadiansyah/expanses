@@ -220,3 +220,66 @@ describe('what a tagged transfer keeps beside the goal', () => {
     expect((await listPhotos(database, ws, result.transactionId)).map((row) => row.id)).toEqual([photoId]);
   });
 });
+
+describe('a transfer that crosses currencies and is tagged to a goal', () => {
+  /** A USD account to land in, opened with nothing in it so the opening balance needs no rate of its own. */
+  const openWise = () => createAccount(database, ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
+
+  it('posts what left and what landed, each in its own currency, and parks the figure that landed', async () => {
+    const wise = await openWise();
+    // Rp 1.600.000 out, US$100,03 in. An odd number of cents, so a figure read at the wrong scale or rounded
+    // the wrong way cannot pass for the right one.
+    const result = await recordTaggedTransfer(database, ws, {
+      occurredOn: '2026-09-05',
+      description: 'To the Wise account',
+      amountMinor: 1_600_000,
+      toAmountMinor: 10_003,
+      fromAccountId: bca.id,
+      toAccountId: wise.id,
+      goalId: hajjId,
+      ratesToBase: { USD: 16_000 },
+    });
+
+    const balances = await nativeBalances(database, ws);
+    expect(balances[wise.id]).toBe(10_003);
+    expect(balances[bca.id]).toBe(50_000_000 - 1_600_000);
+    // The set-aside sits on the destination account, so it is counted in that account's own money: US$100,03,
+    // never Rp 1.600.000 of a USD balance.
+    expect(await setAsideFor(hajjId, wise.id)).toBe(10_003);
+    const tx = (await listTransactions(database, ws, {})).find((row) => row.id === result.transactionId);
+    expect(tx?.goalId).toBe(hajjId);
+  });
+
+  it('asks for what landed rather than posting the source figure on both legs', async () => {
+    const wise = await openWise();
+    // The old failure was `Lines in USD sum to 1600000, expected 0` — the ledger's own words, after Save, with
+    // nothing moved. The refusal now names the field the screen asks for and the currency it is read in.
+    await expect(
+      recordTaggedTransfer(database, ws, {
+        occurredOn: '2026-09-05',
+        description: 'To the Wise account',
+        amountMinor: 1_600_000,
+        fromAccountId: bca.id,
+        toAccountId: wise.id,
+        goalId: hajjId,
+        ratesToBase: { USD: 16_000 },
+      }),
+    ).rejects.toThrow('Enter what landed in the destination account, in USD');
+  });
+
+  it('takes the landed money back out of the goal when the transfer is voided', async () => {
+    const wise = await openWise();
+    const result = await recordTaggedTransfer(database, ws, {
+      occurredOn: '2026-09-05',
+      description: 'To the Wise account',
+      amountMinor: 1_600_000,
+      toAmountMinor: 10_003,
+      fromAccountId: bca.id,
+      toAccountId: wise.id,
+      goalId: hajjId,
+      ratesToBase: { USD: 16_000 },
+    });
+    await voidTaggedTransfer(database, ws, result.transactionId);
+    expect(await setAsideFor(hajjId, wise.id)).toBe(0);
+  });
+});

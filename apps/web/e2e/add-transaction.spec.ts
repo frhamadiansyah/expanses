@@ -284,6 +284,169 @@ test('"Charged in" opens filled in at the rate this device stored for the day', 
   await expect(page.getByLabel('Charged in IDR')).toHaveValue('550000');
 });
 
+/**
+ * §2.1: the row that **posts** is driven the way a person drives it — one keystroke at a time.
+ *
+ * `fill()` sets a whole figure in a single change event, and that is the only way this row had ever been
+ * driven. A human types. The pre-fill used to write into the charged row *only while it was empty*, so the
+ * first keystroke filled it and every keystroke after was ignored: ¥120 pre-filled **Rp 2.270**, the rate for
+ * one yuan, and that is the figure Save would have posted.
+ */
+test('the charged row follows an amount typed a digit at a time, and that figure is what posts', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await addAccount(page, 'BCA Tahapan', 'bank');
+  // A CNY account opened today is what stores today's CNY→IDR rate; nothing else on this device has one.
+  await addForeignAccount(page, 'Alipay', 'CNY', '1000', '2270');
+
+  const openForeignForm = async () => {
+    await page.goto('/transactions/new');
+    await page.getByRole('button', { name: 'Paid with' }).click();
+    await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+    await page.getByRole('button', { name: 'Currency' }).click();
+    await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'CNY Chinese Yuan' }).first().click();
+  };
+
+  await openForeignForm();
+  const amount = page.getByLabel('Amount', { exact: true });
+  const charged = page.getByLabel('Charged in IDR');
+
+  // ¥1 · ¥12 · ¥120 at 2.270 — each keystroke a whole amount in its own right, and the row keeps up with it.
+  await amount.pressSequentially('1');
+  await expect(charged).toHaveValue('2270');
+  await amount.pressSequentially('2');
+  await expect(charged).toHaveValue('27240');
+  await amount.pressSequentially('0');
+  await expect(charged).toHaveValue('272400');
+
+  // And down as well as up: a conversion of an amount that is no longer on screen is the same lie backwards.
+  await amount.fill('');
+  await expect(charged).toHaveValue('');
+
+  // Once the user writes in the row it is theirs, and no later keystroke in the amount may overwrite it — the
+  // figure the bank actually took is the whole reason the row is editable.
+  await amount.pressSequentially('120');
+  await expect(charged).toHaveValue('272400');
+  await charged.fill('275000');
+  await amount.fill('130');
+  await expect(charged).toHaveValue('275000');
+
+  // The money. Typed the way a person types it, saved without re-reading the row, and read back off the ledger.
+  //
+  // `delay` is load-bearing, not politeness. `pressSequentially` with no delay puts all three keys in before
+  // React has re-rendered once, which makes it a paste again — and a paste is exactly the thing that was always
+  // green. At human speed each keystroke is its own render, which is when the row has to keep up.
+  await openForeignForm();
+  await page.getByLabel('Amount', { exact: true }).pressSequentially('120', { delay: 80 });
+  await page.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await page.getByLabel('Note').fill('Luckin Coffee');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page).toHaveURL(/\/transactions(\?|$)/);
+  const row = page.getByTestId('transaction-row').filter({ hasText: 'Luckin Coffee' });
+  // Rp 272.400 — what ¥120 converts to. Rp 2.270 is what this posted before, which is 120× short.
+  await expect(row).toContainText('272.400');
+  await expect(row).toContainText('CN¥120');
+  await expect(row).not.toContainText('2.270');
+});
+
+/**
+ * §2.2 and §2.3: adding somebody to the bill is not allowed to cost the purchase its own facts.
+ *
+ * `SplitBillInput` had no room for the card or for the original pair, so a US$100 dinner on a particular
+ * supplementary card recorded neither: the row printed no digits, the receipt named the bare account, and the
+ * "Original amount" line was simply absent. For a user whose points live on which card was tapped, that is the
+ * purchase's most valuable fact.
+ */
+test('a shared bill keeps the card it was charged on, and what the merchant charged', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await addAccount(page, 'KF Signature', 'credit_card', async () => {
+    await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
+    await page.getByLabel('Last 4 digits').fill('1467');
+    await page.getByLabel('Amount owed now').fill('0');
+  });
+  // A second card on the same account, so "which card" has a wrong answer available to be caught at.
+  await page.goto('/cards');
+  await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
+  await page.getByLabel('Last 4 digits').fill('8802');
+  await page.getByLabel('Whose card').fill('Spouse');
+  await page.getByRole('button', { name: 'Add card' }).click();
+  await expect(page.getByTestId('card-on-account')).toHaveCount(2);
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'KF Signature ···· 8802', exact: true }).click();
+  await form.getByRole('button', { name: 'Currency' }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
+  await form.getByLabel('Amount', { exact: true }).fill('100');
+  await form.getByLabel('Charged in IDR').fill('1600000');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Dinner with Andi');
+  const { more, sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '800000' }]);
+  await closeDetails(more, sheet);
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  const row = page.getByTestId('transaction-row').filter({ hasText: 'Dinner with Andi' });
+  await expect(row).toContainText('8802');
+  await expect(row).not.toContainText('1467');
+  await expect(row).toContainText('US$100,00');
+
+  await page.getByRole('link', { name: 'Receipt for Dinner with Andi' }).click();
+  await expect(page.locator('div', { hasText: /^Paid with/ }).last()).toContainText('KF Signature ···· 8802');
+  await expect(page.locator('div', { hasText: /^Total/ }).last()).toContainText('1.600.000');
+  await expect(page.locator('div', { hasText: /^Original amount/ }).last()).toContainText('US$100,00');
+
+  // It is still a shared bill and not a plain purchase that happened to keep two more columns: Andi owes his half.
+  await page.goto('/net-worth/debts');
+  await expect(page.getByText('Andi').first()).toBeVisible();
+  await expect(page.getByText('800.000').first()).toBeVisible();
+});
+
+/**
+ * §2.4: To, For goal and Received amount, which the screen draws together and the save used to walk past.
+ *
+ * `formToPost` took the goal branch first and ignored `draft.toAmount` — a field the screen marks `required` —
+ * so both legs posted the source figure and the user met the ledger's own **`Lines in USD sum to 1600000,
+ * expected 0`** after pressing Save, with no money moved. The combination is made to work rather than refused:
+ * parking money in a foreign account against a goal is what a multi-currency saver does.
+ */
+test('a transfer that crosses currencies can be tagged to a goal', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await addAccount(page, 'BCA Tahapan', 'bank', async () => {
+    await page.getByLabel('Current balance').fill('20000000');
+  });
+  await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
+  await addGoal(page, 'University for Aisyah', '350000000', '2038-07-31');
+
+  await page.goto('/transactions');
+  // US$100,03 — an odd number of cents, so a figure read at the wrong scale or rounded the wrong way cannot
+  // pass for the right one. Saving at all is the first assertion: this used to end in a raw ledger error.
+  await addTransfer(page, {
+    from: 'BCA Tahapan',
+    to: 'Wise USD (USD)',
+    amount: '1600000',
+    receivedAmount: '100.03',
+    goal: 'University for Aisyah',
+    note: 'Parking in USD',
+  });
+  await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
+
+  // What left and what landed, each in its own account's own money.
+  await page.goto('/accounts');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Wise USD' }).first()).toContainText('110,03');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
+
+  // And the goal is funded out of the account the money landed in. What that set-aside *is* — US$100,03 and
+  // not the Rp 1.600.000 that left — is asserted to the cent in `goal-transfers.test.ts`, because this page
+  // prints the figure in the account's minor units under a base-currency symbol, which is its own defect and
+  // not this one's: asserting the figure here would enshrine it.
+  await page.goto('/goals');
+  await expect(page.getByText(/Wise USD.*set aside/).first()).toBeVisible();
+});
+
 /** A card with real terms, so the points engine has a scheme to measure a purchase against. */
 async function catalogueCard(page: Page, name: string, search: string, entryName: string) {
   await page.goto('/cards');
@@ -743,6 +906,31 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
   // Tapped, it opens full size — the promise the sheet's own line makes.
   await picture.click();
   await expect(page.getByRole('dialog', { name: 'Photo' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'Photo' }).getByRole('button', { name: 'Close' }).click();
+
+  /*
+   * Reopened for correction, the form shows the picture it already has. It used to say **Photos: None** — the
+   * picture was never lost (`movePhotosTx` carries it across a correction) but the one screen that can show or
+   * remove it said there was nothing there, which from the user's side is indistinguishable from data loss.
+   */
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit transaction' });
+  await edit.getByRole('button', { name: 'Add more details' }).click();
+  const reopened = page.getByRole('dialog', { name: 'More details' });
+  await expect(reopened.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  await reopened.getByRole('button', { name: 'Photos' }).click();
+  const photos = page.getByRole('dialog', { name: 'Photos' });
+  await expect(photos.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
+
+  // And it is the same picture, not a second one: removing it here really removes it, which is the whole
+  // point of it being on screen. Saving the correction leaves the transaction with none.
+  await photos.getByRole('button', { name: 'Remove photo 1' }).click();
+  await expect(reopened.getByRole('button', { name: 'Photos' })).toContainText('None');
+  await closeDetails(reopened, photos);
+  await edit.getByRole('button', { name: 'Save' }).click();
+  await expect(edit).toHaveCount(0);
+  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  await expect(page.getByTestId('photo-strip').getByRole('img', { name: 'Receipt photo for Superindo' })).toHaveCount(0);
 });
 
 /**
