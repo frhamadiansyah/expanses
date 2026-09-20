@@ -8,10 +8,15 @@ import { cx } from '../../ui';
  * It is a `<button>` rather than a div with a click handler, so it is reachable by Tab, pressable by Enter and
  * Space, and findable by name — the accessible name is the label, which is how every later spec drives it.
  * 48px tall, with a 34px leading slot so labels line up whether or not a row carries an icon.
+ *
+ * `name` overrides that accessible name where a one-word label is already the name of something else on screen:
+ * a row reading "Workspace" and the sidebar's workspace switcher are two different buttons, and a name they
+ * share is a name that names neither.
  */
 export function FormRow({
   icon,
   label,
+  name,
   value,
   chevron = true,
   onClick,
@@ -20,6 +25,7 @@ export function FormRow({
 }: {
   icon?: ReactNode;
   label: string;
+  name?: string;
   value?: ReactNode;
   chevron?: boolean;
   onClick: () => void;
@@ -31,7 +37,7 @@ export function FormRow({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={label}
+      aria-label={name ?? label}
       className={cx(
         'flex h-12 w-full items-center gap-2 px-3 text-left text-sm',
         'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900',

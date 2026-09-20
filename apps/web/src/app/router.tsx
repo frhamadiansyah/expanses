@@ -34,7 +34,7 @@ import { TradesPage } from '../features/networth/TradesPage';
 import { BillFormPage, EditBillRoute } from '../features/bills/BillFormPage';
 import { BillRoute } from '../features/bills/BillPage';
 import { RecurringPage } from '../features/bills/RecurringPage';
-import { EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
+import { NewTransactionRoute } from '../features/transactions/FormPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
 import { SettingsPage } from '../features/workspaces/SettingsPage';
@@ -94,7 +94,6 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/new', component: NewTransactionRoute }),
   // One transaction, whole.
   createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId', component: ReceiptRoute }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/transactions/$transactionId/edit', component: EditTransactionRoute }),
   // Spending was its own page; the chart it held now leads the transactions it adds up.
   createRoute({
     getParentRoute: () => rootRoute,

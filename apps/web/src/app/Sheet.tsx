@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
+import { useEscape } from './use-escape';
 
 /** How many sheets are open, so the last one out is the one that gives the page its scrolling back. */
 let open = 0;
@@ -9,29 +10,30 @@ let open = 0;
  *
  * It closes on the backdrop, on Escape and on the button in its corner — three ways out, because a
  * sheet that traps someone on a touch screen has no back button to save them.
+ *
+ * Escape goes through `useEscape`, which answers the innermost thing open and nothing else: a keypad inside
+ * this sheet takes the press, and the sheet keeps the draft it is holding.
  */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
 
+  useEscape(onClose);
+
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
     // The page behind must not scroll while a sheet is over it. Counted, so two sheets open at once
     // cannot leave the page locked when only one of them closes.
     open += 1;
     document.body.style.overflow = 'hidden';
     panel.current?.focus();
     return () => {
-      document.removeEventListener('keydown', onKey);
       open -= 1;
       if (open <= 0) {
         open = 0;
         document.body.style.overflow = '';
       }
     };
-  }, [onClose]);
+    // Once, for as long as this sheet is on screen: the count is of sheets, not of renders.
+  }, []);
 
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center bg-slate-900/40 md:items-center" onClick={onClose} role="presentation">

@@ -1,9 +1,10 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { listPhotos, listTransactions, ownerScope, type TransactionPhotoRow, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi, Link, useNavigate, useRouter } from '@tanstack/react-router';
-import { ChevronLeft, Pencil } from 'lucide-react';
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
+import { Pencil } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { BackButton, ROUND } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { loadPurchasePoints } from '../../lib/purchase-points';
@@ -25,8 +26,6 @@ import { heroCaption, receiptLines } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
 
 const route = getRouteApi('/transactions/$transactionId');
-
-const ROUND = 'flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-200/70 focus-visible:outline-2 focus-visible:outline-slate-900';
 
 /** "Thursday, 17 September 2026" — the long form, because a receipt is read once and has the room. */
 const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -97,7 +96,6 @@ function TwoTapDelete({ busy, onConfirm }: { busy: boolean; onConfirm: () => voi
 export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
-  const router = useRouter();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
   const cards = useCards().data ?? [];
@@ -198,17 +196,10 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     if (fresh.data?.status === 'void') await navigate({ to: '/transactions' });
   }
 
-  const back = () => {
-    if (router.history.canGoBack()) router.history.back();
-    else void navigate({ to: '/transactions' });
-  };
-
   return (
     <div className="flex flex-col gap-4">
       <div className="mb-2 flex items-center justify-between">
-        <button type="button" onClick={back} aria-label="Back" className={ROUND}>
-          <ChevronLeft size={18} aria-hidden />
-        </button>
+        <BackButton fallback="/transactions" />
         {changeable && (
           <button type="button" onClick={() => setEditing(true)} aria-label="Edit this transaction" className={ROUND}>
             <Pencil size={16} aria-hidden />

@@ -1,5 +1,6 @@
 import type { AccountRow } from '@expanses/db';
 import { useInOpenBook } from '../../lib/queries';
+import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 
 /**
@@ -12,6 +13,9 @@ import { useCategorySetMembership } from '../categories/set-queries';
  * spending in any book, so they alone may name a category from any of them. A form that records something — a
  * loan, a debt, a card-funded purchase, an instalment's extras, a captured draft being confirmed — offers the
  * open book's categories, so it can never hand the posting a category from another one.
+ *
+ * Which ones, and in what order, is `offered.ts` — shared with `CategoryPicker`, so a child whose parent is
+ * archived or set aside still stands here as a choice of its own rather than vanishing with its parent.
  */
 export function CategoryOptions({
   accounts,
@@ -28,13 +32,11 @@ export function CategoryOptions({
 }) {
   const membership = useCategorySetMembership().data ?? {};
   const inOpenBook = useInOpenBook();
-  const categories = accounts.filter((a) => a.kind === kind && a.archivedAt === null && membership[a.id] === undefined && (ownerWide || inOpenBook(a)));
-  const roots = categories.filter((c) => c.parentId === null);
+  const groups = categoryGroups(offeredCategories(accounts, kind, membership, (a) => ownerWide || inOpenBook(a)));
   return (
     <>
       {placeholder !== null && <option value="">{placeholder}</option>}
-      {roots.map((root) => {
-        const children = categories.filter((c) => c.parentId === root.id);
+      {groups.map(({ root, children }) => {
         if (children.length === 0) {
           return (
             <option key={root.id} value={root.id}>

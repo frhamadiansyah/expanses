@@ -5,15 +5,16 @@ import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
+import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
 
 /**
  * The categories a picker may offer, in the order a tree reads: each root, then what hangs off it.
  *
- * The filter is `CategoryOptions`' own — of this kind, still open, not part of a category set, and filed in the
- * **open book** — because a picker that skips `inOpenBook` offers two buttons nothing on screen tells apart and
- * files this spending in the workspace it does not belong to. Exported so the test can walk the same order the
- * sheet draws.
+ * The filter and the grouping are `offered.ts`'s, shared with `CategoryOptions` — of this kind, still open, not
+ * part of a category set, and filed in the **open book**, because a picker that skips `inOpenBook` offers two
+ * buttons nothing on screen tells apart and files this spending in the workspace it does not belong to. A child
+ * whose parent is filtered out stands as its own root there, so no category is hidden by its parent's state.
  */
 export function pickerCategories(
   accounts: readonly AccountRow[],
@@ -21,8 +22,7 @@ export function pickerCategories(
   membership: Record<string, unknown>,
   inOpenBook: (a: AccountRow) => boolean,
 ): AccountRow[] {
-  const offered = accounts.filter((a) => a.kind === kind && a.archivedAt === null && membership[a.id] === undefined && inOpenBook(a));
-  return offered.filter((a) => a.parentId === null).flatMap((root) => [root, ...offered.filter((a) => a.parentId === root.id)]);
+  return categoryGroups(offeredCategories(accounts, kind, membership, inOpenBook)).flatMap((group) => [group.root, ...group.children]);
 }
 
 /**

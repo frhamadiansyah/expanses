@@ -438,3 +438,41 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await expect(page.getByRole('checkbox', { name: 'Welcome dinner' })).toBeChecked();
   await expect(page.getByLabel('Share for Welcome dinner')).toHaveValue('400000');
 });
+
+/**
+ * A correction stays in the workspace it was filed in — and the two "Workspace" buttons are told apart.
+ *
+ * `replaceTransaction` refuses a write that crosses books, so nothing is ever corrupted. But by this file's own
+ * rule a refusal met after the choice is a choice that should never have been offered, and this one costs more
+ * than the save: switching clears the category on the way out, so what the refusal throws away is the whole
+ * correction, and the receipt behind the sheet has turned read-only by the time it lands.
+ *
+ * The card's row and the sidebar's switcher used to carry the identical accessible name, which `exact: true`
+ * cannot separate: every `name: 'Workspace', exact: true` above drives the switcher, and one open card would
+ * have made all of them ambiguous.
+ */
+test('the card names its workspace; only the sidebar offers to change it', async ({ page }) => {
+  await addBank(page);
+  await spend(page, 'Supplier dinner', '640000');
+
+  // Recording something new: the row is a choice, and "Workspace" still names the switcher and nothing else.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const card = page.getByRole('dialog', { name: 'Add a transaction' });
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toHaveCount(1);
+  const adding = card.getByRole('button', { name: 'Workspace for this transaction' });
+  await expect(adding).toContainText('Personal');
+  await expect(adding).toBeEnabled();
+  await card.getByRole('button', { name: 'Cancel' }).click();
+
+  // Correcting one: the same row still says where this is filed, and no longer offers to re-file it.
+  await page.getByRole('link', { name: 'Receipt for Supplier dinner' }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  const editing = page.getByRole('dialog', { name: 'Edit transaction' });
+  const row = editing.getByRole('button', { name: 'Workspace for this transaction' });
+  await expect(row).toContainText('Personal');
+  await expect(row).toBeDisabled();
+  // Nothing opens, so the category is still the one that was chosen rather than cleared by a switch.
+  await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
+  await expect(editing.getByRole('button', { name: 'Category' })).toContainText('Restaurants');
+});

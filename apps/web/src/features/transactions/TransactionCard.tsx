@@ -339,7 +339,20 @@ function CardBody({
       ) : (
         <>
           <FormRows>
-            <FormRow label="Workspace" value={openBook?.name ?? ''} onClick={() => setSheet('workspace')} />
+            {/*
+              A correction stays in the workspace it was filed in. `replaceTransaction` refuses a write that
+              crosses books, and a refusal met at Save is a choice that should never have been offered: the
+              switch also clears the category on its way, so what it costs is the whole edit. The row stays,
+              greyed, because which workspace this is in is still worth reading — it is the offer that goes.
+            */}
+            <FormRow
+              label="Workspace"
+              name="Workspace for this transaction"
+              value={openBook?.name ?? ''}
+              chevron={!initial}
+              disabled={!!initial}
+              onClick={() => setSheet('workspace')}
+            />
             <FormRow label={payLabel} value={chosenPayment(payable, draft)} onClick={() => setSheet('money')} />
           </FormRows>
 

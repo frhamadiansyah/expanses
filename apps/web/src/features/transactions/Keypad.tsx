@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
 import { cx } from '../../ui';
 import { KEYPAD_KEYS, keypadAction } from './tx-form';
@@ -17,6 +17,9 @@ import { KEYPAD_KEYS, keypadAction } from './tx-form';
  * There are three ways out, as every sheet in the app has: the ✕ in its corner, Escape, and tapping the page
  * behind it. The dock covers the Save button while it is open, so a keypad with no exit is a form with no exit.
  *
+ * Escape closes the dock and stops there. The sheet this usually sits in listens for Escape too, and through
+ * `useEscape` only the innermost listener answers: one press used to close both and lose the whole draft.
+ *
  * Rendered only on a phone: on a desktop the arithmetic is in the amount field itself, and a keypad there
  * would be a second, weaker way to enter money.
  */
@@ -33,15 +36,9 @@ export function Keypad({
 }) {
   const phone = usePhone();
 
-  // Declared before the early return, so the hook order is the same whichever screen this is on.
-  useEffect(() => {
-    if (!phone) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [phone, onClose]);
+  // Called before the early return, so the hook order is the same whichever screen this is on, and enabled
+  // only on a phone: a dock that is not drawn must not take Escape from the sheet it would have sat in.
+  useEscape(onClose, phone);
 
   if (!phone) return null;
 

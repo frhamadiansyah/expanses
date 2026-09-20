@@ -64,3 +64,35 @@ test('a purchase recorded by thumb reaches the list', async ({ page }) => {
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '500000' });
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('500.000');
 });
+
+/**
+ * Escape closes the innermost thing open, and the draft behind it survives.
+ *
+ * The sheet and the dock inside it both listen for Escape on the document. One press used to be answered by
+ * both: the dock shut, the sheet shut behind it, and a transaction typed to its last digit was gone with
+ * nothing to get it back. The first test in this file works on `/transactions/new` precisely to avoid this;
+ * here is the sheet path it was avoiding.
+ */
+test('Escape inside the sheet puts the dock away and keeps what was typed', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await expect(form).toBeVisible();
+
+  const amount = form.getByRole('button', { name: 'Amount', exact: true });
+  await amount.click();
+  const keypad = page.getByTestId('keypad');
+  await expect(keypad).toBeVisible();
+  for (const digit of '450000') await keypad.getByRole('button', { name: digit, exact: true }).click();
+
+  // One press: the dock, and nothing behind it.
+  await page.keyboard.press('Escape');
+  await expect(keypad).toBeHidden();
+  await expect(form).toBeVisible();
+  await expect(amount).toHaveText('450000');
+
+  // A second press is the sheet's own way out, which is what Escape was always for once the dock is gone.
+  await page.keyboard.press('Escape');
+  await expect(form).toHaveCount(0);
+});
