@@ -37,7 +37,7 @@ async function buy(page: Page, description: string, amount: string, on: string) 
   await page.getByLabel('Date').fill(on);
   await page.getByLabel('Description').fill(description);
   await page.getByLabel('Paid with').selectOption({ label: 'BCA Visa (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
+  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Groceries' });
   await page.getByLabel('Amount', { exact: true }).fill(amount);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('button', { name: 'Add transaction' })).toBeVisible();

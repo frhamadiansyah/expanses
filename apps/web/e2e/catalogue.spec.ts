@@ -37,7 +37,7 @@ async function buy(page: Page, p: { card: string; description: string; category:
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await page.getByLabel('Description').fill(p.description);
   await page.getByLabel('Paid with').selectOption({ label: `${p.card} (IDR)` });
-  await page.getByLabel('Category').selectOption({ label: p.category });
+  await page.getByLabel('Category', { exact: true }).selectOption({ label: p.category });
   await page.getByLabel('Amount', { exact: true }).fill(p.amount);
   if (p.original) {
     await page.getByText('Card purchase details').click();
@@ -100,7 +100,7 @@ test('comparing in KrisFlyer ranks UnionPay converted miles above Signature mile
   await page.goto('/recommend');
   await page.getByLabel('Amount (IDR)').fill('540000');
   await page.getByLabel('Spent in').selectOption('SGD');
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
+  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Restaurants' });
   await expect(page.getByLabel('Compare in').locator('option', { hasText: 'KrisFlyer' })).toHaveCount(1);
   await page.getByLabel('Compare in').selectOption('KrisFlyer');
   await page.getByRole('button', { name: 'Compare cards' }).click();

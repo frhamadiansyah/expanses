@@ -45,7 +45,7 @@ async function buy(page: Page, p: Purchase) {
   if (p.on) await page.getByLabel('Date').fill(p.on);
   await page.getByLabel('Description').fill(p.description);
   await page.getByLabel('Paid with').selectOption({ label: `${p.card} (IDR)` });
-  await page.getByLabel('Category').selectOption({ label: p.category });
+  await page.getByLabel('Category', { exact: true }).selectOption({ label: p.category });
   await page.getByLabel('Amount', { exact: true }).fill(p.amount);
   if (p.mcc) {
     await page.getByText('Card purchase details').click();

@@ -14,6 +14,7 @@ const accounts = [
   account('food', 'expense', 'category', { name: 'Food & Beverage', systemKey: 'food_beverage' }),
   account('groceries', 'expense', 'category', { name: 'Groceries', parentId: 'food', systemKey: 'groceries' }),
   account('salary', 'income', 'category', { name: 'Salary', systemKey: 'salary' }),
+  account('electronics', 'expense', 'category', { name: 'Electronics', systemKey: 'electronics' }),
 ];
 const byId = new Map(accounts.map((a) => [a.id, a]));
 const cards: CardRow[] = [
@@ -159,6 +160,7 @@ describe('groupByCategory', () => {
     last4: null,
     holderName: null,
     deleted: false,
+    excluded: false,
     needs: [],
     ...over,
   });
@@ -194,6 +196,33 @@ describe('groupByCategory', () => {
       row({ id: 'b', categoryId: 'fuel', categoryName: 'Fuel cost', baseMinor: 999_000, deleted: true }),
     ]);
     expect(groups[0]).toMatchObject({ rows: expect.objectContaining({ length: 2 }), totalMinor: 100_000 });
+  });
+});
+
+describe('a purchase marked "not my spending"', () => {
+  it('leaves it out of the day, the totals and the category grouping, without leaving it out of the list', () => {
+    const rows = buildRows(
+      [
+        tx('2026-09-17', 'Superindo', [['groceries', 250_000], ['bca', -250_000]]),
+        tx('2026-09-17', 'iPhone for Mama', [['electronics', 18_999_000], ['bca', -18_999_000]], { excluded: true }),
+      ],
+      [],
+      accounts,
+      cards,
+    );
+    const [day] = groupByDay(rows);
+
+    // The row is still there — faded and struck through, but there — and it still says what it cost.
+    expect(day!.rows).toHaveLength(2);
+    expect(rows.find((row) => row.description === 'iPhone for Mama')).toMatchObject({ excluded: true, baseMinor: 18_999_000 });
+
+    // What it does not do is move a figure.
+    expect(dayTotal(day!.rows)).toBe(-250_000);
+    expect(totals(rows)).toMatchObject({ count: 1, spentMinor: 250_000 });
+    expect(groupByCategory(rows).map((group) => [group.name, group.totalMinor])).toEqual([
+      ['Groceries', 250_000],
+      ['Electronics', 0],
+    ]);
   });
 });
 

@@ -17,6 +17,7 @@ import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Rou
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { isEditable } from './draft';
 import { ReceiptLink } from './ReceiptLink';
+import { TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
@@ -222,6 +223,8 @@ export function TransactionsPage() {
   // On a phone the search field and the filters are behind their buttons; a wide screen shows both.
   const [showSearch, setShowSearch] = useState(false);
   const phone = usePhone();
+  // One copy of the category gesture for the whole screen: the sheet it opens and the Undo toast it leaves.
+  const recategorise = useRecategorise();
   const [showFilters, setShowFilters] = useState(false);
   // The workspace switcher, reached from the ⋯ menu — the one thing in there that changes the whole app.
   const [choosingWorkspace, setChoosingWorkspace] = useState(false);
@@ -659,7 +662,6 @@ export function TransactionsPage() {
                 // The subcategory alone: "Parking & tolls" says Transportation without repeating it.
                 .map((e) => accounts.find((a) => a.id === e.accountId)?.name ?? categoryPath(accounts, e.accountId))
                 .join(', ');
-    const sign = row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
     const goal = goalName(tradeByTransaction.get(tx.id)?.goalId ?? tx.goalId ?? null);
     const points = purchasePoints.data?.[tx.id];
     const trade = tradeByTransaction.has(tx.id);
@@ -668,31 +670,28 @@ export function TransactionsPage() {
     const reachable = !trade && isEditable(tx);
     const elsewhere = reachable ? elsewhereOf(tx.id) : null;
     const clickable = reachable && !elsewhere && filingKnown;
+    // Every way in inherits the same refusals. A trade, an opening balance, a voided row and a purchase filed
+    // in another workspace may not be edited, deleted or re-filed from here — by swipe no less than by click.
+    const openReceipt = () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } });
     return (
-      <li
+      <TransactionRow
         key={tx.id}
-        tabIndex={reachable ? 0 : undefined}
+        row={row}
+        accounts={accounts}
+        phone={phone}
         title={clickable ? 'Click to edit' : elsewhere ? openToEditMessage(elsewhere) : undefined}
-        onClick={reachable ? () => open(row) : undefined}
-        onKeyDown={reachable ? (event) => event.target === event.currentTarget && event.key === 'Enter' && open(row) : undefined}
-        className={cx(
-          'group flex items-center gap-3 py-2',
-          row.deleted && 'opacity-50 line-through',
-          clickable && '-mx-2 cursor-pointer rounded-lg px-2 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-slate-900',
-          elsewhere && '-mx-2 rounded-lg px-2 focus-visible:outline-2 focus-visible:outline-slate-900',
-        )}
-      >
-        <span className={cx(row.deleted && 'grayscale')}>
-          {/* Under a category the group already shows the icon, so each row's circle carries its day instead. */}
-          <CategoryIcon
-            categoryId={row.categoryId}
-            accounts={accounts}
-            transfer={row.type !== 'expense' && row.type !== 'income'}
-            label={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
-          />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">
+        // A phone taps for the receipt and swipes for the rest; a desktop keeps its editor in place, untouched.
+        // `reachable`, not `clickable`, exactly as before: a purchase filed in another workspace still answers a
+        // click — with the note saying where it lives — and only saving it here is refused.
+        onOpen={phone ? openReceipt : reachable ? () => open(row) : undefined}
+        onEdit={clickable ? () => open(row) : undefined}
+        onDelete={clickable ? () => void run(tx.id, () => voidTransaction(database, ws, tx.id)) : undefined}
+        // Spec §9's parity row: clicking the icon re-files on a wide screen too, with the same Undo toast.
+        onRecategorise={clickable && recategorise.offers(row) ? recategorise.start : undefined}
+        // Under a category the group already shows the icon, so each row's circle carries its day instead.
+        iconLabel={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
+        label={
+          <>
             {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}
             {withDate && (!singleMonth || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {label}
@@ -700,40 +699,44 @@ export function TransactionsPage() {
             <WorkspaceBadge book={badgeOf(tx.id)} />
             {/* Paid in one month for another's bill: listed on the day paid, counted in the budget in its bill month. */}
             {billTag && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">{billTag}</span>}
-          </div>
-          <div className="truncate text-xs text-slate-500">
+          </>
+        }
+        subtitle={
+          <>
             {tx.description ? `${tx.description} · ` : ''}
             {row.accountLabel}
             {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
             {goal && ` · for ${goal}`}
-          </div>
-          {/* Asked for by trying to edit it: the row says where it lives, and offers to take you there. */}
-          {elsewhere && elsewhereId === tx.id && <SwitchToEdit book={elsewhere} className="mt-0.5 block" />}
-        </div>
-        <div className="text-right">
-          {/* The colour says which way the money went, so the sign would only say it twice. */}
-          <div className={cx('tabular text-sm font-semibold whitespace-nowrap', sign < 0 && 'text-red-700', sign > 0 && 'text-emerald-700')}>
-            {formatMinor(row.amountMinor, row.currency)}
-          </div>
-          {points && (
-            <div className={cx('tabular whitespace-nowrap text-xs', points.points < 0 ? 'text-red-700' : 'text-emerald-700')}>
-              {points.points < 0 ? '−' : points.approximate ? '≈ ' : '+'}
-              {formatPoints(Math.abs(points.points))} {points.unit}
-            </div>
-          )}
-          {tx.originalCurrency && tx.originalAmountMinor !== null && (
-            <div className="tabular whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</div>
-          )}
-        </div>
-        {trade ? (
-          <Link to="/net-worth/trades" className="text-sm font-medium text-slate-600 underline" title="Edit this on Buy & sell so units stay in step">
-            Buy &amp; sell
-          </Link>
-        ) : (
-          clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
-        )}
-        <ReceiptLink description={row.description} transactionId={tx.id} />
-      </li>
+          </>
+        }
+        // Asked for by trying to edit it: the row says where it lives, and offers to take you there.
+        under={elsewhere && elsewhereId === tx.id ? <SwitchToEdit book={elsewhere} className="mt-0.5 block" /> : undefined}
+        amountExtra={
+          <>
+            {points && (
+              <span className={cx('tabular block whitespace-nowrap text-xs', points.points < 0 ? 'text-red-700' : 'text-emerald-700')}>
+                {points.points < 0 ? '−' : points.approximate ? '≈ ' : '+'}
+                {formatPoints(Math.abs(points.points))} {points.unit}
+              </span>
+            )}
+            {tx.originalCurrency && tx.originalAmountMinor !== null && (
+              <span className="tabular block whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</span>
+            )}
+          </>
+        }
+        trailing={
+          <>
+            {trade ? (
+              <Link to="/net-worth/trades" className="text-sm font-medium text-slate-600 underline" title="Edit this on Buy & sell so units stay in step">
+                Buy &amp; sell
+              </Link>
+            ) : (
+              clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
+            )}
+            <ReceiptLink description={row.description} transactionId={tx.id} />
+          </>
+        }
+      />
     );
   }
 
@@ -1240,6 +1243,9 @@ export function TransactionsPage() {
           )}
         </>
       )}
+
+      {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
+      {recategorise.overlay}
     </div>
   );
 }

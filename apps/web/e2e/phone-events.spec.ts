@@ -8,7 +8,7 @@ test.beforeEach(({ page }) => {
 async function record(page: Page, description: string, category: string, amount: string) {
   await page.getByLabel('Description').fill(description);
   await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: category });
+  await page.getByLabel('Category', { exact: true }).selectOption({ label: category });
   await page.getByLabel('Amount', { exact: true }).fill(amount);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByLabel('Description')).toHaveValue('');

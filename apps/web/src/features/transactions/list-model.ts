@@ -38,6 +38,8 @@ export interface ListRow {
   last4: string | null;
   holderName: string | null;
   deleted: boolean;
+  /** Marked "not my spending": still listed, faded and struck through, but out of every figure the list adds up. */
+  excluded: boolean;
   /** What a draft still needs before it can be recorded. Always empty for a recorded row. */
   needs: string[];
   tx?: TransactionView;
@@ -117,6 +119,7 @@ export function buildRows(
       last4: card?.last4 ?? null,
       holderName: card?.holderName ?? null,
       deleted: tx.status === 'void',
+      excluded: tx.excluded ?? false,
       needs: [],
       tx,
     };
@@ -142,6 +145,8 @@ export function buildRows(
       last4: card?.last4 ?? null,
       holderName: card?.holderName ?? null,
       deleted: false,
+      // Nothing is excluded until it is recorded: a draft counts nothing either way.
+      excluded: false,
       needs: draftNeeds(draft),
       draft,
     };
@@ -233,7 +238,8 @@ export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
     const group = groups.get(key) ?? { id, name, rows: [], totalMinor: 0 };
     group.rows.push(row);
     // A transfer moves money without spending it, and a deleted row was never real.
-    if (!row.deleted && (row.type === 'expense' || row.type === 'income')) group.totalMinor += row.baseMinor;
+    // …and a row marked "not my spending" keeps its place in the group while adding nothing to its figure.
+    if (!row.deleted && !row.excluded && (row.type === 'expense' || row.type === 'income')) group.totalMinor += row.baseMinor;
     groups.set(key, group);
   }
   return [...groups.values()].sort((a, b) => b.totalMinor - a.totalMinor || a.name.localeCompare(b.name));
@@ -241,11 +247,11 @@ export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
 
 /** A day's net in the workspace currency: income less spending, never counting drafts, deleted rows or transfers. */
 export function dayTotal(rows: readonly ListRow[]): number {
-  return dayNet(rows.map((row) => ({ kind: row.type === 'expense' || row.type === 'income' ? row.type : 'transfer', amountMinor: row.baseMinor, counted: row.kind === 'tx' && !row.deleted })));
+  return dayNet(rows.map((row) => ({ kind: row.type === 'expense' || row.type === 'income' ? row.type : 'transfer', amountMinor: row.baseMinor, counted: row.kind === 'tx' && !row.deleted && !row.excluded })));
 }
 
 export function totals(rows: readonly ListRow[]): { count: number; spentMinor: number; incomeMinor: number } {
-  const counted = rows.filter((row) => row.kind === 'tx' && !row.deleted);
+  const counted = rows.filter((row) => row.kind === 'tx' && !row.deleted && !row.excluded);
   return {
     count: counted.length,
     spentMinor: counted.filter((row) => row.type === 'expense').reduce((sum, row) => sum + row.baseMinor, 0),

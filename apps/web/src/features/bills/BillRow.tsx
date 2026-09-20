@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cx, Money } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { isSettled, pillOf, sublineOf } from './bill-view';
-import { SwipeRow } from './SwipeRow';
+import { SwipeRow } from '../../ui/SwipeRow';
 
 /**
  * One bill on the Recurring list. A swipe right pays it, a swipe left offers Skip; on a desktop the same two actions

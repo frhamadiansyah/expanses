@@ -16,6 +16,8 @@ import { ShareLine } from '../transactions/CategoryLines';
 import { categoryColour } from '../transactions/category-colours';
 import { Deck } from '../transactions/Deck';
 import { Donut } from '../transactions/Donut';
+import { buildRows } from '../transactions/list-model';
+import { TransactionRow, useRecategorise } from '../transactions/TransactionRow';
 import { eventDates, eventStatus, StatusChip } from './EventsPage';
 import { PlanCard } from './PlanCard';
 import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedLabel, planTotals, spentLabel, TONE, whereItWentRows } from './plan-view';
@@ -76,6 +78,8 @@ export function EventDetailPage() {
   const setCategories = useSetCategories(event?.setId ?? null).data ?? [];
   const membership = useCategorySetMembership().data ?? {};
   const today = isoDate();
+  // One copy of the category gesture for this screen: the sheet it opens and the Undo toast it leaves.
+  const recategorise = useRecategorise();
 
   const [page, setPage] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -277,6 +281,8 @@ export function EventDetailPage() {
   );
 
   // Oldest day last, like Cashflow; each day a card of its own.
+  // The history as the list's own rows, so an event draws transactions the way every other screen does.
+  const historyRows = new Map(buildRows(history.data ?? [], [], accounts, []).map((row) => [row.id, row]));
   const days = new Map<string, NonNullable<typeof history.data>>();
   for (const tx of history.data ?? []) days.set(tx.occurredOn, [...(days.get(tx.occurredOn) ?? []), tx]);
 
@@ -557,16 +563,31 @@ export function EventDetailPage() {
                      */
                     const answered = answers.get(tx.id) ?? [];
                     const leftover = leftovers.has(tx.id);
+                    // The same row every other transaction list draws, so this history gains the gestures too:
+                    // tap it for its receipt, tap its circle to re-file it. Nothing here deletes or edits in
+                    // place — an event has never offered either, and a new way in inherits every refusal.
+                    const listRow = historyRows.get(tx.id)!;
                     return (
-                      <li key={tx.id} className="flex items-center gap-3 py-2.5" data-testid="event-history">
-                        <CategoryIcon categoryId={expense?.accountId ?? null} accounts={accounts} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">{expense?.accountName ?? tx.description}</span>
-                          <span className="block truncate text-xs text-slate-500">
+                      <TransactionRow
+                        key={tx.id}
+                        row={listRow}
+                        accounts={accounts}
+                        testId="event-history"
+                        amountMinor={expense?.amountBaseMinor ?? 0}
+                        currency={ws.baseCurrency}
+                        className="py-2.5"
+                        title="Open the receipt"
+                        onOpen={() => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } })}
+                        onRecategorise={recategorise.offers(listRow) ? recategorise.start : undefined}
+                        label={expense?.accountName ?? tx.description}
+                        subtitle={
+                          <>
                             {tx.description}
                             {paidWith && ` · ${paidWith.accountName}`}
-                          </span>
-                          {(answered.length > 0 || leftover) && (
+                          </>
+                        }
+                        under={
+                          (answered.length > 0 || leftover) && (
                             <span className="mt-1 flex flex-wrap items-center gap-1">
                               {/*
                                * On a phone, at most three and then a count: a shopping trip answering eight items
@@ -602,10 +623,9 @@ export function EventDetailPage() {
                               {/* Amber, like the leftover rows on the plan screen it is the same fact as. */}
                               {leftover && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">not planned</span>}
                             </span>
-                          )}
-                        </span>
-                        <Money minor={expense?.amountBaseMinor ?? 0} currency={ws.baseCurrency} className="shrink-0 text-sm font-semibold text-red-700" />
-                      </li>
+                          )
+                        }
+                      />
                     );
                   })}
                 </ul>
@@ -637,6 +657,9 @@ export function EventDetailPage() {
           </Button>
         </div>
       )}
+
+      {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
+      {recategorise.overlay}
     </div>
   );
 }
