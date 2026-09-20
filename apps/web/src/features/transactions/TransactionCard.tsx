@@ -31,7 +31,8 @@ import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, transferTargets } f
 import { CategoryPicker } from './CategoryPicker';
 import { FormRow, FormRows } from './FormRow';
 import { MoreDetails } from './MoreDetails';
-import { paymentKey, paymentOptions } from './quick-row';
+import { PaymentSheet, chosenPayment } from './PaymentSheet';
+import { paymentOptions } from './quick-row';
 import { emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, type FormPost, formToPost } from './tx-form';
 
 /**
@@ -57,23 +58,6 @@ function MoneyAccountOptions({ accounts, spendableOnly, keep }: { accounts: Acco
   );
 }
 
-/**
- * What one Paid with row is called.
- *
- * The digits are part of the name only when they are what tells two rows apart — an account carrying a
- * supplementary card offers one row per card, and "Mandiri Bonvoy" alone would name both. An account with a
- * single card is one choice, so its name is the account's: a name nobody has to read digits out of.
- */
-export function paymentLabel(option: PaymentOption): string {
-  return option.cardId ? `${option.accountName} ···· ${option.last4 ?? '????'}` : option.accountName;
-}
-
-/** What the Paid with row shows once something is chosen, or nothing when it is still empty. */
-function chosenPayment(options: readonly PaymentOption[], draft: FormDraft): string {
-  const found = options.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
-  return found ? paymentLabel(found) : (options.find((option) => option.accountId === draft.moneyId)?.accountName ?? '');
-}
-
 /** A day either side of the date, as the ‹ › buttons step it. */
 export function stepDay(iso: string, days: number): string {
   const date = new Date(`${iso}T00:00:00`);
@@ -81,8 +65,13 @@ export function stepDay(iso: string, days: number): string {
   return isoDate(date);
 }
 
-/** Which currencies a save has to be able to convert before it can be posted. */
-function currenciesOf(post: FormPost, accounts: readonly AccountRow[]): string[] {
+/**
+ * Which currencies a save has to be able to convert before it can be posted.
+ *
+ * Exported for the edit sheet, which posts through `replaceTransaction` exactly as this card does: asking a
+ * second time, in a second place, is how one way in comes to demand a rate the other does not.
+ */
+export function currenciesOf(post: FormPost, accounts: readonly AccountRow[]): string[] {
   const currencyOf = (id: string) => accounts.find((a) => a.id === id)?.currency ?? '';
   if (post.kind === 'post') return [...new Set(post.input.lines.map((line) => line.currency))];
   if (post.kind === 'split') return [currencyOf(post.input.moneyAccountId)];
@@ -518,28 +507,13 @@ function CardBody({
 
       {sheet === 'workspace' && <WorkspaceSheet onClose={() => setSheet(null)} />}
       {sheet === 'money' && (
-        <Sheet title={payLabel} onClose={() => setSheet(null)}>
-          <ul className="-mx-1 divide-y divide-slate-100">
-            {payable.map((option) => (
-              <li key={paymentKey(option.accountId, option.cardId)}>
-                <button
-                  type="button"
-                  aria-label={paymentLabel(option)}
-                  onClick={() => {
-                    set({ moneyId: option.accountId, cardId: option.cardId ?? '' });
-                    setSheet(null);
-                  }}
-                  className="flex min-h-11 w-full items-center gap-3 px-1 text-left text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
-                >
-                  <span className="min-w-0 flex-1 truncate">{paymentLabel(option)}</span>
-                  <span aria-hidden className="shrink-0 text-xs text-slate-400">
-                    {[option.holderName, byId.get(option.accountId)?.currency].filter(Boolean).join(' · ')}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Sheet>
+        <PaymentSheet
+          title={payLabel}
+          options={payable}
+          accounts={accounts}
+          onPick={(option) => set({ moneyId: option.accountId, cardId: option.cardId ?? '' })}
+          onClose={() => setSheet(null)}
+        />
       )}
       {sheet === 'category' && (
         <CategoryPicker

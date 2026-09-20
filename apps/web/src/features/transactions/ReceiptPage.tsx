@@ -6,6 +6,7 @@ import { Pencil } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { BackButton, ROUND } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
+import { usePhone } from '../../app/use-phone';
 import { Sheet } from '../../app/Sheet';
 import { loadPurchasePoints } from '../../lib/purchase-points';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
@@ -20,10 +21,13 @@ import { useAssetValues } from '../networth/queries';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
-import { ConvertForm } from './TransactionsPage';
+import { ConvertForm } from './ConvertForm';
+import { EditSheet } from './EditSheet';
 import { useChangeable } from './queries';
 import { heroCaption, receiptLines } from './receipt-view';
 import { TransactionCard } from './TransactionCard';
+import { canEditInSheet } from './tx-form';
+import { TwoTapDelete } from './TwoTapDelete';
 
 const route = getRouteApi('/transactions/$transactionId');
 
@@ -33,23 +37,6 @@ const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString
 export function ReceiptRoute() {
   const { transactionId } = route.useParams();
   return <ReceiptPage transactionId={transactionId} />;
-}
-
-/** Deleting asks twice, in place — the same two taps the list and the table already ask for. */
-function TwoTapDelete({ busy, onConfirm }: { busy: boolean; onConfirm: () => void }) {
-  const [armed, setArmed] = useState(false);
-  return (
-    <button
-      type="button"
-      disabled={busy}
-      aria-label={armed ? 'Click again to delete' : 'Delete this transaction'}
-      onBlur={() => setArmed(false)}
-      onClick={() => (armed ? onConfirm() : setArmed(true))}
-      className={cx('min-h-11 self-center rounded-lg px-3 text-sm font-medium disabled:opacity-60', armed ? 'bg-red-700 text-white' : 'text-red-700 hover:bg-red-50')}
-    >
-      {armed ? 'Click again to delete' : 'Delete'}
-    </button>
-  );
 }
 
 /**
@@ -63,6 +50,7 @@ function TwoTapDelete({ busy, onConfirm }: { busy: boolean; onConfirm: () => voi
 export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
+  const phone = usePhone();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
   const cards = useCards().data ?? [];
@@ -248,7 +236,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
                     Edit
                   </Button>
                   {/* Gated on the same condition as Edit: what cannot be corrected here must not be deleted here. */}
-                  <TwoTapDelete busy={busy} onConfirm={() => void remove()} />
+                  <TwoTapDelete busy={busy} onConfirm={() => void remove()} className="self-center" />
                 </>
               )}
             </>
@@ -266,11 +254,20 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         </Sheet>
       )}
 
-      {editing && (
-        <Sheet title="Edit transaction" onClose={() => void afterEdit()}>
-          <TransactionCard initial={tx} onDone={() => void afterEdit()} />
-        </Sheet>
-      )}
+      {/*
+        The phone's Edit is the sheet; the desktop's is the card it has always been, in a sheet, in place. A
+        desktop is not a phone with something taken away, and navigating it off the receipt to a form would be
+        exactly that. What the sheet cannot hold — a split, a transfer, a foreign purchase — opens the full card
+        on a phone too, because `canEditInSheet` says so and the fallback is the caller's to choose.
+      */}
+      {editing &&
+        (phone && canEditInSheet(tx) ? (
+          <EditSheet tx={tx} onClose={() => void afterEdit()} />
+        ) : (
+          <Sheet title="Edit transaction" onClose={() => void afterEdit()}>
+            <TransactionCard initial={tx} onDone={() => void afterEdit()} />
+          </Sheet>
+        ))}
 
       {converting && (
         <Sheet title="This was a purchase" onClose={() => setConverting(false)}>

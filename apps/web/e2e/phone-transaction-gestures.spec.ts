@@ -105,3 +105,87 @@ test('a phone refuses what a desktop refuses, and still lets the row be read', a
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Delete this transaction' })).toHaveCount(0);
 });
+
+/**
+ * Editing on a phone is one sheet, whichever way it is reached — the receipt's Edit and the row's swipe open the
+ * very same screen — and the rarer things you can do to a transaction sit behind ⋯ rather than crowding it.
+ *
+ * The sheet is a **new way in**, so what it opens is what already exists: `MoreDetails` is the card's own
+ * component with the card's own props (Event and Photos are there, With is not, because §15.6 does not offer a
+ * shared bill on a correction), and Escape closes the innermost thing only, through the one listener `useEscape`
+ * keeps. A second copy of either is how this branch has broken itself six times.
+ */
+test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ holds the rest', async ({ page }) => {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Current balance').fill('20000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+
+  // Something to convert into, so ⋯ can offer "This was a purchase" at all: the sheet carries the receipt's own
+  // gate, and a conversion with nothing to convert into is a form whose Save can never be pressed.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('button', { name: 'Add asset' }).click();
+  await page.getByLabel('What is it?').selectOption('gold');
+  await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
+  await page.getByLabel('Bought on').fill('2026-03-09');
+  await page.getByLabel('How much').fill('10');
+  await page.getByLabel('Total cost (IDR)').fill('18600000');
+  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
+
+  await page.goto('/transactions');
+  await record(page, 'Warung Steak', 'Restaurants', '120000');
+
+  // In from the receipt.
+  await face(page, 'Warung Steak', 'Restaurants').click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Edit', exact: true });
+  await sheet.getByLabel('Note').fill('Warung Steak Tebet');
+
+  // More opens the card's own extras screen, not a second set of them: Event and Photos are on it, and With is
+  // not, because a correction posts through `replaceTransaction` and cannot become a shared bill.
+  await sheet.getByRole('button', { name: 'More', exact: true }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+  await expect(more.getByRole('button', { name: 'Event' })).toBeVisible();
+  await expect(more.getByRole('button', { name: 'Photos' })).toBeVisible();
+  await expect(more.getByRole('button', { name: 'With', exact: true })).toHaveCount(0);
+  // Escape answers the innermost thing open and nothing else: the extras go, the half-typed edit stays.
+  await page.keyboard.press('Escape');
+  await expect(more).toHaveCount(0);
+  await expect(sheet).toHaveCount(1);
+  await expect(sheet.getByLabel('Note')).toHaveValue('Warung Steak Tebet');
+
+  await sheet.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toHaveCount(0);
+  // An edit voids the original, so the receipt it belonged to is gone and the list is where the save lands.
+  await expect(page).toHaveURL(/\/transactions(\?|$)/);
+  const fixed = row(page, 'Warung Steak Tebet');
+  await expect(fixed).toHaveCount(1);
+  await expect(fixed).toContainText('Groceries');
+  // And it is in the database, not only on the screen.
+  await page.reload();
+  await expect(row(page, 'Warung Steak Tebet')).toContainText('Groceries');
+
+  // In from the swipe: the same sheet, and the rarer actions behind ⋯.
+  const swiped = row(page, 'Warung Steak Tebet');
+  // Dragged where it can be dragged. The tab bar is fixed across the foot of the screen, so a row that is
+  // technically "in the viewport" can still be under it, and the press lands on the tab bar instead —
+  // `scrollIntoViewIfNeeded` is happy with such a row and does nothing.
+  await swiped.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await swipeLeft(page, swiped);
+  await swiped.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(sheet).toHaveCount(1);
+  await sheet.getByRole('button', { name: 'More actions' }).click();
+  const actions = page.getByRole('dialog', { name: 'More actions' });
+  for (const name of ['Open in full form', 'This was a purchase', 'Delete this transaction']) {
+    await expect(actions.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+  await actions.getByRole('button', { name: 'Open in full form' }).click();
+  await expect(page).toHaveURL(/\/transactions\/[0-9a-f-]+\/edit$/);
+  // The full card, on this transaction: the note it is already carrying proves which one was opened.
+  await expect(page.getByLabel('Note')).toHaveValue('Warung Steak Tebet');
+});

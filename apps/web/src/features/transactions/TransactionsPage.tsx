@@ -1,5 +1,5 @@
-import { categoryPath, formatMinor, isoDate, monthOf, parseLooseAmount, parseLooseDate, parseUnits, parsePeriod, periodLabel } from '@expanses/core';
-import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactionsIn, ownerScope, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
+import { categoryPath, formatMinor, isoDate, monthOf, parseLooseAmount, parseLooseDate, parsePeriod, periodLabel } from '@expanses/core';
+import { confirmDraft, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactionsIn, ownerScope, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, CalendarDays, CalendarX2, Check, ChevronDown, ChevronLeft, CircleAlert, CreditCard, Ellipsis, Trash2, LayoutGrid, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
@@ -13,8 +13,10 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
 import { useDrafts } from '../review/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, Money, PageHeader, RoundButton } from '../../ui';
 import { ChipMenu, type ChipOption } from './ChipMenu';
+import { ConvertForm } from './ConvertForm';
+import { EditSheet } from './EditSheet';
 import { isEditable } from './draft';
 import { ReceiptLink } from './ReceiptLink';
 import { TransactionRow, useRecategorise } from './TransactionRow';
@@ -28,6 +30,7 @@ import { Recurring } from './Recurring';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
+import { canEditInSheet } from './tx-form';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
@@ -48,90 +51,6 @@ function rememberedView(): View {
   } catch {
     return 'list';
   }
-}
-
-/**
- * Turns an expense already recorded into the purchase it really was, keeping its date and amount.
- *
- * Exported because the receipt screen opens the very same form in a sheet. One form, two ways in — a second
- * copy of it would be two places for "what it bought" to drift apart.
- */
-export function ConvertForm({
-  tx,
-  holdings,
-  goals,
-  onDone,
-}: {
-  tx: TransactionView;
-  holdings: { accountId: string; name: string }[];
-  goals: { id: string; name: string }[];
-  onDone: () => void;
-}) {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const [accountId, setAccountId] = useState(holdings[0]?.accountId ?? '');
-  const [units, setUnits] = useState('');
-  const [goalId, setGoalId] = useState('');
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function save() {
-    setError(null);
-    setBusy(true);
-    try {
-      await convertToPurchase(database, ws, { transactionId: tx.id, accountId, unitsMicro: parseUnits(units), goalId: goalId || null });
-      await invalidate();
-      onDone();
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card className="space-y-3">
-      <h3 className="text-sm font-semibold">This was a purchase</h3>
-      <p className="text-xs text-slate-500">
-        The amount, the date and the account that paid stay as they are. It stops counting as spending and starts counting as a holding.
-      </p>
-      <div className="grid gap-3 md:grid-cols-3">
-        <Field label="What it bought">
-          <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-            {holdings.map((holding) => (
-              <option key={holding.accountId} value={holding.accountId}>
-                {holding.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Units, shares or grams">
-          <Input value={units} inputMode="decimal" onChange={(e) => setUnits(e.target.value)} placeholder="2" />
-        </Field>
-        {goals.length > 0 && (
-          <Field label="For goal">
-            <Select value={goalId} onChange={(e) => setGoalId(e.target.value)}>
-              <option value="">No goal</option>
-              {goals.map((goal) => (
-                <option key={goal.id} value={goal.id}>
-                  {goal.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-      </div>
-      <ErrorBox error={error} />
-      <div className="flex gap-2">
-        <Button onClick={save} disabled={busy || !accountId}>
-          Save as a purchase
-        </Button>
-        <Button variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
-    </Card>
-  );
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -263,6 +182,8 @@ export function TransactionsPage() {
   };
   /** The full form, for a transaction too involved to edit as a row. */
   const [editingId, setEditingId] = useState<string | null>(null);
+  // The phone's swipe reaches the edit sheet; a desktop's click still edits in place, untouched.
+  const [editSheetTx, setEditSheetTx] = useState<TransactionView | null>(null);
   /** A row being edited in place. */
   const [editing, setEditing] = useState<{ kind: 'tx' | 'draft'; id: string; values: QuickValues } | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
@@ -687,7 +608,11 @@ export function TransactionsPage() {
         // `reachable`, not `clickable`, exactly as before: a purchase filed in another workspace still answers a
         // click — with the note saying where it lives — and only saving it here is refused.
         onOpen={phone ? openReceipt : reachable ? () => open(row) : undefined}
-        onEdit={clickable ? () => open(row) : undefined}
+        // Since Task 9 the swipe opened the in-place editor; on a phone it now opens the edit sheet, which is
+        // the phone's whole affordance for a correction. What the sheet cannot hold falls back to the editor
+        // this row has always opened, so no transaction loses its way in. The desktop never reaches `onEdit`
+        // at all — `TransactionRow` draws the swipe layer only on a phone — and is left exactly as it was.
+        onEdit={clickable ? () => (phone && canEditInSheet(tx) ? setEditSheetTx(tx) : open(row)) : undefined}
         onDelete={clickable ? () => void run(tx.id, () => voidTransaction(database, ws, tx.id)) : undefined}
         // Spec §9's parity row: clicking the icon re-files on a wide screen too, with the same Undo toast.
         onRecategorise={clickable && recategorise.offers(row) ? recategorise.start : undefined}
@@ -1253,6 +1178,10 @@ export function TransactionsPage() {
 
       {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
       {recategorise.overlay}
+
+      {/* The phone's swipe-Edit, once for the screen. Closing it is enough to put it away: the save has already
+          invalidated everything, so the list underneath is redrawn without being told. */}
+      {editSheetTx && <EditSheet tx={editSheetTx} onClose={() => setEditSheetTx(null)} />}
     </div>
   );
 }
