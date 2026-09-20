@@ -7,6 +7,7 @@ import { newerDatabaseVersion } from '../../db/newer-database';
 import type { SnapshotInfo, SnapshotStore } from '../../db/open';
 import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes } from '../../lib/download';
+import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
 import { photos } from '../../photos/store';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, PageHeader } from '../../ui';
@@ -195,7 +196,7 @@ export function BackupPage() {
      * if the newer backup is restored again; the photograph does not. The safety copy this restore already
      * insisted on covers the data. This is the same insistence, for the one thing that has no second copy.
      */
-    await photos.holdPhotosBeforeRestore().catch((error: unknown) => console.warn('Photos could not be held back from the sweep', error));
+    await holdPhotosOrRefuse();
     if (!snapshots) {
       // This open has no store to keep a copy in. The restore the user asked for still happens; the file
       // downloaded a moment ago is what stands behind it.

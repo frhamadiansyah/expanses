@@ -178,6 +178,20 @@ test('photos download as a zip and come back from one, and an entry no row names
   await page.locator('input[accept*="zip"]').setInputFiles(zip);
   await expect(page.getByText('0 photos restored · 1 already here · 1 not named by any transaction on this device')).toBeVisible();
 
+  /*
+   * And the one screen that shows a photograph: the receipt's strip, with the bytes read back out of OPFS
+   * and handed to the page as an object URL. This is the only place the `<img>` is exercised at all — the
+   * store's own tests stop at the blob — and it is reached the way a desktop reaches it, through the ⓘ.
+   */
+  await page.goto('/transactions');
+  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  const picture = page.getByTestId('photo-strip').getByRole('img', { name: 'Receipt photo for Superindo' });
+  await expect(picture).toBeVisible();
+  await expect(picture).toHaveAttribute('src', /^blob:/);
+  // The bytes behind that URL are this device's own, read back out of OPFS rather than fetched from anywhere.
+  expect(await picture.evaluate(async (img: HTMLImageElement) => (await fetch(img.src)).text())).toBe('a receipt');
+  await page.goto('/backup');
+
   // Out: the bytes on the device, in a zip any ordinary tool opens.
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download photos (1)' }).click();

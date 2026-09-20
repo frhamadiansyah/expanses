@@ -15,14 +15,14 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { usePeopleDebts } from '../debts/queries';
 import { useEvents } from '../events/queries';
 import { useGoals } from '../goals/queries';
-import { useAssetValues } from '../networth/queries';
+import { useAssetValues, useTrades } from '../networth/queries';
 import { editInsteadIn } from '../workspaces/filing';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { classify } from './classify';
 import { ConvertForm } from './TransactionsPage';
 import { isEditable } from './draft';
-import { receiptLines } from './receipt-view';
+import { heroCaption, receiptLines } from './receipt-view';
 import { TransactionForm } from './TransactionForm';
 
 const route = getRouteApi('/transactions/$transactionId');
@@ -104,6 +104,16 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
   const cards = useCards().data ?? [];
   const goals = useGoals().data ?? [];
   const holdings = (useAssetValues().data ?? []).filter((row) => row.mode === 'market');
+  /*
+   * The same question the list and the table ask before they offer anything: is this transaction a trade?
+   *
+   * A trade's units live in `trades`, and the transaction is only its money half. Voiding it hands the cash
+   * back and leaves the units held — net worth rises by the price of something nobody bought — and editing it
+   * posts a **new** id, leaving the trade row pointing at a transaction that no longer exists. `TransactionsPage`
+   * and `TransactionsTable` both refuse for exactly that reason and send the user to Buy & sell instead. A new
+   * way in has to inherit every refusal the old ways carry, or it is a way round them.
+   */
+  const trades = useTrades();
   const today = isoDate();
 
   const [editing, setEditing] = useState(false);
@@ -166,7 +176,18 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
     goalName: goals.find((goal) => goal.id === tx.goalId)?.name,
   });
 
-  const editable = isEditable(tx) && !elsewhere;
+  const isTrade = (trades.data ?? []).some((trade) => trade.transactionId === tx.id);
+  /*
+   * Nothing destructive is offered until the trades are in. An unanswered query looks exactly like "not a
+   * trade", and a receipt that offered Delete for the half-second before the answer arrived would be the
+   * same defect with a smaller window — the list guards its own editing the same way, with `filingKnown`.
+   *
+   * `isEditable` carries the other refusal: an opening balance posts against system equity, has no form that
+   * could represent it, and voiding one silently rewrites an account's starting balance. The table gives it
+   * no "Open in form" and therefore no Delete either; here the two now stand or fall together.
+   */
+  const changeable = isEditable(tx) && !elsewhere && trades.isSuccess && !isTrade;
+  const caption = heroCaption(tx, kind.amountMinor);
 
   async function remove() {
     setError(null);
@@ -204,7 +225,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         <button type="button" onClick={back} aria-label="Back" className={ROUND}>
           <ChevronLeft size={18} aria-hidden />
         </button>
-        {editable && (
+        {changeable && (
           <button type="button" onClick={() => setEditing(true)} aria-label="Edit this transaction" className={ROUND}>
             <Pencil size={16} aria-hidden />
           </button>
@@ -215,7 +236,11 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
 
       <section data-testid="receipt-hero" className="flex flex-col items-center gap-1 text-center">
         <CategoryIcon categoryId={kind.categoryIds[0] ?? null} accounts={accounts} transfer={kind.type === 'transfer' || kind.type === 'opening'} size="lg" />
-        <span className={cx('tabular text-3xl font-semibold', tx.status === 'void' && 'text-slate-400 line-through')}>{formatMinor(kind.amountMinor, kind.currency)}</span>
+        <span data-testid="hero-amount" className={cx('tabular text-3xl font-semibold', tx.status === 'void' && 'text-slate-400 line-through')}>
+          {formatMinor(kind.amountMinor, kind.currency)}
+        </span>
+        {/* Which of the two figures this is, when the bill and the share of it are not the same number. */}
+        {caption && <span className="text-xs text-slate-500">{caption}</span>}
         <h1 className="text-lg font-semibold">{tx.description}</h1>
         <span className="text-sm text-slate-500">
           {[...categoryNames, book?.name].filter(Boolean).join(' · ')}
@@ -254,17 +279,29 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         <SwitchToEdit book={elsewhere} className="self-center text-center" />
       ) : (
         <div className="flex flex-col items-center gap-2">
-          {tx.status === 'posted' && kind.type === 'expense' && holdings.length > 0 && (
-            <button type="button" onClick={() => setConverting(true)} className="min-h-11 rounded-lg px-3 text-sm font-medium text-slate-700 hover:bg-slate-100">
-              This was a purchase
-            </button>
+          {isTrade ? (
+            /* The row's whole trailing slot, exactly as `TransactionsPage` and `TransactionsTable` replace it. */
+            <Link to="/net-worth/trades" title="Edit this on Buy & sell so units stay in step" className="min-h-11 py-2 text-sm font-medium text-slate-600 underline">
+              Buy &amp; sell
+            </Link>
+          ) : (
+            <>
+              {tx.status === 'posted' && kind.type === 'expense' && holdings.length > 0 && (
+                <button type="button" onClick={() => setConverting(true)} className="min-h-11 rounded-lg px-3 text-sm font-medium text-slate-700 hover:bg-slate-100">
+                  This was a purchase
+                </button>
+              )}
+              {changeable && (
+                <>
+                  <Button variant="ghost" className="min-h-11" onClick={() => setEditing(true)}>
+                    Edit
+                  </Button>
+                  {/* Gated on the same condition as Edit: what cannot be corrected here must not be deleted here. */}
+                  <TwoTapDelete busy={busy} onConfirm={() => void remove()} />
+                </>
+              )}
+            </>
           )}
-          {editable && (
-            <Button variant="ghost" className="min-h-11" onClick={() => setEditing(true)}>
-              Edit
-            </Button>
-          )}
-          {tx.status === 'posted' && <TwoTapDelete busy={busy} onConfirm={() => void remove()} />}
         </div>
       )}
 

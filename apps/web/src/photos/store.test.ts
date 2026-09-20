@@ -2,7 +2,7 @@ import { expenseLines } from '@expanses/core';
 import { addPhoto, allPhotoFileNames, createAccount, createDatabase, createWorkspace, listAccounts, migrate, MIGRATIONS, postTransaction } from '@expanses/db';
 import { createNodeExecutor, type NodeExecutor } from '@expanses/db/node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { makePhotoStore, type PhotoDirectory, type SweepShield } from './store';
+import { deviceShield, makePhotoStore, type PhotoDirectory, type SweepShield } from './store';
 import { memoryDirectory } from './memory-directory';
 import { sweepPhotosAtStart } from './sweep-at-start';
 
@@ -215,6 +215,66 @@ describe('a restore that hands the app a database older than the photos on the d
     expect(later.fileName).not.toBe(abandoned.fileName);
   });
 
+  /**
+   * The hold built from a read that failed — the one that used to raise nothing at all.
+   *
+   * `listPhotoFiles` swallows a directory it cannot walk and answers `[]`, which is right for the sweep:
+   * nothing can be shown to be unused, so nothing goes. Built the hold out of the same `[]` and it means the
+   * opposite — *hold nothing* — and it **resolved**, so neither call site had anything to catch. The restore
+   * went ahead, the next sweep read every picture as an orphan, and a photograph has no second copy anywhere.
+   *
+   * The directory here is the exact shape `listPhotoFiles`'s catch exists for: it refuses one walk and is
+   * perfectly fine on the next, which is what a storage permission prompt or a busy OPFS looks like.
+   */
+  it('refuses to build a hold from a directory it could not read, rather than holding nothing', async () => {
+    const files = new Map<string, Uint8Array>();
+    let refuseWalk = false;
+    const flaky = (): PhotoDirectory => {
+      const inner = memoryDirectory(files);
+      return {
+        ...inner,
+        [Symbol.asyncIterator]: () => {
+          if (refuseWalk) throw new Error('NotReadableError');
+          return inner[Symbol.asyncIterator]();
+        },
+      };
+    };
+    const shield = memoryShield();
+    const store = makePhotoStore(flaky, shield);
+    const photo = await store.savePhotoBytes(bytes('a receipt'), 'image/jpeg');
+
+    refuseWalk = true;
+    // The sweep's reading of the same failure is unchanged: it answers empty and therefore deletes nothing.
+    expect(await store.listPhotoFiles()).toEqual([]);
+    // The hold's reading of it is a rejection, because an empty hold is a promise it cannot keep.
+    await expect(store.holdPhotosBeforeRestore()).rejects.toThrow();
+    expect(shield.held()).toEqual([]);
+
+    // And the restore that rejection stops never happens, so the photograph is still there afterwards.
+    refuseWalk = false;
+    expect(await store.listPhotoFiles()).toEqual([photo.fileName]);
+  });
+
+  /**
+   * The hold that could not be written down — a full origin, or an iOS Safari private window.
+   *
+   * `write` raises, and the hold has to raise with it: a hold nobody recorded protects nothing, and the
+   * caller is about to run the one operation that deletes photographs.
+   */
+  it('refuses when the device will not keep the list of held photos', async () => {
+    const unwritable: SweepShield = {
+      read: () => [],
+      write: () => {
+        throw new Error('QuotaExceededError');
+      },
+    };
+    const store = makePhotoStore(() => memoryDirectory(), unwritable);
+    const photo = await store.savePhotoBytes(bytes('a receipt'), 'image/jpeg');
+
+    await expect(store.holdPhotosBeforeRestore()).rejects.toThrow();
+    expect(await store.listPhotoFiles()).toEqual([photo.fileName]);
+  });
+
   it('deletes nothing when this device cannot say which photos a restore is holding', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const unreadable: SweepShield = {
@@ -229,6 +289,82 @@ describe('a restore that hands the app a database older than the photos on the d
     expect(await store.sweepOrphanPhotos([])).toBe(0);
     expect(await store.listPhotoFiles()).toEqual([photo.fileName]);
     expect(warn).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The shield the app actually ships — fifteen lines of `localStorage`, every one of them a decision about
+ * what "empty" means.
+ *
+ * Everything else in this file runs against `memoryShield()` or a shield written to throw, so until now the
+ * only thing that exercised these lines was the happy path of an end-to-end test. All three ways the hold
+ * used to fail open lived here: a write nobody checked, a stored list quietly filtered down to nothing, and
+ * a parse that could only be trusted because it had never been given anything odd.
+ */
+describe('the hold as a real device keeps it', () => {
+  /** A `localStorage` that can be told to misbehave the way a full origin or a private window does. */
+  function stubStorage(initial: string | null, behaviour: { readThrows?: boolean; writeThrows?: boolean } = {}) {
+    let value = initial;
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        if (behaviour.readThrows) throw new Error('SecurityError: storage is not available in this window');
+        return value;
+      },
+      setItem: (_key: string, next: string) => {
+        if (behaviour.writeThrows) throw new Error('QuotaExceededError');
+        value = next;
+      },
+    });
+    return { stored: () => value };
+  }
+
+  it('writes the names down under a key of its own and reads them back', () => {
+    const storage = stubStorage(null);
+    deviceShield.write(['b.jpg', 'a.jpg']);
+    expect(storage.stored()).toBe('["b.jpg","a.jpg"]');
+    expect(deviceShield.read()).toEqual(['b.jpg', 'a.jpg']);
+  });
+
+  it('holds nothing where there is no web storage at all, and does not fail trying to write there', () => {
+    vi.stubGlobal('localStorage', undefined);
+    expect(deviceShield.read()).toEqual([]);
+    expect(() => deviceShield.write(['a.jpg'])).not.toThrow();
+  });
+
+  /*
+   * The stored list that is not a list of names. Filtering the odd entries out turned `[null, 0, {}]` into
+   * `[]` — "nothing is held" — which is a sentence the sweep acts on. "This device cannot say" is the truth,
+   * and the sweep already knows what to do with it.
+   */
+  it('throws rather than answering empty when the stored list holds something that is not a name', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    stubStorage('[null,0,{}]');
+    expect(() => deviceShield.read()).toThrow();
+
+    // And the consequence, through the real store: nothing is deleted on the strength of a list like that.
+    const store = makePhotoStore(() => memoryDirectory(), deviceShield);
+    const photo = await store.savePhotoBytes(bytes('a receipt'), 'image/jpeg');
+    expect(await store.sweepOrphanPhotos([])).toBe(0);
+    expect(await store.listPhotoFiles()).toEqual([photo.fileName]);
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a stored value that is not a list', '{"held":"a.jpg"}'],
+    ['a stored value that is not JSON at all', 'a.jpg'],
+  ])('throws on %s', (_what, stored) => {
+    stubStorage(stored);
+    expect(() => deviceShield.read()).toThrow();
+  });
+
+  it('lets a storage that will not take the write say so, instead of losing the hold quietly', () => {
+    stubStorage(null, { writeThrows: true });
+    expect(() => deviceShield.write(['a.jpg'])).toThrow();
+  });
+
+  it('lets a storage that will not be read say so', () => {
+    stubStorage('["a.jpg"]', { readThrows: true });
+    expect(() => deviceShield.read()).toThrow();
   });
 });
 

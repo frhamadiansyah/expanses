@@ -1,6 +1,6 @@
 import type { AccountRow, CardRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { receiptLines } from './receipt-view';
+import { heroCaption, receiptLines } from './receipt-view';
 
 /**
  * `formatMinor` puts a no-break space between a currency symbol and its digits — "Rp 400.000" — and every
@@ -224,5 +224,35 @@ describe('the figures a receipt has to get right', () => {
   it('names the goal a transfer funds, because the list already does', () => {
     const lines = receiptLines({ tx: dinner(), accounts, cards: [card], currency: 'IDR', points: null, owed: [], goalName: 'Umrah' });
     expect(valueOf(lines, 'For goal')).toBe('Umrah');
+  });
+});
+
+/**
+ * The two figures a split bill puts one above the other.
+ *
+ * The hero is what the transaction cost the owner — the expense side, 100.000 of the dinner — and it matches
+ * the list row the receipt was opened from. The `Total` line under it is what the card was charged, 400.000.
+ * On the screen that was Rp 100.000 in 3xl type with Rp 400.000 directly beneath it and not a word between
+ * them, which reads as a mistake rather than as two true facts.
+ */
+describe('the word between a share and a bill', () => {
+  it('says which figure the big one is, when the bill and the share of it differ', () => {
+    // Exactly what `ReceiptPage` passes: `classify(tx).amountMinor`, the expense side of the split.
+    expect(heroCaption(dinner(), 100_000)).toBe('Your share');
+  });
+
+  it('says nothing on an ordinary purchase, where there is only one figure to read', () => {
+    const whole = dinner({
+      entries: [
+        { accountId: 'acct-card', accountKind: 'liability', amountMinor: -400_000, amountBaseMinor: -400_000, currency: 'IDR' },
+        { accountId: 'cat-restaurants', accountKind: 'expense', amountMinor: 400_000, amountBaseMinor: 400_000, currency: 'IDR' },
+      ],
+    } as Partial<TransactionView>);
+    expect(heroCaption(whole, 400_000)).toBeNull();
+  });
+
+  it('says nothing about a transaction with no money entry to compare against', () => {
+    const noMoney = dinner({ entries: [{ accountId: 'cat-restaurants', accountKind: 'expense', amountMinor: 100_000, amountBaseMinor: 100_000, currency: 'IDR' }] } as Partial<TransactionView>);
+    expect(heroCaption(noMoney, 100_000)).toBeNull();
   });
 });

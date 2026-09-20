@@ -33,6 +33,30 @@ export interface ReceiptInput {
 /** Money accounts: the two kinds whose entry says what was actually charged or received. */
 const MONEY = new Set(['asset', 'liability']);
 
+/** The entry that says what was really charged or received — the money that left, or, failing that, that arrived. */
+function paidEntry(tx: TransactionView) {
+  const money = tx.entries.filter((entry) => MONEY.has(entry.accountKind));
+  const left = money.filter((entry) => entry.amountMinor < 0).sort((a, b) => a.amountMinor - b.amountMinor);
+  const arrived = money.filter((entry) => entry.amountMinor > 0).sort((a, b) => b.amountMinor - a.amountMinor);
+  return { left, arrived, paid: left[0] ?? arrived[0], into: left[0] ? arrived[0] : undefined };
+}
+
+/**
+ * The word between the two figures on a split bill — null when there is only one figure to read.
+ *
+ * The big number at the top is what the transaction cost **you**: on a dinner you paid 400.000 for and were
+ * paid back 300.000 of, it is 100.000, and it matches the list row this screen was opened from. The `Total`
+ * line under it is what the **card** was charged: 400.000. Both are right, and a screen that showed them one
+ * above the other with nothing to tell them apart read as an arithmetic mistake. So the hero says which one
+ * it is, and only when it differs — on an ordinary purchase the two are the same figure and a caption would
+ * only be noise.
+ */
+export function heroCaption(tx: TransactionView, heroMinor: number): string | null {
+  const { paid } = paidEntry(tx);
+  if (!paid) return null;
+  return Math.abs(paid.amountMinor) === heroMinor ? null : 'Your share';
+}
+
 /** "Andi" · "Andi and Putri" · "Andi, Putri and Chika" — the way a person reads a list aloud. */
 function nameList(names: readonly string[]): string {
   if (names.length <= 1) return names[0] ?? '';
@@ -61,13 +85,9 @@ export function receiptLines(input: ReceiptInput): ReceiptLine[] {
   const card = tx.cardId ? cards.find((row) => row.id === tx.cardId) : undefined;
   const accountText = (accountId: string) => (card && card.accountId === accountId && card.last4 ? `${nameOf(accountId)} ···· ${card.last4}` : nameOf(accountId));
 
-  const money = tx.entries.filter((entry) => MONEY.has(entry.accountKind));
-  const left = money.filter((entry) => entry.amountMinor < 0).sort((a, b) => a.amountMinor - b.amountMinor);
-  const arrived = money.filter((entry) => entry.amountMinor > 0).sort((a, b) => b.amountMinor - a.amountMinor);
   // Money that left is what was paid with; money that only arrived — a salary, a refund — was paid *into*.
-  const paid = left[0] ?? arrived[0];
   // A transfer touches two money accounts, and a receipt that named only the first would hide where it went.
-  const into = left[0] ? arrived[0] : undefined;
+  const { left, paid, into } = paidEntry(tx);
   const currency = paid?.currency ?? input.currency;
 
   const lines: ReceiptLine[] = [];

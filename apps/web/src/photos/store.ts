@@ -80,13 +80,22 @@ const PHOTO_DIRECTORY = 'expanses-photos';
 export interface SweepShield {
   /** The names to spare. **Throws** when this device cannot say — which stands the sweep down entirely. */
   read(): readonly string[];
+  /** Writes the names to spare. **Throws** when this device cannot keep them — which stops the restore. */
   write(names: readonly string[]): void;
 }
 
 /** Where the hold is written on a real device. Namespaced like the other keys this app owns. */
 const SHIELD_KEY = 'expanses.photos.held-before-restore';
 
-const deviceShield: SweepShield = {
+/**
+ * The hold as a real device keeps it, in `localStorage`.
+ *
+ * Every line here is a decision about what "empty" means, and each one of them can cost a photograph if it is
+ * made the other way round. The rule the whole module rests on: **an answer this device cannot vouch for is an
+ * error, never an empty list.** An empty list is a promise that there is nothing to spare, and the sweep
+ * deletes on the strength of it.
+ */
+export const deviceShield: SweepShield = {
   read() {
     // No web storage at all (a test runner, an odd embedding) is not a corrupt answer: there is nothing held
     // because nothing could ever have been written. A storage that exists and throws *is* an unreadable
@@ -96,10 +105,16 @@ const deviceShield: SweepShield = {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) throw new Error('The list of held photos is not a list.');
-    return parsed.filter((name): name is string => typeof name === 'string');
+    // Filtering the odd ones out would turn `[null, 0, {}]` into "nothing is held", which reads to the sweep
+    // as permission to delete. A list this device cannot fully read is a list it cannot answer with at all.
+    if (!parsed.every((name): name is string => typeof name === 'string')) throw new Error('The list of held photos holds something that is not a file name.');
+    return parsed as readonly string[];
   },
   write(names) {
     if (typeof localStorage === 'undefined') return;
+    // Unguarded on purpose. A full origin, or an iOS Safari private window, refuses the write — and a hold
+    // that was not written is not a hold. The caller has to hear about it, because the restore it is about
+    // to run is the thing that deletes the photographs.
     localStorage.setItem(SHIELD_KEY, JSON.stringify([...names]));
   },
 };
@@ -154,6 +169,23 @@ export function makePhotoStore(
     }
     return opened;
   };
+
+  /**
+   * Every name in the photo directory — **or a rejection**, when the directory cannot be walked.
+   *
+   * The two callers want opposite things from a walk that fails, which is why the swallowing lives in one of
+   * them rather than here. To the *sweep*, an unreadable directory means "sweep nothing", and `[]` says that
+   * perfectly. To the *hold*, `[]` means "there is nothing to protect" — the same value, the opposite
+   * instruction, and the one that ends with a photograph deleted. So the raw walk raises, `listPhotoFiles`
+   * catches for the sweep, and `holdPhotosBeforeRestore` lets it through.
+   */
+  async function walk(): Promise<string[]> {
+    const dir = await directory();
+    const names: string[] = [];
+    for await (const [name] of { [Symbol.asyncIterator]: () => dir[Symbol.asyncIterator]() }) names.push(name);
+    // Sorted so two runs over the same directory answer the same way; OPFS promises no order.
+    return names.sort();
+  }
 
   async function readBytes(fileName: string): Promise<Uint8Array | null> {
     const handle = await (await directory()).getFileHandle(fileName);
@@ -221,13 +253,10 @@ export function makePhotoStore(
       }
     },
 
+    /** The sweep's half of `walk`: a directory that will not be read sweeps nothing rather than half of something. */
     async listPhotoFiles() {
       try {
-        const dir = await directory();
-        const names: string[] = [];
-        for await (const [name] of { [Symbol.asyncIterator]: () => dir[Symbol.asyncIterator]() }) names.push(name);
-        // Sorted so two runs over the same directory answer the same way; OPFS promises no order.
-        return names.sort();
+        return await walk();
       } catch {
         return [];
       }
@@ -304,14 +333,20 @@ export function makePhotoStore(
      * the one thing in this app with no second copy anywhere — used to get nothing, and the sweep that ran
      * on the very next load was pointed at a database that had never heard of them. This is their equivalent
      * step, and it is cheaper than a copy: nothing is duplicated, the files are simply put out of reach.
+     *
+     * **It fails closed, in both directions.** The directory is walked raw rather than through
+     * `listPhotoFiles`, so a directory that cannot be read raises here instead of quietly holding nothing;
+     * and `shield.write` is left to raise when the device will not keep the list. Either way the caller is
+     * handed a rejection, and a restore that cannot hold the photographs is a restore that must not run.
      */
     async holdPhotosBeforeRestore() {
-      const here = await store.listPhotoFiles();
+      const here = await walk();
       let held: readonly string[] = [];
       try {
         held = shield.read();
       } catch {
-        // Unreadable, so it is replaced rather than added to. What is on the device right now is what matters.
+        // Unreadable, so it is replaced rather than added to. What is on the device right now is what matters,
+        // and `here` is the whole directory: nothing present goes unheld because an older list was corrupt.
       }
       const names = [...new Set([...held, ...here])].sort();
       shield.write(names);
