@@ -1,8 +1,7 @@
-import { isoDate, mccName, minorToMajorString, parseMajor, parseRate, type PaymentOption, resolveMcc } from '@expanses/core';
+import { isoDate, parseRate, type PaymentOption } from '@expanses/core';
 import {
   type AccountRow,
   type CardRow,
-  mccSourcesFor,
   postTransaction,
   recordTaggedTransfer,
   recordTrade,
@@ -12,21 +11,18 @@ import {
   type TransactionView,
   upsertRate,
 } from '@expanses/db';
-import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { checkManualRate, ratePreview } from '../../lib/rates';
+import { checkManualRate } from '../../lib/rates';
 import { Button, Card, ErrorBox, Field, Input, InputRow, RowGroup, Select, SelectRow } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { useGoals } from '../goals/queries';
-import { MccPicker } from '../merchants/MccPicker';
-import { suggestPattern } from '../merchants/mcc-search';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
@@ -34,6 +30,7 @@ import { AmountRow } from './AmountRow';
 import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, transferTargets } from './buy-in-form';
 import { CategoryPicker } from './CategoryPicker';
 import { FormRow, FormRows } from './FormRow';
+import { MoreDetails } from './MoreDetails';
 import { paymentKey, paymentOptions } from './quick-row';
 import { emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, type FormPost, formToPost } from './tx-form';
 
@@ -141,7 +138,6 @@ function CardBody({
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const [showCardDetails, setShowCardDetails] = useState(() => !!initial?.mcc);
   const noteId = useId();
   const dateId = useId();
   const set = (patch: Partial<FormDraft>) => setDraft((d) => ({ ...d, ...patch }));
@@ -166,21 +162,6 @@ function CardBody({
     allCards as CardRow[],
   );
 
-  const mccSources = useQuery({ queryKey: ['mcc-sources', ws.workspaceId], queryFn: () => mccSourcesFor(database.db, ws), enabled: onCard });
-  const guessCategory = draft.splits[0]?.categoryId || draft.categoryId;
-  const guess = mccSources.data && guessCategory ? resolveMcc(draft.description, guessCategory, { typed: null, ...mccSources.data }) : null;
-  const guessName = guess?.mcc ? mccName(guess.mcc) : null;
-  const guessFrom =
-    guess?.source === 'memory' ? 'you taught this merchant' : guess?.source === 'bundled' ? 'typical for this merchant' : `from ${byId.get(guessCategory)?.name ?? 'the category'}`;
-  const guessHint = guess?.mcc ? `Empty uses ${guess.mcc}${guessName ? ` ${guessName}` : ''} (${guessFrom}).` : 'Empty: no MCC is known for this merchant or category yet.';
-  const splitTotal = draft.splits.reduce((sum, row) => {
-    try {
-      return sum + (row.amount.trim() ? parseMajor(row.amount, currency) : 0);
-    } catch {
-      return sum;
-    }
-  }, 0);
-
   /*
    * The workspace row and the open workspace are the same fact, so the row follows the app rather than keeping a
    * second answer. Changing it clears the category: two workspaces hold copies of the same category under
@@ -197,9 +178,6 @@ function CardBody({
     setBusy(true);
     try {
       const post = formToPost(draft, accounts);
-      const today = isoDate();
-      // Rates are resolved no later than today, so a manual rate must be stored under the same date.
-      const rateDate = draft.occurredOn > today ? today : draft.occurredOn;
       if (needsRate && draft.manualRate.trim()) {
         const rate = parseRate(draft.manualRate);
         await checkManualRate(database, needsRate, ws.baseCurrency, rateDate, rate);
@@ -213,7 +191,8 @@ function CardBody({
         const resolved = await resolveRates([...new Set(foreign)], draft.occurredOn);
         if (resolved.missing.length > 0) {
           setNeedsRate(resolved.missing[0]!);
-          throw new Error(`No ${resolved.missing[0]}→${ws.baseCurrency} rate for ${rateDate}. Enter it below.`);
+          // The rate field lives under Add more details and only there (§3.3), so the message says where to go.
+          throw new Error(`No ${resolved.missing[0]}→${ws.baseCurrency} rate for ${rateDate}. Add it under “Add more details”.`);
         }
         if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase: resolved.rates });
         else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase: resolved.rates });
@@ -230,6 +209,10 @@ function CardBody({
       setBusy(false);
     }
   }
+
+  // Rates are resolved no later than today, so the row asks for the rate under the date the save will store it.
+  const rateDate = draft.occurredOn > isoDate() ? isoDate() : draft.occurredOn;
+  const missingRate = needsRate ? { from: needsRate, to: ws.baseCurrency, onDate: rateDate } : null;
 
   const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
@@ -541,83 +524,9 @@ function CardBody({
             </div>
           )}
 
-          {onCard && (
-            <details open={showCardDetails} onToggle={(e) => setShowCardDetails(e.currentTarget.open)} className="rounded-lg border border-slate-200 px-3 py-2">
-              <summary className="cursor-pointer text-sm text-slate-600">Card purchase details</summary>
-              {showCardDetails && (
-                <div className="mt-2 grid gap-3 md:grid-cols-2">
-                  <MccPicker label="MCC" value={draft.mcc} onChange={(mcc) => set({ mcc })} hint={guessHint} />
-                  <div className="space-y-2 text-sm">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={!!draft.rememberPattern}
-                        onChange={(e) => set({ rememberPattern: e.target.checked ? suggestPattern(draft.description) || draft.description.trim().toLowerCase() : '' })}
-                      />
-                      Remember this MCC for every purchase containing the merchant text
-                    </label>
-                    {draft.rememberPattern && (
-                      <Field label="Merchant text" hint="Matched as whole words in descriptions, on every card, including past purchases.">
-                        <Input value={draft.rememberPattern} onChange={(e) => set({ rememberPattern: e.target.value })} />
-                      </Field>
-                    )}
-                  </div>
-                </div>
-              )}
-            </details>
-          )}
-
-          {draft.mode === 'expense' && (
-            <div className="space-y-2">
-              {draft.splits.map((row, i) => (
-                <div key={i} className="grid grid-cols-[1fr_8rem_auto] gap-2">
-                  <Select
-                    aria-label={`Split ${i + 1} category`}
-                    value={row.categoryId}
-                    onChange={(e) => set({ splits: draft.splits.map((r, j) => (j === i ? { ...r, categoryId: e.target.value } : r)) })}
-                  >
-                    <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
-                  </Select>
-                  <Input
-                    aria-label={`Split ${i + 1} amount`}
-                    value={row.amount}
-                    inputMode="decimal"
-                    onChange={(e) => set({ splits: draft.splits.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)) })}
-                  />
-                  <Button variant="ghost" onClick={() => set({ splits: draft.splits.filter((_, j) => j !== i) })} aria-label={`Remove split ${i + 1}`}>
-                    ✕
-                  </Button>
-                </div>
-              ))}
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="secondary"
-                  onClick={() =>
-                    set({
-                      splits: draft.splits.length
-                        ? [...draft.splits, { categoryId: '', amount: '' }]
-                        : [{ categoryId: draft.categoryId, amount: draft.amount }, { categoryId: '', amount: '' }],
-                    })
-                  }
-                >
-                  Split
-                </Button>
-                {draft.splits.length > 0 && (
-                  <span className="tabular text-sm text-slate-600">
-                    Total {minorToMajorString(splitTotal, currency)} {currency}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
         </>
       )}
 
-      {needsRate && (
-        <Field label={`Rate: ${ws.baseCurrency} per 1 ${needsRate}`} hint={ratePreview(draft.manualRate, needsRate, ws.baseCurrency) ?? 'Type the rate your bank used.'}>
-          <Input value={draft.manualRate} onChange={(e) => set({ manualRate: e.target.value })} inputMode="decimal" />
-        </Field>
-      )}
       <ErrorBox error={error} />
       <div className="flex gap-2">
         <Button type="submit" disabled={busy}>
@@ -669,9 +578,9 @@ function CardBody({
       )}
       {sheet === 'details' && (
         <Sheet title="More details" onClose={() => setSheet(null)}>
-          {/* The empty card, so the row and the way in are already where they will stand. §4's rows —
-              Event, Split, With, MCC, Channel, Photos, Exclude and the rate — arrive in Task 13. */}
-          <p className="text-sm text-slate-500">Nothing here yet.</p>
+          {/* The same component, with the same props, that Task 14's edit sheet opens: one implementation of
+              §4's rows, so a field cannot be present on one way in and missing from the other. */}
+          <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} />
         </Sheet>
       )}
     </>

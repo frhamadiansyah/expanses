@@ -47,7 +47,7 @@ async function buy(page: Page, p: Purchase) {
     if (!p.on) await expect(page.getByText(p.description)).toBeVisible();
     return;
   }
-  // The MCC keeps the shape it has today — Task 13 moves it under "Add more details" with the rest of §4.
+  // The MCC lives under "Add more details" now, on a screen of its own — §4's row, not a fold-out on the card.
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
@@ -57,12 +57,17 @@ async function buy(page: Page, p: Purchase) {
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: p.category, exact: true }).click();
   await form.getByLabel('Note').fill(p.description);
   if (p.on) await form.getByLabel('Date').fill(p.on);
-  await form.getByText('Card purchase details').click();
-  await form.getByLabel('MCC', { exact: true }).fill(p.mcc);
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+  await more.getByRole('button', { name: 'MCC' }).click();
+  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
+  await mccSheet.getByLabel('MCC', { exact: true }).fill(p.mcc);
   if (p.remember) {
-    await form.getByLabel('Remember this MCC for every purchase containing the merchant text').check();
-    await form.getByLabel('Merchant text', { exact: true }).fill(p.remember);
+    await mccSheet.getByLabel('Remember this MCC for every purchase containing the merchant text').check();
+    await mccSheet.getByLabel('Merchant text', { exact: true }).fill(p.remember);
   }
+  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  await more.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   if (!p.on) await expect(page.getByText(p.description)).toBeVisible();

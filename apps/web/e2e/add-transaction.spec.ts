@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addTransaction, addTransfer } from './add-transaction';
+import { addEvent } from './event-plan';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -252,4 +253,179 @@ test('"Charged in" opens filled in at the rate this device stored for the day', 
 
   await typeForeign('250');
   await expect(page.getByLabel('Charged in IDR')).toHaveValue('550000');
+});
+
+/** A card with real terms, so the points engine has a scheme to measure a purchase against. */
+async function catalogueCard(page: Page, name: string, search: string, entryName: string) {
+  await page.goto('/cards');
+  await page.getByRole('link', { name, exact: true }).click();
+  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Due date').fill('12');
+  await page.getByRole('button', { name: 'Save terms' }).click();
+  await page.getByLabel('Search catalogue').fill(search);
+  await page.getByRole('button', { name: entryName, exact: true }).click();
+  await page.getByRole('button', { name: 'Use these terms' }).click();
+  await expect(page.getByText('From catalogue · Linked')).toBeVisible();
+}
+
+test('every extra survives the save, and leaving it out of the report leaves only the chart and the budgets', async ({ page }) => {
+  await addAccount(page, 'KF Signature', 'credit_card', async () => {
+    await page.getByLabel('Amount owed now').fill('0');
+  });
+  await catalogueCard(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  await addEvent(page, 'Lebaran');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'KF Signature', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('85000');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await form.getByLabel('Note').fill('Superindo');
+
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+
+  await more.getByRole('button', { name: 'Event' }).click();
+  await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
+  await expect(more.getByRole('button', { name: 'Event' })).toContainText('Lebaran');
+
+  // An uneven split: 40.000 and 45.000 make the 85.000 the card was charged, and neither is half of it.
+  await more.getByRole('button', { name: 'Split' }).click();
+  const split = page.getByRole('dialog', { name: 'Split' });
+  await split.getByRole('button', { name: '+ Split' }).click();
+  await split.getByLabel('Split 1 amount').fill('40000');
+  await split.getByLabel('Split 2 category').selectOption({ label: 'Restaurants' });
+  await split.getByLabel('Split 2 amount').fill('45000');
+  await expect(split.getByText('Total Rp 85.000')).toBeVisible();
+  await split.getByRole('button', { name: 'Close' }).click();
+  await expect(more.getByRole('button', { name: 'Split' })).toContainText('2 splits · Total Rp 85.000');
+
+  await more.getByRole('button', { name: 'MCC' }).click();
+  const mccSheet = page.getByRole('dialog', { name: 'MCC' });
+  await mccSheet.getByLabel('MCC', { exact: true }).fill('5411');
+  await mccSheet.getByRole('button', { name: 'Close' }).click();
+  await expect(more.getByRole('button', { name: 'MCC' })).toContainText('5411');
+
+  await more.getByRole('button', { name: 'Channel' }).click();
+  await page.getByRole('dialog', { name: 'Channel' }).getByRole('button', { name: 'Offline' }).click();
+  await expect(more.getByRole('button', { name: 'Channel' })).toContainText('Offline');
+
+  await more.getByRole('switch', { name: 'Exclude from report' }).click();
+  await expect(more.getByRole('switch', { name: 'Exclude from report' })).toHaveAttribute('aria-checked', 'true');
+  await more.getByRole('button', { name: 'Close' }).click();
+
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  // The receipt carries the event and the channel it was given, and says it is out of the chart.
+  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  await expect(page.getByTestId('receipt-hero')).toBeVisible();
+  await expect(page.getByText('Lebaran')).toBeVisible();
+  await expect(page.getByText('Offline')).toBeVisible();
+  await expect(page.getByText('Excluded from the chart and budgets')).toBeVisible();
+
+  /*
+   * A second purchase, excluded and tagged to nothing, for the half of the asymmetry that is about the chart.
+   * The first one cannot show it: spending tagged to an event already leaves the monthly chart and the caps, so
+   * a chart with no ring above a Lebaran purchase says nothing about whether the switch was read.
+   */
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'KF Signature', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('50000');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await form.getByLabel('Note').fill('Ranch Market');
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  await page.getByRole('dialog', { name: 'More details' }).getByRole('switch', { name: 'Exclude from report' }).click();
+  await page.getByRole('dialog', { name: 'More details' }).getByRole('button', { name: 'Close' }).click();
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  // Out of the chart… the month's own total is the figure the ring is drawn from, so it is what the exclusion
+  // has to move: "nothing recorded" alone is also what an empty month says, and would pass without it.
+  await page.goto('/transactions');
+  await expect(page.getByText('Ranch Market').first()).toBeVisible();
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 0');
+  await expect(page.getByTestId('spending-report')).toContainText('Nothing recorded for');
+
+  // …and still on the card: the statement, the balance and the points all still hold both of them, which is the
+  // whole asymmetry exclusion exists for. 85.000 at MCC 5411, typed here rather than guessed from the category.
+  await page.goto('/accounts');
+  await expect(page.getByRole('listitem').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
+  await page.goto('/cards');
+  await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
+  await page.getByRole('tab', { name: 'Points' }).click();
+  const row = page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' });
+  await expect(row).toContainText('MCC 5411 · typed');
+});
+
+test('a split is read in the paying account’s own currency, exponent and all', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await addAccount(page, 'Wise Card', 'credit_card', async () => {
+    await page.getByLabel('Currency').selectOption('USD');
+    await page.getByLabel('Amount owed now').fill('0');
+  });
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Wise Card', exact: true }).click();
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+  await more.getByRole('button', { name: 'Split' }).click();
+  const split = page.getByRole('dialog', { name: 'Split' });
+  await split.getByRole('button', { name: '+ Split' }).click();
+  await split.getByLabel('Split 1 category').selectOption({ label: 'Groceries' });
+  await split.getByLabel('Split 1 amount').fill('40.50');
+  await split.getByLabel('Split 2 category').selectOption({ label: 'Restaurants' });
+  await split.getByLabel('Split 2 amount').fill('44.50');
+
+  // USD 85, not 8.500 and not 85.000: USD has two decimals, and a figure read at the wrong exponent on this
+  // card would be a hundred times what was typed. IDR cannot show that mistake at all — its exponent is 0.
+  await expect(split.getByText('Total US$85,00')).toBeVisible();
+  await split.getByRole('button', { name: 'Close' }).click();
+  await expect(more.getByRole('button', { name: 'Split' })).toContainText('2 splits · Total US$85,00');
+});
+
+test('a missing rate is asked for under Add more details, and the save then goes through', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  // No balance, so nothing stores a USD→IDR rate on the way in: the save is the first thing to want one.
+  await addAccount(page, 'Wise USD', 'bank', async () => {
+    await page.getByLabel('Currency').selectOption('USD');
+  });
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Wise USD', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('12.50');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Blue Bottle');
+  await form.getByRole('button', { name: 'Save' }).click();
+
+  // §3.3: the rate field lives under Add more details and only there, so the refusal says where to go.
+  await expect(form.getByRole('alert')).toContainText('No USD→IDR rate');
+  await expect(form.getByRole('alert')).toContainText('Add more details');
+
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+  await more.getByLabel('Rate: IDR per 1 USD').fill('16000');
+  // `ratePreview` under the row, reading back what was typed, so a decimal slip is visible before Save.
+  await expect(more.getByText('Reads as 1 USD = 16.000 IDR')).toBeVisible();
+  await more.getByRole('button', { name: 'Close' }).click();
+
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+  // USD 12,50 at 16.000 is Rp 200.000 — the rate typed by hand is the one the save stored and used.
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Blue Bottle' })).toContainText('12,50');
+  await page.goto('/spending');
+  await expect(page.getByText(/200\.000/).first()).toBeVisible();
 });
