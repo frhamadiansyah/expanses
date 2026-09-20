@@ -41,6 +41,27 @@ test('a cap on a parent counts what its children spent', async ({ page }) => {
   await expect(page.getByTestId('line-Food and beverage')).toContainText('200.000');
 });
 
+test('leaving the category box untouched refuses to save, rather than capping the wrong one', async ({ page }) => {
+  await page.goto('/budget');
+
+  // The user never opens the Category box — it must still read as unset, not silently matched to
+  // whatever option a blank value happens to fall on.
+  await expect(page.getByLabel('Category', { exact: true })).toHaveValue('');
+  await page.getByLabel('Monthly amount (IDR)').fill('300000');
+  await page.getByRole('button', { name: 'Set budget' }).click();
+
+  // The bug: falling through to the first option by sort order silently put the cap on Utilities, a
+  // category the user never chose. The refusal is synchronous (it throws before any write), so wait
+  // for it first — checking the row before that would race a write that, under the fix, never starts.
+  await expect(page.getByRole('alert')).toContainText('Choose a category');
+
+  // Nothing should be capped at all, least of all Utilities — read only the row's own text (not its
+  // children's, which say "No budget" regardless and would mask a bad cap sitting on the parent).
+  const utilitiesOwnText = page.getByTestId('line-Utilities').locator(':scope > div');
+  await expect(utilitiesOwnText).toContainText('No budget');
+  await expect(page.getByTestId('caps-total')).toContainText('Rp 0');
+});
+
 test('every spending category appears, capped or not', async ({ page }) => {
   await page.goto('/budget');
 

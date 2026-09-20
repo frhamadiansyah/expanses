@@ -110,8 +110,8 @@ export function BudgetPage() {
     setError(null);
     if (!planReady) return;
     try {
-      const target = categoryId || options[0]?.id;
-      if (!target) throw new Error('There are no categories to budget for yet');
+      if (!categoryId) throw new Error(options.length === 0 ? 'There are no categories to budget for yet' : 'Choose a category');
+      const target = categoryId;
       const minor = parseMajor(amount, planCurrency);
       if (thisMonthOnly) await setBudgetOverride(database, ws, { categoryAccountId: target, month, amountMinor: minor });
       else await saveBudget(database, ws, { categoryAccountId: target, amountMinor: minor });
@@ -140,8 +140,8 @@ export function BudgetPage() {
   async function remove() {
     setError(null);
     try {
-      const target = categoryId || options[0]?.id;
-      if (!target) return;
+      if (!categoryId) throw new Error(options.length === 0 ? 'There are no categories to budget for yet' : 'Choose a category');
+      const target = categoryId;
       if (thisMonthOnly) await clearBudgetOverride(database, ws, target, month);
       else await removeBudget(database, ws, target);
       await invalidate();
@@ -267,6 +267,7 @@ export function BudgetPage() {
         <form onSubmit={submit} className="grid gap-3 md:grid-cols-[2fr_1fr_auto_auto] md:items-end">
           <Field label="Category">
             <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <option value="">Choose a category</option>
               {options.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.label}
