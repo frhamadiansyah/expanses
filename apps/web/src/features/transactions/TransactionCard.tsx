@@ -20,7 +20,7 @@ import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
-import { Button, Card, ErrorBox, Field, Input, InputRow, RowGroup, Select } from '../../ui';
+import { Button, Card, ErrorBox, Field, Input, InputRow, RowGroup, Select, SelectRow } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -345,42 +345,41 @@ function CardBody({
               switch also clears the category on its way, so what it costs is the whole edit. The row stays,
               greyed, because which workspace this is in is still worth reading — it is the offer that goes.
             */}
-            <FormRow
-              label="Workspace"
-              name="Workspace for this transaction"
-              value={openBook?.name ?? ''}
-              chevron={!initial}
-              disabled={!!initial}
-              onClick={() => setSheet('workspace')}
-            />
+            {/*
+              §3.5: a transfer has **no workspace row**. Moving your own money belongs to no workspace — the ledger
+              files by the categories a transaction touches, and a transfer touches none — so a row offering to file
+              it would be offering something the save cannot honour.
+            */}
+            {draft.mode !== 'transfer' && (
+              <FormRow
+                label="Workspace"
+                name="Workspace for this transaction"
+                value={openBook?.name ?? ''}
+                chevron={!initial}
+                disabled={!!initial}
+                onClick={() => setSheet('workspace')}
+              />
+            )}
             <FormRow label={payLabel} value={chosenPayment(payable, draft)} onClick={() => setSheet('money')} />
           </FormRows>
 
           <AmountRow draft={draft} accounts={accounts} set={set} />
 
           {draft.mode === 'transfer' ? (
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label="To" hint="Buying a fund, shares or gold? Use Buy or sell, so units are counted.">
-                <Select value={draft.toId} onChange={(e) => set({ toId: e.target.value })}>
-                  <MoneyAccountOptions accounts={transferTargets(accounts, assetValues.data ?? [])} />
-                </Select>
-              </Field>
-              {crossCurrency && (
-                <Field label={`Received amount (${toAccount!.currency})`}>
-                  <Input value={draft.toAmount} onChange={(e) => set({ toAmount: e.target.value })} inputMode="decimal" required />
-                </Field>
-              )}
-              {!initial && goals.length > 0 && (
-                <Field label="For goal" hint="Money parked for a goal counts towards it while it waits.">
-                  <Select value={draft.goalId} onChange={(e) => set({ goalId: e.target.value })}>
-                    <option value="">No goal</option>
-                    {goals.map((goal) => (
-                      <option key={goal.id} value={goal.id}>{goal.name}</option>
-                    ))}
-                  </Select>
-                </Field>
-              )}
-            </div>
+            <RowGroup>
+              {/*
+                The hint is the To row's own second line rather than the group's: it is about where this money may
+                land, and a fund bought by transfer is the one mistake this row exists to head off.
+              */}
+              <SelectRow
+                label="To"
+                hint="Buying a fund, shares or gold? Use Buy or sell, so units are counted."
+                value={draft.toId}
+                onChange={(e) => set({ toId: e.target.value })}
+              >
+                <MoneyAccountOptions accounts={transferTargets(accounts, assetValues.data ?? [])} />
+              </SelectRow>
+            </RowGroup>
           ) : (
             draft.splits.length === 0 && (
               <FormRows>
@@ -435,6 +434,39 @@ function CardBody({
               </span>
             </div>
           </RowGroup>
+
+          {/*
+            §3.5's second card. For goal is offered only while adding — `formToPost` refuses to tag an edit, and a
+            row that cannot be honoured is worse than no row. Received amount appears only when the two accounts
+            settle in different currencies, because that is the only time the figure that lands is not the figure
+            that left; `exchangeLines` reads it in the To account's own currency, which is what the label names.
+          */}
+          {draft.mode === 'transfer' && (crossCurrency || (!initial && goals.length > 0)) && (
+            <RowGroup>
+              {!initial && goals.length > 0 && (
+                <SelectRow
+                  label="For goal"
+                  hint="Money parked for a goal counts towards it while it waits."
+                  value={draft.goalId}
+                  onChange={(e) => set({ goalId: e.target.value })}
+                >
+                  <option value="">No goal</option>
+                  {goals.map((goal) => (
+                    <option key={goal.id} value={goal.id}>{goal.name}</option>
+                  ))}
+                </SelectRow>
+              )}
+              {crossCurrency && (
+                <InputRow
+                  label={`Received amount (${toAccount!.currency})`}
+                  value={draft.toAmount}
+                  onChange={(e) => set({ toAmount: e.target.value })}
+                  inputMode="decimal"
+                  required
+                />
+              )}
+            </RowGroup>
+          )}
 
           {/* Task 13 fills this with §4's rows. It is here already so the card is laid out as it will stand. */}
           <FormRows>

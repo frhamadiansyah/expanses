@@ -29,6 +29,33 @@ export async function addTransaction(
 }
 
 /**
+ * Moves money between two of your own accounts through the Transfer tab.
+ *
+ * The amount goes through `fillAmount`, so a phone types it on the keypad and a desktop in the input — the same
+ * bargain `addTransaction` makes. **Received amount does not**: the keypad belongs to the amount row and writes
+ * into `draft.amount`, so sending the second figure through `fillAmount` on a phone would either type it onto the
+ * closed keypad or fill the amount row again. It is a plain input at every width, and it is filled as one.
+ */
+export async function addTransfer(
+  page: Page,
+  tx: { from: string; to: string; amount: string; note?: string; goal?: string; receivedAmount?: string },
+) {
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: tx.from, exact: true }).click();
+  await openAmount(form);
+  await fillAmount(page, form, tx.amount);
+  await form.getByLabel('To', { exact: true }).selectOption({ label: tx.to });
+  await form.getByLabel('Note').fill(tx.note ?? 'Transfer');
+  if (tx.goal) await form.getByLabel('For goal').selectOption({ label: tx.goal });
+  if (tx.receivedAmount) await form.getByLabel(/^Received amount/).fill(tx.receivedAmount);
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+}
+
+/**
  * Puts the cursor in the amount, whichever thing this viewport gave us.
  *
  * On a phone the figure is a **button** that opens the keypad dock; on a desktop it is a real `<input>`, and

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { addTransaction } from './add-transaction';
+import { addTransaction, addTransfer } from './add-transaction';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -106,6 +106,108 @@ test('a desktop types the amount into a real input, and the keyboard does what t
   await amount.press('Enter');
   await expect(amount).toHaveValue('277400');
   await expect(page.getByRole('heading', { name: 'Add a transaction' })).toBeVisible();
+});
+
+/** A foreign account opened with a balance stores that day's rate, which is what a cross-currency save then needs. */
+async function addForeignAccount(page: Page, name: string, currency: string, balance: string, rate: string) {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill(name);
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Currency').selectOption(currency);
+  await page.getByLabel('Current balance').fill(balance);
+  await page.getByLabel('Balance as of').fill(TODAY);
+  await page.getByLabel(`Rate: IDR per 1 ${currency}`).fill(rate);
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+}
+
+async function addGoal(page: Page, name: string, amount: string, dueOn: string) {
+  await page.goto('/goals');
+  await page.getByRole('button', { name: 'Add goal' }).first().click();
+  await page.getByLabel('What kind of goal').selectOption('education');
+  await page.getByLabel('Name', { exact: true }).fill(name);
+  await page.getByLabel(/Cost in today's money/).first().fill(amount);
+  await page.getByLabel('Needed by').first().fill(dueOn);
+  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await expect(page.getByRole('heading', { name })).toBeVisible();
+}
+
+test('a transfer moves money between two accounts and is filed in no workspace', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', async () => {
+    await page.getByLabel('Current balance').fill('20000000');
+  });
+  await addAccount(page, 'Jenius', 'savings', async () => {
+    await page.getByLabel('Current balance').fill('0');
+  });
+  await page.goto('/transactions');
+
+  // §3.5: there is no workspace row on this tab. A transfer touches no category, so the ledger files it nowhere;
+  // a row offering to file it would offer something the save cannot honour.
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await expect(form.getByRole('button', { name: 'Workspace for this transaction' })).toHaveCount(0);
+  // The hint that keeps a fund purchase off this tab is the To row's own line.
+  await expect(form.getByText(/Use Buy or sell, so units are counted/)).toBeVisible();
+  await form.getByRole('button', { name: 'Cancel' }).click();
+
+  await addTransfer(page, { from: 'BCA Tahapan', to: 'Jenius (IDR)', amount: '500000', note: 'Top up' });
+
+  // Out of one, into the other, to the rupiah.
+  await page.goto('/accounts');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.500.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Jenius' }).first()).toContainText('500.000');
+});
+
+test('a transfer into a USD account asks for the received amount, and will not save without it', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await addAccount(page, 'BCA Tahapan', 'bank', async () => {
+    await page.getByLabel('Current balance').fill('20000000');
+  });
+  // USD has exponent 2, so a figure read in the wrong currency lands 100× out rather than looking identical.
+  // The rate is stored as the opening balance's own conversion, so the balance has to be worth converting.
+  await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+
+  // Same currency on both sides: nothing to ask, because what left is what landed.
+  await expect(form.getByLabel(/^Received amount/)).toHaveCount(0);
+  await form.getByLabel('To', { exact: true }).selectOption({ label: 'Wise USD (USD)' });
+  const received = form.getByLabel('Received amount (USD)');
+  await expect(received).toBeVisible();
+  await expect(received).toHaveAttribute('required', '');
+  await form.getByRole('button', { name: 'Cancel' }).click();
+
+  await addTransfer(page, { from: 'BCA Tahapan', to: 'Wise USD (USD)', amount: '1600000', receivedAmount: '100', note: 'To Wise' });
+
+  // USD 100 landed as USD 100 on top of the opening 10 — not 10.000, which is what reading the second figure in
+  // the wrong currency does.
+  await page.goto('/accounts');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Wise USD' }).first()).toContainText('110,00');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
+});
+
+test('a transfer tagged For goal parks the money against the goal', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', async () => {
+    await page.getByLabel('Current balance').fill('20000000');
+  });
+  await addAccount(page, 'Jenius', 'savings', async () => {
+    await page.getByLabel('Current balance').fill('0');
+  });
+  await addGoal(page, 'University for Aisyah', '350000000', '2038-07-31');
+
+  await page.goto('/transactions');
+  await addTransfer(page, { from: 'BCA Tahapan', to: 'Jenius (IDR)', amount: '2000000', goal: 'University for Aisyah', note: 'Parking' });
+
+  // `recordTaggedTransfer`, not a plain posting: the row says which goal it was parked for, and the goal has it.
+  await expect(page.getByText(/for University for Aisyah/)).toBeVisible();
+  await page.goto('/goals');
+  await expect(page.getByText(/2\.000\.000/).first()).toBeVisible();
 });
 
 test('"Charged in" opens filled in at the rate this device stored for the day', async ({ page }) => {

@@ -29,6 +29,25 @@ const CONTROL = 'min-w-0 rounded-lg bg-transparent py-2 text-right text-base foc
 
 const LABEL = 'shrink-0 text-sm text-slate-900';
 
+/**
+ * A row, and under it the sentence that belongs to that one field.
+ *
+ * `RowHint` explains a whole group and sits below it; a row that needs a line of its own — a To row saying where a
+ * fund purchase goes instead — has nowhere to put it. The line goes **under** the row rather than beside the label:
+ * beside it, a long sentence and the control share one line's width, and at 390px the control is squeezed to
+ * nothing and stops being clickable at all. Drawn as `SwitchRow`'s hint already is, so this adds a place for a
+ * sentence rather than a look.
+ */
+function RowShell({ hint, children }: { hint?: ReactNode; children: ReactNode }) {
+  if (!hint) return <div className={ROW}>{children}</div>;
+  return (
+    <div className="border-t border-slate-100 first:border-t-0">
+      <div className={cx(ROW, 'border-t-0')}>{children}</div>
+      <p className="px-3 pb-2 text-xs text-slate-500">{hint}</p>
+    </div>
+  );
+}
+
 /** The card a run of rows sits in. Rows draw their own dividers, so it only has to clip the corners. */
 export function RowGroup({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cx('overflow-hidden rounded-xl bg-white ring-1 ring-slate-200', className)}>{children}</div>;
@@ -79,19 +98,19 @@ export function Row({
  * business and the field is the caller's. An `id` passed through is kept, so a caller with its own handle on the field
  * keeps it; otherwise one is made, because a label with nothing to point at is not a label.
  */
-export function InputRow({ label, className, ...props }: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
+export function InputRow({ label, hint, className, ...props }: { label: string; hint?: ReactNode } & InputHTMLAttributes<HTMLInputElement>) {
   const generated = useId();
   const id = props.id ?? generated;
   // A date field is drawn by the browser, digits and calendar button together, and ignores text-align. Rather than
   // fight it, it is shrunk to its own width; the row's justify-between then puts it at the right edge like the rest.
   const width = props.type === 'date' ? 'flex-none' : 'flex-1';
   return (
-    <div className={ROW}>
+    <RowShell hint={hint}>
       <label htmlFor={id} className={LABEL}>
         {label}
       </label>
       <input {...props} id={id} className={cx(CONTROL, width, 'text-slate-900', className)} />
-    </div>
+    </RowShell>
   );
 }
 
@@ -100,11 +119,17 @@ export function InputRow({ label, className, ...props }: { label: string } & Inp
  * opens a list looks the same whether the list is a native `select` or, later, a sheet. It stays a real `select`:
  * keyboard, type-ahead and the phone's own picker all still work.
  */
-export function SelectRow({ label, className, children, ...props }: { label: string } & SelectHTMLAttributes<HTMLSelectElement>) {
+export function SelectRow({
+  label,
+  hint,
+  className,
+  children,
+  ...props
+}: { label: string; hint?: ReactNode } & SelectHTMLAttributes<HTMLSelectElement>) {
   const generated = useId();
   const id = props.id ?? generated;
   return (
-    <div className={ROW}>
+    <RowShell hint={hint}>
       <label htmlFor={id} className={LABEL}>
         {label}
       </label>
@@ -115,7 +140,7 @@ export function SelectRow({ label, className, children, ...props }: { label: str
         {/* A disabled row opens nothing, so it is not promised a chevron. */}
         {!props.disabled && <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-400" />}
       </span>
-    </div>
+    </RowShell>
   );
 }
 
