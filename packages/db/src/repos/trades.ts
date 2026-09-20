@@ -52,6 +52,10 @@ export interface RecordTradeInput {
   cashMinor?: number;
   templateId?: string | null;
   ratesToBase?: Record<string, number>;
+  /** Leaves the chart, the budgets and the category totals; balances, statements, points and net worth keep it. */
+  excludedFromReport?: boolean;
+  /** Photo rows written before the trade had a transaction — the contract note for this purchase. */
+  photoIds?: string[];
 }
 
 export interface RecalculatedSell {
@@ -226,6 +230,9 @@ export async function writeTradeTx(tx: Db, ws: WorkspaceContext, input: RecordTr
         lines,
         ratesToBase: input.ratesToBase,
         mcc: input.mcc ?? null,
+        // A trade carries the two facts §4 scopes to "always", the same way every other way in does.
+        excludedFromReport: input.excludedFromReport,
+        photoIds: input.photoIds,
       })
     : null;
   const id = uuidv7();

@@ -51,8 +51,13 @@ function monthsElapsed(firstPaymentOn: string, fromDate: string): number {
   return Math.max(0, months);
 }
 
-/** The rate period covering a date: the last one that had started by then. */
-function periodOn(periods: RatePeriod[], onDate: string): RatePeriod | undefined {
+/**
+ * The rate period covering a date: the last one that had started by then.
+ *
+ * A plain `periods.at(-1)` is the latest period however far ahead it begins, so a rate change recorded
+ * for next year would make today read as next year's. Every screen that shows "the rate now" wants this.
+ */
+export function periodOn(periods: RatePeriod[], onDate: string): RatePeriod | undefined {
   const started = periods.filter((period) => period.fromOn <= onDate).sort((a, b) => a.fromOn.localeCompare(b.fromOn));
   return started.at(-1) ?? [...periods].sort((a, b) => a.fromOn.localeCompare(b.fromOn))[0];
 }

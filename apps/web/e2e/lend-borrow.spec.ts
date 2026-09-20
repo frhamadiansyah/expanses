@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { closeDetails, shareWith } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -89,14 +90,18 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Dinner at Plataran');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
-  await page.getByLabel('Amount').fill('900000');
-  await page.getByLabel('Someone owes part of this').check();
-  await page.getByLabel('Who owes you').fill('Andi');
-  await page.getByLabel('Their share').fill('600000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('900000');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Dinner at Plataran');
+  // With, under Add more details: the row that replaced the card's single-person checkbox.
+  const { more, sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '600000' }]);
+  await closeDetails(more, sheet);
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
 
   await expect(page.getByText('Dinner at Plataran')).toBeVisible();
 

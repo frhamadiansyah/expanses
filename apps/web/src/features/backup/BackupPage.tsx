@@ -1,5 +1,5 @@
-import { isoDate } from '@expanses/core';
-import { LATEST_VERSION } from '@expanses/db';
+import { isoDate, unzipStore, zipStore } from '@expanses/core';
+import { allPhotoRows, LATEST_VERSION } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { type ChangeEvent, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -7,6 +7,8 @@ import { newerDatabaseVersion } from '../../db/newer-database';
 import type { SnapshotInfo, SnapshotStore } from '../../db/open';
 import { restoreSnapshot } from '../../db/snapshots';
 import { saveBytes } from '../../lib/download';
+import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
+import { photos } from '../../photos/store';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, PageHeader } from '../../ui';
 import { formatBytes, formatWhen } from '../recovery/recovery-copy';
@@ -20,9 +22,17 @@ interface PendingRestore {
   file?: string;
 }
 
+/** "1 photo", "12 photos" — said the same way by the button and by both sentences that report a result. */
+const photoWords = (count: number): string => `${count} photo${count === 1 ? '' : 's'}`;
+
 export function BackupPage() {
-  const { database, safety } = useApp();
+  const { database, safety, ws } = useApp();
   const invalidate = useInvalidateAll();
+  /*
+   * The pictures are not in the sqlite backup: that file holds the rows, and a row only names a file. So they
+   * get a download of their own, and the button is only worth showing once there is something in it.
+   */
+  const photoIndex = useQuery({ queryKey: ['photo-rows', ws.workspaceId], queryFn: () => allPhotoRows(database, ws) });
   const last = useQuery({ queryKey: ['last-backup'], queryFn: () => getLastBackupAt(database) });
   const snapshots = safety?.snapshots;
   const kept = useQuery({
@@ -49,6 +59,72 @@ export function BackupPage() {
     try {
       await exportBackup(`expanses-backup-${isoDate()}.sqlite3`);
       setDone('Backup downloaded. Check it is in your Downloads and keep it somewhere private.');
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * The pictures, zipped straight from this device's storage — stored, never compressed, so the zip needs no
+   * compression library and any ordinary zip tool opens it. Each entry is named by the row that names it, which
+   * is what lets the restore below put a picture back where a transaction is still expecting it.
+   */
+  async function onDownloadPhotos() {
+    setError(null);
+    setDone(null);
+    setBusy(true);
+    try {
+      const rows = await allPhotoRows(database, ws);
+      const files: { name: string; bytes: Uint8Array }[] = [];
+      let unreadable = 0;
+      for (const row of rows) {
+        const bytes = await photos.readPhotoBytes(row.fileName);
+        // A row whose file is gone is worth saying out loud rather than quietly shipping a short zip.
+        if (bytes) files.push({ name: row.fileName, bytes });
+        else unreadable += 1;
+      }
+      if (!files.length) throw new Error('None of the photos could be read from this device.');
+      saveBytes(zipStore(files), `expanses-photos-${isoDate()}.zip`, 'application/zip');
+      setDone(`${photoWords(files.length)} downloaded.${unreadable ? ` ${photoWords(unreadable)} could not be read from this device.` : ''}`);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Putting pictures back. Unlike the database restore this replaces nothing and needs no second press: a file
+   * already on this device is left exactly as it is, and an entry no row names is skipped — a zip cannot decide
+   * what this device's transactions point at, and writing a name from a file nobody here chose is how an
+   * archive gets to put bytes where it likes. `unzipStore` refuses an entry whose bytes no longer match the
+   * checksum recorded for it, so a damaged archive stops here rather than half-restoring.
+   */
+  async function onChoosePhotoZip(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setError(null);
+    setDone(null);
+    setBusy(true);
+    try {
+      const entries = unzipStore(new Uint8Array(await file.arrayBuffer()));
+      const named = new Set((await allPhotoRows(database, ws)).map((row) => row.fileName));
+      let restored = 0;
+      let already = 0;
+      let unknown = 0;
+      for (const entry of entries) {
+        if (!named.has(entry.name)) {
+          unknown += 1;
+          continue;
+        }
+        if (await photos.putPhotoBytes(entry.name, entry.bytes)) restored += 1;
+        else already += 1;
+      }
+      setDone(`${photoWords(restored)} restored · ${already} already here${unknown ? ` · ${unknown} not named by any transaction on this device` : ''}`);
+      await invalidate();
     } catch (e) {
       setError(e);
     } finally {
@@ -111,6 +187,16 @@ export function BackupPage() {
    * takes — the recovery screen is the rare one — so it is the path that most needs the copy.
    */
   async function putBack(restore: PendingRestore) {
+    /*
+     * The pictures are put beyond the sweep's reach before the data under them changes.
+     *
+     * A restore hands the app a database that may predate photos that are on this device right now, and
+     * `onConfirmRestore` reloads the page the moment it lands — so `Layout.tsx`'s app-start sweep runs
+     * against a database that has never heard of them and reads every one as an orphan. The row comes back
+     * if the newer backup is restored again; the photograph does not. The safety copy this restore already
+     * insisted on covers the data. This is the same insistence, for the one thing that has no second copy.
+     */
+    await holdPhotosOrRefuse();
     if (!snapshots) {
       // This open has no store to keep a copy in. The restore the user asked for still happens; the file
       // downloaded a moment ago is what stands behind it.
@@ -182,6 +268,18 @@ export function BackupPage() {
           </label>
         </div>
         <p className="text-xs text-slate-500">A backup made on any device or browser will do: it is the same file everywhere.</p>
+        <div className="flex flex-wrap gap-2">
+          {!!photoIndex.data?.length && (
+            <Button variant="secondary" onClick={() => void onDownloadPhotos()} disabled={busy || !!pending}>
+              Download photos ({photoIndex.data.length})
+            </Button>
+          )}
+          <label className="inline-flex cursor-pointer items-center rounded-lg bg-white px-3 py-2 text-sm font-medium ring-1 ring-slate-300 hover:bg-slate-100">
+            Restore photos…
+            <input type="file" accept=".zip,application/zip" className="sr-only" onChange={(e) => void onChoosePhotoZip(e)} disabled={busy || !!pending} />
+          </label>
+        </div>
+        <p className="text-xs text-slate-500">Photos live beside the database on this device. The backup file holds your figures; this zip holds the pictures.</p>
         {done && <p className="text-sm text-emerald-700">{done}</p>}
         <ErrorBox error={error} />
       </Card>

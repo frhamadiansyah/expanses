@@ -8,9 +8,17 @@ export function useReports() {
   return useQuery({ queryKey: ['tax-reports', ws.workspaceId], queryFn: () => listReports(database, ws) });
 }
 
+/**
+ * `?? null` because TanStack Query forbids `undefined` as a result and throws `"<hash> data is undefined"`,
+ * which the page then paints as a red error box over a year with no report — the commonest state there is.
+ * `reportFor` returning `undefined` for "no row" is a fair repo contract; coalescing at the hook is the same
+ * thing `useReportRows` below already does with `if (!report) return []`. `null` is legal data, every
+ * `report.data` truthiness check keeps working, and `isSuccess` becomes true so the page's own empty state —
+ * written long ago and never once rendered — finally shows.
+ */
 export function useReport(taxYear: number) {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['tax-report', ws.workspaceId, taxYear], queryFn: () => reportFor(database, ws, taxYear) });
+  return useQuery({ queryKey: ['tax-report', ws.workspaceId, taxYear], queryFn: async () => (await reportFor(database, ws, taxYear)) ?? null });
 }
 
 /**

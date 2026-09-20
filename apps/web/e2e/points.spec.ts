@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 async function addCard(page: Page, name: string) {
   await page.getByLabel('Name', { exact: true }).fill(name);
@@ -42,12 +43,7 @@ test('points: bonus cap cascades to base rule and the recommender ranks by value
   await expect(page.getByText('= Rp')).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Wedding dinner');
-  await page.getByLabel('Paid with').selectOption({ label: 'CIMB Octo (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
-  await page.getByLabel('Amount', { exact: true }).fill('3500000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'Wedding dinner', paidWith: 'CIMB Octo', category: 'Restaurants', amount: '3500000' });
   await expect(page.getByText('Wedding dinner')).toBeVisible();
 
   // 3,000,000 at 5/2,500 = 6,000 + 500,000 at 1/2,500 = 200

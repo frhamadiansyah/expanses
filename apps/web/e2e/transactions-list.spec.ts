@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 async function setUp(page: Page) {
   await page.goto('/accounts');
@@ -9,12 +10,7 @@ async function setUp(page: Page) {
   await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Superindo');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount', { exact: true }).fill('500000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '500000' });
   await expect(page.getByText('Superindo')).toBeVisible();
 }
 
@@ -61,4 +57,17 @@ test('search finds a purchase by its amount, and a filter can be cleared', async
   await expect(page.getByText(/Nothing matches/)).toBeVisible();
   await page.getByRole('button', { name: 'Clear search and filters' }).click();
   await expect(page.getByText('Superindo')).toBeVisible();
+});
+
+/**
+ * The desktop row tints on hover, and the row's content must not paint over that tint.
+ *
+ * The content layer carries `bg-white` on a phone, where it has to cover the Edit and Delete buttons behind it;
+ * on a desktop the same class left the `hover:bg-slate-50` on the `<li>` showing in the `px-2` gutters alone.
+ * Asserted as a computed colour rather than as a screenshot, so it can fail on the reason rather than on a pixel.
+ */
+test('a desktop row lets its hover tint through', async ({ page }) => {
+  await setUp(page);
+  const face = page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }).locator('> div').first();
+  await expect(face).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 });

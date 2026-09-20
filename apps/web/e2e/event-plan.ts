@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 // Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00
 // in Jakarta it names yesterday and any window built from it excludes what was just recorded.
@@ -138,12 +139,7 @@ export async function addWallet(page: Page) {
 /** Spending against the Food and beverage parent, which the event can then be planned against. */
 export async function spend(page: Page, description: string, amount: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Food and beverage (general)' });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: description, paidWith: 'BCA Tahapan', category: 'Food and beverage', amount: amount });
   await expect(page.getByRole('listitem').filter({ hasText: description }).first()).toBeVisible();
 }
 

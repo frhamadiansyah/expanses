@@ -1,10 +1,11 @@
+import { exchangeLines } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalEarmarks, goals } from '../schema-goals';
-import { SPENDABLE_SUBTYPES } from './accounts';
+import { SPENDABLE_SUBTYPES, systemAccountId } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { GoalDbError } from './goals';
 import { postTransactionTx, voidTransactionTx } from './ledger';
@@ -15,9 +16,24 @@ export interface TaggedTransferInput {
   amountMinor: number;
   fromAccountId: string;
   toAccountId: string;
+  /**
+   * What actually landed, in the destination account's own currency — required when the two accounts differ in
+   * currency and refused when they do not.
+   *
+   * A posting balances per currency, so a cross-currency move cannot post one figure on both legs: doing that is
+   * what answered "Lines in USD sum to 1600000, expected 0". It is the same Received amount the plain transfer
+   * already asks for, and it is also what the goal has parked — the destination account holds destination money.
+   */
+  toAmountMinor?: number | null;
   /** Null moves the money without attaching it to anything. */
   goalId: string | null;
   ratesToBase?: Record<string, number>;
+  /** Leaves the chart, the budgets and the category totals; balances, statements and net worth keep it. */
+  excludedFromReport?: boolean;
+  /** The event this belongs to. */
+  eventId?: string | null;
+  /** Photo rows written before the transaction had an id. Tagging a goal cannot be what loses a receipt. */
+  photoIds?: string[];
 }
 
 export interface TaggedTransferResult {
@@ -98,20 +114,50 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
       .from(accounts)
       .where(and(eq(accounts.id, input.toAccountId), eq(accounts.workspaceId, ws.workspaceId)));
 
+    const fromCurrency = from?.currency ?? ws.baseCurrency;
+    const toCurrency = to?.currency ?? ws.baseCurrency;
+    /*
+     * What landed. Same currency on both sides and it is what left; different currencies and it has to be told,
+     * because nothing here can invent a rate the bank used. `exchangeLines` is the core kit's one producer of a
+     * cross-currency movement — the plain transfer goes through it too, so a tagged transfer and an untagged one
+     * cannot post two different shapes of the same money.
+     */
+    const crossCurrency = fromCurrency !== toCurrency;
+    if (crossCurrency && !(input.toAmountMinor! > 0)) {
+      throw new AssetError(`Enter what landed in the destination account, in ${toCurrency}`);
+    }
+    const landedMinor = crossCurrency ? input.toAmountMinor! : input.amountMinor;
+    const lines = crossCurrency
+      ? exchangeLines({
+          fromAccountId: input.fromAccountId,
+          fromAmountMinor: input.amountMinor,
+          fromCurrency,
+          toAccountId: input.toAccountId,
+          toAmountMinor: landedMinor,
+          toCurrency,
+          exchangeAccountId: await systemAccountId(tx, ws, 'currency_exchange'),
+        })
+      : [
+          { accountId: input.toAccountId, amountMinor: landedMinor, currency: toCurrency },
+          { accountId: input.fromAccountId, amountMinor: -input.amountMinor, currency: fromCurrency },
+        ];
+
     const transactionId = await postTransactionTx(tx, ws, {
       occurredOn: input.occurredOn,
       description: input.description,
-      lines: [
-        { accountId: input.toAccountId, amountMinor: input.amountMinor, currency: to?.currency ?? ws.baseCurrency },
-        { accountId: input.fromAccountId, amountMinor: -input.amountMinor, currency: from?.currency ?? ws.baseCurrency },
-      ],
+      lines,
       ratesToBase: input.ratesToBase,
+      excludedFromReport: input.excludedFromReport,
+      eventId: input.eventId,
+      photoIds: input.photoIds,
     });
 
     if (!input.goalId) return { transactionId, setAsideMinor: 0 };
     await tx.update(transactions).set({ goalId: input.goalId }).where(eq(transactions.id, transactionId));
     if (!(await canHoldSetAside(tx, ws, input.toAccountId))) return { transactionId, setAsideMinor: 0 };
-    const setAsideMinor = await adjustSetAsideTx(tx, ws, input.goalId, input.toAccountId, input.amountMinor);
+    // The set-aside sits on the destination account, so it is counted in the destination account's own money —
+    // parking US$100 against a goal sets US$100 aside, never Rp 1.600.000 of a USD balance.
+    const setAsideMinor = await adjustSetAsideTx(tx, ws, input.goalId, input.toAccountId, landedMinor);
     return { transactionId, setAsideMinor };
   });
 }

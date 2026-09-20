@@ -33,7 +33,21 @@ export interface GoalLink {
   /** Units tagged to the goal, or an amount set aside from a savings account. */
   kind: 'tagged' | 'earmark';
   unitsMicro: number | null;
+  /**
+   * What is set aside or tagged, **in the account's own money** — a US$100,03 set-aside on a USD account is
+   * 10_003, not what it converts to. That is what the account holds and what will be withdrawn.
+   */
   valueMinor: number;
+  /** The currency `valueMinor` is counted in. Without it nothing downstream can convert, or know not to. */
+  currency: string;
+  /**
+   * `valueMinor` in the workspace's base currency, or null when no rate is known for the day.
+   *
+   * Null is not zero. A holding nobody has a rate for has not stopped existing, and a goals screen that
+   * showed it as nothing would read as "you have saved nothing" — so it is left out of the total and said
+   * out loud instead.
+   */
+  baseMinor: number | null;
   risk: Risk | null;
 }
 
@@ -101,7 +115,11 @@ export function monthlyNeededMinor(gapMinor: number, rateBps: number, months: nu
  * and the monthly amount that closes the gap.
  */
 export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: number, monthlyOutgoingMinor: number, today: string): GoalPlan {
-  const currentMinor = links.reduce((total, link) => total + link.valueMinor, 0);
+  // Only what can be counted in one currency is added up: `valueMinor` is each account's own money, and
+  // summing a USD set-aside into an IDR total was adding 10_003 where Rp 1.600.480 belonged — or, on a
+  // US$50.000 holding, Rp 5.000.000 where Rp 800.000.000 belonged. A link with no rate is excluded, and
+  // `goalPlansFor` says so beside the goal rather than quietly under-reporting it.
+  const currentMinor = links.reduce((total, link) => total + (link.baseMinor ?? 0), 0);
   const ordered = [...goal.stages].sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.id.localeCompare(b.id));
 
   let carryMinor = currentMinor;

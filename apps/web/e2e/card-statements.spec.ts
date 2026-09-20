@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -33,14 +34,7 @@ async function setUp(page: Page) {
 
 async function buy(page: Page, description: string, amount: string, on: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Date').fill(on);
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Visa (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByRole('button', { name: 'Add transaction' })).toBeVisible();
+  await addTransaction(page, { description, paidWith: 'BCA Visa', category: 'Groceries', amount, date: on });
 }
 
 async function openCard(page: Page) {

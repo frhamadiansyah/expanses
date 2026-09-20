@@ -96,3 +96,34 @@ test('rows pasted from a spreadsheet arrive as not recorded', async ({ page }) =
   await expect(grab.getByLabel('Row paid with')).toHaveValue('BCA Tahapan');
   await expect(page.getByTestId('typing-row').getByLabel('Row description')).toHaveValue('');
 });
+
+/**
+ * The table's half of the ⓘ.
+ *
+ * Step 4 puts the receipt link in two places — the list's row and the table's — and only the list's was
+ * pinned: deleting **both** `<ReceiptLink>` from `TransactionsTable.tsx` left the whole chromium project
+ * green. Both slots are covered here: the editable row's, and the locked row's, which an opening balance is.
+ */
+test('the ⓘ opens a receipt from the table, on an editable row and on a locked one', async ({ page }) => {
+  await setUp(page);
+  const typing = page.getByTestId('typing-row');
+  await typing.getByLabel('Row description').fill('Superindo');
+  await typing.getByLabel('Row amount (IDR)').fill('450000');
+  await pick(typing, 'Row paid with', 'bca');
+  await pick(typing, 'Row category', 'groceries');
+  await typing.getByRole('button', { name: 'Record' }).click();
+  await expect(page.getByTestId('table-row')).toHaveCount(1);
+
+  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
+  await expect(page.getByRole('heading', { name: 'Superindo' })).toBeVisible();
+  await expect(page.getByTestId('receipt-hero')).toContainText('450.000');
+
+  // The locked row — an opening balance has no "Open in form", and used to have no way to a receipt either.
+  // The view is remembered, so coming back to the list comes back to the table.
+  await page.goto('/transactions');
+  await expect(page.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('link', { name: 'Receipt for Opening balance: BCA Tahapan' }).click();
+  await expect(page.getByRole('heading', { name: 'Opening balance: BCA Tahapan' })).toBeVisible();
+  await expect(page.getByTestId('receipt-hero')).toContainText('20.000.000');
+});

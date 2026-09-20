@@ -40,7 +40,7 @@ export async function restoreAgedByDays(page: Page, target: string, days: number
 
   page.once('dialog', (dialog) => void dialog.accept());
   const safety = page.waitForEvent('download');
-  await page.locator('input[type=file]').setInputFiles(aged);
+  await page.locator('input[accept*="sqlite3"]').setInputFiles(aged);
   await safety;
   // The restore reloads the page; wait for the new document before asking it anything.
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with/ }).click()]);

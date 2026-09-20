@@ -42,8 +42,20 @@ test('a workspace is made from ⋯ and starts with none of the other’s categor
 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await expect(form.getByLabel('Category').locator('option', { hasText: 'Restaurants' })).toHaveCount(0);
-  await expect(form.getByLabel('Category').locator('option', { hasText: 'Interest' })).toHaveCount(1);
+  await form.getByRole('button', { name: 'Category' }).click();
+  const picker = page.getByRole('dialog', { name: 'Select category' });
+  // Personal's own spending categories are Personal's: none of them is on offer here.
+  await expect(picker.getByRole('button', { name: 'Restaurants', exact: true })).toHaveCount(0);
+  // Interest is one the app posts into by itself, so Business made its own — and exactly one. Both workspaces
+  // carry a `miscellaneous.interest`, so a picker that stopped narrowing to the open workspace would offer two
+  // buttons reading "Interest" and file a repayment in whichever the user happened to hit.
+  await expect(picker.getByRole('button', { name: 'Interest', exact: true })).toHaveCount(1);
+
+  await picker.getByRole('button', { name: 'Income', exact: true }).click();
+  // The same on the income side: Personal's Salary is not here, and the realised gain the app posts into is,
+  // once. The other workspace's copy of it would make two.
+  await expect(picker.getByRole('button', { name: 'Salary', exact: true })).toHaveCount(0);
+  await expect(picker.getByRole('button', { name: 'Realized Gains', exact: true })).toHaveCount(1);
 });
 
 /** One account of each kind, so there is somewhere to move money from and somewhere for it to land. */
@@ -68,11 +80,15 @@ test('a transfer is filed in no workspace, so every workspace shows it and none 
   await page.goto('/transactions');
   await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('button', { name: 'Transfer', exact: true }).click();
-  await form.getByLabel('Description').fill('Top up');
-  await form.getByLabel('From').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
   await form.getByLabel('To', { exact: true }).selectOption({ label: 'Jenius (IDR)' });
-  await form.getByLabel('Amount', { exact: true }).fill('500000');
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  const keypad = page.getByTestId('keypad');
+  for (const digit of '500000') await keypad.getByRole('button', { name: digit, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByLabel('Note').fill('Top up');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 

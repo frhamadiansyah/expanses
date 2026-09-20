@@ -57,6 +57,23 @@ export function useResolveRates() {
   );
 }
 
+/**
+ * The same resolver with **no fetcher**: it reads the rates this device already stored and writes nothing.
+ *
+ * `useResolveRates` reaches the network and `upsertRate`s what it finds, which is right when the user has just
+ * pressed Save and is asking for a figure to be converted. It is not right for a screen merely opening: this is
+ * a local-first app, and choosing CNY in a picker must not be a request to a rate server, nor a write, before
+ * anything has been saved. What is known locally is offered as an estimate; what is not is reported as missing,
+ * which is what puts the manual exchange-rate row on the form (§3.3).
+ */
+export function useStoredRates() {
+  const { database, ws } = useApp();
+  return useCallback(
+    (currencies: string[], onDate: string) => resolveRates(database, { currencies, baseCurrency: ws.baseCurrency, onDate, today: isoDate() }),
+    [database, ws],
+  );
+}
+
 export const isActive = (a: AccountRow) => a.archivedAt === null;
 export const isMoneyAccount = (a: AccountRow) => (a.kind === 'asset' || a.kind === 'liability') && isActive(a);
 export const isCategoryOf = (kind: 'expense' | 'income') => (a: AccountRow) => a.kind === kind && isActive(a);

@@ -11,6 +11,7 @@ import { BILL_MONTH, billTablesExist } from './bill-months';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { carryEventItemTx } from './event-items';
+import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
 
@@ -45,6 +46,14 @@ export interface PostTransactionInput {
   templateId?: string | null;
   /** YYYY-MM: the month whose bill a template payment settles. Defaults to the month of occurredOn. */
   billMonth?: string | null;
+  /** Online or offline, when the user said; null when they did not. Never guessed. */
+  channel?: 'online' | 'offline' | null;
+  /** Leaves the chart, the budgets and the category totals; balances, statements, points and net worth keep it. */
+  excludedFromReport?: boolean;
+  /** The event this belongs to. The column exists already; only the form is new. */
+  eventId?: string | null;
+  /** Photo rows written before the transaction had an id. */
+  photoIds?: string[];
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -127,7 +136,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
     description: input.description.trim(),
     source: input.source ?? 'manual',
     externalRef: input.externalRef ?? null,
-    eventId: null,
+    eventId: input.eventId ?? null,
     status: 'posted',
     replacesTransactionId: input.replacesTransactionId ?? null,
     originalCurrency,
@@ -167,6 +176,9 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
       });
     }
   }
+  // What the purchase was, beside what it cost: the channel, the exclusion, and the photos a form wrote before
+  // this transaction had an id. Their own tables, so a database stopped before 0048 simply has none of it.
+  if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, input);
   await audit(tx, ws, 'post', id, input);
   return id;
 }
@@ -237,6 +249,9 @@ export function replaceTransaction(
         }
       }
     }
+    // What the original said about itself, so a correction that does not mention a fact keeps it, and one that
+    // mentions it — `channel: null` — clears it. Read before the void, written as part of the replacement.
+    const extras = (await extrasTablesExist(tx)) ? await extrasForTx(tx, ws, id) : null;
     await voidTransactionTx(tx, ws, id);
     // Keep import identity so re-importing the same statement still recognises the row.
     const replacement = await postTransactionTx(tx, ws, {
@@ -254,11 +269,11 @@ export function replaceTransaction(
       ...(input.templateId === undefined ? { templateId: original?.templateId ?? null } : {}),
       // …nor change which month's bill it settled.
       ...(input.billMonth === undefined && settles ? { billMonth: settles.billMonth } : {}),
+      ...(input.channel === undefined ? { channel: extras?.channel ?? null } : {}),
+      ...(input.excludedFromReport === undefined ? { excludedFromReport: extras?.excluded ?? false } : {}),
+      // A correction is still the same spending, so it stays with the event it was tagged to — unless it says otherwise.
+      ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
     });
-    // A correction is still the same spending, so it stays with the event it was tagged to.
-    if (original?.eventId) {
-      await tx.update(transactions).set({ eventId: original.eventId }).where(eq(transactions.id, replacement));
-    }
     // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
     // facts about the same money: they follow the correction.
     await tx.update(cardPostings).set({ transactionId: replacement }).where(and(eq(cardPostings.transactionId, id), eq(cardPostings.workspaceId, ws.workspaceId)));
@@ -269,6 +284,8 @@ export function replaceTransaction(
       .update(transactionPointActuals)
       .set({ transactionId: replacement, editedAfterCheck: 1 })
       .where(and(eq(transactionPointActuals.transactionId, id), eq(transactionPointActuals.workspaceId, ws.workspaceId)));
+    // The pictures follow the correction, as the card postings do: they are rows about the same money.
+    if (await extrasTablesExist(tx)) await movePhotosTx(tx, ws, id, replacement);
     // What this payment bought off the plan is a fact about the same money: it follows the correction, and is cut to
     // fit when the correction is smaller.
     await carryEventItemTx(tx, ws, id, replacement);
@@ -319,10 +336,23 @@ export interface TransactionView {
   /** Goal a tagged transfer funds. Ordinary payments never carry one. */
   goalId: string | null;
   /**
+   * The event this was tagged to, or null. The column is already what `opts.eventId` filters on; carrying it on
+   * the view is what lets a receipt name the trip a purchase belongs to without a second query per row.
+   * Optional in the same way `billMonth` is, so a view built by hand in a test need not name it.
+   */
+  eventId?: string | null;
+  /**
    * YYYY-MM: the month's bill a bill payment settles, which can differ from the month it was paid in. Null for
    * anything else, and on a database without bill_payments. Optional so a view built by hand need not name it.
    */
   billMonth?: string | null;
+  /**
+   * What the purchase was, beside what it cost. Null, false and 0 when nothing was chosen, and on a database
+   * without transaction_flags. Optional in the same way billMonth is, so a view built by hand need not name them.
+   */
+  channel?: 'online' | 'offline' | null;
+  excluded?: boolean;
+  photoCount?: number;
   createdAt: string;
   entries: TransactionEntryView[];
 }
@@ -344,6 +374,8 @@ export interface ListTransactionsOptions {
   includeVoid?: boolean;
   limit?: number;
   eventId?: string;
+  /** One transaction by id — what a receipt reads. With `includeVoid`, a deleted one still opens. */
+  id?: string;
   /**
    * One book's rows without reading in that book's money: the narrowing `ws.bookId` does, and nothing else.
    *
@@ -356,6 +388,8 @@ export interface ListTransactionsOptions {
 async function listWith(database: Database, ws: WorkspaceContext, opts: ListTransactionsOptions, money: BookMoney): Promise<TransactionView[]> {
   const conds: SQL[] = [eq(transactions.workspaceId, ws.workspaceId)];
   if (!opts.includeVoid) conds.push(eq(transactions.status, 'posted'));
+  // One row by id: what a receipt reads.
+  if (opts.id) conds.push(eq(transactions.id, opts.id));
   // An event's own history: what was tagged to it, whenever it happened.
   if (opts.eventId) conds.push(eq(transactions.eventId, opts.eventId));
   if (opts.from) conds.push(gte(transactions.occurredOn, opts.from));
@@ -410,6 +444,9 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
       )
     : new Map<string, string>();
 
+  // The channel, the exclusion and how many pictures were kept: one pair of queries per page, as bill months are.
+  const extras = (await extrasTablesExist(database.db)) ? await extrasFor(database.db, ws, txs.map((t) => t.id)) : undefined;
+
   const byTx = new Map<string, TransactionEntryView[]>();
   for (const { transactionId, ...entry } of rows) {
     const list = byTx.get(transactionId) ?? [];
@@ -428,7 +465,11 @@ async function listWith(database: Database, ws: WorkspaceContext, opts: ListTran
     mcc: t.mcc,
     cardId: t.cardId,
     goalId: t.goalId,
+    eventId: t.eventId,
     billMonth: billMonths.get(t.id) ?? null,
+    channel: extras?.get(t.id)?.channel ?? null,
+    excluded: extras?.get(t.id)?.excluded ?? false,
+    photoCount: extras?.get(t.id)?.photoCount ?? 0,
     createdAt: t.createdAt,
     entries: (byTx.get(t.id) ?? []).sort((a, b) => b.amountMinor - a.amountMinor),
   }));

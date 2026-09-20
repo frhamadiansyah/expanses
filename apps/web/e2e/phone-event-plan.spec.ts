@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { expectCover, expectFigures, fillItem, TODAY } from './event-plan';
+import { addTransaction } from './add-transaction';
 
 /*
  * The plan, by thumb.
@@ -49,14 +50,7 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   // Recorded before the event exists, so there is a real receipt to share out between two items later on.
   await page.goto('/cards');
   await settle(page);
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
-  const add = page.getByRole('dialog', { name: 'Add a transaction' });
-  await add.getByLabel('Description').fill('Mothercare');
-  await add.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await add.getByLabel('Category').selectOption({ label: 'Food and beverage (general)' });
-  await add.getByLabel('Amount', { exact: true }).fill('4150000');
-  await add.getByRole('button', { name: 'Save' }).click();
-  await expect(add).toHaveCount(0);
+  await addTransaction(page, { description: 'Mothercare', paidWith: 'BCA Tahapan', category: 'Food and beverage', amount: '4150000' });
 
   // The way to an event on a phone: the account sheet, where every screen the tab bar cannot hold lives.
   await page.goto('/');
@@ -197,14 +191,7 @@ test('a receipt answering more items than a phone row can hold says three and co
 
   await page.goto('/cards');
   await settle(page);
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
-  const add = page.getByRole('dialog', { name: 'Add a transaction' });
-  await add.getByLabel('Description').fill('Mothercare');
-  await add.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await add.getByLabel('Category').selectOption({ label: 'Food and beverage (general)' });
-  await add.getByLabel('Amount', { exact: true }).fill('4150000');
-  await add.getByRole('button', { name: 'Save' }).click();
-  await expect(add).toHaveCount(0);
+  await addTransaction(page, { description: 'Mothercare', paidWith: 'BCA Tahapan', category: 'Food and beverage', amount: '4150000' });
 
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();

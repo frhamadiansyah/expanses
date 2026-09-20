@@ -359,12 +359,29 @@ export async function restoreSnapshot(deps: {
 let dailyScheduled = false;
 
 /**
+ * The longest the day's copy may be put off waiting for an idle moment that never comes.
+ *
+ * `requestIdleCallback` promises only that the callback runs *when there is spare time*. It makes no promise
+ * that there ever will be. A device that stays busy — a big ledger being read on a slow phone, a browser
+ * sharing a loaded machine, a tab the OS has throttled — can defer it for the whole session, and then the
+ * day's copy is simply never taken. Nothing says so: "Restore the last good copy" quietly goes on offering
+ * whatever the last update left, which may be months old, on exactly the day the file goes wrong.
+ *
+ * The second argument is the browser's own answer to that: past `timeout` the callback is run regardless of
+ * whether the device ever went idle. Two seconds matches the `setTimeout` fallback below, so the copy lands
+ * in the same window whichever branch schedules it. It is a ceiling, not a delay — an idle moment inside the
+ * two seconds still wins, and the first paint is still never waited on.
+ */
+const DAILY_COPY_LATEST_MS = 2000;
+
+/**
  * The once-a-day copy. Without it, "Restore the last good copy" after a corruption that no update caused
  * would hand back whatever the last update left, which could be months old.
  *
- * It runs in an idle callback after the first screen has painted, so it never delays a paint, and it is
- * guarded by a module flag rather than a ref: React's StrictMode mounts twice in development, and two
- * copies of the same database inside a second is a wasted write at best.
+ * It runs in an idle callback after the first screen has painted, so it never delays a paint — but never
+ * later than `DAILY_COPY_LATEST_MS`, so a device that is never idle still gets its copy. It is guarded by a
+ * module flag rather than a ref: React's StrictMode mounts twice in development, and two copies of the same
+ * database inside a second is a wasted write at best.
  */
 export function scheduleDailyCopy(safety: Safety, now: () => Date = () => new Date()): void {
   if (dailyScheduled) return;
@@ -382,7 +399,7 @@ export function scheduleDailyCopy(safety: Safety, now: () => Date = () => new Da
       }
     })();
   };
-  const idle = (globalThis as { requestIdleCallback?: (callback: () => void) => number }).requestIdleCallback;
-  if (idle) idle(run);
-  else setTimeout(run, 2000);
+  const idle = (globalThis as { requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number }).requestIdleCallback;
+  if (idle) idle(run, { timeout: DAILY_COPY_LATEST_MS });
+  else setTimeout(run, DAILY_COPY_LATEST_MS);
 }

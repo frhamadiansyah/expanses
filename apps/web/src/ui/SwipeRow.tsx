@@ -1,9 +1,7 @@
 import { type ReactNode, useRef, useState } from 'react';
-import { cx } from '../../ui';
+import { cx } from './index';
 
-const REVEAL = 76;
 const PAY_AT = 70;
-const OPEN_AT = 50;
 
 /**
  * A row that slides: right past a threshold calls onSwipeRight, left reveals the action behind it. A tap is a tap —
@@ -16,6 +14,8 @@ export function SwipeRow({
   rightHint,
   leftAction,
   className,
+  reveal = 76,
+  testId,
 }: {
   children: (suppressClick: () => boolean) => ReactNode;
   enabled: boolean;
@@ -23,7 +23,13 @@ export function SwipeRow({
   rightHint?: ReactNode;
   leftAction?: ReactNode;
   className?: string;
+  /** How far left the row slides to stand open — as wide as the action behind it. */
+  reveal?: number;
+  testId?: string;
 }) {
+  // Rounded, so the default really is the 50 bills have used since SwipeRow was written: 76 × 0.66 is 50.16, and
+  // "BillRow passes nothing, so bills behave exactly as they do" has to be true rather than nearly true.
+  const openAt = Math.round(reveal * 0.66);
   const [x, setXState] = useState(0);
   // The latest offset, for the release: a pointerup can arrive before React has rendered the last move.
   const offset = useRef(0);
@@ -38,7 +44,9 @@ export function SwipeRow({
   const canLeft = enabled && Boolean(leftAction);
 
   return (
-    <div className={cx('relative overflow-hidden', className)}>
+    // The test id goes here, on the element holding both the action layer and the row content, so a locator
+    // scoped to the row reaches the Edit and Delete buttons behind it as well as what is written on its face.
+    <div data-testid={testId} className={cx('relative overflow-hidden', className)}>
       <div className="absolute inset-0 flex items-stretch justify-between" aria-hidden={x === 0}>
         <div className="flex items-center bg-emerald-600 px-5 text-sm font-semibold text-white">{x > 0 && rightHint}</div>
         <div className="flex items-stretch">{x < 0 && leftAction}</div>
@@ -65,7 +73,7 @@ export function SwipeRow({
           let next = d.base + dx;
           if (!canRight) next = Math.min(next, 0);
           if (!canLeft) next = Math.max(next, 0);
-          setX(Math.max(-110, Math.min(110, next)));
+          setX(Math.max(-reveal - 34, Math.min(110, next)));
         }}
         onPointerUp={() => {
           const d = drag.current;
@@ -84,7 +92,7 @@ export function SwipeRow({
           if (released > PAY_AT && canRight) {
             setX(0);
             onSwipeRight!();
-          } else setX(released < -OPEN_AT && canLeft ? -REVEAL : 0);
+          } else setX(released < -openAt && canLeft ? -reveal : 0);
         }}
         onPointerCancel={() => {
           drag.current = null;

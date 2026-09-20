@@ -27,6 +27,8 @@ export interface RuleMatch {
    * The day is the date the purchase happened, read in the machine's own zone, not the date it was posted.
    */
   daysOfWeek?: number[];
+  /** Bought online or in a shop, when the purchase says. A purchase that does not say is judged by its keywords. */
+  channel?: 'online' | 'offline';
 }
 
 export interface EarnRule {
@@ -81,6 +83,8 @@ export interface SpendLine {
   mccSource: MccSource | null;
   /** An issuer charge such as a fee, stamp duty, or interest. It never earns points or counts toward bonuses. */
   cardFee?: boolean;
+  /** What the owner said about the purchase: 'online', 'offline', or nothing. Never guessed. */
+  channel?: 'online' | 'offline' | null;
 }
 
 export interface EarnAllocation {
@@ -152,6 +156,7 @@ export function matchesSpend(match: RuleMatch, line: SpendLine, ancestors: Recor
   const include = (match.merchantPatterns ?? []).filter((p) => p.trim());
   if (include.length && !include.some((p) => containsKeyword(line.description, p))) return false;
   if ((match.excludeMerchantPatterns ?? []).some((p) => containsKeyword(line.description, p))) return false;
+  if (match.channel && line.channel && match.channel !== line.channel) return false;
   const mcc = line.mcc;
   if (match.mccs?.length && !(mcc && match.mccs.some((spec) => mccInRange(mcc, spec)))) return false;
   if (mcc && match.excludeMccs?.some((spec) => mccInRange(mcc, spec))) return false;

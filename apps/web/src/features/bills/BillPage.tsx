@@ -3,6 +3,7 @@ import { deleteExpenseTemplate, RecurringError, skipBill, undoBillPayments } fro
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { ChevronLeft, Pencil } from 'lucide-react';
 import { useState } from 'react';
+import { ROUND } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
@@ -10,8 +11,6 @@ import { CategoryIcon } from '../categories/CategoryIcon';
 import { isSettled, pillOf } from './bill-view';
 import { PaySheet } from './PaySheet';
 import { useBillDetail } from './queries';
-
-const ROUND_LINK = 'flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-200/70';
 
 interface JustPaid {
   ids: string[];
@@ -101,10 +100,10 @@ export function BillPage({ billId }: { billId: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="mb-2 flex items-center justify-between">
-        <Link to="/bills" aria-label="Back" className={ROUND_LINK}>
+        <Link to="/bills" aria-label="Back" className={ROUND}>
           <ChevronLeft size={18} aria-hidden />
         </Link>
-        <Link to="/bills/$billId/edit" params={{ billId }} aria-label="Edit bill" className={ROUND_LINK}>
+        <Link to="/bills/$billId/edit" params={{ billId }} aria-label="Edit bill" className={ROUND}>
           <Pencil size={16} aria-hidden />
         </Link>
       </div>

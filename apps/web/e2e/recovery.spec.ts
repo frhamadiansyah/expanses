@@ -12,6 +12,7 @@ import {
   forgetSafetyCopies,
   PAST_THE_SIZE_GUARD_BYTES,
   replaceTheDatabase,
+  restorableCopies,
   safetyCopies,
   waitForSafetyCopy,
 } from './recovery-fixture';
@@ -81,8 +82,9 @@ test('the last good copy skips the copy taken of the corruption', async ({ page 
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Restore the last good copy/ }).click()]);
   await page.goto('/accounts');
   await expect(page.getByRole('link', { name: 'Rescue me' })).toBeVisible();
-  // Two copies now: the day's, and the undo taken of the corrupt file a moment ago.
-  await expect.poll(async () => (await safetyCopies(page)).length).toBeGreaterThanOrEqual(2);
+  // Two copies now: the day's, and the undo taken of the corrupt file a moment ago. Both have to be copies
+  // that could actually be put back — a name with nothing behind it would satisfy a count and no user.
+  await expect.poll(async () => (await restorableCopies(page)).length).toBeGreaterThanOrEqual(2);
 
   // The same thing goes wrong again, and the screen is asked the same question a second time.
   await corruptTheDatabase(page);

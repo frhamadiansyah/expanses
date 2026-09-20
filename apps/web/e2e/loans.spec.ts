@@ -33,6 +33,15 @@ test('onboards a loan already running and reads its next twelve months', async (
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '700000000');
   await addKpr(page);
 
+  // The list's own figure, before clicking through. `addKpr` never fills "Payment each month" — the form
+  // invites you to leave it blank — and the list used to read that stored blank back as `Rp 0`. It is the
+  // instalment, the same one the detail screen shows, worked out from what the ledger says is owed.
+  const stillPaying = page.getByRole('heading', { name: 'Still being paid' }).locator('..');
+  await expect(stillPaying).toContainText(/7\.\d{3}\.\d{3}/);
+  await expect(stillPaying).not.toContainText(/Rp\s0(?!\d)/);
+  // And the summary card above it, which is gated on that same figure being greater than zero.
+  await expect(page.getByText('The instalments the banks ask for each month')).toBeVisible();
+
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await expect(page.getByText('Still owed')).toBeVisible();
   await expect(page.getByText(/700\.000\.000/).first()).toBeVisible();
@@ -40,6 +49,22 @@ test('onboards a loan already running and reads its next twelve months', async (
   // Twelve rows to start with, headed by the next payment due from today.
   await expect(page.getByRole('row')).toHaveCount(13);
   await expect(page.getByText('2026-09-25').first()).toBeVisible();
+});
+
+/**
+ * The same fault as `/tax-report`, on the same day: `useLoan` handed TanStack Query the legal `undefined`
+ * that `loanFor` returns for an account with no terms, and the library refuses it. The `<Empty>` below was
+ * written for exactly this and could never render, because a query that errored is never `isSuccess`.
+ */
+test('a loan with no terms says so, instead of showing a red error box', async ({ page }) => {
+  await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '700000000');
+
+  await page.goto('/net-worth/loans/not-a-loan-with-terms');
+
+  // The empty state first: it is what proves the query settled, and only then is "no error box" an assertion
+  // about the settled page rather than about a page that has not finished asking yet.
+  await expect(page.getByText('This loan has no terms yet.')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
 test('records the payment the form filled in, and the balance falls', async ({ page }) => {

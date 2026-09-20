@@ -170,3 +170,41 @@ test('typing an amount by hand stops the goal being worked out', async ({ page }
 
   await expect(page.getByText('Worked out from your figures')).toHaveCount(0);
 });
+
+/**
+ * §3.3: a set-aside is in the account's own money, on the way in as well as on the way out.
+ *
+ * The box was labelled with the account's currency and parsed with the workspace's base one, so typing
+ * `100,03` into a dollar box met `IDR allows 0 decimal places` out of core, and a foreign set-aside could
+ * not be entered on this form at all. The mirror image of the chip that printed one back under `Rp`.
+ */
+test('money set aside on a foreign account is typed, saved and read back in that currency', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('Wise USD');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Currency').selectOption('USD');
+  await page.getByLabel('Current balance').fill('500');
+  await page.getByLabel(/Rate: IDR per 1 USD/).fill('16000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Wise USD', exact: true })).toBeVisible();
+
+  await addGoal(page, 'education', 'University for Aisyah', '350000000', '2038-07-31');
+
+  await page.goto('/goals');
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+  // The box says USD, so an amount with cents is what belongs in it.
+  const box = page.getByLabel('Wise USD (USD)');
+  await box.fill('100,03');
+  await page.getByRole('button', { name: 'Save goal' }).click();
+
+  // Saved at all is the first assertion: this used to end in `IDR allows 0 decimal places`.
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  const fundedBy = page.getByText(/Wise USD.*set aside/).first();
+  await expect(fundedBy).toBeVisible();
+  await expect(fundedBy).toContainText('US$100,03');
+
+  // And the form opens on the figure it stored, in the same currency it asked for.
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await expect(page.getByLabel('Wise USD (USD)')).toHaveValue('100.03');
+});

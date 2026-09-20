@@ -46,7 +46,7 @@ import billMonths from '../migrations/0044_bill_months.sql?raw';
 import accountTypes from '../migrations/0045_account_types.sql?raw';
 import bookIndexes from '../migrations/0046_book_indexes.sql?raw';
 import cashEquivalents from '../migrations/0047_cash_equivalents.sql?raw';
-// 0048 is left free on purpose: the Add Transaction plan already claims that number.
+import transactionExtras from '../migrations/0048_transaction_extras.sql?raw';
 import eventPlanItems from '../migrations/0049_event_plan_items.sql?raw';
 import type { Database } from './database';
 
@@ -104,6 +104,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 45, name: 'account_types', sql: accountTypes },
   { version: 46, name: 'book_indexes', sql: bookIndexes },
   { version: 47, name: 'cash_equivalents', sql: cashEquivalents },
+  { version: 48, name: 'transaction_extras', sql: transactionExtras },
   { version: 49, name: 'event_plan_items', sql: eventPlanItems },
 ];
 

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addItem, moneyIn, planFor } from './event-plan';
+import { addTransaction } from './add-transaction';
 
 /**
  * An account is yours, not a workspace's, so its history holds every workspace and each row says which one it
@@ -14,12 +15,7 @@ test('an account’s history opens from Accounts, and badges nothing while there
   await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Supplier dinner');
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
-  await page.getByLabel('Amount', { exact: true }).fill('640000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'Supplier dinner', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '640000' });
   await expect(page.getByText('Supplier dinner')).toBeVisible();
 
   await page.goto('/accounts');
@@ -65,12 +61,7 @@ async function addBank(page: Page) {
 
 async function spend(page: Page, description: string, amount: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: description, paidWith: 'BCA Tahapan', category: 'Restaurants', amount: amount });
   await expect(page.getByText(description)).toBeVisible();
 }
 
@@ -99,14 +90,107 @@ test('a new workspace copies the categories, opens empty, and leaves the other a
   await expect(page.getByText('Supplier dinner')).toHaveCount(0);
   // The tree came with it, so there is somewhere to file a business dinner from the first day.
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await expect(page.getByLabel('Category').locator('option', { hasText: 'Restaurants' })).toHaveCount(1);
-  await page.getByRole('button', { name: 'Cancel' }).click();
+  const card = page.getByRole('dialog', { name: 'Add a transaction' });
+  await card.getByRole('button', { name: 'Category' }).click();
+  await expect(page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true })).toHaveCount(1);
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Close' }).click();
+  await card.getByRole('button', { name: 'Cancel' }).click();
 
   // Back in Personal, the dinner is where it was: a new workspace took nothing away.
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
   await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Personal' }).click();
   await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Personal');
   await expect(page.getByText('Supplier dinner')).toBeVisible();
+});
+
+/**
+ * A category made in the picker is filed in the workspace the picker was offering, and in no other.
+ *
+ * The contradiction this guards against, found in the plan before it was built: `createAccount` files a new
+ * category into the book of the context it is handed, and the picker shows only the categories `useInOpenBook`
+ * keeps. Hand the two different workspaces and the category lands in a book the picker's own filter then hides
+ * — the row chosen a second ago vanishing from the list it was chosen in. One `ws`, read by both, is what makes
+ * that impossible.
+ *
+ * Boba is made in **Business**, not Personal. Personal is the workspace `createAccount` falls back to when it is
+ * handed no book at all, so a category made there would land in the right place by accident and prove nothing.
+ */
+test('a category made in the picker belongs to that workspace and to no other', async ({ page }) => {
+  await addBank(page);
+  await newWorkspace(page, 'Business', 'Copy from Personal');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: /^Category/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Select category' });
+  await picker.getByRole('button', { name: 'New category' }).click();
+  const made = page.getByRole('dialog', { name: 'New category' });
+  await made.getByLabel('Name', { exact: true }).fill('Boba');
+  await made.getByLabel('Inside').selectOption({ label: 'Food and beverage' });
+  await made.getByRole('button', { name: 'Save' }).click();
+  await expect(picker).toHaveCount(0);
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Boba');
+
+  // The picker that made it can show it: filed anywhere else, its own filter would hide it.
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await expect(picker.getByRole('button', { name: 'Boba', exact: true })).toHaveCount(1);
+  await picker.getByRole('button', { name: 'Close' }).click();
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  await page.goto('/categories');
+  await expect(page.getByText('Boba')).toBeVisible();
+
+  // Personal does not have it — not on its Categories page, and not in its picker either.
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Personal' }).click();
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Personal');
+  await page.goto('/categories');
+  await expect(page.getByText('Food and beverage').first()).toBeVisible();
+  await expect(page.getByText('Boba')).toHaveCount(0);
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await expect(picker.getByRole('button', { name: 'Food and beverage', exact: true })).toHaveCount(1);
+  await expect(picker.getByRole('button', { name: 'Boba', exact: true })).toHaveCount(0);
+});
+
+/**
+ * Two workspaces can hold copies of one category: the same name, the same path, different ids. So the sheet the
+ * category circle opens must offer the open workspace's copy and no other — unnarrowed it shows two buttons
+ * nothing on screen tells apart, and picking the wrong one re-files this spending outside the workspace it
+ * belongs to. `replaceTransaction` refuses that write, but a refusal met after the choice is a choice that
+ * should never have been offered.
+ */
+test('the category gesture offers the open workspace’s categories and no others', async ({ page }) => {
+  await addBank(page);
+  await spend(page, 'Supplier dinner', '640000');
+  await newWorkspace(page, 'Business', 'Copy from Personal');
+  await spend(page, 'Client lunch', '640000');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Category for Client lunch' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Category for Client lunch' });
+  // Exactly one. Two workspaces' copies are named alike and their title paths read alike, so a second button
+  // here is both a strict-mode violation and a cross-workspace write one tap away.
+  await expect(sheet.getByRole('button', { name: 'Restaurants', exact: true })).toHaveCount(1);
+  await expect(sheet.getByRole('button', { name: 'Groceries', exact: true })).toHaveCount(1);
+
+  await sheet.getByRole('button', { name: 'Groceries', exact: true }).click();
+  await expect(page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) })).toContainText('Moved to Groceries');
+  // And the purchase is still Business's: re-filing corrects the category, it never moves the workspace.
+  await page.reload();
+  const row = page.getByTestId('transaction-row').filter({ hasText: 'Client lunch' });
+  await expect(row).toContainText('Groceries');
+  await expect(row.getByTestId('workspace-badge')).toHaveText('Business');
+
+  // The account's history holds both workspaces, and Personal's row is not offered the gesture at all: the
+  // sheet speaks for the open workspace, so re-filing a row from another one could only move it.
+  await page.goto('/accounts');
+  await page.getByRole('link', { name: 'BCA Tahapan', exact: true }).click();
+  await expect(page.getByTestId('workspace-badge').filter({ hasText: 'Personal' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Category for Supplier dinner' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Category for Client lunch' })).toHaveCount(1);
 });
 
 /**
@@ -151,12 +235,7 @@ async function addCard(page: Page) {
 /** Spends on the card from whatever workspace is open. */
 async function buyOnCard(page: Page, description: string, amount: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Visa (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: description, paidWith: 'BCA Visa', category: 'Restaurants', amount: amount });
   await expect(page.getByText(description).first()).toBeVisible();
 }
 
@@ -242,12 +321,7 @@ const TODAY = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0'
 /** Records spending in whatever workspace is open, against a category of that workspace. */
 async function spendOn(page: Page, description: string, category: string, amount: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill(description);
-  await page.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: category });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: description, paidWith: 'BCA Tahapan', category: category, amount: amount });
   await expect(page.getByText(description).first()).toBeVisible();
 }
 
@@ -309,6 +383,12 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await expect(tabs.getByRole('button')).toHaveText(['All', 'Personal', 'Business']);
   await expect(page.getByTestId('event-total')).toContainText('4.840.000');
   await expect(page.getByTestId('event-detail-sheet')).toContainText('Restaurants');
+  // The history is owner-wide on purpose — one trip is paid for out of several workspaces — but the category
+  // gesture is not: the sheet it opens offers the *open* workspace's categories, so Personal's dinner is not
+  // offered the circle while Business is open. A refusal met after the choice is a choice not to offer.
+  await expect(page.getByTestId('event-history').filter({ hasText: 'Hotel dinner' })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Category for Hotel dinner' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Category for Supplier lunch' })).toHaveCount(1);
 
   // Business: its own share, and only the categories filed in it.
   await tabs.getByRole('button', { name: 'Business' }).click();
@@ -409,4 +489,42 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
   await expect(page.getByRole('heading', { name: 'What it covers' })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Welcome dinner' })).toBeChecked();
   await expect(page.getByLabel('Share for Welcome dinner')).toHaveValue('400000');
+});
+
+/**
+ * A correction stays in the workspace it was filed in — and the two "Workspace" buttons are told apart.
+ *
+ * `replaceTransaction` refuses a write that crosses books, so nothing is ever corrupted. But by this file's own
+ * rule a refusal met after the choice is a choice that should never have been offered, and this one costs more
+ * than the save: switching clears the category on the way out, so what the refusal throws away is the whole
+ * correction, and the receipt behind the sheet has turned read-only by the time it lands.
+ *
+ * The card's row and the sidebar's switcher used to carry the identical accessible name, which `exact: true`
+ * cannot separate: every `name: 'Workspace', exact: true` above drives the switcher, and one open card would
+ * have made all of them ambiguous.
+ */
+test('the card names its workspace; only the sidebar offers to change it', async ({ page }) => {
+  await addBank(page);
+  await spend(page, 'Supplier dinner', '640000');
+
+  // Recording something new: the row is a choice, and "Workspace" still names the switcher and nothing else.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const card = page.getByRole('dialog', { name: 'Add a transaction' });
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toHaveCount(1);
+  const adding = card.getByRole('button', { name: 'Workspace for this transaction' });
+  await expect(adding).toContainText('Personal');
+  await expect(adding).toBeEnabled();
+  await card.getByRole('button', { name: 'Cancel' }).click();
+
+  // Correcting one: the same row still says where this is filed, and no longer offers to re-file it.
+  await page.getByRole('link', { name: 'Receipt for Supplier dinner' }).click();
+  await page.getByRole('button', { name: 'Edit this transaction' }).click();
+  const editing = page.getByRole('dialog', { name: 'Edit transaction' });
+  const row = editing.getByRole('button', { name: 'Workspace for this transaction' });
+  await expect(row).toContainText('Personal');
+  await expect(row).toBeDisabled();
+  // Nothing opens, so the category is still the one that was chosen rather than cleared by a switch.
+  await expect(page.getByRole('dialog', { name: 'Workspaces' })).toHaveCount(0);
+  await expect(editing.getByRole('button', { name: 'Category' })).toContainText('Restaurants');
 });

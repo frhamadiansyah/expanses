@@ -13,7 +13,7 @@ import { PaySheet } from './PaySheet';
 import { useMonthlyBills } from './queries';
 import { useBookMoney } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
-import { UndoToast } from './UndoToast';
+import { UndoToast } from '../../ui/UndoToast';
 
 const SECONDARY_LINK = 'inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100';
 

@@ -1,5 +1,5 @@
-import { categoryPath, formatMinor, isoDate, monthOf, parseLooseAmount, parseLooseDate, parseUnits, parsePeriod, periodLabel } from '@expanses/core';
-import { confirmDraft, convertToPurchase, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactionsIn, ownerScope, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
+import { categoryPath, formatMinor, isoDate, monthOf, parseLooseAmount, parseLooseDate, parsePeriod, periodLabel } from '@expanses/core';
+import { confirmDraft, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactionsIn, ownerScope, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, CalendarDays, CalendarX2, Check, ChevronDown, ChevronLeft, CircleAlert, CreditCard, Ellipsis, Trash2, LayoutGrid, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
@@ -8,14 +8,20 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { loadPurchasePoints } from '../../lib/purchase-points';
-import { isCategoryOf, isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
+import { offeredCategories } from '../categories/offered';
+import { useCategorySetMembership } from '../categories/set-queries';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
 import { useDrafts } from '../review/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, Money, PageHeader, RoundButton } from '../../ui';
 import { ChipMenu, type ChipOption } from './ChipMenu';
+import { ConvertForm } from './ConvertForm';
+import { EditSheet } from './EditSheet';
 import { isEditable } from './draft';
+import { ReceiptLink } from './ReceiptLink';
+import { TransactionRow, useRecategorise } from './TransactionRow';
 import { buildRowOptions, QuickRowEditor } from './QuickRowEditor';
 import { isQuickEditable, quickFromDraft, quickFromTransaction, type QuickRead, quickToInput, type QuickValues, readQuick, shortDate } from './quick-row';
 import { type TableHandlers, TransactionsTable } from './TransactionsTable';
@@ -25,7 +31,8 @@ import { useGoals } from '../goals/queries';
 import { Recurring } from './Recurring';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
-import { TransactionForm } from './TransactionForm';
+import { TransactionCard } from './TransactionCard';
+import { canEditInSheet } from './tx-form';
 import { editInsteadIn, openToEditMessage } from '../workspaces/filing';
 import { SwitchToEdit } from '../workspaces/SwitchToEdit';
 import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
@@ -46,85 +53,6 @@ function rememberedView(): View {
   } catch {
     return 'list';
   }
-}
-
-/** Turns an expense already recorded into the purchase it really was, keeping its date and amount. */
-function ConvertForm({
-  tx,
-  holdings,
-  goals,
-  onDone,
-}: {
-  tx: TransactionView;
-  holdings: { accountId: string; name: string }[];
-  goals: { id: string; name: string }[];
-  onDone: () => void;
-}) {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const [accountId, setAccountId] = useState(holdings[0]?.accountId ?? '');
-  const [units, setUnits] = useState('');
-  const [goalId, setGoalId] = useState('');
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function save() {
-    setError(null);
-    setBusy(true);
-    try {
-      await convertToPurchase(database, ws, { transactionId: tx.id, accountId, unitsMicro: parseUnits(units), goalId: goalId || null });
-      await invalidate();
-      onDone();
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card className="space-y-3">
-      <h3 className="text-sm font-semibold">This was a purchase</h3>
-      <p className="text-xs text-slate-500">
-        The amount, the date and the account that paid stay as they are. It stops counting as spending and starts counting as a holding.
-      </p>
-      <div className="grid gap-3 md:grid-cols-3">
-        <Field label="What it bought">
-          <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-            {holdings.map((holding) => (
-              <option key={holding.accountId} value={holding.accountId}>
-                {holding.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Units, shares or grams">
-          <Input value={units} inputMode="decimal" onChange={(e) => setUnits(e.target.value)} placeholder="2" />
-        </Field>
-        {goals.length > 0 && (
-          <Field label="For goal">
-            <Select value={goalId} onChange={(e) => setGoalId(e.target.value)}>
-              <option value="">No goal</option>
-              {goals.map((goal) => (
-                <option key={goal.id} value={goal.id}>
-                  {goal.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-      </div>
-      <ErrorBox error={error} />
-      <div className="flex gap-2">
-        <Button onClick={save} disabled={busy || !accountId}>
-          Save as a purchase
-        </Button>
-        <Button variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
-    </Card>
-  );
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -208,6 +136,9 @@ export function TransactionsPage() {
   const accounts = useAccounts().data ?? [];
   // Category pickers and filters on this page read the open book; money accounts are every book's.
   const inOpenBook = useInOpenBook();
+  // And no picker on this page offers a set category: they belong to an event (§6). The row editor's cell used
+  // to, because it went through a second filter that had no membership test.
+  const membership = useCategorySetMembership().data ?? {};
   const cards = useCards().data ?? [];
   const drafts = useDrafts();
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
@@ -216,6 +147,8 @@ export function TransactionsPage() {
   // On a phone the search field and the filters are behind their buttons; a wide screen shows both.
   const [showSearch, setShowSearch] = useState(false);
   const phone = usePhone();
+  // One copy of the category gesture for the whole screen: the sheet it opens and the Undo toast it leaves.
+  const recategorise = useRecategorise();
   const [showFilters, setShowFilters] = useState(false);
   // The workspace switcher, reached from the ⋯ menu — the one thing in there that changes the whole app.
   const [choosingWorkspace, setChoosingWorkspace] = useState(false);
@@ -254,6 +187,8 @@ export function TransactionsPage() {
   };
   /** The full form, for a transaction too involved to edit as a row. */
   const [editingId, setEditingId] = useState<string | null>(null);
+  // The phone's swipe reaches the edit sheet; a desktop's click still edits in place, untouched.
+  const [editSheetTx, setEditSheetTx] = useState<TransactionView | null>(null);
   /** A row being edited in place. */
   const [editing, setEditing] = useState<{ kind: 'tx' | 'draft'; id: string; values: QuickValues } | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
@@ -325,7 +260,7 @@ export function TransactionsPage() {
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
 
-  const rowOptions = buildRowOptions(accounts, cards, inOpenBook);
+  const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
   const money = accounts.filter(isMoneyAccount);
   const cardsOf = (accountId: string) => cards.filter((card) => card.accountId === accountId);
   const paidOptions: ChipOption[] = [
@@ -342,8 +277,7 @@ export function TransactionsPage() {
   ];
   const categoryOptions: ChipOption[] = [
     { value: '', label: 'Any category' },
-    ...accounts
-      .filter((a) => (isCategoryOf('expense')(a) || isCategoryOf('income')(a)) && inOpenBook(a))
+    ...[...offeredCategories(accounts, 'expense', membership, inOpenBook), ...offeredCategories(accounts, 'income', membership, inOpenBook)]
       .map((a) => ({ value: a.id, label: categoryPath(accounts, a.id), icon: <CategoryIcon categoryId={a.id} accounts={accounts} size="xs" />, indent: a.parentId !== null }))
       .sort((x, y) => x.label.localeCompare(y.label)),
   ];
@@ -624,7 +558,7 @@ export function TransactionsPage() {
     if (editingId === tx.id) {
       return (
         <li key={tx.id} className="py-2">
-          <TransactionForm initial={tx} onDone={close} />
+          <TransactionCard initial={tx} onDone={close} />
           {editHint(<>The original stays under Show deleted</>, <>{purchaseButton}{deleteButton}</>)}
         </li>
       );
@@ -653,7 +587,6 @@ export function TransactionsPage() {
                 // The subcategory alone: "Parking & tolls" says Transportation without repeating it.
                 .map((e) => accounts.find((a) => a.id === e.accountId)?.name ?? categoryPath(accounts, e.accountId))
                 .join(', ');
-    const sign = row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
     const goal = goalName(tradeByTransaction.get(tx.id)?.goalId ?? tx.goalId ?? null);
     const points = purchasePoints.data?.[tx.id];
     const trade = tradeByTransaction.has(tx.id);
@@ -662,31 +595,39 @@ export function TransactionsPage() {
     const reachable = !trade && isEditable(tx);
     const elsewhere = reachable ? elsewhereOf(tx.id) : null;
     const clickable = reachable && !elsewhere && filingKnown;
+    // Every way in that *writes* inherits the same refusals. A trade, an opening balance, a voided row and a
+    // purchase filed in another workspace may not be edited, deleted or re-filed from here — by swipe no less
+    // than by click. Looking is not writing: on a phone the tap opens the receipt for all of them, because the
+    // ⓘ that a desktop reaches a receipt by is `hidden md:inline-flex` and the tap is the only way in. The
+    // receipt refuses exactly what this row refuses — `isEditable && !elsewhere && !isTrade` gates its Edit and
+    // its Delete, and a row of another workspace is answered there with the same "open that workspace" line.
+    const openReceipt = () => void navigate({ to: '/transactions/$transactionId', params: { transactionId: tx.id } });
     return (
-      <li
+      <TransactionRow
         key={tx.id}
-        tabIndex={reachable ? 0 : undefined}
+        row={row}
+        accounts={accounts}
+        phone={phone}
         title={clickable ? 'Click to edit' : elsewhere ? openToEditMessage(elsewhere) : undefined}
-        onClick={reachable ? () => open(row) : undefined}
-        onKeyDown={reachable ? (event) => event.target === event.currentTarget && event.key === 'Enter' && open(row) : undefined}
-        className={cx(
-          'group flex items-center gap-3 py-2',
-          row.deleted && 'opacity-50 line-through',
-          clickable && '-mx-2 cursor-pointer rounded-lg px-2 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-slate-900',
-          elsewhere && '-mx-2 rounded-lg px-2 focus-visible:outline-2 focus-visible:outline-slate-900',
-        )}
-      >
-        <span className={cx(row.deleted && 'grayscale')}>
-          {/* Under a category the group already shows the icon, so each row's circle carries its day instead. */}
-          <CategoryIcon
-            categoryId={row.categoryId}
-            accounts={accounts}
-            transfer={row.type !== 'expense' && row.type !== 'income'}
-            label={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
-          />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">
+        // A phone taps for the receipt and swipes for the rest; a desktop keeps its editor in place, untouched.
+        // `reachable`, not `clickable`, exactly as before: a purchase filed in another workspace still answers a
+        // click — with the note saying where it lives — and only saving it here is refused.
+        onOpen={phone ? openReceipt : reachable ? () => open(row) : undefined}
+        // Since Task 9 the swipe opened the in-place editor; on a phone it now opens the edit sheet, which is
+        // the phone's whole affordance for a correction. What the sheet cannot hold falls back to the editor
+        // this row has always opened, so no transaction loses its way in. The desktop never reaches `onEdit`
+        // at all — `TransactionRow` draws the swipe layer only on a phone — and is left exactly as it was.
+        onEdit={clickable ? () => (phone && canEditInSheet(tx) ? setEditSheetTx(tx) : open(row)) : undefined}
+        onDelete={clickable ? () => void run(tx.id, () => voidTransaction(database, ws, tx.id)) : undefined}
+        // So the swipe's Delete is the receipt's Delete in every respect: asked twice, and dead while the
+        // write it already asked for is going out.
+        busy={busy === tx.id}
+        // Spec §9's parity row: clicking the icon re-files on a wide screen too, with the same Undo toast.
+        onRecategorise={clickable && recategorise.offers(row) ? recategorise.start : undefined}
+        // Under a category the group already shows the icon, so each row's circle carries its day instead.
+        iconLabel={withDate && grouping === 'category' && singleMonth && row.date ? String(Number(row.date.slice(8, 10))) : undefined}
+        label={
+          <>
             {/* Outside a single month the day alone is ambiguous, so the circle's day gains its month here. */}
             {withDate && (!singleMonth || grouping !== 'category') && <span className="tabular mr-2 font-normal text-slate-500">{shortDate(row.date, today)}</span>}
             {label}
@@ -694,39 +635,44 @@ export function TransactionsPage() {
             <WorkspaceBadge book={badgeOf(tx.id)} />
             {/* Paid in one month for another's bill: listed on the day paid, counted in the budget in its bill month. */}
             {billTag && <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-500">{billTag}</span>}
-          </div>
-          <div className="truncate text-xs text-slate-500">
+          </>
+        }
+        subtitle={
+          <>
             {tx.description ? `${tx.description} · ` : ''}
             {row.accountLabel}
             {row.last4 && <span className="tabular font-semibold text-slate-600"> ···· {row.last4}</span>}
             {goal && ` · for ${goal}`}
-          </div>
-          {/* Asked for by trying to edit it: the row says where it lives, and offers to take you there. */}
-          {elsewhere && elsewhereId === tx.id && <SwitchToEdit book={elsewhere} className="mt-0.5 block" />}
-        </div>
-        <div className="text-right">
-          {/* The colour says which way the money went, so the sign would only say it twice. */}
-          <div className={cx('tabular text-sm font-semibold whitespace-nowrap', sign < 0 && 'text-red-700', sign > 0 && 'text-emerald-700')}>
-            {formatMinor(row.amountMinor, row.currency)}
-          </div>
-          {points && (
-            <div className={cx('tabular whitespace-nowrap text-xs', points.points < 0 ? 'text-red-700' : 'text-emerald-700')}>
-              {points.points < 0 ? '−' : points.approximate ? '≈ ' : '+'}
-              {formatPoints(Math.abs(points.points))} {points.unit}
-            </div>
-          )}
-          {tx.originalCurrency && tx.originalAmountMinor !== null && (
-            <div className="tabular whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</div>
-          )}
-        </div>
-        {trade ? (
-          <Link to="/net-worth/trades" className="text-sm font-medium text-slate-600 underline" title="Edit this on Buy & sell so units stay in step">
-            Buy &amp; sell
-          </Link>
-        ) : (
-          clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
-        )}
-      </li>
+          </>
+        }
+        // Asked for by trying to edit it: the row says where it lives, and offers to take you there.
+        under={elsewhere && elsewhereId === tx.id ? <SwitchToEdit book={elsewhere} className="mt-0.5 block" /> : undefined}
+        amountExtra={
+          <>
+            {points && (
+              <span className={cx('tabular block whitespace-nowrap text-xs', points.points < 0 ? 'text-red-700' : 'text-emerald-700')}>
+                {points.points < 0 ? '−' : points.approximate ? '≈ ' : '+'}
+                {formatPoints(Math.abs(points.points))} {points.unit}
+              </span>
+            )}
+            {tx.originalCurrency && tx.originalAmountMinor !== null && (
+              <span className="tabular block whitespace-nowrap text-xs text-slate-500">{formatMinor(tx.originalAmountMinor, tx.originalCurrency)}</span>
+            )}
+          </>
+        }
+        trailing={
+          <>
+            {trade ? (
+              <Link to="/net-worth/trades" className="text-sm font-medium text-slate-600 underline" title="Edit this on Buy & sell so units stay in step">
+                Buy &amp; sell
+              </Link>
+            ) : (
+              clickable && <Pencil size={16} className="hidden text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 md:block" aria-hidden />
+            )}
+            <ReceiptLink description={row.description} transactionId={tx.id} />
+          </>
+        }
+      />
     );
   }
 
@@ -740,7 +686,7 @@ export function TransactionsPage() {
     saveDraft,
     dismissDraft: (id) => run(id, () => dismissDraft(database, ws, id)),
     deleteRecorded: (id) => run(id, () => voidTransaction(database, ws, id)),
-    renderForm: (tx, onDone) => <TransactionForm initial={tx} onDone={onDone} />,
+    renderForm: (tx, onDone) => <TransactionCard initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),
     elsewhereOf,
     filingKnown,
@@ -957,7 +903,11 @@ export function TransactionsPage() {
           All transactions
         </button>
       )}
-      {adding && <TransactionForm onDone={() => setAdding(false)} />}
+      {adding && (
+        <Sheet title="Add a transaction" onClose={() => setAdding(false)}>
+          <TransactionCard onDone={() => setAdding(false)} />
+        </Sheet>
+      )}
 
       <div className="space-y-1">
         {/* On a phone the filters are the ⋯ menu below; the row of chips is a wide screen's. */}
@@ -1233,6 +1183,13 @@ export function TransactionsPage() {
           )}
         </>
       )}
+
+      {/* The category sheet and its Undo toast, once for the screen rather than once per row. */}
+      {recategorise.overlay}
+
+      {/* The phone's swipe-Edit, once for the screen. Closing it is enough to put it away: the save has already
+          invalidated everything, so the list underneath is redrawn without being told. */}
+      {editSheetTx && <EditSheet tx={editSheetTx} onClose={() => setEditSheetTx(null)} />}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   // A linked catalogue card asks before an edit makes it customised.
@@ -34,17 +35,25 @@ async function applyCatalogue(page: Page, card: string, search: string, entryNam
 
 async function buy(page: Page, p: { card: string; description: string; category: string; amount: string; original?: [currency: string, amount: string] }) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill(p.description);
-  await page.getByLabel('Paid with').selectOption({ label: `${p.card} (IDR)` });
-  await page.getByLabel('Category').selectOption({ label: p.category });
-  await page.getByLabel('Amount', { exact: true }).fill(p.amount);
-  if (p.original) {
-    await page.getByText('Card purchase details').click();
-    await page.getByLabel('Original currency').selectOption(p.original[0]);
-    await page.getByLabel(/^Original amount/).fill(p.original[1]);
+  if (!p.original) {
+    await addTransaction(page, { description: p.description, paidWith: p.card, category: p.category, amount: p.amount });
+    await expect(page.getByText(p.description)).toBeVisible();
+    return;
   }
-  await page.getByRole('button', { name: 'Save' }).click();
+  // §3.3: what the merchant charged is typed in its own currency, and the row underneath is what the card
+  // settled in — the pair the card's rules read. There is no second "Original amount" field any more.
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: p.card, exact: true }).click();
+  await form.getByRole('button', { name: 'Currency' }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: new RegExp(`^${p.original[0]} `) }).first().click();
+  await form.getByLabel('Amount', { exact: true }).fill(p.original[1]);
+  await form.getByLabel('Charged in IDR').fill(p.amount);
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: p.category, exact: true }).click();
+  await form.getByLabel('Note').fill(p.description);
+  await form.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText(p.description)).toBeVisible();
 }
 
@@ -100,7 +109,7 @@ test('comparing in KrisFlyer ranks UnionPay converted miles above Signature mile
   await page.goto('/recommend');
   await page.getByLabel('Amount (IDR)').fill('540000');
   await page.getByLabel('Spent in').selectOption('SGD');
-  await page.getByLabel('Category').selectOption({ label: 'Restaurants' });
+  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Restaurants' });
   await expect(page.getByLabel('Compare in').locator('option', { hasText: 'KrisFlyer' })).toHaveCount(1);
   await page.getByLabel('Compare in').selectOption('KrisFlyer');
   await page.getByRole('button', { name: 'Compare cards' }).click();

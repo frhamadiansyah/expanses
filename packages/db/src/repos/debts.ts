@@ -300,7 +300,27 @@ export interface SplitBillInput {
   shares: { debtAccountId?: string; person?: { name: string; currency: string }; amountMinor: number }[];
   spendCategoryId?: string | null;
   mcc?: string | null;
+  /**
+   * The card the bill was paid on, when the account carries more than one — the same fact `PostTransactionInput`
+   * carries under the same name. Sharing a restaurant bill cannot be what loses which card earned the points for
+   * it: without this the row prints no digits and the receipt's "Paid with" names the bare account.
+   */
+  cardId?: string | null;
+  /**
+   * What the bill was in before the account converted it, when the two differ. Both or neither, exactly as on a
+   * bill nobody else was at: a US$100 dinner split with a friend is still a US$100 dinner.
+   */
+  originalCurrency?: string | null;
+  originalAmountMinor?: number | null;
   ratesToBase?: Record<string, number>;
+  /** Online or offline, when the user said; null when they did not. Never guessed. */
+  channel?: 'online' | 'offline' | null;
+  /** Leaves the chart, the budgets and the category totals; balances, statements, points and net worth keep it. */
+  excludedFromReport?: boolean;
+  /** The event this belongs to. */
+  eventId?: string | null;
+  /** Photo rows written before the transaction had an id. A receipt is kept whoever else was at the table. */
+  photoIds?: string[];
 }
 
 /** Money handed to a person, from a bank account or on a card. */
@@ -439,6 +459,13 @@ export async function splitBill(database: Database, ws: WorkspaceContext, input:
       lines,
       ratesToBase: input.ratesToBase,
       mcc: input.mcc ?? null,
+      cardId: input.cardId ?? null,
+      originalCurrency: input.originalCurrency ?? null,
+      originalAmountMinor: input.originalAmountMinor ?? null,
+      channel: input.channel,
+      excludedFromReport: input.excludedFromReport,
+      eventId: input.eventId,
+      photoIds: input.photoIds,
     });
     return { transactionId, debtAccountIds };
   });

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 test('a digital wallet and a fund account hold money, and the wallet pays for lunch', async ({ page }) => {
   await page.goto('/accounts');
@@ -20,12 +21,7 @@ test('a digital wallet and a fund account hold money, and the wallet pays for lu
   await expect(page.getByText('Fund account · IDR')).toBeVisible();
 
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByLabel('Description').fill('Warung Tegal');
-  await page.getByLabel('Paid with').selectOption({ label: 'GoPay (IDR)' });
-  await page.getByLabel('Category').selectOption({ label: 'Groceries' });
-  await page.getByLabel('Amount', { exact: true }).fill('45000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { description: 'Warung Tegal', paidWith: 'GoPay', category: 'Groceries', amount: '45000' });
   await expect(page.getByText('Warung Tegal')).toBeVisible();
 
   await page.goto('/accounts');

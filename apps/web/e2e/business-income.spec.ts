@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 
 /** Sales recorded by these tests are dated today, so this is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -19,13 +20,7 @@ async function addWallet(page: Page, name: string) {
 /** A sale: money into a wallet against an income category, which is what makes it turnover. */
 async function recordSale(page: Page, into: string, amount: string) {
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('button', { name: 'Income', exact: true }).click();
-  await page.getByLabel('Description').fill('Sale');
-  await page.getByLabel('Received into').selectOption({ label: `${into} (IDR)` });
-  await page.getByLabel('Category').selectOption({ label: 'Other Income' });
-  await page.getByLabel('Amount', { exact: true }).fill(amount);
-  await page.getByRole('button', { name: 'Save' }).click();
+  await addTransaction(page, { mode: 'Income', description: 'Sale', paidWith: into, category: 'Other Income', amount });
   await expect(page.getByText('Sale').first()).toBeVisible();
 }
 
@@ -78,11 +73,14 @@ test('money moved in from the family wallet is not a sale', async ({ page }) => 
   // A float from the family wallet lands in the account, but nobody bought anything.
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await page.getByRole('button', { name: 'Transfer' }).click();
-  await page.getByLabel('From').selectOption({ label: 'Family wallet (IDR)' });
-  await page.getByLabel('To', { exact: true }).selectOption({ label: 'Business wallet (IDR)' });
-  await page.getByLabel('Amount', { exact: true }).fill('50000000');
-  await page.getByRole('button', { name: 'Save' }).click();
+  const float = page.getByRole('dialog', { name: 'Add a transaction' });
+  await float.getByRole('radio', { name: 'Transfer' }).click();
+  await float.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Family wallet', exact: true }).click();
+  await float.getByLabel('To', { exact: true }).selectOption({ label: 'Business wallet (IDR)' });
+  await float.getByLabel('Amount', { exact: true }).fill('50000000');
+  await float.getByRole('button', { name: 'Save' }).click();
+  await expect(float).toHaveCount(0);
 
   await startReport(page);
   await addBusiness(page, { name: 'Warung', scheme: 'umkm_final', wallet: 'Business wallet', threshold: false });

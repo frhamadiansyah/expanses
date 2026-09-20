@@ -65,9 +65,11 @@ test('a set of your own can be made, added to, and drawn on by an event', async 
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
+  await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Category' }).click();
+  const picker = page.getByRole('dialog', { name: 'Select category' });
   // Anchored: the monthly tree has its own Home catering and School catering, which must stay.
-  await expect(page.getByLabel('Category').locator('option', { hasText: /^Catering$/ })).toHaveCount(0);
-  await expect(page.getByLabel('Category').locator('option', { hasText: /^Home catering$/ })).toHaveCount(1);
+  await expect(picker.getByRole('button', { name: 'Catering', exact: true })).toHaveCount(0);
+  await expect(picker.getByRole('button', { name: 'Home catering', exact: true })).toHaveCount(1);
 });
 
 test('a set category can be renamed, and archiving it leaves the set', async ({ page }) => {
@@ -148,8 +150,10 @@ test('a set stays out of the monthly categories, and its spending out of the mon
   // The everyday form offers the monthly tree only: a newborn's categories are not what you file the shop under.
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
-  await expect(page.getByLabel('Category').locator('option', { hasText: 'Diapering' })).toHaveCount(0);
-  await expect(page.getByLabel('Category').locator('option', { hasText: 'Groceries' })).toHaveCount(1);
+  await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Category' }).click();
+  const everyday = page.getByRole('dialog', { name: 'Select category' });
+  await expect(everyday.getByRole('button', { name: 'Diapering', exact: true })).toHaveCount(0);
+  await expect(everyday.getByRole('button', { name: 'Groceries', exact: true })).toHaveCount(1);
 
   // And the budget plans the month, not the event.
   await page.goto('/budget');

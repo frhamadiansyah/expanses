@@ -47,6 +47,31 @@ async function startReport(page: Page) {
   await expect(page.getByText('Ikhtisar')).toBeVisible();
 }
 
+/**
+ * The state every other test in this file skips past: the page before anybody starts a report.
+ *
+ * Each of them clicks "Start the {year} report" as its first action, so all four passed with a red error box
+ * on screen — `useReport` handed TanStack Query the legal `undefined` that `reportFor` returns for a year with
+ * no row, and the library refuses it with `"<hash> data is undefined"`. The empty state below had been written
+ * and had never once rendered, because `isSuccess` can never be true on a query that errored.
+ */
+test('opens a year with no report yet, and says so instead of erroring', async ({ page }) => {
+  await page.goto('/tax-report');
+
+  // The empty state first: it is what proves the query settled, and only then is "no error box" an assertion
+  // about the settled page rather than about a page that has not finished asking yet.
+  await expect(page.getByText(/Nothing for \d{4} yet/)).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Start the \d{4} report$/ })).toBeVisible();
+
+  // A year that does have a report is unaffected: the empty state goes and the report renders.
+  await page.getByLabel('Tax year').selectOption(String(YEAR));
+  await page.getByRole('button', { name: `Start the ${YEAR} report` }).click();
+  await expect(page.getByText('Ikhtisar')).toBeVisible();
+  await expect(page.getByText(/Nothing for \d{4} yet/)).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
 test('lists a row in every table the year actually has', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '4000000');

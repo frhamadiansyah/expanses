@@ -3,6 +3,7 @@ import {
   type LoanMethod,
   type LoanTerms,
   loanSchedule,
+  periodOn,
   type PostingLine,
   type RatePeriod,
   type ScheduleRow,
@@ -420,7 +421,7 @@ export async function recordExtraPayment(
       });
       newPaymentMinor = effect.newPaymentMinor;
       if (newPaymentMinor !== null) {
-        const rateBps = periods.filter((period) => period.fromOn <= input.occurredOn).at(-1)?.rateBps ?? periods[0]?.rateBps ?? 0;
+        const rateBps = periodOn(periods, input.occurredOn)?.rateBps ?? 0;
         await tx.insert(loanRatePeriods).values({
           id: uuidv7(),
           accountId: input.accountId,
@@ -453,4 +454,24 @@ export async function scheduleFor(database: Database, ws: WorkspaceContext, acco
 /** The row the payment form fills itself in from. */
 export async function nextPaymentDue(database: Database, ws: WorkspaceContext, accountId: string, fromDate: string): Promise<ScheduleRow | undefined> {
   return (await scheduleFor(database, ws, accountId, fromDate))[0];
+}
+
+/**
+ * What each loan is due to pay next, by account — the instalment, worked out from the balance the ledger
+ * holds, exactly as the detail screen and the attention rows already do.
+ *
+ * `periods[].paymentMinor` is *the payment the bank named, when it named one*: the form invites you to leave
+ * it blank and 0 is stored. A list that reads it directly prints `Rp 0` for a loan onboarded that way, which
+ * is what `/net-worth/loans` did. `loanSchedule` already prefers the bank's own figure while it stands, so
+ * this is the one reading that is right either way. A loan with nothing left owing falls back to the figure
+ * the bank named, so a screen never shows less than what is known.
+ */
+export async function scheduledPayments(database: Database, ws: WorkspaceContext, fromDate: string): Promise<Record<string, number>> {
+  const loans = await loansWith(database, ws);
+  const payments: Record<string, number> = {};
+  for (const loan of loans) {
+    const next = await nextPaymentDue(database, ws, loan.accountId, fromDate);
+    payments[loan.accountId] = next?.paymentMinor ?? periodOn(loan.periods, fromDate)?.paymentMinor ?? 0;
+  }
+  return payments;
 }

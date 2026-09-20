@@ -1,4 +1,4 @@
-import { flatToEffectiveBps, isoDate, type LoanMethod } from '@expanses/core';
+import { flatToEffectiveBps, isoDate, type LoanMethod, periodOn } from '@expanses/core';
 import { saveLoanTerms } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
@@ -7,7 +7,7 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
 import { NetWorthTabs } from '../networth/NetWorthTabs';
 import { emptyLoanTermsDraft, type LoanTermsDraft, loanTermsDraftToInput } from './loan-form';
-import { useLoans } from './queries';
+import { useLoans, useScheduledPayments } from './queries';
 
 const METHOD_LABELS: Record<LoanMethod, string> = {
   annuity: 'Annuity — interest on what is left',
@@ -151,13 +151,18 @@ function TermsForm({ onDone }: { onDone: () => void }) {
 export function LoansPage() {
   const { ws } = useApp();
   const loans = useLoans();
+  const payments = useScheduledPayments();
   const accounts = useAccounts().data ?? [];
   const [adding, setAdding] = useState(false);
+  const today = isoDate();
 
   const open = (loans.data ?? []).filter((loan) => loan.status === 'open');
   const paidOff = (loans.data ?? []).filter((loan) => loan.status === 'paid_off');
   const nameOf = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? 'Loan';
-  const monthlyMinor = open.reduce((total, loan) => total + (loan.periods.at(-1)?.paymentMinor ?? 0), 0);
+  // The instalment, worked out from what the ledger says is owed — not `periods[].paymentMinor`, which is
+  // the figure the bank named *if it named one* and is 0 for a loan onboarded without typing it.
+  const paymentOf = (accountId: string) => payments.data?.[accountId] ?? 0;
+  const monthlyMinor = open.reduce((total, loan) => total + paymentOf(loan.accountId), 0);
 
   return (
     <div className="space-y-4">
@@ -177,7 +182,7 @@ export function LoansPage() {
         }
       />
       <NetWorthTabs />
-      <ErrorBox error={loans.error} />
+      <ErrorBox error={loans.error ?? payments.error} />
 
       {adding && <TermsForm onDone={() => setAdding(false)} />}
 
@@ -209,11 +214,11 @@ export function LoansPage() {
                     {nameOf(loan.accountId)}
                   </Link>
                   <span className="block text-xs text-slate-500">
-                    {loan.lenderName} · {(loan.periods.at(-1)?.rateBps ?? 0) / 100}% · {loan.tenorMonths} months from {loan.firstPaymentOn}
+                    {loan.lenderName} · {(periodOn(loan.periods, today)?.rateBps ?? 0) / 100}% · {loan.tenorMonths} months from {loan.firstPaymentOn}
                     {loan.isHomeLoan && ' · mortgage'}
                   </span>
                 </span>
-                <Money minor={loan.periods.at(-1)?.paymentMinor ?? 0} currency={ws.baseCurrency} />
+                <Money minor={paymentOf(loan.accountId)} currency={ws.baseCurrency} />
               </div>
             ))}
           </div>

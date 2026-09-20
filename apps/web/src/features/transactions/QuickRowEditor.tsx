@@ -1,7 +1,8 @@
 import { categoryPath, matchCategory, matchPayment, type PaymentOption } from '@expanses/core';
 import type { AccountRow, CardRow } from '@expanses/db';
 import type { ReactNode } from 'react';
-import { isCategoryOf, isMoneyAccount } from '../../lib/queries';
+import { isMoneyAccount } from '../../lib/queries';
+import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { CellCombo, type ComboOption } from './CellCombo';
@@ -17,9 +18,16 @@ export type RowOptions = ReturnType<typeof buildRowOptions>;
 
 /**
  * The choices for the paid-with and category cells. Built once per list, not once per row. Categories are narrowed
- * by `inOpenBook` (the open book's); money accounts never are.
+ * by `offeredCategories` — the app's one category filter, so the cell offers exactly what `CategoryPicker` offers;
+ * money accounts are never narrowed, because one bank account pays for every book.
  */
-export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly CardRow[], inOpenBook: (a: AccountRow) => boolean = () => true) {
+export function buildRowOptions(
+  accounts: readonly AccountRow[],
+  cards: readonly CardRow[],
+  inOpenBook: (a: AccountRow) => boolean = () => true,
+  /** Which categories belong to a category set. They belong to an event (§6), so no picker offers them. */
+  membership: Record<string, unknown> = {},
+) {
   const money = accounts.filter(isMoneyAccount);
   const toCombo = (option: PaymentOption): ComboOption => ({
     value: paymentKey(option.accountId, option.cardId),
@@ -30,7 +38,7 @@ export function buildRowOptions(accounts: readonly AccountRow[], cards: readonly
   // The cell says what paid, so it offers only what can: never a locked deposit, never a house.
   const payments = payerOptions(money, cards, '');
   const paid: ComboOption[] = payments.map(toCombo);
-  const categoryRows = accounts.filter((a) => isCategoryOf('expense')(a) && inOpenBook(a));
+  const categoryRows = offeredCategories(accounts, 'expense', membership, inOpenBook);
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const categories: ComboOption[] = categoryRows
     .map((a) => ({

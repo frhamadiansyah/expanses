@@ -5,6 +5,7 @@ import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { attributedOn, billTablesExist } from './bill-months';
 import { bookMoneyFor, type Unconverted } from './book-currency';
+import { extrasTablesExist, notExcluded } from './transaction-extras';
 
 export interface CategoryTotal {
   accountId: string;
@@ -45,6 +46,9 @@ async function categoryRows(
       // Narrowed to one book when the context names one; the whole workspace otherwise. Set categories are filed in
       // book_categories too (into their set's book), so this one path covers them.
       ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+      // What was marked "not my spending" leaves the chart, the rings and the budgets. It is still on the card,
+      // still in the balance, still earning points: only this reading of it changes.
+      ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
     )!,
     // The day an amount is converted on is the day it is counted on. Under billMonths that is the out day of the
     // month whose bill it settles, not the day the payment was made — so August's internet paid on 3 September is
@@ -163,6 +167,8 @@ export async function eventSpendingBetween(
     lte(transactions.occurredOn, to),
     isNotNull(transactions.eventId),
     ...(ws.bookId ? [sql`${entries.accountId} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${ws.bookId})`] : []),
+    // Same clause as `categoryRows`: the event's Spent and the category report must drop the same rows.
+    ...((await extrasTablesExist(database.db)) ? [notExcluded(ws)] : []),
   );
   if (!money.converts) {
     const [row] = await database.db
