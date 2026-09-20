@@ -1,0 +1,116 @@
+import type { CatalogCardLook } from '@expanses/catalog';
+import { useState } from 'react';
+import { usePhone } from '../../app/use-phone';
+import { useEscape } from '../../app/use-escape';
+import { CardFace } from '../../features/cards/CardFace';
+import { cx } from '../index';
+import { CARD_H, CARD_W, STRIP, stackLayout } from './card-stack';
+
+/**
+ * Primitive 7: card art, in the Wallet stack the user chose for `/cards` (C3).
+ *
+ * The art itself is **`CardFace`**, which already redraws a catalogue card from its official colours, finish and
+ * motif. Nothing here redraws a card; this is the shelf the faces sit on.
+ *
+ * C3's known weakness is that only the front card's figures show. The answer built in here is the **strip** —
+ * the band of a card its neighbour does not cover, which carries the card's name *and* its figure. All of them
+ * read without a tap, on the page whose whole purpose is answering "how many miles have I got?".
+ */
+
+export interface WalletCard {
+  key: string;
+  issuer: string | null;
+  name: string;
+  last4: string | null;
+  holderName?: string | null;
+  network?: string | null;
+  look?: CatalogCardLook | null;
+  /** The figure on this card's strip — points, miles, or what is owed. Already a whole number of its unit. */
+  figure: string;
+  figureLabel: string;
+}
+
+export function CardStack({
+  cards,
+  onOpen,
+  className,
+}: {
+  cards: readonly WalletCard[];
+  /** Where a card goes when it is chosen — `/cards/$cardId`. A lift is a look; this is the journey. */
+  onOpen?: (key: string) => void;
+  className?: string;
+}) {
+  const phone = usePhone();
+  const [lifted, setLifted] = useState<number | null>(null);
+  // A lifted card is the innermost thing open, so Escape puts it back before it reaches anything behind it.
+  useEscape(() => setLifted(null), lifted !== null);
+
+  // A phone has height and no width, so the cards overlap downwards; a 1440px window has the opposite problem,
+  // so they fan sideways. One primitive, two geometries — not a phone layout stretched across a desktop.
+  const layout = stackLayout(
+    cards.map((card) => card.key),
+    { lifted: phone ? lifted : null, fan: !phone },
+  );
+
+  const front = cards[cards.length - 1];
+
+  return (
+    <div className={cx('mx-auto', className)} style={{ width: layout.width, maxWidth: '100%', marginBottom: 18 }}>
+      <div className="relative" style={{ width: layout.width, height: layout.height, maxWidth: '100%' }}>
+      {layout.cards.map((placed, index) => {
+        const card = cards[index]!;
+        const covered = placed.visible < CARD_H;
+        return (
+          <button
+            key={card.key}
+            type="button"
+            onClick={() => {
+              if (!phone || placed.lifted || index === cards.length - 1) onOpen?.(card.key);
+              else setLifted(index);
+            }}
+            aria-label={`${card.name}${card.last4 ? ` ending ${card.last4}` : ''} · ${card.figureLabel} ${card.figure}`}
+            className="ph-focus absolute rounded-[0.9rem] text-left transition-[top,left] duration-200"
+            style={{ top: placed.top, left: placed.left, zIndex: placed.zIndex, width: CARD_W, height: CARD_H }}
+          >
+            <CardFace
+              issuer={card.issuer}
+              name={card.name}
+              last4={card.last4}
+              holderName={card.holderName}
+              network={card.network}
+              look={card.look}
+              size="md"
+            />
+            {/*
+             * The strip: the band this card's neighbour leaves showing. It carries the figure, so a covered
+             * card still answers for itself — which is the whole reason the stack survives its own weakness.
+             */}
+            {covered && (
+              <span
+                className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between gap-2 rounded-t-[0.9rem] px-[14px]"
+                style={{ height: STRIP, background: 'linear-gradient(rgb(0 0 0 / 0.42), rgb(0 0 0 / 0))' }}
+              >
+                <span className="min-w-0 truncate text-[12.5px] leading-[16px] font-semibold text-white">{card.name}</span>
+                <span className="tabular shrink-0 text-[13px] leading-[16px] font-bold whitespace-nowrap text-white">{card.figure}</span>
+              </span>
+            )}
+          </button>
+        );
+      })}
+      </div>
+      {/*
+       * The front card has no neighbour above it, so it has no strip to carry its figure — and it is the one
+       * card whose figure must not need a tap either. Its line goes under the stack, where it names the card
+       * as well, so a stack of three reads as three figures however the cards are sitting.
+       */}
+      {front && (
+        <p className="mt-[10px] flex items-baseline justify-between gap-3">
+          <span className="min-w-0 truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+            {front.name} · {front.figureLabel}
+          </span>
+          <span className="tabular shrink-0 text-[15px] leading-[20px] font-semibold text-[var(--ph-ink)]">{front.figure}</span>
+        </p>
+      )}
+    </div>
+  );
+}

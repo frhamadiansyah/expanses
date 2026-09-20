@@ -1,0 +1,87 @@
+/*
+ * The native-iPhone palette, as one sheet.
+ *
+ * Every colour the seven primitives draw with is named here and nowhere else: a component that reaches for a
+ * literal is a component the dark theme cannot reach. The light palette is defined in full on bare `:root`, so
+ * a colour always has a value; the dark block redefines those same names and introduces none of its own.
+ *
+ * Imported by `ui/native/index.ts`, so importing any primitive brings its palette with it and no global
+ * stylesheet has to be edited to adopt one.
+ */
+
+:root {
+  /* iOS systemGroupedBackground — the page a group sits on. */
+  --ph-ground: #f2f2f7;
+  /* A group's fill. Flat: no ring, no shadow. */
+  --ph-surface: #ffffff;
+
+  --ph-ink: #1c1c1e;
+  --ph-ink-2: #3c3c43;
+  /* tertiaryLabel — subtitles, units, "not bought yet" */
+  --ph-ink-3: #8e8e93;
+
+  /* separator, drawn 0.5px */
+  --ph-hair: #e0e0e4;
+
+  /* The app's green. Links, selected segment text, progress. */
+  --ph-tint: #248a3d;
+  /* Money leaving, destructive actions, overdue. */
+  --ph-alarm: #c6301f;
+  /* Needs attention, unplanned. */
+  --ph-warn: #b25000;
+
+  /* The grey fill behind a circular corner button, and behind a segmented control's track. */
+  --ph-fill: #efeff2;
+  --ph-track: #e3e3e8;
+  /* The pill that marks the chosen segment. */
+  --ph-selected: #ffffff;
+  --ph-chevron: #c6c6c8;
+
+  /* Focus is drawn in the tint, so it reads as the app's own rather than the browser's. */
+  --ph-focus: #248a3d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ph-ground: #000000;
+    --ph-surface: #1c1c1e;
+
+    --ph-ink: #ffffff;
+    --ph-ink-2: #ebebf5;
+    --ph-ink-3: #8e8e93;
+
+    --ph-hair: #38383a;
+
+    /* systemGreen and systemRed as iOS lifts them for a dark ground: the light values fail contrast on black. */
+    --ph-tint: #30d158;
+    --ph-alarm: #ff453a;
+    --ph-warn: #ff9f0a;
+
+    --ph-fill: #2c2c2e;
+    --ph-track: #2c2c2e;
+    --ph-selected: #636366;
+    --ph-chevron: #5a5a5e;
+
+    --ph-focus: #30d158;
+  }
+}
+
+/* The ground a native screen is laid on. A screen opts in; nothing is imposed on the app's own body. */
+.ph-screen {
+  background: var(--ph-ground);
+  color: var(--ph-ink);
+}
+
+/*
+ * One focus ring for the whole kit. Every control the kit draws is reachable by keyboard and says so when it
+ * is reached — the primitives are flat, so there is no border left to thicken and an outline is the only signal.
+ */
+.ph-focus:focus-visible {
+  outline: 2px solid var(--ph-focus);
+  outline-offset: 2px;
+}
+
+.ph-focus-inset:focus-visible {
+  outline: 2px solid var(--ph-focus);
+  outline-offset: -2px;
+}
