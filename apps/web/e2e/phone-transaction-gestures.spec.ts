@@ -189,3 +189,64 @@ test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ hold
   // The full card, on this transaction: the note it is already carrying proves which one was opened.
   await expect(page.getByLabel('Note')).toHaveValue('Warung Steak Tebet');
 });
+
+/**
+ * The combination the sheet cannot hold: a purchase in another currency, corrected from the swipe.
+ *
+ * `canEditInSheet` refuses three shapes — a split, a transfer and a foreign purchase — because the sheet has
+ * one category, one account and one figure, and a foreign purchase carries a second figure it has no row for.
+ * A sheet that opened anyway would show the charged figure alone and, on Save, post it as the typed one: the
+ * merchant's currency quietly dropped, which is `formToPost`'s original pair thrown away by a screen rather
+ * than by the kit. The fallback is the in-place editor the row has always had, so no transaction loses its
+ * way in — which is the whole promise a new entry point has to keep.
+ */
+test('a foreign purchase falls back to the in-place editor, because the sheet cannot hold it', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('BCA Visa');
+  await page.getByLabel('Type').selectOption('credit_card');
+  await page.getByLabel('Amount owed now').fill('0');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await form.getByRole('button', { name: 'Currency' }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  const keypad = page.getByTestId('keypad');
+  for (const key of '100') await keypad.getByRole('button', { name: key, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByRole('button', { name: 'Charged in IDR' }).click();
+  for (const key of '1600000') await keypad.getByRole('button', { name: key, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Blue Bottle');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  // It really is a foreign purchase, or the fallback below is about an ordinary row.
+  const blue = row(page, 'Blue Bottle');
+  await expect(blue).toContainText('US$100,00');
+
+  await blue.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await swipeLeft(page, blue);
+  await blue.getByRole('button', { name: 'Edit', exact: true }).click();
+
+  // Not the sheet — and not the row editor either: `isQuickEditable` refuses a foreign row for the same reason
+  // the sheet does. What opens is the full card, the one screen with a row for each of the two figures.
+  await expect(page.getByRole('dialog', { name: 'Edit', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Row description')).toHaveCount(0);
+  // It opens in the row's own place rather than over it, and says what an edit will leave behind.
+  await expect(page.getByText('The original stays under Show deleted')).toBeVisible();
+  // Both figures are on it, each in its own currency: the pair survived the trip through `formFromTransaction`,
+  // which is the half a sheet showing one figure would have thrown away on its next Save.
+  await expect(page.getByLabel('Note')).toHaveValue('Blue Bottle');
+  // US$100,00 at USD's own exponent, never "100": a pair reopened at the wrong exponent is a 100x error.
+  await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('100.00');
+  await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveText('1600000');
+});
