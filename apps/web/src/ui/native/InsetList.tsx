@@ -114,6 +114,14 @@ export interface InsetRowProps extends GroupChild {
   chevron?: boolean;
   onClick?: () => void;
   to?: LinkProps['to'];
+  /**
+   * The route's own parameters and search, handed to the link.
+   *
+   * A row that points at `/events/$eventId/plan/$itemId` cannot say where it goes with a path alone, and a screen
+   * that answered that by building its own `<Link>` beside a row would be the tenth local copy of a primitive.
+   */
+  params?: LinkProps['params'];
+  search?: LinkProps['search'];
   /** A destructive action in a group of its own: centred, in alarm, no icon. */
   destructive?: boolean;
   /** The row's accessible name, when its title alone does not read as one. */
@@ -138,6 +146,8 @@ export function InsetRow({
   chevron,
   onClick,
   to,
+  params,
+  search,
   destructive = false,
   label,
   position,
@@ -195,7 +205,7 @@ export function InsetRow({
 
   if (to) {
     return (
-      <Link to={to} aria-label={label} className={cx(shell, 'ph-focus-inset')}>
+      <Link to={to} params={params} search={search} aria-label={label} className={cx(shell, 'ph-focus-inset')}>
         {separator}
         {inner}
       </Link>

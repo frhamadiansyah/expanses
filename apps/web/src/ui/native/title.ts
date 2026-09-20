@@ -6,6 +6,7 @@
  * two buttons, and when there are more than two to hold, the second of them becomes a `…`.
  */
 
+import type { LinkProps } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 
 export interface CornerAction {
@@ -16,6 +17,17 @@ export interface CornerAction {
   /** The glyph inside the circle. A corner button never carries a word — that is what the `…` menu is for. */
   glyph?: ReactNode;
   run?: () => void;
+  /** True while the action cannot be taken: the corner dims and refuses, instead of failing when it is tapped. */
+  disabled?: boolean;
+  /**
+   * Where the action goes, when it goes somewhere.
+   *
+   * An action that is a journey is drawn as a link, so a desktop keeps the middle-click and the new tab it has
+   * today. `run` is for the actions that do something instead; an action gives one or the other, never both.
+   */
+  to?: LinkProps['to'];
+  params?: LinkProps['params'];
+  search?: LinkProps['search'];
 }
 
 /** Two buttons on the right, counting the `…` itself. */
