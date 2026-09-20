@@ -784,10 +784,11 @@ describe('withShares', () => {
     const halfTyped = { ...usd, with: [{ debtAccountId: '', name: 'Andi', amount: '' }] };
     // The card is read while the row is still being typed into, so nothing owed yet is nothing owed.
     expect(withShares(halfTyped, 'USD', 10_003, { lenient: true })).toMatchObject({ each: [0], ownShareMinor: 10_003 });
-    // The save is the opposite bargain: a share of zero must never post as somebody owing nothing. The words
-    // are `parseMajor`'s, because an empty box never reaches `positive`'s own "greater than zero" — the same
-    // refusal the single-person card has always given, kept rather than reworded here.
-    expect(() => withShares(halfTyped, 'USD', 10_003, { lenient: false })).toThrow('Invalid amount');
+    // The save is the opposite bargain: a share of zero must never post as somebody owing nothing. An empty
+    // box never reaches `positive`'s own "greater than zero", and `parseMajor` has no words for it either —
+    // it answers `Invalid amount: ""`, the kit talking to itself. So the empty case says which box and what
+    // to do about it, naming the share rather than the string that was not in it.
+    expect(() => withShares(halfTyped, 'USD', 10_003, { lenient: false })).toThrow('Share 1 is empty — type a figure');
   });
 
   it('says so rather than showing a share below zero when the shares come to more than the bill', () => {
@@ -1047,7 +1048,13 @@ describe('arithmetic typed into a figure the save reads', () => {
 
   it('still refuses what cannot be read, in the words that say why', () => {
     // No message is lost by evaluating first: `parseMajor` is still asked for the words when it has them.
-    expect(() => formToPost({ ...draft, amount: '' }, accounts)).toThrow('Invalid amount: ""');
+    // The empty box is the one case it has none for — `Invalid amount: ""` reached the user verbatim — so
+    // that one is worded here, naming the row it is about.
+    expect(() => formToPost({ ...draft, amount: '' }, accounts)).toThrow('Amount is empty — type a figure');
+    expect(() => formToPost({ ...draft, amount: '   ' }, accounts)).toThrow('Amount is empty — type a figure');
+    expect(() => formToPost({ ...transfer, moneyId: 'acct-bank', toId: 'acct-usd', amount: '1600000', toAmount: '' }, withExchange)).toThrow(
+      'Received amount is empty — type a figure',
+    );
     expect(() => formToPost({ ...draft, amount: '0' }, accounts)).toThrow('Amount must be greater than zero');
     expect(() => formToPost({ ...draft, amount: '-5000' }, accounts)).toThrow('Amount must be greater than zero');
     // A decimal figure on a zero-exponent account still says which currency refused it and why.

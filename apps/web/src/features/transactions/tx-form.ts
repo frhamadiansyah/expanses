@@ -264,10 +264,15 @@ export function extraRows(
  *
  * When `evaluateAmount` cannot read the figure, `parseMajor` is asked for the words: "IDR allows 0 decimal
  * places" says far more than a flat refusal, and a figure it reads perfectly well was simply zero or less.
+ *
+ * The one refusal `parseMajor` has no words for is the empty box, and it is the commonest way here: it
+ * answers `Invalid amount: ""`, which is the kit talking to itself with the user reading over its shoulder.
+ * That case is worded here; every other message is still `parseMajor`'s own, unchanged.
  */
 function positive(value: string, currency: string, label: string): number {
   const minor = evaluateAmount(value, currency);
   if (minor === null) {
+    if (!value.trim()) throw new Error(`${label} is empty — type a figure`);
     parseMajor(value, currency);
     throw new Error(`${label} must be greater than zero`);
   }
