@@ -106,7 +106,7 @@ export interface PaymentDraft {
  * that falls due later is dated today: the split is what the schedule says, the date is when the
  * money actually moves. A row already past keeps its own date, so a late payment records truthfully.
  */
-export function paymentDraftFrom(row: ScheduleRow | undefined, today: string, moneyId: string, currency: string): PaymentDraft {
+export function paymentDraftFrom(row: ScheduleRow | null | undefined, today: string, moneyId: string, currency: string): PaymentDraft {
   if (!row) return { occurredOn: today, moneyId, principal: '', interest: '', extras: [] };
   return {
     occurredOn: row.onDate > today ? today : row.onDate,
