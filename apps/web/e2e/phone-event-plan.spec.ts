@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { expectCover, expectFigures, fillItem, TODAY } from './event-plan';
+import { expectCover, expectKitFigures, fillItem, TODAY } from './event-plan';
 import { addTransaction } from './add-transaction';
 
 /*
@@ -156,14 +156,14 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
    * Every figure of the finished plan, by hand: 700.000 + 7.500.000 + 1.500.000 planned; 7.200.000 for the crib and
    * 2.200.000 of the Mothercare receipt bought; nothing left to buy; and the crib's 300.000 under the difference.
    */
-  await expectFigures(page.getByTestId('plan-totals'), {
+  await expectKitFigures(page.getByTestId('plan-totals'), {
     Planned: 'Rp 9.700.000',
     'Bought so far': 'Rp 9.400.000',
     'Still to buy': 'Rp 0',
     'Difference so far': '−Rp 300.000',
   });
   // What is left of that receipt is spending in its category, and says so on the receipt's own row.
-  await expect(page.getByTestId('plan-totals')).toContainText('Not planned');
+  await expect(page.getByTestId('plan-not-planned')).toContainText('Not planned');
   await expect(page.getByText('part of this receipt')).toBeVisible();
   await noSideways(page, 'a settled plan');
 

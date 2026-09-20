@@ -159,7 +159,12 @@ export function LargeTitle({
   subtitle?: ReactNode;
 }) {
   const plan = planCornerActions(actions, max);
-  const backShell = 'ph-focus mb-[2px] -ml-[2px] inline-flex min-h-[28px] items-center rounded px-[2px] text-[14px] leading-[18px] text-[var(--ph-tint)]';
+  /*
+   * The way back is a control a thumb has to find, so it is 44 tall like every other — and drawn as though it were
+   * not: the negative margins give the hit area back to the layout, so the line still sits where 28px put it.
+   */
+  const backShell =
+    'ph-focus -mt-[8px] -mb-[6px] -ml-[2px] inline-flex min-h-[44px] items-center rounded px-[2px] text-[14px] leading-[18px] text-[var(--ph-tint)]';
   return (
     <header className="mb-[14px] md:max-w-4xl">
       {back &&

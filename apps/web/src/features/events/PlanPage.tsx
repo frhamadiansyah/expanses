@@ -1,25 +1,97 @@
 import { dayMonth, formatMinor } from '@expanses/core';
 import { unlinkEventItem } from '@expanses/db';
-import { Link, useParams, useSearch } from '@tanstack/react-router';
-import { Check, ChevronLeft, Plus } from 'lucide-react';
+import { useParams, useSearch } from '@tanstack/react-router';
+import { Check, Circle, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Card, cx, Empty, ErrorBox, Money, PageHeader } from '../../ui';
-import { CategoryIcon } from '../categories/CategoryIcon';
-import { differenceWords, itemSubline, moneyBackRows, moneyBackUnder, plannedLabel, planTotals, TONE } from './plan-view';
+import { useInvalidateAll } from '../../lib/queries';
+import { cx, Empty, ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle, toneClass, type CornerAction, type GroupChild, type InsetRowProps, type Tone } from '../../ui/native';
+import { differenceWords, itemSubline, moneyBackRows, moneyBackUnder, plannedLabel, planTotals } from './plan-view';
 import { useEventHistory, useEventItemsReady, useEventPlan, useEvents } from './queries';
 
-/** The dark full-width link that is the one thing to do on an empty plan, and the quiet one at the foot of a full one. */
-const WIDE = 'flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium';
-const WIDE_DARK = `${WIDE} bg-slate-900 text-white hover:bg-slate-700`;
-const WIDE_QUIET = `${WIDE} bg-white text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100`;
+/** The kit's tones for what a difference is. The words themselves are `differenceWords`'. */
+const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'tint', exact: 'ink-3' };
 
-function Figure({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * One thing on the plan, bought or not.
+ *
+ * Bought and still-to-buy are **one list**, told apart by the circle at the head of the row — a filled tick or an
+ * empty ring — rather than by a dashed border around one of them. The row itself is the way into the item, and the
+ * tick is a control of its own laid over the circle: ticking it undoes the purchase, which is an action, and an
+ * action a finger can reach may not be smaller than the 44 every other control here is.
+ *
+ * That leaves this the one row on these screens with two targets in it, which `InsetRow` exists to forbid. Taking
+ * either away would lose something — the way into the item, or the only undo the plan offers — so both are kept and
+ * the kit is used for everything but the overlay.
+ */
+function PlanItemRow({
+  position,
+  eventId,
+  itemId,
+  name,
+  subtitle,
+  figure,
+  figureTone,
+  note,
+  noteTone,
+  bought,
+  search,
+  onUnlink,
+}: GroupChild & {
+  eventId: string;
+  itemId: string;
+  name: string;
+  subtitle: string;
+  figure: string;
+  figureTone: Tone;
+  note: string;
+  noteTone: Tone;
+  bought: boolean;
+  search: { ws: string | undefined };
+  onUnlink: () => void;
+}) {
   return (
-    <div className="min-w-0">
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="truncate text-sm font-semibold">{children}</dd>
+    <div className="relative" data-testid="plan-item">
+      <InsetRow
+        position={position}
+        icon={bought ? <Check size={15} aria-hidden /> : <Circle size={13} aria-hidden />}
+        iconColour={bought ? 'var(--ph-tint)' : 'var(--ph-ink-3)'}
+        title={name}
+        subtitle={subtitle}
+        value={
+          <span className="block text-right">
+            <span className={cx('block', toneClass(figureTone))}>{figure}</span>
+            <span className={cx('block text-[11.5px] leading-[14px] font-semibold', toneClass(noteTone))}>{note}</span>
+          </span>
+        }
+        to="/events/$eventId/plan/$itemId"
+        params={{ eventId, itemId }}
+        search={search}
+      />
+      {bought && (
+        // Laid over the circle rather than inside the row: the tick is the plan's own undo, and it keeps its 44.
+        <button
+          type="button"
+          aria-label={`Unlink ${name}`}
+          onClick={onUnlink}
+          className="ph-focus absolute top-1/2 left-[4px] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full"
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * A payment on the event that no item claims.
+ *
+ * Its own headed group, and a row like any other in it. The wrapper is there so each of these can be counted and
+ * pointed at — the amber pill that used to say this was a decoration, and a decoration cannot be counted.
+ */
+function UnplannedRow({ position, ...row }: GroupChild & InsetRowProps) {
+  return (
+    <div data-testid="plan-unplanned">
+      <InsetRow {...row} position={position} />
     </div>
   );
 }
@@ -30,6 +102,10 @@ function Figure({ label, children }: { label: string; children: ReactNode }) {
  * A category line here is the sum of its items and nothing else — there is no figure to set for a category and no
  * field anywhere on this screen that takes an estimate, because an estimate is how many × price each. Every action
  * is a link or a button on the page rather than a gesture, so the screen is the same one on a desktop and a phone.
+ *
+ * Drawn with the native kit. Two things the old screen said with decoration are now said with structure: bought and
+ * not-yet-bought are one list under the category's own header, told apart by the circle at the head of each row; and
+ * spending nobody planned is a headed group of its own rather than a dashed box with an amber pill in it.
  */
 export function PlanPage() {
   const { eventId } = useParams({ from: '/events/$eventId/plan' });
@@ -42,7 +118,6 @@ export function PlanPage() {
   const plan = useEventPlan(eventId, tab ?? null);
   const history = useEventHistory(eventId, tab ?? null);
   const ready = useEventItemsReady();
-  const accounts = useAccounts().data ?? [];
   const [error, setError] = useState<unknown>(null);
 
   async function run(work: () => Promise<unknown>) {
@@ -55,17 +130,19 @@ export function PlanPage() {
     }
   }
 
+  const screen = (children: ReactNode) => (
+    <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
+      <div className="mx-auto max-w-2xl">{children}</div>
+    </div>
+  );
+
   if (events.isSuccess && !event) {
     // Not a bare sentence: a screen whose subject has gone still owes the user a way on from it.
-    return (
-      <div className="mx-auto max-w-2xl space-y-4">
-        <PageHeader title="Plan" />
-        <Link to="/events" className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
-          <ChevronLeft size={16} aria-hidden />
-          All events
-        </Link>
+    return screen(
+      <>
+        <LargeTitle title="Plan" back="All events" backTo="/events" />
         <Empty>That event is no longer here.</Empty>
-      </div>
+      </>,
     );
   }
 
@@ -77,39 +154,27 @@ export function PlanPage() {
   const difference = data && data.boughtCount > 0 ? differenceWords(data.differenceMinor, ws.baseCurrency) : null;
   const search = { ws: tab };
   const addLabel = 'Add an item';
+  const add: CornerAction = {
+    key: 'add',
+    label: addLabel,
+    glyph: <Plus size={22} aria-hidden />,
+    to: '/events/$eventId/plan/new',
+    params: { eventId },
+    search,
+  };
+  const rp = (minor: number) => formatMinor(minor, ws.baseCurrency);
 
-  return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <PageHeader
+  return screen(
+    <>
+      <LargeTitle
         title={`Plan · ${event?.name ?? ''}`}
-        controls={
-          <Link
-            to="/events/$eventId/plan/new"
-            params={{ eventId }}
-            search={search}
-            aria-label={addLabel}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/70"
-          >
-            <Plus size={22} aria-hidden />
-          </Link>
-        }
-        action={
-          <Link to="/events/$eventId/plan/new" params={{ eventId }} search={search} className={cx(WIDE_DARK, 'w-auto')}>
-            {addLabel}
-          </Link>
-        }
+        // The tab the plan was opened in goes back with it, or the event would reset to "All" on the way home.
+        back="Back to the event"
+        backTo="/events/$eventId"
+        backParams={{ eventId }}
+        backSearch={search}
+        actions={[add]}
       />
-      {/* The tab the plan was opened in goes back with it, or the event would reset to "All" on the way home. */}
-      <Link
-        to="/events/$eventId"
-        params={{ eventId }}
-        search={search}
-        aria-label="Back to the event"
-        className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800"
-      >
-        <ChevronLeft size={16} aria-hidden />
-        Back to the event
-      </Link>
       <ErrorBox error={error ?? events.error ?? plan.error} />
 
       {/*
@@ -118,89 +183,77 @@ export function PlanPage() {
        * as it always does, repeats this warning and keeps Save turned off until the data has finished updating.
        */}
       {ready.isSuccess && !ready.data && (
-        <Card className="text-sm text-amber-900 ring-amber-200">
+        <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
           This copy of your data is from before a plan was a list of things to buy, so nothing can be added to it yet. Open it once on a version that has
           finished updating, and the plan will be here.
-        </Card>
+        </p>
       )}
 
       {data && data.itemCount === 0 ? (
-        <div className="space-y-3">
+        <>
           <Empty>Nothing planned yet. Add the things you mean to buy and roughly what they cost.</Empty>
-          <Link to="/events/$eventId/plan/new" params={{ eventId }} search={search} className={WIDE_DARK}>
-            <Plus size={16} aria-hidden />
-            Add the first item
-          </Link>
+          <InsetGroup>
+            <InsetRow title="Add the first item" to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
+          </InsetGroup>
           {data.spentMinor > 0 && (
-            <p className="px-1 text-xs text-slate-500">
-              The {formatMinor(data.spentMinor, ws.baseCurrency)} already tagged to this event does not go anywhere. Once there is an item, that spending simply
-              reads as “not planned” beside it.
+            <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+              The {rp(data.spentMinor)} already tagged to this event does not go anywhere. Once there is an item, that spending simply reads as “not planned”
+              beside it.
             </p>
           )}
-        </div>
+        </>
       ) : (
         data &&
         totals && (
           <div data-testid="plan-totals">
-            <Card>
-              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Figure label={plannedLabel(data)}>
-                  <Money minor={totals.plannedMinor} currency={ws.baseCurrency} />
-                </Figure>
-                <Figure label="Bought so far">
-                  <Money minor={totals.boughtActualMinor} currency={ws.baseCurrency} />
-                </Figure>
-                <Figure label="Still to buy">
-                  <Money minor={totals.toBuyMinor} currency={ws.baseCurrency} />
-                </Figure>
-                {difference && (
-                  <Figure label="Difference so far">
-                    <span className={TONE[difference.tone]}>{difference.text}</span>
-                  </Figure>
-                )}
-              </dl>
-              {totals.notPlannedMinor > 0 && (
-                <div data-testid="plan-not-planned">
-                  <p className="mt-3 flex items-baseline justify-between gap-3 border-t border-slate-100 pt-3 text-sm">
-                    <span className="text-slate-500">Not planned</span>
-                    <Money minor={totals.notPlannedMinor} currency={ws.baseCurrency} className="font-semibold" />
-                  </p>
-                </div>
-              )}
-              {/*
-               * A refund posted as its own transaction answers no item, so it moves the totals above without
-               * appearing in any row below — the plan's leftover rows skip a purchase with nothing left on it, and a
-               * refund has less than nothing left. The figure here is the sum of the rows beneath it and nothing
-               * else, so the heading can be checked against them; "Not planned" above is the sum of its own rows in
-               * the same way, and spending = bought + not planned − money back closes over the two.
-               */}
-              {totals.moneyBackMinor > 0 && (
-                <div className="mt-3 space-y-1 border-t border-slate-100 pt-3" data-testid="plan-money-back">
-                  <p className="flex items-baseline justify-between gap-3 text-sm">
-                    <span className="text-slate-500">Money back</span>
-                    <Money minor={totals.moneyBackMinor} currency={ws.baseCurrency} className="font-semibold text-emerald-700" />
-                  </p>
-                  {moneyBack.map((row) => (
-                    <p key={row.transactionId} className="flex items-baseline justify-between gap-3 text-xs text-slate-500">
-                      <span className="truncate">
-                        {row.description} · {dayMonth(row.occurredOn)}
-                      </span>
-                      <Money minor={row.amountMinor} currency={ws.baseCurrency} />
-                    </p>
-                  ))}
-                  <p className="text-xs text-slate-500">Money that came back and answers no item. It is off what the event spent, and off nothing else.</p>
-                  {/*
-                   * The heading and these rows are two different readings — the heading narrowed by the category an
-                   * entry is filed in, the rows by the workspace a transaction is filed in and cut off at the list's
-                   * own limit — so whenever they do not come to the same figure the difference is named. Saying it
-                   * only when the rows were *entirely* gone left the commoner case, a short list, silently wrong.
-                   */}
-                  {shortfall && <p className="text-xs text-slate-500">{shortfall}</p>}
-                </div>
-              )}
-            </Card>
+            <InsetGroup header="The plan so far">
+              <InsetRow title={plannedLabel(data)} value={rp(totals.plannedMinor)} valueTone="ink" />
+              <InsetRow title="Bought so far" value={rp(totals.boughtActualMinor)} valueTone="ink" />
+              <InsetRow title="Still to buy" value={rp(totals.toBuyMinor)} valueTone="ink" />
+              {difference && <InsetRow title="Difference so far" value={difference.text} valueTone={HERE[difference.tone]} />}
+            </InsetGroup>
           </div>
         )
+      )}
+
+      {totals && totals.notPlannedMinor > 0 && (
+        <div data-testid="plan-not-planned">
+          <InsetGroup header="Beyond the plan">
+            <InsetRow title="Not planned" value={rp(totals.notPlannedMinor)} valueTone="ink" />
+          </InsetGroup>
+        </div>
+      )}
+
+      {/*
+       * A refund posted as its own transaction answers no item, so it moves the totals above without appearing in any
+       * row below — the plan's leftover rows skip a purchase with nothing left on it, and a refund has less than
+       * nothing left. The figure on the header is the sum of the rows beneath it and nothing else, so the heading can
+       * be checked against them; "Not planned" above is the sum of its own rows in the same way, and
+       * spending = bought + not planned − money back closes over the two.
+       */}
+      {totals && totals.moneyBackMinor > 0 && (
+        <div data-testid="plan-money-back">
+          <InsetGroup
+            header="Money back"
+            trailing={rp(totals.moneyBackMinor)}
+            footer={
+              <>
+                Money that came back and answers no item. It is off what the event spent, and off nothing else.
+                {/*
+                 * The heading and these rows are two different readings — the heading narrowed by the category an
+                 * entry is filed in, the rows by the workspace a transaction is filed in and cut off at the list's
+                 * own limit — so whenever they do not come to the same figure the difference is named. Saying it
+                 * only when the rows were *entirely* gone left the commoner case, a short list, silently wrong.
+                 */}
+                {shortfall && <span className="mt-[4px] block">{shortfall}</span>}
+              </>
+            }
+          >
+            {moneyBack.map((row) => (
+              <InsetRow key={row.transactionId} title={row.description} subtitle={dayMonth(row.occurredOn)} value={rp(row.amountMinor)} valueTone="tint" />
+            ))}
+          </InsetGroup>
+        </div>
       )}
 
       {/*
@@ -209,93 +262,56 @@ export function PlanPage() {
        * promises, under a category heading reading "Rp 4.200.000 of Rp 0".
        */}
       {(data && data.itemCount > 0 ? data.lines : []).map((line) => (
-        <section key={line.categoryId ?? 'none'} className="space-y-2">
-          <h2 className="flex items-center gap-2 px-1">
-            <CategoryIcon categoryId={line.categoryId} accounts={accounts} size="sm" />
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold">{line.name}</span>
-            <span className="shrink-0 text-xs text-slate-500">
-              {/* Clamped: a category whose refunds outweigh its purchases still cannot have spent less than nothing. */}
-              <Money minor={Math.max(0, line.actualMinor)} currency={ws.baseCurrency} /> of <Money minor={line.plannedMinor} currency={ws.baseCurrency} />
-            </span>
-          </h2>
-          <Card>
-            <ul className="divide-y divide-slate-100">
-              {line.items.map((item) => (
-                <li key={item.id} className="flex items-center gap-3 py-2.5" data-testid="plan-item">
-                  {/*
-                   * The tick is its own control, never nested inside the link, so both are reachable by keyboard.
-                   *
-                   * The dot stays the 24px the row is drawn around and the button around it is 44 — the least a
-                   * thumb may be asked to find, and what every other control on these screens already is. The
-                   * placeholder takes the same slot, so nothing shifts sideways when an item is ticked off.
-                   */}
-                  {item.bought ? (
-                    <button
-                      type="button"
-                      aria-label={`Unlink ${item.name}`}
-                      onClick={() => void run(() => unlinkEventItem(database, ws, item.id))}
-                      className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center"
-                    >
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white">
-                        <Check size={13} aria-hidden />
-                      </span>
-                    </button>
-                  ) : (
-                    <span className="-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center" aria-hidden>
-                      <span className="h-6 w-6 rounded-full border border-slate-200" />
-                    </span>
-                  )}
-                  <Link
-                    to="/events/$eventId/plan/$itemId"
-                    params={{ eventId, itemId: item.id }}
-                    search={search}
-                    className="flex min-w-0 flex-1 items-center gap-3"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{item.name}</span>
-                      <span className="block truncate text-xs text-slate-500">{itemSubline(item, ws.baseCurrency)}</span>
-                    </span>
-                    <span className="shrink-0 text-right">
-                      <Money
-                        minor={item.actualMinor ?? item.estimateMinor}
-                        className={cx('block text-sm font-semibold', !item.bought && 'text-slate-400')}
-                        currency={ws.baseCurrency}
-                      />
-                      <span className={cx('block text-[11.5px] font-semibold', item.bought ? TONE[differenceWords(item.differenceMinor!, ws.baseCurrency).tone] : 'text-slate-400')}>
-                        {item.bought ? differenceWords(item.differenceMinor!, ws.baseCurrency).text : 'to buy'}
-                      </span>
-                    </span>
-                  </Link>
-                </li>
+        <div key={line.categoryId ?? 'none'}>
+          <InsetGroup
+            header={line.name}
+            /* Clamped: a category whose refunds outweigh its purchases still cannot have spent less than nothing. */
+            trailing={`${rp(Math.max(0, line.actualMinor))} of ${rp(line.plannedMinor)}`}
+          >
+            {line.items.map((item) => {
+              const difference = item.bought ? differenceWords(item.differenceMinor!, ws.baseCurrency) : null;
+              return (
+                <PlanItemRow
+                  key={item.id}
+                  eventId={eventId}
+                  itemId={item.id}
+                  name={item.name}
+                  subtitle={itemSubline(item, ws.baseCurrency)}
+                  figure={rp(item.actualMinor ?? item.estimateMinor)}
+                  figureTone={item.bought ? 'ink' : 'ink-3'}
+                  note={difference ? difference.text : 'to buy'}
+                  noteTone={difference ? HERE[difference.tone] : 'ink-3'}
+                  bought={item.bought}
+                  search={search}
+                  onUnlink={() => void run(() => unlinkEventItem(database, ws, item.id))}
+                />
+              );
+            })}
+          </InsetGroup>
+
+          {/* Spending nobody planned is a group of its own, headed by what it is, rather than a dashed box inside
+              the plan's own list with an amber pill on it. */}
+          {line.unplanned.length > 0 && (
+            <InsetGroup header={`Not planned · ${line.name}`}>
+              {line.unplanned.map((row) => (
+                <UnplannedRow
+                  key={row.transactionId}
+                  title={row.description}
+                  subtitle={row.partial ? 'part of this receipt' : `bought ${dayMonth(row.occurredOn)}`}
+                  value={rp(row.amountBaseMinor)}
+                  valueTone="warn"
+                />
               ))}
-            </ul>
-            {line.unplanned.map((row) => (
-              <div key={row.transactionId} className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-slate-300 px-3 py-2.5">
-                <span className="min-w-0 flex-1">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-sm font-medium">{row.description}</span>
-                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">not planned</span>
-                  </span>
-                  <span className="block truncate text-xs text-slate-500">{row.partial ? 'part of this receipt' : `bought ${dayMonth(row.occurredOn)}`}</span>
-                </span>
-                <Money minor={row.amountBaseMinor} currency={ws.baseCurrency} className="shrink-0 text-sm font-semibold" />
-              </div>
-            ))}
-          </Card>
-        </section>
+            </InsetGroup>
+          )}
+        </div>
       ))}
 
       {data && data.itemCount > 0 && (
-        <div className="space-y-2 pt-1">
-          <Link to="/events/$eventId/plan/new" params={{ eventId }} search={search} className={WIDE_QUIET}>
-            <Plus size={16} aria-hidden />
-            <span>{addLabel}</span>
-          </Link>
-          <p className="px-1 text-xs text-slate-500">
-            A category line is the sum of its items — there is no cap to set. Something tagged to the event with no item sits under its category as “not planned”.
-          </p>
-        </div>
+        <InsetGroup footer="A category line is the sum of its items — there is no cap to set. Something tagged to the event with no item sits under its category as “not planned”.">
+          <InsetRow title={addLabel} subtitle="plan another thing, in any category" to="/events/$eventId/plan/new" params={{ eventId }} search={search} />
+        </InsetGroup>
       )}
-    </div>
+    </>,
   );
 }

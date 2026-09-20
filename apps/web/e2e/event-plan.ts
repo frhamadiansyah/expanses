@@ -66,6 +66,37 @@ export async function expectRows(scope: Locator, expected: Record<string, string
 }
 
 /**
+ * A native-kit group read as label → figure — the same pairing `figures` gives a `<dl>`.
+ *
+ * The plan screens are drawn with `ui/native` now: a group is a `<section>` whose last block is its flat surface,
+ * and each row in it puts its words first and its figure last. So the pair is read off the row itself, structurally,
+ * with no Tailwind class anywhere in the locator — a row that is gone is still a key that is missing, and a label
+ * swapped with its neighbour still fails. Whatever is `aria-hidden` (the icon, the chevron, the separator) is left
+ * out, because none of it is said to anybody.
+ */
+export function kitFigures(scope: Locator): Promise<Record<string, string>> {
+  return scope.locator('section > div:last-of-type > *').evaluateAll((nodes) =>
+    Object.fromEntries(
+      nodes.map((node) => {
+        // Joined at every level, so a label carrying a second word in a span of its own — "Left on this receipt"
+        // beside "not planned" — reads as the two words it shows rather than running them together.
+        const words = (el: Node): string =>
+          [...el.childNodes].map((child) => (child.nodeType === 3 ? (child.textContent ?? '') : words(child))).join(' ');
+        const say = (el: Element | undefined) => (el ? words(el).replace(/\s+/g, ' ').trim() : '');
+        const inner = node.lastElementChild ?? node;
+        const parts = [...inner.children].filter((child) => !child.hasAttribute('aria-hidden'));
+        return [say(parts[0]), say(parts[parts.length - 1])];
+      }),
+    ),
+  );
+}
+
+/** The figures of a kit group, once they have settled: a plan screen refetches as things are tagged and bought. */
+export async function expectKitFigures(scope: Locator, expected: Record<string, string>) {
+  await expect.poll(() => kitFigures(scope)).toEqual(expected);
+}
+
+/**
  * The three figures under the gauge's arc, as label → figure.
  *
  * They are the gauge's own `<b>`/`<span>` pairs rather than a `<dl>`, and they are the only place `PLAN_WORDS`
@@ -98,33 +129,24 @@ export async function expectGauge(scope: Locator, expected: Record<string, strin
  * part of what the left-hand side says.
  */
 export function coverFigures(page: Page): Promise<Record<string, string>> {
-  return page
-    .getByTestId('cover-totals')
-    .locator('p')
-    .evaluateAll((nodes) =>
-      Object.fromEntries(
-        nodes.map((node) => [
-          // Joined child by child: the amber pill is a span of its own with no whitespace beside it, and
-          // `textContent` would run it into the words before it as "…this receiptnot planned".
-          [...(node.firstElementChild?.childNodes ?? [])]
-            .map((child) => child.textContent ?? '')
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim(),
-          (node.lastElementChild?.textContent ?? '').replace(/\s+/g, ' ').trim(),
-        ]),
-      ),
-    );
+  // Three rows of one kit group now, rather than three `<p>`s of a card — read the same way, as label → figure.
+  return kitFigures(page.getByTestId('cover-totals'));
 }
 
 export async function expectCover(page: Page, expected: Record<string, string>) {
   await expect.poll(() => coverFigures(page), { timeout: 15_000 }).toEqual(expected);
 }
 
-/** Every rupiah figure in a piece of the page, in the order it is printed, as whole minor units. */
+/**
+ * Every rupiah figure in a piece of the page, in the order it is printed, as whole minor units.
+ *
+ * Case-insensitively, because `innerText` is the text as it is *drawn*: a kit group's header is uppercased by CSS,
+ * so the figure riding on it reaches here as "RP 1.000.000". It is the same figure, printed in the same place, and
+ * a reader that could not see it would let a heading go missing without a word.
+ */
 export async function moneyIn(scope: Locator): Promise<number[]> {
   const text = (await scope.innerText()).replace(/\s+/g, ' ');
-  return [...text.matchAll(/Rp\s*([\d.]+)/g)].map((match) => Number(match[1]!.replace(/\./g, '')));
+  return [...text.matchAll(/Rp\s*([\d.]+)/gi)].map((match) => Number(match[1]!.replace(/\./g, '')));
 }
 
 export async function addWallet(page: Page) {

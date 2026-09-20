@@ -1,11 +1,24 @@
 import { dayMonth, type EventPlanItemView, formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
 import { setPurchaseCover } from '@expanses/db';
-import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { useEffect, useId, useState } from 'react';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Check } from 'lucide-react';
+import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, Input, Money, PageHeader } from '../../ui';
-import { answeredElsewhere, coverTotals, differenceWords, TONE } from './plan-view';
+import { cx, Empty, ErrorBox } from '../../ui';
+import {
+  InsetGroup,
+  InsetRow,
+  LargeTitle,
+  ROW_PAD_X,
+  ROW_PAD_Y,
+  rowHeight,
+  toneClass,
+  type CornerAction,
+  type GroupChild,
+  type Tone,
+} from '../../ui/native';
+import { answeredElsewhere, coverTotals, differenceWords } from './plan-view';
 import { useEventHistory, useEventPlan, useEvents, usePurchaseCover } from './queries';
 
 /** Half-typed digits are not an error, only a figure that is not there yet: nought until the whole of it parses. */
@@ -15,6 +28,79 @@ function minorOf(typed: string, currency: string): number {
   } catch {
     return 0;
   }
+}
+
+/** The kit's tones for what a difference is. The words themselves are `differenceWords`'. */
+const HERE: Record<'over' | 'under' | 'exact', Tone> = { over: 'alarm', under: 'tint', exact: 'ink-3' };
+
+/**
+ * A row with a tick on one side and a typed share on the other.
+ *
+ * There is no primitive for this and there should not be: `InsetRow` is one tap target on purpose, and this row is
+ * two controls by its nature — the tick says the receipt answered this item, and the field says how much of it did.
+ * So the row is drawn to the kit's own measurements and with the kit's own separator, rather than by bending a
+ * primitive that exists to forbid exactly this shape.
+ */
+function CoverRow({
+  position,
+  ticked,
+  onTick,
+  name,
+  subtitle,
+  elsewhere,
+  share,
+  onShare,
+  difference,
+  id,
+}: GroupChild & {
+  ticked: boolean;
+  onTick: (on: boolean) => void;
+  name: string;
+  subtitle: string;
+  elsewhere: string | null;
+  share: string;
+  onShare: (typed: string) => void;
+  difference: { text: string; tone: 'over' | 'under' | 'exact' };
+  id: string;
+}) {
+  return (
+    <div className="relative">
+      {position?.separator && (
+        <span aria-hidden className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X }} />
+      )}
+      <div className="flex flex-wrap items-center gap-3" style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
+        <input
+          id={id}
+          type="checkbox"
+          checked={ticked}
+          onChange={(e) => onTick(e.target.checked)}
+          className="ph-focus h-5 w-5 shrink-0 rounded accent-[var(--ph-tint)]"
+        />
+        <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
+          <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{name}</span>
+          <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{subtitle}</span>
+          {/* An item another receipt already answers is re-pointed by ticking it here, and its money goes with it.
+              That is often what is meant — the wrong receipt was picked, or one was corrected — but it happened in
+              silence, with nothing on the row saying where the money currently is. */}
+          {elsewhere && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{elsewhere}</span>}
+        </label>
+        {ticked ? (
+          <span className="flex shrink-0 items-center gap-2">
+            <input
+              aria-label={`Share for ${name}`}
+              inputMode="decimal"
+              value={share}
+              onChange={(e) => onShare(e.target.value)}
+              className="ph-focus tabular w-32 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]"
+            />
+            <span className={cx('w-24 shrink-0 text-right text-[11.5px] font-semibold', toneClass(HERE[difference.tone]))}>{difference.text}</span>
+          </span>
+        ) : (
+          <span className="shrink-0 text-[15px] text-[var(--ph-ink-3)]">—</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -133,116 +219,75 @@ export function CoverPage() {
     ? ({ to: '/events/$eventId/plan/$itemId', params: { eventId, itemId: item }, search: { ws: tab } } as const)
     : ({ to: '/events/$eventId/plan', params: { eventId }, search: { ws: tab } } as const);
 
-  const saveButton = (
-    <Button onClick={() => void save()} disabled={unsaveable || saving || !cover.isSuccess}>
-      Save
-    </Button>
+  const saveAction: CornerAction = {
+    key: 'save',
+    label: 'Save',
+    glyph: <Check size={22} aria-hidden />,
+    run: () => void save(),
+    disabled: unsaveable || saving || !cover.isSuccess,
+  };
+
+  /** The left-hand side of the last total: the words, and — while there is money over — what that money is. */
+  const leftLabel: ReactNode = (
+    <span className="inline-flex items-center gap-2">
+      <span>Left on this receipt</span>
+      {totals.leftMinor > 0 && <span className="text-[12.5px] font-semibold text-[var(--ph-warn)]">not planned</span>}
+    </span>
   );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <PageHeader title="What it covers" controls={saveButton} action={saveButton} />
-      <Link {...cancelTo} className="-mt-2 block min-h-11 py-3 text-sm font-medium text-slate-600 hover:text-slate-900">
-        Cancel
-      </Link>
-      <ErrorBox error={error ?? events.error ?? plan.error ?? cover.error} />
+    <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
+      <div className="mx-auto max-w-2xl">
+        <LargeTitle title="What it covers" back="Cancel" backTo={cancelTo.to} backParams={cancelTo.params} backSearch={cancelTo.search} actions={[saveAction]} />
+        <ErrorBox error={error ?? events.error ?? plan.error ?? cover.error} />
 
-      <Card>
-        <div className="flex items-center gap-3">
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{cover.data?.description ?? receipt?.description ?? 'This payment'}</span>
-            <span className="block truncate text-xs text-slate-500">
-              {cover.data?.occurredOn ? dayMonth(cover.data.occurredOn) : ''}
-              {paidWith && ` · ${paidWith}`}
-            </span>
-          </span>
-          <Money minor={totalMinor} currency={currency} className="shrink-0 text-base font-semibold" />
+        <InsetGroup header="The receipt">
+          <InsetRow
+            title={cover.data?.description ?? receipt?.description ?? 'This payment'}
+            subtitle={[cover.data?.occurredOn ? dayMonth(cover.data.occurredOn) : null, paidWith].filter(Boolean).join(' · ')}
+            value={formatMinor(totalMinor, currency)}
+            valueTone="ink"
+          />
+        </InsetGroup>
+
+        {items.length === 0 ? (
+          <Empty>This event has nothing on its plan yet, so there is nothing for the receipt to answer.</Empty>
+        ) : (
+          <InsetGroup header="What it paid for" footer="Tick everything this receipt paid for and give each its share. One receipt can settle many items.">
+            {items.map((row) => (
+              <CoverRow
+                key={row.id}
+                id={`${rowId}-${row.id}`}
+                ticked={shares[row.id] !== undefined}
+                onTick={(on) => toggle(row, on)}
+                name={row.name}
+                subtitle={`estimate ${formatMinor(row.estimateMinor, currency)}${row.categoryId ? ` · ${nameOf(row.categoryId)}` : ''}`}
+                elsewhere={answeredElsewhere(row, transactionId)}
+                share={shares[row.id] ?? ''}
+                onShare={(typed) => setShares((was) => ({ ...was, [row.id]: typed }))}
+                difference={differenceWords(typedMinor(row.id) - row.estimateMinor, currency)}
+              />
+            ))}
+          </InsetGroup>
+        )}
+
+        <div data-testid="cover-totals">
+          <InsetGroup header="Against the receipt">
+            <InsetRow title="Receipt" value={formatMinor(totals.totalMinor, currency)} valueTone="ink" />
+            <InsetRow title="Given to items" value={formatMinor(totals.givenMinor, currency)} valueTone="ink" />
+            <InsetRow
+              title={leftLabel}
+              value={totals.over ? 'that is more than the receipt' : formatMinor(totals.leftMinor, currency)}
+              valueTone={totals.over ? 'alarm' : 'ink'}
+            />
+          </InsetGroup>
         </div>
-      </Card>
 
-      <p className="px-1 text-sm text-slate-500">Tick everything this receipt paid for and give each its share. One receipt can settle many items.</p>
-
-      {items.length === 0 ? (
-        <Empty>This event has nothing on its plan yet, so there is nothing for the receipt to answer.</Empty>
-      ) : (
-        <Card>
-          <ul className="divide-y divide-slate-100">
-            {items.map((row) => {
-              const on = shares[row.id] !== undefined;
-              const difference = differenceWords(typedMinor(row.id) - row.estimateMinor, currency);
-              const elsewhere = answeredElsewhere(row, transactionId);
-              return (
-                <li key={row.id} className="flex flex-wrap items-center gap-3 py-2.5">
-                  <input
-                    id={`${rowId}-${row.id}`}
-                    type="checkbox"
-                    checked={on}
-                    onChange={(e) => toggle(row, e.target.checked)}
-                    className="h-5 w-5 shrink-0 rounded border-slate-300 accent-slate-900"
-                  />
-                  <label htmlFor={`${rowId}-${row.id}`} className="min-w-0 flex-1 cursor-pointer">
-                    <span className="block truncate text-sm font-medium">{row.name}</span>
-                    <span className="block truncate text-xs text-slate-500">
-                      estimate {formatMinor(row.estimateMinor, currency)}
-                      {row.categoryId && ` · ${nameOf(row.categoryId)}`}
-                    </span>
-                    {/* An item another receipt already answers is re-pointed by ticking it here, and its money goes
-                        with it. That is often what is meant — the wrong receipt was picked, or one was corrected —
-                        but it happened in silence, with nothing on the row saying where the money currently is. */}
-                    {elsewhere && <span className="block truncate text-xs text-amber-800">{elsewhere}</span>}
-                  </label>
-                  {on ? (
-                    <span className="flex shrink-0 items-center gap-2">
-                      <Input
-                        aria-label={`Share for ${row.name}`}
-                        inputMode="decimal"
-                        value={shares[row.id] ?? ''}
-                        onChange={(e) => setShares((was) => ({ ...was, [row.id]: e.target.value }))}
-                        className="w-36 text-right"
-                      />
-                      <span className={cx('w-24 shrink-0 text-right text-[11.5px] font-semibold', TONE[difference.tone])}>{difference.text}</span>
-                    </span>
-                  ) : (
-                    <span className="shrink-0 text-sm text-slate-400">—</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </Card>
-      )}
-
-      <div data-testid="cover-totals">
-        <Card className="space-y-1">
-          <p className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="text-slate-500">Receipt</span>
-            <Money minor={totals.totalMinor} currency={currency} className="font-semibold" />
-          </p>
-          <p className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="text-slate-500">Given to items</span>
-            <Money minor={totals.givenMinor} currency={currency} className="font-semibold" />
-          </p>
-          <p className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="flex items-center gap-2 text-slate-500">
-              Left on this receipt
-              {/* The amber pill the plan uses for the same money: what the receipt bought that no item planned for. */}
-              {totals.leftMinor > 0 && (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">not planned</span>
-              )}
-            </span>
-            {totals.over ? (
-              <span className="text-sm font-semibold text-red-700">that is more than the receipt</span>
-            ) : (
-              <Money minor={totals.leftMinor} currency={currency} className="font-semibold" />
-            )}
-          </p>
-        </Card>
+        <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+          Shares start at each item’s estimate; change them to what the receipt really says. Anything left over stays as spending in its category, marked “not
+          planned”. The receipt itself is never split — your statement and points are untouched.
+        </p>
       </div>
-
-      <p className="px-1 text-xs text-slate-500">
-        Shares start at each item’s estimate; change them to what the receipt really says. Anything left over stays as spending in its category, marked “not
-        planned”. The receipt itself is never split — your statement and points are untouched.
-      </p>
     </div>
   );
 }

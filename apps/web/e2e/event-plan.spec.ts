@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
-import { addEvent, addItem, addWallet, expectCover, expectFigures, expectGauge, expectRows, fillItem, moneyIn, spend } from './event-plan';
+import { addEvent, addItem, addWallet, expectCover, expectFigures, expectGauge, expectKitFigures, fillItem, moneyIn, spend } from './event-plan';
 import { replaceTheDatabase } from './recovery-fixture';
 
 test.beforeEach(({ page }) => {
@@ -160,9 +160,9 @@ test('what was tagged before the plan sits under its category as not planned', a
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   // Label to figure, not two substring assertions that never meet: `toContainText('Not planned')` beside
   // `toContainText('4.200.000')` passes on a card holding both words anywhere, the figure belonging to any row.
-  await expectRows(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 4.200.000' });
-  // The amber pill on the receipt's own row, beside the item it did not buy — not the summary's "Not planned".
-  await expect(page.getByText('not planned', { exact: true })).toBeVisible();
+  await expectKitFigures(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 4.200.000' });
+  // The receipt's own row, in the group headed "Not planned" under its category — not the summary's figure.
+  await expect(page.getByTestId('plan-unplanned').filter({ hasText: 'Hampers' })).toBeVisible();
 });
 
 /**
@@ -319,7 +319,7 @@ test('the figures agree with each other', async ({ page }) => {
    * are both Rp7.200.000 — and a pair of figures that are equal cannot tell which label belongs to which. Here they
    * are Rp0 and the whole plan, so the two are pinned to their own words and a swap of the two fails.
    */
-  await expectFigures(page.getByTestId('plan-totals'), {
+  await expectKitFigures(page.getByTestId('plan-totals'), {
     Planned: 'Rp 14.700.000',
     'Bought so far': 'Rp 0',
     'Still to buy': 'Rp 14.700.000',
@@ -335,7 +335,7 @@ test('the figures agree with each other', async ({ page }) => {
   await page.getByRole('button', { name: 'Save' }).click();
 
   const totals = page.getByTestId('plan-totals');
-  await expectFigures(totals, {
+  await expectKitFigures(totals, {
     Planned: 'Rp 14.700.000',
     'Bought so far': 'Rp 7.200.000',
     'Still to buy': 'Rp 7.200.000',
@@ -343,7 +343,7 @@ test('the figures agree with each other', async ({ page }) => {
   });
   // Outside the grid, under a rule of its own: money spent on the event that no item on the plan claims — and
   // read as label → figure like every other, rather than as a sweep of the card for that number somewhere in it.
-  await expectRows(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 900.000' });
+  await expectKitFigures(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 900.000' });
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
   const sheet = page.getByTestId('event-sheet');
@@ -440,7 +440,7 @@ test('money back is named with the rows it adds up, beside spending nobody plann
   await page.getByRole('link', { name: 'See the whole plan' }).click();
   const totals = page.getByTestId('plan-totals');
   // "Planned so far", not "Planned": a refund answers no item, so the plan is not the whole account of the money.
-  await expectFigures(totals, {
+  await expectKitFigures(totals, {
     'Planned so far': 'Rp 3.000.000',
     'Bought so far': 'Rp 3.000.000',
     'Still to buy': 'Rp 0',
@@ -454,7 +454,7 @@ test('money back is named with the rows it adds up, beside spending nobody plann
   expect(heading).toBe(rows.reduce((total, row) => total + row, 0));
 
   // And "Not planned" is the hampers alone — never the hampers with a refund netted off them.
-  await expectRows(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 5.000.000' });
+  await expectKitFigures(page.getByTestId('plan-not-planned'), { 'Not planned': 'Rp 5.000.000' });
   await expect(page.getByText('Hampers')).toBeVisible();
 
   await page.getByRole('link', { name: 'Back to the event' }).click();
@@ -531,7 +531,7 @@ test('a purchase can be unticked from either screen, and the item itself removed
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByRole('button', { name: `Unlink ${name}` })).toBeVisible();
   }
-  await expectFigures(page.getByTestId('plan-totals'), {
+  await expectKitFigures(page.getByTestId('plan-totals'), {
     Planned: 'Rp 14.000.000',
     'Bought so far': 'Rp 13.700.000',
     'Still to buy': 'Rp 0',
@@ -540,7 +540,7 @@ test('a purchase can be unticked from either screen, and the item itself removed
 
   // What bought it, on the item's own page: the payment, the day, and the two ways out.
   await page.getByTestId('plan-item').filter({ hasText: 'Crib' }).getByRole('link').click();
-  const bought = page.getByRole('heading', { name: 'What bought it' }).locator('..');
+  const bought = page.locator('section', { has: page.getByRole('heading', { name: 'What bought it' }) });
   await expect(bought).toContainText('Crib');
   expect(await moneyIn(bought)).toEqual([7_200_000]);
   await expect(bought.getByRole('link', { name: 'Say what it covers' })).toBeVisible();
@@ -553,24 +553,24 @@ test('a purchase can be unticked from either screen, and the item itself removed
   await page.getByRole('link', { name: 'Back to the plan' }).click();
   await page.getByRole('button', { name: 'Unlink Car seat' }).click();
   await expect(page.getByRole('button', { name: 'Unlink Car seat' })).toHaveCount(0);
-  await expectFigures(page.getByTestId('plan-totals'), {
+  await expectKitFigures(page.getByTestId('plan-totals'), {
     Planned: 'Rp 14.000.000',
     'Bought so far': 'Rp 0',
     'Still to buy': 'Rp 14.000.000',
   });
-  // Both payments are still on the event, answering nothing: two "not planned" rows under the category.
-  await expect(page.getByText('not planned', { exact: true })).toHaveCount(2);
+  // Both payments are still on the event, answering nothing: two rows in the group headed "Not planned".
+  await expect(page.getByTestId('plan-unplanned')).toHaveCount(2);
 
   // And removing an item leaves its purchase exactly where it is.
   await page.getByTestId('plan-item').filter({ hasText: 'Car seat' }).getByRole('link').click();
   await page.getByRole('button', { name: 'Remove this item' }).click();
   await expect(page.getByTestId('plan-item').filter({ hasText: 'Car seat' })).toHaveCount(0);
-  await expectFigures(page.getByTestId('plan-totals'), {
+  await expectKitFigures(page.getByTestId('plan-totals'), {
     Planned: 'Rp 7.500.000',
     'Bought so far': 'Rp 0',
     'Still to buy': 'Rp 7.500.000',
   });
-  await expect(page.getByText('not planned', { exact: true })).toHaveCount(2);
+  await expect(page.getByTestId('plan-unplanned')).toHaveCount(2);
 });
 
 /**
