@@ -17,6 +17,7 @@ import {
   saveGoal,
   saveTradeTemplate,
   upsertPrice,
+  upsertRate,
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -294,6 +295,72 @@ describe('goalPlansFor', () => {
     const summary = await goalPlansFor(database, ws, TODAY);
     expect(summary.fits.map((fit) => fit.goalId)).toEqual([hajjId, eduId]);
     expect(summary.fits.every((fit) => ['full', 'partial', 'none'].includes(fit.fits))).toBe(true);
+  });
+
+  /**
+   * A set-aside on a foreign account, all the way to the goal's progress.
+   *
+   * `GoalLink` carried no currency, so the projection could not convert and the page could not know not to:
+   * a US$100,03 set-aside reached `/goals` as `Rp 10.003`, and `plan.ts` added those 10_003 raw minor units
+   * into an IDR total. Small here; on a US$50.000 holding it is Rp 5.000.000 standing where
+   * Rp 800.000.000 belongs, which moves the progress bar, the status pill and the monthly figure.
+   */
+  describe('a set-aside in another currency', () => {
+    let wise: AccountRow;
+
+    beforeEach(async () => {
+      // `openingRateToBase` is the posting's rate and is not stored as an FX rate, so "no rate known" below
+      // is genuinely no rate known rather than an artefact of how the account was opened.
+      wise = await createAccount(database, ws, {
+        name: 'Wise USD',
+        kind: 'asset',
+        subtype: 'bank',
+        currency: 'USD',
+        openingBalanceMinor: 11_003,
+        openedOn: '2026-01-01',
+        openingRateToBase: 16_000,
+      });
+      await saveEarmark(database, ws, { goalId: hajjId, accountId: wise.id, amountMinor: 10_003 });
+    });
+
+    it('carries the account\'s own money and its own currency', async () => {
+      const link = (await goalLinksFor(database, ws, TODAY)).find((row) => row.accountId === wise.id)!;
+
+      expect(link).toMatchObject({ valueMinor: 10_003, currency: 'USD' });
+    });
+
+    it('converts it into the goal total when a rate is known', async () => {
+      await upsertRate(database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: TODAY, rate: 16_000, source: 'manual', sourceDate: TODAY });
+
+      const summary = await goalPlansFor(database, ws, TODAY);
+      const plan = summary.plans.find((row) => row.goalId === hajjId)!;
+      // US$100,03 at 16.000 is Rp 1.600.480 — not the 10.003 the raw minor units would have added.
+      expect(plan.links.find((link) => link.accountId === wise.id)!.baseMinor).toBe(1_600_480);
+      expect(plan.currentMinor).toBe(1_600_480);
+      expect(plan.earmarkWarning).toBeNull();
+    });
+
+    it('leaves it out of the total and says so when no rate is known', async () => {
+      const summary = await goalPlansFor(database, ws, TODAY);
+      const plan = summary.plans.find((row) => row.goalId === hajjId)!;
+
+      expect(plan.links.find((link) => link.accountId === wise.id)!.baseMinor).toBeNull();
+      expect(plan.currentMinor).toBe(0);
+      expect(plan.earmarkWarning).toContain('is not counted here');
+      // Named in its own money, so the warning is about a figure the owner recognises.
+      expect(plan.earmarkWarning).toContain('100,03');
+      expect(plan.earmarkWarning).toContain('IDR');
+    });
+
+    it('keeps counting what is in the base currency beside it', async () => {
+      await saveEarmark(database, ws, { goalId: hajjId, accountId: bca.id, amountMinor: 20_000_000 });
+
+      const summary = await goalPlansFor(database, ws, TODAY);
+      const plan = summary.plans.find((row) => row.goalId === hajjId)!;
+      // The rupiah still counts in full; only the dollars stand aside, and are named.
+      expect(plan.currentMinor).toBe(20_000_000);
+      expect(plan.earmarkWarning).toContain('is not counted here');
+    });
   });
 
   it('keeps another workspace out', async () => {

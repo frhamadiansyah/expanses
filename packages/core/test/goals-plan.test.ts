@@ -25,6 +25,10 @@ const link = (valueMinor: number, partial: Partial<GoalLink> = {}): GoalLink => 
   kind: 'tagged',
   unitsMicro: 31_000_000,
   valueMinor,
+  currency: 'IDR',
+  // In the base currency already, which is the ordinary case: `baseMinor` follows `valueMinor` unless a
+  // test is about a foreign holding, and then it says so.
+  baseMinor: valueMinor,
   risk: 'medium',
   ...partial,
 });

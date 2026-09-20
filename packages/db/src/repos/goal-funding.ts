@@ -1,10 +1,13 @@
 import {
   addMonths,
+  convertMinor,
   fitByRank,
+  formatMinor,
   type GoalLink,
   type GoalPlan,
   goalPlan,
   goalUnitsFor,
+  isoDate,
   monthOf,
   priceMicroFrom,
   type RankFit,
@@ -21,6 +24,7 @@ import { goals } from '../schema-goals';
 import { listAssetProfiles } from './assets';
 import { assetValuesAt } from './asset-values';
 import { periodFlows } from './flows';
+import { resolveRates } from './fx';
 import { type GoalRow, GoalDbError, listEarmarks, listGoals } from './goals';
 import { nativeBalances } from './ledger';
 import { listTrades } from './trades';
@@ -82,7 +86,7 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
   const unitsByAccount = goalUnitsFor(trades, date);
   const values = await assetValuesAt(database, ws, date);
   const profiles = await listAssetProfiles(database, ws);
-  const links: GoalLinkRow[] = [];
+  const links: Omit<GoalLinkRow, 'baseMinor'>[] = [];
 
   for (const [accountId, units] of Object.entries(unitsByAccount)) {
     const value = values.find((row) => row.accountId === accountId);
@@ -97,7 +101,10 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
         name: value.name,
         kind: 'tagged',
         unitsMicro,
+        // `assetValuesAt` values each account in its own currency — `netWorthAt` has to convert to add them
+        // up — so a holding abroad is carried here in its own money too, and the currency comes with it.
         valueMinor: unitsValueMinor(unitsMicro, priceMicro),
+        currency: value.currency,
         risk,
         overBalance: false,
       });
@@ -110,20 +117,48 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
     for (const earmark of earmarks) {
       if (!known.has(earmark.goalId)) continue;
       const balanceMinor = Math.max(0, balances[earmark.accountId] ?? 0);
-      const name = values.find((row) => row.accountId === earmark.accountId)?.name ?? 'Account';
+      const account = values.find((row) => row.accountId === earmark.accountId);
       links.push({
         goalId: earmark.goalId,
         accountId: earmark.accountId,
-        name,
+        name: account?.name ?? 'Account',
         kind: 'earmark',
         unitsMicro: null,
+        // The set-aside sits on the destination account and is counted in that account's own money:
+        // parking US$100 against a goal sets US$100 aside, never Rp 1.600.000 of a USD balance.
         valueMinor: Math.min(earmark.amountMinor, balanceMinor),
+        currency: account?.currency ?? ws.baseCurrency,
         risk: null,
         overBalance: earmark.amountMinor > balanceMinor,
       });
     }
   }
-  return links;
+
+  return withBaseAmounts(database, ws, links, date);
+}
+
+/**
+ * Each link's value in the base currency, or null where no rate is known for the day.
+ *
+ * No fetcher: a goals screen reads what is already stored. `resolveRates` falls back to the last rate it
+ * has and reports the rest as missing, and a missing one stays missing — `toBase` elsewhere answers 0 for
+ * an absent rate, which is defensible on a tax form (a figure you cannot substantiate must not be filed)
+ * and is the wrong answer here, where it reads as "you have saved nothing".
+ */
+async function withBaseAmounts(
+  database: Database,
+  ws: WorkspaceContext,
+  links: Omit<GoalLinkRow, 'baseMinor'>[],
+  date: string,
+): Promise<GoalLinkRow[]> {
+  const foreign = [...new Set(links.map((link) => link.currency).filter((currency) => currency !== ws.baseCurrency))];
+  const rates: Record<string, number> =
+    foreign.length > 0 ? (await resolveRates(database, { currencies: foreign, baseCurrency: ws.baseCurrency, onDate: date, today: isoDate() })).rates : {};
+  return links.map((link) => {
+    if (link.currency === ws.baseCurrency) return { ...link, baseMinor: link.valueMinor };
+    const rate = rates[link.currency];
+    return { ...link, baseMinor: rate === undefined ? null : convertMinor(link.valueMinor, link.currency, ws.baseCurrency, rate) };
+  });
 }
 
 const perMonth = (totalMinor: number, months: number) => (months > 0 ? roundHalfAwayFromZero(totalMinor / months) : 0);
@@ -158,11 +193,20 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
     const mine = links.filter((link) => link.goalId === goal.id);
     const plan = goalPlan(goal, mine, monthlyFromTemplates(goal.id), monthlyOutgoingMinor, date);
     const over = mine.find((link) => link.overBalance);
+    // A link with no rate is left out of the total, so the total is honest; saying so is what keeps the
+    // *goal* honest, and `earmarkWarning` is the slot the screen already paints for exactly this.
+    const unconverted = mine.filter((link) => link.baseMinor === null);
+    const warnings = [
+      over ? `You set aside more for this goal than ${over.name} holds, so only what is there counts.` : null,
+      unconverted.length > 0
+        ? `${unconverted.map((link) => formatMinor(link.valueMinor, link.currency)).join(', ')} is not counted here: no ${ws.baseCurrency} rate for ${date}.`
+        : null,
+    ].filter((warning): warning is string => warning !== null);
     return {
       ...plan,
       goal,
       links: mine,
-      earmarkWarning: over ? `You set aside more for this goal than ${over.name} holds, so only what is there counts.` : null,
+      earmarkWarning: warnings.length > 0 ? warnings.join(' ') : null,
     };
   });
 

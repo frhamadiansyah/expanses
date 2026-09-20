@@ -503,12 +503,16 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
   await expect(page.getByRole('listitem').filter({ hasText: 'Wise USD' }).first()).toContainText('110,03');
   await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
 
-  // And the goal is funded out of the account the money landed in. What that set-aside *is* — US$100,03 and
-  // not the Rp 1.600.000 that left — is asserted to the cent in `goal-transfers.test.ts`, because this page
-  // prints the figure in the account's minor units under a base-currency symbol, which is its own defect and
-  // not this one's: asserting the figure here would enshrine it.
+  // And the goal is funded out of the account the money landed in, for what that set-aside *is*: US$100,03,
+  // not the Rp 1.600.000 that left, and not the `Rp 10.003` this page used to paint by printing the account's
+  // own minor units under the base-currency symbol. The rupiah translation rides alongside, from the rate
+  // typed when the account was opened.
   await page.goto('/goals');
-  await expect(page.getByText(/Wise USD.*set aside/).first()).toBeVisible();
+  const fundedBy = page.getByText(/Wise USD.*set aside/).first();
+  await expect(fundedBy).toBeVisible();
+  await expect(fundedBy).toContainText('US$100,03');
+  await expect(fundedBy).not.toContainText(/Rp\s10\.003/);
+  await expect(fundedBy).toContainText(/Rp\s1\.600\.480/);
 });
 
 /** A card with real terms, so the points engine has a scheme to measure a purchase against. */

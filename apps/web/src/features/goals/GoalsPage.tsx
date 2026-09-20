@@ -1,5 +1,5 @@
 import { formatUnits, type GoalKind, isoDate } from '@expanses/core';
-import { archiveGoal, type GoalRow, reorderGoals, setStagePaid } from '@expanses/db';
+import { archiveGoal, type GoalLinkRow, type GoalRow, reorderGoals, setStagePaid } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
@@ -8,6 +8,33 @@ import { Calculator, calculatorKindOf } from './Calculator';
 import { GoalForm } from './GoalForm';
 import { type GoalCard, goalCard, GOAL_TEMPLATES } from './goal-cards';
 import { useEarmarks, useGoalCalculators, useGoalPlans, useGoals } from './queries';
+
+/**
+ * What one link is worth, in the money it actually is.
+ *
+ * `link.valueMinor` is the account's own currency — a US$100,03 set-aside is 10_003 — and this used to be
+ * painted under a hardcoded `ws.baseCurrency`, so the chip read `Rp 10.003`. The figure is shown in its own
+ * currency, with the base-currency translation beside it when a rate is known and a plain word when it is
+ * not. There is one of these because there used to be two, and only one of them would ever have been fixed.
+ */
+function LinkAmount({ link }: { link: GoalLinkRow }) {
+  const { ws } = useApp();
+  if (link.currency === ws.baseCurrency) return <Money minor={link.valueMinor} currency={link.currency} />;
+  return (
+    <>
+      <Money minor={link.valueMinor} currency={link.currency} />
+      {link.baseMinor === null ? (
+        <> · no {ws.baseCurrency} rate yet</>
+      ) : (
+        <>
+          {' ('}
+          <Money minor={link.baseMinor} currency={ws.baseCurrency} />
+          {')'}
+        </>
+      )}
+    </>
+  );
+}
 
 function StatusPill({ card }: { card: GoalCard }) {
   const tone = card.statusTone === 'good' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800';
@@ -195,7 +222,7 @@ export function GoalsPage() {
                   {plan.links.map((link) => (
                     <span key={`${link.accountId}-${link.kind}`} className="rounded bg-slate-100 px-2 py-1">
                       <b>{link.name}</b> {link.kind === 'tagged' && link.unitsMicro !== null ? formatUnits(link.unitsMicro) : 'set aside'} ·{' '}
-                      <Money minor={link.valueMinor} currency={ws.baseCurrency} />
+                      <LinkAmount link={link} />
                     </span>
                   ))}
                 </div>
@@ -247,7 +274,9 @@ export function GoalsPage() {
                       {link.kind === 'tagged' && link.unitsMicro !== null ? `${formatUnits(link.unitsMicro)} tagged` : 'set aside'} for {plan.goal.name}
                     </span>
                   </span>
-                  <Money minor={link.valueMinor} currency={ws.baseCurrency} />
+                  <span>
+                    <LinkAmount link={link} />
+                  </span>
                 </div>
               )),
             )}
