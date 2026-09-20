@@ -68,7 +68,12 @@ export function CategoryIcon({
   label?: string;
 }) {
   const { key, rootKey } = categoryKeys(categoryId, accounts);
-  const visual = transfer ? TRANSFER_VISUAL : categoryId ? categoryVisual(key, rootKey) : UNKNOWN_VISUAL;
+  const chosen = categoryId ? accounts.find((a) => a.id === categoryId)?.icon : null;
+  const base = transfer ? TRANSFER_VISUAL : categoryId ? categoryVisual(key, rootKey) : UNKNOWN_VISUAL;
+  // A category made in the picker draws the icon that was picked for it; one without keeps inheriting its
+  // parent's, exactly as before — the colour is the top-level parent's either way, so a category of your own
+  // still reads as part of the family it was filed in.
+  const visual = chosen ? { ...base, icon: chosen } : base;
   const Glyph = ICONS[visual.icon] ?? CircleHelp;
   const { box, glyph } = SIZES[size];
   return (

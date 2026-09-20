@@ -104,6 +104,58 @@ test('a new workspace copies the categories, opens empty, and leaves the other a
 });
 
 /**
+ * A category made in the picker is filed in the workspace the picker was offering, and in no other.
+ *
+ * The contradiction this guards against, found in the plan before it was built: `createAccount` files a new
+ * category into the book of the context it is handed, and the picker shows only the categories `useInOpenBook`
+ * keeps. Hand the two different workspaces and the category lands in a book the picker's own filter then hides
+ * — the row chosen a second ago vanishing from the list it was chosen in. One `ws`, read by both, is what makes
+ * that impossible.
+ *
+ * Boba is made in **Business**, not Personal. Personal is the workspace `createAccount` falls back to when it is
+ * handed no book at all, so a category made there would land in the right place by accident and prove nothing.
+ */
+test('a category made in the picker belongs to that workspace and to no other', async ({ page }) => {
+  await addBank(page);
+  await newWorkspace(page, 'Business', 'Copy from Personal');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: /^Category/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Select category' });
+  await picker.getByRole('button', { name: 'New category' }).click();
+  const made = page.getByRole('dialog', { name: 'New category' });
+  await made.getByLabel('Name', { exact: true }).fill('Boba');
+  await made.getByLabel('Inside').selectOption({ label: 'Food and beverage' });
+  await made.getByRole('button', { name: 'Save' }).click();
+  await expect(picker).toHaveCount(0);
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Boba');
+
+  // The picker that made it can show it: filed anywhere else, its own filter would hide it.
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await expect(picker.getByRole('button', { name: 'Boba', exact: true })).toHaveCount(1);
+  await picker.getByRole('button', { name: 'Close' }).click();
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  await page.goto('/categories');
+  await expect(page.getByText('Boba')).toBeVisible();
+
+  // Personal does not have it — not on its Categories page, and not in its picker either.
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Workspaces' }).getByTestId('workspace-choice').filter({ hasText: 'Personal' }).click();
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toContainText('Personal');
+  await page.goto('/categories');
+  await expect(page.getByText('Food and beverage').first()).toBeVisible();
+  await expect(page.getByText('Boba')).toHaveCount(0);
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await expect(picker.getByRole('button', { name: 'Food and beverage', exact: true })).toHaveCount(1);
+  await expect(picker.getByRole('button', { name: 'Boba', exact: true })).toHaveCount(0);
+});
+
+/**
  * Two workspaces can hold copies of one category: the same name, the same path, different ids. So the sheet the
  * category circle opens must offer the open workspace's copy and no other — unnarrowed it shows two buttons
  * nothing on screen tells apart, and picking the wrong one re-files this spending outside the workspace it

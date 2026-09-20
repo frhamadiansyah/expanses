@@ -616,3 +616,75 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
   await picture.click();
   await expect(page.getByRole('dialog', { name: 'Photo' })).toBeVisible();
 });
+
+/**
+ * B7 and B7a: the picker is the tree, not a flat list — a card per top-level category with its children
+ * indented under it — it can be searched, a parent is a real answer, and the category you meant can be made
+ * without abandoning the form you are on.
+ *
+ * It is the one picker. The card's Category row, the edit sheet's and the list's category gesture all open this
+ * component, and none of them was touched to get any of it.
+ */
+test('the category picker is a tree, it searches, and a new category is made without leaving the form', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank');
+  await page.goto('/transactions');
+
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: /^Category/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Select category' });
+
+  // A parent is a row like any other, and its children are drawn indented beneath it — the elbow's own indent,
+  // which is what tells a card's children from the cards themselves.
+  const parent = picker.getByRole('button', { name: 'Food and beverage', exact: true });
+  const child = picker.getByRole('button', { name: 'Restaurants', exact: true });
+  await expect(parent).toHaveCSS('padding-left', '12px');
+  await expect(child).toHaveCSS('padding-left', '36px');
+
+  // The search narrows on the whole path: a parent brings its children, and nothing else stays.
+  const search = picker.getByLabel('Search categories');
+  await search.fill('food');
+  await expect(child).toHaveCount(1);
+  await expect(picker.getByRole('button', { name: 'Groceries', exact: true })).toHaveCount(0);
+  await search.fill('');
+  await expect(picker.getByRole('button', { name: 'Groceries', exact: true })).toHaveCount(1);
+
+  // Tapping a parent picks the parent. "Food and beverage" is an answer, not a heading.
+  await parent.click();
+  await expect(picker).toHaveCount(0);
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Food and beverage');
+
+  // + New category: the name, where it goes, and the icon it draws.
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await picker.getByRole('button', { name: 'New category' }).click();
+  const made = page.getByRole('dialog', { name: 'New category' });
+  await made.getByLabel('Name', { exact: true }).fill('Boba');
+  await made.getByLabel('Inside').selectOption({ label: 'Food and beverage' });
+  await made.getByRole('button', { name: 'coffee', exact: true }).click();
+  await made.getByRole('button', { name: 'Save' }).click();
+
+  // Back on the form with it chosen — no second trip through the picker to say so.
+  await expect(picker).toHaveCount(0);
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Boba');
+
+  await form.getByRole('button', { name: /^Category/ }).click();
+  const boba = picker.getByRole('button', { name: 'Boba', exact: true });
+  // Filed under Food and beverage: indented like its siblings, and the whole path is its title.
+  await expect(boba).toHaveCSS('padding-left', '36px');
+  await expect(boba).toHaveAttribute('title', 'Food and beverage › Boba');
+  // And it draws the icon that was picked for it, rather than inheriting its parent's.
+  await expect(boba.locator('svg.lucide-coffee')).toHaveCount(1);
+  await boba.click();
+
+  await form.getByRole('button', { name: /^(Paid with|Received into)/ }).click();
+  await page.getByRole('dialog', { name: /^(Paid with|Received into)$/ }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('28000');
+  await form.getByLabel('Note').fill('Chatime');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+  await expect(page.getByTestId('transaction-row').filter({ hasText: 'Chatime' })).toContainText('Boba');
+
+  // And it is a category like the rest: the Categories page lists it under the parent it was filed in.
+  await page.goto('/categories');
+  await expect(page.getByText('Boba')).toBeVisible();
+});
