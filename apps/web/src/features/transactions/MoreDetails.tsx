@@ -11,7 +11,7 @@ import { PhotosSheet, photosSummary } from './PhotosSheet';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { EventSheet } from './EventSheet';
 import { WithSheet, withSummary } from './WithSheet';
-import { extraRowRefusal, extraRows, type FormDraft } from './tx-form';
+import { extraRowRefusal, extraRows, type FormDraft, postingCurrency } from './tx-form';
 
 /** The pair a rate is missing for, as `resolveRates` reported it, and the day it is wanted for. */
 export interface MissingRate {
@@ -51,8 +51,10 @@ export function MoreDetails({
   const events = useEvents().data ?? [];
   const eventName = draft.eventId ? (events.find((event) => event.id === draft.eventId)?.name ?? '') : '';
   // A split is typed, read and posted in the paying account's own currency — `formToPost` refuses any other — so
-  // the row's total is read in that one, never in the currency the amount row happens to be showing.
-  const currency = accounts.find((a) => a.id === draft.moneyId)?.currency ?? ws.baseCurrency;
+  // the row's total is read in that one, never in the currency the amount row happens to be showing. Asked of
+  // `postingCurrency`, which is `amountFields`' own answer: which currency a figure is read in is decided once,
+  // in the kit, and this screen re-deriving it was a second place deciding a money field's scale.
+  const currency = postingCurrency(draft, accounts, ws.baseCurrency);
   /*
    * Split by category and With are exclusive, and whichever was set first is the one that stays: the other row
    * is greyed, and the reason stands under the group in the words the save would refuse it with. The rule is

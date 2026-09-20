@@ -103,17 +103,42 @@ export function emptyForm(bookId: string, today: string = isoDate()): FormDraft 
 
 const accountOf = (draft: FormDraft, accounts: readonly AccountRow[]) => accounts.find((a) => a.id === draft.moneyId);
 
-/** The currency the flag shows: what was typed, or — until something is typed — the paying account's own. */
-export const typedCurrency = (draft: FormDraft, accounts: readonly AccountRow[]) => draft.currency || accountOf(draft, accounts)?.currency || '';
+/**
+ * Whether a figure on this screen may be typed in a currency of its own.
+ *
+ * **A transfer may not.** Moving your own money has no merchant and no card conversion: the figure that leaves
+ * is in the From account's own currency by definition, and what lands is the To account's, which §3.5's
+ * Received amount row already asks for. There is no third currency for a flag to name — and the transfer branch
+ * of `formToPost` has always read the typed figure in the From account's own currency.
+ *
+ * The flag was drawn there all the same, with "Charged in IDR" under it, pre-filled at the day's rate. Typing
+ * `100` with the flag on USD drew `Charged in IDR = 1600000`, said "≈ 16.000 per 1 USD", raised no error — and
+ * moved **Rp 100**. Three rows drawn and one honoured is the shape this branch already rejected once. So this
+ * is the one question that decides it, asked by the screen that draws the flag and by the kit that reads the
+ * figure, rather than answered twice.
+ */
+export const currencyChoosable = (draft: FormDraft) => draft.mode !== 'transfer';
+
+/**
+ * The currency the flag shows: what was typed, or — until something is typed — the paying account's own.
+ *
+ * Where no flag is offered there is nothing typed to honour, so the figure is read in the account's own
+ * currency whatever `draft.currency` was left holding by a tab visited earlier.
+ */
+export const typedCurrency = (draft: FormDraft, accounts: readonly AccountRow[]) =>
+  (currencyChoosable(draft) ? draft.currency : '') || accountOf(draft, accounts)?.currency || '';
 
 /**
  * Whether the "Charged in <account currency>" row applies: the figure was typed in one currency and the
  * account settles in another, so the posting cannot be read off the typed figure alone.
+ *
+ * `typedCurrency`, not `draft.currency`: the row must appear exactly when the two figures differ *as the kit
+ * reads them*, or the screen draws a second figure the save has no use for.
  */
 export function chargedInNeeded(draft: FormDraft, accounts: readonly AccountRow[]): boolean {
   const account = accountOf(draft, accounts);
-  if (!account?.currency || !draft.currency) return false;
-  return draft.currency !== account.currency;
+  if (!account?.currency || !currencyChoosable(draft) || !draft.currency) return false;
+  return typedCurrency(draft, accounts) !== account.currency;
 }
 
 /** One money field of the amount row: what it is called, what is in it, and the currency it is read in. */
@@ -145,6 +170,19 @@ export function amountFields(draft: FormDraft, accounts: readonly AccountRow[], 
     amount,
     charged: { which: 'charged', label: `Charged in ${settled}`, value: draft.chargedAmount, currency: settled || baseCurrency },
   };
+}
+
+/**
+ * The currency a figure on this draft **posts** in: the account's own, and the workspace's until one is chosen.
+ *
+ * It is `amountFields`' own answer rather than a second derivation of it — the charged row when there is one,
+ * the amount row when there is not — so the Split sheet's running total, the With sheet's shares and the row
+ * the user types into cannot read one figure at two different scales. `MoreDetails` used to work it out for
+ * itself, which is the same fault one layer over: a second place deciding a money field's currency.
+ */
+export function postingCurrency(draft: FormDraft, accounts: readonly AccountRow[], baseCurrency: string): string {
+  const { amount, charged } = amountFields(draft, accounts, baseCurrency);
+  return (charged ?? amount).currency;
 }
 
 export type ExtraRow = 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos' | 'exclude' | 'rate';
@@ -216,9 +254,23 @@ export function extraRows(
   return rows;
 }
 
+/**
+ * A typed figure the save will act on, in minor units — read by **the kit's one reader**, `evaluateAmount`.
+ *
+ * `parseMajor` alone cannot read `50000+10000`. The amount row accepts it, the keypad computes it, the Split
+ * sheet added it up and printed "Total Rp 95.000", the With sheet divided it — and then Save refused the very
+ * figure the screen had just totalled, with `Invalid amount: "50000+10000"`. The screen's arithmetic and the
+ * save's were two arithmetics; there is one now, and it is this one.
+ *
+ * When `evaluateAmount` cannot read the figure, `parseMajor` is asked for the words: "IDR allows 0 decimal
+ * places" says far more than a flat refusal, and a figure it reads perfectly well was simply zero or less.
+ */
 function positive(value: string, currency: string, label: string): number {
-  const minor = parseMajor(value, currency);
-  if (minor <= 0) throw new Error(`${label} must be greater than zero`);
+  const minor = evaluateAmount(value, currency);
+  if (minor === null) {
+    parseMajor(value, currency);
+    throw new Error(`${label} must be greater than zero`);
+  }
   return minor;
 }
 
@@ -471,7 +523,11 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
   const mcc = typedMcc(draft);
 
   if (draft.mode === 'transfer') {
-    const amountMinor = positive(draft.amount, account.currency, 'Amount');
+    // Through `amounts()`, like every other mode, rather than reading the figure a second way of its own. A
+    // transfer offers no flag (`currencyChoosable`) so `typed` is the From account's currency and the original
+    // pair is always null — but the figure that posts is read by the one function that reads every figure that
+    // posts, so the two can never come apart again the way they did when this branch read it alone.
+    const { amountMinor } = amounts(draft, account, typed, null);
     if (draft.goalId && !draft.editing) {
       const to = toAccountOf(draft, accounts, account);
       return {
@@ -623,15 +679,26 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     goalId: tx.goalId ?? '',
     editing: true,
   };
-  const foreign = (payment: { accountId: string }, amountMinor: number) => {
-    const settled = accounts.find((a) => a.id === payment.accountId)?.currency ?? '';
+  /**
+   * The currency the paying line settled in: the account's own, and — when that account is not in `accounts`
+   * at all, which `?? ''` below admits can happen — the currency **the line itself posted in**.
+   *
+   * Never a literal code. A hardcoded `'IDR'` here was the only country currency left in the transaction kit,
+   * against the country-neutral rule, and it was wrong as well as parochial: on a USD-base workspace whose
+   * paying account had not arrived, the figure was written at IDR's exponent 0 and read back by the field at
+   * USD's exponent 2 — a 100× error on a reopened transaction. The entry knows what it posted in; ask it.
+   */
+  const settledOf = (payment: { accountId: string; currency: string }) =>
+    accounts.find((a) => a.id === payment.accountId)?.currency || payment.currency;
+  const foreign = (payment: { accountId: string; currency: string }, amountMinor: number) => {
+    const settled = settledOf(payment);
     if (!tx.originalCurrency || tx.originalAmountMinor === null) {
-      return { currency: settled, amount: minorToMajorString(amountMinor, settled || 'IDR'), chargedAmount: '' };
+      return { currency: settled, amount: minorToMajorString(amountMinor, settled), chargedAmount: '' };
     }
     return {
       currency: tx.originalCurrency,
       amount: minorToMajorString(tx.originalAmountMinor, tx.originalCurrency),
-      chargedAmount: minorToMajorString(amountMinor, settled || 'IDR'),
+      chargedAmount: minorToMajorString(amountMinor, settled),
     };
   };
 
@@ -642,7 +709,7 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
       return {
         ...base,
         moneyId: payment.accountId,
-        currency: accounts.find((a) => a.id === payment.accountId)?.currency ?? '',
+        currency: settledOf(payment),
         splits: category.map((e) => ({ categoryId: e.accountId, amount: minorToMajorString(e.amountMinor, e.currency) })),
       };
     }
@@ -658,7 +725,7 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
     mode: 'transfer',
     moneyId: from?.accountId ?? '',
     toId: to?.accountId ?? '',
-    currency: from ? (accounts.find((a) => a.id === from.accountId)?.currency ?? '') : '',
+    currency: from ? settledOf(from) : '',
     amount: from ? minorToMajorString(-from.amountMinor, from.currency) : '',
     toAmount: to && from && to.currency !== from.currency ? minorToMajorString(to.amountMinor, to.currency) : '',
   };

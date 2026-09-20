@@ -13,6 +13,7 @@ import {
   amountFields,
   chargedHint,
   chargedInNeeded,
+  currencyChoosable,
   currencyFlag,
   estimatedCharge,
   type FormDraft,
@@ -152,6 +153,7 @@ export function AmountRow({
   const currency = typedCurrency(draft, accounts);
   const settled = account?.currency ?? '';
   const needsCharged = chargedInNeeded(draft, accounts);
+  const choosable = currencyChoosable(draft);
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);
   const { rate, stale } = useSuggestedRate(needsCharged ? currency : '', needsCharged ? settled : '', draft.occurredOn);
@@ -191,18 +193,24 @@ export function AmountRow({
           without that, the fourth way out is unreachable, which an e2e now holds in place. Only while the
           dock is open: raised at all times it would paint over any sheet that opened later. */}
       <div className={cx('flex h-14 items-center gap-2 px-3', keypad !== null && 'relative z-40')}>
-        <button
-          type="button"
-          onClick={() => {
-            // One thing open at a time: the dock is over the page, and the sheet has to be over the dock.
-            setKeypad(null);
-            setPicking(true);
-          }}
-          aria-label="Currency"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-        >
-          <span aria-hidden>{currencyFlag(currency)}</span>
-        </button>
+        {/* The flag is drawn only where a figure may be typed in a currency of its own. A transfer's may not —
+            `currencyChoosable` says why — and a control the save ignores is worse than no control: this one
+            drew "Charged in IDR = 1600000" over a transfer that moved Rp 100. The code beside the figure still
+            says what it is being read in. */}
+        {choosable && (
+          <button
+            type="button"
+            onClick={() => {
+              // One thing open at a time: the dock is over the page, and the sheet has to be over the dock.
+              setKeypad(null);
+              setPicking(true);
+            }}
+            aria-label="Currency"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+          >
+            <span aria-hidden>{currencyFlag(currency)}</span>
+          </button>
+        )}
         <MoneyField
           field={fields.amount}
           phone={phone}

@@ -78,18 +78,4 @@ export const isActive = (a: AccountRow) => a.archivedAt === null;
 export const isMoneyAccount = (a: AccountRow) => (a.kind === 'asset' || a.kind === 'liability') && isActive(a);
 export const isCategoryOf = (kind: 'expense' | 'income') => (a: AccountRow) => a.kind === kind && isActive(a);
 
-/**
- * The categories a picker may offer: of the kind asked for, still open, and filed in the **open book**.
- *
- * Every category picker goes through here, so the scoping is one rule rather than one rule per screen. Two
- * workspaces can hold copies of the same category — same name, same path, different id — so a list that skips
- * `inOpenBook` shows two buttons nothing on screen tells apart, and picking the other workspace's copy files
- * this spending outside the workspace it belongs to. `replaceTransaction` refuses that write, but a refusal
- * the user meets *after* choosing is a list that should never have offered the choice.
- *
- * Money accounts are deliberately not narrowed: one bank account pays for every book.
- */
-export const categoryChoices = (accounts: readonly AccountRow[], kind: 'expense' | 'income', inOpenBook: (a: AccountRow) => boolean): AccountRow[] =>
-  accounts.filter((a) => isCategoryOf(kind)(a) && inOpenBook(a));
-
 export { SUBTYPE_LABELS } from './account-types';

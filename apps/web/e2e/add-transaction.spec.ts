@@ -189,6 +189,70 @@ test('a transfer moves money between two accounts and is filed in no workspace',
   await expect(page.getByRole('listitem').filter({ hasText: 'Jenius' }).first()).toContainText('500.000');
 });
 
+/**
+ * The sixth broken combination, walked end to end: **Transfer + the currency flag**.
+ *
+ * Before the fix: Transfer → From = BCA Tahapan (IDR) → tap the flag → USD → type 100. The card drew
+ * "Charged in IDR" = 1600000 with "≈ 16.000 per 1 USD" under it, Save raised no error, and **Rp 100** moved.
+ * Three rows drawn and one honoured, with nothing on screen to say so.
+ *
+ * Nothing saw it because `addTransfer` never touched the flag and no transfer draft in `tx-form.test.ts` ever
+ * set `currency`. This walks the exact path that lost the money, and asserts the figure the row shows is the
+ * figure the ledger moves.
+ */
+test('a transfer offers no currency of its own, and moves the figure its row shows', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await addAccount(page, 'BCA Tahapan', 'bank', async () => {
+    await page.getByLabel('Current balance').fill('20000000');
+  });
+  await addAccount(page, 'Jago', 'bank', async () => {
+    await page.getByLabel('Current balance').fill('0');
+  });
+  // A USD account opened with a balance stores today's USD→IDR rate, which is what used to fill the row in.
+  await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+
+  // The flag is offered on Expense, and choosing USD there really does draw the second row. The assertion
+  // below turns on the tab rather than on the card having lost a control it never had.
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await form.getByRole('button', { name: 'Currency' }).click();
+  await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
+  await form.getByLabel('Amount', { exact: true }).fill('100');
+  await expect(form.getByLabel('Charged in IDR')).toHaveValue('1600000');
+  await expect(form.getByText(/per 1 USD/)).toBeVisible();
+
+  // Now Transfer, with USD still on the flag. No flag, no charged row, no rate hint — and the figure already
+  // typed is read in the From account's own currency, which is the only one a transfer has.
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await expect(form.getByRole('button', { name: 'Currency' })).toHaveCount(0);
+  await expect(form.getByLabel(/^Charged in/)).toHaveCount(0);
+  await expect(form.getByText(/per 1 USD/)).toHaveCount(0);
+
+  // Typed here, on this tab, with the row saying IDR beside it: exactly the keystrokes that moved Rp 100 while
+  // the card said Rp 1.600.000. No second figure appears now, whatever is typed.
+  await form.getByLabel('Amount', { exact: true }).fill('100');
+  await form.getByLabel('To', { exact: true }).selectOption({ label: 'Jago (IDR)' });
+  await expect(form.getByLabel(/^Charged in/)).toHaveCount(0);
+  await expect(form.getByText(/Charged in/)).toHaveCount(0);
+  await form.getByLabel('Note').fill('To Jago');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  // Rp 100 was typed and Rp 100 moved. The card used to say Rp 1.600.000 on the row that posts.
+  const moved = page.getByTestId('transaction-row').filter({ hasText: 'To Jago' });
+  await expect(moved).toContainText('Rp 100');
+  await expect(moved).not.toContainText('1.600.000');
+  await page.goto('/accounts');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.999.900');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Jago' }).first()).toContainText('100');
+});
+
 test('a transfer into a USD account asks for the received amount, and will not save without it', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {

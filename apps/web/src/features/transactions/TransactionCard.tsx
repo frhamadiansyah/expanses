@@ -1,7 +1,6 @@
-import { isoDate, parseRate, type PaymentOption } from '@expanses/core';
+import { isoDate, type PaymentOption } from '@expanses/core';
 import {
   type AccountRow,
-  allPhotoRows,
   type CardRow,
   postTransaction,
   recordTaggedTransfer,
@@ -10,16 +9,13 @@ import {
   saveMerchantMcc,
   splitBill,
   type TransactionView,
-  upsertRate,
 } from '@expanses/db';
-import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { checkManualRate } from '../../lib/rates';
 import { Button, Card, ErrorBox, InputRow, RowGroup, Select, SelectRow } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
@@ -34,8 +30,10 @@ import { CategoryPicker } from './CategoryPicker';
 import { FormRow, FormRows } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
+import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
-import { emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, type FormPost, formToPost } from './tx-form';
+import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost } from './tx-form';
+import { ratesForSave } from './tx-save';
 
 /**
  * The accounts a money field may name — the old form's own list, unchanged, for the rows Tasks 11 and 12 turn
@@ -68,20 +66,6 @@ export function stepDay(iso: string, days: number): string {
 }
 
 /**
- * Which currencies a save has to be able to convert before it can be posted.
- *
- * Exported for the edit sheet, which posts through `replaceTransaction` exactly as this card does: asking a
- * second time, in a second place, is how one way in comes to demand a rate the other does not.
- */
-export function currenciesOf(post: FormPost, accounts: readonly AccountRow[]): string[] {
-  const currencyOf = (id: string) => accounts.find((a) => a.id === id)?.currency ?? '';
-  if (post.kind === 'post') return [...new Set(post.input.lines.map((line) => line.currency))];
-  if (post.kind === 'split') return [currencyOf(post.input.moneyAccountId)];
-  if (post.kind === 'transfer-goal') return [currencyOf(post.input.fromAccountId), currencyOf(post.input.toAccountId)];
-  return [];
-}
-
-/**
  * Add Transaction, as one card.
  *
  * It replaces the old `TransactionForm` wholesale, so it has to carry everything that form carried: it is the
@@ -94,30 +78,14 @@ export function currenciesOf(post: FormPost, accounts: readonly AccountRow[]): s
  */
 export function TransactionCard(props: { initial?: TransactionView; mode?: FormMode; onDone: () => void; full?: boolean }) {
   const accounts = useAccounts();
-  const { database, ws } = useApp();
-  /*
-   * The pictures this transaction already has, so reopening one that has a receipt does not say "Photos: None".
-   * `allPhotoRows` is the reader `PhotosSheet` already uses, under the key it already uses, so the sheet that
-   * opens next finds it in the cache rather than asking a second time — and there is no second repository
-   * function asking the same question a narrower way.
-   */
-  const photos = useQuery({
-    queryKey: ['all-photo-rows', ws.workspaceId],
-    queryFn: () => allPhotoRows(database, ws),
-    // Only a correction has pictures to find. **Adding** a transaction must not wait on this query for the card
-    // to be drawn at all: the figure is the first thing a thumb reaches for, and a card that arrives a query
-    // later is a card whose first tap lands on nothing.
-    enabled: !!props.initial,
-  });
+  // The pictures this transaction already has, so reopening one that has a receipt does not say "Photos: None".
+  // The very same reader the phone's edit sheet uses, and `ready` is its own answer about when it may be read.
+  const photos = useTransactionPhotoIds(props.initial?.id ?? null);
   // The draft is built from the accounts once, so it must not be built before they are here: `formFromTransaction`
   // reads each account's currency, and a draft seeded from an empty list opens a foreign purchase with no currency.
   // The same holds for the photo rows: a draft seeded before they arrive opens an edit with none of them.
-  // `isFetchedAfterMount`, not `isSuccess`: the sheet fills this same cache entry while a form is open, so a
-  // correction opened afterwards would otherwise be seeded from rows read **before** the pictures were re-keyed
-  // onto their transaction — and find none of them.
-  if (!accounts.isSuccess || (props.initial && !photos.isFetchedAfterMount)) return <Card>Loading…</Card>;
-  const mine = props.initial ? (photos.data ?? []).filter((row) => row.transactionId === props.initial!.id).map((row) => row.id) : [];
-  return <CardBody {...props} accounts={accounts.data} photoIds={mine} />;
+  if (!accounts.isSuccess || !photos.ready) return <Card>Loading…</Card>;
+  return <CardBody {...props} accounts={accounts.data} photoIds={photos.ids} />;
 }
 
 function CardBody({
@@ -189,26 +157,20 @@ function CardBody({
     setBusy(true);
     try {
       const post = formToPost(draft, accounts);
-      if (needsRate && draft.manualRate.trim()) {
-        const rate = parseRate(draft.manualRate);
-        await checkManualRate(database, needsRate, ws.baseCurrency, rateDate, rate);
-        await upsertRate(database, { fromCurrency: needsRate, toCurrency: ws.baseCurrency, onDate: rateDate, rate, source: 'manual', sourceDate: rateDate });
-      }
       if (post.kind === 'trade') {
         // Units are recorded, so this saves as a purchase and never touches spending.
         await recordTrade(database, ws, post.input);
       } else {
-        const foreign = currenciesOf(post, accounts).filter((code) => code && code !== ws.baseCurrency);
-        const resolved = await resolveRates([...new Set(foreign)], draft.occurredOn);
-        if (resolved.missing.length > 0) {
-          setNeedsRate(resolved.missing[0]!);
-          // The rate field lives under Add more details and only there (§3.3), so the message says where to go.
-          throw new Error(`No ${resolved.missing[0]}→${ws.baseCurrency} rate for ${rateDate}. Add it under “Add more details”.`);
-        }
-        if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase: resolved.rates });
-        else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase: resolved.rates });
-        else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase: resolved.rates });
-        else await postTransaction(database, ws, { ...post.input, ratesToBase: resolved.rates });
+        // The manual rate, the rates the posting needs and the message asking for a missing one, all in the
+        // one place both ways into a save go through. The rate field lives under Add more details and only
+        // there (§3.3), so that is the name this screen gives it.
+        const ratesToBase = await ratesForSave({
+          database, ws, draft, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
+        });
+        if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase });
+        else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase });
+        else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase });
+        else await postTransaction(database, ws, { ...post.input, ratesToBase });
         const memory = formToMemory(draft, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
@@ -243,7 +205,14 @@ function CardBody({
             aria-checked={draft.mode === value}
             variant={draft.mode === value ? 'primary' : 'secondary'}
             onClick={() => {
-              if (value !== 'trade') return set({ mode: value, categoryId: '', splits: [] });
+              if (value !== 'trade') {
+                // A tab that offers no flag must not carry one. The currency and the "Charged in …" row belong
+                // to the tab they were chosen on: leaving USD on the draft while moving to Transfer left the
+                // save reading a figure in a currency the screen no longer showed. `currencyChoosable` is the
+                // one question about that, asked here too rather than restated.
+                const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
+                return set({ mode: value, categoryId: '', splits: [], ...flag });
+              }
               const first = choices.buys[0]!;
               set({
                 mode: 'trade',

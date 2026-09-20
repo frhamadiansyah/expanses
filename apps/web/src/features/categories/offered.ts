@@ -4,8 +4,19 @@ import type { AccountRow } from '@expanses/db';
  * The categories a picker may offer: of this kind, still open, not part of a category set, and whatever else
  * the caller keeps — the open book alone for a form that records something, owner-wide for a card's rules.
  *
- * One filter, read by every picker. `CategoryOptions` and `CategoryPicker` each carried their own copy of it
- * and their own copy of the grouping below, which is how one bug came to live in two places.
+ * **One filter, read by every picker**, and there is no second. `CategoryOptions` and `CategoryPicker` each
+ * carried their own copy of it and their own copy of the grouping below, which is how one bug came to live in
+ * two places; `lib/queries.ts` then grew a third under the name `categoryChoices`, whose own docstring also
+ * claimed every picker went through it, and the two had already drifted — it had no set-membership test, so
+ * the desktop's in-place row editor offered categories belonging to an event that `CategoryPicker` hid, against
+ * §6's "Set categories stay out … they belong to an event".
+ *
+ * `keep` is where a caller says which book it means. Two workspaces can hold copies of the same category —
+ * same name, same path, different id — so a list that does not narrow by the open book shows two buttons
+ * nothing on screen tells apart, and picking the other workspace's copy files this spending outside the
+ * workspace it belongs to. `replaceTransaction` refuses that write; a refusal met *after* choosing is a list
+ * that should never have offered the choice. Money accounts are deliberately never narrowed this way: one
+ * bank account pays for every book.
  */
 export function offeredCategories(
   accounts: readonly AccountRow[],

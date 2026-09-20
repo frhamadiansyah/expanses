@@ -18,11 +18,11 @@ import { ConvertForm } from './ConvertForm';
 import { FormRow, FormRows } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
-import { useChangeable } from './queries';
+import { useChangeable, useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
-import { currenciesOf } from './TransactionCard';
 import { TwoTapDelete } from './TwoTapDelete';
 import { type FormDraft, formFromTransaction, formToPost } from './tx-form';
+import { ratesForSave } from './tx-save';
 
 /**
  * Correcting a transaction on a phone: one sheet, the five things usually wrong, and the rarer actions behind ⋯.
@@ -44,19 +44,27 @@ import { type FormDraft, formFromTransaction, formToPost } from './tx-form';
  */
 export function EditSheet({ tx, onClose }: { tx: TransactionView; onClose: () => void }) {
   const accounts = useAccounts();
+  /*
+   * The pictures this transaction already has — `useTransactionPhotoIds`, the very same reader the card uses,
+   * rather than nothing at all. Without them the Photos row of a transaction that has one says **None**, which
+   * is what data loss looks like from the outside even though `movePhotosTx` carries the picture through the
+   * save. This sheet is the phone's primary way to correct a transaction; it cannot be the one that says there
+   * is nothing there.
+   */
+  const photos = useTransactionPhotoIds(tx.id);
   // The draft is read off the accounts, so it must not be built before they are here — the same bargain
   // `TransactionCard` makes, and for the same reason: a draft seeded from an empty list has no currency.
-  if (!accounts.isSuccess) {
+  if (!accounts.isSuccess || !photos.ready) {
     return (
       <Sheet title="Edit" onClose={onClose}>
         <p className="text-sm text-slate-500">Loading…</p>
       </Sheet>
     );
   }
-  return <SheetBody tx={tx} onClose={onClose} accounts={accounts.data} />;
+  return <SheetBody tx={tx} onClose={onClose} accounts={accounts.data} photoIds={photos.ids} />;
 }
 
-function SheetBody({ tx, onClose, accounts }: { tx: TransactionView; onClose: () => void; accounts: AccountRow[] }) {
+function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; onClose: () => void; accounts: AccountRow[]; photoIds: string[] }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
@@ -66,7 +74,9 @@ function SheetBody({ tx, onClose, accounts }: { tx: TransactionView; onClose: ()
   const holdings = (useAssetValues().data ?? []).filter((row) => row.mode === 'market');
   const { changeable } = useChangeable(tx);
 
-  const [draft, setDraft] = useState<FormDraft>(() => formFromTransaction(tx, accounts, ws.bookId ?? ''));
+  // The fourth argument is the receipt. `tx-form.ts`'s own docstring describes what leaving it off does, and
+  // this screen was doing it: Photos read "None" on every correction made from a phone.
+  const [draft, setDraft] = useState<FormDraft>(() => formFromTransaction(tx, accounts, ws.bookId ?? '', photoIds));
   const [sheet, setSheet] = useState<null | 'money' | 'category' | 'details' | 'more-actions' | 'convert'>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -93,15 +103,15 @@ function SheetBody({ tx, onClose, accounts }: { tx: TransactionView; onClose: ()
       // plain posting. Said in words rather than assumed: a draft that slipped past that gate must not be
       // silently dropped on the floor by a branch that does nothing.
       if (post.kind !== 'post') throw new Error('Open this in the full form to change it.');
-      const foreign = currenciesOf(post, accounts).filter((code) => code && code !== ws.baseCurrency);
-      const resolved = await resolveRates([...new Set(foreign)], draft.occurredOn);
-      if (resolved.missing.length > 0) {
-        setNeedsRate(resolved.missing[0]!);
-        throw new Error(`No ${resolved.missing[0]}→${ws.baseCurrency} rate for ${rateDate}. Add it under “More”.`);
-      }
+      // The card's own currency work, not a copy of it with a piece left out. The copy had no reader for
+      // `draft.manualRate`, so the rate row under More took a rate and threw it away and Save asked for it
+      // again, for ever. §4 calls this screen's row "More", which is the only thing that differs.
+      const ratesToBase = await ratesForSave({
+        database, ws, draft, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'More',
+      });
       // The original stays under Show deleted: `replaceTransaction` voids it and posts a new id, as every
       // other edit on this app does.
-      await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase: resolved.rates });
+      await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase });
       await invalidate();
       onClose();
     } catch (e) {

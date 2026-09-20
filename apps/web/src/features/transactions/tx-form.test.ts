@@ -9,6 +9,7 @@ import {
   canEditInSheet,
   chargedHint,
   chargedInNeeded,
+  currencyChoosable,
   emptyForm,
   estimatedCharge,
   extraRowRefusal,
@@ -19,10 +20,13 @@ import {
   KEYPAD_KEYS,
   keypadAction,
   keypadPress,
+  postingCurrency,
   prefilledCharge,
   recentCurrencies,
   SPLIT_WITH_REFUSAL,
+  splitTotalMinor,
   suggestedRate,
+  typedCurrency,
   withShares,
 } from './tx-form';
 
@@ -52,6 +56,11 @@ const draft: FormDraft = {
 const foreign: FormDraft = { ...draft, currency: 'CNY', amount: '120', chargedAmount: '272400' };
 /** A transfer with no From chosen yet, for the error message. */
 const transfer: FormDraft = { ...emptyForm('ws-1'), mode: 'transfer', toId: 'acct-card', amount: '500000' };
+/** The same accounts plus the system account `exchangeLines` books a cross-currency difference against. */
+const withExchange = [
+  ...accounts,
+  { id: 'acct-fx', name: 'Currency exchange', kind: 'equity', subtype: 'equity', currency: null, systemKey: 'currency_exchange' },
+] as AccountRow[];
 
 /** Four views built the way `dinner()` is in receipt-view.test.ts: only the facts each assertion turns on. */
 const view = (over: Partial<TransactionView>): TransactionView =>
@@ -892,10 +901,180 @@ describe('what a shared bill and a tagged transfer carry', () => {
 });
 
 describe('a transaction reopened for correction', () => {
+  /*
+   * The only hardcoded country currency left in the transaction kit, and it was wrong as well as parochial.
+   * `formFromTransaction` wrote the figure with `minorToMajorString(amountMinor, settled || 'IDR')`, and its
+   * own `?? ''` admitted the paying account can be absent from `accounts` — on a USD-base workspace the figure
+   * was then written at IDR's exponent 0 and read back by the field at USD's exponent 2. US$85,00 is 8500
+   * minor; at IDR's exponent that is the string "8500", which this app's own formatting reads as eight
+   * thousand five hundred dollars. The entry knows what it posted in, so the entry is asked.
+   */
+  it('reads a figure at the exponent its own line posted in, never at a country\u2019s', () => {
+    const abroad = view({
+      entries: [
+        { accountId: 'acct-elsewhere', accountKind: 'asset', accountName: 'A card nobody listed', amountMinor: -8_500, amountBaseMinor: -8_500, currency: 'USD' },
+        spent('cat-restaurants', 8_500, 'USD'),
+      ] as TransactionView['entries'],
+    });
+    // `acct-elsewhere` is deliberately not in `accounts`, which is the case the fallback exists for.
+    expect(accounts.some((a) => a.id === 'acct-elsewhere')).toBe(false);
+    expect(formFromTransaction(abroad, accounts, 'ws-1')).toMatchObject({ currency: 'USD', amount: '85.00' });
+    // And with the account present it is the account's own currency, exactly as before.
+    const known = view({ entries: [paid(-8_500, 'IDR'), spent('cat-restaurants', 8_500)] as TransactionView['entries'] });
+    expect(formFromTransaction(known, accounts, 'ws-1')).toMatchObject({ currency: 'IDR', amount: '8500' });
+  });
+
   it('opens with the pictures it already has, so the Photos row does not say None', () => {
     const dinner = view({ entries: [paid(-120_000), spent('cat-restaurants', 120_000)] as TransactionView['entries'] });
     expect(formFromTransaction(dinner, accounts, 'ws-1', ['photo-1', 'photo-2']).photoIds).toEqual(['photo-1', 'photo-2']);
     // A transaction with no pictures opens with none, and a caller that knows of none says so by saying nothing.
     expect(formFromTransaction(dinner, accounts, 'ws-1').photoIds).toEqual([]);
+  });
+});
+
+/**
+ * The sixth broken combination: **Transfer + the currency flag**.
+ *
+ * Proven in the built app before it was fixed. Transfer → From = BCA Tahapan (IDR) → tap the flag → USD →
+ * type `100`. The card drew "Charged in IDR = 1600000" and "≈ 16.000 per 1 USD"; Save raised no error; Jago
+ * received **Rp 100**. The transfer branch read the typed figure in the account's own currency, as it always
+ * had, and `draft.currency` and `draft.chargedAmount` were read nowhere on that path.
+ *
+ * Nothing saw it because no transfer draft in this file ever set `currency`. Every draft below does.
+ *
+ * The property that matters is not "which branch runs" but **what the screen shows is what the save posts**:
+ * the figure drawn in the row, read in the currency the row says it is in, is the figure that moves.
+ */
+describe('a transfer, and the currency flag that used to be drawn over it', () => {
+
+  /** From BCA Tahapan, with the flag left on USD by a visit to the Expense tab. */
+  const flagged: FormDraft = { ...transfer, moneyId: 'acct-bank', currency: 'USD', amount: '100' };
+
+  it('offers no currency of its own, so no row is drawn that the save cannot honour', () => {
+    expect(currencyChoosable(flagged)).toBe(false);
+    // The flag's own reading, and the charged row's: both are the From account's currency, so there is no
+    // second figure and no rate hint. `chargedInNeeded` had no mode test at all.
+    expect(typedCurrency(flagged, accounts)).toBe('IDR');
+    expect(chargedInNeeded(flagged, accounts)).toBe(false);
+    expect(amountFields(flagged, accounts, 'IDR').charged).toBeNull();
+    expect(amountFields(flagged, accounts, 'IDR').amount.currency).toBe('IDR');
+    // Off a USD account the answer is USD, not the workspace's: it is the account's currency, never a fixed one.
+    expect(typedCurrency({ ...flagged, moneyId: 'acct-usd', currency: 'IDR' }, accounts)).toBe('USD');
+    // And every other mode still chooses freely — this removes a row from Transfer, not from the app.
+    expect(currencyChoosable(foreign)).toBe(true);
+    expect(chargedInNeeded(foreign, accounts)).toBe(true);
+    expect(amountFields(foreign, accounts, 'IDR').charged).toMatchObject({ currency: 'IDR', value: '272400' });
+  });
+
+  it('posts the figure the row shows, read in the currency the row shows it in', () => {
+    // The whole defect in one assertion: `1600000` was on screen under "Charged in IDR" and `100` was what
+    // moved. Read the row the screen drew, parse it at the scale the screen labelled it with, and it has to be
+    // the figure in the posting lines — for the plain transfer and for the goal-tagged one alike.
+    for (const goalId of ['', 'goal-1']) {
+      const shown = amountFields({ ...flagged, goalId }, accounts, 'IDR');
+      const post = formToPost({ ...flagged, goalId, chargedAmount: '1600000' }, accounts);
+      const posted =
+        post.kind === 'transfer-goal'
+          ? post.input.amountMinor
+          : post.kind === 'post'
+            ? -post.input.lines.find((line) => line.amountMinor < 0)!.amountMinor
+            : NaN;
+      expect(posted).toBe(parseMajor(shown.amount.value, shown.amount.currency));
+      expect(posted).toBe(100);
+    }
+  });
+
+  it('records no original pair on a transfer, because there is no merchant to have charged one', () => {
+    const post = formToPost({ ...flagged, chargedAmount: '1600000' }, accounts);
+    expect(post).toMatchObject({ kind: 'post', input: { originalCurrency: null, originalAmountMinor: null } });
+    // Both legs in the From account's currency, and the charged row is read by nobody.
+    expect(post.kind === 'post' && post.input.lines.every((line) => line.currency === 'IDR')).toBe(true);
+  });
+
+  it('still crosses currencies the way §3.5 says it does — through the To account and Received amount', () => {
+    // Removing the flag takes nothing away: a cross-currency transfer is still expressible, and still exact.
+    const crossing: FormDraft = { ...transfer, moneyId: 'acct-bank', toId: 'acct-usd', amount: '1600000', toAmount: '100.03', currency: 'USD' };
+    const post = formToPost(crossing, withExchange);
+    expect(post.kind).toBe('post');
+    expect(post.kind === 'post' && post.input.lines.find((line) => line.accountId === 'acct-bank')?.amountMinor).toBe(-1_600_000);
+    expect(post.kind === 'post' && post.input.lines.find((line) => line.accountId === 'acct-usd')?.amountMinor).toBe(10_003);
+  });
+});
+
+/**
+ * The figure a sheet totals is the figure Save takes.
+ *
+ * Every screen that reads money accepts arithmetic — the amount row evaluates on blur and on Enter, the keypad
+ * computes it, the Split sheet added the rows up and printed "Total Rp 95.000", the With sheet divided by it.
+ * `positive()` did not: it went straight to `parseMajor`, which cannot read `50000+10000`, so Save refused the
+ * very figure the screen had just shown with `Invalid amount: "50000+10000"`. One reader now, for both.
+ */
+describe('arithmetic typed into a figure the save reads', () => {
+  it('saves a split whose rows were typed as sums, at the total the sheet printed', () => {
+    const split: FormDraft = { ...draft, amount: '', splits: [{ categoryId: 'cat-restaurants', amount: '50000+10000' }, { categoryId: 'cat-restaurants', amount: '35000' }] };
+    // What the sheet said: the running total, through `evaluateAmount`.
+    expect(splitTotalMinor(split.splits, 'IDR')).toBe(95_000);
+    // What Save does with it. These were two different arithmetics; the second one threw.
+    const post = formToPost(split, accounts);
+    expect(post).toMatchObject({ kind: 'post' });
+    expect(post.kind === 'post' && post.input.lines.find((line) => line.accountId === 'acct-bank')?.amountMinor).toBe(-95_000);
+  });
+
+  it('saves what each person owes when it was typed as a sum, at the share the card showed', () => {
+    const shared: FormDraft = { ...draft, amount: '400000', with: [{ debtAccountId: '', name: 'Andi', amount: '100000+50000' }] };
+    // The card: "1 person · They owe you Rp 150.000".
+    expect(withShares(shared, 'IDR', 400_000, { lenient: true })).toMatchObject({ each: [150_000], ownShareMinor: 250_000 });
+    // And Save, which used to throw `Invalid amount: "100000+50000"` on the very same rows.
+    expect(formToPost(shared, accounts)).toMatchObject({
+      kind: 'split',
+      input: { totalMinor: 400_000, ownShareMinor: 250_000, shares: [{ person: { name: 'Andi', currency: 'IDR' }, amountMinor: 150_000 }] },
+    });
+  });
+
+  it('saves an amount left as an expression by a dock closed without DONE', () => {
+    // The dock can be shut from the backdrop, from Escape, or by tapping the Amount row again, and none of
+    // those evaluates on the way out — where the desktop field's blur would have. Save reads it either way now.
+    expect(formToPost({ ...draft, amount: '250000+150000' }, accounts)).toMatchObject({
+      kind: 'post',
+      input: { lines: [{ accountId: 'cat-restaurants', amountMinor: 400_000, currency: 'IDR' }, { accountId: 'acct-bank', amountMinor: -400_000, currency: 'IDR' }] },
+    });
+    // A transfer's Received amount is read by the same function, so it accepts the same arithmetic.
+    expect(formToPost({ ...transfer, moneyId: 'acct-bank', toId: 'acct-usd', amount: '1600000', toAmount: '100+0.03' }, withExchange)).toMatchObject({
+      kind: 'post',
+      input: { lines: expect.arrayContaining([{ accountId: 'acct-usd', amountMinor: 10_003, currency: 'USD' }]) },
+    });
+  });
+
+  it('still refuses what cannot be read, in the words that say why', () => {
+    // No message is lost by evaluating first: `parseMajor` is still asked for the words when it has them.
+    expect(() => formToPost({ ...draft, amount: '' }, accounts)).toThrow('Invalid amount: ""');
+    expect(() => formToPost({ ...draft, amount: '0' }, accounts)).toThrow('Amount must be greater than zero');
+    expect(() => formToPost({ ...draft, amount: '-5000' }, accounts)).toThrow('Amount must be greater than zero');
+    // A decimal figure on a zero-exponent account still says which currency refused it and why.
+    expect(() => formToPost({ ...foreign, chargedAmount: '272400.50' }, accounts)).toThrow('IDR allows 0 decimal places');
+  });
+});
+
+/**
+ * The currency a figure posts in, asked once — `MoreDetails` used to work it out again for itself.
+ *
+ * Every base currency below is deliberately **not** the expected answer wherever an account is chosen: a
+ * workspace whose base is the account's own currency cannot tell "the account's" from "the workspace's", and
+ * an example that cannot tell the two apart is an example that would pass either way.
+ */
+describe('which currency the extras read a figure in', () => {
+  it('is the paying account’s own, whatever the flag says', () => {
+    // An IDR account in a USD-base workspace: the split rows and the shares are read in IDR, what posts.
+    expect(postingCurrency(draft, accounts, 'USD')).toBe('IDR');
+    // And with the flag on CNY it is still IDR — the charged row is the one that posts, not the typed one.
+    expect(postingCurrency(foreign, accounts, 'USD')).toBe('IDR');
+    // The other way round, so the answer turns on the account rather than on IDR being the answer.
+    expect(postingCurrency({ ...draft, moneyId: 'acct-usd', currency: '' }, accounts, 'IDR')).toBe('USD');
+  });
+
+  it('is the workspace’s own until an account is chosen, so a total is never written bare', () => {
+    // No account yet: "Total US$0,00" rather than "Total 0". Save still refuses it with "Choose an account".
+    expect(postingCurrency(emptyForm('ws-1'), accounts, 'USD')).toBe('USD');
+    expect(postingCurrency(emptyForm('ws-1'), accounts, 'JPY')).toBe('JPY');
   });
 });

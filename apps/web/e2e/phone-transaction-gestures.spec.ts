@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { addTransaction } from './add-transaction';
+import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
 
 /** Today's form, from the phone's tab bar. Task 10 replaces this body with a call to `addTransaction`. */
 async function record(page: Page, description: string, category: string, amount: string) {
@@ -50,12 +50,29 @@ test('a row opens its receipt, swipes to Edit and Delete, and its icon fixes the
   await expect(steak.getByRole('button', { name: 'Delete' })).toHaveCount(0);
   await swipeLeft(page, steak);
   await expect(steak.getByRole('button', { name: 'Edit' })).toBeVisible();
-  await steak.getByRole('button', { name: 'Delete' }).click();
+  await steak.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(steak.getByRole('button', { name: 'Delete?' })).toBeVisible();
   // Asked twice, and one press writes nothing. Waited out rather than asserted at once: a delete that did
   // happen takes a moment to land, and looking straight away would pass whether or not it was on its way.
   await page.waitForTimeout(800);
   await expect(row(page, 'Warung Steak')).toHaveCount(1);
+
+  // §2's "still asks twice" holds across the gesture, not only within it. Armed, then walked away from: a tap
+  // on a row left open closes it and does nothing else, and the next swipe has to ask from the start. It did
+  // not — `armed` was kept in the row *around* the button, so it outlived the swipe that set it and the second
+  // swipe opened reading "Delete?". One tap then voided the transaction, with no second question anywhere.
+  await face(page, 'Warung Steak', 'Restaurants').click();
+  await expect(steak.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
+  // The row slides shut over 150ms; swiping into that animation drags a row that is still moving.
+  await page.waitForTimeout(400);
+  await swipeLeft(page, steak);
+  await expect(steak.getByRole('button', { name: 'Delete?' })).toHaveCount(0);
+  await expect(steak.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
+  // Still there, so the reopened row really did refuse to delete on that swipe's first tap.
+  await page.waitForTimeout(400);
+  await expect(row(page, 'Warung Steak')).toHaveCount(1);
+
+  await steak.getByRole('button', { name: 'Delete', exact: true }).click();
   await steak.getByRole('button', { name: 'Delete?' }).click();
   await expect(page.getByText('Warung Steak')).toHaveCount(0);
   // And the second press did write: the database says so once it is read back.
@@ -249,4 +266,112 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
   // US$100,00 at USD's own exponent, never "100": a pair reopened at the wrong exponent is a 100x error.
   await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('100.00');
   await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveText('1600000');
+});
+
+/**
+ * The phone's edit sheet drew the manual-rate row and threw the rate away — an unescapable dead end.
+ *
+ * `EditSheet.save()` was a line-for-line copy of `TransactionCard.submit()` with the rate block left out, and
+ * `draft.manualRate` had exactly one reader in the whole app. So: Save → "Add it under “More”" → open More,
+ * type the rate → Save → **the same error, for ever**. The only way out was ⋯ → Open in full form.
+ *
+ * Both ways in now go through one `ratesForSave`, so what the sheet asks for is what the sheet stores.
+ */
+test('the rate typed into the edit sheet is the rate the edit sheet saves', async ({ page }) => {
+  // No rate server: what this device has stored is all there is, which is what puts the row on screen at all.
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  const today = new Date().toISOString().slice(0, 10);
+  // A day with no CNY→IDR rate stored for it — `findRate` only ever looks at dates on or before the one asked
+  // for, and the account below stores its rate under today.
+  const earlier = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
+
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('Alipay');
+  await page.getByLabel('Type').selectOption('cash');
+  await page.getByLabel('Currency').selectOption('CNY');
+  // The rate is stored as the opening balance's own conversion, so there has to be a balance to convert.
+  await page.getByLabel('Current balance').fill('1000');
+  await page.getByLabel('Balance as of').fill(today);
+  await page.getByLabel('Rate: IDR per 1 CNY').fill('2270');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Alipay', exact: true })).toBeVisible();
+
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Luckin', paidWith: 'Alipay', category: 'Restaurants', amount: '120' });
+  await expect(row(page, 'Luckin')).toHaveCount(1);
+
+  // Correct it onto a day this device has no rate for — an ordinary correction, and the one that dead-ended.
+  const luckin = row(page, 'Luckin');
+  await luckin.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await swipeLeft(page, luckin);
+  await luckin.getByRole('button', { name: 'Edit', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Edit', exact: true });
+  await sheet.getByLabel('Date').fill(earlier);
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  // The refusal, and it says where to go — this screen's row is called More, the card's Add more details.
+  await expect(sheet.getByText(`No CNY→IDR rate for ${earlier}. Add it under “More”.`)).toBeVisible();
+
+  // Go where it says, type the rate, and save again.
+  await sheet.getByRole('button', { name: 'More', exact: true }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+  await more.getByLabel('Rate: IDR per 1 CNY').fill('2300');
+  await more.getByRole('button', { name: 'Close' }).click();
+  await sheet.getByRole('button', { name: 'Save' }).click();
+
+  // It saved. It used to answer with the very same sentence, however many times the rate was typed.
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByText(`No CNY→IDR rate for ${earlier}`)).toHaveCount(0);
+  const corrected = row(page, 'Luckin');
+  await expect(corrected).toHaveCount(1);
+  await expect(corrected).toContainText('CN¥120,00');
+  // And it is in the database, under the new date, not only on the screen.
+  await page.reload();
+  await expect(row(page, 'Luckin')).toHaveCount(1);
+});
+
+/**
+ * The phone's edit sheet said a transaction with a receipt had no photos.
+ *
+ * `formFromTransaction`'s fourth argument is the pictures the transaction already has; the sheet left it off,
+ * so `photoIds` defaulted to `[]` and the Photos row read **None** on every correction made from a phone.
+ * `movePhotosTx` re-keys the rows regardless, so the picture survived — but a row that states the opposite of
+ * the truth is what data loss looks like from the outside, and there was no way to see or remove it from here.
+ */
+test('the edit sheet shows the receipt the transaction already has', async ({ page }) => {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Current balance').fill('20000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  const keypad = page.getByTestId('keypad');
+  for (const key of '120000') await keypad.getByRole('button', { name: key, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Warung Steak');
+  const { more, sheet: photos } = await attachPhoto(page, form, { name: 'receipt.png', mimeType: 'image/png', buffer: Buffer.from('a receipt') });
+  await closeDetails(more, photos);
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  const steak = row(page, 'Warung Steak');
+  await steak.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await swipeLeft(page, steak);
+  await steak.getByRole('button', { name: 'Edit', exact: true }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit', exact: true });
+  await edit.getByRole('button', { name: 'More', exact: true }).click();
+  const details = page.getByRole('dialog', { name: 'More details' });
+
+  // "1 photo", not "None" — and the picture itself is behind the row, to be looked at or taken off.
+  await expect(details.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  await details.getByRole('button', { name: 'Photos' }).click();
+  await expect(page.getByRole('dialog', { name: 'Photos' }).getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
 });

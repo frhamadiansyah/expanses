@@ -8,8 +8,10 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { loadPurchasePoints } from '../../lib/purchase-points';
-import { categoryChoices, isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
+import { offeredCategories } from '../categories/offered';
+import { useCategorySetMembership } from '../categories/set-queries';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
 import { useDrafts } from '../review/queries';
@@ -134,6 +136,9 @@ export function TransactionsPage() {
   const accounts = useAccounts().data ?? [];
   // Category pickers and filters on this page read the open book; money accounts are every book's.
   const inOpenBook = useInOpenBook();
+  // And no picker on this page offers a set category: they belong to an event (§6). The row editor's cell used
+  // to, because it went through a second filter that had no membership test.
+  const membership = useCategorySetMembership().data ?? {};
   const cards = useCards().data ?? [];
   const drafts = useDrafts();
   const [filters, setFilters] = useState<Omit<ListFilters, 'month'>>(EMPTY_FILTERS);
@@ -255,7 +260,7 @@ export function TransactionsPage() {
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
 
-  const rowOptions = buildRowOptions(accounts, cards, inOpenBook);
+  const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
   const money = accounts.filter(isMoneyAccount);
   const cardsOf = (accountId: string) => cards.filter((card) => card.accountId === accountId);
   const paidOptions: ChipOption[] = [
@@ -272,7 +277,7 @@ export function TransactionsPage() {
   ];
   const categoryOptions: ChipOption[] = [
     { value: '', label: 'Any category' },
-    ...[...categoryChoices(accounts, 'expense', inOpenBook), ...categoryChoices(accounts, 'income', inOpenBook)]
+    ...[...offeredCategories(accounts, 'expense', membership, inOpenBook), ...offeredCategories(accounts, 'income', membership, inOpenBook)]
       .map((a) => ({ value: a.id, label: categoryPath(accounts, a.id), icon: <CategoryIcon categoryId={a.id} accounts={accounts} size="xs" />, indent: a.parentId !== null }))
       .sort((x, y) => x.label.localeCompare(y.label)),
   ];
@@ -614,6 +619,9 @@ export function TransactionsPage() {
         // at all — `TransactionRow` draws the swipe layer only on a phone — and is left exactly as it was.
         onEdit={clickable ? () => (phone && canEditInSheet(tx) ? setEditSheetTx(tx) : open(row)) : undefined}
         onDelete={clickable ? () => void run(tx.id, () => voidTransaction(database, ws, tx.id)) : undefined}
+        // So the swipe's Delete is the receipt's Delete in every respect: asked twice, and dead while the
+        // write it already asked for is going out.
+        busy={busy === tx.id}
         // Spec §9's parity row: clicking the icon re-files on a wide screen too, with the same Undo toast.
         onRecategorise={clickable && recategorise.offers(row) ? recategorise.start : undefined}
         // Under a category the group already shows the icon, so each row's circle carries its day instead.

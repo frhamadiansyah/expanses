@@ -11,6 +11,7 @@ import { CategoryPicker } from './CategoryPicker';
 import { isEditable } from './draft';
 import type { ListRow } from './list-model';
 import { isQuickEditable, quickFromTransaction, quickToInput, type QuickValues, readQuick } from './quick-row';
+import { TwoTapDelete } from './TwoTapDelete';
 
 /**
  * One transaction, in every list that shows transactions.
@@ -40,6 +41,7 @@ export function TransactionRow({
   onDelete,
   onRecategorise,
   phone,
+  busy,
   title,
   className,
 }: {
@@ -71,11 +73,11 @@ export function TransactionRow({
   /** Tapping the category circle. Absent on a row that may not be re-filed, which leaves a plain circle. */
   onRecategorise?: (row: ListRow) => void;
   phone?: boolean;
+  /** True while this row's own write is going out, so the swipe's Delete cannot be pressed a second time. */
+  busy?: boolean;
   title?: string;
   className?: string;
 }) {
-  // Asked twice, as everywhere else in this app: the first press arms the button, the second deletes.
-  const [armed, setArmed] = useState(false);
   const transfer = row.type !== 'expense' && row.type !== 'income';
   const money = formatMinor(amountMinor ?? row.amountMinor, currency ?? row.currency);
   const sign = row.type === 'expense' ? -1 : row.type === 'income' ? 1 : 0;
@@ -172,19 +174,9 @@ export function TransactionRow({
                   Edit
                 </button>
               )}
-              {onDelete && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!armed) setArmed(true);
-                    else onDelete(row);
-                  }}
-                  title={`Delete ${row.description}`}
-                  className="w-[74px] bg-red-700 text-sm font-semibold text-white"
-                >
-                  {armed ? 'Delete?' : 'Delete'}
-                </button>
-              )}
+              {/* The app's one two-tap delete, in the swipe's shape. It used to be a copy of it, with the
+                  arming kept out here where the gesture could not take it back. */}
+              {onDelete && <TwoTapDelete look="swipe" busy={busy} title={`Delete ${row.description}`} onConfirm={() => onDelete(row)} />}
             </>
           }
         >
