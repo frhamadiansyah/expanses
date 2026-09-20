@@ -1,17 +1,20 @@
-import { evaluateAmount, expenseLines, parseMajor } from '@expanses/core';
+import { evaluateAmount, expenseLines, incomeLines, parseMajor, splitExpenseLines } from '@expanses/core';
 import type { AccountRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import {
+  amountAfterDone,
   amountAfterEnter,
   canEditInSheet,
   chargedHint,
   chargedInNeeded,
   emptyForm,
+  estimatedCharge,
   extraRows,
   type FormDraft,
   formFromTransaction,
   formToPost,
   KEYPAD_KEYS,
+  keypadAction,
   keypadPress,
   recentCurrencies,
   suggestedRate,
@@ -149,10 +152,14 @@ describe('what the form adds up to', () => {
     ]);
   });
 
-  it('offers a goal instead of a split on a transfer, and no channel for money that never left', () => {
-    expect(extraRows({ ...transfer, moneyId: 'acct-bank' }, accounts, { missingRate: null })).toEqual(['event', 'goal', 'photos', 'exclude']);
-    // A goal can only be attached as the transfer is made; correcting one does not re-tag it.
-    expect(extraRows({ ...transfer, moneyId: 'acct-bank', editing: true }, accounts, { missingRate: null })).toEqual(['event', 'photos', 'exclude']);
+  it('keeps Add more details to §4 table: no event and no goal on money that never left', () => {
+    // §4: Event appears "always, on Expense and Income"; Photos and Exclude appear always. There is no goal
+    // row at all — §3.5 puts For goal on the transfer's own second card, and §3.6 on the trade's.
+    expect(extraRows({ ...transfer, moneyId: 'acct-bank' }, accounts, { missingRate: null })).toEqual(['photos', 'exclude']);
+    expect(extraRows({ ...transfer, moneyId: 'acct-bank' }, accounts, { missingRate: null })).not.toContain('goal');
+    expect(extraRows({ ...draft, mode: 'trade' }, accounts, { missingRate: null })).toEqual(['photos', 'exclude']);
+    // Income keeps the event and the channel, and never offers a split or the people to share with.
+    expect(extraRows({ ...draft, mode: 'income' }, accounts, { missingRate: null })).toEqual(['event', 'channel', 'photos', 'exclude']);
   });
 
   it('sends a split with several people to splitBill, not to postTransaction', () => {
@@ -172,6 +179,118 @@ describe('what the form adds up to', () => {
     });
     // The From/To check is the same one the untagged transfer makes — one message, both paths.
     expect(() => formToPost({ ...transfer, moneyId: 'acct-card', goalId: 'goal-1' }, accounts)).toThrow('From and To must differ');
+  });
+
+  it('keeps the exclusion, the event and the photos on a transfer tagged to a goal', () => {
+    // §4: Photos and Exclude from report appear "always". The untagged branch carried all three; tagging the
+    // transfer to a goal used to throw them away without a word.
+    const tagged = { ...transfer, moneyId: 'acct-bank', goalId: 'goal-1', excluded: true, eventId: 'ev-1', photoIds: ['p1'] };
+    expect(formToPost(tagged, accounts)).toMatchObject({
+      kind: 'transfer-goal',
+      input: { excludedFromReport: true, eventId: 'ev-1', photoIds: ['p1'] },
+    });
+    // And the untagged transfer, the branch this one is measured against, is unchanged.
+    expect(formToPost({ ...tagged, goalId: '' }, accounts)).toMatchObject({
+      kind: 'post',
+      input: { excludedFromReport: true, eventId: 'ev-1', photoIds: ['p1'] },
+    });
+  });
+
+  it('keeps the receipt on a bill once someone else is added to it', () => {
+    // Attach the photo, then add Andi: the photo used to vanish, because SplitBillInput had no room for it.
+    expect(formToPost({ ...draft, photoIds: ['p1', 'p2'], with: [{ debtAccountId: '', name: 'Andi', amount: '100000' }] }, accounts)).toMatchObject({
+      kind: 'split',
+      input: { photoIds: ['p1', 'p2'] },
+    });
+  });
+
+  it('keeps the original pair on a foreign income, not only on a foreign expense', () => {
+    // §3.3: the two columns are kept for "any expense or income" whose currency differs from the account's.
+    // The charged figure is what posts in IDR; the 120 CNY is what the payer sent.
+    expect(formToPost({ ...foreign, mode: 'income', categoryId: 'inc-salary' }, accounts)).toMatchObject({
+      kind: 'post',
+      input: { originalCurrency: 'CNY', originalAmountMinor: 12_000, lines: incomeLines({ incomeAccountId: 'inc-salary', depositAccountId: 'acct-bank', amountMinor: 272_400, currency: 'IDR' }) },
+    });
+    // An income in the account's own currency still clears both, exactly as an expense does.
+    expect(formToPost({ ...draft, mode: 'income', categoryId: 'inc-salary' }, accounts)).toMatchObject({
+      kind: 'post',
+      input: { originalCurrency: null, originalAmountMinor: null },
+    });
+    // A card's own facts stay a purchase's: income on a card carries no MCC and no card id.
+    expect(formToPost({ ...draft, mode: 'income', categoryId: 'inc-salary', moneyId: 'acct-card', mcc: '5814', cardId: 'card-1' }, accounts)).toMatchObject({
+      kind: 'post',
+      input: { mcc: null, cardId: null },
+    });
+  });
+});
+
+describe('a bill spread over several categories', () => {
+  it('posts a split typed from scratch, with no figure in the amount row', () => {
+    // A split has no top-level amount — the rows are the figure. Asking for one made every split unsaveable.
+    expect(
+      formToPost(
+        {
+          ...emptyForm('ws-1'),
+          moneyId: 'acct-bank',
+          currency: 'IDR',
+          splits: [
+            { categoryId: 'cat-restaurants', amount: '250000' },
+            { categoryId: 'cat-groceries', amount: '150000' },
+          ],
+        },
+        accounts,
+      ),
+    ).toMatchObject({
+      kind: 'post',
+      input: {
+        lines: splitExpenseLines({
+          paymentAccountId: 'acct-bank',
+          currency: 'IDR',
+          splits: [
+            { categoryAccountId: 'cat-restaurants', amountMinor: 250_000 },
+            { categoryAccountId: 'cat-groceries', amountMinor: 150_000 },
+          ],
+        }),
+      },
+    });
+  });
+
+  it('reopens a split and saves it again as the same posting', () => {
+    const form = formFromTransaction(splitPurchase, accounts);
+    expect(form).toMatchObject({ amount: '', splits: [{ categoryId: 'cat-restaurants', amount: '250000' }, { categoryId: 'cat-groceries', amount: '150000' }] });
+    expect(formToPost(form, accounts)).toMatchObject({
+      kind: 'post',
+      input: {
+        lines: splitExpenseLines({
+          paymentAccountId: 'acct-card',
+          currency: 'IDR',
+          splits: [
+            { categoryAccountId: 'cat-restaurants', amountMinor: 250_000 },
+            { categoryAccountId: 'cat-groceries', amountMinor: 150_000 },
+          ],
+        }),
+      },
+    });
+  });
+
+  it('will not let the amount row and the splits disagree in silence', () => {
+    const split = {
+      ...draft,
+      splits: [
+        { categoryId: 'cat-restaurants', amount: '250000' },
+        { categoryId: 'cat-groceries', amount: '150000' },
+      ],
+    };
+    // 120.000 in the amount row against 400.000 of splits: the old behaviour posted 400.000 and said nothing.
+    expect(() => formToPost(split, accounts)).toThrow('The splits must add up to the amount');
+    // A figure that does agree is no objection — a screen may keep the row in step with the rows below it.
+    expect(formToPost({ ...split, amount: '400000' }, accounts)).toMatchObject({ kind: 'post' });
+  });
+
+  it('still names the split row whose category is missing', () => {
+    expect(() =>
+      formToPost({ ...draft, amount: '', splits: [{ categoryId: 'cat-restaurants', amount: '250000' }, { categoryId: '', amount: '150000' }] }, accounts),
+    ).toThrow('Choose a category for split 2');
   });
 
   it('leaves you the remainder when the bill is split equally and will not divide', () => {
@@ -254,6 +373,28 @@ describe('the amount row on a desktop keyboard', () => {
     expect(amountAfterEnter('10.50×3', 'USD')).toEqual({ text: '31.50', submit: false });
   });
 
+  it('never strips a separator of its own, whichever one was typed', () => {
+    // The most natural "help the user who typed 1,000,000" patch is `value.replace(/,/g,'')` before the
+    // evaluator — and it turns ten dollars fifty into a thousand and fifty. `parseMajor` is the only thing in
+    // the app allowed an opinion about separators; a symmetric example could never have caught this.
+    expect(amountAfterEnter('10,50', 'USD')).toEqual({ text: '10.50', submit: false });
+    expect(amountAfterEnter('1,000,000', 'IDR')).toEqual({ text: '1000000', submit: false });
+  });
+
+  it('reads a count as a count and a divisor as a divisor, in a currency with three decimals', () => {
+    // KWD has exponent 3, so `parseMajor('3','KWD')` is 3000: a multiplier read as money here is a 1000x
+    // error, which the USD cases above (exponent 2) could only have shown as 100x.
+    expect(amountAfterEnter('0.500×3', 'KWD')).toEqual({ text: '1.500', submit: false });
+    // The divisor path, which nothing exercised at all: through `parseMajor` the 4 would be 400 and this
+    // would settle at '0.25'.
+    expect(amountAfterEnter('100.00÷4', 'USD')).toEqual({ text: '25.00', submit: false });
+  });
+
+  it('drops the decimals a zero-exponent currency does not have', () => {
+    // '1.00' in JPY is one yen. A row that stripped the dot and kept the digits would write back '100'.
+    expect(amountAfterEnter('1.00', 'JPY')).toEqual({ text: '1', submit: false });
+  });
+
   it('reads the same dot as thousands where the currency has no decimals', () => {
     // The other direction of the same bug: '120.000' in IDR is a hundred and twenty thousand, not 120. Which
     // of '.' and ',' is a decimal point depends on the figure and the currency, and `parseMajor` is the only
@@ -277,6 +418,55 @@ describe('the keypad', () => {
     // ⌫ on an empty row stays empty rather than going negative.
     expect(keypadPress('', '⌫')).toBe('');
   });
+
+  it('DONE writes the figure the rest of the app would read, in the currency it was typed in', () => {
+    // The only phone path for money. When DONE re-implemented this instead of calling it, `minor * 100` and
+    // `minorToMajorString(minor, 'IDR')` both survived the whole suite.
+    expect(amountAfterDone('85000+15000', 'IDR')).toEqual({ text: '100000', close: true });
+    expect(amountAfterDone('10.50', 'USD')).toEqual({ text: '10.50', close: true });
+    expect(amountAfterDone('10.50×3', 'USD')).toEqual({ text: '31.50', close: true });
+    // Not IDR by accident: the same text settles differently in a currency with decimals and one without.
+    expect(amountAfterDone('120.000', 'IDR')).toEqual({ text: '120000', close: true });
+    expect(amountAfterDone('120.000', 'KWD')).toEqual({ text: '120.000', close: true });
+  });
+
+  it('closes on a figure already in its final form, and stays open on one it cannot read', () => {
+    // `close` is not `amountAfterEnter`'s `submit`: '100000' has nothing left to work out, and DONE must still
+    // put the keypad away rather than sit there doing nothing.
+    expect(amountAfterDone('100000', 'IDR')).toEqual({ text: '100000', close: true });
+    expect(amountAfterDone('85000+', 'IDR')).toEqual({ text: '85000+', close: false });
+    expect(amountAfterDone('', 'IDR')).toEqual({ text: '', close: false });
+  });
+
+  it('routes every key, DONE included, through one decision the dock only has to obey', () => {
+    // `Keypad.tsx` holds no arithmetic: it calls this. A key that decided anything for itself would be a
+    // second money path, and the second money path is the one no test walks.
+    expect(keypadAction('85', 'IDR', '000')).toEqual({ text: '85000', close: false });
+    expect(keypadAction('85000', 'IDR', '−')).toEqual({ text: '85000−', close: false });
+    expect(keypadAction('85000', 'IDR', 'C')).toEqual({ text: '', close: false });
+    expect(keypadAction('85000+15000', 'IDR', 'DONE')).toEqual({ text: '100000', close: true });
+    expect(keypadAction('10.50×3', 'USD', 'DONE')).toEqual({ text: '31.50', close: true });
+    expect(keypadAction('85000+', 'IDR', 'DONE')).toEqual({ text: '85000+', close: false });
+  });
+});
+
+describe('what the charged row opens with', () => {
+  it('converts the typed figure at the day’s rate into the account’s own currency', () => {
+    // 120 CNY at 2.270 IDR per CNY. IDR has no decimals and CNY has two, so this is the exponent shift too.
+    expect(estimatedCharge({ amount: '120', currency: 'CNY', accountCurrency: 'IDR', rate: 2270 })).toBe('272400');
+    // The other direction, where the account has the decimals: 272.400 IDR at 1/2270 is ¥120,00.
+    expect(estimatedCharge({ amount: '272400', currency: 'IDR', accountCurrency: 'CNY', rate: 1 / 2270 })).toBe('120.00');
+    // An expression in the amount row is read the same way the row itself reads it.
+    expect(estimatedCharge({ amount: '100+20', currency: 'CNY', accountCurrency: 'IDR', rate: 2270 })).toBe('272400');
+  });
+
+  it('offers nothing rather than a guess', () => {
+    expect(estimatedCharge({ amount: '120', currency: 'CNY', accountCurrency: 'IDR', rate: null })).toBeNull();
+    expect(estimatedCharge({ amount: '', currency: 'CNY', accountCurrency: 'IDR', rate: 2270 })).toBeNull();
+    expect(estimatedCharge({ amount: '120+', currency: 'CNY', accountCurrency: 'IDR', rate: 2270 })).toBeNull();
+    // Same currency on both sides: there is no charged row to fill.
+    expect(estimatedCharge({ amount: '120', currency: 'IDR', accountCurrency: 'IDR', rate: 1 })).toBeNull();
+  });
 });
 
 describe('the rate the charged row suggests', () => {
@@ -299,6 +489,12 @@ describe('the quiet line under the charged row', () => {
   it('names the rate, the day it came from and the account that charged it', () => {
     expect(chargedHint({ rate: 2270, currency: 'CNY', accountCurrency: 'IDR', onDate: '2026-09-17', accountName: 'BCA Tahapan' })).toBe(
       '≈ 2.270 per 1 CNY · suggested from 2026-09-17, change it to what BCA Tahapan charged',
+    );
+  });
+
+  it('does not claim a stale rate came from the day it is shown against', () => {
+    expect(chargedHint({ rate: 2270, currency: 'CNY', accountCurrency: 'IDR', onDate: '2026-09-17', accountName: 'BCA Tahapan', stale: true })).toBe(
+      '≈ 2.270 per 1 CNY · the last CNY→IDR rate known, change it to what BCA Tahapan charged',
     );
   });
 

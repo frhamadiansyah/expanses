@@ -1,4 +1,5 @@
 import {
+  convertMinor,
   CURRENCIES,
   currencyInfo,
   equalShares,
@@ -115,31 +116,33 @@ export function chargedInNeeded(draft: FormDraft, accounts: readonly AccountRow[
   return draft.currency !== account.currency;
 }
 
-export type ExtraRow = 'event' | 'split' | 'with' | 'goal' | 'mcc' | 'channel' | 'photos' | 'exclude' | 'rate';
+export type ExtraRow = 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos' | 'exclude' | 'rate';
 
 /**
- * The rows under "Add more details", in the order they are drawn.
+ * The rows under "Add more details", in the order they are drawn — §4's table, and only what is in it.
  *
- * MCC is a card's fact, so it is offered only on a card. With is offered only while adding, because sharing a
- * bill posts through `splitBill`, which builds a differently shaped transaction than the one being corrected
- * (§15.6). A goal is the transfer's equivalent and is likewise add-only. The rate row is last and appears only
- * when `resolveRates` came back without one.
+ * Event belongs to money that left for the outside world, so §4 scopes it to Expense and Income, as it does
+ * Channel. MCC is a card's fact, so it is offered only on a card. With is offered only while adding, because
+ * sharing a bill posts through `splitBill`, which builds a differently shaped transaction than the one being
+ * corrected (§15.6). A goal is deliberately **not** here: §3.5 and §3.6 put For goal on the second card of a
+ * transfer and of a buy or sell, where it belongs to the mode rather than to the extras. The rate row is last
+ * and appears only when `resolveRates` came back without one.
  */
 export function extraRows(
   draft: FormDraft,
   accounts: readonly AccountRow[],
   { missingRate }: { missingRate: { from: string; to: string; onDate: string } | null },
 ): ExtraRow[] {
-  const rows: ExtraRow[] = ['event'];
+  const outward = draft.mode === 'expense' || draft.mode === 'income';
+  const rows: ExtraRow[] = outward ? ['event'] : [];
   if (draft.mode === 'expense') {
     rows.push('split');
     if (!draft.editing) rows.push('with');
     if (accountOf(draft, accounts)?.subtype === 'credit_card') rows.push('mcc');
   }
-  if (draft.mode === 'transfer' && !draft.editing) rows.push('goal');
   // Online or offline is how money left for the outside world; it says nothing about money moved between your
   // own accounts, and a trade is recorded as units rather than as a purchase.
-  if (draft.mode === 'expense' || draft.mode === 'income') rows.push('channel');
+  if (outward) rows.push('channel');
   rows.push('photos', 'exclude');
   if (missingRate) rows.push('rate');
   return rows;
@@ -152,19 +155,45 @@ function positive(value: string, currency: string, label: string): number {
 }
 
 /**
+ * A split by category, read once. The lines are built from these rows and the total is their sum, so the split
+ * is parsed in one place rather than once for the lines and once for the figure that posts.
+ */
+function splitRowsOf(draft: FormDraft, currency: string): { categoryAccountId: string; amountMinor: number }[] {
+  return draft.splits.map((row, i) => {
+    if (!row.categoryId) throw new Error(`Choose a category for split ${i + 1}`);
+    return { categoryAccountId: row.categoryId, amountMinor: positive(row.amount, currency, `Split ${i + 1} amount`) };
+  });
+}
+
+/** Whether this draft spends one figure across several categories, which is where the total comes from instead. */
+const splitByCategory = (draft: FormDraft) => draft.mode === 'expense' && draft.splits.length > 0;
+
+/**
  * The figure that posts, and the pair that records what was typed instead.
  *
  * The posting is always in the account's own currency: when the typed currency differs, the "Charged in …" row
  * is the posting and the typed figure becomes the original pair. That pair is no longer a card's privilege —
  * a bank account charged in CNY carries it too — but an amount typed in the account's own currency is not an
  * original currency and clears the pair, exactly as before.
+ *
+ * A split by category has no single typed figure: its rows are already in the account's own currency and the
+ * total is their sum, so the amount row is never required — that is what `draftToLines` did by reaching the
+ * split branch before it asked for an amount. A figure typed anyway must agree with the rows rather than be
+ * dropped in silence.
  */
 function amounts(
   draft: FormDraft,
   account: AccountRow,
   typed: string,
+  splitTotalMinor: number | null,
 ): { amountMinor: number; originalCurrency: string | null; originalAmountMinor: number | null } {
   const settled = account.currency!;
+  if (splitTotalMinor !== null) {
+    if (draft.amount.trim() && parseMajor(draft.amount, settled) !== splitTotalMinor) {
+      throw new Error('The splits must add up to the amount');
+    }
+    return { amountMinor: splitTotalMinor, originalCurrency: null, originalAmountMinor: null };
+  }
   if (!typed || typed === settled) {
     return { amountMinor: positive(draft.amount, settled, 'Amount'), originalCurrency: null, originalAmountMinor: null };
   }
@@ -197,19 +226,18 @@ export function formToMemory(draft: FormDraft, accounts: readonly AccountRow[]):
   return { pattern, mcc };
 }
 
-function expenseOrIncomeLines(draft: FormDraft, account: AccountRow, amountMinor: number): PostingLine[] {
+function expenseOrIncomeLines(
+  draft: FormDraft,
+  account: AccountRow,
+  amountMinor: number,
+  splits: { categoryAccountId: string; amountMinor: number }[] | null,
+): PostingLine[] {
   const currency = account.currency!;
   if (draft.mode === 'income') {
     if (!draft.categoryId) throw new Error('Choose a category');
     return incomeLines({ incomeAccountId: draft.categoryId, depositAccountId: account.id, amountMinor, currency });
   }
-  if (draft.splits.length > 0) {
-    const splits = draft.splits.map((row, i) => {
-      if (!row.categoryId) throw new Error(`Choose a category for split ${i + 1}`);
-      return { categoryAccountId: row.categoryId, amountMinor: positive(row.amount, currency, `Split ${i + 1} amount`) };
-    });
-    return splitExpenseLines({ paymentAccountId: account.id, currency, splits });
-  }
+  if (splits) return splitExpenseLines({ paymentAccountId: account.id, currency, splits });
   if (!draft.categoryId) throw new Error('Choose a category');
   return expenseLines({ categoryAccountId: draft.categoryId, paymentAccountId: account.id, amountMinor, currency });
 }
@@ -291,6 +319,11 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
           fromAccountId: account.id,
           toAccountId: to.id,
           goalId: draft.goalId,
+          // §4: Photos and Exclude from report appear "always". Tagging the transfer to a goal cannot be what
+          // throws them away — the untagged branch below carries the same three facts.
+          excludedFromReport: draft.excluded,
+          eventId: draft.eventId || null,
+          photoIds: draft.photoIds,
         },
       };
     }
@@ -312,7 +345,11 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
     };
   }
 
-  const { amountMinor, originalCurrency, originalAmountMinor } = amounts(draft, account, typed);
+  // The split is read before the figure is asked for, because on a split the rows *are* the figure — the order
+  // `draftToLines` had, and losing it is what made a split impossible to save.
+  const splits = splitByCategory(draft) ? splitRowsOf(draft, account.currency) : null;
+  const splitTotalMinor = splits ? splits.reduce((sum, row) => sum + row.amountMinor, 0) : null;
+  const { amountMinor, originalCurrency, originalAmountMinor } = amounts(draft, account, typed, splitTotalMinor);
 
   if (draft.mode === 'expense' && draft.with.length > 0 && !draft.editing) {
     if (!draft.categoryId) throw new Error('Choose a category');
@@ -332,6 +369,8 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
         channel: draft.channel || null,
         excludedFromReport: draft.excluded,
         eventId: draft.eventId || null,
+        // §4: Photos appear "always". Adding Andi to the bill cannot be what loses the receipt.
+        photoIds: draft.photoIds,
       },
     };
   }
@@ -341,11 +380,12 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
     input: {
       occurredOn: draft.occurredOn,
       description: draft.description,
-      lines: expenseOrIncomeLines(draft, account, amountMinor),
-      // An original pair, an MCC and a card only belong to a purchase; income clears all three, so editing an
-      // expense into income cannot leave a card's facts behind on it.
-      originalCurrency: draft.mode === 'expense' ? originalCurrency : null,
-      originalAmountMinor: draft.mode === 'expense' ? originalAmountMinor : null,
+      lines: expenseOrIncomeLines(draft, account, amountMinor, splits),
+      // §3.3: the original pair is kept for any expense **or income** whose chosen currency differs from the
+      // paying account's. An MCC and a card are still a purchase's alone, so income clears those two and
+      // editing an expense into income cannot leave a card's facts behind on it.
+      originalCurrency,
+      originalAmountMinor,
       mcc: onCard ? mcc : null,
       cardId: onCard ? draft.cardId.trim() || null : null,
       channel: draft.channel || null,
@@ -427,18 +467,41 @@ export function formFromTransaction(tx: TransactionView, accounts: readonly Acco
 }
 
 /**
+ * What a typed expression settles to, written the way `parseMajor` will read it again — null when it cannot be
+ * read at all.
+ *
+ * This is the **one** reader of a typed figure in the whole kit. The desktop field's blur and Enter and the
+ * phone's DONE all come through here, so the keypad cannot drift into a second, weaker arithmetic of its own:
+ * a copy of these two lines is exactly how a 100x error lives on a path no test walks.
+ */
+export function settledAmount(value: string, currency: string): string | null {
+  const minor = evaluateAmount(value, currency);
+  return minor === null ? null : minorToMajorString(minor, currency);
+}
+
+/**
  * The desktop amount field's Enter: work the expression out, and hold the save back until it stops changing.
  *
- * `evaluateAmount` is the one reader of a typed figure, on a desktop exactly as on a phone — the keyboard is
- * not a second, weaker route into the same field. An expression that cannot be read leaves what was typed
- * alone rather than clearing it, the same bargain DONE makes on the phone, and lets the form submit so a
- * plainly typed figure is never trapped behind an Enter that does nothing.
+ * An expression that cannot be read leaves what was typed alone rather than clearing it, the same bargain DONE
+ * makes on the phone, and lets the form submit so a plainly typed figure is never trapped behind an Enter that
+ * does nothing.
  */
 export function amountAfterEnter(value: string, currency: string): { text: string; submit: boolean } {
-  const minor = evaluateAmount(value, currency);
-  if (minor === null) return { text: value, submit: true };
-  const text = minorToMajorString(minor, currency);
+  const text = settledAmount(value, currency);
+  if (text === null) return { text: value, submit: true };
   return { text, submit: text === value };
+}
+
+/**
+ * The keypad's DONE: a readable expression writes the row and closes the dock; one that cannot be read leaves
+ * both alone, so the expression stays on screen to be fixed rather than the figure being thrown away.
+ *
+ * `close` is not `amountAfterEnter`'s `submit`: a figure already in its final form — `100000` — must still
+ * close the dock, where on a desktop the same figure means "nothing changed, so let the form save".
+ */
+export function amountAfterDone(value: string, currency: string): { text: string; close: boolean } {
+  const text = settledAmount(value, currency);
+  return text === null ? { text: value, close: false } : { text, close: true };
 }
 
 /** The dock's keys, read left to right, top to bottom. DONE spans two rows; there is deliberately no Save. */
@@ -446,14 +509,23 @@ export const KEYPAD_KEYS = ['C', '÷', '×', '⌫', '7', '8', '9', '−', '4', '
 
 export type KeypadKey = (typeof KEYPAD_KEYS)[number];
 
-/**
- * What one key does to the typed text. DONE is not here: it is `evaluateAmount`, and the row keeps what it had
- * when that comes back null.
- */
+/** What one key does to the typed text. DONE is not here; `amountAfterDone` is what DONE does. */
 export function keypadPress(value: string, key: Exclude<KeypadKey, 'DONE'>): string {
   if (key === 'C') return '';
   if (key === '⌫') return value.slice(0, -1);
   return value + key;
+}
+
+/**
+ * What any one key does to the dock: the row's new text, and whether the dock is finished.
+ *
+ * The whole decision lives here rather than in the component, so `Keypad.tsx` holds no arithmetic of its own —
+ * it holds one call. A keypad that decides anything for itself is a second money path, and a second money path
+ * is where a 100x error sits untested for as long as nobody mounts it.
+ */
+export function keypadAction(value: string, currency: string, key: KeypadKey): { text: string; close: boolean } {
+  if (key === 'DONE') return amountAfterDone(value, currency);
+  return { text: keypadPress(value, key), close: false };
 }
 
 /**
@@ -473,10 +545,37 @@ export function suggestedRate({ rates, from, to, base }: { rates: Record<string,
 }
 
 /**
+ * §3.3's pre-fill: the typed figure at the day's rate, written in the account's own currency.
+ *
+ * Null when there is nothing to convert or no rate to convert it at — the row is then left empty to be typed,
+ * because an estimate built on a rate nobody has is worse than no estimate at all. `evaluateAmount` reads the
+ * figure, so `120+8` in the amount row estimates from 128 rather than from nothing.
+ */
+export function estimatedCharge({
+  amount,
+  currency,
+  accountCurrency,
+  rate,
+}: {
+  amount: string;
+  currency: string;
+  accountCurrency: string;
+  rate: number | null;
+}): string | null {
+  if (rate === null || !currency || !accountCurrency || currency === accountCurrency) return null;
+  const minor = evaluateAmount(amount, currency);
+  if (minor === null || minor <= 0) return null;
+  const charged = convertMinor(minor, currency, accountCurrency, rate);
+  if (charged <= 0) return null;
+  return minorToMajorString(charged, accountCurrency);
+}
+
+/**
  * The quiet line under "Charged in …": what a rate for the day suggests, and whose figure overrules it.
  *
  * Numbers are rendered the way `ratePreview` (lib/rates.ts) already renders a rate, so the app shows one
- * number style rather than two.
+ * number style rather than two. A rate `resolveRates` marked stale did not come from `onDate` at all, so the
+ * line must not claim it did.
  */
 export function chargedHint({
   rate,
@@ -484,15 +583,19 @@ export function chargedHint({
   accountCurrency,
   onDate,
   accountName,
+  stale = false,
 }: {
   rate: number | null;
   currency: string;
   accountCurrency: string;
   onDate: string;
   accountName: string;
+  stale?: boolean;
 }): string {
   if (rate === null) return `No ${currency}→${accountCurrency} rate is known for ${onDate}. Enter what ${accountName} charged.`;
-  return `≈ ${rate.toLocaleString('id-ID', { maximumFractionDigits: 4 })} per 1 ${currency} · suggested from ${onDate}, change it to what ${accountName} charged`;
+  const shown = rate.toLocaleString('id-ID', { maximumFractionDigits: 4 });
+  const source = stale ? `the last ${currency}→${accountCurrency} rate known` : `suggested from ${onDate}`;
+  return `≈ ${shown} per 1 ${currency} · ${source}, change it to what ${accountName} charged`;
 }
 
 /** Where the currency sheet keeps the last few codes chosen by hand. */

@@ -307,6 +307,8 @@ export interface SplitBillInput {
   excludedFromReport?: boolean;
   /** The event this belongs to. */
   eventId?: string | null;
+  /** Photo rows written before the transaction had an id. A receipt is kept whoever else was at the table. */
+  photoIds?: string[];
 }
 
 /** Money handed to a person, from a bank account or on a card. */
@@ -448,6 +450,7 @@ export async function splitBill(database: Database, ws: WorkspaceContext, input:
       channel: input.channel,
       excludedFromReport: input.excludedFromReport,
       eventId: input.eventId,
+      photoIds: input.photoIds,
     });
     return { transactionId, debtAccountIds };
   });

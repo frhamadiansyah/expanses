@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   type AccountRow,
+  addPhoto,
   categoryIdsByKey,
   createAccount,
   createDatabase,
@@ -11,6 +12,7 @@ import {
   listDebtProfiles,
   forgiveRemainder,
   goalLinksFor,
+  listPhotos,
   listTransactions,
   migrate,
   MIGRATIONS,
@@ -282,6 +284,25 @@ describe('splitting a bill', () => {
     expect(await balanceOf(debtAccountIds[0]!)).toBe(300_000);
     expect(await balanceOf(debtAccountIds[1]!)).toBe(300_000);
     expect(await balanceOf(bca.id)).toBe(49_100_000);
+  });
+
+  it('keeps the receipt that was attached before anyone was added to the bill', async () => {
+    const categories = await categoryIdsByKey(database, ws);
+    // The photo row a form writes while it is still open, before the transaction has an id.
+    const photoId = await addPhoto(database, ws, { transactionId: '', fileName: '0192fb.jpg', mime: 'image/jpeg', byteSize: 64 });
+
+    const { transactionId } = await splitBill(database, ws, {
+      occurredOn: '2026-09-05',
+      description: 'Dinner at Plataran',
+      totalMinor: 600_000,
+      moneyAccountId: bca.id,
+      ownCategoryId: categories['food_beverage.restaurants']!,
+      ownShareMinor: 300_000,
+      shares: [{ person: { name: 'Andi', currency: 'IDR' }, amountMinor: 300_000 }],
+      photoIds: [photoId],
+    });
+
+    expect((await listPhotos(database, ws, transactionId)).map((row) => row.id)).toEqual([photoId]);
   });
 
   it('refuses a split that does not add up to the bill', async () => {

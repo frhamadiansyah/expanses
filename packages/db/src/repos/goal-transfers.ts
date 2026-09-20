@@ -18,6 +18,12 @@ export interface TaggedTransferInput {
   /** Null moves the money without attaching it to anything. */
   goalId: string | null;
   ratesToBase?: Record<string, number>;
+  /** Leaves the chart, the budgets and the category totals; balances, statements and net worth keep it. */
+  excludedFromReport?: boolean;
+  /** The event this belongs to. */
+  eventId?: string | null;
+  /** Photo rows written before the transaction had an id. Tagging a goal cannot be what loses a receipt. */
+  photoIds?: string[];
 }
 
 export interface TaggedTransferResult {
@@ -106,6 +112,9 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
         { accountId: input.fromAccountId, amountMinor: -input.amountMinor, currency: from?.currency ?? ws.baseCurrency },
       ],
       ratesToBase: input.ratesToBase,
+      excludedFromReport: input.excludedFromReport,
+      eventId: input.eventId,
+      photoIds: input.photoIds,
     });
 
     if (!input.goalId) return { transactionId, setAsideMinor: 0 };

@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   type AccountRow,
+  addPhoto,
   createAccount,
   createWorkspace,
   type Database,
   goalLinksFor,
   listEarmarks,
+  listPhotos,
   listTransactions,
   nativeBalances,
   recordTaggedTransfer,
   recordTrade,
   saveAssetProfile,
+  saveEvent,
   saveGoal,
   upsertPrice,
   voidTaggedTransfer,
@@ -191,5 +194,29 @@ describe('the transaction a tagged transfer writes', () => {
 
     const tx = (await listTransactions(database, ws, {})).find((row) => row.id === result.transactionId);
     expect(tx?.goalId).toBeNull();
+  });
+});
+
+describe('what a tagged transfer keeps beside the goal', () => {
+  it('carries the exclusion, the event and the photos an untagged transfer would have carried', async () => {
+    const eventId = await saveEvent(database, ws, { name: 'Umrah 2027', startsOn: '2027-01-10', endsOn: '2027-01-24' });
+    // The photo row a form writes before the transaction has an id, exactly as PhotosSheet does.
+    const photoId = await addPhoto(database, ws, { transactionId: '', fileName: '0192fa.jpg', mime: 'image/jpeg', byteSize: 64 });
+
+    const result = await recordTaggedTransfer(database, ws, {
+      occurredOn: '2026-09-05',
+      description: 'Setoran awal',
+      amountMinor: 1_000_000,
+      fromAccountId: bca.id,
+      toAccountId: rdn.id,
+      goalId: hajjId,
+      excludedFromReport: true,
+      eventId,
+      photoIds: [photoId],
+    });
+
+    const tx = (await listTransactions(database, ws, {})).find((row) => row.id === result.transactionId);
+    expect(tx).toMatchObject({ goalId: hajjId, eventId, excluded: true, photoCount: 1 });
+    expect((await listPhotos(database, ws, result.transactionId)).map((row) => row.id)).toEqual([photoId]);
   });
 });
