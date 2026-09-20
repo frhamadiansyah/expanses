@@ -264,9 +264,20 @@ function CardBody({
       </div>
 
       {draft.mode === 'trade' ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="What you bought or sold" hint="Units are recorded, so this never counts as spending.">
-            <Select
+        /*
+         * §3.6, as rows: what · amount · units or lots · fee · Paid with / Proceeds into · Date, then a second
+         * card for the goal and — only on a credit card — the two facts the points engine needs. There is no
+         * workspace row here either: a trade posts through `recordTrade`, whose money half touches no category.
+         *
+         * `purchaseDraftToInput` and `recordTrade` are called exactly as before; only the layout moved. Every
+         * message they throw still arrives in the `ErrorBox` above Save, which is the whole of this tab's
+         * validation — nothing here reads a figure for itself.
+         */
+        <>
+          <RowGroup>
+            <SelectRow
+              label="What you bought or sold"
+              hint="Units are recorded, so this never counts as spending."
               value={`${purchase.mode}:${purchase.accountId}`}
               onChange={(e) => {
                 const option = [...choices.buys, ...choices.sells].find((row) => row.value === e.target.value)!;
@@ -285,57 +296,86 @@ function CardBody({
                   ))}
                 </optgroup>
               )}
-            </Select>
-          </Field>
-          <Field label="Date">
-            <Input type="date" value={purchase.occurredOn} max={isoDate()} onChange={(e) => setPurchase({ occurredOn: e.target.value })} />
-          </Field>
-          {purchase.useLots ? (
-            <Field label="Lots" hint={`${purchase.lotSize ?? 1} shares a lot.`}>
-              <Input value={purchase.lots} inputMode="decimal" onChange={(e) => setPurchase({ lots: e.target.value })} placeholder="1" />
-            </Field>
-          ) : (
-            <Field label={chosen?.unitLabel ?? 'Units'}>
-              <Input value={purchase.units} inputMode="decimal" onChange={(e) => setPurchase({ units: e.target.value })} placeholder="2" />
-            </Field>
-          )}
-          <Field label={purchase.mode === 'buy' ? `What it cost, before fees (${purchaseCurrency})` : `Proceeds, before fees (${purchaseCurrency})`}>
-            <Input value={purchase.amount} inputMode="decimal" onChange={(e) => setPurchase({ amount: e.target.value })} placeholder="3.980.000" />
-          </Field>
-          <Field label={`Fee (${purchaseCurrency})`}>
-            <Input value={purchase.fee} inputMode="decimal" onChange={(e) => setPurchase({ fee: e.target.value })} />
-          </Field>
-          <Field
-            label={purchase.mode === 'buy' ? 'Paid with' : 'Proceeds into'}
-            hint={purchase.mode === 'buy' ? 'A credit card works: the card owes more, and the purchase still earns points.' : undefined}
-          >
-            <Select value={purchase.moneyId} onChange={(e) => setPurchase({ moneyId: e.target.value, moneyIsCard: byId.get(e.target.value)?.subtype === 'credit_card' })}>
+            </SelectRow>
+            <InputRow
+              label={purchase.mode === 'buy' ? `What it cost, before fees (${purchaseCurrency})` : `Proceeds, before fees (${purchaseCurrency})`}
+              value={purchase.amount}
+              inputMode="decimal"
+              onChange={(e) => setPurchase({ amount: e.target.value })}
+              placeholder="3.980.000"
+            />
+            {purchase.useLots ? (
+              <InputRow
+                label="Lots"
+                hint={`${purchase.lotSize ?? 1} shares a lot.`}
+                value={purchase.lots}
+                inputMode="decimal"
+                onChange={(e) => setPurchase({ lots: e.target.value })}
+                placeholder="1"
+              />
+            ) : (
+              <InputRow
+                label={chosen?.unitLabel ?? 'Units'}
+                value={purchase.units}
+                inputMode="decimal"
+                onChange={(e) => setPurchase({ units: e.target.value })}
+                placeholder="2"
+              />
+            )}
+            <InputRow
+              label={`Fee (${purchaseCurrency})`}
+              value={purchase.fee}
+              inputMode="decimal"
+              onChange={(e) => setPurchase({ fee: e.target.value })}
+            />
+            <SelectRow
+              label={purchase.mode === 'buy' ? 'Paid with' : 'Proceeds into'}
+              hint={purchase.mode === 'buy' ? 'A credit card works: the card owes more, and the purchase still earns points.' : undefined}
+              value={purchase.moneyId}
+              onChange={(e) => setPurchase({ moneyId: e.target.value, moneyIsCard: byId.get(e.target.value)?.subtype === 'credit_card' })}
+            >
               <MoneyAccountOptions accounts={accounts} spendableOnly keep={purchase.moneyId} />
-            </Select>
-          </Field>
-          {purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card' && (
-            <>
-              <Field label="Category for points" hint="Not spending: it only tells the points engine what the card bought.">
-                <Select value={purchase.spendCategoryId} onChange={(e) => setPurchase({ spendCategoryId: e.target.value })}>
-                  <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
-                </Select>
-              </Field>
-              <Field label="MCC" hint="Gold and jewellery shops are 5944.">
-                <Input value={purchase.mcc} inputMode="numeric" onChange={(e) => setPurchase({ mcc: e.target.value })} placeholder="5944" />
-              </Field>
-            </>
+            </SelectRow>
+            <InputRow label="Date" type="date" value={purchase.occurredOn} max={isoDate()} onChange={(e) => setPurchase({ occurredOn: e.target.value })} />
+          </RowGroup>
+
+          {(goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
+            <RowGroup>
+              {goals.length > 0 && (
+                <SelectRow
+                  label={purchase.mode === 'buy' ? 'For goal' : 'Sell from goal'}
+                  value={purchase.goalId}
+                  onChange={(e) => setPurchase({ goalId: e.target.value })}
+                >
+                  <option value="">No goal</option>
+                  {goals.map((goal) => (
+                    <option key={goal.id} value={goal.id}>{goal.name}</option>
+                  ))}
+                </SelectRow>
+              )}
+              {purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card' && (
+                <>
+                  <SelectRow
+                    label="Category for points"
+                    hint="Not spending: it only tells the points engine what the card bought."
+                    value={purchase.spendCategoryId}
+                    onChange={(e) => setPurchase({ spendCategoryId: e.target.value })}
+                  >
+                    <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
+                  </SelectRow>
+                  <InputRow
+                    label="MCC"
+                    hint="Gold and jewellery shops are 5944."
+                    value={purchase.mcc}
+                    inputMode="numeric"
+                    onChange={(e) => setPurchase({ mcc: e.target.value })}
+                    placeholder="5944"
+                  />
+                </>
+              )}
+            </RowGroup>
           )}
-          {goals.length > 0 && (
-            <Field label={purchase.mode === 'buy' ? 'For goal' : 'Sell from goal'}>
-              <Select value={purchase.goalId} onChange={(e) => setPurchase({ goalId: e.target.value })}>
-                <option value="">No goal</option>
-                {goals.map((goal) => (
-                  <option key={goal.id} value={goal.id}>{goal.name}</option>
-                ))}
-              </Select>
-            </Field>
-          )}
-        </div>
+        </>
       ) : (
         <>
           <FormRows>

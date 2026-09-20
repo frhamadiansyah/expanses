@@ -56,6 +56,50 @@ export async function addTransfer(
 }
 
 /**
+ * Records a purchase or a sale through the Buy or sell tab.
+ *
+ * `what` is the holding's own name — the picker shows it under "Investments ›" when buying and "Sell ›" when
+ * selling, and the helper builds that label rather than asking every caller to remember the prefix. None of these
+ * figures goes near the keypad: the trade rows are plain inputs at every width, because the amount row and its dock
+ * belong to `draft.amount`, and a trade's cost lives in `draft.purchase`.
+ */
+export async function addPurchase(
+  page: Page,
+  trade: {
+    what: string;
+    mode?: 'buy' | 'sell';
+    amount: string;
+    units?: string;
+    lots?: string;
+    fee?: string;
+    paidWith: string;
+    date?: string;
+    goal?: string;
+    pointsCategory?: string;
+    mcc?: string;
+  },
+) {
+  const sell = trade.mode === 'sell';
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Buy or sell' }).click();
+  await form.getByLabel('What you bought or sold').selectOption({ label: `${sell ? 'Sell' : 'Investments'} › ${trade.what}` });
+  await form.getByLabel(sell ? /^Proceeds, before fees/ : /^What it cost, before fees/).fill(trade.amount);
+  if (trade.lots) await form.getByLabel('Lots').fill(trade.lots);
+  // Whatever this holding calls its units — Grams for gold, Shares for a stock without lots.
+  if (trade.units) await form.getByLabel(/^(Units|Shares|Grams)$/).fill(trade.units);
+  if (trade.fee) await form.getByLabel(/^Fee /).fill(trade.fee);
+  await form.getByLabel(sell ? 'Proceeds into' : 'Paid with').selectOption({ label: trade.paidWith });
+  if (trade.date) await form.getByLabel('Date').fill(trade.date);
+  if (trade.goal) await form.getByLabel(sell ? 'Sell from goal' : 'For goal').selectOption({ label: trade.goal });
+  // Offered only on a credit card, and only when buying — the card's two facts, not the trade's.
+  if (trade.pointsCategory) await form.getByLabel('Category for points').selectOption({ label: trade.pointsCategory });
+  if (trade.mcc) await form.getByLabel('MCC').fill(trade.mcc);
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+}
+
+/**
  * Puts the cursor in the amount, whichever thing this viewport gave us.
  *
  * On a phone the figure is a **button** that opens the keypad dock; on a desktop it is a real `<input>`, and
