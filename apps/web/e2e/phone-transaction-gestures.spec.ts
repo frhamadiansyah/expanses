@@ -375,3 +375,48 @@ test('the edit sheet shows the receipt the transaction already has', async ({ pa
   await details.getByRole('button', { name: 'Photos' }).click();
   await expect(page.getByRole('dialog', { name: 'Photos' }).getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
 });
+
+/**
+ * A row the scroll leaves at the foot of the screen is under the tab bar, and cannot be touched.
+ *
+ * The bar floats over the page — `fixed inset-x-0 bottom-0` — so a row can be squarely "in the viewport"
+ * and still have the capsule on top of it: `elementFromPoint` at the row's own middle answers an icon in
+ * the bar, and the press that starts a swipe is swallowed. It is **any** row a scroll leaves in that strip,
+ * not only the last one; the document's bottom padding clears the bar only once you are scrolled all the
+ * way to the end, which is why nobody saw it.
+ *
+ * The fix is geometry: `scroll-margin-bottom` on the phone, so scrolling to a row leaves the bar's own
+ * height beneath it. Nothing here is about how the row looks.
+ */
+test('a row scrolled to the foot of the screen is clear of the tab bar, and still swipes', async ({ page }) => {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Current balance').fill('20000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+
+  await page.goto('/transactions');
+  for (const name of ['Warung Steak', 'Superindo', 'Kopi Kenangan', 'Indomaret', 'Alfamart', 'Sate Khas Senayan', 'Bakmi GM', 'Pertamina']) {
+    await record(page, name, 'Restaurants', '120000');
+  }
+
+  // The list has to be longer than the screen, or scrolling to a row proves nothing.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 200)).toBe(true);
+
+  const target = row(page, 'Superindo');
+  await target.evaluate((el) => el.scrollIntoView({ block: 'end' }));
+
+  // Scrolled to, and clear: the row's foot is above the bar's head, so the press lands on the row.
+  const geometry = await target.evaluate((el) => {
+    const bar = document.querySelector('nav[aria-label="Main"]')!.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    const under = document.elementFromPoint(box.x + box.width - 12, box.y + box.height / 2);
+    return { rowBottom: box.bottom, barTop: bar.top, ownsItsOwnMiddle: el.contains(under) };
+  });
+  expect(geometry.rowBottom).toBeLessThanOrEqual(geometry.barTop);
+  expect(geometry.ownsItsOwnMiddle).toBe(true);
+
+  await swipeLeft(page, target);
+  await expect(target.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+});

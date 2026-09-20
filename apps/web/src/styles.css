@@ -12,3 +12,19 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * The phone's tab bar floats over the foot of the page, so a row a scroll leaves in that strip is covered
+ * by it: the press lands on the bar, and a swipe — Edit, Delete — never reaches the row at all. It is any
+ * row, not only the last; the document's bottom padding clears the bar only once you are scrolled all the
+ * way down, which is why it looked fine. `scrollIntoView` honours scroll-margin, so giving every scroll
+ * target the bar's own height back means a row scrolled to is a row that can be touched.
+ *
+ * Geometry, not decoration: nothing here changes how anything looks. The bar is `md:hidden`, so the
+ * desktop, which has no bar, is untouched.
+ */
+@media (max-width: 767px) {
+  * {
+    scroll-margin-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+}
