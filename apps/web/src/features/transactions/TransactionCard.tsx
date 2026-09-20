@@ -18,7 +18,7 @@ import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { checkManualRate } from '../../lib/rates';
-import { Button, Card, ErrorBox, Field, Input, InputRow, RowGroup, Select, SelectRow } from '../../ui';
+import { Button, Card, ErrorBox, InputRow, RowGroup, Select, SelectRow } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -147,7 +147,6 @@ function CardBody({
   const choices = useMemo(() => buyChoices(assetValues.data ?? [], assetProfiles.data ?? []), [assetValues.data, assetProfiles.data]);
   const money = accounts.filter(isMoneyAccount);
   const account = byId.get(draft.moneyId);
-  const currency = account?.currency ?? ws.baseCurrency;
   const onCard = draft.mode === 'expense' && account?.subtype === 'credit_card';
   const purchase = draft.purchase;
   const chosen = [...choices.buys, ...choices.sells].find((option) => option.value === `${purchase.mode}:${purchase.accountId}`);
@@ -216,7 +215,6 @@ function CardBody({
 
   const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
-  const shares = draft.with;
 
   const body = (
     <form onSubmit={submit} className="space-y-3">
@@ -491,39 +489,14 @@ function CardBody({
             </RowGroup>
           )}
 
-          {/* Task 13 fills this with §4's rows. It is here already so the card is laid out as it will stand. */}
+          {/*
+            §4's rows, every one of them, behind one way in. The card used to carry "Someone owes part of this"
+            here as well — one name, one figure, the shape the form had before `splitBill` learned to take
+            several people. It is now the With row inside this sheet, where a dinner for four can be recorded.
+          */}
           <FormRows>
             <FormRow label="Add more details" tone="muted" onClick={() => setSheet('details')} />
           </FormRows>
-
-          {draft.mode === 'expense' && !initial && (
-            <div className="space-y-2 rounded-lg border border-slate-200 px-3 py-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={shares.length > 0}
-                  onChange={(e) => set({ with: e.target.checked ? [{ debtAccountId: '', name: '', amount: '' }] : [] })}
-                />
-                Someone owes part of this
-              </label>
-              {shares.length > 0 && (
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Field label="Who owes you" hint="They get their own account under Lend & borrow.">
-                    <Input value={shares[0]!.name} onChange={(e) => set({ with: [{ ...shares[0]!, name: e.target.value }] })} placeholder="Andi" />
-                  </Field>
-                  <Field label={`Their share (${currency})`} hint="The rest stays as your own spending.">
-                    <Input
-                      value={shares[0]!.amount}
-                      inputMode="decimal"
-                      onChange={(e) => set({ with: [{ ...shares[0]!, amount: e.target.value }] })}
-                      placeholder="600.000"
-                    />
-                  </Field>
-                </div>
-              )}
-            </div>
-          )}
-
         </>
       )}
 

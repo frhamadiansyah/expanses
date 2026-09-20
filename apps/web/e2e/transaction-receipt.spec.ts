@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
-import { addTransaction } from './add-transaction';
+import { addTransaction, closeDetails, shareWith } from './add-transaction';
 
 /** A credit card, so there is something to charge a purchase to. */
 async function addCard(page: Page, name = 'BCA Visa') {
@@ -232,9 +232,8 @@ test('a split bill says which figure is the share and which is the bill', async 
   await split.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await split.getByLabel('Note').fill('Dinner at Plataran');
-  await split.getByLabel('Someone owes part of this').check();
-  await split.getByLabel('Who owes you').fill('Andi');
-  await split.getByLabel(/Their share/).fill('300000');
+  const { more, sheet } = await shareWith(page, split, [{ name: 'Andi', owes: '300000' }]);
+  await closeDetails(more, sheet);
   await split.getByRole('button', { name: 'Save' }).click();
   await expect(split).toHaveCount(0);
   await expect(page.getByText('Dinner at Plataran')).toBeVisible();

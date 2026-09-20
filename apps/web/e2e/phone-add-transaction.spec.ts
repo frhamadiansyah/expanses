@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addTransaction } from './add-transaction';
+import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -95,4 +95,41 @@ test('Escape inside the sheet puts the dock away and keeps what was typed', asyn
   // A second press is the sheet's own way out, which is what Escape was always for once the dock is gone.
   await page.keyboard.press('Escape');
   await expect(form).toHaveCount(0);
+});
+
+/**
+ * A receipt photographed and attached by thumb, and on the transaction the moment it is saved.
+ *
+ * The one flow this task can prove on the phone project on its own; Task 18 grows this file into the full phone
+ * pass. The library input is driven rather than the camera one, because Playwright cannot answer a `capture`
+ * prompt — what the phone proves here is that the sheet, the grid and the strip are reachable and legible at
+ * 390px, which is exactly what a desktop run cannot say.
+ */
+test('a photograph attached by thumb is on the receipt', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  const keypad = page.getByTestId('keypad');
+  for (const digit of '85000') await keypad.getByRole('button', { name: digit, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await form.getByLabel('Note').fill('Superindo');
+
+  const { more, sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a receipt') });
+  await expect(sheet.getByText('Photos stay on this device with the transaction and go into your backups.')).toBeVisible();
+  await closeDetails(more, sheet);
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  // A phone reaches a receipt by tapping the row's face; the ⓘ the desktop uses is `hidden md:inline-flex`.
+  await page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }).getByRole('button', { name: /^Groceries/ }).click();
+  const picture = page.getByTestId('photo-strip').getByRole('img', { name: 'Receipt photo for Superindo' });
+  await expect(picture).toBeVisible();
+  expect(await picture.evaluate(async (img: HTMLImageElement) => (await fetch(img.src)).text())).toBe('a receipt');
 });

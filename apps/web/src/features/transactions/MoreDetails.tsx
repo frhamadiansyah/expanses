@@ -7,8 +7,10 @@ import { useEvents } from '../events/queries';
 import { ChannelSheet } from './ChannelSheet';
 import { FormRow, FormRows, SwitchRow } from './FormRow';
 import { McSheet } from './McSheet';
+import { PhotosSheet, photosSummary } from './PhotosSheet';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { EventSheet } from './EventSheet';
+import { WithSheet, withSummary } from './WithSheet';
 import { extraRows, type FormDraft } from './tx-form';
 
 /** The pair a rate is missing for, as `resolveRates` reported it, and the day it is wanted for. */
@@ -26,9 +28,10 @@ export interface MissingRate {
  * implementation, two ways in: a second copy of these rows is a second place for a field to be dropped, and the
  * four fields this screen holds were dropped in silence once already.
  *
- * Which rows appear is `extraRows`'s decision, not this component's. **With** and **Photos** are in that list and
- * deliberately not drawn here: With is still the card's own "Someone owes part of this", and a purchase's photos
- * are added from the receipt. Neither is this task, and neither is invented here to fill the gap.
+ * Which rows appear is `extraRows`'s decision, not this component's, and every row in that list is drawn here.
+ * With and Photos were the last two missing: With replaces the card's old single-person "Someone owes part of
+ * this" — which never caught up with the several people `splitBill` has taken since Task 5 — and Photos is the
+ * first thing in the app to put a picture on a transaction while it is being recorded.
  */
 export function MoreDetails({
   draft,
@@ -42,7 +45,7 @@ export function MoreDetails({
   missingRate: MissingRate | null;
 }) {
   const { ws } = useApp();
-  const [sheet, setSheet] = useState<null | 'event' | 'split' | 'mcc' | 'channel'>(null);
+  const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos'>(null);
   const set = (patch: Partial<FormDraft>) => onChange({ ...draft, ...patch });
   const rows = extraRows(draft, accounts, { missingRate });
   const events = useEvents().data ?? [];
@@ -56,10 +59,12 @@ export function MoreDetails({
       <FormRows>
         {rows.includes('event') && <FormRow label="Event" value={eventName} onClick={() => setSheet('event')} />}
         {rows.includes('split') && <FormRow label="Split" value={splitSummary(draft.splits, currency)} onClick={() => setSheet('split')} />}
+        {rows.includes('with') && <FormRow label="With" value={withSummary(draft, accounts, currency)} onClick={() => setSheet('with')} />}
         {rows.includes('mcc') && <FormRow label="MCC" value={draft.mcc} onClick={() => setSheet('mcc')} />}
         {rows.includes('channel') && (
           <FormRow label="Channel" value={draft.channel === 'online' ? 'Online' : draft.channel === 'offline' ? 'Offline' : ''} onClick={() => setSheet('channel')} />
         )}
+        {rows.includes('photos') && <FormRow label="Photos" value={photosSummary(draft)} onClick={() => setSheet('photos')} />}
         {rows.includes('exclude') && (
           <SwitchRow
             label="Exclude from report"
@@ -90,6 +95,8 @@ export function MoreDetails({
 
       {sheet === 'event' && <EventSheet value={draft.eventId} onPick={(eventId) => set({ eventId })} onClose={() => setSheet(null)} />}
       {sheet === 'split' && <SplitSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
+      {sheet === 'with' && <WithSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
+      {sheet === 'photos' && <PhotosSheet draft={draft} onChange={onChange} onClose={() => setSheet(null)} />}
       {sheet === 'mcc' && <McSheet draft={draft} onChange={onChange} accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet === 'channel' && <ChannelSheet value={draft.channel} onPick={(channel) => set({ channel })} onClose={() => setSheet(null)} />}
     </>

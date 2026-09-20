@@ -1,24 +1,9 @@
-import { evaluateAmount, formatMinor } from '@expanses/core';
+import { formatMinor } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Sheet } from '../../app/Sheet';
 import { Button, Input, Select } from '../../ui';
 import { CategoryOptions } from '../cards/options';
-import type { FormDraft, SplitRow } from './tx-form';
-
-/**
- * What the rows of a split add up to, in the account's own currency.
- *
- * `evaluateAmount` is the kit's one reader of a typed figure — the same one the amount row, the keypad and
- * `formToPost` go through — so the running total cannot drift into an arithmetic of its own. A row that cannot be
- * read yet counts as nothing rather than throwing the total away, because a half-typed figure is the normal state
- * of a row being typed into.
- *
- * It is a display total only. What posts is `formToPost`'s own sum of the same rows, which refuses a row it cannot
- * read instead of skipping it.
- */
-export function splitTotalMinor(splits: readonly SplitRow[], currency: string): number {
-  return splits.reduce((sum, row) => sum + (row.amount.trim() ? (evaluateAmount(row.amount, currency) ?? 0) : 0), 0);
-}
+import { type FormDraft, type SplitRow, splitTotalMinor } from './tx-form';
 
 /**
  * "None", or "2 splits · Total Rp 85.000" — what the Split row says without being opened.

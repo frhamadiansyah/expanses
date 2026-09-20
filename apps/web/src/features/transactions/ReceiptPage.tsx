@@ -9,7 +9,7 @@ import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { loadPurchasePoints } from '../../lib/purchase-points';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { photos } from '../../photos/store';
+import { usePhotoUrls } from '../../photos/use-photo-urls';
 import { Button, Card, cx, Empty, ErrorBox } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -33,39 +33,6 @@ const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString
 export function ReceiptRoute() {
   const { transactionId } = route.useParams();
   return <ReceiptPage transactionId={transactionId} />;
-}
-
-/**
- * An object URL per picture, revoked when the strip goes away.
- *
- * The bytes never leave the device, so there is no src a browser could fetch: each picture is read out of OPFS
- * and handed to the page as a blob URL. A URL not revoked holds its blob in memory for the life of the tab,
- * which on a phone full of receipts is the difference between a screen and a crash.
- */
-function usePhotoUrls(rows: readonly TransactionPhotoRow[]): Record<string, string> {
-  const [urls, setUrls] = useState<Record<string, string>>({});
-  const names = rows.map((row) => row.fileName).join(',');
-  useEffect(() => {
-    let live = true;
-    const made: string[] = [];
-    void (async () => {
-      const next: Record<string, string> = {};
-      for (const name of names ? names.split(',') : []) {
-        const url = await photos.photoUrl(name);
-        if (!url) continue;
-        made.push(url);
-        next[name] = url;
-      }
-      if (live) setUrls(next);
-      else for (const url of made) URL.revokeObjectURL(url);
-    })();
-    return () => {
-      live = false;
-      setUrls({});
-      for (const url of made) URL.revokeObjectURL(url);
-    };
-  }, [names]);
-  return urls;
 }
 
 /** Deleting asks twice, in place — the same two taps the list and the table already ask for. */
@@ -105,6 +72,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
 
   const [editing, setEditing] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [viewing, setViewing] = useState<TransactionPhotoRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -242,7 +210,15 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         <div data-testid="photo-strip" className="flex gap-2 overflow-x-auto">
           {(photoRows.data ?? []).map((row) =>
             urls[row.fileName] ? (
-              <img key={row.id} src={urls[row.fileName]} alt={`Receipt photo for ${tx.description}`} className="h-24 w-24 shrink-0 rounded-xl object-cover ring-1 ring-slate-200" />
+              // Tapped to see it full size, the same promise the Photos sheet makes while it is being attached.
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => setViewing(row)}
+                className="shrink-0 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+              >
+                <img src={urls[row.fileName]} alt={`Receipt photo for ${tx.description}`} className="h-24 w-24 rounded-xl object-cover ring-1 ring-slate-200" />
+              </button>
             ) : (
               <div key={row.id} className="h-24 w-24 shrink-0 rounded-xl bg-slate-100" aria-hidden />
             ),
@@ -278,6 +254,16 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
             </>
           )}
         </div>
+      )}
+
+      {viewing && (
+        <Sheet title="Photo" onClose={() => setViewing(null)}>
+          {urls[viewing.fileName] ? (
+            <img src={urls[viewing.fileName]} alt={`Receipt photo for ${tx.description}`} className="mx-auto max-h-[70dvh] w-auto rounded-xl" />
+          ) : (
+            <p className="text-sm text-slate-500">That picture is not on this device.</p>
+          )}
+        </Sheet>
       )}
 
       {editing && (

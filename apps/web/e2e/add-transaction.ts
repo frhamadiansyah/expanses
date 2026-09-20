@@ -100,6 +100,63 @@ export async function addPurchase(
 }
 
 /**
+ * Puts other people on a bill, through With under Add more details.
+ *
+ * `owes` on any of them means Custom amounts and each figure is typed; none of them means Split equally and the
+ * sheet works the shares out. Both sheets are left open, because what a caller usually wants next is to read the
+ * summary card before closing them.
+ *
+ * The helper is the only place that knows what With looks like, so the edit sheet Task 14 builds on the very same
+ * component never has to touch a spec.
+ */
+export async function shareWith(page: Page, form: Locator, people: readonly { name: string; owes?: string }[]) {
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+  await more.getByRole('button', { name: 'With', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'With', exact: true });
+  for (const person of people) {
+    await sheet.getByLabel('Add a person').fill(person.name);
+    await sheet.getByRole('button', { name: 'Add', exact: true }).click();
+  }
+  if (people.some((person) => person.owes !== undefined)) {
+    await sheet.getByRole('radio', { name: 'Custom amounts' }).click();
+    for (const person of people) {
+      if (person.owes !== undefined) await sheet.getByLabel(`What ${person.name} owe`).fill(person.owes);
+    }
+  } else {
+    await sheet.getByRole('radio', { name: 'Split equally' }).click();
+  }
+  return { more, sheet };
+}
+
+/**
+ * Both sheets shut again, innermost first, so the card underneath can be saved.
+ *
+ * The order is not a preference. A sheet is drawn inside the sheet that opened it, so while the inner one is up
+ * there are two buttons called Close under `more` and neither can be picked out by name.
+ */
+export async function closeDetails(more: Locator, sheet: Locator) {
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await more.getByRole('button', { name: 'Close' }).click();
+}
+
+/**
+ * Attaches one picture through Photos under Add more details, as a file chosen from the library.
+ *
+ * The bytes are the assertion's whole point elsewhere, so they are the caller's: a spec hands in what it will
+ * later read back out of the blob URL on the receipt.
+ */
+export async function attachPhoto(page: Page, form: Locator, file: { name: string; mimeType: string; buffer: Buffer }) {
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  const more = page.getByRole('dialog', { name: 'More details' });
+  await more.getByRole('button', { name: 'Photos' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Photos' });
+  await sheet.getByTestId('photo-library-input').setInputFiles(file);
+  await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
+  return { more, sheet };
+}
+
+/**
  * Puts the cursor in the amount, whichever thing this viewport gave us.
  *
  * On a phone the figure is a **button** that opens the keypad dock; on a desktop it is a real `<input>`, and

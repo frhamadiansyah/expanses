@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { closeDetails, shareWith } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -96,9 +97,9 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
   await form.getByLabel('Note').fill('Dinner at Plataran');
-  await form.getByLabel('Someone owes part of this').check();
-  await form.getByLabel('Who owes you').fill('Andi');
-  await form.getByLabel('Their share').fill('600000');
+  // With, under Add more details: the row that replaced the card's single-person checkbox.
+  const { more, sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '600000' }]);
+  await closeDetails(more, sheet);
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 

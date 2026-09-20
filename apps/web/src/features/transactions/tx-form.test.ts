@@ -5,6 +5,7 @@ import {
   amountAfterDone,
   amountAfterEnter,
   amountFields,
+  billMinor,
   canEditInSheet,
   chargedHint,
   chargedInNeeded,
@@ -19,6 +20,7 @@ import {
   keypadPress,
   recentCurrencies,
   suggestedRate,
+  withShares,
 } from './tx-form';
 
 const accounts = [
@@ -625,5 +627,71 @@ describe('the currency sheet', () => {
 
   it('drops a code no longer in the list', () => {
     expect(recentCurrencies({ accountCurrency: 'IDR', baseCurrency: 'IDR', stored: ['XXX', 'USD'] })).toEqual(['IDR', 'USD']);
+  });
+});
+
+/**
+ * The shares the With sheet shows and the shares `formToPost` posts, proved to be the same arithmetic.
+ *
+ * Every figure here is uneven and most of them are in USD. An even division cannot tell a floored share from a
+ * halving and so cannot exercise the remainder rule at all; and IDR has exponent 0, so an IDR-only fixture reads
+ * the same whether the currency was honoured or ignored. This path was pinned in IDR alone once already.
+ */
+describe('withShares', () => {
+  /** US$100.01 on the USD account: uneven in a currency with two decimal places. */
+  const usd: FormDraft = { ...draft, moneyId: 'acct-usd', currency: 'USD', amount: '100.01' };
+  const people = (...names: string[]) => names.map((name) => ({ debtAccountId: '', name, amount: '' }));
+
+  it('divides a bill that does not divide evenly, and leaves the odd units with you', () => {
+    const bill = billMinor({ ...usd, withEqually: true, with: people('Andi', 'Budi', 'Citra') }, accounts);
+    expect(bill).toBe(10_001);
+    const shared = withShares({ ...usd, withEqually: true, with: people('Andi', 'Budi', 'Citra') }, 'USD', bill!, { lenient: true });
+    // floor(10001/4) = 2500 each; the odd 1 cent stays with you rather than being asked of anybody.
+    expect(shared.each).toEqual([2500, 2500, 2500]);
+    expect(shared.ownShareMinor).toBe(2501);
+    // And the whole point of the rule: the four shares are the bill again, to the cent.
+    expect(shared.each.reduce((sum, share) => sum + share, 0) + shared.ownShareMinor!).toBe(10_001);
+  });
+
+  it('leaves you what is left when a share is typed, rather than half of anything', () => {
+    const typed = { ...usd, with: [{ debtAccountId: '', name: 'Andi', amount: '33.34' }] };
+    const shown = withShares(typed, 'USD', 10_001, { lenient: true });
+    // US$33.34 is 3334 cents, not 33 and not 3334 rupiah: the figure is read in the currency it was typed in.
+    expect(shown.each).toEqual([3334]);
+    // 6667, never 5000: what is left of the bill, not half of it.
+    expect(shown.ownShareMinor).toBe(6667);
+  });
+
+  it('reads a half-typed share as nothing for the card, and refuses it at the save', () => {
+    const halfTyped = { ...usd, with: [{ debtAccountId: '', name: 'Andi', amount: '' }] };
+    // The card is read while the row is still being typed into, so nothing owed yet is nothing owed.
+    expect(withShares(halfTyped, 'USD', 10_001, { lenient: true })).toMatchObject({ each: [0], ownShareMinor: 10_001 });
+    // The save is the opposite bargain: a share of zero must never post as somebody owing nothing. The words
+    // are `parseMajor`'s, because an empty box never reaches `positive`'s own "greater than zero" — the same
+    // refusal the single-person card has always given, kept rather than reworded here.
+    expect(() => withShares(halfTyped, 'USD', 10_001, { lenient: false })).toThrow('Invalid amount');
+  });
+
+  it('says so rather than showing a share below zero when the shares come to more than the bill', () => {
+    const tooMuch = { ...usd, with: [{ debtAccountId: '', name: 'Andi', amount: '120' }] };
+    expect(withShares(tooMuch, 'USD', 10_001, { lenient: true }).ownShareMinor).toBeNull();
+    expect(() => withShares(tooMuch, 'USD', 10_001, { lenient: false })).toThrow('Their shares come to more than the bill');
+  });
+
+  it('is the same arithmetic the save posts, to the cent', () => {
+    const shared = { ...usd, withEqually: true, with: people('Andi', 'Budi', 'Citra') };
+    const shown = withShares(shared, 'USD', 10_001, { lenient: true });
+    expect(formToPost(shared, accounts)).toMatchObject({
+      kind: 'split',
+      input: { totalMinor: 10_001, ownShareMinor: shown.ownShareMinor, shares: shown.each.map((amountMinor) => ({ amountMinor })) },
+    });
+  });
+
+  it('divides the figure the save divides: a split by category is its rows, a foreign purchase is what was charged', () => {
+    // The amount row is never the bill when the rows are: 40.50 + 44.50 in USD, not the empty amount field.
+    const bySplit = { ...usd, amount: '', splits: [{ categoryId: 'cat-restaurants', amount: '40.50' }, { categoryId: 'cat-restaurants', amount: '44.50' }] };
+    expect(billMinor(bySplit, accounts)).toBe(8500);
+    // 120 CNY charged to the IDR account as 272.400: the bill is what the account paid, not what was typed.
+    expect(billMinor(foreign, accounts)).toBe(272_400);
   });
 });

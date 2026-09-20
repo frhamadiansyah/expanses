@@ -208,6 +208,39 @@ function splitRowsOf(draft: FormDraft, currency: string, typed: string): { categ
 const splitByCategory = (draft: FormDraft) => draft.mode === 'expense' && draft.splits.length > 0;
 
 /**
+ * What the rows of a split add up to, in the account's own currency.
+ *
+ * `evaluateAmount` is the kit's one reader of a typed figure — the same one the amount row, the keypad and
+ * `formToPost` go through — so the running total cannot drift into an arithmetic of its own. A row that cannot be
+ * read yet counts as nothing rather than throwing the total away, because a half-typed figure is the normal state
+ * of a row being typed into.
+ *
+ * It is a display total only. What posts is `formToPost`'s own sum of the same rows, which refuses a row it cannot
+ * read instead of skipping it. It lives here rather than in `SplitSheet.tsx` because `billMinor` needs the same
+ * sum, and a second copy of it in this file is a second place for a split's total to drift.
+ */
+export function splitTotalMinor(splits: readonly SplitRow[], currency: string): number {
+  return splits.reduce((sum, row) => sum + (row.amount.trim() ? (evaluateAmount(row.amount, currency) ?? 0) : 0), 0);
+}
+
+/**
+ * The figure a shared bill is divided from, read in the paying account's own currency — null when there is
+ * nothing readable to divide yet.
+ *
+ * It asks the same question `amounts` asks at Save, off the same fields: a split by category is the sum of its
+ * rows, a figure typed in another currency is what the account was charged, and anything else is the amount row.
+ * `WithSheet`'s summary card is read *while* those fields are being typed, so an unreadable figure is null here
+ * instead of an error; Save still refuses it, through `amounts`, which is the one that posts.
+ */
+export function billMinor(draft: FormDraft, accounts: readonly AccountRow[]): number | null {
+  const settled = accountOf(draft, accounts)?.currency;
+  if (!settled) return null;
+  if (splitByCategory(draft)) return splitTotalMinor(draft.splits, settled);
+  const typed = typedCurrency(draft, accounts);
+  return evaluateAmount(!typed || typed === settled ? draft.amount : draft.chargedAmount, settled);
+}
+
+/**
  * The figure that posts, and the pair that records what was typed instead.
  *
  * The posting is always in the account's own currency: when the typed currency differs, the "Charged in …" row
@@ -312,18 +345,60 @@ function transferPostingLines(draft: FormDraft, account: AccountRow, accounts: r
   });
 }
 
-/** Everyone's share of a shared bill, and what is left as your own. */
-function sharesOf(draft: FormDraft, currency: string, totalMinor: number): { ownShareMinor: number; shares: SplitBillInput['shares'] } {
+/** One shared bill worked out: who is on it, what each of them owes, and what is left as your own. */
+export interface WithShares {
+  /** The rows that name somebody — a blank row being typed into is not yet a person on the bill. */
+  people: WithRow[];
+  /** What each of `people` owes, in the same order. */
+  each: number[];
+  /** What is left as your own spending. Null only when their shares already come to more than the bill. */
+  ownShareMinor: number | null;
+}
+
+/**
+ * Everyone's share of a shared bill and what is left as your own — worked out once, for both readers.
+ *
+ * `WithSheet`'s summary card and `formToPost` have to agree to the rupiah: the card is what the user reads
+ * before pressing Save, and a card totalling a bill one way while the save divides it another is a promise the
+ * app then breaks. So there is one function, and `lenient` is the *only* difference between the two callers —
+ * the sheet reads figures that are half typed and shows them as nothing, while the save refuses a figure it
+ * cannot read rather than quietly posting a share of zero.
+ *
+ * The division itself is `equalShares` and `yourShare` from the core kit, never re-derived here: the remainder
+ * rule (floored shares, the odd units left with you, the shares adding back to the bill exactly) is theirs.
+ */
+export function withShares(draft: FormDraft, currency: string, totalMinor: number, options: { lenient: false }): WithShares & { ownShareMinor: number };
+export function withShares(draft: FormDraft, currency: string, totalMinor: number, options: { lenient: boolean }): WithShares;
+export function withShares(draft: FormDraft, currency: string, totalMinor: number, { lenient }: { lenient: boolean }): WithShares {
   const people = draft.with.filter((row) => row.debtAccountId || row.name.trim());
-  if (people.length === 0) throw new Error('Say who owes you');
-  const person = (row: WithRow) =>
-    row.debtAccountId ? { debtAccountId: row.debtAccountId } : { person: { name: row.name.trim(), currency } };
+  if (people.length === 0) {
+    if (!lenient) throw new Error('Say who owes you');
+    // Nobody named yet: the whole bill is still yours, which is what the card should say while it fills up.
+    return { people, each: [], ownShareMinor: totalMinor };
+  }
   if (draft.withEqually) {
     const { yours, each } = equalShares(totalMinor, people.length);
-    return { ownShareMinor: yours, shares: people.map((row, i) => ({ ...person(row), amountMinor: each[i]! })) };
+    return { people, each, ownShareMinor: yours };
   }
-  const amounts = people.map((row, i) => positive(row.amount, currency, `Share ${i + 1}`));
-  return { ownShareMinor: yourShare(totalMinor, amounts), shares: people.map((row, i) => ({ ...person(row), amountMinor: amounts[i]! })) };
+  const each = people.map((row, i) =>
+    lenient ? (row.amount.trim() ? (evaluateAmount(row.amount, currency) ?? 0) : 0) : positive(row.amount, currency, `Share ${i + 1}`),
+  );
+  if (!lenient) return { people, each, ownShareMinor: yourShare(totalMinor, each) };
+  try {
+    return { people, each, ownShareMinor: yourShare(totalMinor, each) };
+  } catch {
+    // Typed past the bill. The card says so in words rather than showing a share below zero, and Save still
+    // refuses it — through the very same `yourShare`, on the strict path above.
+    return { people, each, ownShareMinor: null };
+  }
+}
+
+/** Everyone's share of a shared bill, and what is left as your own, in the shape `splitBill` takes. */
+function sharesOf(draft: FormDraft, currency: string, totalMinor: number): { ownShareMinor: number; shares: SplitBillInput['shares'] } {
+  const { people, each, ownShareMinor } = withShares(draft, currency, totalMinor, { lenient: false });
+  const person = (row: WithRow) =>
+    row.debtAccountId ? { debtAccountId: row.debtAccountId } : { person: { name: row.name.trim(), currency } };
+  return { ownShareMinor, shares: people.map((row, i) => ({ ...person(row), amountMinor: each[i]! })) };
 }
 
 export type FormPost =

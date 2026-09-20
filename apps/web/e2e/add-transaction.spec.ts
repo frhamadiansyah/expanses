@@ -1,8 +1,37 @@
 import { expect, type Page, test } from '@playwright/test';
-import { addTransaction, addTransfer } from './add-transaction';
+import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith } from './add-transaction';
 import { addEvent } from './event-plan';
 
 const TODAY = new Date().toISOString().slice(0, 10);
+
+/** The directory `photos/store.ts` keeps pictures in, a sibling of the database's `.expanses/` and never inside it. */
+const PHOTO_DIRECTORY = 'expanses-photos';
+
+/** What is in `expanses-photos/` right now, by name, read from the page rather than from anything the app says. */
+function photoFiles(page: Page): Promise<string[]> {
+  return page.evaluate(async (directory) => {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle(directory).catch(() => null);
+    if (!dir) return [];
+    const found: string[] = [];
+    for await (const entry of dir.values()) found.push(entry.name);
+    return found.sort();
+  }, PHOTO_DIRECTORY);
+}
+
+/** Puts a file in the photo directory behind the app's back — an abandoned form's leftovers, in one line. */
+function plantPhoto(page: Page, name: string): Promise<void> {
+  return page.evaluate(
+    async ([directory, fileName]) => {
+      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(directory, { create: true });
+      const writable = await (await dir.getFileHandle(fileName, { create: true })).createWritable();
+      await writable.write(new TextEncoder().encode('a receipt nobody kept'));
+      await writable.close();
+    },
+    [PHOTO_DIRECTORY, name] as const,
+  );
+}
+
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -428,4 +457,162 @@ test('a missing rate is asked for under Add more details, and the save then goes
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Blue Bottle' })).toContainText('12,50');
   await page.goto('/spending');
   await expect(page.getByText(/200\.000/).first()).toBeVisible();
+});
+
+/**
+ * A dinner for four, split equally — the shape the form could not record until now.
+ *
+ * `splitBill` has taken a list of shares since Task 5 and `recentPeople` has offered the people on the books for
+ * just as long; the card went on asking for exactly one name and one figure, so a bill shared three ways had to
+ * be typed as three transactions or not at all. Every figure below is one `equalShares` worked out and the
+ * summary card promised before Save: 400.000 divided four ways, 100.000 each, 300.000 owed back.
+ */
+test('a bill split equally between three people leaves each of them owing their share', async ({ page }) => {
+  await addAccount(page, 'BCA Visa', 'credit_card', async () => {
+    await page.getByLabel('Amount owed now').fill('0');
+  });
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('400000');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Dinner at Plataran');
+
+  const { more, sheet } = await shareWith(page, form, [{ name: 'Andi' }, { name: 'Budi' }, { name: 'Citra' }]);
+
+  // The three figures the user reads before pressing Save, and the three the save then posts.
+  const summary = sheet.getByTestId('with-summary');
+  await expect(summary).toContainText('Bill');
+  await expect(summary).toContainText('Rp 400.000');
+  await expect(summary).toContainText('They owe you');
+  await expect(summary).toContainText('Rp 300.000');
+  await expect(summary).toContainText('Your share');
+  await expect(sheet.getByTestId('with-your-share')).toHaveText('Rp 100.000');
+
+  // Shut, the row underneath reads back what was decided — the summary Task 14's edit sheet will show too.
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(more.getByRole('button', { name: 'With', exact: true })).toContainText('3 people · They owe you Rp 300.000');
+  await more.getByRole('button', { name: 'Close' }).click();
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  // Three people on the books, not one, and each of them owing a quarter of the bill.
+  await page.goto('/net-worth/debts');
+  for (const person of ['Andi', 'Budi', 'Citra']) {
+    await expect(page.getByRole('heading', { name: person })).toBeVisible();
+    // The figure beside that person's own name: each of them owes a quarter, rather than one of them the lot.
+    await expect(page.getByRole('heading', { name: person }).locator('xpath=following-sibling::span')).toContainText('100.000');
+  }
+
+  // The card was charged the whole 400.000 — what the restaurant took, not what the dinner cost the owner.
+  await page.goto('/accounts');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Visa' }).first()).toContainText('400.000');
+
+  // …and only the owner's own quarter is spending. The month's total is the figure the ring is drawn from, so
+  // a split that posted the whole bill to Restaurants would read 400.000 here.
+  await page.goto('/transactions');
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 100.000');
+  await expect(page.getByTestId('spending-report')).toContainText('Restaurants');
+});
+
+/**
+ * Custom amounts: one person's share is typed, and yours is what is left.
+ *
+ * Deliberately uneven — 400.000 less a typed 133.333 — because an even division cannot tell `yourShare` from a
+ * halving, and the remainder rule is the whole reason the shares add back to the bill to the rupiah.
+ */
+test('a typed share leaves the rest of the bill as your own spending', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', async () => {
+    await page.getByLabel('Current balance').fill('50000000');
+  });
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('400000');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await form.getByLabel('Note').fill('Sate Khas Senayan');
+
+  const { more, sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '133333' }]);
+  await expect(sheet.getByTestId('with-summary')).toContainText('Rp 133.333');
+  await expect(sheet.getByTestId('with-your-share')).toHaveText('Rp 266.667');
+
+  await closeDetails(more, sheet);
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  await page.goto('/net-worth/debts');
+  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(page.getByText(/133\.333/).first()).toBeVisible();
+
+  // 266.667, not 200.000: what is left of the bill, never half of it.
+  await page.goto('/transactions');
+  await expect(page.getByTestId('period-total')).toHaveText('Rp 266.667');
+});
+
+/**
+ * A photograph attached while the purchase is being recorded, and read back off the device on its receipt.
+ *
+ * This is the first thing in the app to put a picture on a transaction: Task 6 built the OPFS store, the backup
+ * zip and the orphan sweep, and nothing called any of it from the form. The bytes asserted at the end are the
+ * bytes handed to the file input at the start — read back out of the blob URL, so the assertion is about this
+ * device's own storage rather than about anything the page says.
+ */
+test('a photograph attached to a purchase is on its receipt, and ✕ takes it off again', async ({ page }) => {
+  await addAccount(page, 'BCA Visa', 'credit_card', async () => {
+    await page.getByLabel('Amount owed now').fill('0');
+  });
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).fill('85000');
+  await form.getByRole('button', { name: 'Category' }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await form.getByLabel('Note').fill('Superindo');
+
+  // Left behind by some earlier half-filled form, put there behind the app's back: closing the sheet runs the
+  // orphan sweep, and a file no row names must go with it.
+  await plantPhoto(page, 'abandoned-by-a-half-filled-form.jpg');
+
+  const { more, sheet } = await attachPhoto(page, form, { name: 'wrong-one.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('the wrong receipt') });
+
+  // ✕ takes both halves away — the row and the file — so the picture that goes with the transaction is the
+  // second one and only the second one. The bytes are the half a sweep cannot put back.
+  await sheet.getByRole('button', { name: 'Remove photo 1' }).click();
+  await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toHaveCount(0);
+  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('None');
+  expect(await photoFiles(page)).toEqual(['abandoned-by-a-half-filled-form.jpg']);
+
+  await sheet.getByTestId('photo-library-input').setInputFiles({ name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a receipt') });
+  await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
+  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+
+  await closeDetails(more, sheet);
+  // One file left on the device: the picture on the open form, which `allPhotoFileNames` names even though its
+  // row has no transaction yet. The abandoned one is gone, and the sweep is what took it.
+  await expect.poll(() => photoFiles(page), { timeout: 15_000 }).toHaveLength(1);
+  expect(await photoFiles(page)).not.toContain('abandoned-by-a-half-filled-form.jpg');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
+  const picture = page.getByTestId('photo-strip').getByRole('img', { name: 'Receipt photo for Superindo' });
+  await expect(picture).toHaveCount(1);
+  await expect(picture).toHaveAttribute('src', /^blob:/);
+  // The bytes behind that URL are the ones chosen in the form, read back out of this device's own OPFS.
+  expect(await picture.evaluate(async (img: HTMLImageElement) => (await fetch(img.src)).text())).toBe('a receipt');
+
+  // Tapped, it opens full size — the promise the sheet's own line makes.
+  await picture.click();
+  await expect(page.getByRole('dialog', { name: 'Photo' })).toBeVisible();
 });
