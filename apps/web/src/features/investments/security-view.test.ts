@@ -21,6 +21,10 @@ describe('a foreign stock in base', () => {
   it('has no gain in base without a rate, rather than a gain against nothing', () => {
     expect(baseGainOf({ ...aapl, valueBaseMinor: null })).toBeNull();
   });
+  it('has no gain in base, and no bought-at rate, when what was put in is not known', () => {
+    expect(baseGainOf({ ...aapl, costBaseMinor: null })).toBeNull();
+    expect(boughtAtRate({ ...aapl, costBaseMinor: null }, 'IDR')).toBeNull();
+  });
   it('was bought at the base cost over the native cost', () => {
     expect(boughtAtRate(aapl, 'IDR')).toBe(15_800);
     expect(boughtAtRate({ ...aapl, currency: 'IDR' }, 'IDR')).toBeNull();

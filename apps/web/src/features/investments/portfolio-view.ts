@@ -1,4 +1,4 @@
-import { type AssetKind, formatBps, formatLots, gainBps, percentShares, portfolioSummary, type PortfolioSummary, type Position, sumToBase, unitsValueMinor } from '@expanses/core';
+import { type AssetKind, formatBps, formatMinor, formatLots, gainBps, percentShares, portfolioSummary, type PortfolioSummary, type Position, sumToBase, unitsValueMinor } from '@expanses/core';
 import type { AccountRow, AssetProfileRow, AssetValueRow, HoldingLinkRow, SecurityRow } from '@expanses/db';
 
 export const NO_BROKER = 'none';
@@ -14,7 +14,8 @@ export interface HoldingLine {
   unitsMicro: number;
   valueMinor: number;
   costMinor: number;
-  costBaseMinor: number;
+  /** In base, each buy at its own day's rate; null for a foreign holding with no pinned base cost — never a zero. */
+  costBaseMinor: number | null;
   /** The owner should type a fresh price — the Assets page's own flag. */
   stale: boolean;
 }
@@ -32,7 +33,8 @@ export interface StockRow {
   unitsMicro: number;
   valueMinor: number;
   costMinor: number;
-  costBaseMinor: number;
+  /** Null when any of its holdings' base cost is unknown. */
+  costBaseMinor: number | null;
   /** In base through `sumToBase`; null when there is no rate for its currency. For ordering only — the row draws `approxLine`. */
   valueBaseMinor: number | null;
   gainBps: number | null;
@@ -50,13 +52,16 @@ export interface BrokerRow {
   valueMinor: number | null;
   /** Everything here in base (`sumToBase`): null with the missing rates named, never the rest summed. */
   total: { totalMinor: number | null; missing: string[] };
-  costBaseMinor: number;
+  /** Null when any of its holdings' base cost is unknown. */
+  costBaseMinor: number | null;
   /** Floor and remainder to the largest (the owner's ruling); null unless every broker could be added up. */
   sharePercent: number | null;
 }
 
 export interface PortfolioView {
   summary: PortfolioSummary;
+  /** Holdings (by name) in another currency whose cost in base is not known: "Put in" names them rather than count 0. */
+  costUnknown: string[];
   stocks: StockRow[];
   brokers: BrokerRow[];
 }
@@ -98,7 +103,9 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
       unitsMicro: value.unitsMicro ?? 0,
       valueMinor: value.valueMinor,
       costMinor: value.costMinor,
-      costBaseMinor: value.currency === p.baseCurrency ? value.costMinor : (p.baseCosts[value.accountId]?.costMinor ?? 0),
+      // A foreign holding's base cost is what its buys pinned; with none pinned it is unknown — unless it cost nothing.
+      costBaseMinor:
+        value.currency === p.baseCurrency ? value.costMinor : (p.baseCosts[value.accountId]?.costMinor ?? (value.costMinor === 0 ? 0 : null)),
       stale: value.stale,
     });
   }
@@ -117,7 +124,7 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
     row.unitsMicro += line.unitsMicro;
     row.valueMinor += line.valueMinor;
     row.costMinor += line.costMinor;
-    row.costBaseMinor += line.costBaseMinor;
+    row.costBaseMinor = addKnown(row.costBaseMinor, line.costBaseMinor);
     row.stale ||= line.stale;
     row.holdings.push(line);
     stocksByKey.set(key, row);
@@ -145,7 +152,7 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
       currency: single,
       valueMinor: single ? holdings.reduce((sum, h) => sum + h.valueMinor, 0) : null,
       total: inBase(holdings.map((h) => ({ minor: h.valueMinor, currency: h.currency }))),
-      costBaseMinor: holdings.reduce((sum, h) => sum + h.costBaseMinor, 0),
+      costBaseMinor: holdings.reduce<number | null>((sum, h) => addKnown(sum, h.costBaseMinor), 0),
       sharePercent: null,
     };
   });
@@ -160,9 +167,19 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
 
   return {
     summary: portfolioSummary(lines.map((l) => ({ currency: l.currency, valueMinor: l.valueMinor, costMinor: l.costMinor, costBaseMinor: l.costBaseMinor })), p.baseCurrency, p.ratesToBase),
+    costUnknown: lines.filter((l) => l.costBaseMinor === null).map((l) => l.name),
     stocks,
     brokers,
   };
+}
+
+/** A sum that stays unknown once any part of it is. */
+const addKnown = (a: number | null, b: number | null): number | null => (a === null || b === null ? null : a + b);
+
+/** "Put in": the figure, or — when a foreign holding's base cost is not known — the words naming it, never a zero. */
+export function putInLine(costBaseMinor: number | null, unknown: readonly string[], base: string): string {
+  if (costBaseMinor !== null) return formatMinor(costBaseMinor, base);
+  return `Not known — no ${base} cost for ${unknown.join(', ')}`;
 }
 
 /** The price page's "This changes": each holding at the new price, and its move from the last one. */

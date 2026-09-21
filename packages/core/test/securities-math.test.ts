@@ -117,6 +117,19 @@ describe('portfolioSummary', () => {
     });
   });
 
+  it('leaves what was put in unknown when a foreign holding has no base cost — never a silent zero', () => {
+    const unknown = { currency: 'USD', valueMinor: 214_300, costMinor: 182_500, costBaseMinor: null };
+    expect(portfolioSummary([unknown, holdings[2]!], 'IDR', { USD: 16_250 })).toEqual({
+      valueBaseMinor: 34_823_750 + 9_775_000, // the value needs today's rate only, so it is known
+      costBaseMinor: null,
+      gainBaseMinor: null,
+      gainBps: null,
+      currencyMoveMinor: null,
+      converted: true,
+      missingRates: [],
+    });
+  });
+
   it('needs no rate for a foreign holding worth nothing, as sumToBase does', () => {
     const summary = portfolioSummary([{ currency: 'USD', valueMinor: 0, costMinor: 0, costBaseMinor: 0 }, holdings[4]!], 'IDR', {});
     expect(summary).toMatchObject({ valueBaseMinor: 5_740_000, missingRates: [], converted: false, currencyMoveMinor: 0 });

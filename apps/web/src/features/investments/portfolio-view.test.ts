@@ -1,7 +1,8 @@
 import type { AccountRow, AssetProfileRow, AssetValueRow, HoldingLinkRow, SecurityRow } from '@expanses/db';
+import { formatMinor } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import { groupAssets } from '../networth/asset-rows';
-import { brokerSubtitle, dayLabel, NO_BROKER, portfolioView, priceChangeLines, stockSubtitle } from './portfolio-view';
+import { brokerSubtitle, dayLabel, NO_BROKER, portfolioView, priceChangeLines, putInLine, stockSubtitle } from './portfolio-view';
 
 const value = (accountId: string, currency: string, units: number, valueMinor: number, costMinor: number, stale = false): AssetValueRow =>
   ({ accountId, name: accountId, currency, planGroup: 'invest', mode: 'market', unitsMicro: units * 1_000_000, stale, valueMinor, costMinor, source: 'price', asOf: '2026-09-19' }) as AssetValueRow;
@@ -72,6 +73,20 @@ describe('portfolioView', () => {
     expect(view.brokers.find((b) => b.name === 'Stockbit')).toMatchObject({ currency: null, valueMinor: null, total: { totalMinor: 34_823_750 + 15_515_000, missing: [] } });
   });
 
+  it('shows a foreign holding with no base cost as unknown, naming it, and never adds it as zero', () => {
+    const view = portfolioView({ ...withoutFund, baseCosts: { 'voo-ib': position(24_063_060) } });
+    expect(view.costUnknown).toEqual(['aapl-ib']);
+    expect(view.summary).toMatchObject({ costBaseMinor: null, gainBaseMinor: null, valueBaseMinor: 85_682_250 });
+    expect(view.stocks.find((s) => s.title === 'AAPL')!.costBaseMinor).toBeNull();
+    expect(view.stocks.find((s) => s.title === 'VOO')!.costBaseMinor).toBe(24_063_060);
+    expect(view.brokers.find((b) => b.name === 'Interactive Brokers')!.costBaseMinor).toBeNull();
+    expect(view.brokers.find((b) => b.name === 'Stockbit')!.costBaseMinor).toBe(8_750_000 + 6_200_000);
+    // A foreign holding that cost nothing costs nothing in base, and needs no pinned figure.
+    const free = portfolioView({ ...withoutFund, values: [value('aapl-ib', 'USD', 10, 214_300, 0)], baseCosts: {} });
+    expect(free.costUnknown).toEqual([]);
+    expect(free.summary.costBaseMinor).toBe(0);
+  });
+
   it('refuses every total it has no rate for, naming the currency, and shares nothing out of a whole it cannot add up', () => {
     const view = portfolioView({ ...withoutFund, ratesToBase: {} });
     expect(view.summary).toMatchObject({ valueBaseMinor: null, missingRates: ['USD'] });
@@ -117,6 +132,14 @@ describe('the row subtitles', () => {
   });
   it('count a broker’s holdings, its one currency and its share', () => {
     expect(view.brokers.map(brokerSubtitle)).toEqual(['2 holdings · USD · 71%', '2 holdings · IDR · 18%', '2 holdings · IDR · 11%']);
+  });
+});
+
+describe('putInLine', () => {
+  it('is the figure when every cost is known, and names the holdings when one is not — never a zero', () => {
+    expect(putInLine(78_008_060, [], 'IDR')).toBe(formatMinor(78_008_060, 'IDR'));
+    expect(putInLine(null, ['AAPL · Interactive Brokers'], 'IDR')).toBe('Not known — no IDR cost for AAPL · Interactive Brokers');
+    expect(putInLine(null, ['AAPL · IB', 'VOO · IB'], 'IDR')).toBe('Not known — no IDR cost for AAPL · IB, VOO · IB');
   });
 });
 

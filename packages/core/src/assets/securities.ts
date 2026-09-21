@@ -63,15 +63,18 @@ export interface PortfolioHolding {
   /** Today's value and the cost of what is held, both in the holding's own currency. */
   valueMinor: number;
   costMinor: number;
-  /** The same cost in base, each buy at its own day's rate (`positionInBase`). */
-  costBaseMinor: number;
+  /**
+   * The same cost in base, each buy at its own day's rate (`positionInBase`) — or null when a foreign holding has no
+   * pinned base cost. Unknown is carried as unknown, never counted as zero.
+   */
+  costBaseMinor: number | null;
 }
 
 export interface PortfolioSummary {
   /** Today's value in base (`sumToBase`), or null when a rate is missing — never the sum of the rest. */
   valueBaseMinor: number | null;
-  /** What was put in, in base: each buy pinned on its own day, so it needs no rate today. */
-  costBaseMinor: number;
+  /** What was put in, in base: each buy pinned on its own day, so it needs no rate today. Null when any holding's is unknown. */
+  costBaseMinor: number | null;
   gainBaseMinor: number | null;
   gainBps: number | null;
   /** How much of the gain is the rate moving: today's rate against the rate each holding was bought at. Signed; null with the value. */
@@ -84,19 +87,20 @@ export interface PortfolioSummary {
 
 export function portfolioSummary(holdings: readonly PortfolioHolding[], base: string, ratesToBase: Readonly<Record<string, number>>): PortfolioSummary {
   const value = sumToBase({ amounts: holdings.map((h) => ({ minor: h.valueMinor, currency: h.currency })), baseCurrency: base, ratesToBase });
-  // Signed, and in base already: nothing here needs a rate.
-  const costBaseMinor = holdings.reduce((sum, h) => sum + h.costBaseMinor, 0);
+  // Signed, and in base already: nothing here needs a rate. One unknown cost makes the whole unknown, never a zero.
+  const costBaseMinor = holdings.some((h) => h.costBaseMinor === null) ? null : holdings.reduce((sum, h) => sum + h.costBaseMinor!, 0);
   // The move is the foreign holdings at today's rate (sumToBase again) less the same holdings at the rate each was bought at.
   const foreign = holdings.filter((h) => h.currency !== base && h.costMinor > 0);
   const today = sumToBase({ amounts: foreign.map((h) => ({ minor: h.valueMinor, currency: h.currency })), baseCurrency: base, ratesToBase });
-  const atCostRates = foreign.reduce((sum, h) => sum + divRound(BigInt(h.valueMinor) * BigInt(h.costBaseMinor), BigInt(h.costMinor)), 0n);
+  const atCostRates = costBaseMinor === null ? null : foreign.reduce((sum, h) => sum + divRound(BigInt(h.valueMinor) * BigInt(h.costBaseMinor!), BigInt(h.costMinor)), 0n);
   const valueBaseMinor = value.totalMinor;
+  const known = valueBaseMinor !== null && costBaseMinor !== null;
   return {
     valueBaseMinor,
     costBaseMinor,
-    gainBaseMinor: valueBaseMinor === null ? null : valueBaseMinor - costBaseMinor,
-    gainBps: valueBaseMinor === null ? null : gainBps(valueBaseMinor, costBaseMinor),
-    currencyMoveMinor: today.totalMinor === null || valueBaseMinor === null ? null : today.totalMinor - Number(atCostRates),
+    gainBaseMinor: known ? valueBaseMinor - costBaseMinor : null,
+    gainBps: known ? gainBps(valueBaseMinor, costBaseMinor) : null,
+    currencyMoveMinor: today.totalMinor === null || valueBaseMinor === null || atCostRates === null ? null : today.totalMinor - Number(atCostRates),
     converted: holdings.some((h) => h.currency !== base && h.valueMinor !== 0),
     missingRates: value.missing,
   };

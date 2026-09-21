@@ -10,13 +10,13 @@ import { dayLabel } from './portfolio-view';
 
 /** A foreign stock in base: its gain against what was put in (each buy pinned on its day). Null without a rate or a cost. */
 export function baseGainOf(stock: Pick<StockRow, 'valueBaseMinor' | 'costBaseMinor'>): { gainMinor: number; bps: number | null } | null {
-  if (stock.valueBaseMinor === null) return null;
+  if (stock.valueBaseMinor === null || stock.costBaseMinor === null) return null;
   return { gainMinor: stock.valueBaseMinor - stock.costBaseMinor, bps: gainBps(stock.valueBaseMinor, stock.costBaseMinor) };
 }
 
 /** "Bought at": base cost over native cost — the blended rate of every buy still held. Null when either is nothing. */
 export function boughtAtRate(stock: Pick<StockRow, 'currency' | 'costMinor' | 'costBaseMinor'>, base: string): number | null {
-  if (stock.currency === base || !(stock.costMinor > 0) || !(stock.costBaseMinor > 0)) return null;
+  if (stock.currency === base || stock.costBaseMinor === null || !(stock.costMinor > 0) || !(stock.costBaseMinor > 0)) return null;
   return rateFromAmounts(stock.costMinor, stock.currency, stock.costBaseMinor, base);
 }
 

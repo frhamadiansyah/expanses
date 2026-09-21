@@ -6,7 +6,7 @@ import { useBalances } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
 import { ApproxFigure, approxLine, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { type Destination, DesktopBand, InBase, InvestTable } from './InvestTable';
-import { type BrokerRow, type HoldingLine, NO_BROKER, type PortfolioView } from './portfolio-view';
+import { type BrokerRow, type HoldingLine, NO_BROKER, type PortfolioView, putInLine } from './portfolio-view';
 import { usePortfolio } from './queries';
 import { idleCash } from './security-view';
 
@@ -64,7 +64,7 @@ export function BrokerPage({ none = false }: { none?: boolean }) {
   );
   const facts = (
     <InsetGroup footer="A broker in one currency shows its own totals in that currency. Nothing is converted twice.">
-      <ReadOnlyRow label="Put in" value={formatMinor(broker.costBaseMinor, base)} />
+      <ReadOnlyRow label="Put in" value={putInLine(broker.costBaseMinor, broker.holdings.filter((h) => h.costBaseMinor === null).map((h) => h.name), base)} />
       {cash.map((c) => (
         // Each in its own currency, never converted: idle cash is a balance, not a value.
         <ReadOnlyRow key={c.accountId} label={c.label} value={formatMinor(c.minor, c.currency)} />

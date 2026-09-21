@@ -4,7 +4,7 @@ import { useApp } from '../../app/context';
 import { cx, Empty, ErrorBox } from '../../ui';
 import { ApproxFigure, approxLine, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { type Destination, DesktopBand, InBase, InvestTable } from './InvestTable';
-import { type BrokerRow, brokerSubtitle, keptAt, type PortfolioView, type StockRow, stockSubtitle } from './portfolio-view';
+import { type BrokerRow, brokerSubtitle, keptAt, type PortfolioView, putInLine, type StockRow, stockSubtitle } from './portfolio-view';
 import { usePortfolio } from './queries';
 
 type Rates = Readonly<Record<string, number>>;
@@ -30,9 +30,16 @@ function PortfolioFigure({ view, base, left }: { view: PortfolioView; base: stri
           align={left ? 'start' : 'center'}
           caption={
             <span data-testid="portfolio-caption">
-              {summary.converted ? '≈ ' : ''}
-              {formatMinor(summary.gainBaseMinor!, base)}
-              {summary.gainBps === null ? '' : ` · ${formatBps(summary.gainBps)} in ${base}`}
+              {summary.gainBaseMinor === null ? (
+                // What was put in is not known for a holding, so there is no gain to show — never one against a zero.
+                'Gain not known'
+              ) : (
+                <>
+                  {summary.converted ? '≈ ' : ''}
+                  {formatMinor(summary.gainBaseMinor, base)}
+                  {summary.gainBps === null ? '' : ` · ${formatBps(summary.gainBps)} in ${base}`}
+                </>
+              )}
               {summary.currencyMoveMinor !== null && summary.currencyMoveMinor !== 0 && (
                 <span className="block">{formatMinor(summary.currencyMoveMinor, base)} of that is exchange-rate movement</span>
               )}
@@ -55,7 +62,7 @@ function PortfolioFacts({ view, base }: { view: PortfolioView; base: string }) {
   const brokers = view.brokers.filter((b) => b.accountId).length;
   return (
     <InsetGroup>
-      <ReadOnlyRow label="Put in" value={formatMinor(view.summary.costBaseMinor, base)} />
+      <ReadOnlyRow label="Put in" value={putInLine(view.summary.costBaseMinor, view.costUnknown, base)} />
       <ReadOnlyRow
         label="Holdings"
         value={`${view.stocks.length} ${view.stocks.length === 1 ? 'stock' : 'stocks'} · ${brokers} ${brokers === 1 ? 'broker' : 'brokers'}`}
