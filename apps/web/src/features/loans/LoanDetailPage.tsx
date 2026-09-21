@@ -365,9 +365,9 @@ export function LoanDetailPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title={account?.name ?? 'Loan'} back="All loans" backTo="/net-worth/loans" />
+      <LargeTitle title={account?.name ?? 'Loan'} back="Debts" backTo="/net-worth/loans" />
       <ErrorBox error={loan.error ?? schedule.error} />
-      {!terms && !loan.isPending && <Empty>This loan has no terms yet. Add them on the Loans tab to see its schedule.</Empty>}
+      {!terms && !loan.isPending && <Empty>This loan has no terms yet. Add them on Debts to see its schedule.</Empty>}
 
       {terms && (
         <>

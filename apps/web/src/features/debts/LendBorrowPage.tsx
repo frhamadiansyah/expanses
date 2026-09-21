@@ -1,5 +1,6 @@
 import type { PersonDebtRow } from '@expanses/db';
 import { HelpCircle, Plus } from 'lucide-react';
+import { useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money } from '../../ui';
@@ -37,15 +38,18 @@ function Column({ title, people, emptyText, currency, rates }: { title: string; 
   );
 }
 
-export function DebtsPage() {
+export function LendBorrowPage() {
   const { ws } = useApp();
   const people = usePeopleDebts();
+  // Opened from a person's row on Debts: that person alone, with the way back to everyone one tap away.
+  const { person: only } = useSearch({ from: '/net-worth/lend-borrow' });
+  const theirs = (list: PersonDebtRow[]) => (only ? list.filter((row) => row.personName === only) : list);
   const [adding, setAdding] = useState(false);
   const [showSettled, setShowSettled] = useState(false);
 
-  const owedToYou = people.data?.owedToYou ?? [];
-  const youOwe = people.data?.youOwe ?? [];
-  const settled = people.data?.settled ?? [];
+  const owedToYou = theirs(people.data?.owedToYou ?? []);
+  const youOwe = theirs(people.data?.youOwe ?? []);
+  const settled = theirs(people.data?.settled ?? []);
   const held = useHeldRates([...owedToYou, ...youOwe].map((person) => person.currency));
   const rates = held.data?.rates;
   const nothingYet = people.isSuccess && owedToYou.length === 0 && youOwe.length === 0 && settled.length === 0;
@@ -66,6 +70,12 @@ export function DebtsPage() {
       <ErrorBox error={people.error} />
 
       {adding && <DebtForm onDone={() => setAdding(false)} />}
+
+      {only && (
+        <InsetGroup header={`Only ${only}`}>
+          <InsetRow title="Show everyone" to="/net-worth/lend-borrow" search={{}} />
+        </InsetGroup>
+      )}
 
       {nothingYet && !adding && (
         <Empty>

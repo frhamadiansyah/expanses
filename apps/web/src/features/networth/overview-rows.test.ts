@@ -200,7 +200,7 @@ describe('attentionItems with debts', () => {
   it('names who owes what, and when it is due', () => {
     const items = attentionItems([], [], [], [], [debtor()]);
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ tone: 'warn', action: 'Chase', to: '/net-worth/debts' });
+    expect(items[0]).toMatchObject({ tone: 'warn', action: 'Chase', to: '/net-worth/lend-borrow' });
     expect(items[0]!.text).toBe(`Andi owes you ${formatMinor(10_000_000, 'IDR')} · Due in 6 days`);
   });
 

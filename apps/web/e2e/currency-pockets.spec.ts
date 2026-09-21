@@ -139,13 +139,13 @@ test('Lend & borrow adds each side in rupiah at the held rate, and names a rate 
   await owed('Budi', 'IDR', '500000');
 
   // US$100 at 16.250 and Rp 500.000: Rp 2.125.000, never 10.000 + 500.000 minor units read as Rp 510.000.
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   const total = page.getByTestId('debts-total-Owed to you');
   await expect(total).toContainText('2.125.000');
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
 
   await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   await expect(total).toContainText('No USD rate yet');
   await expect(total).not.toContainText('500.000');
 });

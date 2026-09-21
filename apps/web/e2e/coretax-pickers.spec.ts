@@ -133,7 +133,7 @@ test('a mortgage, a wallet and a deposit reach the tax report under the right ko
   await page.getByLabel('Interest rate').fill('9');
   await page.getByLabel('Months left').fill('168');
   await page.getByRole('button', { name: 'Add debt' }).click();
-  await expect(page.getByRole('heading', { name: 'Loans' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Debts', exact: true })).toBeVisible();
 
   await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption('2026');

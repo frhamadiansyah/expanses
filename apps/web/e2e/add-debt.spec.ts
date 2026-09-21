@@ -36,7 +36,7 @@ test('money borrowed from family lands under Lend & borrow', async ({ page }) =>
   await page.getByLabel('Who').fill('Ibu');
   await page.getByRole('button', { name: 'Add debt' }).click();
 
-  await expect(page).toHaveURL(/\/net-worth\/debts$/);
+  await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
   await expect(page.getByText('You owe', { exact: true })).toBeVisible();
   await expect(page.getByText('Ibu').first()).toBeVisible();
 });
