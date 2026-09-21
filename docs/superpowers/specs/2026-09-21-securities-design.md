@@ -123,8 +123,9 @@ that the valuation then ignores.
 
 When a holding is linked to a security, every price it had of its own is copied to the security **unless the
 security already has a price on that date** (the security's stands). Nothing typed is lost, and from that moment
-every holder of the security reads the same series. The holding's own rows stay in `prices`, unread while the link
-stands.
+every holder of the security reads the same series. The holding's own rows are then removed from `prices` (ruling
+m12, 2026-09-22), so no stale series is left to come back; an unlink gives the holding the security's latest price as
+its own.
 
 ### 3.4 A price is typed in the security's currency
 
@@ -268,7 +269,9 @@ to it:
   not be read and Name it myself stays available.
 - `npm run build` ends with `apps/web/scripts/check-bundle.mjs`, which **fails the build** if either list's text is
   found in the entry chunk, if either list is not in exactly one chunk of its own, or if a list chunk passes its
-  budget (IDX 25 KB gzipped, US 150 KB gzipped). The gate every task runs therefore guards the size for good.
+  budget (IDX 25 KB gzipped, US 160 KB gzipped — raised from 150 KB by the owner's ruling, after rows that are not
+  ordinary holdings were dropped). The gate every task runs therefore guards the size for good. While the IDX list
+  has no rows (the exchange's file is pending), its check is a warning, "IDX list: pending", not a failure.
 
 ### 6.4 Keeping the lists current
 
