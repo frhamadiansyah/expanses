@@ -78,7 +78,7 @@ function DebtItemForm({ item }: { item: string }) {
           coretaxCode: plan.person.coretaxCode,
         });
         await invalidate();
-        await navigate({ to: '/net-worth/debts' });
+        await navigate({ to: '/net-worth/lend-borrow' });
         return;
       }
       // Only a card leaves the account out, and a card never reaches this form.
@@ -110,7 +110,7 @@ function DebtItemForm({ item }: { item: string }) {
         footer={
           <>
             {chosen.sub}. The picker chose what kind of debt this is. Name is what you call yours.
-            {asks.includes('term') && ' Leave the months left empty if you do not know them: the debt still opens at what is owed, and its terms can be added on Loans.'}
+            {asks.includes('term') && ' Leave the months left empty if you do not know them: the debt still opens at what is owed, and its terms can be added on Debts.'}
             {owedToAPerson && ' Money you owe a person is kept under Lend & borrow, and what is left there is what the tax report uses.'}
           </>
         }

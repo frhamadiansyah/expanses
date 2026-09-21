@@ -488,7 +488,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
   await expect(page.locator('div', { hasText: /^Original amount/ }).last()).toContainText('US$100,00');
 
   // It is still a shared bill and not a plain purchase that happened to keep two more columns: Andi owes his half.
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   await expect(page.getByText('Andi').first()).toBeVisible();
   await expect(page.getByText('800.000').first()).toBeVisible();
 });
@@ -804,7 +804,7 @@ test('Split by category and With refuse each other in words, before Save', async
   await form.getByLabel('Note').fill('Warung Steak');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   await expect(page.getByRole('heading', { name: 'Andi' }).locator('xpath=following-sibling::span')).toContainText('42.500');
 });
 
@@ -887,7 +887,7 @@ test('a bill split equally between three people leaves each of them owing their 
   await expect(form).toHaveCount(0);
 
   // Three people on the books, not one, and each of them owing a quarter of the bill.
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   for (const person of ['Andi', 'Budi', 'Citra']) {
     await expect(page.getByRole('heading', { name: person })).toBeVisible();
     // The figure beside that person's own name: each of them owes a quarter, rather than one of them the lot.
@@ -934,7 +934,7 @@ test('a typed share leaves the rest of the bill as your own spending', async ({ 
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
   await expect(page.getByText(/133\.333/).first()).toBeVisible();
 

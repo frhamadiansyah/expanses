@@ -1,0 +1,2811 @@
+# Deposit maturity Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Let a time deposit be automated, per deposit and off by default. When it is switched on, the deposit's own page proposes each due event on its due date: the maturity with its three choices, and each monthly payout. The figures are computed from the stored terms (actual/365, floored, tax withheld). Every figure that reaches the ledger can be edited, and nothing posts until the user confirms. The user can instead say **"Recorded it myself"**, which marks the event done and posts nothing. Interest posts the way an investment payment does: **gross income plus a separate tax-withheld line**, so the account receives the net. The tax report's final-income section reads the confirmed-event log. A quiet "Due" marker on the Net worth → Assets row makes a waiting proposal findable.
+
+**Architecture:** Migration **0054** adds two side tables. `deposit_automation` holds one row of settings per deposit. `deposit_events` is the log of confirmed events. No column is added to an existing table, and both tables are guarded by `automationTablesExist(db)` (a `WeakMap<Db, boolean>`, as `extrasTablesExist` does it). Due events are **derived**, never stored as pending rows. A pure function in `packages/core` works them out from the terms, the settings, the set of confirmed events and today's date. Confirming runs one `database.transaction` that uses `tx` only and calls the existing write paths. Interest goes through `postTransactionTx` with the lines of **`tradePostings`** (kind `income`), built on the accounts that **`tradeAccountsFor`** resolves. These are the two functions an investment payment already posts through, so gross goes to `income.investment` and the tax to `government_taxes.estimated_tax`. The principal leaving a deposit that does not roll over goes through `postTransactionTx` with `transferLines`. The new term goes through `saveDepositTermsTx`. Closing goes through `archiveAccountTx`, which is extracted from `archiveAccount` so that its refusal is kept. The tax report's `incomeInputsFor` passes the log's events, shaped as income payments, to the reader it already calls (`investmentIncomeFor`). The web side is two components on `AssetDetailPage`, `MaturitySettings` (S2) and `DepositProposalCard` (P1), plus one flag on `AssetRow`.
+
+**Tech Stack:** TypeScript monorepo — `packages/core` (pure), `packages/db` (Drizzle over sqlite-proxy, SQL migrations as `?raw` imports, `better-sqlite3` in tests), `apps/web` (React 19, TanStack Router/Query, Tailwind 4); Vitest; Playwright (`chromium` and `phone`).
+
+**Spec:** `docs/superpowers/specs/2026-09-21-deposit-maturity-design.md` (approved 2026-09-21)
+
+## Global Constraints
+
+- **Migration number 0054, exactly.** 0050–0053 belong to other branches. The runner is set-based (`migrations.ts`: `todo = sorted.filter(!done)`), so gaps and order are harmless and a clash is not. 0054 is pure `CREATE TABLE`/`CREATE INDEX` and depends on nothing that 0050–0053 make.
+- **No new columns on existing tables** (`deposit_terms`, `accounts`, `transactions`, `entries`, …). Drizzle names every column it knows on every insert, so a new column breaks any database stopped at an older version. New facts go in `deposit_automation` and `deposit_events`, and every read and write of them goes through `automationTablesExist(db)`. On a database without the tables, every deposit reads as off, `listDueDeposits` returns `[]`, and saving throws `DepositAutomationError('NOT_READY')`.
+- **Money is integer minor units.** Interest is `floor(principal × rateBps × days / 3 650 000)` in **BigInt**; tax is `floor(gross × taxBps / 10 000)`; **net = gross − tax** (subtracted, never floored on its own). Day count is **actual/365** through the existing `daysFrom`. No `Math.round`, no float multiply of money. Typed amounts are read by `parseMajor(text, currency)`, the app's one separator-agnostic reader, and percentages by `parseRate`. No function in this plan decides which of `.` and `,` is a decimal point.
+- **Interest posts gross + tax, like an investment payment** (user decision 1, 2026-09-21). One transaction: the landing account `+net`, `government_taxes.estimated_tax` `+tax` (only when tax > 0), `income.investment` `−gross`. The lines come from `tradePostings({ kind: 'income', … }, positionAfter([]), accounts)` and the accounts from `tradeAccountsFor(tx, ws, depositId, landingId)`, which Task 5 exports from `repos/trades.ts` unchanged. No deposit-specific line builder is written. What the user edits is the **gross** and the **tax**. The net is always `gross − tax` and is never typed.
+- **Call, never copy.** Each task below names the existing functions it must call. Grep before creating any name; the names introduced here were checked to be unused on 2026-09-21. In particular: posting is `postTransactionTx`; interest lines are `tradePostings` on `tradeAccountsFor`'s accounts; the principal is `transferLines`; terms are `saveDepositTermsTx`; balances are `nativeBalances`; archiving is `archiveAccountTx` (extracted, not rewritten); rates are `useResolveRates`/`checkManualRate`/`upsertRate`; day counts are `daysFrom`; month steps are `addMonths` + `daysInMonth`; the tax report reads through `investmentIncomeFor`.
+- Inside `database.transaction((tx) => …)` use `tx` only — `database.db` there deadlocks on the mutex.
+- **Refusals are inherited** (spec §9): workspace scoping on every read, archived accounts, a payout account in the wrong currency, one that is not spendable, `TWO_BOOKS` from `postTransactionTx`, `MISSING_RATE` from `planPosting`, `ZERO_AMOUNT` from `planPosting` (so a tax that takes all the interest is refused before posting), the missing-category `AssetError` from `tradeAccountsFor`, the archive's non-zero-balance refusal, and `NOT_NEXT` for a double or out-of-order confirm.
+- **Native kit only** (`apps/web/src/ui/native/`): `InsetGroup`, `InsetRow`, `SwitchRow`, `SelectRow`, `TextRow`. Colours come from kit tokens (`var(--ph-tint)` etc.), so dark mode follows; there is no literal colour and no new visual treatment. **`InsetGroup` uses `Children.toArray`, which does not flatten fragments**: conditional rows are passed as arrays with keys, never wrapped in `<>…</>`.
+- **Desktop is never weaker.** One component serves every width; every control is a real button, select or input, and is reachable by keyboard.
+- **Country-neutral.** No Indonesian constant in code or copy. The tax is a per-deposit percentage defaulting to 20. "Tax-free deposit" is a plain per-deposit switch with **no Rp 7.500.000 gate** (user decision 5; spec §5.3). The only Indonesian wording is in the tax report, which is allowed to have it.
+- **Tests must discriminate.** Every figure asserted in this plan was chosen so that the nearest wrong rule gives a different number (spec §5.2). Assert computed integers, never labels. Do not "simplify" a fixture to round numbers. A fixture that divides evenly, or whose fraction is .25/.5/.75, cannot tell floor from round and is not used for that purpose.
+- Commit per task, on the branch the coordinator names. Every commit message ends with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
+- **Gate before every commit:** `npm run typecheck`, `npm test`, `npm run build` from the root, plus the targeted Playwright run named in the task.
+- **Playwright runs on port 4174, never 4173** (feat/set-aside runs in parallel on 4173). Task 8 creates `apps/web/playwright.dm.config.ts`, which stays **untracked**: never `git add` it. Every Playwright command in this plan passes `-c playwright.dm.config.ts`, and runs only the named specs. **The full suite is not run by this plan.** It waits for the user (Task 11, Step 5).
+
+---
+
+## File structure
+
+| File | Responsibility |
+|---|---|
+| `packages/core/src/deposits/maturity.ts` | `TERM_MONTHS`, `DEFAULT_TAX_BPS`, `addMonthsToDate`, `depositInterest`, `withholdTax`, `needsPayout`, `termStart`, `dueDepositEvents`, `eventKey`, types |
+| `packages/core/src/index.ts` | export the above |
+| `packages/core/test/deposit-maturity.test.ts` | the pure tests (Task 1) |
+| `packages/db/migrations/0054_deposit_automation.sql` | two tables, two indexes |
+| `packages/db/src/migrations.ts` | register `{ version: 54, name: 'deposit_automation' }` |
+| `packages/db/src/schema-assets.ts` | Drizzle `depositAutomation`, `depositEvents` |
+| `packages/db/src/repos/deposit-terms.ts` | **+** `getDepositTermsTx` (`getDepositTerms` delegates to it) |
+| `packages/db/src/repos/accounts.ts` | **+** `archiveAccountTx` (`archiveAccount` delegates to it) |
+| `packages/db/src/repos/deposit-automation.ts` | `automationTablesExist`, `DepositAutomationError`, `payoutAccepts`, `getDepositAutomation`, `saveDepositAutomation`, `listDueDeposits`, `confirmDepositEvent`, `depositIncomePayments` |
+| `packages/db/src/repos/trades.ts` | **export** `tradeAccountsFor` (one word; body unchanged) |
+| `packages/db/src/index.ts` | `export * from './repos/deposit-automation'` |
+| `packages/db/test/deposit-automation-migration.test.ts` | 0054 on a version-49 database |
+| `packages/db/test/deposit-automation.test.ts` | settings, proposals, confirm, "Recorded it myself", refusals |
+| `packages/core/src/coretax/income.ts` (+ `packages/core/test/coretax-income.test.ts`) | `IncomeKind` gains `'interest'`; a `cash` holding's payment reads as interest |
+| `packages/db/src/repos/coretax-income.ts` (+ `packages/db/test/coretax-income.test.ts`) | `incomeInputsFor` also passes `depositIncomePayments` to `investmentIncomeFor` |
+| `apps/web/src/features/coretax/IncomeSection.tsx` | `KIND_LABELS.interest` |
+| `packages/db/test/deposit-combinations.test.ts` | the 48 combinations: 24 confirmed, 24 with the first event recorded by hand (Task 7) |
+| `packages/db/test/database.test.ts` | applied-versions list gains 54 |
+| `apps/web/src/features/networth/deposit-terms.ts` (+ test) | **+** `rateInputText`, `rateBpsFrom` (and `DepositTermsCard` calls them) |
+| `apps/web/src/features/networth/maturity-settings.ts` (+ test) | `MATURITY_CHOICES`, `termLabel`, `payoutChoices` (calls `payoutAccepts`), `taxBpsFrom` |
+| `apps/web/src/features/networth/MaturitySettings.tsx` | S2 group |
+| `apps/web/src/features/networth/deposit-proposal.ts` (+ test) | `draftFrom`, `readDraft`, `closing`, `rolling`, `proposalHeader`, `interestLine`, `outcomeLine`, `newRateText` |
+| `apps/web/src/features/networth/DepositProposalCard.tsx` | P1 card, with *Edit figures*, *Recorded it myself*, *Confirm* |
+| `apps/web/src/features/networth/queries.ts` | `useDepositAutomation`, `useDueDeposits` |
+| `apps/web/src/features/networth/AssetDetailPage.tsx` | mounts both components |
+| `apps/web/src/features/networth/asset-rows.ts` (+ test) | `AssetRow.due`, `groupAssets(…, due)`, `rowSubtitle` (moved from `AssetsPage`) |
+| `apps/web/src/features/networth/AssetsPage.tsx` | passes due ids, uses `rowSubtitle` |
+| `apps/web/playwright.dm.config.ts` | **untracked, never committed**: the base config on port 4174 |
+| `apps/web/e2e/deposit-maturity.ts` | shared helpers, the 24-row combinations table, and the six by-hand walks |
+| `apps/web/e2e/deposit-maturity.spec.ts` | chromium: off by default, settings, edit figures, recorded by hand, queue, tax report, 24 + 6 combinations |
+| `apps/web/e2e/phone-deposit-maturity.spec.ts` | phone: four combinations and one by-hand walk, by thumb |
+
+---
+
+## Step 1 — The arithmetic and the tables
+
+### Task 1: The pure maturity math
+
+**Files:**
+- Create: `packages/core/src/deposits/maturity.ts`
+- Modify: `packages/core/src/index.ts`
+- Test: `packages/core/test/deposit-maturity.test.ts`
+
+**Interfaces:**
+- Consumes: `daysFrom(from, to)` from `../bills/schedule`, and `addMonths(month: 'YYYY-MM', n)` and `daysInMonth(year, month1)` from `../reports/periods`. All three exist and are exported. Call them and do not re-implement them: the month index arithmetic is `addMonths`'s, and this module only clamps the day.
+- Produces: `TERM_MONTHS`, `type TermMonths`, `type MaturityChoice`, `type InterestPaid`, `DEFAULT_TAX_BPS`, `addMonthsToDate(date: string, months: number): string`, `depositInterest(principalMinor: number, rateBps: number, days: number): number`, `withholdTax(grossMinor: number, taxBps: number, exempt: boolean): { taxMinor: number; netMinor: number }`, `needsPayout(choice: MaturityChoice): boolean`, `type DepositSchedule`, `type DepositEvent`, `eventKey(kind, dueOn): string`, `termStart(s: DepositSchedule): string`, `dueDepositEvents(s: DepositSchedule, done: ReadonlySet<string>, today: string): DepositEvent[]`.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// packages/core/test/deposit-maturity.test.ts
+import { describe, expect, it } from 'vitest';
+import {
+  addMonthsToDate,
+  depositInterest,
+  type DepositSchedule,
+  dueDepositEvents,
+  eventKey,
+  needsPayout,
+  termStart,
+  withholdTax,
+} from '../src/index';
+
+describe('addMonthsToDate', () => {
+  it('keeps the day of the month, forwards and back', () => {
+    expect(addMonthsToDate('2026-07-15', 3)).toBe('2026-10-15');
+    expect(addMonthsToDate('2026-10-15', -3)).toBe('2026-07-15');
+  });
+
+  it('lands on the last day when the month is shorter, counted from the anchor each time', () => {
+    expect(addMonthsToDate('2027-01-31', 1)).toBe('2027-02-28');
+    expect(addMonthsToDate('2027-01-31', 2)).toBe('2027-03-31');
+    expect(addMonthsToDate('2028-01-31', 1)).toBe('2028-02-29');
+  });
+
+  it('wraps the year both ways', () => {
+    expect(addMonthsToDate('2026-11-01', 3)).toBe('2027-02-01');
+    expect(addMonthsToDate('2027-01-15', -1)).toBe('2026-12-15');
+  });
+});
+
+describe('interest: actual/365, floored, in BigInt', () => {
+  it('reproduces the mockup: Rp 50.000.000 at 4,25% for 92 days', () => {
+    // 535 616,438… — 30/360 would give 531 250, actual/360 543 055.
+    expect(depositInterest(50_000_000, 425, 92)).toBe(535_616);
+  });
+
+  it('floors rather than rounds', () => {
+    // 174 657,53 — rounding would give 174 658.
+    expect(depositInterest(50_000_000, 425, 30)).toBe(174_657);
+    // US$10,000.00 in cents at 3,50% for 31 days: 2 972,60 — rounding gives 2 973; whole dollars give 2 900.
+    expect(depositInterest(1_000_000, 350, 31)).toBe(2_972);
+  });
+
+  it('stays exact past 2^53', () => {
+    // 1 000 000 000 020 × 1 000 × 365 = 3,650 000 000 073 × 10^17, past 2^53. The exact quotient is 100 000 000 002.
+    // In floating point, Math.floor(p * r * d / 3_650_000) gives 100 000 000 001, so this fixture fails a float implementation.
+    expect(depositInterest(1_000_000_000_020, 1_000, 365)).toBe(100_000_000_002);
+  });
+
+  it('counts the days a month really has (actual/365), not 30 a month (30/360)', () => {
+    // 31 Jan → 28 Feb 2027 is 28 days. 50 000 000 × 425 × 28 / 3 650 000 = 163 013,698…
+    // 30/360 counts 30 days and gives 177 083; rounding instead of flooring gives 163 014.
+    const [february] = dueDepositEvents(
+      { maturesOn: '2027-04-30', termMonths: 3, termStartedOn: '2027-01-31', interestPaid: 'monthly', enabledOn: '2027-01-31' },
+      new Set(),
+      '2027-02-28',
+    );
+    expect(february).toEqual({ kind: 'monthly', dueOn: '2027-02-28', periodFrom: '2027-01-31', days: 28 });
+    expect(depositInterest(50_000_000, 425, february!.days)).toBe(163_013);
+    // The quarter: 92 actual days give 535 616. 30/360 would count 90 days and give 531 250.
+    expect(depositInterest(50_000_000, 425, dueDepositEvents(quarterly, new Set(), '2026-10-15')[0]!.days)).toBe(535_616);
+  });
+
+  it('is nothing without a principal, a rate or days', () => {
+    expect(depositInterest(0, 425, 92)).toBe(0);
+    expect(depositInterest(50_000_000, 0, 92)).toBe(0);
+    expect(depositInterest(50_000_000, 425, 0)).toBe(0);
+  });
+});
+
+describe('tax withheld', () => {
+  it('floors the tax and subtracts it, so net + tax is gross exactly', () => {
+    // 107 123,2 → 107 123; net 428 493. Flooring the net directly would give 428 492.
+    expect(withholdTax(535_616, 2_000, false)).toEqual({ taxMinor: 107_123, netMinor: 428_493 });
+    // 36 095,8 → 36 095 (rounding gives 36 096); net 144 384.
+    expect(withholdTax(180_479, 2_000, false)).toEqual({ taxMinor: 36_095, netMinor: 144_384 });
+  });
+
+  it('takes nothing from a tax-free deposit, whatever the percentage says', () => {
+    expect(withholdTax(19_109, 2_000, true)).toEqual({ taxMinor: 0, netMinor: 19_109 });
+    // The same deposit taxed: 3 821,8 → 3 821 (rounding gives 3 822).
+    expect(withholdTax(19_109, 2_000, false)).toEqual({ taxMinor: 3_821, netMinor: 15_288 });
+  });
+
+  it('follows the percentage the user typed', () => {
+    // 12,5% of 180 479 = 22 559,875 → 22 559 (rounding gives 22 560; 20% would give 36 095). Net 157 920.
+    expect(withholdTax(180_479, 1_250, false)).toEqual({ taxMinor: 22_559, netMinor: 157_920 });
+  });
+});
+
+describe('where the money lands', () => {
+  it('needs a payout account unless everything rolls over', () => {
+    expect(needsPayout('principal')).toBe(true);
+    expect(needsPayout('close')).toBe(true);
+    expect(needsPayout('principal_interest')).toBe(false);
+  });
+});
+
+const quarterly: DepositSchedule = {
+  maturesOn: '2026-10-15',
+  termMonths: 3,
+  termStartedOn: null,
+  interestPaid: 'at_maturity',
+  enabledOn: '2026-07-15',
+};
+const monthly: DepositSchedule = { ...quarterly, interestPaid: 'monthly' };
+
+describe('the current term', () => {
+  it('is dated back from the maturity when no roll-over has dated it', () => {
+    expect(termStart(quarterly)).toBe('2026-07-15');
+  });
+
+  it('uses the stored start only while it still agrees with the maturity', () => {
+    expect(termStart({ ...quarterly, maturesOn: '2027-04-30', termStartedOn: '2027-01-31' })).toBe('2027-01-31');
+    // Changed by hand on the terms card: the stored start no longer adds up, so it is derived again.
+    expect(termStart({ ...quarterly, termStartedOn: '2026-04-15' })).toBe('2026-07-15');
+  });
+});
+
+describe('what is due', () => {
+  it('is one maturity over the whole term when interest is paid at maturity', () => {
+    expect(dueDepositEvents(quarterly, new Set(), '2026-10-15')).toEqual([
+      { kind: 'maturity', dueOn: '2026-10-15', periodFrom: '2026-07-15', days: 92 },
+    ]);
+  });
+
+  it('is nothing the day before', () => {
+    expect(dueDepositEvents(quarterly, new Set(), '2026-10-14')).toEqual([]);
+  });
+
+  it('is each monthly payout, then the maturity for the last month, in date order', () => {
+    expect(dueDepositEvents(monthly, new Set(), '2026-10-15')).toEqual([
+      { kind: 'monthly', dueOn: '2026-08-15', periodFrom: '2026-07-15', days: 31 },
+      { kind: 'monthly', dueOn: '2026-09-15', periodFrom: '2026-08-15', days: 31 },
+      { kind: 'maturity', dueOn: '2026-10-15', periodFrom: '2026-09-15', days: 30 },
+    ]);
+  });
+
+  it('dates every payout from the start, not from the payout before', () => {
+    const fromJan31: DepositSchedule = { ...monthly, maturesOn: '2027-04-30', termStartedOn: '2027-01-31' };
+    expect(dueDepositEvents(fromJan31, new Set(), '2027-04-30').map((e) => [e.dueOn, e.days])).toEqual([
+      ['2027-02-28', 28],
+      ['2027-03-31', 31],
+      ['2027-04-30', 30],
+    ]);
+  });
+
+  it('leaves out what was confirmed', () => {
+    const done = new Set([eventKey('monthly', '2026-08-15')]);
+    expect(dueDepositEvents(monthly, done, '2026-10-15').map((e) => e.dueOn)).toEqual(['2026-09-15', '2026-10-15']);
+  });
+
+  it('skips monthly payouts from before the switch was turned on, but never a passed maturity', () => {
+    expect(dueDepositEvents({ ...monthly, enabledOn: '2026-09-01' }, new Set(), '2026-10-15').map((e) => e.dueOn)).toEqual([
+      '2026-09-15',
+      '2026-10-15',
+    ]);
+    expect(dueDepositEvents({ ...monthly, enabledOn: '2026-12-01' }, new Set(), '2026-12-01').map((e) => e.kind)).toEqual(['maturity']);
+  });
+
+  it('has only the maturity for a one-month deposit paying monthly', () => {
+    const oneMonth: DepositSchedule = { ...monthly, termMonths: 1, maturesOn: '2026-08-15' };
+    expect(dueDepositEvents(oneMonth, new Set(), '2026-08-15')).toEqual([
+      { kind: 'maturity', dueOn: '2026-08-15', periodFrom: '2026-07-15', days: 31 },
+    ]);
+  });
+});
+```
+
+- [ ] **Step 2: Run it to see it fail** — `cd packages/core && npx vitest run test/deposit-maturity.test.ts` → FAIL (exports missing).
+
+- [ ] **Step 3: Write the module**
+
+```ts
+// packages/core/src/deposits/maturity.ts
+import { daysFrom } from '../bills/schedule';
+import { addMonths, daysInMonth } from '../reports/periods';
+
+/**
+ * A time deposit's maturity, worked out rather than stored.
+ *
+ * Nothing here posts or remembers anything. Given the terms, the automation settings, the events already confirmed
+ * and today's date, it says what is due and what it comes to. Every figure is an estimate from the stored rate: the
+ * owner confirms or corrects it against what the bank actually credited.
+ */
+
+export const TERM_MONTHS = [1, 3, 6, 12] as const;
+export type TermMonths = (typeof TERM_MONTHS)[number];
+export type MaturityChoice = 'principal' | 'principal_interest' | 'close';
+export type InterestPaid = 'monthly' | 'at_maturity';
+
+/** The withholding a new deposit starts with. An editable default, not a country rule: the user can change it per deposit. */
+export const DEFAULT_TAX_BPS = 2_000;
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * The same day `months` later (or earlier), or that month's last day when it has no such day: 31 Jan + 1 is 28 Feb.
+ * The month step is `addMonths`'s. The only thing added here is clamping the day.
+ */
+export function addMonthsToDate(date: string, months: number): string {
+  const month = addMonths(date.slice(0, 7), months);
+  const last = daysInMonth(Number(month.slice(0, 4)), Number(month.slice(5, 7)));
+  return `${month}-${pad(Math.min(Number(date.slice(8, 10)), last))}`;
+}
+
+/**
+ * Interest for `days` days: actual/365, floored to the minor unit, in BigInt because principal × rate × days passes
+ * 2^53 for a large deposit. A bank credits no fraction, so an estimate never promises more than arrives.
+ */
+export function depositInterest(principalMinor: number, rateBps: number, days: number): number {
+  if (!Number.isSafeInteger(principalMinor) || principalMinor <= 0) return 0;
+  if (!Number.isInteger(rateBps) || rateBps <= 0 || !Number.isInteger(days) || days <= 0) return 0;
+  return Number((BigInt(principalMinor) * BigInt(rateBps) * BigInt(days)) / 3_650_000n);
+}
+
+/** The tax taken at source: floored, then subtracted, so gross = net + tax exactly. Nothing on a tax-free deposit. */
+export function withholdTax(grossMinor: number, taxBps: number, exempt: boolean): { taxMinor: number; netMinor: number } {
+  const taxMinor = exempt || grossMinor <= 0 ? 0 : Number((BigInt(grossMinor) * BigInt(taxBps)) / 10_000n);
+  return { taxMinor, netMinor: grossMinor - taxMinor };
+}
+
+/** Whether anything lands outside the deposit. With principal + interest rolling over, nothing does. */
+export const needsPayout = (choice: MaturityChoice): boolean => choice !== 'principal_interest';
+
+export interface DepositSchedule {
+  maturesOn: string;
+  termMonths: TermMonths;
+  /** Written by a confirmed roll-over; null before the first. */
+  termStartedOn: string | null;
+  interestPaid: InterestPaid;
+  /** The day automation was last switched on. Monthly payouts before it were recorded by hand. */
+  enabledOn: string;
+}
+
+export interface DepositEvent {
+  kind: 'monthly' | 'maturity';
+  dueOn: string;
+  periodFrom: string;
+  days: number;
+}
+
+export const eventKey = (kind: DepositEvent['kind'], dueOn: string): string => `${kind}:${dueOn}`;
+
+/** The current term's first day: the stored one while it still adds up to the maturity, otherwise dated back from it. */
+export function termStart(s: DepositSchedule): string {
+  if (s.termStartedOn && addMonthsToDate(s.termStartedOn, s.termMonths) === s.maturesOn) return s.termStartedOn;
+  return addMonthsToDate(s.maturesOn, -s.termMonths);
+}
+
+/**
+ * Every event of the current term that is due and not yet confirmed, earliest first. Only the current term is ever
+ * derived: the next one exists once its roll-over is confirmed, so an unconfirmed maturity holds back what follows.
+ */
+export function dueDepositEvents(s: DepositSchedule, done: ReadonlySet<string>, today: string): DepositEvent[] {
+  const start = termStart(s);
+  const events: DepositEvent[] = [];
+  if (s.interestPaid === 'monthly') {
+    for (let k = 1; k < s.termMonths; k++) {
+      const periodFrom = addMonthsToDate(start, k - 1);
+      const dueOn = addMonthsToDate(start, k);
+      events.push({ kind: 'monthly', dueOn, periodFrom, days: daysFrom(periodFrom, dueOn) });
+    }
+  }
+  const lastFrom = s.interestPaid === 'monthly' ? addMonthsToDate(start, s.termMonths - 1) : start;
+  events.push({ kind: 'maturity', dueOn: s.maturesOn, periodFrom: lastFrom, days: daysFrom(lastFrom, s.maturesOn) });
+  return events.filter(
+    (event) => event.dueOn <= today && !done.has(eventKey(event.kind, event.dueOn)) && (event.kind === 'maturity' || event.dueOn >= s.enabledOn),
+  );
+}
+```
+
+Add to `packages/core/src/index.ts`:
+
+```ts
+export {
+  addMonthsToDate,
+  DEFAULT_TAX_BPS,
+  type DepositEvent,
+  type DepositSchedule,
+  depositInterest,
+  dueDepositEvents,
+  eventKey,
+  type InterestPaid,
+  type MaturityChoice,
+  needsPayout,
+  TERM_MONTHS,
+  type TermMonths,
+  termStart,
+  withholdTax,
+} from './deposits/maturity';
+```
+
+- [ ] **Step 4: Run** — `cd packages/core && npx vitest run test/deposit-maturity.test.ts` → PASS; then the root gate (`npm run typecheck`, `npm test`, `npm run build`).
+- [ ] **Step 5: Commit** — `feat(core): a deposit's due events and interest, worked out from its terms`.
+
+---
+
+### Task 2: Migration 0054
+
+**Files:**
+- Create: `packages/db/migrations/0054_deposit_automation.sql`, `packages/db/test/deposit-automation-migration.test.ts`
+- Modify: `packages/db/src/migrations.ts`, `packages/db/src/schema-assets.ts`, `packages/db/test/database.test.ts`
+
+**Interfaces:**
+- Produces: tables `deposit_automation`, `deposit_events`; Drizzle `depositAutomation`, `depositEvents` in `schema-assets.ts` (exported as `assetsSchema.*` already by `index.ts`).
+
+- [ ] **Step 1: The SQL**
+
+```sql
+/* Deposit maturity automation: the settings per deposit, and the log of events the owner confirmed.
+
+   Both are side tables. 0047's deposit_terms keeps exactly its columns, because the ORM names every column it
+   knows on every insert and a new one would break a database still stopped at an older version. No row in
+   deposit_automation means "off", which is what every deposit was until now, so nothing is backfilled.
+
+   Due events are never stored: they are worked out from deposit_terms, these settings, and deposit_events. There
+   are no REFERENCES clauses, as in 0048, so a later rebuild of accounts never has to defer keys for these tables.
+   The migration depends on nothing that 0050–0053 make, so it applies in any order among them. */
+CREATE TABLE deposit_automation (
+  account_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+  enabled_on TEXT,
+  at_maturity TEXT NOT NULL DEFAULT 'principal' CHECK (at_maturity IN ('principal', 'principal_interest', 'close')),
+  interest_paid TEXT NOT NULL DEFAULT 'at_maturity' CHECK (interest_paid IN ('monthly', 'at_maturity')),
+  payout_account_id TEXT,
+  term_months INTEGER NOT NULL DEFAULT 1 CHECK (term_months IN (1, 3, 6, 12)),
+  term_started_on TEXT,
+  keep_rate INTEGER NOT NULL DEFAULT 1 CHECK (keep_rate IN (0, 1)),
+  tax_bps INTEGER NOT NULL DEFAULT 2000 CHECK (tax_bps BETWEEN 0 AND 10000),
+  tax_exempt INTEGER NOT NULL DEFAULT 0 CHECK (tax_exempt IN (0, 1)),
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE deposit_events (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('monthly', 'maturity')),
+  due_on TEXT NOT NULL,
+  principal_minor INTEGER NOT NULL,
+  gross_minor INTEGER NOT NULL,
+  tax_minor INTEGER NOT NULL,
+  net_minor INTEGER NOT NULL,
+  interest_transaction_id TEXT,
+  principal_transaction_id TEXT,
+  /* 1 when the owner said "Recorded it myself": nothing was posted, and the figures are the ones on the card. */
+  recorded_by_hand INTEGER NOT NULL DEFAULT 0 CHECK (recorded_by_hand IN (0, 1)),
+  confirmed_at TEXT NOT NULL
+);
+/* One confirmation per event: a second confirm fails here and rolls its whole transaction back. */
+CREATE UNIQUE INDEX deposit_events_once ON deposit_events (account_id, kind, due_on);
+CREATE INDEX deposit_events_workspace ON deposit_events (workspace_id, account_id);
+```
+
+- [ ] **Step 2: Register it** — in `packages/db/src/migrations.ts`, next to the 0049 import:
+
+```ts
+import depositAutomation from '../migrations/0054_deposit_automation.sql?raw';
+```
+
+and as the last entry of `MIGRATIONS` (after 49, and after any 50–53 already present):
+
+```ts
+  { version: 54, name: 'deposit_automation', sql: depositAutomation },
+```
+
+- [ ] **Step 3: Drizzle** — append to `packages/db/src/schema-assets.ts`:
+
+```ts
+/** A deposit's automation settings (0054). No row means off. Booleans are 0/1, read into booleans by the repo. */
+export const depositAutomation = sqliteTable('deposit_automation', {
+  accountId: text('account_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  enabled: integer('enabled').notNull(),
+  enabledOn: text('enabled_on'),
+  atMaturity: text('at_maturity', { enum: ['principal', 'principal_interest', 'close'] }).notNull(),
+  interestPaid: text('interest_paid', { enum: ['monthly', 'at_maturity'] }).notNull(),
+  payoutAccountId: text('payout_account_id'),
+  termMonths: integer('term_months').notNull(),
+  termStartedOn: text('term_started_on'),
+  keepRate: integer('keep_rate').notNull(),
+  taxBps: integer('tax_bps').notNull(),
+  taxExempt: integer('tax_exempt').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/** Each maturity or monthly payout the owner confirmed or recorded by hand (0054): gross, tax and net as posted or as stated. The tax report reads it. */
+export const depositEvents = sqliteTable('deposit_events', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  accountId: text('account_id').notNull(),
+  kind: text('kind', { enum: ['monthly', 'maturity'] }).notNull(),
+  dueOn: text('due_on').notNull(),
+  principalMinor: integer('principal_minor').notNull(),
+  grossMinor: integer('gross_minor').notNull(),
+  taxMinor: integer('tax_minor').notNull(),
+  netMinor: integer('net_minor').notNull(),
+  interestTransactionId: text('interest_transaction_id'),
+  principalTransactionId: text('principal_transaction_id'),
+  recordedByHand: integer('recorded_by_hand').notNull(),
+  confirmedAt: text('confirmed_at').notNull(),
+});
+```
+
+- [ ] **Step 4: Tests** — in `packages/db/test/database.test.ts`, add `54` to the end of the applied-versions array on line 20 (keep any 50–53 another branch added, in ascending order). Create:
+
+```ts
+// packages/db/test/deposit-automation-migration.test.ts
+import { sql } from 'drizzle-orm';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createDatabase, createWorkspace, migrate, MIGRATIONS, openCashAccount } from '../src/index';
+import { createNodeExecutor, type NodeExecutor } from '../src/node';
+
+let executor: NodeExecutor | undefined;
+afterEach(() => {
+  executor?.close();
+  executor = undefined;
+});
+
+const schemaOf = async (database: ReturnType<typeof createDatabase>) =>
+  new Map(
+    (await database.db.values<[string, string | null]>(sql`SELECT name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name`)).map(
+      ([name, ddl]) => [name, ddl] as const,
+    ),
+  );
+
+describe('migration 0054', () => {
+  it('is version 54 and named deposit_automation', () => {
+    expect(MIGRATIONS.find((m) => m.version === 54)).toMatchObject({ name: 'deposit_automation' });
+  });
+
+  it('adds its two tables to a version-49 database with a deposit in it, and changes nothing that was there', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database, MIGRATIONS.filter((m) => m.version <= 49));
+    const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    await openCashAccount(database, ws, { item: 'time_deposit', name: 'BCA Deposito', currency: 'IDR', openingBalanceMinor: 50_000_000, openedOn: '2026-07-15', maturesOn: '2026-10-15', rateBps: 425 });
+    const before = await schemaOf(database);
+    const termsBefore = await database.db.values(sql`SELECT account_id, matures_on, rate_bps FROM deposit_terms`);
+
+    expect(await migrate(database)).toContain(54);
+
+    const after = await schemaOf(database);
+    for (const [name, ddl] of before) expect(after.get(name)).toBe(ddl);
+    expect(after.has('deposit_automation')).toBe(true);
+    expect(after.has('deposit_events')).toBe(true);
+    expect(after.has('deposit_events_once')).toBe(true);
+    expect(await database.db.values(sql`SELECT account_id, matures_on, rate_bps FROM deposit_terms`)).toEqual(termsBefore);
+    expect(await database.db.values(sql`SELECT count(*) FROM deposit_automation`)).toEqual([[0]]);
+  });
+});
+```
+
+- [ ] **Step 5: Run** — `cd packages/db && npx vitest run test/deposit-automation-migration.test.ts test/database.test.ts test/migration-safety.test.ts` → PASS; root gate.
+- [ ] **Step 6: Commit** — `feat(db): migration 0054 — deposit automation settings and the confirmed-event log`.
+
+---
+
+## Step 2 — The repository
+
+### Task 3: Settings, and the two extractions
+
+**Files:**
+- Create: `packages/db/src/repos/deposit-automation.ts`, `packages/db/test/deposit-automation.test.ts`
+- Modify: `packages/db/src/repos/deposit-terms.ts`, `packages/db/src/repos/accounts.ts`, `packages/db/src/index.ts`
+
+**Interfaces:**
+- Consumes: `depositTablesExist`, `saveDepositTermsTx` (existing); `SPENDABLE_SUBTYPES`, `AccountError`, `type AccountRow` (existing); `TERM_MONTHS`, `DEFAULT_TAX_BPS` (Task 1).
+- Produces: `getDepositTermsTx(tx: Db, ws, accountId): Promise<DepositTermsRow | undefined>`; `archiveAccountTx(tx: Db, ws, id): Promise<void>`; `automationTablesExist(db: Db): Promise<boolean>`; `DepositAutomationError` (`code: DepositAutomationErrorCode`); `payoutAccepts(account, currency, depositId): boolean` (the one rule for where money may land, used by the repo and by the web's `payoutChoices`); `type DepositAutomationSettings`, `type DepositAutomationRow`; `AUTOMATION_DEFAULTS`; `getDepositAutomation(database, ws, accountId): Promise<DepositAutomationRow>`; `type SaveDepositAutomationInput`; `saveDepositAutomation(database, ws, input): Promise<void>`.
+
+- [ ] **Step 1: Extract `getDepositTermsTx`** — in `deposit-terms.ts`, replace `getDepositTerms` with:
+
+```ts
+/** The terms of one deposit, on any handle: a transaction already running, or `database.db`. */
+export async function getDepositTermsTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<DepositTermsRow | undefined> {
+  if (!(await depositTablesExist(tx))) return undefined;
+  const [row] = await tx
+    .select()
+    .from(depositTerms)
+    .where(and(eq(depositTerms.accountId, accountId), eq(depositTerms.workspaceId, ws.workspaceId)));
+  return row;
+}
+
+export function getDepositTerms(database: Database, ws: WorkspaceContext, accountId: string): Promise<DepositTermsRow | undefined> {
+  return getDepositTermsTx(database.db, ws, accountId);
+}
+```
+
+Also update the two doc comments that say "Nothing is automated off it" (on `DepositTermsRow.maturesOn` and in `schema-assets.ts`) to: "Nothing is automated off it unless the owner switches automation on (0054)."
+
+- [ ] **Step 2: Extract `archiveAccountTx`** — in `accounts.ts`, move the **whole body** of `archiveAccount`'s transaction callback, unchanged, into:
+
+```ts
+/** Archives inside a transaction already running. Refuses a system account, and a money account that still holds a balance. */
+export async function archiveAccountTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+  const [account] = await tx
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!account) throw new AccountError('Account not found');
+  // Default categories carry keys too; only the system equity accounts are protected.
+  if (SYSTEM_ACCOUNTS.some((s) => s.key === account.systemKey)) throw new AccountError('System accounts cannot be archived');
+  if (account.kind === 'asset' || account.kind === 'liability') {
+    // Archived money accounts leave net worth, so they must be empty first.
+    const [row] = await tx
+      .select({ total: sql<number>`coalesce(sum(${entries.amountMinor}), 0)` })
+      .from(entries)
+      .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+      .where(and(eq(entries.accountId, id), eq(transactions.status, 'posted')));
+    if (Number(row?.total ?? 0) !== 0) {
+      throw new AccountError(`${account.name} still has a balance. Bring it to zero before archiving so net worth stays correct.`);
+    }
+  }
+  await tx.update(accounts).set({ archivedAt: new Date().toISOString() }).where(eq(accounts.id, id));
+  await writeAudit(tx, ws, 'archive', id, {});
+}
+
+export async function archiveAccount(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
+  await database.transaction((tx) => archiveAccountTx(tx, ws, id));
+}
+```
+
+`npx vitest run test/accounts.test.ts` must still pass unchanged. That is the proof the refusal moved intact.
+
+- [ ] **Step 3: Write the failing tests**
+
+```ts
+// packages/db/test/deposit-automation.test.ts
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  archiveAccount,
+  createWorkspace,
+  type Database,
+  DepositAutomationError,
+  getDepositAutomation,
+  openCashAccount,
+  saveDepositAutomation,
+  type SaveDepositAutomationInput,
+  type WorkspaceContext,
+} from '../src/index';
+import { setupDb } from './helpers';
+
+let database: Database;
+let ws: WorkspaceContext;
+let bcaId: string;
+let depositoId: string;
+
+beforeEach(async () => {
+  ({ database, ws } = await setupDb());
+  bcaId = (await openCashAccount(database, ws, { item: 'bank', name: 'BCA Tahapan', currency: 'IDR', openingBalanceMinor: 1_000_000, openedOn: '2026-07-15' })).id;
+  depositoId = (
+    await openCashAccount(database, ws, {
+      item: 'time_deposit',
+      name: 'BCA Deposito',
+      currency: 'IDR',
+      openingBalanceMinor: 50_000_000,
+      openedOn: '2026-07-15',
+      maturesOn: '2026-10-15',
+      rateBps: 425,
+    })
+  ).id;
+});
+
+export const on = (accountId: string, payoutAccountId: string | null, change: Partial<SaveDepositAutomationInput> = {}): SaveDepositAutomationInput => ({
+  accountId,
+  enabled: true,
+  atMaturity: 'principal',
+  interestPaid: 'at_maturity',
+  payoutAccountId,
+  termMonths: 3,
+  keepRate: true,
+  taxBps: 2_000,
+  taxExempt: false,
+  today: '2026-07-15',
+  ...change,
+});
+
+describe('the switch', () => {
+  it('is off for every deposit until it is turned on', async () => {
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ enabled: false, enabledOn: null, taxBps: 2_000, taxExempt: false, termMonths: 1 });
+  });
+
+  it('keeps what was chosen, and remembers the day it was turned on', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly', taxBps: 1_250 }));
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({
+      enabled: true,
+      enabledOn: '2026-07-15',
+      atMaturity: 'principal',
+      interestPaid: 'monthly',
+      payoutAccountId: bcaId,
+      termMonths: 3,
+      taxBps: 1_250,
+    });
+    // Saving again while on keeps the original day; turning off clears it; on again takes the new day.
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { today: '2026-08-01' }));
+    expect((await getDepositAutomation(database, ws, depositoId)).enabledOn).toBe('2026-07-15');
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { enabled: false, today: '2026-08-02' }));
+    expect((await getDepositAutomation(database, ws, depositoId)).enabledOn).toBeNull();
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { today: '2026-08-03' }));
+    expect((await getDepositAutomation(database, ws, depositoId)).enabledOn).toBe('2026-08-03');
+  });
+});
+
+describe('where the money may land', () => {
+  const refused = (input: SaveDepositAutomationInput) => expect(saveDepositAutomation(database, ws, input)).rejects.toBeInstanceOf(DepositAutomationError);
+
+  it('refuses an account in another currency', async () => {
+    const usd = await openCashAccount(database, ws, { item: 'bank', name: 'Jenius USD', currency: 'USD' });
+    await refused(on(depositoId, usd.id));
+  });
+
+  it('refuses an account that is not spendable, and the deposit itself', async () => {
+    const other = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Other deposit', currency: 'IDR', maturesOn: '2027-01-01' });
+    await refused(on(depositoId, other.id));
+    await refused(on(depositoId, depositoId));
+  });
+
+  it('refuses an archived account', async () => {
+    const empty = await openCashAccount(database, ws, { item: 'bank', name: 'Old account', currency: 'IDR' });
+    await archiveAccount(database, ws, empty.id);
+    await refused(on(depositoId, empty.id));
+  });
+
+  it('refuses an account, or a deposit, of another workspace', async () => {
+    const other = await createWorkspace(database, { name: 'Business', type: 'business', baseCurrency: 'IDR' });
+    const theirs = await openCashAccount(database, other, { item: 'bank', name: 'Their bank', currency: 'IDR' });
+    await refused(on(depositoId, theirs.id));
+    await expect(saveDepositAutomation(database, other, on(depositoId, null))).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('refuses a term or a tax the table could not hold', async () => {
+    await refused(on(depositoId, bcaId, { termMonths: 2 as never }));
+    await refused(on(depositoId, bcaId, { taxBps: 10_001 }));
+    await refused(on(depositoId, bcaId, { taxBps: 12.5 }));
+  });
+});
+```
+
+(`WorkspaceType` in `repos/workspaces.ts` is `'personal' | 'shared' | 'business' | 'travel'`, checked 2026-09-21, so `'business'` is right.)
+
+- [ ] **Step 4: Write the repo (settings half)**
+
+```ts
+// packages/db/src/repos/deposit-automation.ts
+import {
+  addMonthsToDate,
+  DEFAULT_TAX_BPS,
+  type DepositEvent,
+  type DepositSchedule,
+  depositInterest,
+  dueDepositEvents,
+  eventKey,
+  type InterestPaid,
+  type MaturityChoice,
+  needsPayout,
+  positionAfter,
+  TERM_MONTHS,
+  type TermMonths,
+  type TradeRecord,
+  tradePostings,
+  transferLines,
+  uuidv7,
+  withholdTax,
+} from '@expanses/core';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import type { WorkspaceContext } from '../context';
+import type { Database, Db } from '../database';
+import { accounts } from '../schema';
+import { depositAutomation, depositEvents, depositTerms } from '../schema-assets';
+import { AccountError, type AccountRow, archiveAccountTx, SPENDABLE_SUBTYPES } from './accounts';
+import { type DepositTermsRow, getDepositTermsTx, saveDepositTermsTx } from './deposit-terms';
+import { nativeBalances, postTransactionTx } from './ledger';
+import { tradeAccountsFor } from './trades';
+
+export type DepositAutomationErrorCode =
+  | 'NOT_READY'
+  | 'NOT_FOUND'
+  | 'BAD_PAYOUT'
+  | 'BAD_TERM'
+  | 'BAD_TAX'
+  | 'OFF'
+  | 'NOT_NEXT'
+  | 'BAD_FIGURE'
+  | 'NO_PAYOUT';
+
+export class DepositAutomationError extends Error {
+  readonly code: DepositAutomationErrorCode;
+
+  constructor(code: DepositAutomationErrorCode, message: string) {
+    super(message);
+    this.name = 'DepositAutomationError';
+    this.code = code;
+  }
+}
+
+/**
+ * Whether migration 0054 has run. Every read and write here asks first, so a database stopped at an older version
+ * has every deposit off and nothing due. A positive answer is remembered per handle; a negative one is not, since
+ * migrate() may run later on the same handle.
+ */
+const automationTables = new WeakMap<Db, boolean>();
+
+export async function automationTablesExist(db: Db): Promise<boolean> {
+  if (automationTables.get(db)) return true;
+  const rows = await db.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'deposit_events'`);
+  const exists = rows.length > 0;
+  if (exists) automationTables.set(db, true);
+  return exists;
+}
+
+export interface DepositAutomationSettings {
+  enabled: boolean;
+  enabledOn: string | null;
+  atMaturity: MaturityChoice;
+  interestPaid: InterestPaid;
+  payoutAccountId: string | null;
+  termMonths: TermMonths;
+  termStartedOn: string | null;
+  keepRate: boolean;
+  taxBps: number;
+  taxExempt: boolean;
+}
+
+export interface DepositAutomationRow extends DepositAutomationSettings {
+  accountId: string;
+}
+
+/** What a deposit with no row reads as: off, and the defaults the S2 group shows when it is first switched on. */
+export const AUTOMATION_DEFAULTS: DepositAutomationSettings = {
+  enabled: false,
+  enabledOn: null,
+  atMaturity: 'principal',
+  interestPaid: 'at_maturity',
+  payoutAccountId: null,
+  termMonths: 1,
+  termStartedOn: null,
+  keepRate: true,
+  taxBps: DEFAULT_TAX_BPS,
+  taxExempt: false,
+};
+
+type AutomationRecord = typeof depositAutomation.$inferSelect;
+
+const fromRecord = (r: AutomationRecord): DepositAutomationRow => ({
+  accountId: r.accountId,
+  enabled: r.enabled === 1,
+  enabledOn: r.enabledOn,
+  atMaturity: r.atMaturity,
+  interestPaid: r.interestPaid,
+  payoutAccountId: r.payoutAccountId,
+  termMonths: r.termMonths as TermMonths,
+  termStartedOn: r.termStartedOn,
+  keepRate: r.keepRate === 1,
+  taxBps: r.taxBps,
+  taxExempt: r.taxExempt === 1,
+});
+
+async function automationTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<DepositAutomationRow | undefined> {
+  const [row] = await tx
+    .select()
+    .from(depositAutomation)
+    .where(and(eq(depositAutomation.accountId, accountId), eq(depositAutomation.workspaceId, ws.workspaceId)));
+  return row ? fromRecord(row) : undefined;
+}
+
+export async function getDepositAutomation(database: Database, ws: WorkspaceContext, accountId: string): Promise<DepositAutomationRow> {
+  const found = (await automationTablesExist(database.db)) ? await automationTx(database.db, ws, accountId) : undefined;
+  return found ?? { accountId, ...AUTOMATION_DEFAULTS };
+}
+
+interface LiveDeposit {
+  id: string;
+  name: string;
+  currency: string;
+}
+
+/** A time deposit of this workspace that is still open. Anything else is refused, whatever the caller thought it had. */
+async function liveDepositTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<LiveDeposit> {
+  const [row] = await tx
+    .select({ id: accounts.id, name: accounts.name, currency: accounts.currency, subtype: accounts.subtype, archivedAt: accounts.archivedAt })
+    .from(accounts)
+    .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!row || row.subtype !== 'time_deposit' || row.archivedAt !== null || row.currency === null) {
+    throw new DepositAutomationError('NOT_FOUND', 'That deposit is not open in this workspace');
+  }
+  return { id: row.id, name: row.name, currency: row.currency };
+}
+
+/**
+ * Where money may land: an open, spendable asset account holding the deposit's own currency, and not the deposit.
+ * The one statement of the rule. The repo refuses by it and the web offers by it, so the list never offers a refusal.
+ */
+export function payoutAccepts(
+  account: Pick<AccountRow, 'id' | 'kind' | 'subtype' | 'currency' | 'archivedAt'>,
+  currency: string,
+  depositId: string,
+): boolean {
+  return (
+    account.id !== depositId &&
+    account.kind === 'asset' &&
+    account.archivedAt === null &&
+    account.currency === currency &&
+    SPENDABLE_SUBTYPES.includes(account.subtype)
+  );
+}
+
+async function checkPayoutTx(tx: Db, ws: WorkspaceContext, payoutAccountId: string, currency: string, depositId: string): Promise<void> {
+  const [row] = await tx
+    .select({ id: accounts.id, subtype: accounts.subtype, currency: accounts.currency, archivedAt: accounts.archivedAt, kind: accounts.kind })
+    .from(accounts)
+    .where(and(eq(accounts.id, payoutAccountId), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!row || !payoutAccepts(row, currency, depositId)) {
+    throw new DepositAutomationError('BAD_PAYOUT', `Choose an open account in this workspace that holds ${currency} and that money can land in`);
+  }
+}
+
+export interface SaveDepositAutomationInput {
+  accountId: string;
+  enabled: boolean;
+  atMaturity: MaturityChoice;
+  interestPaid: InterestPaid;
+  payoutAccountId: string | null;
+  termMonths: TermMonths;
+  keepRate: boolean;
+  taxBps: number;
+  taxExempt: boolean;
+  /** Local YYYY-MM-DD: becomes `enabledOn` when this save turns the switch on. */
+  today: string;
+}
+
+/** Writes a deposit's settings. A missing payout is allowed here and refused at confirm, where it matters. */
+export async function saveDepositAutomation(database: Database, ws: WorkspaceContext, input: SaveDepositAutomationInput): Promise<void> {
+  if (!(TERM_MONTHS as readonly number[]).includes(input.termMonths)) throw new DepositAutomationError('BAD_TERM', 'A term is 1, 3, 6 or 12 months');
+  if (!Number.isInteger(input.taxBps) || input.taxBps < 0 || input.taxBps > 10_000) {
+    throw new DepositAutomationError('BAD_TAX', 'Tax withheld is a percentage from 0 to 100, to two decimals');
+  }
+  await database.transaction(async (tx) => {
+    if (!(await automationTablesExist(tx))) throw new DepositAutomationError('NOT_READY', 'Update the app to automate a deposit');
+    const deposit = await liveDepositTx(tx, ws, input.accountId);
+    if (input.payoutAccountId !== null) await checkPayoutTx(tx, ws, input.payoutAccountId, deposit.currency, deposit.id);
+    const before = await automationTx(tx, ws, deposit.id);
+    const enabledOn = input.enabled ? (before?.enabled ? before.enabledOn : input.today) : null;
+    const values = {
+      accountId: deposit.id,
+      workspaceId: ws.workspaceId,
+      enabled: input.enabled ? 1 : 0,
+      enabledOn,
+      atMaturity: input.atMaturity,
+      interestPaid: input.interestPaid,
+      payoutAccountId: input.payoutAccountId,
+      termMonths: input.termMonths,
+      termStartedOn: before?.termStartedOn ?? null,
+      keepRate: input.keepRate ? 1 : 0,
+      taxBps: input.taxBps,
+      taxExempt: input.taxExempt ? 1 : 0,
+      updatedAt: new Date().toISOString(),
+    };
+    const { accountId, workspaceId, ...changes } = values;
+    await tx.insert(depositAutomation).values(values).onConflictDoUpdate({ target: depositAutomation.accountId, set: changes });
+  });
+}
+```
+
+Add `export * from './repos/deposit-automation';` to `packages/db/src/index.ts` after the `deposit-terms` line. (Some imports above are first used in Tasks 4–6: `tradePostings`, `positionAfter`, `tradeAccountsFor`, `transferLines`, `type TradeRecord` and others. If lint flags them as unused now, add them in the task that uses them.)
+
+- [ ] **Step 5: Run** — `cd packages/db && npx vitest run test/deposit-automation.test.ts test/accounts.test.ts test/deposits.test.ts` → PASS; root gate.
+- [ ] **Step 6: Commit** — `feat(db): a deposit's automation settings, off until the owner turns them on`.
+
+---
+
+### Task 4: What is due, with its figures
+
+**Files:**
+- Modify: `packages/db/src/repos/deposit-automation.ts`, `packages/db/test/deposit-automation.test.ts`
+
+**Interfaces:**
+- Consumes: `dueDepositEvents`, `depositInterest`, `withholdTax`, `eventKey` (Task 1); `nativeBalances(database, ws, asOf)` (existing; the principal is the balance **at the end of the due day**).
+- Produces: `type DepositProposal`; `listDueDeposits(database, ws, today): Promise<DepositProposal[]>`; internal `scheduleOf`, `doneKeysTx` (used again by Task 5).
+
+- [ ] **Step 1: Failing tests** — append the block below. Add `listDueDeposits` to the file's existing top `import { … } from '../src/index'` rather than writing a second import statement in the middle of the file.
+
+```ts
+describe('what is due', () => {
+  it('is nothing while the switch is off, even after the maturity', async () => {
+    expect(await listDueDeposits(database, ws, '2026-12-31')).toEqual([]);
+  });
+
+  it('proposes the maturity on its day, with the figures of the mockup', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    expect(await listDueDeposits(database, ws, '2026-10-14')).toEqual([]);
+    const [proposal] = await listDueDeposits(database, ws, '2026-10-15');
+    expect(proposal).toMatchObject({
+      accountId: depositoId,
+      name: 'BCA Deposito',
+      currency: 'IDR',
+      event: { kind: 'maturity', dueOn: '2026-10-15', periodFrom: '2026-07-15', days: 92 },
+      waiting: 0,
+      principalMinor: 50_000_000,
+      rateBps: 425,
+      grossMinor: 535_616,
+      taxMinor: 107_123,
+      netMinor: 428_493,
+    });
+  });
+
+  it('queues monthly payouts in date order and proposes only the earliest, counting the rest', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const [proposal] = await listDueDeposits(database, ws, '2026-10-15');
+    expect(proposal).toMatchObject({ event: { kind: 'monthly', dueOn: '2026-08-15', days: 31 }, waiting: 2, grossMinor: 180_479, taxMinor: 36_095, netMinor: 144_384 });
+  });
+
+  it('takes no tax from a tax-free deposit', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { taxExempt: true }));
+    const [proposal] = await listDueDeposits(database, ws, '2026-10-15');
+    expect(proposal).toMatchObject({ grossMinor: 535_616, taxMinor: 0, netMinor: 535_616 });
+  });
+
+  it('forgets an archived deposit', async () => {
+    const small = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Empty', currency: 'IDR', maturesOn: '2026-08-15', rateBps: 300 });
+    await saveDepositAutomation(database, ws, on(small.id, bcaId, { termMonths: 1 }));
+    await archiveAccount(database, ws, small.id);
+    expect((await listDueDeposits(database, ws, '2026-10-15')).map((p) => p.accountId)).not.toContain(small.id);
+  });
+});
+```
+
+- [ ] **Step 2: Implement** — append to `deposit-automation.ts`:
+
+```ts
+function scheduleOf(settings: DepositAutomationRow, terms: Pick<DepositTermsRow, 'maturesOn'>): DepositSchedule {
+  return {
+    maturesOn: terms.maturesOn,
+    termMonths: settings.termMonths,
+    termStartedOn: settings.termStartedOn,
+    interestPaid: settings.interestPaid,
+    // Only read while enabled, when it is always set; the maturity is a harmless floor otherwise.
+    enabledOn: settings.enabledOn ?? terms.maturesOn,
+  };
+}
+
+async function doneKeysTx(db: Db, ws: WorkspaceContext, accountId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ kind: depositEvents.kind, dueOn: depositEvents.dueOn })
+    .from(depositEvents)
+    .where(and(eq(depositEvents.workspaceId, ws.workspaceId), eq(depositEvents.accountId, accountId)));
+  return new Set(rows.map((row) => eventKey(row.kind, row.dueOn)));
+}
+
+export interface DepositProposal {
+  accountId: string;
+  name: string;
+  currency: string;
+  /** The earliest due event: the only one proposed. */
+  event: DepositEvent;
+  /** How many more are due after it. Each is worked out once the one before it is confirmed. */
+  waiting: number;
+  /** The deposit's balance at the end of the due day. */
+  principalMinor: number;
+  rateBps: number;
+  grossMinor: number;
+  taxMinor: number;
+  netMinor: number;
+  settings: DepositAutomationRow;
+}
+
+/** Every automated deposit of the workspace with something due today or earlier, soonest first. */
+export async function listDueDeposits(database: Database, ws: WorkspaceContext, today: string): Promise<DepositProposal[]> {
+  if (!(await automationTablesExist(database.db))) return [];
+  const rows = await database.db
+    .select({ automation: depositAutomation, terms: depositTerms, name: accounts.name, currency: accounts.currency })
+    .from(depositAutomation)
+    .innerJoin(depositTerms, eq(depositTerms.accountId, depositAutomation.accountId))
+    .innerJoin(accounts, eq(accounts.id, depositAutomation.accountId))
+    .where(
+      and(
+        eq(depositAutomation.workspaceId, ws.workspaceId),
+        eq(accounts.workspaceId, ws.workspaceId),
+        eq(depositAutomation.enabled, 1),
+        isNull(accounts.archivedAt),
+      ),
+    );
+  const proposals: DepositProposal[] = [];
+  for (const row of rows) {
+    if (row.currency === null) continue;
+    const settings = fromRecord(row.automation);
+    const due = dueDepositEvents(scheduleOf(settings, row.terms), await doneKeysTx(database.db, ws, settings.accountId), today);
+    const [event] = due;
+    if (!event) continue;
+    // The existing balance reader, as of the due day: a payout posted into the deposit earlier in the term is in it.
+    const principalMinor = (await nativeBalances(database, ws, event.dueOn))[settings.accountId] ?? 0;
+    const grossMinor = depositInterest(principalMinor, row.terms.rateBps, event.days);
+    const { taxMinor, netMinor } = withholdTax(grossMinor, settings.taxBps, settings.taxExempt);
+    proposals.push({
+      accountId: settings.accountId,
+      name: row.name,
+      currency: row.currency,
+      event,
+      waiting: due.length - 1,
+      principalMinor,
+      rateBps: row.terms.rateBps,
+      grossMinor,
+      taxMinor,
+      netMinor,
+      settings,
+    });
+  }
+  return proposals.sort((a, b) => a.event.dueOn.localeCompare(b.event.dueOn));
+}
+```
+
+- [ ] **Step 3: Run** — `cd packages/db && npx vitest run test/deposit-automation.test.ts` → PASS; root gate.
+- [ ] **Step 4: Commit** — `feat(db): what a deposit has due, worked out and never stored`.
+
+---
+
+### Task 5: Confirming an event, or recording it by hand
+
+**Files:**
+- Modify: `packages/db/src/repos/trades.ts` (one word), `packages/db/src/repos/deposit-automation.ts`, `packages/db/test/deposit-automation.test.ts`
+
+**Interfaces:**
+- Consumes (all existing, **called, not copied**): `postTransactionTx`; `tradePostings` and `positionAfter` from `@expanses/core`; `tradeAccountsFor` (exported by Step 0, body unchanged); `transferLines`; `saveDepositTermsTx`, `getDepositTermsTx`, `archiveAccountTx` (Task 3); `addMonthsToDate`, `dueDepositEvents` (Task 1); `categoryIdsByKeyTx` (tests only, to find the two categories).
+- Produces: `type ConfirmDepositEventInput` (gross and tax typed; net derived; `byHand` flag), `type ConfirmedDepositEvent`, `confirmDepositEvent(database, ws, input): Promise<ConfirmedDepositEvent>`.
+
+- [ ] **Step 0: Export the trades' account resolver.** In `packages/db/src/repos/trades.ts`, change `async function tradeAccountsFor(` to `export async function tradeAccountsFor(`. Nothing else in the file changes. `npx vitest run test/trades.test.ts` must still pass unchanged. It is the function that resolves `income.investment`, `government_taxes.estimated_tax` and the landing account for an investment payment, with its own "category is missing" refusal. Deposit interest posts through it, so the two cannot drift.
+
+- [ ] **Step 1: Failing tests** — append the block below. Add `categoryIdsByKeyTx`, `confirmDepositEvent`, `type ConfirmDepositEventInput`, `type DepositProposal`, `getDepositTerms`, `listAccounts`, `nativeBalances`, `postTransactionTx` to the top `import { … } from '../src/index'`, and `import { transferLines } from '@expanses/core';` at the top.
+
+```ts
+/** The input that confirms the proposal exactly as proposed, the way the card does when nothing was edited. */
+export function asProposed(p: DepositProposal, today: string, change: Partial<ConfirmDepositEventInput> = {}): ConfirmDepositEventInput {
+  return {
+    accountId: p.accountId,
+    kind: p.event.kind,
+    dueOn: p.event.dueOn,
+    today,
+    principalMinor: p.principalMinor,
+    grossMinor: p.grossMinor,
+    taxMinor: p.taxMinor,
+    newRateBps: p.rateBps,
+    newTermMonths: p.settings.termMonths,
+    ...change,
+  };
+}
+
+const next = async (today: string) => (await listDueDeposits(database, ws, today))[0]!;
+
+/** What the two categories an investment payment posts into hold now: income is a credit, so it reads negative. */
+async function incomeAndTax() {
+  const keys = await categoryIdsByKeyTx(database.db, ws);
+  const balances = await nativeBalances(database, ws);
+  return { income: balances[keys['income.investment']!] ?? 0, tax: balances[keys['government_taxes.estimated_tax']!] ?? 0 };
+}
+
+describe('confirming', () => {
+  it('rolls the principal over: gross to income, the tax on its own line, the net to the payout account, and a new term', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    const result = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    expect(result).toMatchObject({ netMinor: 428_493, principalTransactionId: null, archived: false });
+    const balances = await nativeBalances(database, ws);
+    expect(balances[bcaId]).toBe(1_428_493);
+    expect(balances[depositoId]).toBe(50_000_000);
+    // Gross, not net, is the income; the tax is a line of its own, exactly as an investment payment posts.
+    expect(await incomeAndTax()).toEqual({ income: -535_616, tax: 107_123 });
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2027-01-15', rateBps: 425 });
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ termStartedOn: '2026-10-15', termMonths: 3 });
+    expect(await listDueDeposits(database, ws, '2026-10-15')).toEqual([]);
+  });
+
+  it('posts the gross and tax that were typed, lands their difference, and carries a corrected rate and term', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    const p = await next('2026-10-15');
+    const result = await confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { grossMinor: 535_700, taxMinor: 107_140, newRateBps: 400, newTermMonths: 6 }));
+    expect(result.netMinor).toBe(428_560);
+    expect((await nativeBalances(database, ws))[bcaId]).toBe(1_428_560);
+    expect(await incomeAndTax()).toEqual({ income: -535_700, tax: 107_140 });
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2027-04-15', rateBps: 400 });
+  });
+
+  it('posts no tax line on a tax-free deposit', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { taxExempt: true }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    expect((await nativeBalances(database, ws))[bcaId]).toBe(1_535_616);
+    expect(await incomeAndTax()).toEqual({ income: -535_616, tax: 0 });
+  });
+
+  it('closes a deposit that does not roll over: it empties into the payout account and is archived', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    const result = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    expect(result.archived).toBe(true);
+    const balances = await nativeBalances(database, ws);
+    expect(balances[bcaId]).toBe(51_428_493);
+    expect(balances[depositoId] ?? 0).toBe(0);
+    expect((await listAccounts(database, ws)).map((a) => a.id)).not.toContain(depositoId);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(false);
+  });
+
+  it('keeps a deposit open when the principal typed leaves money in it', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    const result = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { principalMinor: 49_000_000 }));
+    expect(result.archived).toBe(false);
+    expect((await nativeBalances(database, ws))[depositoId]).toBe(1_000_000);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(false);
+  });
+
+  it('refuses the second of two confirms, and anything that is not next', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const first = await next('2026-10-15');
+    await expect(confirmDepositEvent(database, ws, asProposed(first, '2026-10-15', { dueOn: '2026-09-15' }))).rejects.toMatchObject({ code: 'NOT_NEXT' });
+    await confirmDepositEvent(database, ws, asProposed(first, '2026-10-15'));
+    await expect(confirmDepositEvent(database, ws, asProposed(first, '2026-10-15'))).rejects.toMatchObject({ code: 'NOT_NEXT' });
+    expect((await nativeBalances(database, ws))[bcaId]).toBe(1_144_384);
+  });
+
+  it('refuses while off, and without a payout account where money must land', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, null));
+    const p = await next('2026-10-15');
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15'))).rejects.toMatchObject({ code: 'NO_PAYOUT' });
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { enabled: false }));
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15'))).rejects.toMatchObject({ code: 'OFF' });
+    expect((await nativeBalances(database, ws))[bcaId]).toBe(1_000_000);
+  });
+
+  it('refuses a figure that is not whole minor units, a tax above the gross, or a tax that leaves nothing to land', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    const p = await next('2026-10-15');
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { grossMinor: 535_616.5 }))).rejects.toMatchObject({ code: 'BAD_FIGURE' });
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { taxMinor: 600_000 }))).rejects.toMatchObject({ code: 'BAD_FIGURE' });
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { taxMinor: 535_616 }))).rejects.toMatchObject({ code: 'BAD_FIGURE' });
+    expect((await nativeBalances(database, ws))[bcaId]).toBe(1_000_000);
+  });
+});
+
+describe('recorded it myself', () => {
+  it('marks a payout done and posts nothing; the next one is proposed, and no payout account is needed', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, null, { interestPaid: 'monthly' }));
+    const first = await next('2026-10-15');
+    const result = await confirmDepositEvent(database, ws, asProposed(first, '2026-10-15', { byHand: true }));
+    expect(result).toEqual({ interestTransactionId: null, principalTransactionId: null, netMinor: 144_384, archived: false });
+    expect((await nativeBalances(database, ws))[bcaId]).toBe(1_000_000);
+    expect(await incomeAndTax()).toEqual({ income: 0, tax: 0 });
+    expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'monthly', dueOn: '2026-09-15' }, waiting: 1 });
+  });
+
+  it('still starts the next term when a roll-over was recorded by hand', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { byHand: true }));
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2027-01-15', rateBps: 425 });
+    expect((await nativeBalances(database, ws))[bcaId]).toBe(1_000_000);
+    expect(await listDueDeposits(database, ws, '2026-10-15')).toEqual([]);
+  });
+
+  it('closes by hand only once the owner has emptied the deposit; until then it stays open, with automation off', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    const kept = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { byHand: true }));
+    expect(kept.archived).toBe(false);
+    expect((await nativeBalances(database, ws))[depositoId]).toBe(50_000_000);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(false);
+  });
+
+  it('archives a deposit the owner already emptied by hand', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    const p = await next('2026-10-15');
+    // The owner's own transfer, posted before they tell the app they did it.
+    await database.transaction((tx) =>
+      postTransactionTx(tx, ws, {
+        occurredOn: '2026-10-15',
+        description: 'Deposito back',
+        lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 50_000_000, currency: 'IDR' }),
+      }),
+    );
+    expect((await confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { byHand: true }))).archived).toBe(true);
+    expect((await nativeBalances(database, ws))[bcaId]).toBe(51_000_000);
+  });
+});
+```
+
+- [ ] **Step 2: Implement** — append to `deposit-automation.ts`:
+
+```ts
+export interface ConfirmDepositEventInput {
+  accountId: string;
+  kind: DepositEvent['kind'];
+  dueOn: string;
+  /** Local YYYY-MM-DD, to check that this event is still the earliest due. */
+  today: string;
+  /** Posted only when the deposit does not roll over; logged either way. */
+  principalMinor: number;
+  /** Interest before tax, as it posts to `income.investment`: the computed figure, or the bank's, typed. */
+  grossMinor: number;
+  /** Tax withheld, as it posts to `government_taxes.estimated_tax`. What lands is `grossMinor − taxMinor`. */
+  taxMinor: number;
+  /** Maturity with a roll-over only. */
+  newRateBps?: number;
+  newTermMonths?: TermMonths;
+  /** Units of base per one major unit of the deposit's currency, when that is not the base. */
+  rateToBase?: number;
+  /**
+   * "Recorded it myself": the owner already put it in the ledger. Nothing is posted. The event is marked done with
+   * the figures on the card, so the tax report still has it. A roll-over still starts its next term.
+   */
+  byHand?: boolean;
+}
+
+export interface ConfirmedDepositEvent {
+  interestTransactionId: string | null;
+  principalTransactionId: string | null;
+  /** What landed (or, recorded by hand, what the owner said landed): gross − tax. */
+  netMinor: number;
+  archived: boolean;
+}
+
+const whole = (n: number | undefined): n is number => n !== undefined && Number.isSafeInteger(n) && n >= 0;
+
+/**
+ * Posts one due event through the ledger's own paths and marks it done, all in one transaction. The interest posts the
+ * way an investment payment does (`tradeAccountsFor` + `tradePostings`). Refuses anything that is not the earliest due
+ * event of an automated, open deposit of this workspace.
+ */
+export async function confirmDepositEvent(database: Database, ws: WorkspaceContext, input: ConfirmDepositEventInput): Promise<ConfirmedDepositEvent> {
+  if (!whole(input.grossMinor) || !whole(input.taxMinor) || !whole(input.principalMinor) || input.taxMinor > input.grossMinor) {
+    throw new DepositAutomationError('BAD_FIGURE', 'Every figure is a whole amount, not below zero, and the tax is not more than the interest');
+  }
+  const byHand = input.byHand === true;
+  const netMinor = input.grossMinor - input.taxMinor;
+  // The ledger refuses a zero line (ZERO_AMOUNT); say why in words before it gets there.
+  if (!byHand && input.grossMinor > 0 && netMinor === 0) throw new DepositAutomationError('BAD_FIGURE', 'The tax cannot take all of the interest');
+
+  return database.transaction(async (tx) => {
+    if (!(await automationTablesExist(tx))) throw new DepositAutomationError('NOT_READY', 'Update the app to automate a deposit');
+    const deposit = await liveDepositTx(tx, ws, input.accountId);
+    const settings = await automationTx(tx, ws, deposit.id);
+    const terms = await getDepositTermsTx(tx, ws, deposit.id);
+    if (!settings?.enabled || !terms) throw new DepositAutomationError('OFF', 'Automation is off for this deposit');
+
+    const [first] = dueDepositEvents(scheduleOf(settings, terms), await doneKeysTx(tx, ws, deposit.id), input.today);
+    if (!first || first.kind !== input.kind || first.dueOn !== input.dueOn) {
+      throw new DepositAutomationError('NOT_NEXT', 'This is not the next thing due on this deposit. Reopen it to see what is.');
+    }
+
+    const maturity = input.kind === 'maturity';
+    const closing = maturity && settings.atMaturity === 'close';
+    const rolling = maturity && !closing;
+    const lands = needsPayout(settings.atMaturity);
+    if (!byHand && lands) {
+      if (settings.payoutAccountId === null) throw new DepositAutomationError('NO_PAYOUT', 'Choose the account the money lands in first');
+      await checkPayoutTx(tx, ws, settings.payoutAccountId, deposit.currency, deposit.id);
+    }
+    if (closing && !byHand && input.principalMinor <= 0) throw new DepositAutomationError('BAD_FIGURE', 'Say how much came back');
+    if (rolling && (!(TERM_MONTHS as readonly number[]).includes(input.newTermMonths ?? 0) || !whole(input.newRateBps))) {
+      throw new DepositAutomationError('BAD_FIGURE', 'A roll-over needs its new term and rate');
+    }
+
+    const ratesToBase = deposit.currency !== ws.baseCurrency && input.rateToBase !== undefined ? { [deposit.currency]: input.rateToBase } : {};
+
+    let interestTransactionId: string | null = null;
+    if (!byHand && input.grossMinor > 0) {
+      const interestInto = lands ? settings.payoutAccountId! : deposit.id;
+      // The investment payment's own accounts and lines: net to where it lands, tax to estimated_tax, gross to income.
+      const { accounts: tradeAccounts } = await tradeAccountsFor(tx, ws, deposit.id, interestInto);
+      interestTransactionId = await postTransactionTx(tx, ws, {
+        occurredOn: input.dueOn,
+        description: `Interest: ${deposit.name}`,
+        lines: tradePostings(
+          { kind: 'income', occurredOn: input.dueOn, unitsMicro: 0, grossMinor: input.grossMinor, feeMinor: 0, taxMinor: input.taxMinor },
+          positionAfter([]),
+          tradeAccounts,
+        ),
+        ratesToBase,
+      });
+    }
+
+    let principalTransactionId: string | null = null;
+    if (closing && !byHand) {
+      principalTransactionId = await postTransactionTx(tx, ws, {
+        occurredOn: input.dueOn,
+        description: `${deposit.name} matured`,
+        lines: transferLines({ fromAccountId: deposit.id, toAccountId: settings.payoutAccountId!, amountMinor: input.principalMinor, currency: deposit.currency }),
+        ratesToBase,
+      });
+    }
+
+    const now = new Date().toISOString();
+    if (rolling) {
+      await saveDepositTermsTx(tx, ws, { accountId: deposit.id, maturesOn: addMonthsToDate(input.dueOn, input.newTermMonths!), rateBps: input.newRateBps! });
+      await tx
+        .update(depositAutomation)
+        .set({ termMonths: input.newTermMonths!, termStartedOn: input.dueOn, updatedAt: now })
+        .where(eq(depositAutomation.accountId, deposit.id));
+    }
+
+    await tx.insert(depositEvents).values({
+      id: uuidv7(),
+      workspaceId: ws.workspaceId,
+      accountId: deposit.id,
+      kind: input.kind,
+      dueOn: input.dueOn,
+      principalMinor: input.principalMinor,
+      grossMinor: input.grossMinor,
+      taxMinor: input.taxMinor,
+      netMinor,
+      interestTransactionId,
+      principalTransactionId,
+      recordedByHand: byHand ? 1 : 0,
+      confirmedAt: now,
+    });
+
+    let archived = false;
+    if (closing) {
+      await tx.update(depositAutomation).set({ enabled: 0, enabledOn: null, updatedAt: now }).where(eq(depositAutomation.accountId, deposit.id));
+      try {
+        // The archive keeps its own refusal: it checks the balance and throws before it writes anything.
+        await archiveAccountTx(tx, ws, deposit.id);
+        archived = true;
+      } catch (error) {
+        if (!(error instanceof AccountError)) throw error;
+      }
+    }
+    return { interestTransactionId, principalTransactionId, netMinor, archived };
+  });
+}
+```
+
+- [ ] **Step 3: Run** — `cd packages/db && npx vitest run test/deposit-automation.test.ts test/trades.test.ts` → PASS; root gate.
+- [ ] **Step 4: Commit** — `feat(db): confirming a deposit's due event posts gross and tax like a payment, or is recorded by hand, and logs it once`.
+
+---
+
+### Task 6: The tax report reads the log
+
+**Files:**
+- Modify: `packages/core/src/coretax/income.ts`, `packages/core/test/coretax-income.test.ts`, `packages/db/src/repos/deposit-automation.ts`, `packages/db/src/repos/coretax-income.ts`, `packages/db/test/coretax-income.test.ts`, `apps/web/src/features/coretax/IncomeSection.tsx`
+
+**Interfaces:**
+- Consumes: `investmentIncomeFor({ trades, holdings, year, baseCurrency })` and `incomeInputsFor(database, ws, year)` (existing: the final-income section's one reader and its repo entry); `type TradeRecord` (existing); `automationTablesExist` (Task 3); the `deposit_events` log (Tasks 2, 5).
+- Produces: `IncomeKind` gains `'interest'`; `depositIncomePayments(database, ws): Promise<TradeRecord[]>`.
+
+The final-income section already reads investment payments through `investmentIncomeFor`: gross and tax per holding, split by the holding's treatment (final / not an object / ordinary / not set). A confirmed deposit event carries the same two figures. So the log's events are shaped as income payments and passed to that same reader, and no second reader is written. The deposit's treatment is the one on its asset profile ("How its income is taxed" on the deposit's page), and is null until the owner sets it, like any holding. The report still never guesses. Events recorded by hand are included with the figures the owner confirmed. A USD deposit's row is `foreign`, as a USD holding's is, and stays out of the withheld total.
+
+- [ ] **Step 1: Failing tests.** In `packages/core/test/coretax-income.test.ts`, add:
+
+```ts
+it('calls a cash holding’s payment interest, with its gross and its tax', () => {
+  const rows = investmentIncomeFor({
+    trades: [{ id: 't1', accountId: 'dep', kind: 'income', occurredOn: '2026-10-15', createdAt: '2026-10-15T00:00:00Z', unitsMicro: 0, grossMinor: 535_616, feeMinor: 0, taxMinor: 107_123 }],
+    holdings: [{ accountId: 'dep', name: 'BCA Deposito', assetKind: 'cash', currency: 'IDR', treatment: 'final' }],
+    year: 2026,
+    baseCurrency: 'IDR',
+  });
+  expect(rows).toEqual([
+    { accountId: 'dep', name: 'BCA Deposito', kind: 'interest', grossMinor: 535_616, taxMinor: 107_123, foreign: false, treatment: 'final', reinvestedInto: [] },
+  ]);
+});
+```
+
+In `packages/db/test/coretax-income.test.ts`, add the block below. It imports `confirmDepositEvent`, `listDueDeposits`, `openCashAccount` and `saveDepositAutomation`, and adds them to the file's top import from `../src/index`. `setAssetReporting` is already imported there.
+
+```ts
+describe('deposit interest from the confirmed-event log', () => {
+  async function deposit(currency: 'IDR' | 'USD') {
+    const { database, ws } = await setupDb();
+    const fx = currency === 'USD' ? 16_350 : undefined;
+    const bank = await openCashAccount(database, ws, { item: 'bank', name: 'Bank', currency, openingBalanceMinor: 5_000, openedOn: '2026-07-15', openingRateToBase: fx });
+    const dep = await openCashAccount(database, ws, {
+      item: 'time_deposit', name: 'Deposito', currency, openingBalanceMinor: currency === 'IDR' ? 50_000_000 : 1_000_000,
+      openedOn: '2026-07-15', openingRateToBase: fx, maturesOn: '2026-10-15', rateBps: currency === 'IDR' ? 425 : 350,
+    });
+    await saveDepositAutomation(database, ws, {
+      accountId: dep.id, enabled: true, atMaturity: 'principal', interestPaid: 'at_maturity', payoutAccountId: bank.id,
+      termMonths: 3, keepRate: true, taxBps: 2_000, taxExempt: false, today: '2026-07-15',
+    });
+    const confirm = async (byHand: boolean, today: string) => {
+      const [p] = await listDueDeposits(database, ws, today);
+      await confirmDepositEvent(database, ws, {
+        accountId: p!.accountId, kind: p!.event.kind, dueOn: p!.event.dueOn, today, principalMinor: p!.principalMinor,
+        grossMinor: p!.grossMinor, taxMinor: p!.taxMinor, newRateBps: p!.rateBps, newTermMonths: 3, rateToBase: fx, byHand,
+      });
+    };
+    return { database, ws, dep, confirm };
+  }
+
+  it('reports the gross and the tax withheld, not the net that landed, under the treatment the owner set', async () => {
+    const { database, ws, dep, confirm } = await deposit('IDR');
+    // What the deposit page's "How its income is taxed" writes: only the treatment, nothing else of the profile.
+    await setAssetReporting(database, ws, dep.id, { taxTreatment: 'final' });
+    await confirm(false, '2026-10-15');
+    expect((await incomeInputsFor(database, ws, 2026)).filter((row) => row.accountId === dep.id)).toEqual([
+      { accountId: dep.id, name: 'Deposito', kind: 'interest', grossMinor: 535_616, taxMinor: 107_123, foreign: false, treatment: 'final', reinvestedInto: [] },
+    ]);
+  });
+
+  it('counts an event recorded by hand, sets nothing it was not told, and keeps each year to its own', async () => {
+    const { database, ws, dep, confirm } = await deposit('IDR');
+    await confirm(true, '2026-10-15');
+    // The second term: 15 Oct 2026 → 15 Jan 2027, 92 days again, due in 2027.
+    await confirm(false, '2027-01-15');
+    expect((await incomeInputsFor(database, ws, 2026)).find((row) => row.accountId === dep.id)).toMatchObject({ grossMinor: 535_616, taxMinor: 107_123, treatment: null });
+    expect((await incomeInputsFor(database, ws, 2027)).find((row) => row.accountId === dep.id)).toMatchObject({ grossMinor: 535_616, taxMinor: 107_123 });
+  });
+
+  it('marks a deposit in another currency as held abroad, in its own minor units', async () => {
+    const { database, ws, dep, confirm } = await deposit('USD');
+    await confirm(false, '2026-10-15');
+    // US$10,000.00 at 3,50% for 92 days: 8 821 cents gross, 1 764 tax (1 764,2).
+    expect((await incomeInputsFor(database, ws, 2026)).find((row) => row.accountId === dep.id)).toMatchObject({ kind: 'interest', grossMinor: 8_821, taxMinor: 1_764, foreign: true });
+  });
+});
+```
+
+(`setAssetReporting(database, ws, accountId, { taxTreatment })` in `repos/assets.ts`, checked 2026-09-21.)
+
+- [ ] **Step 2: Core.** In `packages/core/src/coretax/income.ts`, change `IncomeKind` to `'dividend' | 'coupon' | 'distribution' | 'interest' | 'sale' | 'other'`, and in `kindOf`'s switch add `case 'cash': return 'interest';` (a cash holding is a deposit or a bank account, and what it pays is interest). Nothing else in the reader changes.
+
+- [ ] **Step 3: The log, shaped as payments.** Append to `deposit-automation.ts`:
+
+```ts
+/**
+ * Every confirmed or hand-recorded event with interest, as the income payment the tax report already reads: gross and
+ * tax withheld, dated the due day. The report's reader filters the year; this passes every event of the workspace.
+ */
+export async function depositIncomePayments(database: Database, ws: WorkspaceContext): Promise<TradeRecord[]> {
+  if (!(await automationTablesExist(database.db))) return [];
+  const rows = await database.db.select().from(depositEvents).where(eq(depositEvents.workspaceId, ws.workspaceId));
+  return rows
+    .filter((row) => row.grossMinor > 0)
+    .map((row) => ({
+      id: row.id,
+      accountId: row.accountId,
+      kind: 'income' as const,
+      occurredOn: row.dueOn,
+      createdAt: row.confirmedAt,
+      unitsMicro: 0,
+      grossMinor: row.grossMinor,
+      feeMinor: 0,
+      taxMinor: row.taxMinor,
+    }));
+}
+```
+
+In `repos/coretax-income.ts`, import `depositIncomePayments` from `./deposit-automation`, add it to the `Promise.all` in `incomeInputsFor`, and pass `trades: [...trades, ...deposits]` to `investmentIncomeFor`. Nothing else changes. The deposit is already in `holdings` (every deposit has an asset profile of kind `cash` from `openCashAccount`, and `listAssetProfiles` includes archived ones, so a closed deposit's interest is still named).
+
+- [ ] **Step 4: The label.** In `apps/web/src/features/coretax/IncomeSection.tsx`, add `interest: 'interest',` to `KIND_LABELS` (its `Record<IncomeRow['kind'], string>` type refuses to compile without it).
+
+- [ ] **Step 5: Run** — `cd packages/core && npx vitest run test/coretax-income.test.ts`; `cd packages/db && npx vitest run test/coretax-income.test.ts test/deposit-automation.test.ts`; root gate.
+- [ ] **Step 6: Commit** — `feat(tax-report): deposit interest reaches the final-income section from the confirmed-event log`.
+
+---
+
+### Task 7: Every combination, in the repository
+
+**Files:**
+- Create: `packages/db/test/deposit-combinations.test.ts`
+
+**Interfaces:**
+- Consumes: `saveDepositAutomation`, `listDueDeposits`, `confirmDepositEvent` (Tasks 3–5); `incomeInputsFor` (Task 6); `openCashAccount`, `nativeBalances`, `listAccounts`, `categoryIdsByKeyTx` (existing). No new production code. If a case fails, fix the production code, never the table.
+
+This is the combination walk at the level of the money: 3 choices × monthly/at maturity × taxed/tax-free × IDR/USD × **confirmed / first event recorded by hand** = 48 cases. The USD fixture runs in an IDR workspace, so a currency mistake (exponent, rate to base, payout currency) shows up as a wrong integer. Each case asserts, as exact integers, every net proposed, the deposit's and the payout's final balances, the **gross posted to `income.investment` and the tax posted to `estimated_tax`** (user decision 1), the **gross and tax the tax report reads from the log** (decision 2), and whether the deposit is still open.
+
+The by-hand half records the first event with **"Recorded it myself"** (decision 3) and confirms the rest. Nothing is posted for that first event, so it is missing from the balances and the category totals but present in the log and the tax report. With *principal + interest* and monthly payouts (decision 4), an unposted first payout does not compound, so the later nets differ from the confirmed half: 140 129 against 140 534. A deposit set to *Don't roll over* that pays only at maturity and is recorded by hand still holds its principal. The archive's refusal keeps it open, with automation off.
+
+The table was computed from spec §5 with the arithmetic of `depositInterest`/`withholdTax`: principal = the balance on each due day, floor, and net = gross − tax.
+
+- [ ] **Step 1: Write the test**
+
+```ts
+// packages/db/test/deposit-combinations.test.ts
+import type { MaturityChoice } from '@expanses/core';
+import { describe, expect, it } from 'vitest';
+import { categoryIdsByKeyTx, confirmDepositEvent, incomeInputsFor, listAccounts, listDueDeposits, nativeBalances, openCashAccount, saveDepositAutomation } from '../src/index';
+import { setupDb } from './helpers';
+
+const FIXTURE = {
+  IDR: { opened: '2026-07-15', matures: '2026-10-15', principal: 50_000_000, rateBps: 425, payout: 1_000_000, fx: undefined },
+  USD: { opened: '2026-08-01', matures: '2026-11-01', principal: 1_000_000, rateBps: 350, payout: 5_000, fx: 16_350 },
+} as const;
+
+type Row = [
+  currency: 'IDR' | 'USD',
+  choice: MaturityChoice,
+  paid: 'monthly' | 'at_maturity',
+  exempt: boolean,
+  firstByHand: boolean,
+  nets: number[],
+  deposit: number,
+  payout: number,
+  postedGross: number,
+  postedTax: number,
+  reportedGross: number,
+  reportedTax: number,
+  open: boolean,
+];
+
+// prettier-ignore
+const ROWS: Row[] = [
+  ['IDR', 'principal',          'at_maturity', false, false, [428_493],                   50_000_000, 1_428_493,  535_616, 107_123, 535_616, 107_123, true],
+  ['IDR', 'principal',          'at_maturity', true,  false, [535_616],                   50_000_000, 1_535_616,  535_616, 0,       535_616, 0,       true],
+  ['IDR', 'principal',          'monthly',     false, false, [144_384, 144_384, 139_726], 50_000_000, 1_428_494,  535_615, 107_121, 535_615, 107_121, true],
+  ['IDR', 'principal',          'monthly',     true,  false, [180_479, 180_479, 174_657], 50_000_000, 1_535_615,  535_615, 0,       535_615, 0,       true],
+  ['IDR', 'principal_interest', 'at_maturity', false, false, [428_493],                   50_428_493, 1_000_000,  535_616, 107_123, 535_616, 107_123, true],
+  ['IDR', 'principal_interest', 'at_maturity', true,  false, [535_616],                   50_535_616, 1_000_000,  535_616, 0,       535_616, 0,       true],
+  ['IDR', 'principal_interest', 'monthly',     false, false, [144_384, 144_800, 140_534], 50_429_718, 1_000_000,  537_146, 107_428, 537_146, 107_428, true],
+  ['IDR', 'principal_interest', 'monthly',     true,  false, [180_479, 181_130, 175_920], 50_537_529, 1_000_000,  537_529, 0,       537_529, 0,       true],
+  ['IDR', 'close',              'at_maturity', false, false, [428_493],                   0,          51_428_493, 535_616, 107_123, 535_616, 107_123, false],
+  ['IDR', 'close',              'at_maturity', true,  false, [535_616],                   0,          51_535_616, 535_616, 0,       535_616, 0,       false],
+  ['IDR', 'close',              'monthly',     false, false, [144_384, 144_384, 139_726], 0,          51_428_494, 535_615, 107_121, 535_615, 107_121, false],
+  ['IDR', 'close',              'monthly',     true,  false, [180_479, 180_479, 174_657], 0,          51_535_615, 535_615, 0,       535_615, 0,       false],
+  ['USD', 'principal',          'at_maturity', false, false, [7_057],                     1_000_000,  12_057,     8_821,   1_764,   8_821,   1_764,   true],
+  ['USD', 'principal',          'at_maturity', true,  false, [8_821],                     1_000_000,  13_821,     8_821,   0,       8_821,   0,       true],
+  ['USD', 'principal',          'monthly',     false, false, [2_378, 2_301, 2_378],       1_000_000,  12_057,     8_820,   1_763,   8_820,   1_763,   true],
+  ['USD', 'principal',          'monthly',     true,  false, [2_972, 2_876, 2_972],       1_000_000,  13_820,     8_820,   0,       8_820,   0,       true],
+  ['USD', 'principal_interest', 'at_maturity', false, false, [7_057],                     1_007_057,  5_000,      8_821,   1_764,   8_821,   1_764,   true],
+  ['USD', 'principal_interest', 'at_maturity', true,  false, [8_821],                     1_008_821,  5_000,      8_821,   0,       8_821,   0,       true],
+  ['USD', 'principal_interest', 'monthly',     false, false, [2_378, 2_307, 2_389],       1_007_074,  5_000,      8_841,   1_767,   8_841,   1_767,   true],
+  ['USD', 'principal_interest', 'monthly',     true,  false, [2_972, 2_885, 2_990],       1_008_847,  5_000,      8_847,   0,       8_847,   0,       true],
+  ['USD', 'close',              'at_maturity', false, false, [7_057],                     0,          1_012_057,  8_821,   1_764,   8_821,   1_764,   false],
+  ['USD', 'close',              'at_maturity', true,  false, [8_821],                     0,          1_013_821,  8_821,   0,       8_821,   0,       false],
+  ['USD', 'close',              'monthly',     false, false, [2_378, 2_301, 2_378],       0,          1_012_057,  8_820,   1_763,   8_820,   1_763,   false],
+  ['USD', 'close',              'monthly',     true,  false, [2_972, 2_876, 2_972],       0,          1_013_820,  8_820,   0,       8_820,   0,       false],
+  ['IDR', 'principal',          'at_maturity', false, true,  [428_493],                   50_000_000, 1_000_000,  0,       0,       535_616, 107_123, true],
+  ['IDR', 'principal',          'at_maturity', true,  true,  [535_616],                   50_000_000, 1_000_000,  0,       0,       535_616, 0,       true],
+  ['IDR', 'principal',          'monthly',     false, true,  [144_384, 144_384, 139_726], 50_000_000, 1_284_110,  355_136, 71_026,  535_615, 107_121, true],
+  ['IDR', 'principal',          'monthly',     true,  true,  [180_479, 180_479, 174_657], 50_000_000, 1_355_136,  355_136, 0,       535_615, 0,       true],
+  ['IDR', 'principal_interest', 'at_maturity', false, true,  [428_493],                   50_000_000, 1_000_000,  0,       0,       535_616, 107_123, true],
+  ['IDR', 'principal_interest', 'at_maturity', true,  true,  [535_616],                   50_000_000, 1_000_000,  0,       0,       535_616, 0,       true],
+  ['IDR', 'principal_interest', 'monthly',     false, true,  [144_384, 144_384, 140_129], 50_284_513, 1_000_000,  355_640, 71_127,  536_119, 107_222, true],
+  ['IDR', 'principal_interest', 'monthly',     true,  true,  [180_479, 180_479, 175_287], 50_355_766, 1_000_000,  355_766, 0,       536_245, 0,       true],
+  ['IDR', 'close',              'at_maturity', false, true,  [428_493],                   50_000_000, 1_000_000,  0,       0,       535_616, 107_123, true],
+  ['IDR', 'close',              'at_maturity', true,  true,  [535_616],                   50_000_000, 1_000_000,  0,       0,       535_616, 0,       true],
+  ['IDR', 'close',              'monthly',     false, true,  [144_384, 144_384, 139_726], 0,          51_284_110, 355_136, 71_026,  535_615, 107_121, false],
+  ['IDR', 'close',              'monthly',     true,  true,  [180_479, 180_479, 174_657], 0,          51_355_136, 355_136, 0,       535_615, 0,       false],
+  ['USD', 'principal',          'at_maturity', false, true,  [7_057],                     1_000_000,  5_000,      0,       0,       8_821,   1_764,   true],
+  ['USD', 'principal',          'at_maturity', true,  true,  [8_821],                     1_000_000,  5_000,      0,       0,       8_821,   0,       true],
+  ['USD', 'principal',          'monthly',     false, true,  [2_378, 2_301, 2_378],       1_000_000,  9_679,      5_848,   1_169,   8_820,   1_763,   true],
+  ['USD', 'principal',          'monthly',     true,  true,  [2_972, 2_876, 2_972],       1_000_000,  10_848,     5_848,   0,       8_820,   0,       true],
+  ['USD', 'principal_interest', 'at_maturity', false, true,  [7_057],                     1_000_000,  5_000,      0,       0,       8_821,   1_764,   true],
+  ['USD', 'principal_interest', 'at_maturity', true,  true,  [8_821],                     1_000_000,  5_000,      0,       0,       8_821,   0,       true],
+  ['USD', 'principal_interest', 'monthly',     false, true,  [2_378, 2_301, 2_384],       1_004_685,  5_000,      5_855,   1_170,   8_827,   1_764,   true],
+  ['USD', 'principal_interest', 'monthly',     true,  true,  [2_972, 2_876, 2_981],       1_005_857,  5_000,      5_857,   0,       8_829,   0,       true],
+  ['USD', 'close',              'at_maturity', false, true,  [7_057],                     1_000_000,  5_000,      0,       0,       8_821,   1_764,   true],
+  ['USD', 'close',              'at_maturity', true,  true,  [8_821],                     1_000_000,  5_000,      0,       0,       8_821,   0,       true],
+  ['USD', 'close',              'monthly',     false, true,  [2_378, 2_301, 2_378],       0,          1_009_679,  5_848,   1_169,   8_820,   1_763,   false],
+  ['USD', 'close',              'monthly',     true,  true,  [2_972, 2_876, 2_972],       0,          1_010_848,  5_848,   0,       8_820,   0,       false],
+];
+
+describe('every combination of choice, payout, tax, currency and who recorded it', () => {
+  it.each(ROWS)('%s · %s · %s · tax-free %s · first by hand %s', async (currency, choice, paid, exempt, firstByHand, nets, depositEnd, payoutEnd, postedGross, postedTax, reportedGross, reportedTax, open) => {
+    const { database, ws, executor } = await setupDb('IDR');
+    try {
+      const f = FIXTURE[currency];
+      const payout = await openCashAccount(database, ws, { item: 'bank', name: 'Payout', currency, openingBalanceMinor: f.payout, openedOn: f.opened, openingRateToBase: f.fx });
+      const deposit = await openCashAccount(database, ws, {
+        item: 'time_deposit', name: 'Deposito', currency, openingBalanceMinor: f.principal, openedOn: f.opened,
+        openingRateToBase: f.fx, maturesOn: f.matures, rateBps: f.rateBps,
+      });
+      await saveDepositAutomation(database, ws, {
+        accountId: deposit.id, enabled: true, atMaturity: choice, interestPaid: paid, payoutAccountId: payout.id,
+        termMonths: 3, keepRate: true, taxBps: 2_000, taxExempt: exempt, today: f.opened,
+      });
+
+      // The app was not opened all term: everything waits, and is confirmed one at a time in date order.
+      const proposed: number[] = [];
+      for (let p = (await listDueDeposits(database, ws, f.matures))[0]; p; p = (await listDueDeposits(database, ws, f.matures))[0]) {
+        proposed.push(p.netMinor);
+        await confirmDepositEvent(database, ws, {
+          accountId: p.accountId, kind: p.event.kind, dueOn: p.event.dueOn, today: f.matures,
+          principalMinor: p.principalMinor, grossMinor: p.grossMinor, taxMinor: p.taxMinor,
+          newRateBps: p.rateBps, newTermMonths: p.settings.termMonths, rateToBase: f.fx,
+          byHand: firstByHand && proposed.length === 1,
+        });
+      }
+
+      expect(proposed).toEqual(nets);
+      const balances = await nativeBalances(database, ws);
+      expect(balances[deposit.id] ?? 0).toBe(depositEnd);
+      expect(balances[payout.id]).toBe(payoutEnd);
+      // Posted like an investment payment: gross is the income (a credit), the tax a debit line of its own.
+      const keys = await categoryIdsByKeyTx(database.db, ws);
+      expect(balances[keys['income.investment']!] ?? 0).toBe(-postedGross);
+      expect(balances[keys['government_taxes.estimated_tax']!] ?? 0).toBe(postedTax);
+      // The tax report reads the log: every event, recorded by hand or not, gross and withheld.
+      const reported = (await incomeInputsFor(database, ws, 2026)).filter((row) => row.accountId === deposit.id);
+      expect(reported.map((row) => [row.kind, row.grossMinor, row.taxMinor, row.foreign])).toEqual([['interest', reportedGross, reportedTax, currency === 'USD']]);
+      const live = (await listAccounts(database, ws)).map((a) => a.id);
+      expect(live.includes(deposit.id)).toBe(open);
+    } finally {
+      executor.close();
+    }
+  });
+});
+```
+
+- [ ] **Step 2: Run** — `cd packages/db && npx vitest run test/deposit-combinations.test.ts` → 48 PASS; root gate.
+- [ ] **Step 3: Commit** — `test(db): all 48 deposit combinations end in the right balances, categories and tax report`.
+
+---
+
+## Step 3 — The deposit's page
+
+### Task 8: The switch and its settings (S2)
+
+**Files:**
+- Create: `apps/web/src/features/networth/maturity-settings.ts`, `maturity-settings.test.ts`, `MaturitySettings.tsx`
+- Modify: `apps/web/src/features/networth/deposit-terms.ts`, `deposit-terms.test.ts`, `DepositTermsCard.tsx`, `queries.ts`, `AssetDetailPage.tsx`
+
+**Interfaces:**
+- Consumes: `getDepositAutomation`, `saveDepositAutomation`, `payoutAccepts` (Task 3), `type AccountRow` from `@expanses/db`; `TERM_MONTHS`, `needsPayout`, `parseRate`, `isoDate` from `@expanses/core`; `useAccounts`, `useInvalidateAll`; kit `InsetGroup`, `InsetRow`, `SwitchRow`, `SelectRow`, `TextRow`.
+- Produces: `rateInputText(bps)`, `rateBpsFrom(text)`; `MATURITY_CHOICES`, `termLabel`, `payoutChoices`, `taxBpsFrom`; `useDepositAutomation(accountId)`, `useDueDeposits()`; `<MaturitySettings accountId currency />`.
+
+- [ ] **Step 1: One reader and one writer of a typed rate.** In `deposit-terms.ts`, add:
+
+```ts
+import { parseRate } from '@expanses/core';
+
+/** Basis points back into the percent a form asks for, with the comma its placeholder shows: 425 is "4,25"; 0 is empty. */
+export const rateInputText = (rateBps: number): string => (rateBps === 0 ? '' : String(rateBps / 100).replace('.', ','));
+
+/** A typed percent into basis points, read by `parseRate`: "4,25" is 425, "12,5" is 1250. */
+export const rateBpsFrom = (text: string): number => Math.round(parseRate(text) * 100);
+```
+
+In `DepositTermsCard.tsx`, replace `rateBps === 0 ? '' : String(rateBps / 100).replace('.', ',')` with `rateInputText(rateBps)` and `Math.round(parseRate(rate) * 100)` with `rateBpsFrom(rate)`. There is no behaviour change, and the existing e2e is the check. Tests appended to `deposit-terms.test.ts`:
+
+```ts
+it('turns a stored rate into what the box shows, and back', () => {
+  expect(rateInputText(425)).toBe('4,25');
+  expect(rateInputText(2000)).toBe('20');
+  expect(rateInputText(0)).toBe('');
+  expect(rateBpsFrom('4,25')).toBe(425);
+  expect(rateBpsFrom('6,37')).toBe(637); // 6.37 × 100 is 636.999… in floating point; the round is what keeps it 637
+  expect(rateBpsFrom('12,5')).toBe(1250);
+});
+```
+
+- [ ] **Step 2: The settings model**
+
+```ts
+// apps/web/src/features/networth/maturity-settings.ts
+import type { MaturityChoice } from '@expanses/core';
+import { type AccountRow, payoutAccepts } from '@expanses/db';
+import { rateBpsFrom } from './deposit-terms';
+
+export const MATURITY_CHOICES: readonly { id: MaturityChoice; title: string; subtitle: (payout: string | null) => string }[] = [
+  { id: 'principal', title: 'Roll over the principal', subtitle: (payout) => `Interest lands in ${payout ?? 'the account below'}` },
+  { id: 'principal_interest', title: 'Roll over principal + interest', subtitle: () => 'Nothing lands; the deposit grows' },
+  { id: 'close', title: "Don't roll over", subtitle: (payout) => `Everything lands in ${payout ?? 'the account below'}` },
+];
+
+export const termLabel = (months: number): string => `${months} ${months === 1 ? 'month' : 'months'}`;
+
+/** Where the money may land: `payoutAccepts`, the rule `saveDepositAutomation` refuses by, so the list never offers a refusal. */
+export function payoutChoices(accounts: readonly AccountRow[], currency: string, depositId: string): AccountRow[] {
+  return accounts.filter((account) => payoutAccepts(account, currency, depositId));
+}
+
+/**
+ * The typed withholding in basis points, 0–100 %. `parseRate` refuses zero (a rate must be positive), but no tax at
+ * all is a real answer. A figure made only of zeros is therefore 0, whichever separator it uses. Anything else goes to
+ * the one reader.
+ */
+export function taxBpsFrom(text: string): number {
+  if (/^\s*0+([.,]0*)?\s*$/.test(text)) return 0;
+  const bps = rateBpsFrom(text);
+  if (bps < 0 || bps > 10_000) throw new Error('Tax withheld is a percentage from 0 to 100');
+  return bps;
+}
+```
+
+```ts
+// apps/web/src/features/networth/maturity-settings.test.ts
+import type { AccountRow } from '@expanses/db';
+import { describe, expect, it } from 'vitest';
+import { payoutChoices, taxBpsFrom, termLabel } from './maturity-settings';
+
+const account = (id: string, partial: Partial<AccountRow>): AccountRow => ({
+  id, workspaceId: 'ws', parentId: null, kind: 'asset', subtype: 'bank', name: id, icon: null, currency: 'IDR',
+  valuationMode: 'derived', systemKey: null, sortOrder: 0, archivedAt: null, createdAt: '2026-01-01T00:00:00Z', ...partial,
+});
+
+describe('where the money may land', () => {
+  it('offers only open, spendable accounts in the deposit’s currency, never the deposit', () => {
+    const all = [
+      account('bca', {}),
+      account('jenius-usd', { currency: 'USD' }),
+      account('closed', { archivedAt: '2026-02-01T00:00:00Z' }),
+      account('visa', { kind: 'liability', subtype: 'credit_card' }),
+      account('deposito', { subtype: 'time_deposit' }),
+      account('gopay', { subtype: 'ewallet' }),
+    ];
+    expect(payoutChoices(all, 'IDR', 'deposito').map((a) => a.id)).toEqual(['bca', 'gopay']);
+    expect(payoutChoices(all, 'USD', 'deposito').map((a) => a.id)).toEqual(['jenius-usd']);
+  });
+});
+
+describe('the rest of the group', () => {
+  it('says a term in words', () => {
+    expect(termLabel(1)).toBe('1 month');
+    expect(termLabel(12)).toBe('12 months');
+  });
+
+  it('reads a withholding typed either way, takes no tax as an answer, and refuses more than all of it', () => {
+    expect(taxBpsFrom('20')).toBe(2000);
+    expect(taxBpsFrom('12,5')).toBe(1250);
+    expect(taxBpsFrom('12.5')).toBe(1250);
+    // parseRate alone throws on these; the box starts at "0" when a deposit was saved with no tax.
+    expect(taxBpsFrom('0')).toBe(0);
+    expect(taxBpsFrom('0,0')).toBe(0);
+    expect(() => taxBpsFrom('101')).toThrow();
+    expect(() => taxBpsFrom('')).toThrow();
+  });
+});
+```
+
+- [ ] **Step 3: Queries** — append to `networth/queries.ts` (and add `getDepositAutomation`, `listDueDeposits` to its `@expanses/db` import):
+
+```ts
+/** One deposit's automation settings; a deposit with none reads as off. */
+export function useDepositAutomation(accountId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['deposit-automation', ws.workspaceId, accountId], queryFn: () => getDepositAutomation(database, ws, accountId) });
+}
+
+/** What every automated deposit has due today or earlier: the proposal on its page, the marker on its row. */
+export function useDueDeposits() {
+  const { database, ws } = useApp();
+  const today = isoDate();
+  return useQuery({ queryKey: ['deposit-due', ws.workspaceId, today], queryFn: () => listDueDeposits(database, ws, today) });
+}
+```
+
+- [ ] **Step 4: The component**
+
+```tsx
+// apps/web/src/features/networth/MaturitySettings.tsx
+import { isoDate, needsPayout, TERM_MONTHS, type TermMonths } from '@expanses/core';
+import { type DepositAutomationRow, saveDepositAutomation } from '@expanses/db';
+import { Check } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { useApp } from '../../app/context';
+import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { rateInputText } from './deposit-terms';
+import { MATURITY_CHOICES, payoutChoices, taxBpsFrom, termLabel } from './maturity-settings';
+import { useDepositAutomation, useDepositTerms } from './queries';
+
+/**
+ * S2: the switch and its settings, inline on the deposit's page. Off is one row and changes nothing anywhere.
+ * Mounted once the saved settings are in, so the local copy starts from them.
+ */
+export function MaturitySettings({ accountId, currency }: { accountId: string; currency: string }) {
+  const automation = useDepositAutomation(accountId);
+  const terms = useDepositTerms();
+  if (!automation.data || !(terms.data ?? []).some((row) => row.accountId === accountId)) return null;
+  return <SettingsGroup key={accountId} saved={automation.data} currency={currency} />;
+}
+
+function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; currency: string }) {
+  const { database, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const accounts = useAccounts();
+  /*
+   * The settings live here, not in the query. Each change updates this copy at once and saves the whole of it,
+   * one save after another, so two quick changes can never send the older settings last.
+   */
+  const [settings, setSettings] = useState(saved);
+  const [taxText, setTaxText] = useState(rateInputText(saved.taxBps) || '0');
+  const [error, setError] = useState<unknown>(null);
+  const queue = useRef(Promise.resolve());
+  // The latest settings, including a change made before React re-rendered: two changes in one tick both survive.
+  const latest = useRef(saved);
+
+  const choices = payoutChoices(accounts.data ?? [], currency, settings.accountId);
+  const payoutName = choices.find((account) => account.id === settings.payoutAccountId)?.name ?? null;
+
+  function save(change: Partial<DepositAutomationRow>) {
+    const next = { ...latest.current, ...change };
+    latest.current = next;
+    setSettings(next);
+    setError(null);
+    queue.current = queue.current.then(async () => {
+      try {
+        await saveDepositAutomation(database, ws, {
+          accountId: next.accountId,
+          enabled: next.enabled,
+          atMaturity: next.atMaturity,
+          interestPaid: next.interestPaid,
+          payoutAccountId: next.payoutAccountId,
+          termMonths: next.termMonths,
+          keepRate: next.keepRate,
+          taxBps: next.taxBps,
+          taxExempt: next.taxExempt,
+          today: isoDate(),
+        });
+        await invalidate();
+      } catch (e) {
+        setError(e);
+      }
+    });
+  }
+
+  function commitTax() {
+    try {
+      const taxBps = taxBpsFrom(taxText);
+      if (taxBps !== latest.current.taxBps) save({ taxBps });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  // Rows as an array: InsetGroup numbers its children with Children.toArray, which does not look inside a fragment.
+  const rows = [
+    <SwitchRow
+      key="automate"
+      label="Automate"
+      checked={settings.enabled}
+      hint="Propose it on the day; nothing posts until you confirm."
+      onChange={(enabled) => save({ enabled, payoutAccountId: settings.payoutAccountId ?? (enabled ? (choices[0]?.id ?? null) : null) })}
+    />,
+  ];
+  if (settings.enabled) {
+    rows.push(
+      ...MATURITY_CHOICES.map((choice) => (
+        <InsetRow
+          key={choice.id}
+          testId={`maturity-${choice.id}`}
+          title={choice.title}
+          subtitle={choice.subtitle(payoutName)}
+          value={settings.atMaturity === choice.id ? <Check size={18} aria-label="Chosen" className="text-[var(--ph-tint)]" /> : undefined}
+          chevron={false}
+          onClick={() => save({ atMaturity: choice.id })}
+        />
+      )),
+      <SelectRow key="paid" label="Interest paid" value={settings.interestPaid} onChange={(e) => save({ interestPaid: e.target.value as DepositAutomationRow['interestPaid'] })}>
+        <option value="monthly">Monthly</option>
+        <option value="at_maturity">At maturity</option>
+      </SelectRow>,
+    );
+    if (needsPayout(settings.atMaturity)) {
+      rows.push(
+        <SelectRow key="payout" label="Lands in" value={settings.payoutAccountId ?? ''} onChange={(e) => save({ payoutAccountId: e.target.value || null })}>
+          {choices.length === 0 && <option value="">No account holds {currency}</option>}
+          {choices.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </SelectRow>,
+      );
+    }
+    rows.push(
+      <SelectRow key="term" label="Term" value={String(settings.termMonths)} onChange={(e) => save({ termMonths: Number(e.target.value) as TermMonths })}>
+        {TERM_MONTHS.map((months) => (
+          <option key={months} value={months}>
+            {termLabel(months)}
+          </option>
+        ))}
+      </SelectRow>,
+      <SwitchRow key="keep" label="Keep the rate when it rolls over" checked={settings.keepRate} onChange={(keepRate) => save({ keepRate })} />,
+      <SwitchRow
+        key="exempt"
+        label="Tax-free deposit"
+        checked={settings.taxExempt}
+        hint="Only if the rules exempt this deposit on its own. Splitting a larger sum into smaller deposits doesn't make them tax-free."
+        onChange={(taxExempt) => save({ taxExempt })}
+      />,
+    );
+    if (!settings.taxExempt) {
+      rows.push(
+        <TextRow key="tax" label="Tax withheld %" value={taxText} inputMode="decimal" onChange={(e) => setTaxText(e.target.value)} onBlur={commitTax} />,
+      );
+    }
+  }
+
+  return (
+    <>
+      <InsetGroup header="At maturity">{rows}</InsetGroup>
+      <ErrorBox error={error} />
+    </>
+  );
+}
+```
+
+(`ErrorBox` is outside the group, so the fragment here is not a child of `InsetGroup`.)
+
+In `AssetDetailPage.tsx`, import `MaturitySettings` and render it directly after `<DepositTermsCard …/>`:
+
+```tsx
+      {value && account?.subtype === 'time_deposit' && <MaturitySettings accountId={accountId} currency={value.currency} />}
+```
+
+- [ ] **Step 5: The port-4174 Playwright config (untracked).** feat/set-aside runs its Playwright on 4173 at the same time, so this branch never uses that port. Create `apps/web/playwright.dm.config.ts` and **do not `git add` it**. It is scratch for the parallel run and must not reach `main`. `git status` shows it as untracked, and every task commit names its files explicitly.
+
+```ts
+// apps/web/playwright.dm.config.ts — UNTRACKED. The base config on port 4174, for running beside feat/set-aside.
+import { defineConfig } from '@playwright/test';
+import base from './playwright.config';
+
+export default defineConfig({
+  ...base,
+  use: { ...base.use, baseURL: 'http://localhost:4174' },
+  webServer: {
+    command: 'npm run build && npx vite preview --port 4174 --strictPort',
+    url: 'http://localhost:4174',
+    reuseExistingServer: false,
+    timeout: 180_000,
+  },
+});
+```
+
+- [ ] **Step 6: Targeted e2e** — create `apps/web/e2e/deposit-maturity.ts` and the first tests of `deposit-maturity.spec.ts` (full content in Task 11; write the helper file now as given there). Run the two tests *"is off by default and changes nothing"* and *"keeps its settings across a reload"*: `cd apps/web && npx playwright test -c playwright.dm.config.ts deposit-maturity --project=chromium -g "off by default|keeps its settings"`.
+- [ ] **Step 7: Run** — `cd apps/web && npx vitest run src/features/networth` → PASS; root gate.
+- [ ] **Step 8: Commit** — `feat(networth): automate a deposit from its own page` (stage the named files; `playwright.dm.config.ts` stays untracked).
+
+---
+
+### Task 9: The proposal (P1)
+
+**Files:**
+- Create: `apps/web/src/features/networth/deposit-proposal.ts`, `deposit-proposal.test.ts`, `DepositProposalCard.tsx`
+- Modify: `apps/web/src/features/networth/AssetDetailPage.tsx`
+
+**Interfaces:**
+- Consumes: `confirmDepositEvent` (with `byHand`), `upsertRate`, `type DepositProposal` from `@expanses/db`; `parseMajor`, `parseRate`, `minorToMajorString`, `formatMinor`, `isoDate`, `TERM_MONTHS` from `@expanses/core`; `useResolveRates`, `useAccounts`, `useInvalidateAll` (`lib/queries`); `checkManualRate`, `ratePreview` (`lib/rates`); `maturityLabel`, `rateLabel`, `rateInputText`, `rateBpsFrom` (`deposit-terms.ts`); `termLabel` (Task 8).
+- Produces: `type ProposalDraft`, `type ProposalFigures`, `draftFrom`, `readDraft`, `landsText`, `closing`, `rolling`, `proposalHeader`, `interestLine`, `outcomeLine`, `newRateText`; `<DepositProposalCard accountId onClosed />`.
+
+The figures that reach the ledger are the **gross** and the **tax** (user decision 1). The card types those two and shows what lands, `gross − tax`. It never types the net. A tax-free deposit has no tax row and posts a tax of 0. Three action rows: **Edit figures**, **Recorded it myself** (decision 3: marks the event done with the figures on the card, posts nothing) and **Confirm**.
+
+- [ ] **Step 1: Failing tests**
+
+```ts
+// apps/web/src/features/networth/deposit-proposal.test.ts
+import { formatMinor } from '@expanses/core';
+import type { DepositProposal } from '@expanses/db';
+import { describe, expect, it } from 'vitest';
+import { draftFrom, interestLine, landsText, newRateText, outcomeLine, proposalHeader, readDraft } from './deposit-proposal';
+
+const idr: DepositProposal = {
+  accountId: 'dep', name: 'BCA Deposito', currency: 'IDR',
+  event: { kind: 'maturity', dueOn: '2026-10-15', periodFrom: '2026-07-15', days: 92 }, waiting: 0,
+  principalMinor: 50_000_000, rateBps: 425, grossMinor: 535_616, taxMinor: 107_123, netMinor: 428_493,
+  settings: {
+    accountId: 'dep', enabled: true, enabledOn: '2026-07-15', atMaturity: 'principal', interestPaid: 'at_maturity', payoutAccountId: 'bca',
+    termMonths: 3, termStartedOn: null, keepRate: true, taxBps: 2_000, taxExempt: false,
+  },
+};
+const usd: DepositProposal = { ...idr, currency: 'USD', principalMinor: 1_000_000, rateBps: 350, grossMinor: 2_972, taxMinor: 594, netMinor: 2_378 };
+const taxFree: DepositProposal = { ...idr, taxMinor: 0, netMinor: 535_616, settings: { ...idr.settings, taxExempt: true } };
+
+describe('the draft', () => {
+  it('starts from the gross and the tax worked out, in the deposit’s own currency', () => {
+    expect(draftFrom(idr)).toEqual({ gross: '535616', tax: '107123', principal: '50000000', rate: '4,25', term: 3 });
+    expect(draftFrom(usd)).toMatchObject({ gross: '29.72', tax: '5.94', rate: '3,5' });
+  });
+
+  it('leaves the rate empty when the rate is not kept', () => {
+    expect(draftFrom({ ...idr, settings: { ...idr.settings, keepRate: false } }).rate).toBe('');
+  });
+
+  it('reads the gross and the tax with the app’s one reader, whichever separator', () => {
+    expect(readDraft(idr, { ...draftFrom(idr), gross: '535.700', tax: '107.140' })).toMatchObject({ grossMinor: 535_700, taxMinor: 107_140, newRateBps: 425, newTermMonths: 3 });
+    expect(readDraft(usd, { ...draftFrom(usd), gross: '29,81' }).grossMinor).toBe(2_981);
+    expect(readDraft(usd, { ...draftFrom(usd), gross: '29.81' }).grossMinor).toBe(2_981);
+  });
+
+  it('shows what lands as gross minus tax, and nothing it cannot read', () => {
+    expect(landsText(idr, { ...draftFrom(idr), gross: '535.700', tax: '107.140' })).toContain('428.560');
+    expect(landsText(usd, draftFrom(usd))).toContain('23,78');
+    expect(landsText(idr, { ...draftFrom(idr), gross: 'abc' })).toBe('—');
+  });
+
+  it('takes no tax from a tax-free deposit, whatever the box says', () => {
+    expect(readDraft(taxFree, { ...draftFrom(taxFree), tax: '5' })).toMatchObject({ grossMinor: 535_616, taxMinor: 0 });
+  });
+
+  it('refuses a tax larger than the interest, and a new term without its rate', () => {
+    expect(() => readDraft(idr, { ...draftFrom(idr), tax: '600.000' })).toThrow('The tax cannot be more than the interest');
+    expect(() => readDraft(idr, { ...draftFrom(idr), rate: '' })).toThrow('Type the rate the new term pays');
+  });
+
+  it('asks nothing about a new term on a monthly payout, and posts the typed principal only when closing', () => {
+    const monthly: DepositProposal = { ...idr, event: { ...idr.event, kind: 'monthly', dueOn: '2026-08-15' } };
+    expect(readDraft(monthly, { ...draftFrom(monthly), rate: '' })).toEqual({ grossMinor: 535_616, taxMinor: 107_123, principalMinor: 50_000_000 });
+    const closing: DepositProposal = { ...idr, settings: { ...idr.settings, atMaturity: 'close' } };
+    expect(readDraft(closing, { ...draftFrom(closing), principal: '49.000.000' })).toEqual({ grossMinor: 535_616, taxMinor: 107_123, principalMinor: 49_000_000 });
+  });
+
+  it('prints the new rate as typed, without throwing while it is half-typed', () => {
+    expect(newRateText('4,25')).toBe('4,25%');
+    expect(newRateText('')).toBe('Type it');
+    // parseRate reads "4," as 4 (checked 2026-09-21), so a trailing separator already prints as a rate.
+    expect(newRateText('4,')).toBe('4%');
+    expect(newRateText('abc')).toBe('abc');
+  });
+});
+
+describe('what the card says', () => {
+  it('names the event and the day', () => {
+    expect(proposalHeader(idr, '2026-10-15')).toBe('Matured today');
+    expect(proposalHeader(idr, '2026-10-20')).toBe('Matured 15 Oct 2026');
+    expect(proposalHeader({ ...idr, event: { ...idr.event, kind: 'monthly', dueOn: '2026-08-15' } }, '2026-10-15')).toBe('Interest due 15 Aug 2026');
+  });
+
+  it('says the interest that lands after its tax, or tax-free', () => {
+    // The figure is the net, 428 493: not the gross 535 616, and not a net floored on its own (428 492).
+    expect(interestLine(idr)).toBe(`${formatMinor(428_493, 'IDR')} after 20% tax`);
+    expect(interestLine(taxFree)).toContain('535.616');
+    expect(interestLine(taxFree)).toContain('tax-free');
+  });
+
+  it('says where the money goes', () => {
+    expect(outcomeLine(idr, 'BCA Tahapan')).toBe('Roll over 3 months · interest to BCA Tahapan');
+    expect(outcomeLine({ ...idr, settings: { ...idr.settings, atMaturity: 'principal_interest' } }, null)).toBe('Roll over 3 months · interest stays in the deposit');
+    expect(outcomeLine({ ...idr, settings: { ...idr.settings, atMaturity: 'close' } }, 'BCA Tahapan')).toBe('Everything to BCA Tahapan · the deposit closes');
+  });
+});
+```
+
+- [ ] **Step 2: The model**
+
+```ts
+// apps/web/src/features/networth/deposit-proposal.ts
+import { formatMinor, minorToMajorString, parseMajor, type TermMonths } from '@expanses/core';
+import type { DepositProposal } from '@expanses/db';
+import { maturityLabel, rateBpsFrom, rateInputText, rateLabel } from './deposit-terms';
+import { termLabel } from './maturity-settings';
+
+export interface ProposalDraft {
+  gross: string;
+  tax: string;
+  principal: string;
+  rate: string;
+  term: TermMonths;
+}
+
+export interface ProposalFigures {
+  grossMinor: number;
+  taxMinor: number;
+  principalMinor: number;
+  newRateBps?: number;
+  newTermMonths?: TermMonths;
+}
+
+export const closing = (p: DepositProposal): boolean => p.event.kind === 'maturity' && p.settings.atMaturity === 'close';
+export const rolling = (p: DepositProposal): boolean => p.event.kind === 'maturity' && p.settings.atMaturity !== 'close';
+
+export function draftFrom(p: DepositProposal): ProposalDraft {
+  return {
+    gross: minorToMajorString(p.grossMinor, p.currency),
+    tax: minorToMajorString(p.taxMinor, p.currency),
+    principal: minorToMajorString(p.principalMinor, p.currency),
+    rate: p.settings.keepRate ? rateInputText(p.rateBps) : '',
+    term: p.settings.termMonths,
+  };
+}
+
+const amount = (text: string, currency: string): number => (text.trim() === '' ? 0 : parseMajor(text, currency));
+
+/** The figures to post, read by `parseMajor` in the deposit's currency. Throws a sentence the card shows. */
+export function readDraft(p: DepositProposal, draft: ProposalDraft): ProposalFigures {
+  const grossMinor = amount(draft.gross, p.currency);
+  const taxMinor = p.settings.taxExempt ? 0 : amount(draft.tax, p.currency);
+  if (grossMinor < 0 || taxMinor < 0) throw new Error('Interest cannot be below zero');
+  if (taxMinor > grossMinor) throw new Error('The tax cannot be more than the interest');
+  const principalMinor = closing(p) ? parseMajor(draft.principal, p.currency) : p.principalMinor;
+  if (closing(p) && principalMinor <= 0) throw new Error('Say how much came back');
+  if (!rolling(p)) return { grossMinor, taxMinor, principalMinor };
+  if (!draft.rate.trim()) throw new Error('Type the rate the new term pays');
+  return { grossMinor, taxMinor, principalMinor, newRateBps: rateBpsFrom(draft.rate), newTermMonths: draft.term };
+}
+
+/** What lands while the figures are being typed: gross − tax, by the same reader, or a dash until both read. */
+export function landsText(p: DepositProposal, draft: ProposalDraft): string {
+  try {
+    const { grossMinor, taxMinor } = readDraft(p, { ...draft, rate: draft.rate || '1' });
+    return formatMinor(grossMinor - taxMinor, p.currency);
+  } catch {
+    return '—';
+  }
+}
+
+export function proposalHeader(p: DepositProposal, today: string): string {
+  const when = p.event.dueOn === today ? 'today' : maturityLabel(p.event.dueOn);
+  return p.event.kind === 'maturity' ? `Matured ${when}` : `Interest due ${when}`;
+}
+
+export function interestLine(p: DepositProposal): string {
+  return `${formatMinor(p.netMinor, p.currency)} ${p.settings.taxExempt ? 'tax-free' : `after ${rateLabel(p.settings.taxBps)} tax`}`;
+}
+
+export function outcomeLine(p: DepositProposal, payoutName: string | null): string {
+  const to = payoutName ?? 'the account you choose';
+  if (p.event.kind === 'monthly') return p.settings.atMaturity === 'principal_interest' ? 'Stays in the deposit' : `To ${to}`;
+  if (p.settings.atMaturity === 'close') return `Everything to ${to} · the deposit closes`;
+  const term = `Roll over ${termLabel(p.settings.termMonths)}`;
+  return p.settings.atMaturity === 'principal_interest' ? `${term} · interest stays in the deposit` : `${term} · interest to ${to}`;
+}
+
+/** The new term's rate as the card prints it: "4,25%", or what was typed while it does not read yet. */
+export function newRateText(text: string): string {
+  if (!text.trim()) return 'Type it';
+  try {
+    return rateLabel(rateBpsFrom(text));
+  } catch {
+    return text;
+  }
+}
+```
+
+(`landsText` passes a placeholder rate only so that `readDraft`'s rate check does not hide the net while the new rate is still empty. The rate plays no part in gross − tax.)
+
+- [ ] **Step 3: The card**
+
+```tsx
+// apps/web/src/features/networth/DepositProposalCard.tsx
+import { formatMinor, isoDate, parseRate, TERM_MONTHS, type TermMonths } from '@expanses/core';
+import { confirmDepositEvent, type DepositProposal, upsertRate } from '@expanses/db';
+import { useState } from 'react';
+import { useApp } from '../../app/context';
+import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { checkManualRate, ratePreview } from '../../lib/rates';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { closing, draftFrom, interestLine, landsText, newRateText, outcomeLine, proposalHeader, readDraft, rolling } from './deposit-proposal';
+import { termLabel } from './maturity-settings';
+import { useDueDeposits } from './queries';
+
+/** P1: the one due event of this deposit, on its own page and nowhere else. */
+export function DepositProposalCard({ accountId, onClosed }: { accountId: string; onClosed: (archived: boolean) => void }) {
+  const due = useDueDeposits();
+  const proposal = (due.data ?? []).find((p) => p.accountId === accountId);
+  if (!proposal) return null;
+  // Keyed on the event, so the next one in the queue starts from its own figures.
+  return <ProposalBody key={`${proposal.event.kind}:${proposal.event.dueOn}`} proposal={proposal} onClosed={onClosed} />;
+}
+
+function ProposalBody({ proposal: p, onClosed }: { proposal: DepositProposal; onClosed: (archived: boolean) => void }) {
+  const { database, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const resolveRates = useResolveRates();
+  const accounts = useAccounts();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => draftFrom(p));
+  const [manualRate, setManualRate] = useState('');
+  const [askRate, setAskRate] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const today = isoDate();
+  const payoutName = (accounts.data ?? []).find((a) => a.id === p.settings.payoutAccountId)?.name ?? null;
+  const foreign = p.currency !== ws.baseCurrency;
+
+  /** Confirm posts; "Recorded it myself" (byHand) posts nothing and needs no rate to base. */
+  async function settle(byHand: boolean) {
+    setError(null);
+    setBusy(true);
+    try {
+      const figures = readDraft(p, draft);
+      let rateToBase: number | undefined;
+      if (foreign && !byHand) {
+        if (manualRate.trim()) {
+          rateToBase = parseRate(manualRate);
+          await checkManualRate(database, p.currency, ws.baseCurrency, p.event.dueOn, rateToBase);
+          await upsertRate(database, { fromCurrency: p.currency, toCurrency: ws.baseCurrency, onDate: p.event.dueOn, rate: rateToBase, source: 'manual', sourceDate: p.event.dueOn });
+        } else {
+          rateToBase = (await resolveRates([p.currency], p.event.dueOn)).rates[p.currency];
+          if (rateToBase === undefined) {
+            setAskRate(true);
+            throw new Error(`No ${p.currency}→${ws.baseCurrency} rate for ${p.event.dueOn}. Enter it below.`);
+          }
+        }
+      }
+      const result = await confirmDepositEvent(database, ws, {
+        accountId: p.accountId,
+        kind: p.event.kind,
+        dueOn: p.event.dueOn,
+        today,
+        principalMinor: figures.principalMinor,
+        grossMinor: figures.grossMinor,
+        taxMinor: figures.taxMinor,
+        newRateBps: figures.newRateBps,
+        newTermMonths: figures.newTermMonths,
+        rateToBase,
+        byHand,
+      });
+      await invalidate();
+      if (closing(p)) onClosed(result.archived);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const rows = editing
+    ? [
+        <TextRow key="gross" label="Interest before tax" inputMode="decimal" value={draft.gross} onChange={(e) => setDraft({ ...draft, gross: e.target.value })} />,
+        ...(p.settings.taxExempt
+          ? []
+          : [<TextRow key="tax" label="Tax withheld" inputMode="decimal" value={draft.tax} onChange={(e) => setDraft({ ...draft, tax: e.target.value })} />]),
+        <ReadOnlyRow key="lands" label="Lands" value={landsText(p, draft)} />,
+        ...(closing(p)
+          ? [<TextRow key="principal" label="Principal" inputMode="decimal" value={draft.principal} onChange={(e) => setDraft({ ...draft, principal: e.target.value })} />]
+          : [<ReadOnlyRow key="principal" label="Principal" value={formatMinor(p.principalMinor, p.currency)} />]),
+        ...(rolling(p)
+          ? [
+              <TextRow key="rate" label="New rate %" inputMode="decimal" value={draft.rate} onChange={(e) => setDraft({ ...draft, rate: e.target.value })} />,
+              <SelectRow key="term" label="New term" value={String(draft.term)} onChange={(e) => setDraft({ ...draft, term: Number(e.target.value) as TermMonths })}>
+                {TERM_MONTHS.map((months) => (
+                  <option key={months} value={months}>
+                    {termLabel(months)}
+                  </option>
+                ))}
+              </SelectRow>,
+            ]
+          : []),
+      ]
+    : [
+        <ReadOnlyRow key="principal" label="Principal" value={formatMinor(p.principalMinor, p.currency)} />,
+        <ReadOnlyRow key="gross" label="Before tax" value={formatMinor(p.grossMinor, p.currency)} />,
+        <ReadOnlyRow key="interest" label="Interest" value={interestLine(p)} />,
+        <ReadOnlyRow key="outcome" label="Then" value={outcomeLine(p, payoutName)} />,
+        ...(rolling(p) ? [<ReadOnlyRow key="rate" label="New rate" value={newRateText(draft.rate)} />] : []),
+      ];
+  if (foreign && askRate) {
+    rows.push(
+      <TextRow
+        key="fx"
+        label={`Rate: ${ws.baseCurrency} per 1 ${p.currency}`}
+        hint={ratePreview(manualRate, p.currency, ws.baseCurrency) ?? undefined}
+        inputMode="decimal"
+        value={manualRate}
+        onChange={(e) => setManualRate(e.target.value)}
+      />,
+    );
+  }
+
+  return (
+    <div data-testid="deposit-proposal">
+      <InsetGroup
+        header={proposalHeader(p, today)}
+        footer={`Worked out from the stored rate. Correct it to what the bank credited.${p.waiting > 0 ? ` ${p.waiting} more waiting after this one.` : ''}`}
+      >
+        {rows}
+      </InsetGroup>
+      <ErrorBox error={error} />
+      <InsetGroup footer="Recorded it myself marks this done and posts nothing: use it when it is already in your transactions.">
+        {[
+          <InsetRow key="edit" title={editing ? 'Done editing' : 'Edit figures'} chevron={false} onClick={() => setEditing((open) => !open)} />,
+          <InsetRow key="byhand" title="Recorded it myself" chevron={false} disabled={busy} onClick={() => void settle(true)} />,
+          <InsetRow key="confirm" title="Confirm" chevron={false} disabled={busy} onClick={() => void settle(false)} />,
+        ]}
+      </InsetGroup>
+    </div>
+  );
+}
+```
+
+In `AssetDetailPage.tsx`, render it directly after the hero block (the first `{value && (<>…</>)}`):
+
+```tsx
+      {value && account?.subtype === 'time_deposit' && (
+        <DepositProposalCard accountId={accountId} onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })} />
+      )}
+```
+
+- [ ] **Step 4: Targeted e2e** — the tests *"proposes on the day and posts what was confirmed"*, *"posts edited gross and tax as typed, and a new rate that was not kept"*, *"records it by hand"* and *"proposes queued payouts one after another"* in Task 11's spec: `cd apps/web && npx playwright test -c playwright.dm.config.ts deposit-maturity --project=chromium -g "proposes|edited|records it by hand"`.
+- [ ] **Step 5: Run** — `cd apps/web && npx vitest run src/features/networth`; root gate.
+- [ ] **Step 6: Commit** — `feat(networth): a due deposit event is proposed on its page, posted only when confirmed, or recorded by hand`.
+
+---
+
+### Task 10: The "Due" marker on the assets list
+
+**Files:**
+- Modify: `apps/web/src/features/networth/asset-rows.ts`, `asset-rows.test.ts`, `AssetsPage.tsx`
+
+**Interfaces:**
+- Consumes: `useDueDeposits` (Task 8).
+- Produces: `AssetRow.due: boolean`; `groupAssets(values, profiles, due?: ReadonlySet<string>)`; `rowSubtitle(row: AssetRow): string` (moved from `AssetsPage.subtitleOf`, unchanged except for the new word).
+
+- [ ] **Step 1: Failing test** — append to `asset-rows.test.ts`:
+
+```ts
+describe('a deposit with something due', () => {
+  it('says Due quietly in its subtitle, and nothing else changes', () => {
+    const due = groupAssets(values, profiles, new Set(['bca'])).flatMap((group) => group.rows);
+    const bca = due.find((row) => row.accountId === 'bca')!;
+    expect(bca.due).toBe(true);
+    expect(rowSubtitle(bca)).toBe('Ledger balance · 0102 · Kas dan Setara Kas · Due');
+    expect(rowSubtitle(due.find((row) => row.accountId === 'gold')!)).not.toContain('Due');
+    expect(due.find((row) => row.accountId === 'gold')!.due).toBe(false);
+    // Without the set, as every other caller passes it: nobody is due.
+    expect(groupAssets(values, profiles).flatMap((group) => group.rows).some((row) => row.due)).toBe(false);
+  });
+});
+```
+
+(`METHOD_LABELS.derived` is "Ledger balance" and `CORETAX_SECTION_LABELS.kas` is "Kas dan Setara Kas" in `labels.ts`, checked 2026-09-21. Add `rowSubtitle` to the file's existing top import from `./asset-rows` rather than a second import statement.)
+
+- [ ] **Step 2: Implement** — in `asset-rows.ts`: add `/** An automated deposit with a proposal waiting on its page. */ due: boolean;` to `AssetRow`; give `toRow` a third parameter `due: boolean` and set it; change `groupAssets` to:
+
+```ts
+export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[], due: ReadonlySet<string> = new Set()): AssetGroup[] {
+  const profileByAccount = new Map(profiles.map((profile) => [profile.accountId, profile]));
+  const rows = values.map((value) => toRow(value, profileByAccount.get(value.accountId), due.has(value.accountId)));
+  // …the rest unchanged
+```
+
+and move `subtitleOf` here as:
+
+```ts
+/** What the row says under its name: how it is valued, its tax code, and whether it needs attention. */
+export function rowSubtitle(row: AssetRow): string {
+  return [row.method, row.coretax, row.stale && !row.sold ? 'Update price' : null, row.sold ? 'Sold' : null, row.due ? 'Due' : null]
+    .filter(Boolean)
+    .join(' · ');
+}
+```
+
+In `AssetsPage.tsx`, delete `subtitleOf`, use `rowSubtitle`, and compute:
+
+```ts
+  const due = useDueDeposits();
+  const dueIds = new Set((due.data ?? []).map((proposal) => proposal.accountId));
+  const groups = values.data && profiles.data ? groupAssets(values.data, profiles.data, dueIds) : [];
+```
+
+`valueTone` is not touched: the marker is quiet.
+
+- [ ] **Step 3: Run** — `cd apps/web && npx vitest run src/features/networth/asset-rows.test.ts`; then the two e2e tests that read the marker. *"is off by default"* checks that no "Due" appears, and the first walk checks that it does before the proposal is opened: `npx playwright test -c playwright.dm.config.ts deposit-maturity --project=chromium -g "off by default|walks IDR · principal · at_maturity · taxed$"`. Then the root gate.
+- [ ] **Step 4: Commit** — `feat(networth): a deposit with something due says so on its row`.
+
+---
+
+## Step 4 — End to end
+
+### Task 11: The combinations walk, recorded by hand, the tax report, and the phone
+
+**Files:**
+- Create: `apps/web/e2e/deposit-maturity.ts`, `apps/web/e2e/deposit-maturity.spec.ts`, `apps/web/e2e/phone-deposit-maturity.spec.ts`
+
+**Interfaces:**
+- Consumes: the screens from Tasks 8–10; `/accounts/new` (`CashAccountForm`: "Current account" / "Time deposit", `Name`, `Balance now`, `Currency`, `Rate: IDR per 1 USD`, `Matures on`, `Interest rate`, `Balance as of`, the **Add account** row); the deposit page's `AssetSettings` ("How its income is taxed", **Save settings**); `/tax-report` ("Tax year", "Start the *YYYY* report", `income-row`) as `income-treatment.spec.ts` drives them; `playwright.dm.config.ts` (Task 8, untracked).
+
+Every amount, rate and percentage is typed **per keystroke** (`pressSequentially`), never with `fill()`. The one exception is `type="date"` inputs, which a browser only accepts whole. The clock is moved with `page.clock.setSystemTime`, as `recurring-bills.spec.ts` does, and the rate server is blocked, as `phone-add-transaction.spec.ts` does, so a USD confirm falls back to the rate stored when the account was opened.
+
+- [ ] **Step 1: The helper**
+
+```ts
+// apps/web/e2e/deposit-maturity.ts
+import { expect, type Page } from '@playwright/test';
+
+export type Choice = 'principal' | 'principal_interest' | 'close';
+export interface Combo {
+  currency: 'IDR' | 'USD';
+  choice: Choice;
+  paid: 'monthly' | 'at_maturity';
+  exempt: boolean;
+  /** Each proposal's net interest, as the card prints it, in the order they are proposed. */
+  nets: string[];
+  /** The deposit's balance at the end, or null when it closed. */
+  deposit: string | null;
+  payout: string;
+}
+
+export const SETUP = {
+  IDR: { opened: '2026-07-15', matures: '2026-10-15', payoutName: 'BCA Tahapan', payoutBalance: '1000000', depositName: 'BCA Deposito', depositBalance: '50000000', rate: '4,25', fx: undefined },
+  USD: { opened: '2026-08-01', matures: '2026-11-01', payoutName: 'Jenius USD', payoutBalance: '50', depositName: 'Jenius Deposito', depositBalance: '10000', rate: '3,5', fx: '16350' },
+} as const;
+
+/** Noon local, so no time zone can move the day. */
+export const at = (date: string) => new Date(`${date}T12:00:00`);
+
+// prettier-ignore
+export const COMBOS: Combo[] = [
+  { currency: 'IDR', choice: 'principal',          paid: 'at_maturity', exempt: false, nets: ['428.493'],                       deposit: '50.000.000', payout: '1.428.493' },
+  { currency: 'IDR', choice: 'principal',          paid: 'at_maturity', exempt: true,  nets: ['535.616'],                       deposit: '50.000.000', payout: '1.535.616' },
+  { currency: 'IDR', choice: 'principal',          paid: 'monthly',     exempt: false, nets: ['144.384', '144.384', '139.726'], deposit: '50.000.000', payout: '1.428.494' },
+  { currency: 'IDR', choice: 'principal',          paid: 'monthly',     exempt: true,  nets: ['180.479', '180.479', '174.657'], deposit: '50.000.000', payout: '1.535.615' },
+  { currency: 'IDR', choice: 'principal_interest', paid: 'at_maturity', exempt: false, nets: ['428.493'],                       deposit: '50.428.493', payout: '1.000.000' },
+  { currency: 'IDR', choice: 'principal_interest', paid: 'at_maturity', exempt: true,  nets: ['535.616'],                       deposit: '50.535.616', payout: '1.000.000' },
+  { currency: 'IDR', choice: 'principal_interest', paid: 'monthly',     exempt: false, nets: ['144.384', '144.800', '140.534'], deposit: '50.429.718', payout: '1.000.000' },
+  { currency: 'IDR', choice: 'principal_interest', paid: 'monthly',     exempt: true,  nets: ['180.479', '181.130', '175.920'], deposit: '50.537.529', payout: '1.000.000' },
+  { currency: 'IDR', choice: 'close',              paid: 'at_maturity', exempt: false, nets: ['428.493'],                       deposit: null,         payout: '51.428.493' },
+  { currency: 'IDR', choice: 'close',              paid: 'at_maturity', exempt: true,  nets: ['535.616'],                       deposit: null,         payout: '51.535.616' },
+  { currency: 'IDR', choice: 'close',              paid: 'monthly',     exempt: false, nets: ['144.384', '144.384', '139.726'], deposit: null,         payout: '51.428.494' },
+  { currency: 'IDR', choice: 'close',              paid: 'monthly',     exempt: true,  nets: ['180.479', '180.479', '174.657'], deposit: null,         payout: '51.535.615' },
+  { currency: 'USD', choice: 'principal',          paid: 'at_maturity', exempt: false, nets: ['70,57'],                         deposit: '10.000,00',  payout: '120,57' },
+  { currency: 'USD', choice: 'principal',          paid: 'at_maturity', exempt: true,  nets: ['88,21'],                         deposit: '10.000,00',  payout: '138,21' },
+  { currency: 'USD', choice: 'principal',          paid: 'monthly',     exempt: false, nets: ['23,78', '23,01', '23,78'],       deposit: '10.000,00',  payout: '120,57' },
+  { currency: 'USD', choice: 'principal',          paid: 'monthly',     exempt: true,  nets: ['29,72', '28,76', '29,72'],       deposit: '10.000,00',  payout: '138,20' },
+  { currency: 'USD', choice: 'principal_interest', paid: 'at_maturity', exempt: false, nets: ['70,57'],                         deposit: '10.070,57',  payout: '50,00' },
+  { currency: 'USD', choice: 'principal_interest', paid: 'at_maturity', exempt: true,  nets: ['88,21'],                         deposit: '10.088,21',  payout: '50,00' },
+  { currency: 'USD', choice: 'principal_interest', paid: 'monthly',     exempt: false, nets: ['23,78', '23,07', '23,89'],       deposit: '10.070,74',  payout: '50,00' },
+  { currency: 'USD', choice: 'principal_interest', paid: 'monthly',     exempt: true,  nets: ['29,72', '28,85', '29,90'],       deposit: '10.088,47',  payout: '50,00' },
+  { currency: 'USD', choice: 'close',              paid: 'at_maturity', exempt: false, nets: ['70,57'],                         deposit: null,         payout: '10.120,57' },
+  { currency: 'USD', choice: 'close',              paid: 'at_maturity', exempt: true,  nets: ['88,21'],                         deposit: null,         payout: '10.138,21' },
+  { currency: 'USD', choice: 'close',              paid: 'monthly',     exempt: false, nets: ['23,78', '23,01', '23,78'],       deposit: null,         payout: '10.120,57' },
+  { currency: 'USD', choice: 'close',              paid: 'monthly',     exempt: true,  nets: ['29,72', '28,76', '29,72'],       deposit: null,         payout: '10.138,20' },
+];
+
+/**
+ * "Recorded it myself" on the first proposal, the rest confirmed: one walk for each choice × payout, across both
+ * currencies and both tax states. The first event posts nothing, so with principal + interest the later payouts do not
+ * compound on it (140.129, not 140.534), and a deposit that should close at maturity keeps its principal and stays open.
+ * The repository walks all 24 this way (Task 7); these are the screens'.
+ */
+// prettier-ignore
+export const HAND_COMBOS: Combo[] = [
+  { currency: 'IDR', choice: 'principal',          paid: 'at_maturity', exempt: false, nets: ['428.493'],                       deposit: '50.000.000', payout: '1.000.000' },
+  { currency: 'IDR', choice: 'principal_interest', paid: 'monthly',     exempt: false, nets: ['144.384', '144.384', '140.129'], deposit: '50.284.513', payout: '1.000.000' },
+  { currency: 'IDR', choice: 'close',              paid: 'at_maturity', exempt: true,  nets: ['535.616'],                       deposit: '50.000.000', payout: '1.000.000' },
+  { currency: 'USD', choice: 'principal',          paid: 'monthly',     exempt: true,  nets: ['29,72', '28,76', '29,72'],       deposit: '10.000,00',  payout: '108,48' },
+  { currency: 'USD', choice: 'principal_interest', paid: 'at_maturity', exempt: true,  nets: ['88,21'],                         deposit: '10.000,00',  payout: '50,00' },
+  { currency: 'USD', choice: 'close',              paid: 'monthly',     exempt: false, nets: ['23,78', '23,01', '23,78'],       deposit: null,         payout: '10.096,79' },
+];
+
+export const comboName = (c: Combo) => `${c.currency} · ${c.choice} · ${c.paid} · ${c.exempt ? 'tax-free' : 'taxed'}`;
+
+/** Types into a box one key at a time, the way a thumb or a keyboard does. */
+export async function typeInto(page: Page, label: string, text: string) {
+  const box = page.getByLabel(label, { exact: true });
+  await box.click();
+  await box.selectText();
+  await box.press('Backspace');
+  await box.pressSequentially(text, { delay: 20 });
+}
+
+export async function addMoneyAccount(
+  page: Page,
+  o: { kind: 'Current account' | 'Time deposit'; name: string; balance: string; currency: 'IDR' | 'USD'; fx?: string; opened: string; matures?: string; rate?: string },
+) {
+  await page.goto('/accounts/new');
+  await page.getByRole('button', { name: o.kind }).click();
+  await typeInto(page, 'Name', o.name);
+  await typeInto(page, 'Balance now', o.balance);
+  if (o.currency !== 'IDR') await page.getByLabel('Currency').selectOption(o.currency);
+  if (o.fx) await typeInto(page, `Rate: IDR per 1 ${o.currency}`, o.fx);
+  if (o.matures) await page.getByLabel('Matures on').fill(o.matures); // a date input only takes a whole date
+  if (o.rate) await typeInto(page, 'Interest rate', o.rate);
+  await page.getByLabel('Balance as of').fill(o.opened);
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: o.name, exact: true })).toBeVisible();
+}
+
+export async function setUp(page: Page, currency: 'IDR' | 'USD') {
+  const s = SETUP[currency];
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.clock.setSystemTime(at(s.opened));
+  await addMoneyAccount(page, { kind: 'Current account', name: s.payoutName, balance: s.payoutBalance, currency, fx: s.fx, opened: s.opened });
+  await addMoneyAccount(page, { kind: 'Time deposit', name: s.depositName, balance: s.depositBalance, currency, fx: s.fx, opened: s.opened, matures: s.matures, rate: s.rate });
+  return s;
+}
+
+export async function openDeposit(page: Page, name: string) {
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: new RegExp(`^${name}`) }).click();
+}
+
+export async function automate(page: Page, c: Pick<Combo, 'choice' | 'paid' | 'exempt'>, termMonths = '3') {
+  await page.getByLabel('Automate').check();
+  await expect(page.getByTestId('maturity-principal')).toBeVisible();
+  await page.getByTestId(`maturity-${c.choice}`).click();
+  await expect(page.getByTestId(`maturity-${c.choice}`).getByLabel('Chosen')).toBeVisible();
+  await page.getByLabel('Interest paid').selectOption(c.paid);
+  await page.getByLabel('Term', { exact: true }).selectOption(termMonths);
+  if (c.exempt) await page.getByLabel('Tax-free deposit').check();
+}
+
+/**
+ * Settles every proposal in the order given, checking each one's net and the count still waiting before it is
+ * settled. With `firstByHand`, the first one is "Recorded it myself" and the rest are confirmed.
+ */
+export async function confirmEach(page: Page, nets: string[], firstByHand = false) {
+  const card = page.getByTestId('deposit-proposal');
+  for (const [i, net] of nets.entries()) {
+    await expect(card).toContainText(net);
+    // The count is what proves the card moved on, since two payouts in a row can carry the same net.
+    if (i < nets.length - 1) await expect(card).toContainText(`${nets.length - 1 - i} more waiting`);
+    else await expect(card).not.toContainText('more waiting');
+    await card.getByRole('button', { name: firstByHand && i === 0 ? 'Recorded it myself' : 'Confirm' }).click();
+  }
+}
+
+export async function startReport(page: Page, year: number) {
+  await page.goto('/tax-report');
+  await page.getByLabel('Tax year').selectOption(String(year));
+  await page.getByRole('button', { name: `Start the ${year} report` }).click();
+  await expect(page.getByText('Ikhtisar')).toBeVisible();
+}
+
+export async function expectBalance(page: Page, name: string, figure: string) {
+  await page.goto('/accounts');
+  const row = page.getByRole('row').filter({ has: page.getByRole('link', { name, exact: true }) });
+  await expect(row).toContainText(figure);
+}
+
+export async function walk(page: Page, c: Combo, firstByHand = false) {
+  const s = await setUp(page, c.currency);
+  await openDeposit(page, s.depositName);
+  await automate(page, c);
+  // The app goes unopened until the maturity: everything due in the term waits for it.
+  await page.clock.setSystemTime(at(s.matures));
+  await page.goto('/net-worth/assets');
+  await expect(page.getByRole('link', { name: new RegExp(`^${s.depositName}`) })).toContainText('Due');
+  await page.getByRole('link', { name: new RegExp(`^${s.depositName}`) }).click();
+  await confirmEach(page, c.nets, firstByHand);
+  if (c.deposit === null) {
+    await expect(page).toHaveURL(/\/net-worth\/assets$/);
+    await expect(page.getByRole('link', { name: new RegExp(`^${s.depositName}`) })).toHaveCount(0);
+  } else {
+    await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
+    await expectBalance(page, s.depositName, c.deposit);
+  }
+  await expectBalance(page, s.payoutName, c.payout);
+}
+```
+
+- [ ] **Step 2: The chromium spec**
+
+```ts
+// apps/web/e2e/deposit-maturity.spec.ts
+import { expect, test } from '@playwright/test';
+import { at, automate, COMBOS, comboName, confirmEach, expectBalance, HAND_COMBOS, openDeposit, setUp, startReport, typeInto, walk } from './deposit-maturity';
+
+test.beforeEach(({ page }) => {
+  page.on('dialog', (dialog) => void dialog.accept());
+});
+
+test('is off by default and changes nothing', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await expect(page.getByLabel('Automate')).not.toBeChecked();
+  await expect(page.getByTestId('maturity-principal')).toHaveCount(0);
+  await page.clock.setSystemTime(at(s.matures));
+  await page.goto('/net-worth/assets');
+  await expect(page.getByRole('link', { name: /^BCA Deposito/ })).not.toContainText('Due');
+  await openDeposit(page, s.depositName);
+  await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
+  await expectBalance(page, s.payoutName, '1.000.000');
+});
+
+test('keeps its settings across a reload, and a typed withholding', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'close', paid: 'monthly', exempt: false });
+  await typeInto(page, 'Tax withheld %', '12,5');
+  await page.getByLabel('Tax withheld %').press('Tab');
+  await page.reload();
+  await expect(page.getByLabel('Automate')).toBeChecked();
+  await expect(page.getByTestId('maturity-close').getByLabel('Chosen')).toBeVisible();
+  await expect(page.getByLabel('Interest paid')).toHaveValue('monthly');
+  await expect(page.getByLabel('Term', { exact: true })).toHaveValue('3');
+  await expect(page.getByLabel('Lands in')).toHaveValue(/.+/);
+  await expect(page.getByLabel('Tax withheld %')).toHaveValue('12,5');
+});
+
+test('proposes on the day and posts what was confirmed, with a new term', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'principal', paid: 'at_maturity', exempt: false });
+  await page.clock.setSystemTime(at('2026-10-14'));
+  await page.reload();
+  await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  const card = page.getByTestId('deposit-proposal');
+  await expect(card).toContainText('Matured today');
+  await expect(card).toContainText('50.000.000');
+  await expect(card).toContainText('428.493');
+  await expect(card).toContainText('after 20% tax');
+  await expect(card).toContainText('Roll over 3 months · interest to BCA Tahapan');
+  await card.getByRole('button', { name: 'Confirm' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.getByText('Matures 15 Jan 2027 · 4,25%')).toBeVisible();
+  await expectBalance(page, s.payoutName, '1.428.493');
+});
+
+test('posts edited gross and tax as typed, lands their difference, and a new rate that was not kept', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'principal', paid: 'at_maturity', exempt: false });
+  await page.getByLabel('Keep the rate when it rolls over').uncheck();
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  const card = page.getByTestId('deposit-proposal');
+  await card.getByRole('button', { name: 'Edit figures' }).click();
+  await typeInto(page, 'Interest before tax', '535.700');
+  await typeInto(page, 'Tax withheld', '107.140');
+  // What lands is worked out as it is typed: 535.700 − 107.140.
+  await expect(card).toContainText('428.560');
+  await card.getByRole('button', { name: 'Confirm' }).click();
+  await expect(card).toContainText('Type the rate the new term pays');
+  await typeInto(page, 'New rate %', '4');
+  await page.getByLabel('New term').selectOption('6');
+  await card.getByRole('button', { name: 'Confirm' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.getByText('Matures 15 Apr 2027 · 4%')).toBeVisible();
+  await expectBalance(page, s.payoutName, '1.428.560');
+});
+
+test('records it by hand: nothing posts, and the next one is proposed', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'principal', paid: 'monthly', exempt: false });
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  const card = page.getByTestId('deposit-proposal');
+  await expect(card).toContainText('Interest due 15 Aug 2026');
+  await card.getByRole('button', { name: 'Recorded it myself' }).click();
+  await expect(card).toContainText('Interest due 15 Sep 2026');
+  await expect(card).toContainText('1 more waiting');
+  await expectBalance(page, s.payoutName, '1.000.000');
+});
+
+test('the tax report reads the confirmed interest: gross and withheld, not the net', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  // How its income is taxed belongs to the deposit, as to any holding; the report does not guess it.
+  await page.getByLabel('How its income is taxed').selectOption('final');
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  await automate(page, { choice: 'principal', paid: 'at_maturity', exempt: false });
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  await page.getByTestId('deposit-proposal').getByRole('button', { name: 'Confirm' }).click();
+  await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
+  await startReport(page, 2026);
+  const row = page.getByTestId('income-row').filter({ hasText: s.depositName });
+  await expect(row).toContainText('interest');
+  await expect(row).toContainText('535.616');
+  await expect(row).not.toContainText('428.493');
+  const finalBand = page.locator('div').filter({ has: page.getByRole('heading', { name: /Final tax/ }) }).last();
+  await expect(finalBand).toContainText('107.123');
+});
+
+test('proposes queued payouts one after another, never on their own', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'principal', paid: 'monthly', exempt: false });
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  await expect(page.getByTestId('deposit-proposal')).toContainText('Interest due 15 Aug 2026');
+  await expectBalance(page, s.payoutName, '1.000.000'); // nothing moved by itself
+  await openDeposit(page, s.depositName);
+  await confirmEach(page, ['144.384', '144.384', '139.726']);
+});
+
+for (const combo of COMBOS) {
+  test(`walks ${comboName(combo)}`, async ({ page }) => {
+    await walk(page, combo);
+  });
+}
+
+for (const combo of HAND_COMBOS) {
+  test(`walks ${comboName(combo)} · first by hand`, async ({ page }) => {
+    await walk(page, combo, true);
+  });
+}
+```
+
+- [ ] **Step 3: The phone spec**
+
+```ts
+// apps/web/e2e/phone-deposit-maturity.spec.ts
+import { test } from '@playwright/test';
+import { COMBOS, comboName, HAND_COMBOS, walk } from './deposit-maturity';
+
+// Four of the 24 by thumb: one of each choice, both currencies, both payouts, both tax states.
+const PICK = [
+  'IDR · principal · at_maturity · taxed',
+  'IDR · principal_interest · monthly · tax-free',
+  'USD · close · monthly · taxed',
+  'USD · principal_interest · at_maturity · tax-free',
+];
+
+for (const combo of COMBOS.filter((c) => PICK.includes(comboName(c)))) {
+  test(`walks ${comboName(combo)} on a phone`, async ({ page }) => {
+    await walk(page, combo);
+  });
+}
+
+// And "Recorded it myself" by thumb, on the walk where it changes the most: compounding without the first payout.
+for (const combo of HAND_COMBOS.filter((c) => comboName(c) === 'IDR · principal_interest · monthly · taxed')) {
+  test(`walks ${comboName(combo)} · first by hand on a phone`, async ({ page }) => {
+    await walk(page, combo, true);
+  });
+}
+```
+
+- [ ] **Step 4: Run** — `cd apps/web && npx playwright test -c playwright.dm.config.ts deposit-maturity --workers=2` (both projects: the phone project's `testMatch` picks up `phone-deposit-maturity.spec.ts`) → 37 chromium (7 named + 24 walks + 6 by hand) + 5 phone pass. Also run the two existing specs this work touches: `npx playwright test -c playwright.dm.config.ts coretax-pickers income-treatment --project=chromium`. `coretax-pickers.spec.ts` still sees "When it matures, move the money to an account with a transfer." (unchanged copy), and `income-treatment.spec.ts` still passes with the new `interest` kind. If a figure disagrees, compare it with Task 7's repository test for the same combination. The repository test decides whether the bug is in the arithmetic or the screen, and the table is not changed to match.
+- [ ] **Step 5: The gate** — `npm run typecheck`, `npm test`, `npm run build` from the root. **Do not run the full Playwright suite** (ledger, Parallel-run rule): it waits for the user. Report it as not run in the hand-off.
+- [ ] **Step 6: Spec walk** — read the spec section by section against the shipped screens and the mapping below. Anything without a home is fixed before committing.
+- [ ] **Step 7: Commit** — `test(e2e): every deposit combination walked by keyboard and by thumb`.
+
+---
+
+## Spec coverage
+
+| Spec section | Task(s) |
+|---|---|
+| §1 What we are building | 1–11 |
+| §2 Existing code, and the gap (interest paid, term not stored) | 2 (columns in the side table), 8 (the rows) |
+| §3 S2 rows, defaults, hidden rows, save-on-change, off/on behaviour | 3 (enabledOn), 8 (component, model), 11 (settings e2e) |
+| §4.1 Term start, `termStartedOn` agreement | 1 (`termStart`), 5 (written on roll-over, confirmed or by hand) |
+| §4.2 Events of a term, anchored dates | 1 |
+| §4.3 Which are due; only the earliest proposed; `enabledOn` rule | 1, 4 (`waiting`), 11 (queue e2e) |
+| §5 Day count, floor, tax, net = gross − tax, principal = due-day balance | 1, 4 |
+| §5.1 Worked example (535 616 / 107 123 / 428 493) | 1, 4, 5, 6, 7, 9, 11 |
+| §5.2 Discriminating fixtures (incl. floor vs round, actual/365 vs 30/360, BigInt vs float) | 1 (each row), 7, 11 |
+| §5.3 Country-neutral tax (percent + tax-free switch, **no gate**: decision 5) | 3 (validation), 8 (rows, copy) |
+| §6.1–6.2 Proposal placement and wording, three action rows | 9 |
+| §6.3 Editing gross and tax, per-keystroke, `parseMajor`/`parseRate`, manual rate row | 9, 11 |
+| §6.4 Confirm: gross + tax lines through `tradeAccountsFor`/`tradePostings` (decision 1), one transaction, log, archive via `archiveAccountTx` | 3 (extraction), 5, 9 (rate resolution, navigate) |
+| §6.5 Recorded it myself (decision 3) | 5, 7 (24 cases), 9, 11 (named test + 6 walks + phone) |
+| §6.6 The tax report reads the log (decision 2) | 6, 7 (every case), 11 (tax-report e2e) |
+| §7 Due marker on the assets row | 10, 11 |
+| §8 Migration 0054, guards, no columns on existing tables | 2, 3 (`automationTablesExist`) |
+| §9 Refusals | 3 (payout, workspace, archived), 5 (`NOT_NEXT`, `OFF`, `NO_PAYOUT`, `BAD_FIGURE`, archive refusal) |
+| §10 Phone, desktop, dark | 8, 9 (kit only, tokens), 11 (phone project) |
+| §11 Testing | 1–11 |
+| §12 Out of scope | — (nothing built) |
+| §13 Decisions taken here | 1 (13.3, 13.4), 3 (13.1, 13.8), 4 (13.5), 5 (13.2 = decision 4, 13.6 = decision 1, 13.7, 13.10, 13.11 = decision 3), 6 (13.12 = decision 2), 8 (13.9) |
+| §14 Settled questions | all five answered by the user on 2026-09-21 and built above |

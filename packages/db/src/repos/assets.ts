@@ -92,8 +92,13 @@ function toProfile(row: ProfileDbRow): AssetProfileRow {
   };
 }
 
-export async function getAssetProfile(database: Database, ws: WorkspaceContext, accountId: string): Promise<AssetProfileRow | undefined> {
-  const [row] = await database.db
+export function getAssetProfile(database: Database, ws: WorkspaceContext, accountId: string): Promise<AssetProfileRow | undefined> {
+  return getAssetProfileTx(database.db, ws, accountId);
+}
+
+/** `getAssetProfile` inside a transaction already running: the one reader of a profile's fields, on the caller's `tx`. */
+export async function getAssetProfileTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<AssetProfileRow | undefined> {
+  const [row] = await tx
     .select()
     .from(assetProfiles)
     .where(and(eq(assetProfiles.accountId, accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));

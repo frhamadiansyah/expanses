@@ -6,9 +6,9 @@ import { activeSegment, type Segment, SegmentedControl } from '../../ui/native';
  * The five net-worth sections, as the kit's segmented control.
  *
  * They were an underline tab row, and at 390 px five of them wrapped onto three lines with "Buy & sell" broken
- * across two of them. A segmented control never wraps: `fitSegments` shortens "Buy & sell" and "Lend & borrow"
- * first, and only then moves what is left behind the `…`. Four is the most a phone holds, so **Loans** is the
- * one that moves — the case `/design-kit` demonstrates with these exact five labels.
+ * across two of them. A segmented control never wraps: `fitSegments` shortens "Buy & sell" first, and only then
+ * moves what is left behind the `…`. Four is the most a phone holds, so **Lend & borrow** is the one that moves —
+ * the case `/design-kit` demonstrates with these exact five labels.
  *
  * A wide screen has the room for all five, so it is given all five: the desktop loses no control to the phone's
  * limit. The key is the route itself, so which segment is lit is read off the address rather than stored twice —
@@ -22,8 +22,9 @@ const TABS = [
   { key: '/net-worth', label: 'Overview', to: '/net-worth' },
   { key: '/net-worth/assets', label: 'Assets', to: '/net-worth/assets' },
   { key: '/net-worth/trades', label: 'Buy & sell', short: 'Trades', to: '/net-worth/trades' },
-  { key: '/net-worth/debts', label: 'Lend & borrow', short: 'Debts', to: '/net-worth/debts' },
-  { key: '/net-worth/loans', label: 'Loans', to: '/net-worth/loans' },
+  // Debts is everything owed and keeps the Loans page's address; Lend & borrow is the people page, by its own name.
+  { key: '/net-worth/loans', label: 'Debts', to: '/net-worth/loans' },
+  { key: '/net-worth/lend-borrow', label: 'Lend & borrow', to: '/net-worth/lend-borrow' },
 ] as const satisfies readonly Segment[];
 
 type TabPath = (typeof TABS)[number]['key'];

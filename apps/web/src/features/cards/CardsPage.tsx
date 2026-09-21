@@ -4,7 +4,7 @@ import { Link, Outlet, useNavigate, useParams, useRouter, useSearch } from '@tan
 import { ChevronLeft, Sparkles, Store, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts } from '../../lib/queries';
+import { moneyHolders, useAccounts } from '../../lib/queries';
 import { Empty } from '../../ui';
 import { CardStack, CornerButton, type CornerAction, InsetGroup, InsetRow, LargeTitle, OverflowMenu, type WalletCard } from '../../ui/native';
 import { useCardIdentities, useCards, useProgramAccounts } from './card-queries';
@@ -49,7 +49,7 @@ export function CardsPage() {
   const earning = useProgramAccounts().data ?? new Set<string>();
   const cards = all.filter((a) => a.archivedAt === null && (a.subtype === 'credit_card' || earning.has(a.id)));
   // Bank accounts that could carry a debit card but have no rewards yet: without these there is no way in.
-  const spendable = all.filter((a) => a.archivedAt === null && ['bank', 'savings'].includes(a.subtype) && !earning.has(a.id));
+  const spendable = moneyHolders(all).filter((a) => ['bank', 'savings'].includes(a.subtype) && !earning.has(a.id));
   const identities = useCardIdentities().data ?? {};
   const plastic = useCards().data ?? [];
   const today = isoDate();

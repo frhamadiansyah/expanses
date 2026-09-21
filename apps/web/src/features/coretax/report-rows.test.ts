@@ -1,6 +1,6 @@
 import type { CoretaxRow, ReadinessIssue } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { carryPillLabel, readinessLinks, screenSections } from './report-rows';
+import { carryPillLabel, readinessLinks, reportCheck, screenSections } from './report-rows';
 
 const row = (partial: Partial<CoretaxRow> & Pick<CoretaxRow, 'key'>): CoretaxRow => ({
   section: 'kas',
@@ -76,7 +76,7 @@ describe('readinessLinks', () => {
   it('sends an issue about a debt to Lend & borrow', () => {
     const links = readinessLinks([issue({ key: 'andi:missing:name', rowKey: 'andi' })], [row({ key: 'andi', section: 'piutang', code: '0201', name: 'Andi' })]);
 
-    expect(links[0]!.to).toBe('/net-worth/debts');
+    expect(links[0]!.to).toBe('/net-worth/lend-borrow');
   });
 
   it('sends an issue about a loan to Loans', () => {
@@ -115,5 +115,28 @@ describe('carryPillLabel', () => {
     expect(carryPillLabel('removed')).toBe('Gone since last year');
     expect(carryPillLabel('changed')).toBe('Changed');
     expect(carryPillLabel('same')).toBe('Unchanged');
+  });
+});
+
+describe('reportCheck', () => {
+  const bca = row({ key: 'bca' });
+  // The balance sheet on 31 December: BCA, plus a USD account whose row reads 0 because USD had no rate.
+  const assets = [
+    { accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid' as const, valueMinor: 50_000_000 },
+    { accountId: 'usd', name: 'Dollar Saver', planGroup: 'liquid' as const, valueMinor: 0 },
+  ];
+
+  it('compares the report with the balance sheet when every rate is there', () => {
+    const got = reportCheck([bca], [], { assets, liabilities: [], missing: [] });
+    expect(got.missing).toEqual([]);
+    expect(got.check).toMatchObject({ reportNetMinor: 50_000_000, netWorthMinor: 50_000_000, differenceMinor: 0 });
+  });
+
+  it('makes no comparison while a currency has no rate: its row reads 0, so the gap would be wrong', () => {
+    const got = reportCheck([bca], [kpr], { assets, liabilities: [], missing: ['USD'] });
+    expect(got.check).toBeNull();
+    expect(got.missing).toEqual(['USD']);
+    // The report's own figures do not need the balance sheet, so they stand.
+    expect(got.report).toEqual({ hartaMinor: 50_000_000, utangMinor: 700_000_000, reportNetMinor: -650_000_000 });
   });
 });

@@ -1,5 +1,5 @@
-import { addMonths, type BudgetLine, isoDate, monthOf, parseMajor } from '@expanses/core';
-import { clearBudgetOverride, removeBudget, saveBudget, saveExpectedIncome, setBudgetOverride, setIncomeOverride } from '@expanses/db';
+import { addMonths, BUDGET_FREQUENCIES, type BudgetFrequency, type BudgetLine, formatMinor, isoDate, monthOf, parseMajor } from '@expanses/core';
+import { type BudgetRow, clearBudgetOverride, removeBudget, saveBudget, saveExpectedIncome, setBudgetOverride, setIncomeOverride } from '@expanses/db';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -13,6 +13,7 @@ import {
   type InsetRowProps,
   LargeTitle,
   Panel,
+  ReadOnlyRow,
   SCREEN,
   SelectRow,
   SwitchRow,
@@ -21,6 +22,7 @@ import {
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
+import { FREQUENCY_WORDS, perMonthPreview } from './frequency-form';
 import { useBudgets, useBudgetSheet, useCommittedBills } from './queries';
 
 function monthLabel(month: string) {
@@ -48,7 +50,18 @@ function Line({
   committed,
   currency,
   first,
-}: { node: BudgetLine; overridden: Set<string>; depth: number; committed: Record<string, number>; currency: string; first: boolean }) {
+  asSetOf,
+}: {
+  node: BudgetLine;
+  overridden: Set<string>;
+  depth: number;
+  committed: Record<string, number>;
+  currency: string;
+  first: boolean;
+  /** The lines typed in another unit than a month, so the line can say what was typed. */
+  asSetOf: Map<string, BudgetRow>;
+}) {
+  const asSet = asSetOf.get(node.id);
   return (
     <li data-testid={`line-${node.name}`} style={{ paddingLeft: depth * 20 }}>
       <InsetRow
@@ -60,6 +73,12 @@ function Line({
           ) : (
             <>
               Cap <Money minor={node.capMinor} currency={currency} />
+              {asSet && (
+                <>
+                  {' · '}
+                  <Money minor={asSet.amountAsSetMinor} currency={currency} /> {FREQUENCY_WORDS[asSet.frequency].per}
+                </>
+              )}
               {overridden.has(node.id) && ' · just this month'}
               {committed[node.id] !== undefined && (
                 <>
@@ -86,7 +105,16 @@ function Line({
       {node.children.length > 0 && (
         <ul>
           {node.children.map((child) => (
-            <Line key={child.id} node={child} overridden={overridden} depth={depth + 1} committed={committed} currency={currency} first={false} />
+            <Line
+              key={child.id}
+              node={child}
+              overridden={overridden}
+              depth={depth + 1}
+              committed={committed}
+              currency={currency}
+              first={false}
+              asSetOf={asSetOf}
+            />
           ))}
         </ul>
       )}
@@ -101,6 +129,7 @@ export function BudgetPage() {
   const [categoryId, setCategoryId] = useState('');
   const [amount, setAmount] = useState('');
   const [thisMonthOnly, setThisMonthOnly] = useState(false);
+  const [frequency, setFrequency] = useState<BudgetFrequency>('monthly');
   const [income, setIncome] = useState('');
   const [incomeThisMonthOnly, setIncomeThisMonthOnly] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -117,6 +146,7 @@ export function BudgetPage() {
   const budgets = useBudgets(month);
   const sheet = sheetQuery.data;
   const overridden = new Set((budgets.data ?? []).filter((row) => row.overridden).map((row) => row.categoryAccountId));
+  const asSetOf = new Map((budgets.data ?? []).filter((row) => row.frequency !== 'monthly').map((row) => [row.categoryAccountId, row]));
   const committed = useCommittedBills().data ?? {};
   // A cap, a month override and the expected take-home are the workspace's own figures, kept in the money that
   // workspace reads in — so they are typed, parsed and labelled in it, and the actuals they are compared against
@@ -130,6 +160,9 @@ export function BudgetPage() {
   const planReady = useBooks().isSuccess;
   // The sheet answers in the open workspace's own currency; the workspace's own row is the answer until it arrives.
   const currency = sheet?.currency ?? planCurrency;
+  // An override is always a month's figure; only the plan is typed in the unit the user thinks in.
+  const unit: BudgetFrequency = thisMonthOnly ? 'monthly' : frequency;
+  const preview = perMonthPreview(amount, unit, planCurrency);
 
   // Roots first, each followed by its children, so the select reads like the sheet.
   const options = categories
@@ -148,7 +181,7 @@ export function BudgetPage() {
       const target = categoryId;
       const minor = parseMajor(amount, planCurrency);
       if (thisMonthOnly) await setBudgetOverride(database, ws, { categoryAccountId: target, month, amountMinor: minor });
-      else await saveBudget(database, ws, { categoryAccountId: target, amountMinor: minor });
+      else await saveBudget(database, ws, { categoryAccountId: target, amountMinor: minor, frequency: unit });
       await invalidate();
       setAmount('');
     } catch (e) {
@@ -214,6 +247,28 @@ export function BudgetPage() {
             value={
               <span data-testid="spent-total">
                 <Money minor={sheet.spendingActualMinor} currency={currency} />
+              </span>
+            }
+            valueTone="ink"
+            chevron={false}
+          />
+          <InsetRow
+            title="Essential"
+            subtitle="Spending in categories marked essential, or not marked"
+            value={
+              <span data-testid="essential-spent">
+                <Money minor={sheet.essentialActualMinor} currency={currency} />
+              </span>
+            }
+            valueTone="ink"
+            chevron={false}
+          />
+          <InsetRow
+            title="Lifestyle"
+            subtitle="Spending in categories marked lifestyle"
+            value={
+              <span data-testid="lifestyle-spent">
+                <Money minor={sheet.lifestyleActualMinor} currency={currency} />
               </span>
             }
             valueTone="ink"
@@ -335,12 +390,22 @@ export function BudgetPage() {
               </option>
             ))}
           </SelectRow>
+          {!thisMonthOnly && (
+            <SelectRow label="Every" value={frequency} onChange={(e) => setFrequency(e.target.value as BudgetFrequency)}>
+              {BUDGET_FREQUENCIES.map((key) => (
+                <option key={key} value={key}>
+                  {FREQUENCY_WORDS[key].every}
+                </option>
+              ))}
+            </SelectRow>
+          )}
           <TextRow
-            label={`Monthly amount (${planCurrency})`}
+            label={`${FREQUENCY_WORDS[unit].amount} (${planCurrency})`}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             inputMode="numeric"
           />
+          {unit !== 'monthly' && <ReadOnlyRow label="Per month" value={preview === null ? null : formatMinor(preview, planCurrency)} />}
           <SwitchRow label="Just this month" checked={thisMonthOnly} onChange={setThisMonthOnly} />
           <InsetRow
             title="Set budget"
@@ -357,7 +422,16 @@ export function BudgetPage() {
       <Panel wide pad={false} header="Every category">
         <ul>
           {(sheet?.lines ?? []).map((node, index) => (
-            <Line key={node.id} node={node} overridden={overridden} depth={0} committed={committed} currency={currency} first={index === 0} />
+            <Line
+              key={node.id}
+              node={node}
+              overridden={overridden}
+              depth={0}
+              committed={committed}
+              currency={currency}
+              first={index === 0}
+              asSetOf={asSetOf}
+            />
           ))}
         </ul>
       </Panel>

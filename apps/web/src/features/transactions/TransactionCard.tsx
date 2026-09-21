@@ -15,12 +15,14 @@ import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
-import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, Card, ErrorBox, InputRow, RowGroup, Select, SelectRow } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { useGoals } from '../goals/queries';
+import { useCanHold, useGoals, useSetAsideChoiceOf } from '../goals/queries';
+import { doorOfForm, postForDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
@@ -32,7 +34,7 @@ import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
-import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost } from './tx-form';
+import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, receivedField } from './tx-form';
 import { ratesForSave } from './tx-save';
 
 /**
@@ -40,7 +42,7 @@ import { ratesForSave } from './tx-save';
  * into sheets of their own (a transfer's To, and what a purchase was paid with).
  */
 function MoneyAccountOptions({ accounts, spendableOnly, keep }: { accounts: AccountRow[]; spendableOnly?: boolean; keep?: string }) {
-  const money = accounts.filter((a) => isMoneyAccount(a) && (!spendableOnly || canPayWith(a, keep)));
+  const money = moneyHolders(accounts).filter((a) => !spendableOnly || canPayWith(a, keep));
   return (
     <>
       <option value="">Choose…</option>
@@ -126,14 +128,22 @@ function CardBody({
 
   const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const choices = useMemo(() => buyChoices(assetValues.data ?? [], assetProfiles.data ?? []), [assetValues.data, assetProfiles.data]);
-  const money = accounts.filter(isMoneyAccount);
+  const money = moneyHolders(accounts);
   const account = byId.get(draft.moneyId);
   const purchase = draft.purchase;
   const chosen = [...choices.buys, ...choices.sells].find((option) => option.value === `${purchase.mode}:${purchase.accountId}`);
   const purchaseMoney = byId.get(purchase.moneyId);
   const purchaseCurrency = byId.get(purchase.accountId)?.currency ?? ws.baseCurrency;
   const toAccount = byId.get(draft.toId);
-  const crossCurrency = draft.mode === 'transfer' && !!account && !!toAccount && account.currency !== toAccount.currency;
+  // The Received row reads the same record the save reads (`receivedField`), so the two cannot disagree on its currency.
+  const received = receivedField(draft, accounts);
+  const crossCurrency = received !== null;
+  const canHold = useCanHold();
+  // What Save would send, read by the function that builds it (a category not chosen yet does not hide the door).
+  const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
+  const door = post ? doorOfForm(draft, post, accounts, canHold) : null;
+  const saved = useSetAsideChoiceOf(initial?.id ?? null);
+  const setAside = useSetAside(door, { excludeTransactionId: initial?.id ?? null, initial: saved.data ?? null, toName: toAccount?.name });
 
   // A transfer may move money between any two money accounts; everything else has to be paid from or into one.
   const payable: PaymentOption[] = paymentOptions(
@@ -153,13 +163,15 @@ function CardBody({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // Enter submits too: the question is a condition on Save however Save is reached.
+    if (!setAside.ready) return;
     setError(null);
     setBusy(true);
     try {
       const post = formToPost(draft, accounts);
       if (post.kind === 'trade') {
         // Units are recorded, so this saves as a purchase and never touches spending.
-        await recordTrade(database, ws, post.input);
+        await recordTrade(database, ws, { ...post.input, setAside: setAside.choice });
       } else {
         // The manual rate, the rates the posting needs and the message asking for a missing one, all in the
         // one place both ways into a save go through. The rate field lives under Add more details and only
@@ -167,10 +179,11 @@ function CardBody({
         const ratesToBase = await ratesForSave({
           database, ws, draft, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
         });
-        if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase });
-        else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase });
-        else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase });
-        else await postTransaction(database, ws, { ...post.input, ratesToBase });
+        // Every branch sends the answer — an edit explicitly, so a question no longer asked clears the old answer.
+        if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         const memory = formToMemory(draft, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
@@ -458,14 +471,8 @@ function CardBody({
                   ))}
                 </SelectRow>
               )}
-              {crossCurrency && (
-                <InputRow
-                  label={`Received amount (${toAccount!.currency})`}
-                  value={draft.toAmount}
-                  onChange={(e) => set({ toAmount: e.target.value })}
-                  inputMode="decimal"
-                  required
-                />
+              {received && (
+                <InputRow label={received.label} value={received.value} onChange={(e) => set({ toAmount: e.target.value })} inputMode="decimal" required />
               )}
             </RowGroup>
           )}
@@ -486,9 +493,10 @@ function CardBody({
         <FormRow label="Add more details" tone="muted" onClick={() => setSheet('details')} />
       </FormRows>
 
+      {setAside.node}
       <ErrorBox error={error} />
       <div className="flex gap-2">
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" disabled={busy || !setAside.ready}>
           Save
         </Button>
         <Button variant="ghost" onClick={onDone}>

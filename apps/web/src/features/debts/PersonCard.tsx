@@ -1,10 +1,12 @@
 import { type DebtDirection, dueLabel, hartaLabel, isoDate, utangLabel } from '@expanses/core';
-import { forgiveRemainder, type PersonDebtRow, recordRepayment, saveDebtProfile } from '@expanses/db';
+import { forgiveRemainder, type PersonDebtRow, recordRepayment, saveDebtProfile, type SetAsideChoice } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, cx, ErrorBox, Field, Input, Money, Select } from '../../ui';
+import { spendingDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { personCodeChoices } from '../ownables/catalogue-view';
 import { useDebtHistory, useDebtProfiles } from './queries';
 import { emptyRepaymentDraft, type RepaymentDraft, repaymentDraftToInput } from './debts-form';
@@ -94,12 +96,63 @@ function DebtCodeField({ accountId, direction }: { accountId: string; direction:
 }
 
 /** One person: what they owe in total, each loan behind it, and the two things you can do about it. */
+/**
+ * One loan's Save and Cancel, with the question above them. Per loan because the repayment is built per loan (it
+ * needs that loan's balance). Paying back money you borrowed takes it out of your account — the amount and any
+ * interest — so it asks; money coming back from someone you lent to brings money in and asks nothing.
+ */
+function RepaymentActions({
+  person,
+  debtAccountId,
+  balanceMinor,
+  draft,
+  fallbackMoneyId,
+  busy,
+  onSave,
+  onCancel,
+}: {
+  person: PersonDebtRow;
+  debtAccountId: string;
+  balanceMinor: number;
+  draft: RepaymentDraft;
+  fallbackMoneyId: string;
+  busy: boolean;
+  onSave: (setAside: SetAsideChoice | null) => void;
+  onCancel: () => void;
+}) {
+  // The same fallback `saveRepayment` uses, so the question asks about the account that will pay.
+  const moneyId = draft.moneyId || fallbackMoneyId;
+  const outflowMinor = (() => {
+    if (person.direction !== 'borrowed') return 0;
+    try {
+      const input = repaymentDraftToInput({ ...draft, moneyId }, debtAccountId, person.currency, balanceMinor, person.personName);
+      return input.amountMinor + (input.interestMinor ?? 0);
+    } catch {
+      return 0;
+    }
+  })();
+  const setAside = useSetAside(person.direction === 'borrowed' ? spendingDoor(moneyId, outflowMinor) : null);
+  return (
+    <>
+      {setAside.node}
+      <div className="flex gap-2">
+        <Button disabled={busy || !setAside.ready} onClick={() => setAside.ready && onSave(setAside.choice)}>
+          Save repayment
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </>
+  );
+}
+
 export function PersonCard({ person }: { person: PersonDebtRow }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
   // Somewhere money can actually sit: never another person's account.
-  const moneyAccounts = accounts.filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
+  const moneyAccounts = moneyHolders(accounts).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
   const today = isoDate();
   const [repayingId, setRepayingId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -109,12 +162,12 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
 
   const back = person.direction === 'lent' ? 'came back' : 'you paid';
 
-  async function saveRepayment(accountId: string, balanceMinor: number) {
+  async function saveRepayment(accountId: string, balanceMinor: number, setAside: SetAsideChoice | null) {
     setError(null);
     setBusy(true);
     try {
       const input = repaymentDraftToInput({ ...draft, moneyId: draft.moneyId || moneyAccounts[0]?.id || '' }, accountId, person.currency, balanceMinor, person.personName);
-      await recordRepayment(database, ws, input);
+      await recordRepayment(database, ws, { ...input, setAside });
       await invalidate();
       setRepayingId(null);
       setDraft(emptyRepaymentDraft(today, moneyAccounts[0]?.id ?? ''));
@@ -204,14 +257,16 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
                       </Select>
                     </Field>
                   </div>
-                  <div className="flex gap-2">
-                    <Button disabled={busy} onClick={() => void saveRepayment(loan.accountId, loan.balanceMinor)}>
-                      Save repayment
-                    </Button>
-                    <Button variant="ghost" onClick={() => setRepayingId(null)}>
-                      Cancel
-                    </Button>
-                  </div>
+                  <RepaymentActions
+                    person={person}
+                    debtAccountId={loan.accountId}
+                    balanceMinor={loan.balanceMinor}
+                    draft={draft}
+                    fallbackMoneyId={moneyAccounts[0]?.id ?? ''}
+                    busy={busy}
+                    onSave={(setAside) => void saveRepayment(loan.accountId, loan.balanceMinor, setAside)}
+                    onCancel={() => setRepayingId(null)}
+                  />
                 </div>
               )}
               {/* Never shown while choosing who owes what; shown here, where it can be put right. */}

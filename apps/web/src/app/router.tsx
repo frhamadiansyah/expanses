@@ -1,6 +1,9 @@
 import { parsePeriod } from '@expanses/core';
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router';
 import { AccountsPage } from '../features/accounts/AccountsPage';
+import { AddPocketPage } from '../features/accounts/AddPocketPage';
+import { MovePage } from '../features/accounts/MovePage';
+import { PocketsPage } from '../features/accounts/PocketsPage';
 import { BackupPage } from '../features/backup/BackupPage';
 import { CoverPage } from '../features/events/CoverPage';
 import { EventDetailPage } from '../features/events/EventDetailPage';
@@ -26,9 +29,9 @@ import { AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
-import { DebtsPage } from '../features/debts/DebtsPage';
+import { LendBorrowPage } from '../features/debts/LendBorrowPage';
 import { LoanDetailPage } from '../features/loans/LoanDetailPage';
-import { LoansPage } from '../features/loans/LoansPage';
+import { DebtsPage } from '../features/loans/DebtsPage';
 import { CoretaxPage } from '../features/coretax/CoretaxPage';
 import { OverviewPage } from '../features/networth/OverviewPage';
 import { TradesPage } from '../features/networth/TradesPage';
@@ -52,6 +55,14 @@ export interface TransactionsSearch {
   /** Which way the same month is shown: the list, which carries the chart, or the table. */
   view?: 'list' | 'table';
 }
+
+export interface LendBorrowSearch {
+  /** One person, when Lend & borrow is opened from their row on Debts. */
+  person?: string;
+}
+
+const lendBorrowSearch = (search: Record<string, unknown>): LendBorrowSearch =>
+  typeof search.person === 'string' && search.person !== '' ? { person: search.person } : {};
 
 export interface EventPlanSearch {
   /** The workspace tab the plan was opened from, so it keeps reading in it. */
@@ -127,6 +138,9 @@ const routeTree = rootRoute.addChildren([
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', component: PocketsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/pocket', component: AddPocketPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/move', component: MovePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),
   // The wallet and an open card are one screen: a card's page is a child of the wallet, so the stack stays mounted
   // and the card itself can rise out of it to the top, as in Apple Wallet. A deep link opens straight into it.
@@ -150,11 +164,22 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/goals', component: GoalsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/debts', component: DebtsPage }),
-  // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and only the
-  // last of those belongs under /net-worth/debts.
+  // Lend & borrow: money between you and people, both ways. It was drawn at /net-worth/debts under that name
+  // while "Debts" meant only people; Debts is now everything owed, so the old address hands over, search and all.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/lend-borrow', component: LendBorrowPage, validateSearch: lendBorrowSearch }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/debts',
+    validateSearch: lendBorrowSearch,
+    beforeLoad: ({ search }) => {
+      throw redirect({ to: '/net-worth/lend-borrow', search, replace: true });
+    },
+  }),
+  // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and each of them
+  // lands somewhere different.
   createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: LoansPage }),
+  // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans/$accountId', component: LoanDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/tax-report', component: CoretaxPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/recommend', component: RecommendPage }),

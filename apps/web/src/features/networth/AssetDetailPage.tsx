@@ -1,18 +1,23 @@
 import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
-import { archiveAccount } from '@expanses/db';
+import { archiveAccount, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
+import { approxLine, Hero, InsetGroup, InsetRow, LargeTitle, Panel, rateLine, SCREEN } from '../../ui/native';
+import { useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { AssetSettings } from './AssetSettings';
+import { DepositProposalCard } from './DepositProposalCard';
 import { DepositTermsCard } from './DepositTermsCard';
+import { MaturitySettings } from './MaturitySettings';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
+import { RecordedByHand } from './RecordedByHand';
+import { SetAsidePanel } from './SetAsidePanel';
 import { useAssetProfile, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { ValuationForm } from './ValuationForm';
 import { ValueChart } from './ValueChart';
@@ -43,6 +48,13 @@ export function AssetDetailPage() {
 
   const value = values.data?.find((row) => row.accountId === accountId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
+  // A pocket goes back to its account's page; any money account in a foreign currency shows ≈ and its opening rate.
+  const parent = account?.parentId ? (accounts.data ?? []).find((row) => row.id === account.parentId) : undefined;
+  const foreignMoney = value?.mode === 'derived' && value.currency !== ws.baseCurrency;
+  const held = useHeldRates(foreignMoney && value ? [value.currency] : []);
+  const openings = useOpenings(foreignMoney ? [accountId] : []);
+  const heldRate = value ? held.data?.rates[value.currency] : undefined;
+  const opened = openings.data?.[accountId];
   const position = positions.data?.[accountId];
   const preset = profile.data ? presetFor(profile.data.assetKind) : undefined;
   const unitLabel = profile.data?.unitKind ? UNIT_LABELS[profile.data.unitKind] : '';
@@ -66,7 +78,12 @@ export function AssetDetailPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title={value?.name ?? 'Asset'} back="All assets" backTo="/net-worth/assets" />
+      <LargeTitle
+        title={value?.name ?? 'Asset'}
+        back={parent?.name ?? 'All assets'}
+        backTo={parent ? '/accounts/$accountId' : '/net-worth/assets'}
+        backParams={parent ? { accountId: parent.id } : undefined}
+      />
       <ErrorBox error={values.error ?? profile.error ?? error} />
       {!value && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
 
@@ -80,6 +97,14 @@ export function AssetDetailPage() {
                 Cost {formatMinor(value.costMinor, value.currency)}
                 {value.costMinor !== 0 && ` · ${formatMinor(gain, value.currency)} since you bought it`}
                 <span className="mt-[2px] block">
+                  {foreignMoney && (
+                    <span className="block">
+                      {approxLine(value.valueMinor, value.currency, ws.baseCurrency, held.data?.rates ?? {})}
+                      {heldRate !== undefined && ` · at ${rateLine(heldRate, value.currency, ws.baseCurrency)}`}
+                      {heldRate !== undefined && held.data?.stale.includes(value.currency) && ' (last known)'}
+                    </span>
+                  )}
+                  {foreignMoney && opened && <span className="block">Opened at {rateLine(opened.fxRateToBase, value.currency, ws.baseCurrency)}</span>}
                   {METHOD_LABELS[value.mode]}
                   {position && position.unitsMicro > 0 && (
                     <>
@@ -93,6 +118,13 @@ export function AssetDetailPage() {
               </>
             }
           />
+
+          {/* A due event of an automated deposit: directly under the hero, above every other group (spec §6.1). */}
+          {account?.subtype === 'time_deposit' && (
+            <DepositProposalCard accountId={accountId} onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })} />
+          )}
+          {/* B3: what is promised out of this account and what is free, right under the bank's figure. */}
+          <SetAsidePanel accountId={accountId} />
 
           {value.mode === 'market' && (
             <PriceForm
@@ -181,6 +213,8 @@ export function AssetDetailPage() {
       )}
 
       {value && <DepositTermsCard accountId={accountId} />}
+      {value && account?.subtype === 'time_deposit' && <MaturitySettings accountId={accountId} currency={value.currency} />}
+      {value && account?.subtype === 'time_deposit' && <RecordedByHand accountId={accountId} currency={value.currency} />}
 
       {/* Only once the profile is in: the form fills its boxes when it mounts, and an empty code reads as "type one". */}
       {value && !profile.isPending && (
@@ -194,7 +228,8 @@ export function AssetDetailPage() {
           coretaxCode={profile.data?.coretaxCode ?? null}
           // What the thing is, for the codes two items share: a saving account must not read back as a current one.
           itemId={account?.subtype}
-          taxTreatment={profile.data?.taxTreatment ?? null}
+          // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
+          taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
         />
       )}
 

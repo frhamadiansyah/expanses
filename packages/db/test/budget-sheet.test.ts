@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { budgetSheetFor, createAccount, postTransaction, saveBudget, saveExpectedIncome, saveGoal, schema } from '../src/index';
+import { budgetSheetFor, createAccount, postTransaction, saveBudget, saveCategoryNeed, saveExpectedIncome, saveGoal, schema } from '../src/index';
 import { setupDb } from './helpers';
 import type { Database } from '../src/index';
 import type { WorkspaceContext } from '../src/index';
@@ -88,6 +88,18 @@ describe('the assembled sheet', () => {
     expect(sheet.savings[0]!.name).toBe('Emergency fund');
     expect(sheet.savings[0]!.planMinor).toBeGreaterThan(0);
     expect(sheet.savings[0]!.actualMinor).toBe(0);
+  });
+
+  it('carries each category’s resolved need through to the lifestyle split, inherited from a marked parent', async () => {
+    const { database, ws } = await workspaceWithSpending();
+    const food = await categoryId(database, ws, 'Food and beverage');
+    await saveCategoryNeed(database, ws, food, 'lifestyle');
+
+    const sheet = await budgetSheetFor(database, ws, MONTH);
+
+    // The mark sits on the parent; Restaurants, its child, inherits it through `resolvedCategoryNeeds`.
+    expect(sheet.lifestyleActualMinor).toBe(500_000);
+    expect(sheet.essentialActualMinor).toBe(sheet.spendingActualMinor - 500_000);
   });
 
   it('leaves both bottom lines standing on their own figures', async () => {

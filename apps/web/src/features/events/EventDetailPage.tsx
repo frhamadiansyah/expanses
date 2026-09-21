@@ -6,7 +6,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
-import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
   DestructiveRow,
@@ -22,6 +22,8 @@ import {
   type InsetRowProps,
   type Segment,
 } from '../../ui/native';
+import { spendingDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { coverTarget, isNothingLeft } from './buy-item';
 import { useCategorySetMembership, useCategorySets, useSetCategories } from '../categories/set-queries';
 import { BudgetGauge } from '../transactions/BudgetGauge';
@@ -92,7 +94,7 @@ export function EventDetailPage() {
   const history = useEventHistory(eventId, openTab);
   const accounts = useAccounts().data ?? [];
   // Spending recorded into an event is paid with something, so a locked deposit is no answer.
-  const money = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a));
+  const money = moneyHolders(accounts).filter((a) => canPayWith(a));
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const setCategories = useSetCategories(event?.setId ?? null).data ?? [];
   const membership = useCategorySetMembership().data ?? {};
@@ -156,6 +158,18 @@ export function EventDetailPage() {
   // A choice with one option is not a choice: with one account to pay from, asking again is only a step to forget.
   // Derived rather than written into state, so the answer follows the accounts instead of a stale first render.
   const payingWith = moneyId || (money.length === 1 ? money[0]!.id : '');
+  // What `record()` posts, parsed the way it parses it, in the paying account's currency. Money coming back (a figure
+  // below nought) pays nothing out and asks nothing.
+  const typedMinor = (() => {
+    const paidWith = accounts.find((account) => account.id === payingWith);
+    if (!paidWith) return 0;
+    try {
+      return parseMajor(amount, paidWith.currency ?? ws.baseCurrency);
+    } catch {
+      return 0;
+    }
+  })();
+  const setAside = useSetAside(typedMinor > 0 ? spendingDoor(payingWith, typedMinor) : null);
 
   async function run(work: () => Promise<unknown>) {
     setError(null);
@@ -169,6 +183,8 @@ export function EventDetailPage() {
 
   async function record(submitted?: FormEvent) {
     submitted?.preventDefault();
+    // The form submits on Enter too: the question is a condition on every way in.
+    if (!setAside.ready) return;
     await run(async () => {
       const paidWith = accounts.find((account) => account.id === payingWith);
       if (!paidWith) throw new Error('Choose what it was paid with');
@@ -196,6 +212,7 @@ export function EventDetailPage() {
           amountMinor,
           currency,
         }),
+        setAside: setAside.choice,
       });
       // The ledger does not take an event, so the tag is a second write; an untagged payment would
       // still be offered by the event's suggestions.
@@ -364,8 +381,9 @@ export function EventDetailPage() {
             />
           </InsetGroup>
           {/* The two ways out of the card, as rows: the form is still what submits, so Enter saves as it did. */}
+          {setAside.node}
           <InsetGroup>
-            <InsetRow title="Save" onClick={() => void record()} chevron={false} />
+            <InsetRow title="Save" onClick={() => void record()} disabled={!setAside.ready} chevron={false} />
             <InsetRow title="Done" onClick={() => setAdding(false)} chevron={false} />
           </InsetGroup>
         </form>

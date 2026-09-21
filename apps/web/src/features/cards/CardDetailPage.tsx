@@ -1,4 +1,4 @@
-import { CURRENCIES, type CycleBonus, cycleFor, displayAmount, type EarnRule, explainCycle, formatMinor, isoDate, minorToMajorString, parseMajor, previousCycle, type Redemption, type TransferPartner } from '@expanses/core';
+import { CURRENCIES, type CycleBonus, cycleFor, type EarnRule, explainCycle, formatMinor, isoDate, minorToMajorString, parseMajor, previousCycle, type Redemption, type TransferPartner } from '@expanses/core';
 import type { CatalogEntry } from '@expanses/catalog';
 import {
   type AccountRow,
@@ -47,6 +47,7 @@ import { refreshLedger, useCardLedger } from './useCardLedger';
 import { BookOpen, Plus, Trash2 } from 'lucide-react';
 import { ActionRow, Capsule, ColumnGroup, EARLIER, FigureRow, GlyphButton, Line, Meter, RowWithActions, Step, StepperRow, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
 import { type CardPoints, type CycleResult, formatPoints, loadCardPoints, loadCycleResult, pointsValue, shortDate } from './useCardPoints';
+import { owedMinor } from '../networth/debt-rows';
 
 const route = getRouteApi('/cards/$cardId');
 
@@ -368,7 +369,8 @@ export function CardDetailPage() {
     setProgramName(`${card.name} rewards`);
   }
 
-  const owed = isDebit ? 0 : displayAmount('liability', balances.data?.[card.id] ?? 0);
+  // The Debts page's figure for this card, read by the same function, so the two screens always agree.
+  const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
   const optionalMinor = (v: string) => (v.trim() ? parseMajor(v, currency) : null);
   // Setup is ordered: the statement day defines cycles, a program holds rules, and rules produce points.
   const hasTerms = !!cp.terms;

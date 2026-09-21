@@ -1,11 +1,12 @@
-import { type GoalKind, isoDate, minorToMajorString, parseMajor } from '@expanses/core';
+import { bandHint, type GoalKind, isoDate, minorToMajorString, monthsUntil, parseMajor, returnBandFor } from '@expanses/core';
 import { type EarmarkRow, type GoalRow, removeEarmark, saveEarmark, saveGoal } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
-import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, templateDueOn, templateFor } from './goal-cards';
+import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, prefilledReturnBps, roomFor, setAsideHint, templateDueOn, templateFor } from './goal-cards';
+import { useSetAsideViews } from './queries';
 
 interface StageDraft {
   id?: string;
@@ -16,6 +17,8 @@ interface StageDraft {
   usesMonths: boolean;
   paidOn: string | null;
 }
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function draftFromTemplate(template: GoalTemplate, today: string): StageDraft {
   return {
@@ -39,6 +42,8 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
   const [name, setName] = useState(goal?.name ?? starting!.label);
   const [growth, setGrowth] = useState(String((goal?.growthBps ?? starting!.growthBps) / 100));
   const [expectedReturn, setExpectedReturn] = useState(String((goal?.returnBps ?? starting!.returnBps) / 100));
+  // A goal already saved keeps its return; a new one's follows its first stage's date until one is typed.
+  const [returnTyped, setReturnTyped] = useState(!!goal);
   const [standing, setStanding] = useState(goal ? minorToMajorString(goal.standingMonthlyMinor, ws.baseCurrency) : '0');
   const [standingNote, setStandingNote] = useState(goal?.standingNote ?? '');
   const [stages, setStages] = useState<StageDraft[]>(
@@ -61,7 +66,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
   const [busy, setBusy] = useState(false);
 
   const template = GOAL_TEMPLATES.find((row) => row.kind === kind);
-  const savingsAccounts = (accounts.data ?? []).filter((account) => isMoneyAccount(account) && SPENDABLE_SUBTYPES.includes(account.subtype));
+  const savingsAccounts = moneyHolders(accounts.data ?? []).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
 
   /**
    * A set-aside is in the account's own money, so the box is labelled, read and written in that currency.
@@ -78,6 +83,24 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
     return earmark ? minorToMajorString(earmark.amountMinor, currencyOf(account)) : '';
   };
 
+  const views = useSetAsideViews().data ?? {};
+  // Today's balance, the one the views and the question read: a future-dated entry is not money here yet (ruling M4).
+  const balances = useBalances(isoDate()).data ?? {};
+  /** The box's hint, from the readers' own figures: what is free for this goal there, or how short the typed figure leaves it. */
+  const hintFor = (account: { id: string; name: string; currency: string | null }) => {
+    const currency = currencyOf(account);
+    const room = roomFor(views[account.id]?.freeMinor ?? null, balances[account.id] ?? 0, earmarkOf(account.id)?.amountMinor ?? 0);
+    let typed: number | null = null;
+    try {
+      const text = setAside[account.id];
+      if (text !== undefined && text.trim() !== '') typed = parseMajor(text, currency);
+    } catch {
+      typed = null;
+    }
+    const hint = setAsideHint(room, typed, account.name, currency);
+    return hint.warn ? <span className="text-[var(--ph-warn)]">{hint.text}</span> : hint.text;
+  };
+
   function pickKind(next: GoalKind) {
     setKind(next);
     const chosen = GOAL_TEMPLATES.find((row) => row.kind === next);
@@ -85,10 +108,17 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
     setName(chosen.label);
     setGrowth(String(chosen.growthBps / 100));
     setExpectedReturn(String(chosen.returnBps / 100));
+    setReturnTyped(false);
     setStages([draftFromTemplate(chosen, today)]);
   }
 
-  const setStage = (index: number, patch: Partial<StageDraft>) => setStages((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  const setStage = (index: number, patch: Partial<StageDraft>) => {
+    setStages((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    // A new goal's return follows its first stage's date until the user types one.
+    if (index === 0 && patch.dueOn && DATE.test(patch.dueOn) && !returnTyped) setExpectedReturn(String(prefilledReturnBps(kind, patch.dueOn, today) / 100));
+  };
+  const firstDue = stages[0]?.dueOn && DATE.test(stages[0].dueOn) ? stages[0].dueOn : today;
+  const returnHint = kind === 'emergency' || kind === 'retirement' ? 'What the money funding it should earn.' : bandHint(returnBandFor(monthsUntil(today, firstDue)));
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -146,8 +176,15 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
           <Field label="Cost growth a year (%)" hint="How fast this gets more expensive.">
             <Input value={growth} onChange={(e) => setGrowth(e.target.value)} inputMode="decimal" />
           </Field>
-          <Field label="Expected return a year (%)" hint="What the money funding it should earn.">
-            <Input value={expectedReturn} onChange={(e) => setExpectedReturn(e.target.value)} inputMode="decimal" />
+          <Field label="Expected return a year (%)" hint={returnHint}>
+            <Input
+              value={expectedReturn}
+              onChange={(e) => {
+                setExpectedReturn(e.target.value);
+                setReturnTyped(true);
+              }}
+              inputMode="decimal"
+            />
           </Field>
         </div>
 
@@ -202,7 +239,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
             <p className="text-xs text-slate-500">From savings, cash or a deposit. Holdings are tagged on each purchase instead.</p>
             <div className="grid gap-3 md:grid-cols-2">
               {savingsAccounts.map((account) => (
-                <Field key={account.id} label={`${account.name} (${currencyOf(account)})`}>
+                <Field key={account.id} label={`${account.name} (${currencyOf(account)})`} hint={hintFor(account)}>
                   <Input value={setAsideText(account)} onChange={(e) => setSetAside({ ...setAside, [account.id]: e.target.value })} inputMode="decimal" />
                 </Field>
               ))}

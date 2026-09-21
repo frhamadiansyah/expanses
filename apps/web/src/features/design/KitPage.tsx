@@ -45,8 +45,8 @@ const NET_WORTH_TABS: Segment[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'assets', label: 'Assets' },
   { key: 'trades', label: 'Buy & sell', short: 'Trades' },
-  { key: 'debts', label: 'Lend & borrow', short: 'Debts' },
-  { key: 'loans', label: 'Loans' },
+  { key: 'debts', label: 'Debts' },
+  { key: 'lend-borrow', label: 'Lend & borrow' },
 ];
 
 const WALLET: WalletCard[] = [

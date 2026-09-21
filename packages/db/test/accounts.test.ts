@@ -1,16 +1,21 @@
-import { expenseLines } from '@expanses/core';
+import { expenseLines, transferLines } from '@expanses/core';
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   AccountError,
   archiveAccount,
   assetValuesAt,
   createAccount,
+  createWorkspace,
   listAccounts,
   listEarmarks,
   nativeBalances,
+  openCashAccount,
   postTransaction,
   saveEarmark,
   saveGoal,
+  unarchiveAccountTx,
+  voidTransaction,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -83,6 +88,18 @@ describe('createAccount', () => {
   });
 });
 
+describe('unarchiving', () => {
+  it('brings an archived account back, audits it, and refuses one from another workspace', async () => {
+    const { database, ws } = await setupDb();
+    const wallet = await createAccount(database, ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    await archiveAccount(database, ws, wallet.id);
+    await database.transaction((tx) => unarchiveAccountTx(tx, ws, wallet.id));
+    expect((await listAccounts(database, ws)).some((a) => a.id === wallet.id)).toBe(true);
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${wallet.id} AND action LIKE '%archive' ORDER BY rowid`)).toEqual([['archive'], ['unarchive']]);
+    await expect(database.transaction((tx) => unarchiveAccountTx(tx, { ...ws, workspaceId: 'elsewhere' }, wallet.id))).rejects.toThrow(AccountError);
+  });
+});
+
 describe('review fixes: archiving with a balance', () => {
   it('refuses to archive a money account that still has a balance, but allows categories with history', async () => {
     const { database, ws } = await setupDb();
@@ -93,6 +110,112 @@ describe('review fixes: archiving with a balance', () => {
     expect((await nativeBalances(database, ws))[equity.id]).toBe(2_000_000);
     const other = (await listAccounts(database, ws)).find((a) => a.name === 'Miscellaneous')!;
     await archiveAccount(database, ws, other.id);
+  });
+
+  it('never archives an account that belongs to another workspace', async () => {
+    const { database, ws } = await setupDb();
+    const wallet = await createAccount(database, ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    const other = await createWorkspace(database, { name: 'Business', type: 'business', baseCurrency: 'IDR' });
+    await expect(archiveAccount(database, other, wallet.id)).rejects.toThrow(AccountError);
+    expect((await listAccounts(database, ws)).some((a) => a.id === wallet.id)).toBe(true);
+  });
+
+  it('does not count a voided transaction toward the balance a fresh archive checks', async () => {
+    const { database, ws } = await setupDb();
+    const source = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR', openingBalanceMinor: 5_000_000 });
+    const target = await createAccount(database, ws, { name: 'Temp wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    const txId = await postTransaction(database, ws, {
+      occurredOn: '2026-09-01',
+      description: 'Move some cash over',
+      lines: transferLines({ fromAccountId: source.id, toAccountId: target.id, amountMinor: 1_000_000, currency: 'IDR' }),
+    });
+    await voidTransaction(database, ws, txId);
+    // The voided entries are still in the table; only a status filter keeps them out of the balance check.
+    await archiveAccount(database, ws, target.id);
+    expect((await listAccounts(database, ws)).some((a) => a.id === target.id)).toBe(false);
+  });
+
+  it('writes an audit entry for the archive', async () => {
+    const { database, ws } = await setupDb();
+    const wallet = await createAccount(database, ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    await archiveAccount(database, ws, wallet.id);
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${wallet.id} AND entity = 'account' AND action = 'archive'`)).toEqual([
+      ['archive'],
+    ]);
+  });
+});
+
+describe('checkPocketTx: every refusal of spec §3.4 (I-2)', () => {
+  // addPocket and openPocketedAccount never reach c2 or c5 (they only ever create the first generation of pockets,
+  // and openCashAccountTx's own guards keep them from a currency the parent already has). createAccount and
+  // openCashAccount take parentId directly from any caller, so every rule must hold through them too.
+
+  it('c1 — only a money (asset) account holds pockets, even when the parent and child are the same kind', async () => {
+    const { database, ws } = await setupDb();
+    const card = await createAccount(database, ws, { name: 'Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    // Same kind (liability/liability) passes the earlier "parent must be the same kind" check; c1 is what refuses it.
+    await expect(
+      createAccount(database, ws, { name: 'Visa · USD', kind: 'liability', subtype: 'credit_card', currency: 'USD', parentId: card.id }),
+    ).rejects.toThrow('Only a money account holds pockets');
+  });
+
+  it('c2 — a pocket cannot hold pockets of its own', async () => {
+    const { database, ws } = await setupDb();
+    const parent = await createAccount(database, ws, { name: 'Multi', kind: 'asset', subtype: 'savings', currency: 'IDR' });
+    const pocket = await openCashAccount(database, ws, { item: 'savings', name: 'Multi · USD', currency: 'USD', parentId: parent.id });
+    await expect(
+      openCashAccount(database, ws, { item: 'savings', name: 'Nested', currency: 'SGD', parentId: pocket.id }),
+    ).rejects.toThrow('A pocket cannot hold pockets of its own');
+  });
+
+  it('c3 — an archived parent refuses a new pocket', async () => {
+    const { database, ws } = await setupDb();
+    const parent = await createAccount(database, ws, { name: 'Old Multi', kind: 'asset', subtype: 'savings', currency: 'IDR' });
+    await archiveAccount(database, ws, parent.id);
+    await expect(
+      openCashAccount(database, ws, { item: 'savings', name: 'Old Multi · USD', currency: 'USD', parentId: parent.id }),
+    ).rejects.toThrow('Old Multi is archived');
+  });
+
+  it('c4 — a pocket is the same kind of account as its parent (a bank child of a savings parent)', async () => {
+    const { database, ws } = await setupDb();
+    const parent = await createAccount(database, ws, { name: 'Savings Multi', kind: 'asset', subtype: 'savings', currency: 'IDR' });
+    await expect(
+      openCashAccount(database, ws, { item: 'bank', name: 'Savings Multi · USD', currency: 'USD', parentId: parent.id }),
+    ).rejects.toThrow('A pocket is the same kind of account as Savings Multi');
+  });
+
+  it('c5 — an account already holding money cannot become a parent, through createAccount', async () => {
+    const { database, ws } = await setupDb();
+    const usd = await createAccount(database, ws, {
+      name: 'Mandiri USD',
+      kind: 'asset',
+      subtype: 'savings',
+      currency: 'USD',
+      openingBalanceMinor: 180_000,
+      openingRateToBase: 15_720,
+      openedOn: '2026-01-01',
+    });
+    await expect(
+      createAccount(database, ws, { name: 'Mandiri USD · SGD', kind: 'asset', subtype: 'savings', currency: 'SGD', parentId: usd.id }),
+    ).rejects.toThrow('already holds money of its own, so it cannot hold pockets');
+  });
+
+  it('c5 — an entry that was later voided still counts ("posted or void", spec §3.4), through openCashAccount', async () => {
+    const { database, ws } = await setupDb();
+    const bank = await createAccount(database, ws, { name: 'Jenius', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const sink = await createAccount(database, ws, { name: 'Sink', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    const txId = await postTransaction(database, ws, {
+      occurredOn: '2026-01-01',
+      description: 'Deposit',
+      lines: transferLines({ fromAccountId: sink.id, toAccountId: bank.id, amountMinor: 500_000, currency: 'IDR' }),
+    });
+    await voidTransaction(database, ws, txId);
+    // Its posted balance is back to zero, but it has held money — the void does not erase that.
+    expect((await nativeBalances(database, ws))[bank.id] ?? 0).toBe(0);
+    await expect(
+      openCashAccount(database, ws, { item: 'bank', name: 'Jenius · USD', currency: 'USD', parentId: bank.id }),
+    ).rejects.toThrow('already holds money of its own, so it cannot hold pockets');
   });
 });
 

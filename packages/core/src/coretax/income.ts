@@ -10,7 +10,7 @@ import type { TradeRecord } from '../assets/position';
  * KPP if they are unsure.
  */
 
-export type IncomeKind = 'dividend' | 'coupon' | 'distribution' | 'sale' | 'other';
+export type IncomeKind = 'dividend' | 'coupon' | 'distribution' | 'interest' | 'sale' | 'other';
 
 /**
  * Which part of the return the income belongs to. Null until the owner says: an ORI coupon is final, a
@@ -67,6 +67,9 @@ function kindOf(trade: TradeRecord, holding: IncomeHolding | undefined): IncomeK
       return 'coupon';
     case 'fund':
       return 'distribution';
+    // A deposit or a bank account: what it pays is interest.
+    case 'cash':
+      return 'interest';
     default:
       return 'other';
   }

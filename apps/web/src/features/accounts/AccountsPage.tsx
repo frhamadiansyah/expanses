@@ -1,5 +1,5 @@
-import { CASH_ITEMS, cashCodeForSubtype, CURRENCIES, displayAmount, hartaLabel, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
-import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, createCardAccount, openCashAccount, renameAccount, upsertRate } from '@expanses/db';
+import { CASH_ITEMS, cashCodeForSubtype, CURRENCIES, displayAmount, hartaLabel, isoDate, type MoneyAccountSubtype, parseMajor } from '@expanses/core';
+import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, createCardAccount, openCashAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
@@ -9,9 +9,11 @@ import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll, useResolveR
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { depositLine } from '../networth/deposit-terms';
 import { useAssetProfiles, useAssetValues, useDepositTerms } from '../networth/queries';
-import { checkManualRate, ratePreview } from '../../lib/rates';
+import { openingRateFor, ratePreview } from '../../lib/rates';
 import { Empty, ErrorBox, errorMessage, Money } from '../../ui';
-import { type CornerAction, Figure, InsetGroup, InsetRow, LargeTitle, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { type CornerAction, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, Panel, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
+import { useHeldRates } from './queries';
 
 /** Sentinel for a bank the catalogue has never heard of. */
 const OTHER = '__other';
@@ -53,18 +55,7 @@ function AddAccountForm() {
     setBusy(true);
     try {
       const openingBalanceMinor = balance.trim() ? parseMajor(balance, currency) : 0;
-      let openingRateToBase: number | undefined;
-      if (foreign && openingBalanceMinor !== 0) {
-        if (manualRate.trim()) {
-          openingRateToBase = parseRate(manualRate);
-          await checkManualRate(database, currency, ws.baseCurrency, openedOn, openingRateToBase);
-          await upsertRate(database, { fromCurrency: currency, toCurrency: ws.baseCurrency, onDate: openedOn, rate: openingRateToBase, source: 'manual', sourceDate: openedOn });
-        } else {
-          const resolved = await resolveRates([currency], openedOn);
-          openingRateToBase = resolved.rates[currency];
-          if (openingRateToBase === undefined) throw new Error(`No ${currency}→${ws.baseCurrency} rate available. Enter it manually.`);
-        }
-      }
+      const openingRateToBase = await openingRateFor({ database, ws, currency, openedOn, openingBalanceMinor, typed: manualRate, resolveRates });
       if (isCard) {
         await createCardAccount(database, ws, { name, subtype: 'credit_card', currency, issuer: chosenIssuer, last4, openingBalanceMinor, openedOn, openingRateToBase });
       } else if (isCashSubtype(subtype)) {
@@ -182,8 +173,31 @@ function AddAccountForm() {
  * losing a column is worse than scrolling one. Desktop keeps all five columns; a phone scrolls the table
  * sideways inside its own container, which is what stops the name from wrapping into the balance the way it did.
  */
-function AccountList({ title, accounts, balances }: { title: string; accounts: AccountRow[]; balances: Record<string, number> }) {
+function AccountList({
+  title,
+  accounts,
+  balances,
+  everything,
+  parents,
+  rates,
+}: {
+  title: string;
+  accounts: AccountRow[];
+  balances: Record<string, number>;
+  /** Every account, pockets included: a parent's row is drawn from its pockets, which are not rows of their own. */
+  everything: AccountRow[];
+  parents: Set<string>;
+  rates: Record<string, number>;
+}) {
   const { database, ws } = useApp();
+  // The kit's grouped figure: the ≈ total, or the missing rate named — never a partial sum.
+  const totalText = (account: AccountRow) => groupedFigure(parentTotal(pocketsOf(account.id, everything), balances, ws.baseCurrency, rates), ws.baseCurrency);
+  const kindLine = (account: AccountRow) =>
+    parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, everything).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`;
+  const parentFigure = (account: AccountRow) => {
+    const figure = totalText(account);
+    return <Figure tone={figure.complete ? 'ink' : 'warn'}>{figure.text}</Figure>;
+  };
   const invalidate = useInvalidateAll();
   const values = useAssetValues();
   const profiles = useAssetProfiles();
@@ -235,12 +249,15 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
       shape={{
         key: (account) => account.id,
         title: (account) => account.name,
-        subtitle: (account) => `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
-        value: (account) => (
+        subtitle: (account) => kindLine(account),
+        value: (account) =>
+          parents.has(account.id) ? (
+            parentFigure(account)
+          ) : (
           <Figure>
             <Money minor={displayAmount(account.kind, balances[account.id] ?? 0)} currency={account.currency!} />
           </Figure>
-        ),
+          ),
       }}
       columns={[
         {
@@ -248,12 +265,19 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
           heading: 'Account',
           cell: (account) => (
             <span className="block min-w-[10rem]">
-              <Link to="/transactions" search={{ account: account.id }} className="ph-focus block text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">
-                {account.name}
-              </Link>
+              {parents.has(account.id) ? (
+                /* An account with pockets opens to its pockets; each pocket's history is one tap further. */
+                <Link to="/accounts/$accountId" params={{ accountId: account.id }} className="ph-focus block text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">
+                  {account.name}
+                </Link>
+              ) : (
+                <Link to="/transactions" search={{ account: account.id }} className="ph-focus block text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">
+                  {account.name}
+                </Link>
+              )}
               <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-                {SUBTYPE_LABELS[account.subtype]} · {account.currency}
-                {terms(account.id) && ` · ${terms(account.id)}`}
+                {kindLine(account)}
+                {!parents.has(account.id) && terms(account.id) && ` · ${terms(account.id)}`}
               </span>
             </span>
           ),
@@ -262,7 +286,9 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
           key: 'filed',
           heading: 'Filed as',
           cell: (account) =>
-            filedAs(account) ? (
+            parents.has(account.id) ? (
+              <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Each pocket files its own row</span>
+            ) : filedAs(account) ? (
               /* The code is never shown while choosing; here it is, and this is where it can be changed. */
               <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="ph-focus text-[12.5px] leading-[16px] text-[var(--ph-tint)]">
                 {filedAs(account)}
@@ -276,7 +302,9 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
           heading: 'Balance',
           numeric: true,
           cell: (account) =>
-            valued(account.id) ? (
+            parents.has(account.id) ? (
+              parentFigure(account)
+            ) : valued(account.id) ? (
               <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="ph-focus block text-right">
                 <Money minor={valued(account.id)!.valueMinor} currency={account.currency!} className="tabular block font-medium text-[var(--ph-ink)]" />
                 <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
@@ -318,11 +346,20 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
   );
 }
 
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 export function AccountsPage() {
+  const { ws } = useApp();
   const accounts = useAccounts();
   const balances = useBalances();
-  const money = (accounts.data ?? []).filter(isMoneyAccount);
+  const everything = accounts.data ?? [];
+  const money = everything.filter(isMoneyAccount);
   const all = balances.data ?? {};
+  const parents = pocketParentIds(everything);
+  // Every money account's currency, not only the pockets': the Money tile converts them all.
+  const rates = useHeldRates(everything.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!));
+  const held = rates.data?.rates ?? {};
+  const summary = moneySummary(everything, all, ws.baseCurrency, held);
   /* Three journeys, two corners: the `…` keeps Import CSV and Backup reachable and named in words. */
   const actions: CornerAction[] = [
     { key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={20} aria-hidden /> },
@@ -333,8 +370,25 @@ export function AccountsPage() {
     <div className={SCREEN}>
       <LargeTitle title="Accounts" actions={actions} />
       {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add a bank account or credit card below.</Empty>}
-      <AccountList title="Money" accounts={money.filter((a) => a.kind === 'asset')} balances={all} />
-      <AccountList title="Credit cards & debts" accounts={money.filter((a) => a.kind === 'liability')} balances={all} />
+      {/* The Money tile: every money account and pocket at today's rates, or the rate it lacks named — never a partial sum. */}
+      {accounts.isSuccess && balances.isSuccess && rates.isSuccess && summary.accounts > 0 &&
+        (summary.totalMinor !== null ? (
+          <Hero
+            minor={summary.totalMinor}
+            currency={ws.baseCurrency}
+            caption={`Money ≈ at today's rates · across ${plural(summary.accounts, 'account')} · ${plural(summary.currencies, 'currency', 'currencies')}`}
+          />
+        ) : (
+          <Panel header="Money">
+            <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
+              No {summary.missing.join(', ')} rate yet, so {plural(summary.accounts, 'account')} in {plural(summary.currencies, 'currency', 'currencies')} cannot be added up. Each balance below is
+              exact.
+            </p>
+          </Panel>
+        ))}
+      {/* A pocket is never a row of its own: its account's row adds it up (P1). */}
+      <AccountList title="Money" accounts={money.filter((a) => a.kind === 'asset' && a.parentId === null)} balances={all} everything={everything} parents={parents} rates={held} />
+      <AccountList title="Credit cards & debts" accounts={money.filter((a) => a.kind === 'liability')} balances={all} everything={everything} parents={parents} rates={held} />
       {/* Below the list it belongs to, not above it: the page is what you have, then the way to add to it. */}
       <AddAccountForm />
     </div>

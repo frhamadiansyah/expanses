@@ -5,6 +5,9 @@ import {
   createDatabase,
   createWorkspace,
   getCatalogState,
+  budgetSchema,
+  listGoals,
+  saveGoal,
   inBook,
   LATEST_VERSION,
   listAccounts,
@@ -132,6 +135,58 @@ describe('openAppDb', () => {
       // Sets arrive with the feature, so a workspace made before it has them after one open.
       expect((await listCategorySets(database, ws)).map((set) => set.name)).toEqual(['Holiday', 'Newborn', 'Renovation']);
       expect((await listAccounts(database, ws)).filter((a) => a.name === 'Diapering')).toHaveLength(1);
+    } finally {
+      executor.close();
+    }
+  });
+
+  it('states a goal worked out before in today’s money, once, on open', async () => {
+    const executor = createNodeExecutor();
+    try {
+      const database = createDatabase(executor);
+      await migrate(database);
+      const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+      const goalId = await saveGoal(database, ws, {
+        name: 'Retirement', kind: 'retirement', growthBps: 400, returnBps: 900, derived: true,
+        stages: [{ name: 'Retirement fund', targetMinor: 4_120_008_061, targetMonths: null, dueOn: '2046-09-21' }],
+      });
+      await database.db.insert(budgetSchema.goalCalculators).values({
+        goalId, workspaceId: ws.workspaceId, kind: 'retirement', computedMinor: 4_120_008_061, computedAt: '2026-09-21T00:00:00.000Z',
+        inputsJson: JSON.stringify({ annualSpendTodayMinor: 120_000_000, yearsToRetirement: 20, yearsInRetirement: 20, inflationBps: 350, returnInRetirementBps: 500 }),
+      });
+
+      await openAppDb(database);
+      expect((await listGoals(database, ws))[0]).toMatchObject({ growthBps: 350, stages: [{ targetMinor: 2_070_575_495 }] });
+    } finally {
+      executor.close();
+    }
+  });
+
+  it('states worked-out goals in today’s money in every workspace, not only the one it opens', async () => {
+    const executor = createNodeExecutor();
+    try {
+      const database = createDatabase(executor);
+      await migrate(database);
+      const oldRetirement = async (name: string) => {
+        const ws = await createWorkspace(database, { name, type: 'personal', baseCurrency: 'IDR' });
+        const goalId = await saveGoal(database, ws, {
+          name: 'Retirement', kind: 'retirement', growthBps: 400, returnBps: 900, derived: true,
+          stages: [{ name: 'Retirement fund', targetMinor: 4_120_008_061, targetMonths: null, dueOn: '2046-09-21' }],
+        });
+        await database.db.insert(budgetSchema.goalCalculators).values({
+          goalId, workspaceId: ws.workspaceId, kind: 'retirement', computedMinor: 4_120_008_061, computedAt: '2026-09-21T00:00:00.000Z',
+          inputsJson: JSON.stringify({ annualSpendTodayMinor: 120_000_000, yearsToRetirement: 20, yearsInRetirement: 20, inflationBps: 350, returnInRetirementBps: 500 }),
+        });
+        return ws;
+      };
+      const first = await oldRetirement('Personal');
+      const second = await oldRetirement('Family');
+
+      const app = await openAppDb(database);
+      expect(app.workspaceName).toBe('Personal');
+      for (const ws of [first, second]) {
+        expect((await listGoals(database, ws))[0], ws.workspaceId).toMatchObject({ growthBps: 350, stages: [{ targetMinor: 2_070_575_495 }] });
+      }
     } finally {
       executor.close();
     }

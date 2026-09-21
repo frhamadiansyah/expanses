@@ -6,7 +6,7 @@ import { depositTerms } from '../schema-assets';
 export interface DepositTermsRow {
   accountId: string;
   workspaceId: string;
-  /** The day the money comes back. Nothing is automated off it: the owner moves it with a transfer. */
+  /** The day the money comes back. Nothing is automated off it unless the owner switches automation on (0054). */
   maturesOn: string;
   rateBps: number;
   createdAt: string;
@@ -55,13 +55,18 @@ export async function saveDepositTerms(database: Database, ws: WorkspaceContext,
   await database.transaction((tx) => saveDepositTermsTx(tx, ws, input));
 }
 
-export async function getDepositTerms(database: Database, ws: WorkspaceContext, accountId: string): Promise<DepositTermsRow | undefined> {
-  if (!(await depositTablesExist(database.db))) return undefined;
-  const [row] = await database.db
+/** The terms of one deposit, on any handle: a transaction already running, or `database.db`. */
+export async function getDepositTermsTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<DepositTermsRow | undefined> {
+  if (!(await depositTablesExist(tx))) return undefined;
+  const [row] = await tx
     .select()
     .from(depositTerms)
     .where(and(eq(depositTerms.accountId, accountId), eq(depositTerms.workspaceId, ws.workspaceId)));
   return row;
+}
+
+export function getDepositTerms(database: Database, ws: WorkspaceContext, accountId: string): Promise<DepositTermsRow | undefined> {
+  return getDepositTermsTx(database.db, ws, accountId);
 }
 
 /** Every deposit of the workspace, the one maturing soonest first. */

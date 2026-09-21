@@ -1,15 +1,13 @@
-import { flatToEffectiveBps, isoDate, type LoanMethod, periodOn } from '@expanses/core';
+import { flatToEffectiveBps, isoDate, type LoanMethod } from '@expanses/core';
 import { saveLoanTerms } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { HelpCircle, Plus } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Empty, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
-import { NetWorthTabs } from '../networth/NetWorthTabs';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { emptyLoanTermsDraft, type LoanTermsDraft, loanTermsDraftToInput } from './loan-form';
-import { useLoans, useScheduledPayments } from './queries';
+import { useLoans } from './queries';
 
 const METHOD_LABELS: Record<LoanMethod, string> = {
   annuity: 'Annuity — interest on what is left',
@@ -18,7 +16,7 @@ const METHOD_LABELS: Record<LoanMethod, string> = {
 };
 
 /** Adds the terms of a loan already running, so its schedule can be worked out. */
-function TermsForm({ onDone }: { onDone: () => void }) {
+export function TermsForm({ onDone }: { onDone: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
@@ -171,77 +169,5 @@ function TermsForm({ onDone }: { onDone: () => void }) {
         <InsetRow title="Cancel" chevron={false} onClick={onDone} />
       </InsetGroup>
     </form>
-  );
-}
-
-export function LoansPage() {
-  const { ws } = useApp();
-  const loans = useLoans();
-  const payments = useScheduledPayments();
-  const accounts = useAccounts().data ?? [];
-  const [adding, setAdding] = useState(false);
-  const today = isoDate();
-
-  const open = (loans.data ?? []).filter((loan) => loan.status === 'open');
-  const paidOff = (loans.data ?? []).filter((loan) => loan.status === 'paid_off');
-  const nameOf = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? 'Loan';
-  // The instalment, worked out from what the ledger says is owed — not `periods[].paymentMinor`, which is
-  // the figure the bank named *if it named one* and is 0 for a loan onboarded without typing it.
-  const paymentOf = (accountId: string) => payments.data?.[accountId] ?? 0;
-  const monthlyMinor = open.reduce((total, loan) => total + paymentOf(loan.accountId), 0);
-
-  // While the inline form is open there is no action to show, and an empty corner would still take its gap.
-  const actions: CornerAction[] = adding
-    ? []
-    : [
-        { key: 'terms', label: 'Add loan terms', glyph: <Plus size={20} aria-hidden />, run: () => setAdding(true) },
-        // Terms go on a loan account that already exists; the picker is for the loan that does not yet.
-        { key: 'pick', label: 'What do you owe?', glyph: <HelpCircle size={20} aria-hidden />, to: '/debts/new' },
-      ];
-
-  return (
-    <div className={SCREEN}>
-      <LargeTitle title="Loans" actions={actions} />
-      <NetWorthTabs />
-      <ErrorBox error={loans.error ?? payments.error} />
-
-      {adding && <TermsForm onDone={() => setAdding(false)} />}
-
-      {loans.isSuccess && open.length === 0 && paidOff.length === 0 && !adding && (
-        <Empty>
-          No loan terms yet. Add the loan account on{' '}
-          <Link to="/accounts" className="font-medium underline">
-            Accounts
-          </Link>{' '}
-          with what you still owe, then add its terms here to see the schedule.
-        </Empty>
-      )}
-
-      {monthlyMinor > 0 && <Hero minor={monthlyMinor} currency={ws.baseCurrency} caption="The instalments the banks ask for each month" />}
-
-      {open.length > 0 && (
-        <InsetGroup header="Still being paid">
-          {open.map((loan) => (
-            <InsetRow
-              key={loan.accountId}
-              to="/net-worth/loans/$accountId"
-              params={{ accountId: loan.accountId }}
-              title={nameOf(loan.accountId)}
-              subtitle={`${loan.lenderName} · ${(periodOn(loan.periods, today)?.rateBps ?? 0) / 100}% · ${loan.tenorMonths} months from ${loan.firstPaymentOn}${loan.isHomeLoan ? ' · mortgage' : ''}`}
-              value={<Money minor={paymentOf(loan.accountId)} currency={ws.baseCurrency} />}
-              valueTone="ink"
-            />
-          ))}
-        </InsetGroup>
-      )}
-
-      {paidOff.length > 0 && (
-        <InsetGroup header="Paid off">
-          {paidOff.map((loan) => (
-            <InsetRow key={loan.accountId} title={nameOf(loan.accountId)} subtitle={`cleared ${loan.statusOn}`} chevron={false} />
-          ))}
-        </InsetGroup>
-      )}
-    </div>
   );
 }

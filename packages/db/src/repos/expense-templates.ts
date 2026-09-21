@@ -21,6 +21,7 @@ import { BILL_MONTH, billTablesExist } from './bill-months';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { postTransactionTx, voidTransactionTx } from './ledger';
+import type { SetAsideChoice } from './set-aside-tx';
 
 export class RecurringError extends Error {
   constructor(
@@ -411,6 +412,8 @@ export interface BillPaymentInput {
   amountMinor: number;
   /** The account that paid; the bill's own when absent. */
   moneyAccountId?: string;
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
 }
 
 async function isSettled(tx: Db, ws: WorkspaceContext, templateId: string, month: string): Promise<boolean> {
@@ -471,6 +474,7 @@ export function recordBillPayments(
           templateId: template.id,
           billMonth: payment.billMonth,
           ratesToBase: input.ratesToBase,
+          setAside: payment.setAside,
           lines: expenseLines({ categoryAccountId: template.categoryAccountId, paymentAccountId: payment.moneyAccountId ?? template.moneyAccountId, amountMinor: payment.amountMinor, currency }),
         }),
       );
