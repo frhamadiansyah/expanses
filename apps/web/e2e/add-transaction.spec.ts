@@ -510,8 +510,11 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
   // own minor units under the base-currency symbol. The rupiah translation rides alongside, from the rate
   // typed when the account was opened.
   await page.goto('/goals');
-  const fundedBy = page.getByText(/Wise USD.*set aside/).first();
+  // The funding line is a row of the goal's group now: the name, what the funding is and the figure are parts of
+  // one row rather than one run of text, so the row is named and asked — the same fix `goals.spec.ts` made.
+  const fundedBy = page.getByTestId('goal-link').filter({ hasText: 'Wise USD' }).first();
   await expect(fundedBy).toBeVisible();
+  await expect(fundedBy).toContainText('set aside');
   await expect(fundedBy).toContainText('US$100,03');
   await expect(fundedBy).not.toContainText(/Rp\s10\.003/);
   await expect(fundedBy).toContainText(/Rp\s1\.600\.480/);
