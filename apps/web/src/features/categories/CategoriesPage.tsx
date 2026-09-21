@@ -18,8 +18,7 @@ import { type CSSProperties, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isCategoryOf, useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { type CornerAction, InsetGroup, InsetRow, LargeTitle, ROW_PAD_X, ROW_PAD_Y, rowHeight, SegmentedControl, tapReach } from '../../ui/native';
-import { Panel, PanelHeader, SCREEN } from '../networth/Panel';
+import { type CornerAction, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN, SegmentedControl, tapReach } from '../../ui/native';
 import { categoryMcc } from './category-mcc';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
 

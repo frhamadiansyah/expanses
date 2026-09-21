@@ -5,8 +5,7 @@ import { Link } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
 import { Empty, Money } from '../../ui';
-import { Hero, InsetGroup, InsetRow, LargeTitle } from '../../ui/native';
-import { Panel, SCREEN } from '../networth/Panel';
+import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
 
 const sum = (rows: { amountBaseMinor: number }[]) => rows.reduce((s, r) => s + r.amountBaseMinor, 0);
 

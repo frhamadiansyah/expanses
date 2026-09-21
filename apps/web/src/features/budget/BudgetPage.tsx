@@ -12,11 +12,12 @@ import {
   InsetRow,
   type InsetRowProps,
   LargeTitle,
+  Panel,
+  SCREEN,
   SelectRow,
+  SwitchRow,
   TextRow,
 } from '../../ui/native';
-import { Panel, SCREEN } from '../networth/Panel';
-import { SwitchRow } from '../networth/SwitchRow';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';

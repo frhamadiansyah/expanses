@@ -13,9 +13,10 @@ import {
   InsetGroup,
   InsetRow,
   LargeTitle,
+  Panel,
   ProgressBar,
+  SCREEN,
 } from '../../ui/native';
-import { Panel, SCREEN } from '../networth/Panel';
 import { Calculator, calculatorKindOf } from './Calculator';
 import { GoalForm } from './GoalForm';
 import { type GoalCard, goalCard, GOAL_TEMPLATES } from './goal-cards';

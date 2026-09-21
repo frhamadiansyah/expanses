@@ -11,8 +11,7 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, TextRow } from '../../ui/native';
-import { Panel, SCREEN } from '../networth/Panel';
+import { InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, TextRow } from '../../ui/native';
 
 const bps = (percent: string) => Math.round(Number(percent.replace(',', '.')) * 100);
 const num = (value: string) => Number(value.replace(',', '.'));
