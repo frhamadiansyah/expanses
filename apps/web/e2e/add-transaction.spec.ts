@@ -95,8 +95,22 @@ test('Paid with names each card by its digits, and choosing one sets the account
   const sheet = page.getByRole('dialog', { name: 'Paid with' });
   await expect(sheet.getByRole('button', { name: 'BCA KrisFlyer ···· 1467', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'BCA KrisFlyer ···· 8802', exact: true })).toBeVisible();
-  // The account alone is not offered: it would answer the question by leaving half of it unanswered.
-  await expect(sheet.getByRole('button', { name: 'BCA KrisFlyer', exact: true })).toHaveCount(0);
+
+  /*
+   * The account alone is offered as well, and **last**: it is how a purchase is recorded when the card is not
+   * known or not worth saying. It was taken away once without a decision, so the facts are asserted — that it is
+   * there, that both cards are too, and that the account's own row comes after them rather than among them.
+   *
+   * Which of the two cards leads is the query's business, not this function's, so the cards are compared as a
+   * set: pinning their order here would assert something `paymentOptions` never promised.
+   */
+  const offered = await sheet
+    .locator('ul > li button')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')).filter((label) => label?.includes('BCA KrisFlyer')));
+  expect(offered).toHaveLength(3);
+  expect(offered.at(-1)).toBe('BCA KrisFlyer');
+  expect([...offered.slice(0, 2)].sort()).toEqual(['BCA KrisFlyer ···· 1467', 'BCA KrisFlyer ···· 8802']);
+
   await sheet.getByRole('button', { name: 'Close' }).click();
   await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Cancel' }).click();
 
@@ -106,6 +120,13 @@ test('Paid with names each card by its digits, and choosing one sets the account
   const row = page.getByTestId('transaction-row').filter({ hasText: 'Ranch Market' });
   await expect(row).toContainText('8802');
   await expect(row).not.toContainText('1467');
+
+  // And a purchase whose card nobody named is still a purchase: it records against the account, with no digits.
+  await addTransaction(page, { description: 'Bakmi GM', paidWith: 'BCA KrisFlyer', category: 'Groceries', amount: '75000' });
+  const unnamed = page.getByTestId('transaction-row').filter({ hasText: 'Bakmi GM' });
+  await expect(unnamed).toContainText('BCA KrisFlyer');
+  await expect(unnamed).not.toContainText('1467');
+  await expect(unnamed).not.toContainText('8802');
 });
 
 test('/transactions/new opens the empty card rather than a receipt for a transaction called "new"', async ({ page }) => {

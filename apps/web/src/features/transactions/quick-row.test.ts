@@ -1,3 +1,4 @@
+import { matchPayment } from '@expanses/core';
 import type { AccountRow, CardRow, DraftRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { isQuickEditable, parsePastedRows, payerOptions, paymentOptions, quickFromDraft, quickFromTransaction, quickToInput, readQuick, shortDate, valuesFromCells } from './quick-row';
@@ -79,9 +80,26 @@ describe('what the ledger gets', () => {
 });
 
 describe('paymentOptions', () => {
-  it('offers each card on a shared statement, and an account with one card once', () => {
+  it('offers each card on a shared statement, and then the account itself, which names no card', () => {
     const options = paymentOptions(accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability'), cards);
-    expect(options.filter((o) => o.accountId === 'bonvoy').map((o) => o.last4)).toEqual(['1467', '8802']);
+    const shared = options.filter((o) => o.accountId === 'bonvoy');
+    // The cards first, then the account: the row that answers half the question is the last one.
+    expect(shared.map((o) => [o.cardId, o.last4])).toEqual([
+      ['c1', '1467'],
+      ['c2', '8802'],
+      [null, null],
+    ]);
+    /*
+     * The account's own row carries no digits, which is what keeps `matchPayment` honest: a search for `1467`
+     * has to find the card ending 1467 and nothing else. A bare row holding the first card's digits would make
+     * two rows match, and the account would be reported with no card at all.
+     */
+    expect(matchPayment('1467', options)).toEqual({ accountId: 'bonvoy', cardId: 'c1' });
+    expect(matchPayment('Mandiri Bonvoy', options)).toEqual({ accountId: 'bonvoy', cardId: null });
+  });
+
+  it('offers an account with one card once, and shows its digits', () => {
+    const options = paymentOptions(accounts.filter((a) => a.kind === 'asset' || a.kind === 'liability'), cards);
     expect(options.filter((o) => o.accountId === 'bca')).toHaveLength(1);
   });
 });
