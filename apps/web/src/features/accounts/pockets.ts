@@ -35,11 +35,13 @@ export function readPockets(rows: readonly PocketDraft[]): { currency: string; o
 /**
  * Pocket `index` given `currency`. When another pocket already holds it the two rows swap places, each keeping its
  * own balance and rate, so a balance is never re-read at another currency's scale and no currency is listed twice.
- * Otherwise the row takes the currency and keeps its text, re-read in the new currency when saved (spec §5).
+ * Otherwise the row takes the currency and keeps its balance text, re-read in the new currency when saved (spec §5),
+ * and loses its rate, which was per 1 unit of the old currency.
  */
 export function choosePocketCurrency(rows: readonly PocketDraft[], index: number, currency: string): PocketDraft[] {
   const other = rows.findIndex((row, j) => j !== index && row.currency === currency);
-  if (other === -1) return rows.map((row, j) => (j === index ? { ...row, currency } : row));
+  // A typed rate is per 1 unit of the old currency, so it is dropped; the balance text stays, re-read when saved.
+  if (other === -1) return rows.map((row, j) => (j === index ? { ...row, currency, rate: '' } : row));
   return rows.map((row, j) => (j === index ? rows[other]! : j === other ? rows[index]! : row));
 }
 
@@ -54,7 +56,7 @@ export const moveDraft = (bookId: string, from: AccountRow, to: AccountRow, toda
 });
 
 /**
- * A new From or To. Both figures were typed in the old pockets' currencies, so both are cleared; choosing the pocket
+ * A new From or To. Both figures, and any rate typed for the old pair, were for the old pockets, so all are cleared; choosing the pocket
  * already on the other side swaps the two rather than moving money into itself.
  */
 export function withPockets(draft: FormDraft, patch: { moneyId?: string; toId?: string }): FormDraft {
@@ -64,7 +66,7 @@ export function withPockets(draft: FormDraft, patch: { moneyId?: string; toId?: 
     if (patch.moneyId !== undefined) toId = draft.moneyId;
     else moneyId = draft.toId;
   }
-  return { ...draft, moneyId, toId, amount: '', toAmount: '' };
+  return { ...draft, moneyId, toId, amount: '', toAmount: '', manualRate: '' };
 }
 
 export interface MoveView {

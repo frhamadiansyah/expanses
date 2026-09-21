@@ -94,6 +94,11 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     </option>
   );
   const idOf = (code: string) => pockets.find((p) => p.currency === code)!.id;
+  // A rate row asked for the old pair; the new pair asks again on Save if it needs one.
+  const choose = (patch: { moneyId?: string; toId?: string }) => {
+    setNeedsRate(null);
+    setDraft((d) => withPockets(d, patch));
+  };
 
   if (recorded) {
     const line = spreadLine(recorded, ws.baseCurrency)!;
@@ -118,10 +123,10 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       <LargeTitle title="Move between pockets" back={parent.name} backTo="/accounts/$accountId" backParams={{ accountId: parent.id }} />
       <ErrorBox error={error} />
       <InsetGroup>
-        <SelectRow label="From" value={from.currency!} onChange={(e) => setDraft((d) => withPockets(d, { moneyId: idOf(e.target.value) }))}>
+        <SelectRow label="From" value={from.currency!} onChange={(e) => choose({ moneyId: idOf(e.target.value) })}>
           {pockets.map(option)}
         </SelectRow>
-        <SelectRow label="To" value={to.currency!} onChange={(e) => setDraft((d) => withPockets(d, { toId: idOf(e.target.value) }))}>
+        <SelectRow label="To" value={to.currency!} onChange={(e) => choose({ toId: idOf(e.target.value) })}>
           {pockets.map(option)}
         </SelectRow>
         <TextRow

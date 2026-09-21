@@ -71,6 +71,14 @@ describe('the pockets form', () => {
     expect(choosePocketCurrency(rows, 2, 'JPY')).toEqual([rows[0], rows[1], { currency: 'JPY', balance: '', rate: '' }]);
   });
 
+  it('drops a typed rate when its pocket takes a new currency: 16.250 per USD is not a rate for JPY (M2)', () => {
+    const rows = [
+      { currency: 'IDR', balance: '5.400.000', rate: '' },
+      { currency: 'USD', balance: '2400.00', rate: '16250' },
+    ];
+    expect(choosePocketCurrency(rows, 1, 'JPY')).toEqual([rows[0], { currency: 'JPY', balance: '2400.00', rate: '' }]);
+  });
+
   it('offers the first currency not yet used', () => {
     expect(nextPocketCurrency([{ currency: 'IDR', balance: '', rate: '' }])).toBe('USD');
     expect(nextPocketCurrency([{ currency: 'IDR', balance: '', rate: '' }, { currency: 'USD', balance: '', rate: '' }])).toBe('SGD');
@@ -131,6 +139,12 @@ describe('moving between pockets', () => {
     const typed = { ...start, amount: '500', toAmount: '638' };
     expect(withPockets(typed, { toId: idr.id })).toMatchObject({ moneyId: usd.id, toId: idr.id, amount: '', toAmount: '' });
     expect(withPockets(typed, { moneyId: sgd.id })).toMatchObject({ moneyId: sgd.id, toId: usd.id, amount: '', toAmount: '' });
+  });
+
+  it('drops a rate typed for the old pair when a pocket changes (M4)', () => {
+    const typed = { ...start, amount: '500', toAmount: '638', manualRate: '12680' };
+    expect(withPockets(typed, { toId: idr.id }).manualRate).toBe('');
+    expect(withPockets(typed, { moneyId: sgd.id }).manualRate).toBe('');
   });
 
   it('says a cost, a gain and a match in words, with one positive figure', () => {
