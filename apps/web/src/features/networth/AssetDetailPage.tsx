@@ -97,6 +97,7 @@ export function AssetDetailPage() {
                     <span className="block">
                       {approxLine(value.valueMinor, value.currency, ws.baseCurrency, held.data?.rates ?? {})}
                       {heldRate !== undefined && ` · at ${rateLine(heldRate, value.currency, ws.baseCurrency)}`}
+                      {heldRate !== undefined && held.data?.stale.includes(value.currency) && ' (last known)'}
                     </span>
                   )}
                   {foreignMoney && opened && <span className="block">Opened at {rateLine(opened.fxRateToBase, value.currency, ws.baseCurrency)}</span>}

@@ -199,6 +199,20 @@ test('an account without pockets opened at the pockets routes says it has none (
   await expect(page.getByRole('button', { name: 'Add pocket' })).toHaveCount(0);
 });
 
+test('a pocket’s ≈ line marks a rate held for an earlier day as last known (M5)', async ({ page }, testInfo) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await ageRates(page, testInfo.outputPath('aged.sqlite3'));
+  await page.goto('/accounts');
+  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await page.getByTestId('pocket-USD').click();
+  // The account page marks it too; this is the pocket's own page.
+  await expect(page).toHaveURL(/\/net-worth\/assets\//);
+  await expect(page.getByText('Opened at')).toBeVisible();
+  await expect(page.getByText(/16\.250 IDR per 1 USD \(last known\)/)).toBeVisible();
+});
+
 test('the Money tile adds every account and pocket at today’s rates', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
