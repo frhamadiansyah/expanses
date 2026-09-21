@@ -124,6 +124,14 @@ export interface InsetRowProps extends GroupChild {
   search?: LinkProps['search'];
   /** A destructive action in a group of its own: centred, in alarm, no icon. */
   destructive?: boolean;
+  /**
+   * A row that cannot be taken *yet*.
+   *
+   * A real `disabled` button: out of the tab order, dimmed, and refused by the platform rather than by a guard
+   * inside `onClick` — which is what a caller needs when the refusal has to be visible to a test and to a screen
+   * reader alike. `CornerAction` took the same flag for the same reason in `16a3c47`.
+   */
+  disabled?: boolean;
   /** The row's accessible name, when its title alone does not read as one. */
   label?: string;
   /** What a test names this row by, so a locator survives the row changing shape. `Panel` already takes one. */
@@ -151,6 +159,7 @@ export function InsetRow({
   params,
   search,
   destructive = false,
+  disabled = false,
   label,
   testId,
   position,
@@ -197,7 +206,7 @@ export function InsetRow({
     </span>
   );
 
-  const shell = cx('relative block w-full bg-transparent', className);
+  const shell = cx('relative block w-full bg-transparent', disabled && 'opacity-40', className);
   const separator = position?.separator ? (
     <span
       aria-hidden
@@ -208,7 +217,21 @@ export function InsetRow({
 
   if (to) {
     return (
-      <Link to={to} params={params} search={search} aria-label={label} data-testid={testId} className={cx(shell, 'ph-focus-inset')}>
+      /*
+       * A link has no `disabled` of its own. `aria-disabled` says so out loud, `tabIndex={-1}` takes it out of the
+       * tab order, and the click is refused — the three things `disabled` does to a button, done by hand.
+       */
+      <Link
+        to={to}
+        params={params}
+        search={search}
+        aria-label={label}
+        aria-disabled={disabled || undefined}
+        tabIndex={disabled ? -1 : undefined}
+        data-testid={testId}
+        className={cx(shell, 'ph-focus-inset')}
+        onClick={disabled ? (event) => event.preventDefault() : undefined}
+      >
         {separator}
         {inner}
       </Link>
@@ -216,7 +239,14 @@ export function InsetRow({
   }
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} aria-label={label} data-testid={testId} className={cx(shell, 'ph-focus-inset text-left')}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        data-testid={testId}
+        className={cx(shell, 'ph-focus-inset text-left')}
+      >
         {separator}
         {inner}
       </button>
