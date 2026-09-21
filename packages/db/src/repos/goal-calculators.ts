@@ -261,7 +261,12 @@ export async function saveGoalCalculator(database: Database, ws: WorkspaceContex
   return database.transaction(async (tx) => {
     const [goal] = await tx.select().from(goalsTable).where(and(eq(goalsTable.id, input.goalId), eq(goalsTable.workspaceId, ws.workspaceId)));
     if (!goal) throw new GoalDbError('Goal not found in this workspace');
-    const derived = derive(input.kind, input.inputs, input.today, goal.name);
+    // A goal's return is its owner's (spec §8): a retirement working that names no return while saving keeps it.
+    const inputs =
+      input.kind === 'retirement' && (input.inputs as RetirementInputs).returnBeforeBps === undefined
+        ? { ...(input.inputs as RetirementInputs), returnBeforeBps: goal.returnBps }
+        : input.inputs;
+    const derived = derive(input.kind, inputs, input.today, goal.name);
     await writeCalculatorTx(tx, ws, goal, input.kind, derived);
     return derived.computedMinor;
   });

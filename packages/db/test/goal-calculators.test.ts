@@ -83,7 +83,8 @@ describe('a derived target', () => {
 
     await saveGoalCalculator(database, ws, { goalId, kind: 'retirement', inputs, today: TODAY });
 
-    expect((await getGoalCalculator(database, ws, goalId))!.inputs).toEqual({ ...inputs, version: 2 });
+    // With no return while saving named, the working records the goal's own (9%), which it kept.
+    expect((await getGoalCalculator(database, ws, goalId))!.inputs).toEqual({ ...inputs, returnBeforeBps: 900, version: 2 });
   });
 
   it('works the figure out again when an assumption changes', async () => {
@@ -96,7 +97,7 @@ describe('a derived target', () => {
     await saveGoalCalculator(database, ws, { goalId, kind: 'retirement', inputs: { ...inputs, yearsInRetirement: 30 }, today: TODAY });
 
     expect((await stagesOf(database, ws, goalId))[0]!.targetMinor!).toBeGreaterThan(before);
-    expect((await getGoalCalculator(database, ws, goalId))!.inputs).toEqual({ ...inputs, yearsInRetirement: 30, version: 2 });
+    expect((await getGoalCalculator(database, ws, goalId))!.inputs).toEqual({ ...inputs, yearsInRetirement: 30, returnBeforeBps: 900, version: 2 });
   });
 });
 
@@ -226,14 +227,18 @@ describe('today’s money', () => {
     expect((await goalPlansFor(database, ws, '2026-09-21')).plans[0]!.totalTargetMinor).toBe(4_120_008_061);
   });
 
-  it('saves retirement’s return while saving onto an existing goal', async () => {
+  it('saves retirement’s return while saving onto an existing goal, and never rewrites the goal’s own when it names none', async () => {
     const { database, ws } = await setupDb();
-    const goalId = await goal(database, ws, 'Retirement', 'retirement');
+    const goalId = await goal(database, ws, 'Retirement', 'retirement'); // its return typed as 9%
     const inputs = { annualSpendTodayMinor: 120_000_000, yearsToRetirement: 20, yearsInRetirement: 20, inflationBps: 350, returnInRetirementBps: 500 };
     await saveGoalCalculator(database, ws, { goalId, kind: 'retirement', inputs, today: '2026-09-21' });
-    expect((await listGoals(database, ws))[0]).toMatchObject({ growthBps: 350, returnBps: 1000 });
+    expect((await listGoals(database, ws))[0]).toMatchObject({ growthBps: 350, returnBps: 900 });
+    expect((await getGoalCalculator(database, ws, goalId))!.inputs).toMatchObject({ returnBeforeBps: 900 });
     await saveGoalCalculator(database, ws, { goalId, kind: 'retirement', inputs: { ...inputs, returnBeforeBps: 700 }, today: '2026-09-21' });
     expect((await listGoals(database, ws))[0]).toMatchObject({ growthBps: 350, returnBps: 700 });
+    // Saved again with no return named: the 7% stays.
+    await saveGoalCalculator(database, ws, { goalId, kind: 'retirement', inputs, today: '2026-09-21' });
+    expect((await listGoals(database, ws))[0]).toMatchObject({ returnBps: 700 });
   });
 
   it('gives an emergency fund no growth: it follows spending instead', async () => {
@@ -248,6 +253,14 @@ describe('today’s money', () => {
     const goalId = await createGoalFromCalculator(database, ws, { name: 'Aisha', kind: 'education', inputs: levels(), today: '2030-01-01' });
     // 24 months to 2032: the 1–3 years band, not the 8% a far-off level gets.
     expect((await listGoals(database, ws)).find((g) => g.id === goalId)).toMatchObject({ growthBps: 1200, returnBps: 500 });
+  });
+
+  it('takes the band from the level that starts first, not the one listed first', async () => {
+    const { database, ws } = await setupDb();
+    // Primary (2032, 72 months away) is listed before Preschool (2027, 12 months away): the goal opens at 4%, not 8%.
+    const inputs = levels([{ ...levels().levels[0]!, id: 'pre', name: 'Preschool', startYear: 2027, untilYear: 2028 }]);
+    const goalId = await createGoalFromCalculator(database, ws, { name: 'Aisha', kind: 'education', inputs, today: '2026-01-01' });
+    expect((await listGoals(database, ws)).find((g) => g.id === goalId)).toMatchObject({ returnBps: 400 });
   });
 
   it('stores each level’s return on its stages', async () => {
