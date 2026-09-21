@@ -145,7 +145,8 @@ export function CalculatorsPage() {
     : 0;
 
   const yearsToRetirement = num(retireAge) - num(ageNow);
-  const retirementOk = money(annualSpend) > 0 && yearsToRetirement > 0 && num(yearsInRetirement) > 0;
+  // The drawdown annuity is exact for whole years only; part of a year shows no answer rather than a guess.
+  const retirementOk = money(annualSpend) > 0 && yearsToRetirement > 0 && Number.isInteger(num(yearsInRetirement)) && num(yearsInRetirement) > 0;
   const retirementTarget = retirementOk
     ? retirementTargetMinor({
         annualSpendTodayMinor: money(annualSpend),

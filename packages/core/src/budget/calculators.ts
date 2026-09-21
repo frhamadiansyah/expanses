@@ -1,4 +1,5 @@
 import { futureValueMinor, monthlyNeededMinor } from '../goals/plan';
+import { divRound } from '../assets/units';
 import { roundHalfAwayFromZero } from '../money/money';
 
 /**
@@ -63,33 +64,118 @@ export function educationStages(inputs: EducationInputs, today: string): Calcula
   });
 }
 
+/**
+ * The annuity of a yearly amount in today's money, at the real rate: what a pot must hold to pay it for `years`.
+ *
+ * Exact, not floating point. The real growth factor is R ÷ I (R = 10000 + return bps, I = 10000 + inflation bps), so
+ * Σ_{k=1}^{n} (I/R)^k = I·(Rⁿ − Iⁿ) ÷ (Rⁿ·(R − I)); multiplied by the amount and divided once, in BigInt, with
+ * `divRound` (half away from zero). Each year is drawn at its end, as the old retirementTargetMinor assumed.
+ */
+export function presentValueOfYearsMinor(annualTodayMinor: number, years: number, inflationBps: number, returnBps: number): number {
+  if (!Number.isSafeInteger(annualTodayMinor)) throw new CalculatorError('An amount is a whole number of minor units');
+  if (!Number.isInteger(years) || years < 0) throw new CalculatorError('Years are whole years, not below nothing');
+  if (!Number.isInteger(inflationBps) || !Number.isInteger(returnBps)) throw new CalculatorError('Rates are whole basis points');
+  if (inflationBps <= -10_000 || returnBps <= -10_000) throw new CalculatorError('A rate cannot take away everything');
+  if (years === 0) return 0;
+  const i = 10_000n + BigInt(inflationBps);
+  const r = 10_000n + BigInt(returnBps);
+  const amount = BigInt(annualTodayMinor);
+  // Earning exactly what prices do: every year has to be there in full.
+  if (i === r) return Number(amount * BigInt(years));
+  const n = BigInt(years);
+  let numerator = amount * i * (r ** n - i ** n);
+  let denominator = r ** n * (r - i);
+  // A return below inflation makes both halves negative; divRound wants the denominator above zero.
+  if (denominator < 0n) {
+    numerator = -numerator;
+    denominator = -denominator;
+  }
+  return Number(divRound(numerator, denominator));
+}
+
 export interface RetirementInputs {
+  version?: 2;
   /** What a year of retirement costs at today's prices. */
   annualSpendTodayMinor: number;
   yearsToRetirement: number;
+  /** Whole years: the drawdown annuity is exact only for whole years. */
   yearsInRetirement: number;
   inflationBps: number;
   /** What the pot is expected to earn while it is being drawn down. */
   returnInRetirementBps: number;
+  /** What the money earns while you are still saving it. Written as the goal's return. */
+  returnBeforeBps?: number;
 }
 
-/**
- * The pot needed on the day you stop, drawn down over the years that follow. The money keeps earning
- * while it is spent, so the pot is smaller than the years times the spending — but only by however
- * much the return beats inflation, which in rupiah is often nothing at all.
- */
-export function retirementTargetMinor(inputs: RetirementInputs): number {
+function checkRetirement(inputs: RetirementInputs): void {
   assertAbove(inputs.annualSpendTodayMinor, 0, 'Annual spending');
   assertAbove(inputs.yearsInRetirement, 0, 'The number of years in retirement');
   if (inputs.yearsToRetirement < 0) throw new CalculatorError('Retirement cannot be in the past');
+}
 
-  const inflation = 1 + inputs.inflationBps / 10_000;
-  const spendAtRetirement = inputs.annualSpendTodayMinor * inflation ** inputs.yearsToRetirement;
-  const real = (1 + inputs.returnInRetirementBps / 10_000) / inflation - 1;
+/**
+ * The pot needed on the day you stop, in today's money, drawn down over the years that follow. The money keeps
+ * earning while it is spent, so the pot is smaller than the years times the spending — but only by however much
+ * the return beats inflation. The goal engine inflates it to the day you stop.
+ */
+export function retirementTodayMinor(inputs: RetirementInputs): number {
+  checkRetirement(inputs);
+  return presentValueOfYearsMinor(inputs.annualSpendTodayMinor, inputs.yearsInRetirement, inputs.inflationBps, inputs.returnInRetirementBps);
+}
 
-  // Earning exactly what prices do: every year has to be there in full.
-  if (Math.abs(real) < 1e-12) return roundHalfAwayFromZero(spendAtRetirement * inputs.yearsInRetirement);
-  return roundHalfAwayFromZero((spendAtRetirement * (1 - (1 + real) ** -inputs.yearsInRetirement)) / real);
+/**
+ * The same pot in the money of the day you stop — for showing, never for storing in a stage. Inflated by the goal
+ * engine's own reader, so the Calculators page shows exactly what the goal will.
+ */
+export function retirementTargetMinor(inputs: RetirementInputs): number {
+  return futureValueMinor(retirementTodayMinor(inputs), inputs.inflationBps, Math.round(inputs.yearsToRetirement * 12));
+}
+
+export interface LifeCoverInputs {
+  /** What the family would need each year, at today's prices. */
+  annualNeedTodayMinor: number;
+  /** Whole years. */
+  yearsOfSupport: number;
+  inflationBps: number;
+  /** What the payout earns while it is spent down. */
+  returnBps: number;
+  debtsMinor: number;
+  educationMinor: number;
+  finalExpensesMinor: number;
+  liquidAssetsMinor: number;
+  inForceCoverMinor: number;
+}
+
+export interface LifeCover {
+  incomeNeedMinor: number;
+  needsMinor: number;
+  resourcesMinor: number;
+  /** Never below nothing: when resources exceed needs, this is 0 and `surplusMinor` says by how much. */
+  coverMinor: number;
+  surplusMinor: number;
+}
+
+/**
+ * Capital needs analysis: every need at death, minus what is already there. Debts are added and assets taken off
+ * inside the method, once — never again afterwards, and never the lowest of several methods. Summed signed, then
+ * clamped.
+ */
+export function lifeCoverMinor(inputs: LifeCoverInputs): LifeCover {
+  const amounts = [
+    inputs.annualNeedTodayMinor,
+    inputs.debtsMinor,
+    inputs.educationMinor,
+    inputs.finalExpensesMinor,
+    inputs.liquidAssetsMinor,
+    inputs.inForceCoverMinor,
+  ];
+  if (amounts.some((amount) => !Number.isSafeInteger(amount) || amount < 0)) throw new CalculatorError('Amounts are whole minor units, not below nothing');
+  if (!Number.isInteger(inputs.yearsOfSupport) || inputs.yearsOfSupport < 0) throw new CalculatorError('Years of support are whole years, not below nothing');
+  const incomeNeedMinor = presentValueOfYearsMinor(inputs.annualNeedTodayMinor, inputs.yearsOfSupport, inputs.inflationBps, inputs.returnBps);
+  const needsMinor = incomeNeedMinor + inputs.debtsMinor + inputs.educationMinor + inputs.finalExpensesMinor;
+  const resourcesMinor = inputs.liquidAssetsMinor + inputs.inForceCoverMinor;
+  const gap = needsMinor - resourcesMinor;
+  return { incomeNeedMinor, needsMinor, resourcesMinor, coverMinor: Math.max(0, gap), surplusMinor: Math.max(0, -gap) };
 }
 
 export interface SavingPlanInput {
