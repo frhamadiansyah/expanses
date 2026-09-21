@@ -32,6 +32,8 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
   const [settings, setSettings] = useState(saved);
   const [taxText, setTaxText] = useState(rateInputText(saved.taxBps) || '0');
   const [error, setError] = useState<unknown>(null);
+  // Saves still on their way to the database: the group says so (aria-busy), so nothing reads it half-written.
+  const [saving, setSaving] = useState(0);
   const queue = useRef(Promise.resolve());
   // The latest settings, including a change made before React re-rendered: two changes in one tick both survive.
   const latest = useRef(saved);
@@ -44,6 +46,7 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
     latest.current = next;
     setSettings(next);
     setError(null);
+    setSaving((n) => n + 1);
     queue.current = queue.current.then(async () => {
       try {
         await saveDepositAutomation(database, ws, {
@@ -58,10 +61,13 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
           taxExempt: next.taxExempt,
           today: isoDate(),
         });
-        await invalidate();
       } catch (e) {
         setError(e);
+      } finally {
+        setSaving((n) => n - 1);
       }
+      // Refetching is not part of the save: the next change in the queue does not wait for the page to redraw.
+      void invalidate();
     });
   }
 
@@ -142,9 +148,9 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
   }
 
   return (
-    <>
+    <div data-testid="maturity-settings" aria-busy={saving > 0}>
       <InsetGroup header="At maturity">{rows}</InsetGroup>
       <ErrorBox error={error} />
-    </>
+    </div>
   );
 }

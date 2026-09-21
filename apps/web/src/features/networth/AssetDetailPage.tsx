@@ -9,6 +9,7 @@ import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { AssetSettings } from './AssetSettings';
+import { DepositProposalCard } from './DepositProposalCard';
 import { DepositTermsCard } from './DepositTermsCard';
 import { MaturitySettings } from './MaturitySettings';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
@@ -94,6 +95,11 @@ export function AssetDetailPage() {
               </>
             }
           />
+
+          {/* A due event of an automated deposit: directly under the hero, above every other group (spec §6.1). */}
+          {account?.subtype === 'time_deposit' && (
+            <DepositProposalCard accountId={accountId} onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })} />
+          )}
 
           {value.mode === 'market' && (
             <PriceForm

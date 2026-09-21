@@ -115,6 +115,12 @@ export async function automate(page: Page, c: Pick<Combo, 'choice' | 'paid' | 'e
   await page.getByLabel('Interest paid').selectOption(c.paid);
   await page.getByLabel('Term', { exact: true }).selectOption(termMonths);
   if (c.exempt) await page.getByLabel('Tax-free deposit').check();
+  await settingsSaved(page);
+}
+
+/** Every change the settings group made has reached the database, so a reload or a clock jump cannot lose one. */
+export async function settingsSaved(page: Page) {
+  await expect(page.getByTestId('maturity-settings')).toHaveAttribute('aria-busy', 'false');
 }
 
 /**
