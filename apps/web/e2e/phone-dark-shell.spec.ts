@@ -89,6 +89,37 @@ test('the backup reminder, its button and its ink all move together', async ({ p
   expect(await inked(download)).toBe(await tokenColour(page, '--ph-surface'));
 });
 
+test('a screen the decision list left alone follows the reader too', async ({ page }) => {
+  await page.goto('/transactions');
+  await expect(tabBar(page)).toBeVisible();
+
+  /*
+   * Every element on the screen, not a sampled one: Tailwind's names are the kit's colours now, so a **light
+   * ground** anywhere in the tree is a literal that escaped the remap, and this names it rather than hoping.
+   *
+   * White is deliberately not on the list. A filled control is `--ph-ink` as a fill with `--ph-surface` for its
+   * text, so in the dark it *is* white with dark text on it — the palette working, not a survivor. What the sweep
+   * is looking for is the greys and the toned panels, which have no business being light on a black page: slate's
+   * 50, 100 and 200, and the four panel grounds.
+   */
+  const survivors = await page.evaluate(() => {
+    const light = ['rgb(248, 250, 252)', 'rgb(241, 245, 249)', 'rgb(226, 232, 240)', 'rgb(240, 249, 255)', 'rgb(254, 243, 199)', 'rgb(254, 242, 242)', 'rgb(236, 253, 245)'];
+    const found: string[] = [];
+    for (const element of document.querySelectorAll('body *')) {
+      const painted = getComputedStyle(element).backgroundColor;
+      if (!light.includes(painted)) continue;
+      found.push(`${element.tagName.toLowerCase()}.${element.getAttribute('class') ?? ''} → ${painted}`);
+    }
+    return found.slice(0, 10);
+  });
+  expect(survivors).toEqual([]);
+
+  // And the white utilities did move rather than merely survive: `bg-white` is the surface, which is near-black here.
+  expect(await tokenColour(page, '--ph-surface')).toBe('rgb(28, 28, 30)');
+  expect(await painted(page.locator('.bg-white').first())).toBe(await tokenColour(page, '--ph-surface'));
+  expect(await painted(page.locator('.bg-white').first())).not.toBe('rgb(255, 255, 255)');
+});
+
 test.describe('the same shell in the light', () => {
   test.use({ colorScheme: 'light' });
 
@@ -101,5 +132,9 @@ test.describe('the same shell in the light', () => {
     expect(await tokenColour(page, '--ph-chrome')).toBe('rgba(255, 255, 255, 0.8)');
     expect(await painted(bar)).toBe(await tokenColour(page, '--ph-chrome'));
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(await tokenColour(page, '--ph-ground'));
+
+    // The same name the dark remaps is a real light surface here, which is what makes the sweep above mean
+    // something: it is looking for a *light* value, and in this mode finding one is correct.
+    expect(await painted(page.locator('.bg-white').first())).toBe('rgb(255, 255, 255)');
   });
 });

@@ -1,7 +1,66 @@
 @import "tailwindcss";
 
 /*
- * The shell follows the reader's system, as the kit already does: the two palettes are the same nine names, and
+ * One palette, reached through the names the app already uses.
+ *
+ * The app was built on Tailwind's slate — `bg-white`, `bg-slate-50`, `text-slate-500` — and the kit on its own
+ * names. Two colour families for one job, and only one of them followed the reader into the dark, so 81 files of
+ * utilities stayed light on a black page. Rewriting 694 of them would have meant touching screens the decision
+ * list says to leave alone; naming the same nine colours for Tailwind is one file, and every `bg-slate-*` in the
+ * app becomes the kit's colour without a line of screen code changing.
+ *
+ * This is not a second palette. Every name below *is* a kit token — `@theme` is Tailwind v4's own seam for
+ * saying what its scale means — and the tone names are mapped by the ground each one was written for:
+ *
+ *   - the pale weights (50, 100) were the grounds of a banner or a chip, so they become a **panel**;
+ *   - the dark weights (800, 900) were the ink written *on* one, so they become a **panel's ink**;
+ *   - the mid weight (700) was the plain-text warning, so it becomes the kit's **on-page ink** for that tone,
+ *     which is the darker half of the pair in the light and the brighter half in the dark;
+ *   - the marks (200 to 600) are not remapped at all. A dot, a ring or a progress fill keeps the hue it has,
+ *     because on a dark page a light amber mark is still a mark — and remapping them would have moved bars and
+ *     dots in the light for nothing.
+ *
+ * The one place this is not enough is a colour doing a job the kit has no name for, and there is exactly one:
+ * `--ph-chrome` (the frosted bar) and `--ph-scrim` (behind a sheet), which are alpha and are used as themselves.
+ */
+@theme {
+  /* The surface, and the neutral scale, which is the kit's ground, fill, hairline, tertiary ink and ink. */
+  --color-white: var(--ph-surface);
+  --color-slate-50: var(--ph-ground);
+  --color-slate-100: var(--ph-fill);
+  --color-slate-200: var(--ph-hair);
+  --color-slate-300: var(--ph-chevron);
+  --color-slate-400: var(--ph-ink-3);
+  --color-slate-500: var(--ph-ink-3);
+  --color-slate-600: var(--ph-ink-2);
+  --color-slate-700: var(--ph-ink-2);
+  --color-slate-800: var(--ph-ink);
+  --color-slate-900: var(--ph-ink);
+
+  /* The install banner. */
+  --color-sky-100: var(--ph-info-panel);
+  --color-sky-800: var(--ph-info-ink);
+
+  /* A warning: needs attention, unplanned, past due. */
+  --color-amber-50: var(--ph-warn-panel);
+  --color-amber-100: var(--ph-warn-panel);
+  --color-amber-700: var(--ph-warn);
+  --color-amber-800: var(--ph-warn-ink);
+  --color-amber-900: var(--ph-warn-ink);
+
+  /* Something went wrong. */
+  --color-red-50: var(--ph-alarm-panel);
+  --color-red-700: var(--ph-alarm);
+
+  /* Money coming in, a confirmation, the one green button. */
+  --color-emerald-50: var(--ph-tint-panel);
+  --color-emerald-100: var(--ph-tint-panel);
+  --color-emerald-700: var(--ph-tint);
+  --color-emerald-800: var(--ph-tint-ink);
+}
+
+/*
+ * The shell follows the reader's system, as the kit already does: the two palettes are the same names, and
  * `light dark` is what lets the browser draw its own furniture — a scrollbar, a date picker, a file chooser — in
  * the mode the rest of the page is in. Pinned to `light`, a black page kept a white scrollbar beside it.
  */
