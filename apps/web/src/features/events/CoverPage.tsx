@@ -250,7 +250,10 @@ export function CoverPage() {
           />
         </InsetGroup>
 
-        {items.length === 0 ? (
+        {/* No share box before the stored shares are seeded: a share typed first would be overwritten as they land. */}
+        {!seeded ? (
+          <p className="text-sm text-[var(--ph-ink-3)]">Loading…</p>
+        ) : items.length === 0 ? (
           <Empty>This event has nothing on its plan yet, so there is nothing for the receipt to answer.</Empty>
         ) : (
           <InsetGroup header="What it paid for" footer="Tick everything this receipt paid for and give each its share. One receipt can settle many items.">
