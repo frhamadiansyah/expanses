@@ -2,8 +2,8 @@ import { searchSecurities } from '@expanses/catalog';
 import type { SecurityRow } from '@expanses/db';
 import { formatUnits } from '@expanses/core';
 import { useEntitlement } from '../../lib/entitlements';
-import { Input } from '../../ui';
-import { InsetGroup, InsetRow } from '../../ui/native';
+import { cx, Input } from '../../ui';
+import { InsetGroup, InsetRow, useWide } from '../../ui/native';
 import type { Picked } from './add-holding';
 import { useSecurityList } from './queries';
 
@@ -17,16 +17,20 @@ export function SecuritySearch({ query, onQuery, held, heldUnits, onPick, onName
   onNameIt: () => void;
 }) {
   const foreign = useEntitlement('foreign_securities');
-  const idx = useSecurityList('idx', true);
-  const us = useSecurityList('us', foreign);
+  const idx = useSecurityList('idx');
+  const us = useSecurityList('us');
   const mine = searchSecurities(held, query);
   const mineKeys = new Set(mine.map((s) => `${s.market}:${s.ticker}`));
   const listed = searchSecurities([...(idx.data?.securities ?? []), ...(foreign ? (us.data?.securities ?? []) : [])], query).filter((s) => !mineKeys.has(`${s.market}:${s.ticker}`));
   const searching = query.trim() !== '';
   const failed = idx.isError || (foreign && us.isError);
+  // The box stops growing where the groups under it do, so on a desktop it is exactly their width.
+  const wide = useWide(false);
   return (
     <>
-      <Input aria-label="Ticker or name" placeholder="Ticker or name" value={query} onChange={(e) => onQuery(e.target.value)} autoFocus />
+      <div className={cx('w-full', wide ? '' : 'md:max-w-2xl')}>
+        <Input aria-label="Ticker or name" placeholder="Ticker or name" value={query} onChange={(e) => onQuery(e.target.value)} autoFocus />
+      </div>
       {mine.length > 0 && (
         <InsetGroup header="You hold">
           {mine.map((s) => (

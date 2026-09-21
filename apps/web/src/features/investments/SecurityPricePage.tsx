@@ -1,4 +1,4 @@
-import { formatMinor, formatPriceMicro, isoDate, parsePriceMicro } from '@expanses/core';
+import { formatPriceMicro, isoDate } from '@expanses/core';
 import { upsertSecurityPrice } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
@@ -8,6 +8,7 @@ import { ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN, TextRow } from '../../ui/native';
 import { dayLabel, priceChangeLines } from './portfolio-view';
 import { usePortfolio, useSecurityPrices } from './queries';
+import { changeText, lastPriceOnOrBefore, planPriceSave, typedPrice } from './security-price';
 
 /** One price per security: typed once here, it values every broker that holds it (spec §3.1, §7.3). */
 export function SecurityPricePage() {
@@ -25,13 +26,9 @@ export function SecurityPricePage() {
   const [busy, setBusy] = useState(false);
   const currency = security?.currency ?? ws.baseCurrency;
   const label = security ? (security.ticker ?? security.name) : 'Price';
-  const last = (prices.data ?? []).find((row) => row.onDate <= onDate) ?? null;
-  let typed: number | null = null;
-  try {
-    typed = price.trim() ? parsePriceMicro(price, currency) : null;
-  } catch {
-    typed = null;
-  }
+  const last = lastPriceOnOrBefore(prices.data ?? [], onDate);
+  // Null until the security has loaded, so Save waits for the currency the price is read in.
+  const typed = typedPrice(price, security);
 
   async function save(event?: FormEvent) {
     event?.preventDefault();
@@ -39,8 +36,7 @@ export function SecurityPricePage() {
     setError(null);
     setBusy(true);
     try {
-      if (onDate > isoDate()) throw new Error('A price cannot be dated after today');
-      await upsertSecurityPrice(database, ws, { securityId, onDate, priceMicro: parsePriceMicro(price, currency) });
+      await upsertSecurityPrice(database, ws, planPriceSave({ security, price, onDate, today: isoDate() }));
       await invalidate();
       await navigate({ to: '/net-worth/investments/security/$securityId', params: { securityId } });
     } catch (e) {
@@ -65,7 +61,7 @@ export function SecurityPricePage() {
               testId="price-change-row"
               // Two holdings kept with no broker are two lines, each named, never one.
               title={line.holding.brokerAccountId ? line.holding.brokerName : `${line.holding.brokerName} · ${line.holding.name}`}
-              subtitle={line.changeMinor === null ? undefined : `${line.changeMinor >= 0 ? '+' : ''}${formatMinor(line.changeMinor, currency)}`}
+              subtitle={line.changeMinor === null ? undefined : changeText(line.changeMinor, currency)}
               value={<Money minor={line.valueMinor} currency={currency} />}
               valueTone="ink"
             />

@@ -8,6 +8,12 @@ import { approxLine, Figure } from '../../ui/native';
  * The desktop's table for the Investments screens, drawn as the Debts page draws its own: a surface of kit tokens,
  * headers in the group-header voice, the first cell a real link, and a click anywhere else on the row going to the
  * same place. The phone never sees it — there each record is a row with its chevron (`usePhone`).
+ *
+ * Why not the kit's `RecordTable` (S4 m6, checked 2026-09-22): it would lose things these screens rely on. Its desktop
+ * rows open nothing (no link in the first cell, no row click), its phone rows open through `onClick` rather than real
+ * route links, and it has no group footer, trailing figure or table-level test id — Held at's footer, the Investments
+ * header's trailing total and the e2e's `*-table` handles all live there. Promoting this table into the kit, with
+ * those, is the way to one phone-rows/desktop-table rule.
  */
 
 export interface InvestColumn<T> {

@@ -8,7 +8,7 @@ import { useTrades } from '../networth/queries';
 import { DesktopBand, InvestTable } from './InvestTable';
 import { dayLabel, type HoldingLine, type StockRow } from './portfolio-view';
 import { usePortfolio, useSecurityPrices } from './queries';
-import { baseGainOf, boughtAtRate, type RecentLine, recentTrades } from './security-view';
+import { baseGainLine, boughtAtRate, type RecentLine, securityPageModel } from './security-view';
 
 type Rates = Readonly<Record<string, number>>;
 
@@ -61,13 +61,14 @@ function StockFigure({ stock, base, rates, left }: { stock: StockRow; base: stri
 
 /** A foreign stock in base — both true: R1 puts the stock's own figure in the big text, this one includes the rate. */
 function InBaseGroup({ stock, base }: { stock: StockRow; base: string }) {
-  const baseGain = baseGainOf(stock);
+  // With no rate today the row names the missing rate: never a value of 0 read as a −100% gain.
+  const gainLine = baseGainLine(stock, base);
   const boughtAt = boughtAtRate(stock, base);
   return (
     <>
-      {stock.currency !== base && (baseGain || boughtAt !== null) && (
+      {stock.currency !== base && (gainLine !== null || boughtAt !== null) && (
         <InsetGroup header={`In ${base}`} footer="Both are true: the figure above is what the stock did; this one includes the exchange rate moving.">
-          {baseGain && <ReadOnlyRow label={`Gain in ${base}`} value={[baseGain.bps === null ? null : formatBps(baseGain.bps), formatMinor(baseGain.gainMinor, base)].filter(Boolean).join(' · ')} />}
+          {gainLine !== null && <ReadOnlyRow label={`Gain in ${base}`} value={gainLine} />}
           {boughtAt !== null && <ReadOnlyRow label="Bought at" value={rateLine(boughtAt, stock.currency, base)} />}
         </InsetGroup>
       )}
@@ -102,9 +103,9 @@ export function SecurityPage() {
   const trades = useTrades();
   const base = ws.baseCurrency;
   const security = securities.find((s) => s.id === securityId);
-  const stock = view?.stocks.find((s) => s.securityId === securityId);
+  const model = view ? securityPageModel({ view, securityId, trades: trades.data ?? [], buyBaseMinor: costs?.buyBaseMinor ?? {}, base }) : null;
   const title = security ? (security.ticker ?? security.name) : 'Stock';
-  if (!stock || !security)
+  if (!model || !security)
     return (
       <div className={SCREEN}>
         <LargeTitle title={title} {...BACK} oneLine />
@@ -113,8 +114,8 @@ export function SecurityPage() {
       </div>
     );
 
+  const { stock, recent } = model;
   const latest = prices.data?.[0];
-  const recent = recentTrades(trades.data ?? [], stock, costs?.buyBaseMinor ?? {}, base);
   const foreign = stock.currency !== base;
   const recentFooter = foreign ? `The ${base} cost of a buy is fixed at the rate on its day, and it never moves again.` : undefined;
   const subtitle = [security.name !== title ? security.name : null, formatLots(stock.unitsMicro, stock.lotSize ?? 1), security.market || null].filter(Boolean).join(' · ');

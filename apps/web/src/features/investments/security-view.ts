@@ -1,7 +1,7 @@
-import { formatUnits, gainBps, rateFromAmounts } from '@expanses/core';
+import { formatBps, formatMinor, formatUnits, gainBps, rateFromAmounts } from '@expanses/core';
 import { type AccountRow, pocketParentIds, type TradeRow } from '@expanses/db';
-import type { BrokerRow, StockRow } from './portfolio-view';
-import { dayLabel } from './portfolio-view';
+import type { BrokerRow, HoldingLine, PortfolioView, StockRow } from './portfolio-view';
+import { dayLabel, NO_BROKER } from './portfolio-view';
 
 /**
  * The pure half of the stock and broker pages: what their read-only lines say, so the money in them is tested
@@ -12,6 +12,17 @@ import { dayLabel } from './portfolio-view';
 export function baseGainOf(stock: Pick<StockRow, 'valueBaseMinor' | 'costBaseMinor'>): { gainMinor: number; bps: number | null } | null {
   if (stock.valueBaseMinor === null || stock.costBaseMinor === null) return null;
   return { gainMinor: stock.valueBaseMinor - stock.costBaseMinor, bps: gainBps(stock.valueBaseMinor, stock.costBaseMinor) };
+}
+
+/**
+ * The "Gain in {base}" row's words: the gain; or, with no rate for the stock's currency today, that rate named — never
+ * a value of 0 and a −100% gain. Null (no row) when what was put in is not known: "Put in" already says so.
+ */
+export function baseGainLine(stock: Pick<StockRow, 'currency' | 'valueBaseMinor' | 'costBaseMinor'>, base: string): string | null {
+  if (stock.costBaseMinor === null) return null;
+  if (stock.valueBaseMinor === null) return `No ${stock.currency} rate yet`;
+  const gain = baseGainOf(stock)!;
+  return [gain.bps === null ? null : formatBps(gain.bps), formatMinor(gain.gainMinor, base)].filter(Boolean).join(' · ');
 }
 
 /** "Bought at": base cost over native cost — the blended rate of every buy still held. Null when either is nothing. */
@@ -55,8 +66,10 @@ export function recentTrades(
     .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn) || b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit)
     .map((trade) => {
-      const pinned = trade.kind === 'buy' && foreign ? (buyBaseMinor[trade.id] ?? null) : null;
       const cost = trade.grossMinor + trade.feeMinor + trade.taxMinor;
+      // A buy that cost something but was pinned at 0 (the ledger's fallback) is unknown, never "Rp 0".
+      const held = trade.kind === 'buy' && foreign ? (buyBaseMinor[trade.id] ?? null) : null;
+      const pinned = held === 0 && cost > 0 ? null : held;
       return {
         id: trade.id,
         accountId: trade.accountId,
@@ -92,4 +105,50 @@ export function idleCash(broker: Pick<BrokerRow, 'accountId'>, accounts: readonl
     const currency = a.currency ?? base;
     return { accountId: a.id, label: holders.length > 1 ? `Cash idle · ${currency}` : 'Cash idle', currency, minor: balances[a.id] ?? 0 };
   });
+}
+
+/** The stock page's reads, put together: the stock and its recent trades, each foreign buy with its pinned cost. */
+export function securityPageModel(p: {
+  view: PortfolioView;
+  securityId: string;
+  trades: readonly TradeRow[];
+  buyBaseMinor: Readonly<Record<string, number>>;
+  base: string;
+}): { stock: StockRow; recent: RecentLine[] } | null {
+  const stock = p.view.stocks.find((s) => s.securityId === p.securityId);
+  if (!stock) return null;
+  return { stock, recent: recentTrades(p.trades, stock, p.buyBaseMinor, p.base) };
+}
+
+export interface BrokerHoldingRow {
+  holding: HoldingLine;
+  title: string;
+  /** A linked stock opens its stock page; an unlinked holding its asset page. */
+  opens: { securityId: string } | { accountId: string };
+}
+
+/**
+ * The broker page's reads, put together: the broker, its idle cash and a titled row per holding. On the no-broker
+ * page, two holdings of one stock are each named ("No broker named · {holding}") — never "BBCA" twice.
+ */
+export function brokerPageModel(p: {
+  view: PortfolioView;
+  key: string;
+  accounts: readonly AccountRow[];
+  balances: Readonly<Record<string, number>> | undefined;
+  base: string;
+}): { broker: BrokerRow; cash: IdleCash[]; rows: BrokerHoldingRow[] } | null {
+  const broker = p.view.brokers.find((b) => b.key === p.key);
+  if (!broker) return null;
+  const stockOf = (h: HoldingLine) => p.view.stocks.find((s) => s.holdings.some((line) => line.accountId === h.accountId));
+  const rows = broker.holdings.map((holding): BrokerHoldingRow => {
+    const stock = stockOf(holding);
+    const shared = broker.key === NO_BROKER && !!stock && broker.holdings.some((other) => other.accountId !== holding.accountId && stock.holdings.some((line) => line.accountId === other.accountId));
+    return {
+      holding,
+      title: shared ? `${holding.brokerName} · ${holding.name}` : (stock?.title ?? holding.name),
+      opens: stock?.securityId ? { securityId: stock.securityId } : { accountId: holding.accountId },
+    };
+  });
+  return { broker, cash: p.balances ? idleCash(broker, p.accounts, p.balances, p.base) : [], rows };
 }

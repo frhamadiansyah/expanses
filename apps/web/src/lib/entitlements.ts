@@ -50,18 +50,26 @@ export function setPreviewEntitlement(entitlement: Entitlement, on: boolean, sto
   for (const listener of listeners) listener();
 }
 
-function subscribe(listener: () => void): () => void {
+type Events = Pick<Window, 'addEventListener' | 'removeEventListener'>;
+
+/**
+ * Tells `listener` whenever the list changes — this tab's switch, or another tab's through the `storage` event — so
+ * a screen already open follows it. `events` is the window, or a stand-in in a test.
+ */
+export function subscribeEntitlements(listener: () => void, events: Events | null = typeof window === 'undefined' ? null : window): () => void {
   listeners.add(listener);
-  // Another tab flipping the switch reaches this one too.
-  const onStorage = (event: StorageEvent) => event.key === ENTITLEMENTS_KEY && listener();
-  window.addEventListener('storage', onStorage);
+  // Another tab flipping the switch reaches this one too; any other key is not ours.
+  const onStorage = (event: Event) => (event as StorageEvent).key === ENTITLEMENTS_KEY && listener();
+  events?.addEventListener('storage', onStorage);
   return () => {
     listeners.delete(listener);
-    window.removeEventListener('storage', onStorage);
+    events?.removeEventListener('storage', onStorage);
   };
 }
 
-/** Read on every change of the list, so a screen already open follows the switch. */
+const subscribe = (listener: () => void) => subscribeEntitlements(listener);
+
+/** Read on every change of the list, so a screen already open follows the switch. Nothing is granted before it is read. */
 export function useEntitlement(entitlement: Entitlement): boolean {
   return useSyncExternalStore(subscribe, () => hasEntitlement(entitlement), () => false);
 }
