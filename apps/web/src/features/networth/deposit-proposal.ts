@@ -1,5 +1,5 @@
 import { formatMinor, minorToMajorString, parseMajor, type TermMonths } from '@expanses/core';
-import type { DepositProposal } from '@expanses/db';
+import type { DepositProposal, HandRecordedEvent } from '@expanses/db';
 import { maturityLabel, rateBpsFrom, rateInputText, rateLabel } from './deposit-terms';
 import { termLabel } from './maturity-settings';
 
@@ -60,6 +60,12 @@ export function landsText(p: DepositProposal, draft: ProposalDraft): string {
 export function proposalHeader(p: DepositProposal, today: string): string {
   const when = p.event.dueOn === today ? 'today' : maturityLabel(p.event.dueOn);
   return p.event.kind === 'maturity' ? `Matured ${when}` : `Interest due ${when}`;
+}
+
+/** A hand-recorded event as the undo row names it: which event, and what the owner said landed. */
+export function handEventLabel(event: HandRecordedEvent, currency: string): string {
+  const what = event.kind === 'maturity' ? `Matured ${maturityLabel(event.dueOn)}` : `Interest due ${maturityLabel(event.dueOn)}`;
+  return `${what} · ${formatMinor(event.netMinor, currency)}`;
 }
 
 /**

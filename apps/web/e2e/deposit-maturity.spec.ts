@@ -178,3 +178,50 @@ test('refuses on screen to void a payout from before a logged roll-over, and say
   // Refused whole: nothing moved.
   await expectBalance(page, s.payoutName, '1.428.494');
 });
+
+test('undoes a payout recorded by hand: nothing posts or is voided, it is proposed again, and the roll-over before it can then be voided', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'principal', paid: 'monthly', exempt: false });
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  await confirmEach(page, ['144.384', '144.384', '139.726']);
+  await expect(page.getByText('Matures 15 Jan 2027 · 4,25%')).toBeVisible();
+  // The first payout of the new term, recorded by hand.
+  await page.clock.setSystemTime(at('2026-11-15'));
+  await page.reload();
+  const card = page.getByTestId('deposit-proposal');
+  await expect(card).toContainText('Interest due today');
+  await card.getByRole('button', { name: 'Recorded it myself' }).click();
+  await expect(card).toHaveCount(0);
+
+  // While it is logged, the October roll-over cannot be voided.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Earlier period' }).click();
+  await page.getByRole('link', { name: 'Receipt for Interest: BCA Deposito' }).click();
+  await page.getByRole('button', { name: 'Delete this transaction' }).click();
+  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(page.getByText('Void that one first, then this one.')).toBeVisible();
+
+  await openDeposit(page, s.depositName);
+  const byHand = page.getByTestId('recorded-by-hand');
+  await expect(byHand.getByRole('button', { name: /Undo recorded by hand/ })).toHaveCount(1);
+  await expect(byHand).toContainText('Interest due 15 Nov 2026 · Rp 144.384');
+  await byHand.getByRole('button', { name: /Undo recorded by hand/ }).click();
+  await expect(byHand).toHaveCount(0);
+  await expect(card).toContainText('Interest due today');
+  await expect(card).toContainText('144.384');
+  await expectBalance(page, s.payoutName, '1.428.494'); // nothing posted, nothing voided
+
+  // Now the roll-over voids, and its maturity is proposed again at its old terms.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Earlier period' }).click();
+  await page.getByRole('link', { name: 'Receipt for Interest: BCA Deposito' }).click();
+  await page.getByRole('button', { name: 'Delete this transaction' }).click();
+  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(page).toHaveURL(/\/transactions(\?|$)/);
+  await openDeposit(page, s.depositName);
+  await expect(card).toContainText('Matured 15 Oct 2026');
+  await expect(card).toContainText('139.726');
+  await expectBalance(page, s.payoutName, '1.288.768');
+});

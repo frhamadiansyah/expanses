@@ -1,7 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { DepositProposal } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { cardFigures, draftFrom, interestLine, landsText, newRateText, outcomeLine, proposalHeader, readDraft } from './deposit-proposal';
+import { cardFigures, draftFrom, handEventLabel, interestLine, landsText, newRateText, outcomeLine, proposalHeader, readDraft } from './deposit-proposal';
 
 const idr: DepositProposal = {
   accountId: 'dep', name: 'BCA Deposito', currency: 'IDR',
@@ -117,5 +117,13 @@ describe('the draft guards', () => {
     const closing: DepositProposal = { ...idr, settings: { ...idr.settings, atMaturity: 'close' } };
     expect(() => readDraft(closing, { ...draftFrom(closing), principal: '0' })).toThrow('Say how much came back');
     expect(() => readDraft(closing, { ...draftFrom(closing), principal: '-1' })).toThrow('Say how much came back');
+  });
+});
+
+describe('an event recorded by hand, on its undo row', () => {
+  it('names the event, its day and what the owner said landed', () => {
+    const row = { id: 'e', dueOn: '2026-08-15', grossMinor: 180_500, taxMinor: 36_100, netMinor: 144_400 };
+    expect(handEventLabel({ ...row, kind: 'monthly' }, 'IDR')).toBe(`Interest due 15 Aug 2026 · ${formatMinor(144_400, 'IDR')}`);
+    expect(handEventLabel({ ...row, kind: 'maturity', dueOn: '2026-10-15' }, 'USD')).toBe(`Matured 15 Oct 2026 · ${formatMinor(144_400, 'USD')}`);
   });
 });

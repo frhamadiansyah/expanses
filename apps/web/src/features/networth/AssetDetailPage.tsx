@@ -15,6 +15,7 @@ import { MaturitySettings } from './MaturitySettings';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
+import { RecordedByHand } from './RecordedByHand';
 import { useAssetProfile, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { ValuationForm } from './ValuationForm';
 import { ValueChart } from './ValueChart';
@@ -189,6 +190,7 @@ export function AssetDetailPage() {
 
       {value && <DepositTermsCard accountId={accountId} />}
       {value && account?.subtype === 'time_deposit' && <MaturitySettings accountId={accountId} currency={value.currency} />}
+      {value && account?.subtype === 'time_deposit' && <RecordedByHand accountId={accountId} currency={value.currency} />}
 
       {/* Only once the profile is in: the form fills its boxes when it mounts, and an empty code reads as "type one". */}
       {value && !profile.isPending && (

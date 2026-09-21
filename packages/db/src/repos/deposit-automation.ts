@@ -24,12 +24,19 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { depositAutomation, depositEvents, depositTerms } from '../schema-assets';
 import { AccountError, type AccountRow, archiveAccountTx, postedBalanceTx, SPENDABLE_SUBTYPES } from './accounts';
-import { automationTablesExist, DepositAutomationError, type DepositAutomationErrorCode } from './deposit-event-log';
+import {
+  automationTablesExist,
+  DepositAutomationError,
+  type DepositAutomationErrorCode,
+  type HandRecordedEvent,
+  undoableByHandTx,
+  undoRecordedByHandTx,
+} from './deposit-event-log';
 import { type DepositTermsRow, getDepositTermsTx, saveDepositTermsTx } from './deposit-terms';
 import { nativeBalances, postTransactionTx } from './ledger';
 import { tradeAccountsFor } from './trades';
 
-export { automationTablesExist, DepositAutomationError, type DepositAutomationErrorCode };
+export { automationTablesExist, DepositAutomationError, type DepositAutomationErrorCode, type HandRecordedEvent };
 
 export interface DepositAutomationSettings {
   enabled: boolean;
@@ -435,4 +442,17 @@ export async function depositIncomePayments(database: Database, ws: WorkspaceCon
       feeMinor: 0,
       taxMinor: row.taxMinor,
     }));
+}
+
+/** The deposit's hand-recorded events that "Undo recorded by hand" can take back now (no later event blocks them). */
+export async function listUndoableByHand(database: Database, ws: WorkspaceContext, accountId: string): Promise<HandRecordedEvent[]> {
+  return undoableByHandTx(database.db, ws, accountId);
+}
+
+/**
+ * "Undo recorded by hand": removes that event's log row and whatever its confirm did beyond the ledger, so the
+ * proposal returns. Nothing is posted or voided. Refused with NOT_LAST while a later event blocks it.
+ */
+export async function undoRecordedByHand(database: Database, ws: WorkspaceContext, eventId: string): Promise<void> {
+  await database.transaction((tx) => undoRecordedByHandTx(tx, ws, eventId));
 }

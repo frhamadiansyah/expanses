@@ -17,6 +17,7 @@ import {
   getDepositTerms,
   inBook,
   listAccounts,
+  listUndoableByHand,
   listDueDeposits,
   nativeBalances,
   openCashAccount,
@@ -25,6 +26,7 @@ import {
   replaceTransaction,
   saveDepositAutomation,
   type SaveDepositAutomationInput,
+  undoRecordedByHand,
   voidTransaction,
   type WorkspaceContext,
 } from '../src/index';
@@ -832,5 +834,111 @@ describe('editing the posted interest, beyond the tax the confirm posted', () =>
       ],
     });
     expect(await logged()).toMatchObject([{ grossMinor: 180_501, taxMinor: 36_100, netMinor: 144_401 }]);
+  });
+});
+
+describe('undo recorded by hand', () => {
+  const transactionCount = async () => (await database.db.values(sql`SELECT count(*) FROM transactions`))[0]![0];
+  const eventOn = async (dueOn: string) => (await logged()).find((row) => row.dueOn === dueOn)!;
+
+  it('takes a hand-recorded payout off the log and proposes it again; nothing is posted or voided', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { grossMinor: 180_500, taxMinor: 36_100, byHand: true }));
+    const before = { balances: await nativeBalances(database, ws), transactions: await transactionCount() };
+    expect(await listUndoableByHand(database, ws, depositoId)).toEqual([
+      { id: (await eventOn('2026-08-15')).id, kind: 'monthly', dueOn: '2026-08-15', grossMinor: 180_500, taxMinor: 36_100, netMinor: 144_400 },
+    ]);
+    await undoRecordedByHand(database, ws, (await eventOn('2026-08-15')).id);
+    expect(await logged()).toEqual([]);
+    expect(await depositIncomePayments(database, ws)).toEqual([]);
+    expect({ balances: await nativeBalances(database, ws), transactions: await transactionCount() }).toEqual(before);
+    expect(await database.db.values(sql`SELECT count(*) FROM transactions WHERE status = 'void'`)).toEqual([[0]]);
+    expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'monthly', dueOn: '2026-08-15' }, waiting: 2, grossMinor: 180_479, taxMinor: 36_095 });
+  });
+
+  it('takes back the term a hand-recorded roll-over started: rate, length and start as they were', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { newRateBps: 510, newTermMonths: 6, byHand: true }));
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2027-04-15', rateBps: 510 });
+    await undoRecordedByHand(database, ws, (await eventOn('2026-10-15')).id);
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2026-10-15', rateBps: 425 });
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ termMonths: 3, termStartedOn: null });
+    expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'maturity', dueOn: '2026-10-15', days: 92 }, rateBps: 425, grossMinor: 535_616 });
+  });
+
+  it('reopens a hand-recorded close: automation back on, the deposit left open, the maturity proposed again', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { byHand: true }));
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(false);
+    await undoRecordedByHand(database, ws, (await eventOn('2026-10-15')).id);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(true);
+    expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
+    // Never archived, so nothing to un-archive: no audit row either way.
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${depositoId} AND action LIKE '%archive'`)).toEqual([]);
+    expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'maturity', dueOn: '2026-10-15' }, principalMinor: 50_000_000 });
+  });
+
+  it('un-archives a deposit a hand-recorded close archived, and leaves the owner’s own transfer alone', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    const p = await next('2026-10-15');
+    await database.transaction((tx) =>
+      postTransactionTx(tx, ws, {
+        occurredOn: '2026-10-15',
+        description: 'Deposito back',
+        lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 50_000_000, currency: 'IDR' }),
+      }),
+    );
+    expect((await confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { byHand: true }))).archived).toBe(true);
+    await undoRecordedByHand(database, ws, (await eventOn('2026-10-15')).id);
+    expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${depositoId} AND action LIKE '%archive' ORDER BY rowid`)).toEqual([['archive'], ['unarchive']]);
+    expect((await nativeBalances(database, ws))[bcaId]).toBe(51_000_000);
+  });
+
+  it('keeps the NOT_LAST order: a hand-recorded payout before a logged roll-over is neither offered nor undone', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { byHand: true }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    expect(await listUndoableByHand(database, ws, depositoId)).toEqual([]);
+    const before = await snapshot();
+    await expect(undoRecordedByHand(database, ws, (await eventOn('2026-08-15')).id)).rejects.toMatchObject({ code: 'NOT_LAST' });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('unblocks a void: a hand-recorded payout after a posted roll-over is undone first, then the roll-over voids', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    const oct = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-11-15'), '2026-11-15', { byHand: true }));
+    await expect(voidTransaction(database, ws, oct.interestTransactionId!)).rejects.toMatchObject({ code: 'NOT_LAST' });
+    // Only the newest is offered: the November payout, by hand.
+    expect((await listUndoableByHand(database, ws, depositoId)).map((row) => row.dueOn)).toEqual(['2026-11-15']);
+    await undoRecordedByHand(database, ws, (await eventOn('2026-11-15')).id);
+    await voidTransaction(database, ws, oct.interestTransactionId!);
+    expect((await logged()).map((row) => row.dueOn).sort()).toEqual(['2026-08-15', '2026-09-15']);
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2026-10-15', rateBps: 425 });
+  });
+
+  it('offers several hand-recorded payouts of one term, newest first, and undoes any of them', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { byHand: true }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { byHand: true }));
+    expect((await listUndoableByHand(database, ws, depositoId)).map((row) => row.dueOn)).toEqual(['2026-09-15', '2026-08-15']);
+    await undoRecordedByHand(database, ws, (await eventOn('2026-08-15')).id);
+    expect((await logged()).map((row) => row.dueOn)).toEqual(['2026-09-15']);
+  });
+
+  it('refuses an event the app posted, and one of another workspace', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    const posted = await eventOn('2026-08-15');
+    await expect(undoRecordedByHand(database, ws, posted.id)).rejects.toMatchObject({ code: 'POSTED' });
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { byHand: true }));
+    const other = await createWorkspace(database, { name: 'Business', type: 'business', baseCurrency: 'IDR' });
+    await expect(undoRecordedByHand(database, other, (await eventOn('2026-09-15')).id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(await listUndoableByHand(database, other, depositoId)).toEqual([]);
+    expect(await logged()).toHaveLength(2);
   });
 });

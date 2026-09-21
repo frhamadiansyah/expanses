@@ -14,6 +14,7 @@ import {
   listPrices,
   listTradeTemplates,
   listTrades,
+  listUndoableByHand,
   listValuations,
   monthEndValues,
   ownerScope,
@@ -142,4 +143,10 @@ export function useDueDeposits() {
   const { database, ws } = useApp();
   const today = isoDate();
   return useQuery({ queryKey: ['deposit-due', ws.workspaceId, today], queryFn: () => listDueDeposits(database, ws, today) });
+}
+
+/** The deposit's hand-recorded events that "Undo recorded by hand" can take back now. */
+export function useUndoableByHand(accountId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['deposit-by-hand', ws.workspaceId, accountId], queryFn: () => listUndoableByHand(database, ws, accountId) });
 }

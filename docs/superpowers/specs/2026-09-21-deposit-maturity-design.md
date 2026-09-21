@@ -340,6 +340,15 @@ re-checks, and:
 With *principal + interest* and monthly payouts, a payout recorded by hand posts nothing into the deposit, so the
 next period's principal is the balance the owner's own postings left. The app never assumes that it compounded.
 
+**Undo recorded by hand** (ruling, 2026-09-21). A hand-recorded event has no transaction to void, so without its own
+undo a later by-hand event would block voiding an earlier roll-over forever (NOT_LAST). The deposit's page lists, in a
+"Recorded by hand" kit group, each hand-recorded event that nothing later blocks, newest first, one **Undo recorded by
+hand** row each. Undoing (`undoRecordedByHand`) removes that event's log row and takes back what its confirm did beyond
+the ledger, exactly as a void reopens an event: a roll-over's term, rate and start return; a close turns automation
+back on and un-archives the deposit if it was archived. Nothing is posted or voided; the owner's own transactions stay.
+The proposal returns and the tax report drops the event. It keeps the NOT_LAST order, and it refuses an event the app
+posted (`POSTED`: delete its transaction instead).
+
 ### 6.6 The tax report reads the log
 
 User decision 2. The SPT's final-income section ("Income and final tax", `IncomeSection`) already lists what each
