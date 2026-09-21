@@ -4,7 +4,6 @@ import {
   type CardRow,
   postTransaction,
   recordTaggedTransfer,
-  recordTrade,
   replaceTransaction,
   saveMerchantMcc,
   splitBill,
@@ -25,7 +24,6 @@ import { useCanHold, useGoals, useSetAsideChoiceOf } from '../goals/queries';
 import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
-import { tradeRatesForSave } from '../networth/trade-money';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { AmountRow } from './AmountRow';
@@ -36,8 +34,8 @@ import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
-import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, receivedField } from './tx-form';
-import { ratesForSave } from './tx-save';
+import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
+import { ratesForSave, submitTrade } from './tx-save';
 
 /**
  * The accounts a money field may name — the old form's own list, unchanged, for the rows Tasks 11 and 12 turn
@@ -190,12 +188,14 @@ function CardBody({
       const post = formToPost(draft, accounts);
       if (post.kind === 'trade') {
         // Units are recorded, so this saves as a purchase and never touches spending. Its rates come from the one
-        // place every trade form gets them; a missing day rate is asked for under Add more details, dated by the trade.
-        const ratesToBase = await tradeRatesForSave({
+        // place every trade form gets them; a missing day rate is asked for under Add more details, dated by the
+        // trade. `submitTrade` is the one call, so the set-aside answer cannot be sent on one trade form and
+        // dropped on the other.
+        await submitTrade({
           database, ws, input: post.input, holdingCurrency: purchaseCurrency, cashCurrency: purchaseCashCurrency,
           needsRate, manualRate: draft.manualRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
+          setAside: setAside.choice,
         });
-        await recordTrade(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
       } else {
         // The manual rate, the rates the posting needs and the message asking for a missing one, all in the
         // one place both ways into a save go through. The rate field lives under Add more details and only
@@ -221,8 +221,7 @@ function CardBody({
   }
 
   // Rates are resolved no later than today, so the row asks for the rate under the date the save will store it.
-  const onDate = draft.mode === 'trade' ? draft.purchase.occurredOn : draft.occurredOn;
-  const rateDate = onDate > isoDate() ? isoDate() : onDate;
+  const rateDate = rateDateFor(draft);
   const missingRate = needsRate ? { from: needsRate, to: ws.baseCurrency, onDate: rateDate } : null;
 
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and

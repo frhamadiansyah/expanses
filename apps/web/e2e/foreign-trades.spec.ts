@@ -66,6 +66,31 @@ test('a USD buy from Jenius asks which goal paid for the rupiah that left, not t
   await expect(goalCard(page, 'Emergency fund').getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
 });
 
+// I5: only TradeForm's save (above) was guarded — the Buy / sell tab's own `recordTrade` call used to be able to
+// drop the set-aside answer with nothing catching it, on desktop or phone, across six different specs. Same
+// figures as the Jenius test above, through the Add Transaction card instead of the net worth screen.
+test('the Buy / sell tab also asks which goal paid for the rupiah that left, on a USD buy', async ({ page }) => {
+  await jeniusWithTwoGoals(page); // Jenius Rp 42.500.000, Rp 37.500.000 promised: Rp 5.000.000 free
+  await addUsdStock(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Buy / sell' }).click();
+  await form.getByLabel('What you bought or sold').selectOption({ label: 'Investments › AAPL' });
+  await form.getByLabel(/^What it cost, before fees/).fill('418,50');
+  await form.getByLabel('Lots').fill('1'); // the inline Add asset form gives AAPL a lot size of 100
+  await form.getByLabel('Paid with').selectOption({ label: 'Jenius (IDR)' });
+  await form.getByLabel(/^Charged in /).pressSequentially('6.800.000');
+  // 6.800.000 − 5.000.000 free. Read off the dollar figure, 41.850 "rupiah" would have fitted and asked nothing.
+  await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+  await page.getByRole('button', { name: 'Take from Emergency fund' }).click();
+  await page.getByRole('button', { name: 'No — borrowing from it' }).click();
+  await form.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(form).toHaveCount(0);
+  await page.goto('/goals');
+  await expect(goalCard(page, 'Emergency fund').getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
+});
+
 test('editing a sell into a rupiah account opens with what arrived, and saves without retyping it', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '1000000');
   await addUsdStock(page);

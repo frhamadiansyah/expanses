@@ -82,6 +82,12 @@ export async function tradeRatesForSave(p: {
       // `openingBalanceMinor` only has to be non-zero here: the rate does not depend on the amount.
       const rate = await openingRateFor({ database: p.database, ws: p.ws, currency, openedOn: onDate, openingBalanceMinor: p.input.grossMinor, typed, resolveRates: p.resolveRates });
       // Undefined only when nothing was paid: a trade that moves no money posts no line to need a rate.
+      //
+      // Mutation note (8b6): dropping this guard still passes — `ratesToBase[currency] = undefined` is an own,
+      // enumerable property either way, and every reader downstream (`{ ...ratesToBase, ... }` in `writeTradeTx`
+      // and `recalculateSells`, `upsertRate`'s callers) treats a key holding `undefined` exactly as an absent
+      // key. The guard is kept for the type (`Record<string, number>` promises no `undefined` values) rather
+      // than for behaviour a test can tell apart.
       if (rate !== undefined) ratesToBase[currency] = rate;
     } catch (error) {
       if (typed.trim()) throw error; // the typed rate's own refusal: not a number, or ten times off

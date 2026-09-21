@@ -1,5 +1,6 @@
-import { convertMinor } from '@expanses/core';
-import type { Database, RecordTradeInput, WorkspaceContext } from '@expanses/db';
+import { convertMinor, isoDate } from '@expanses/core';
+import { createDatabase, createWorkspace, type Database, migrate, type RecordTradeInput, upsertRate, type WorkspaceContext } from '@expanses/db';
+import { createNodeExecutor } from '@expanses/db/node';
 import { describe, expect, it, vi } from 'vitest';
 import { tradeDoor } from '../goals/set-aside-question';
 import { baseCostPreview, tradeRatesForSave, withCharged } from './trade-money';
@@ -9,6 +10,14 @@ const buy = (grossMinor: number, extra: Partial<RecordTradeInput> = {}): RecordT
 });
 // Only a typed rate touches the database (openingRateFor → checkManualRate); none of these types one.
 const common = { database: {} as Database, ws: { baseCurrency: 'IDR' } as WorkspaceContext, needsRate: null, manualRate: '', where: 'Rate that day' };
+
+/** A real database, for the typed-rate path (I7), which `checkManualRate` and `upsertRate` really read and write. */
+async function setupDb() {
+  const database = createDatabase(createNodeExecutor());
+  await migrate(database);
+  const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+  return { database, ws };
+}
 
 describe('withCharged', () => {
   it('puts what left the rupiah account on the input, read by parseMajor', () => {
@@ -65,9 +74,12 @@ describe('tradeRatesForSave', () => {
   });
 
   it('works a sell’s rate out from the net proceeds', async () => {
-    const sell = withCharged(buy(90_000, { kind: 'sell', feeMinor: 500, unitsMicro: 4_000_000 }), '1.458.850', 'USD', 'IDR');
+    // m7: a realistic rate (16.300, not 1.630) — so this does not lean on `rateFromAmounts` skipping the check
+    // a typed rate this far off would otherwise fail.
+    const sell = withCharged(buy(90_000, { kind: 'sell', feeMinor: 500, unitsMicro: 4_000_000 }), '14.588.500', 'USD', 'IDR');
     const rates = await tradeRatesForSave({ ...common, input: sell, holdingCurrency: 'USD', cashCurrency: 'IDR', resolveRates: vi.fn(), onMissing: vi.fn() });
-    expect(convertMinor(89_500, 'USD', 'IDR', rates.USD!)).toBe(1_458_850);
+    expect(convertMinor(89_500, 'USD', 'IDR', rates.USD!)).toBe(14_588_500);
+    expect(rates.USD).toBe(16_300);
   });
 
   it('refuses a cross-currency trade that reached it without the charged amount', async () => {
@@ -93,6 +105,42 @@ describe('tradeRatesForSave', () => {
     const resolveRates = vi.fn().mockResolvedValue({ rates: {} });
     await expect(tradeRatesForSave({ ...common, input: buy(182_500, { cashAccountId: null }), holdingCurrency: 'USD', cashCurrency: 'USD', resolveRates, onMissing })).rejects.toThrow(/Rate that day/);
     expect(onMissing).toHaveBeenCalledWith('USD');
+  });
+
+  // I7: the typed "Rate that day" path — `needsRate` matching, `manualRate` checked and stored — is only ever
+  // exercised with a stub database that never actually touches `openingRateFor` → `checkManualRate`. On a device
+  // with no held rate for the day, typing it here is the only way to save at all.
+  it('takes a typed rate without resolving, and never asks the network for it (I7)', async () => {
+    const { database, ws } = await setupDb();
+    const resolveRates = vi.fn();
+    const rates = await tradeRatesForSave({
+      ...common, database, ws, input: buy(182_500, { cashAccountId: 'ibkr' }), holdingCurrency: 'USD', cashCurrency: 'USD',
+      needsRate: 'USD', manualRate: '16.250,00', resolveRates, onMissing: vi.fn(),
+    });
+    expect(rates).toEqual({ USD: 16_250 });
+    expect(resolveRates).not.toHaveBeenCalled();
+  });
+
+  it('refuses a typed rate ten times off in its own words, not as a missing rate (I7)', async () => {
+    const { database, ws } = await setupDb();
+    await upsertRate(database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: '2026-03-08', rate: 16_250, source: 'manual', sourceDate: '2026-03-08' });
+    const onMissing = vi.fn();
+    await expect(
+      tradeRatesForSave({
+        ...common, database, ws, input: buy(182_500, { cashAccountId: 'ibkr' }), holdingCurrency: 'USD', cashCurrency: 'USD',
+        needsRate: 'USD', manualRate: '1.625', resolveRates: vi.fn(), onMissing,
+      }),
+    ).rejects.toThrow('Check the decimal separator');
+    expect(onMissing).not.toHaveBeenCalled();
+  });
+
+  // m4 (8a7): a trade dated after today still asks for the rate under today's date, the same clamp
+  // `TransactionCard`'s own `rateDateFor` (tx-form.ts) applies before the row is even drawn.
+  it('resolves a future-dated trade’s rate as of today, never the future day', async () => {
+    const resolveRates = vi.fn().mockResolvedValue({ rates: { USD: 16_250 } });
+    const future = buy(182_500, { cashAccountId: 'ibkr', occurredOn: '2099-01-01' });
+    await tradeRatesForSave({ ...common, input: future, holdingCurrency: 'USD', cashCurrency: 'USD', resolveRates, onMissing: vi.fn() });
+    expect(resolveRates).toHaveBeenCalledWith(['USD'], isoDate());
   });
 
   it('needs nothing when all of it is base, and nothing for a unit change', async () => {

@@ -1,6 +1,6 @@
 import { positionAfter, type TradeRecord } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { draftFromTrade, draftToInput, emptyTradeDraft, pricePreview, sellPreview, type TradeDraft, typedAmount } from './trade-form';
+import { draftFromTrade, draftToInput, emptyTradeDraft, prefillCharged, pricePreview, sellPreview, tradeFormReady, type TradeDraft, typedAmount, waitingForPostedMoney } from './trade-form';
 
 const TODAY = '2026-09-12';
 const draft = (overrides: Partial<TradeDraft> = {}): TradeDraft => ({ ...emptyTradeDraft('gold', 'bca', TODAY), ...overrides });
@@ -97,5 +97,44 @@ describe('pre-filled amounts', () => {
     expect(draftFromTrade(trade, 'IDR')).toEqual({
       kind: 'sell', accountId: 'bbca', occurredOn: '2026-03-08', units: '1.500', gross: '14.662.500', fee: '21.994', tax: '14.663', cashAccountId: 'bca', goalId: '',
     });
+  });
+});
+
+// m3 (8e6): the edit pre-fill only while the trade still pays from the account it was posted through.
+describe('prefillCharged', () => {
+  const p = { editingCashAccountId: 'bca', cashAccountId: 'bca', postedCash: 14_588_501, cashCurrency: 'IDR', typed: '' };
+
+  it('fills the empty row with what the trade posted, on the same account', () => {
+    // Written as the owner types it (ruling 4's pre-fill format), not the raw '14588501'.
+    expect(prefillCharged(p)).toBe('14.588.501');
+    expect(prefillCharged({ ...p, postedCash: 182_500, cashCurrency: 'USD' })).toBe('1.825,00');
+  });
+
+  it('leaves it alone once the owner has switched to a different account', () => {
+    expect(prefillCharged({ ...p, cashAccountId: 'ibkr' })).toBeNull();
+  });
+
+  it('treats Opening Balances (null) as its own account, not as "any account"', () => {
+    expect(prefillCharged({ ...p, editingCashAccountId: null, cashAccountId: '' })).toBe('14.588.501');
+    expect(prefillCharged({ ...p, editingCashAccountId: null })).toBeNull();
+  });
+
+  it('never overwrites a row the owner has already typed into', () => {
+    expect(prefillCharged({ ...p, typed: '1' })).toBeNull();
+  });
+});
+
+// m3 (8e7): Save must not race the read of what a reworked trade posted.
+describe('waitingForPostedMoney and tradeFormReady', () => {
+  it('is only waiting while editing a trade whose posted money is still pending', () => {
+    expect(waitingForPostedMoney(true, true)).toBe(true);
+    expect(waitingForPostedMoney(true, false)).toBe(false);
+    expect(waitingForPostedMoney(false, true)).toBe(false);
+  });
+
+  it('is ready only when the question is answered and nothing is still pending', () => {
+    expect(tradeFormReady(true, false)).toBe(true);
+    expect(tradeFormReady(true, true)).toBe(false);
+    expect(tradeFormReady(false, false)).toBe(false);
   });
 });
