@@ -1,5 +1,8 @@
 import { currencyInfo } from './currencies';
-import { assertMinor, convertMinor } from './money';
+import { convertMinor, MoneyError } from './money';
+
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+const MIN_SAFE = BigInt(Number.MIN_SAFE_INTEGER);
 
 type Rates = Readonly<Record<string, number>>;
 
@@ -27,10 +30,12 @@ export function sumToBase({
 }): { totalMinor: number | null; missing: string[] } {
   const missing = [...new Set(amounts.filter((a) => rateOf(a.currency, baseCurrency, ratesToBase) === null).map((a) => a.currency))].sort();
   if (missing.length > 0) return { totalMinor: null, missing };
-  const totalMinor = amounts.reduce((sum, a) => sum + convertMinor(a.minor, a.currency, baseCurrency, rateOf(a.currency, baseCurrency, ratesToBase)!), 0);
-  // Each term is a safe integer (convertMinor checks it); a sum past 2^53 would lose rupiah silently, so refuse it.
-  assertMinor(totalMinor, 'total');
-  return { totalMinor, missing: [] };
+  // Accumulated as BigInt, not float64: each term is a safe integer (convertMinor checks it), but a large positive
+  // term followed by a large negative one can round past 2^53 and back down without the final total ever leaving
+  // the safe range — a float64 running sum would lose units silently in that case. BigInt addition is exact.
+  const totalBig = amounts.reduce((sum, a) => sum + BigInt(convertMinor(a.minor, a.currency, baseCurrency, rateOf(a.currency, baseCurrency, ratesToBase)!)), 0n);
+  if (totalBig > MAX_SAFE || totalBig < MIN_SAFE) throw new MoneyError(`total must be a safe integer of minor units, got ${totalBig}`);
+  return { totalMinor: Number(totalBig), missing: [] };
 }
 
 export interface ExchangeCost {
