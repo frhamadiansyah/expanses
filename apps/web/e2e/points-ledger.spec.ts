@@ -50,7 +50,7 @@ test('typing what the bank gave moves points from estimated to posted', async ({
   // Per-purchase figures only exist for a card that credits that way — Jenius and Mandiri do.
   await expect(page.getByTestId('points-balance')).toBeVisible();
   await page.getByLabel('Bank credits points').selectOption('per_transaction');
-  const row = page.locator('li', { hasText: 'Superindo' });
+  const row = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
   await row.getByLabel('Actual points for Superindo').fill('120');
   await row.getByRole('button', { name: 'Save actual for Superindo' }).click();
 

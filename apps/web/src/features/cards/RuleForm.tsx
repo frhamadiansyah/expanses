@@ -3,7 +3,9 @@ import { type AccountRow, saveEarnRule } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { ActionRow, MultiSelectRow, SubmitRow } from './rows';
 import { CategoryOptions } from './options';
 import { mergeMatch, parseRulePoints } from './rule-values';
 
@@ -86,85 +88,47 @@ export function RuleForm({
     }
   }
 
+  // Form rows in groups, the primary action a row in the tint — the kit's form page, not a card of outlined boxes.
   return (
-    <Card className="bg-slate-50">
-      <form onSubmit={submit} className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Rule name">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="5x dining" required />
-        </Field>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Points">
-            <Input value={points} onChange={(e) => setPoints(e.target.value)} inputMode="decimal" required />
-          </Field>
-          <Field label={`Per spend (${currency})`}>
-            <Input value={per} onChange={(e) => setPer(e.target.value)} inputMode="decimal" placeholder="2500" required />
-          </Field>
-        </div>
-        </div>
+    <form onSubmit={submit}>
+      <InsetGroup header={initial ? `Edit rule · ${initial.name}` : 'New rule'}>
+        <TextRow label="Rule name" value={name} onChange={(e) => setName(e.target.value)} placeholder="5x dining" required />
+        <TextRow label="Points" value={points} onChange={(e) => setPoints(e.target.value)} inputMode="decimal" required />
+        <TextRow label={`Per spend (${currency})`} value={per} onChange={(e) => setPer(e.target.value)} inputMode="decimal" placeholder="2500" required />
+      </InsetGroup>
 
-        <div className="border-t border-slate-200 pt-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Where it applies</div>
-          <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Only these categories" hint="None selected = every category. Ctrl/⌘-click for several.">
-          <Select multiple size={6} value={categoryIds} onChange={(e) => setCategoryIds(selected(e.target))}>
-            <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
-          </Select>
-        </Field>
-        <Field label="Never these categories" hint="e.g. Fees, insurance, e-wallet top-ups.">
-          <Select multiple size={6} value={excludeIds} onChange={(e) => setExcludeIds(selected(e.target))}>
-            <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
-          </Select>
-        </Field>
-        <Field label="Merchant keywords" hint="Comma-separated, matched in the description. Empty = any merchant.">
-          <Input value={merchants} onChange={(e) => setMerchants(e.target.value)} placeholder="grab, gojek" />
-        </Field>
-          </div>
-        </div>
+      <InsetGroup header="Where it applies">
+        <MultiSelectRow label="Only these categories" hint="None selected = every category. Ctrl/⌘-click for several." size={6} value={categoryIds} onChange={(e) => setCategoryIds(selected(e.target))}>
+          <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
+        </MultiSelectRow>
+        <MultiSelectRow label="Never these categories" hint="e.g. Fees, insurance, e-wallet top-ups." size={6} value={excludeIds} onChange={(e) => setExcludeIds(selected(e.target))}>
+          <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
+        </MultiSelectRow>
+        <TextRow label="Merchant keywords" hint="Comma-separated, matched in the description. Empty = any merchant." value={merchants} onChange={(e) => setMerchants(e.target.value)} placeholder="grab, gojek" />
+      </InsetGroup>
 
-        <div className="border-t border-slate-200 pt-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Limits and validity</div>
-          <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Priority" hint="Higher runs first. Put bonus rules above the base rule.">
-          <Input value={priority} onChange={(e) => setPriority(e.target.value)} inputMode="numeric" />
-        </Field>
-        <Field label={`Bonus cap: spend per cycle (${currency})`} hint="Spend beyond this falls through to lower rules.">
-          <Input value={capSpend} onChange={(e) => setCapSpend(e.target.value)} inputMode="decimal" />
-        </Field>
-        <Field label="Cap: points per cycle">
-          <Input value={capPoints} onChange={(e) => setCapPoints(e.target.value)} inputMode="numeric" />
-        </Field>
-        <Field label={`Minimum transaction (${currency})`}>
-          <Input value={minTx} onChange={(e) => setMinTx(e.target.value)} inputMode="decimal" />
-        </Field>
-        <Field label="Rounding" hint="Check your card terms: most floor each transaction.">
-          <Select value={rounding} onChange={(e) => setRounding(e.target.value as EarnRule['rounding'])}>
-            <option value="per_transaction_floor">Round down each transaction</option>
-            <option value="per_cycle_sum">Sum the cycle, then round down</option>
-            <option value="per_increment">Count only full multiples of the spend</option>
-          </Select>
-        </Field>
-        <Field label="Valid from">
-          <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
-        </Field>
-        <Field label="Valid until">
-          <Input type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
-        </Field>
-          </div>
-        </div>
+      <InsetGroup header="Limits and validity">
+        <TextRow label="Priority" hint="Higher runs first. Put bonus rules above the base rule." value={priority} onChange={(e) => setPriority(e.target.value)} inputMode="numeric" />
+        <TextRow label={`Bonus cap: spend per cycle (${currency})`} hint="Spend beyond this falls through to lower rules." value={capSpend} onChange={(e) => setCapSpend(e.target.value)} inputMode="decimal" />
+        <TextRow label="Cap: points per cycle" value={capPoints} onChange={(e) => setCapPoints(e.target.value)} inputMode="numeric" />
+        <TextRow label={`Minimum transaction (${currency})`} value={minTx} onChange={(e) => setMinTx(e.target.value)} inputMode="decimal" />
+        <SelectRow label="Rounding" hint="Check your card terms: most floor each transaction." value={rounding} onChange={(e) => setRounding(e.target.value as EarnRule['rounding'])}>
+          <option value="per_transaction_floor">Round down each transaction</option>
+          <option value="per_cycle_sum">Sum the cycle, then round down</option>
+          <option value="per_increment">Count only full multiples of the spend</option>
+        </SelectRow>
+        <TextRow label="Valid from" type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+        <TextRow label="Valid until" type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+      </InsetGroup>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={stackable} onChange={(e) => setStackable(e.target.checked)} />
-          Bonus on top of other rules (a promo that stacks, not a replacement rate)
-        </label>
-        <ErrorBox error={error} />
-        <div className="flex gap-2">
-          <Button type="submit">Save rule</Button>
-          <Button variant="ghost" onClick={onDone}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-    </Card>
+      <InsetGroup>
+        <SwitchRow label="Bonus on top of other rules (a promo that stacks, not a replacement rate)" checked={stackable} onChange={setStackable} />
+      </InsetGroup>
+      <ErrorBox error={error} />
+      <InsetGroup>
+        <SubmitRow label="Save rule" />
+        <ActionRow label="Cancel" quiet onClick={onDone} />
+      </InsetGroup>
+    </form>
   );
 }

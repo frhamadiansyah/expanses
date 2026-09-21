@@ -160,13 +160,13 @@ test('a spend bonus can be added by hand, and a catalogue one keeps what the for
   // The catalogue's own bonus is listed, which the owner could never see before. The entry carries one
   // per dated period, so the live one is the row not marked as past terms.
   const bonuses = page.locator('section', { has: page.getByRole('heading', { name: 'Spend bonuses' }) });
-  const live = bonuses.locator('li').filter({ hasNotText: 'past terms' }).first();
+  const live = bonuses.getByTestId(/^bonus-/).filter({ hasNotText: 'past terms' }).first();
   await expect(live).toContainText('20.000.000');
 
   await live.getByRole('button', { name: 'Edit' }).click();
   await page.getByLabel('Tier 1 bonus').fill('1500');
   await page.getByRole('button', { name: 'Save bonus' }).click();
-  await expect(bonuses.locator('li').filter({ hasNotText: 'past terms' }).first()).toContainText('1.500');
+  await expect(bonuses.getByTestId(/^bonus-/).filter({ hasNotText: 'past terms' }).first()).toContainText('1.500');
 
   // Electricity is excluded by the catalogue, and that exclusion is not on the form: it must survive.
   await buy(page, { card: 'BCA KrisFlyer', description: 'PLN token', category: 'Electricity', amount: '21000000' });
@@ -180,13 +180,13 @@ test('adds a second tier to a card that pays more for spending more', async ({ p
   await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
 
   const bonuses = page.locator('section', { has: page.getByRole('heading', { name: 'Spend bonuses' }) });
-  await bonuses.locator('li').filter({ hasNotText: 'past terms' }).first().getByRole('button', { name: 'Edit' }).click();
+  await bonuses.getByTestId(/^bonus-/).filter({ hasNotText: 'past terms' }).first().getByRole('button', { name: 'Edit' }).click();
   await page.getByRole('button', { name: 'Add tier' }).click();
   await page.getByLabel('Tier 2 spend').fill('50000000');
   await page.getByLabel('Tier 2 bonus').fill('2000');
   await page.getByRole('button', { name: 'Save bonus' }).click();
 
-  const live = bonuses.locator('li').filter({ hasNotText: 'past terms' }).first();
+  const live = bonuses.getByTestId(/^bonus-/).filter({ hasNotText: 'past terms' }).first();
   await expect(live).toContainText('50.000.000');
   await expect(live).toContainText('2.000');
 });

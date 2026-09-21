@@ -286,7 +286,7 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
   await page.getByRole('radio', { name: 'Points' }).click();
   // Units are recorded, so this is not spending — and it is still a card purchase, so it still earns.
-  const row = page.locator('li:not([data-testid="statement-line"])', { hasText: 'Bought 1 Antam gold bars' });
+  const row = page.getByTestId('purchase').filter({ hasText: 'Bought 1 Antam gold bars' });
   await expect(row).toContainText('MCC 5944 · typed');
   // Rp 1.350.000 on this card is 100 miles. Nought would mean the category never reached the engine.
   await expect(row).toContainText('100 miles');

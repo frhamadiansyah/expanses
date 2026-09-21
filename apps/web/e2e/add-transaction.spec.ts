@@ -654,7 +654,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await page.goto('/cards');
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
   await page.getByRole('radio', { name: 'Points' }).click();
-  const row = page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' });
+  const row = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
   await expect(row).toContainText('MCC 5411 · typed');
 });
 
@@ -1214,7 +1214,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   await page.goto('/cards');
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
   await page.getByRole('radio', { name: 'Points' }).click();
-  const purchase = page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' });
+  const purchase = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
   await expect(purchase).toContainText('MCC 5411 · yours');
 });
 
@@ -1343,8 +1343,8 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
   await page.getByRole('radio', { name: 'Points' }).click();
-  await expect(page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' })).toContainText('85.000');
-  await expect(page.locator('li:not([data-testid="statement-line"])', { hasText: 'Ranch Market' })).toContainText('50.000');
+  await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('85.000');
+  await expect(page.getByTestId('purchase').filter({ hasText: 'Ranch Market' })).toContainText('50.000');
 });
 
 /**
@@ -1498,7 +1498,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await page.goto('/cards');
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
   await page.getByRole('radio', { name: 'Points' }).click();
-  await expect(page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' })).toContainText('MCC 5411 · typed');
+  await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('MCC 5411 · typed');
 
   // The refund, made from the receipt the purchase already has.
   await page.goto('/transactions');
@@ -1516,7 +1516,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await page.goto('/cards');
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
   await page.getByRole('radio', { name: 'Points' }).click();
-  await expect(page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' })).toHaveCount(0);
+  await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toHaveCount(0);
 
   // Everything that was never a card's fact came across to the new id, all four at once.
   await page.goto('/transactions');
