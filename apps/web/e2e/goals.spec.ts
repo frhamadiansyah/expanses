@@ -157,6 +157,10 @@ test('works out a retirement target from your own figures', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Retirement' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Work out the amount' }).click();
+  // Three rates, opening at the agreed figures: 3.5% inflation, 10% while saving, 5% while retired.
+  await expect(page.getByLabel('Inflation a year (%)')).toHaveValue('3.5');
+  await expect(page.getByLabel('Return while saving (%)')).toHaveValue('10');
+  await expect(page.getByLabel('Return while retired (%)')).toHaveValue('5');
   await page.getByLabel('Yearly spending in retirement (IDR)').fill('120000000');
   await page.getByLabel('Years until retirement').fill('20');
   await page.getByLabel('Years in retirement').fill('20');
@@ -165,6 +169,11 @@ test('works out a retirement target from your own figures', async ({ page }) => 
   await page.getByRole('button', { name: 'Use this amount' }).click();
 
   await expect(page.getByText('Worked out from your figures')).toBeVisible();
+  // The working reopens as it was saved.
+  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await expect(page.getByLabel('Yearly spending in retirement (IDR)')).toHaveValue('120000000');
+  await expect(page.getByLabel('Return while retired (%)')).toHaveValue('8');
+  await expect(page.getByLabel('Inflation a year (%)')).toHaveValue('5');
 });
 
 test('typing an amount by hand stops the goal being worked out', async ({ page }) => {

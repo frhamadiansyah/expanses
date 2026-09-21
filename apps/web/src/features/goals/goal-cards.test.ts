@@ -92,6 +92,11 @@ describe('templates', () => {
     }
   });
 
+  it('names no country scheme or product in a hint — only the tax report is local', () => {
+    for (const template of GOAL_TEMPLATES) expect(template.hint, template.kind).not.toMatch(/BPJS|JHT|DPLK|Taspen|reksadana|deposito/i);
+    expect(templateFor('retirement')!.hint).toMatch(/pension/i);
+  });
+
   it('asks an emergency fund for months, not an amount', () => {
     const emergency = templateFor('emergency')!;
     expect(emergency.stage.targetMonths).toBe(6);

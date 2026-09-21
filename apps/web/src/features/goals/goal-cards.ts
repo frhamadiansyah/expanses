@@ -142,7 +142,7 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
     growthBps: DEFAULT_INFLATION_BPS,
     returnBps: RETIREMENT_RETURN_BPS,
     stage: { name: 'Retirement fund', targetMinor: null, targetMonths: null, monthsAway: 240 },
-    hint: 'BPJS JHT and DPLK are not counted yet; add them as other assets to include them.',
+    hint: 'Pension savings you already hold, from work or of your own, are not counted yet; add them as other assets to include them.',
   },
   { kind: 'home', label: 'Home down payment', growthBps: 700, returnBps: bandReturn(36), stage: { name: 'Down payment', targetMinor: null, targetMonths: null, monthsAway: 36 }, hint: 'Property prices move with the area, so check the growth yourself.' },
   { kind: 'wedding', label: 'Wedding', growthBps: 500, returnBps: bandReturn(24), stage: { name: 'Wedding', targetMinor: null, targetMonths: null, monthsAway: 24 }, hint: 'Add stages for the venue deposit and the balance if you pay in steps.' },

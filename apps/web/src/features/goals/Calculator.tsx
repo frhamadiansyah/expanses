@@ -1,10 +1,28 @@
-import { type EmergencyBase, HOUSEHOLDS, type Household, INCOME_STABILITIES, type IncomeStability, isoDate, parseMajor } from '@expanses/core';
-import { type CalculatorKind, type EmergencyInputs, type GoalRow, saveGoalCalculator } from '@expanses/db';
+import {
+  DEFAULT_INFLATION_BPS,
+  DRAWDOWN_RETURN_BPS,
+  type EducationInputs,
+  educationFromV1,
+  type EducationPlanInputs,
+  type EmergencyBase,
+  HOUSEHOLDS,
+  type Household,
+  INCOME_STABILITIES,
+  type IncomeStability,
+  isoDate,
+  minorToMajorString,
+  parseMajor,
+  RETIREMENT_RETURN_BPS,
+  type RetirementInputs,
+} from '@expanses/core';
+import { type CalculatorKind, type EmergencyInputs, type GoalCalculatorRow, type GoalRow, saveGoalCalculator } from '@expanses/db';
 import { type FormEvent, type ReactElement, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { EducationEditor } from './EducationEditor';
+import { educationDraftFrom, educationInputsOf } from './education-model';
 import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS, monthsNote, typedMonths, withAnswers } from './emergency-form';
 import { useGoalCalculators } from './queries';
 
@@ -15,12 +33,20 @@ export function calculatorKindOf(kind: string): CalculatorKind | null {
   return CALCULABLE.includes(kind as CalculatorKind) ? (kind as CalculatorKind) : null;
 }
 
-const percentToBps = (value: string) => Math.round(Number(value.replace(',', '.')) * 100);
+/** "3,5" or "3.5" as basis points; a box half-typed ("-", ",") is refused with a sentence rather than saved as NaN. */
+function percentToBps(value: string, what: string): number {
+  const trimmed = value.trim().replace(',', '.');
+  const number = trimmed === '' ? Number.NaN : Number(trimmed);
+  if (!Number.isFinite(number)) throw new Error(`${what} must be a percentage`);
+  return Math.round(number * 100);
+}
+
+const percentOf = (bps: number) => String(bps / 100);
 
 const BLURBS: Record<CalculatorKind, string> = {
   emergency: 'Months of what you spend, with loan principal added. The amount follows your spending, so it moves when your spending does.',
-  education: 'Each year of study is worked out at the price it will cost in the year you pay it, not at today’s.',
-  retirement: 'What the pot must hold on the day you stop, drawn down over your retirement while it keeps earning.',
+  education: 'Each year at today’s prices; the goal raises each one to the year it is paid.',
+  retirement: 'What the pot must hold the day you stop, drawn down while it keeps earning.',
 };
 
 /** The goal's own base, said beside the switch: the ratio card on Net worth has a switch of its own, and the two can differ. */
@@ -37,10 +63,16 @@ export function Calculator({ goal, onDone }: { goal: GoalRow; onDone: () => void
   const calculators = useGoalCalculators();
   if (!calculators.isSuccess) return null;
   const saved = calculators.data.find((row) => row.goalId === goal.id);
-  return <CalculatorForm key={goal.id} goal={goal} saved={saved?.kind === 'emergency' ? (saved.inputs as EmergencyInputs) : undefined} onDone={onDone} />;
+  return <CalculatorForm key={goal.id} goal={goal} saved={saved} onDone={onDone} />;
 }
 
-function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: EmergencyInputs | undefined; onDone: () => void }) {
+/** A saved education working as levels: one from before levels existed is read as the one course it described. */
+function savedEducation(saved: GoalCalculatorRow | undefined): EducationPlanInputs | undefined {
+  if (saved?.kind !== 'education') return undefined;
+  return 'feeTodayMinor' in saved.inputs ? educationFromV1(saved.inputs as EducationInputs, saved.computedAt.slice(0, 10)) : (saved.inputs as EducationPlanInputs);
+}
+
+function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: GoalCalculatorRow | undefined; onDone: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const kind = calculatorKindOf(goal.kind)!;
@@ -49,18 +81,17 @@ function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: Emergen
   const formRef = useRef<HTMLFormElement>(null);
 
   // Emergency
-  const [emergency, setEmergency] = useState(() => emergencyDraftFrom(saved));
-  // Education
-  const [feeToday, setFeeToday] = useState('');
-  const [startsIn, setStartsIn] = useState('10');
-  const [yearsOfStudy, setYearsOfStudy] = useState('4');
-  const [feeInflation, setFeeInflation] = useState('10');
-  // Retirement
-  const [annualSpend, setAnnualSpend] = useState('');
-  const [yearsToRetirement, setYearsToRetirement] = useState('20');
-  const [yearsInRetirement, setYearsInRetirement] = useState('20');
-  const [inflation, setInflation] = useState('5');
-  const [returnInRetirement, setReturnInRetirement] = useState('8');
+  const [emergency, setEmergency] = useState(() => emergencyDraftFrom(saved?.kind === 'emergency' ? (saved.inputs as EmergencyInputs) : undefined));
+  // Education: the saved levels come back as they were saved, ids and typed returns included.
+  const [education, setEducation] = useState(() => educationDraftFrom(savedEducation(saved), ws.baseCurrency));
+  // Retirement: the saved working, or the agreed prefills — 3.5% inflation, 10% while saving, 5% while retired.
+  const retirement = saved?.kind === 'retirement' ? (saved.inputs as RetirementInputs) : undefined;
+  const [annualSpend, setAnnualSpend] = useState(() => (retirement ? minorToMajorString(retirement.annualSpendTodayMinor, ws.baseCurrency) : ''));
+  const [yearsToRetirement, setYearsToRetirement] = useState(() => String(retirement?.yearsToRetirement ?? 20));
+  const [yearsInRetirement, setYearsInRetirement] = useState(() => String(retirement?.yearsInRetirement ?? 20));
+  const [inflation, setInflation] = useState(() => percentOf(retirement?.inflationBps ?? DEFAULT_INFLATION_BPS));
+  const [returnBefore, setReturnBefore] = useState(() => percentOf(retirement?.returnBeforeBps ?? goal.returnBps ?? RETIREMENT_RETURN_BPS));
+  const [returnInRetirement, setReturnInRetirement] = useState(() => percentOf(retirement?.returnInRetirementBps ?? DRAWDOWN_RETURN_BPS));
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -71,18 +102,15 @@ function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: Emergen
         kind === 'emergency'
           ? emergencyInputsOf(emergency)
           : kind === 'education'
-            ? {
-                feeTodayMinor: parseMajor(feeToday, ws.baseCurrency),
-                startsInYears: Number(startsIn),
-                yearsOfStudy: Number(yearsOfStudy),
-                feeInflationBps: percentToBps(feeInflation),
-              }
+            ? educationInputsOf(education, ws.baseCurrency)
             : {
+                version: 2 as const,
                 annualSpendTodayMinor: parseMajor(annualSpend, ws.baseCurrency),
-                yearsToRetirement: Number(yearsToRetirement),
-                yearsInRetirement: Number(yearsInRetirement),
-                inflationBps: percentToBps(inflation),
-                returnInRetirementBps: percentToBps(returnInRetirement),
+                yearsToRetirement: Number(yearsToRetirement.replace(',', '.')),
+                yearsInRetirement: Number(yearsInRetirement.replace(',', '.')),
+                inflationBps: percentToBps(inflation, 'Inflation'),
+                returnBeforeBps: percentToBps(returnBefore, 'The return while saving'),
+                returnInRetirementBps: percentToBps(returnInRetirement, 'The return while retired'),
               };
       await saveGoalCalculator(database, ws, { goalId: goal.id, kind, inputs, today: isoDate() });
       await invalidate();
@@ -143,20 +171,7 @@ function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: Emergen
           </SelectRow>,
         ]
       : kind === 'education'
-        ? [
-            <TextRow key="fee" label={`Fee a year today (${ws.baseCurrency})`} value={feeToday} onChange={(e) => setFeeToday(e.target.value)} inputMode="numeric" required />,
-            <TextRow key="starts" label="Years until it starts" value={startsIn} onChange={(e) => setStartsIn(e.target.value)} inputMode="numeric" required />,
-            <TextRow key="years" label="Years of study" value={yearsOfStudy} onChange={(e) => setYearsOfStudy(e.target.value)} inputMode="numeric" required />,
-            <TextRow
-              key="inflation"
-              label="Fee inflation a year (%)"
-              hint="School fees usually outrun everything else."
-              value={feeInflation}
-              onChange={(e) => setFeeInflation(e.target.value)}
-              inputMode="decimal"
-              required
-            />,
-          ]
+        ? []
         : [
             <TextRow
               key="spend"
@@ -185,6 +200,15 @@ function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: Emergen
             />,
             <TextRow key="inflation" label="Inflation a year (%)" value={inflation} onChange={(e) => setInflation(e.target.value)} inputMode="decimal" required />,
             <TextRow
+              key="before"
+              label="Return while saving (%)"
+              hint="What the money earns until you stop. Written as the goal's return."
+              value={returnBefore}
+              onChange={(e) => setReturnBefore(e.target.value)}
+              inputMode="decimal"
+              required
+            />,
+            <TextRow
               key="return"
               label="Return while retired (%)"
               hint="What the pot earns while you are spending it."
@@ -197,9 +221,18 @@ function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: Emergen
 
   return (
     <form ref={formRef} onSubmit={submit}>
-      <InsetGroup header={`Work out ${goal.name}`} footer={BLURBS[kind]}>
-        {rows}
-      </InsetGroup>
+      {kind === 'education' ? (
+        <>
+          <InsetGroup header={`Work out ${goal.name}`} footer={BLURBS[kind]}>
+            <ReadOnlyRow label="Levels" value={education.levels.length === 0 ? 'None yet' : String(education.levels.length)} />
+          </InsetGroup>
+          <EducationEditor value={education} onChange={setEducation} currency={ws.baseCurrency} today={isoDate()} />
+        </>
+      ) : (
+        <InsetGroup header={`Work out ${goal.name}`} footer={BLURBS[kind]}>
+          {rows}
+        </InsetGroup>
+      )}
       <ErrorBox error={error} />
       {/* `requestSubmit` rather than calling `submit`: the browser still checks the required rows first. */}
       <InsetGroup>
