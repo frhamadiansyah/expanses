@@ -75,6 +75,7 @@ export async function reopenDepositEventTx(tx: Db, ws: WorkspaceContext, transac
   // Reopening is last in, first out. A maturity started the term that every later event belongs to, and only the
   // current term is ever proposed: reopening a maturity with anything logged after it, or anything before a maturity
   // that is logged, would drop an event nothing proposes again. The owner voids the later one first.
+  // Scoped to the workspace as every read is (pinned by a test), though the account id alone already is one deposit.
   const later = await tx
     .select({ kind: depositEvents.kind })
     .from(depositEvents)
@@ -89,6 +90,9 @@ export async function reopenDepositEventTx(tx: Db, ws: WorkspaceContext, transac
   const [settings] = await tx.select().from(depositAutomation).where(eq(depositAutomation.accountId, event.accountId));
   if (event.principalTransactionId === null) {
     // A roll-over: its confirm moved the maturity on and started a term on the due day. Take that term back.
+    // Defence in depth, unreachable today: only a later roll-over moves termStartedOn off this due day, and NOT_LAST
+    // above refuses while one is logged, so this is always true here (D3 review m-3). Kept so that a future path that
+    // moves the start some other way leaves the owner's term alone rather than rewinding it.
     if (settings?.termStartedOn === event.dueOn) {
       // The rate, the term's length and its start go back to what the confirm replaced (logged with the event).
       const [terms] = await tx.select({ rateBps: depositTerms.rateBps }).from(depositTerms).where(eq(depositTerms.accountId, event.accountId));

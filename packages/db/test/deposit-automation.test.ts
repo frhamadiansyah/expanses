@@ -549,6 +549,28 @@ describe('voiding is last in, first out across a maturity', () => {
     });
   });
 
+  it('counts only this workspace’s log as later: a row another workspace holds for the same account id does not block', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const aug = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    await database.db.insert(assetsSchema.depositEvents).values({
+      id: 'foreign-row',
+      workspaceId: 'another-workspace',
+      accountId: depositoId,
+      kind: 'maturity',
+      dueOn: '2027-01-15',
+      principalMinor: 1,
+      grossMinor: 0,
+      taxMinor: 0,
+      netMinor: 0,
+      interestTransactionId: null,
+      principalTransactionId: null,
+      recordedByHand: 1,
+      confirmedAt: '2027-01-15T00:00:00Z',
+    });
+    await voidTransaction(database, ws, aug.interestTransactionId!);
+    expect((await logged()).map((row) => row.dueOn)).toEqual([]);
+  });
+
   it('still reopens a monthly payout with only later payouts of the same term logged', async () => {
     await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
     const aug = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
