@@ -1,4 +1,18 @@
-import { addMonths, balanceSheet, monthOf, type HealthRatio, type RatioStatus, type SheetAsset, type SheetLiability, type SheetTotals } from '@expanses/core';
+import {
+  addMonths,
+  balanceSheet,
+  DEFAULT_EMERGENCY_BASE,
+  type EmergencyBase,
+  type Goal,
+  type HealthRatio,
+  householdEmergencyMonths,
+  monthOf,
+  type RatioStatus,
+  type SheetAsset,
+  type SheetLiability,
+  type SheetTotals,
+  sheetTotals,
+} from '@expanses/core';
 
 export type RatioPeriod = { key: 'ttm' } | { key: 'year'; year: number };
 
@@ -53,8 +67,36 @@ export function ratioDisplay(ratio: HealthRatio): RatioDisplay {
 }
 
 /**
+ * While the household's goals have not loaded yet, `emergencyTargetMonths` is unset and the emergency fund would
+ * grade against the guide's flat 3-month fallback — a household asking 12 would flash "good" before flipping to
+ * its real grade once goals arrive. Blank that one row instead, the same "not enough data" shape `ratioDisplay`
+ * already draws for `value: null`.
+ */
+export function withEmergencyLoading(ratios: HealthRatio[], goalsPending: boolean): HealthRatio[] {
+  if (!goalsPending) return ratios;
+  return ratios.map((ratio) => (ratio.key === 'emergency_fund' ? { ...ratio, value: null, status: 'unknown' } : ratio));
+}
+
+/**
+ * The base of the emergency goal the card grades against — the one asking the most months, as
+ * `householdEmergencyMonths` reads them — so the card opens counting what that goal counts. A goal with no working
+ * counts essential spending, as the goal's own figure does. Null with no emergency goal: the card's own default.
+ */
+export function emergencyGoalBase(
+  goals: readonly Pick<Goal, 'id' | 'kind' | 'stages'>[],
+  calculators: readonly { goalId: string; kind: string; inputs: unknown }[],
+): EmergencyBase | null {
+  const months = householdEmergencyMonths(goals);
+  if (months === null) return null;
+  const goal = goals.find((each) => each.kind === 'emergency' && each.stages.some((stage) => !stage.paidOn && stage.targetMonths === months));
+  const working = calculators.find((row) => row.kind === 'emergency' && row.goalId === goal?.id);
+  return (working?.inputs as { base?: EmergencyBase } | undefined)?.base ?? DEFAULT_EMERGENCY_BASE;
+}
+
+/**
  * The balance-sheet totals the ratios read on the period's balance date — or none, with the currencies named, while
  * any row there has no rate: `sheetInputsAt` gives such a row 0, so a ratio built from it would be wrong, not partial.
+ * The five totals come from `sheetTotals` alone, the one reader the life cover prefill shares (spec §12).
  */
 export function ratioTotals(inputs: { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] } | undefined): {
   totals: SheetTotals | null;
@@ -62,16 +104,5 @@ export function ratioTotals(inputs: { assets: SheetAsset[]; liabilities: SheetLi
 } {
   const missing = [...(inputs?.missing ?? [])];
   if (missing.length > 0) return { totals: null, missing };
-  const sheet = balanceSheet(inputs?.assets ?? [], inputs?.liabilities ?? []);
-  const groupTotal = (key: string) => sheet.assetGroups.find((group) => group.key === key)?.totalMinor ?? 0;
-  return {
-    totals: {
-      liquidMinor: groupTotal('liquid'),
-      investMinor: groupTotal('invest'),
-      assetsMinor: sheet.assetsTotalMinor,
-      liabilitiesMinor: sheet.liabilitiesTotalMinor,
-      netWorthMinor: sheet.netWorthMinor,
-    },
-    missing: [],
-  };
+  return { totals: sheetTotals(balanceSheet(inputs?.assets ?? [], inputs?.liabilities ?? [])), missing: [] };
 }

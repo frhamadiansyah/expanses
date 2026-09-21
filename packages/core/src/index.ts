@@ -206,13 +206,20 @@ export {
 } from './assets/balance-sheet';
 export {
   DEFAULT_DEBT_SERVICE_BPS,
+  DEFAULT_EMERGENCY_BASE,
+  DEFAULT_EMERGENCY_TARGET_MONTHS,
+  EMERGENCY_BASES,
+  type EmergencyBase,
+  emergencyOutgoingMinor,
   type HealthRatio,
+  householdEmergencyMonths,
   healthRatios,
   monthly,
   type PeriodFlows,
   type RatioKey,
   type RatioSettings,
   type RatioStatus,
+  sheetTotals,
   type SheetTotals,
   WATCH_BAND,
 } from './assets/health';
@@ -316,18 +323,49 @@ export {
 } from './coretax/converter';
 
 export { budgetSheet, type BudgetCap, type BudgetLine, type BudgetSheet, type BudgetSheetInput, type SavingsRow } from './budget/sheet';
+export { BUDGET_FREQUENCIES, type BudgetFrequency, perMonthMinor } from './budget/frequency';
+export { CATEGORY_NEEDS, type CategoryNeed, type NeedNode, needOf, type ResolvedNeed, resolveNeeds } from './budget/needs';
+export { emergencyMonthsFor, type Household, HOUSEHOLDS, INCOME_STABILITIES, type IncomeStability } from './budget/emergency-months';
+export { COMPULSORY_KINDS, type GoalClass, fundingOrder, goalClass } from './goals/classes';
+export {
+  assumedReturnBps,
+  bandHint,
+  DEFAULT_INFLATION_BPS,
+  DRAWDOWN_RETURN_BPS,
+  EDUCATION_INFLATION_BPS,
+  EMERGENCY_RETURN_BPS,
+  RETIREMENT_RETURN_BPS,
+  type ReturnBand,
+  RETURN_BANDS,
+  returnBandFor,
+} from './goals/assumptions';
 export {
   CalculatorError,
-  type CalculatedStage,
-  educationStages,
   type EducationInputs,
   emergencyTargetMinor,
+  type LifeCover,
+  type LifeCoverInputs,
+  lifeCoverMinor,
+  presentValueOfYearsMinor,
   retirementTargetMinor,
+  retirementTodayMinor,
   type RetirementInputs,
   savingPlanFor,
   type SavingPlan,
   type SavingPlanInput,
 } from './budget/calculators';
+export {
+  DEFAULT_FEES,
+  type EducationFee,
+  type EducationLevel,
+  educationFromV1,
+  type EducationPlanInputs,
+  educationPlanStages,
+  type EducationStage,
+  type FeeCharge,
+  levelStartsOn,
+  OFFERED_LEVELS,
+} from './budget/education';
 export {
   balanceOf,
   type Balance,

@@ -1,9 +1,10 @@
-import { mccName } from '@expanses/core';
+import { type CategoryNeed, mccName, needOf } from '@expanses/core';
 import {
   type AccountRow,
   addSetCategory,
   archiveAccount,
   clearCategoryMcc,
+  clearCategoryNeed,
   createAccount,
   createCategorySet,
   deleteCategorySet,
@@ -11,6 +12,7 @@ import {
   renameAccount,
   renameCategorySet,
   saveCategoryMcc,
+  saveCategoryNeed,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
@@ -20,6 +22,7 @@ import { isCategoryOf, useAccounts, useInOpenBook, useInvalidateAll } from '../.
 import { cx, Empty, ErrorBox } from '../../ui';
 import { type CornerAction, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN, SegmentedControl, tapReach } from '../../ui/native';
 import { categoryMcc } from './category-mcc';
+import { useCategoryNeeds } from './need-queries';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
 
 /** The height a bare text action is drawn at, before `ph-tap` grows its target back to the kit's 44 pt floor. */
@@ -90,6 +93,16 @@ function MccNote({ mcc, source }: { mcc: string | null; source?: string | null }
   );
 }
 
+/** Essential or lifestyle, and where the answer came from. Quiet ink, like the MCC beside it. */
+function NeedNote({ name, need, source }: { name: string; need: CategoryNeed; source: 'yours' | 'parent' | null }) {
+  return (
+    <span data-testid={`need-${name}`} className="shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]">
+      {need === 'lifestyle' ? 'Lifestyle' : 'Essential'}
+      {source === 'parent' ? ' (from parent)' : ''}
+    </span>
+  );
+}
+
 export function CategoriesPage() {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -102,6 +115,7 @@ export function CategoriesPage() {
   // The monthly tree only, and only the open book's: a set's categories are managed on the event that draws on them.
   const categories = (accounts.data ?? []).filter(isCategoryOf(kind)).filter((account) => membership[account.id] === undefined && inOpenBook(account));
   const sets = useCategorySets().data ?? [];
+  const needs = useCategoryNeeds();
   const overrides = useQuery({ queryKey: ['category-mccs', ws.workspaceId], queryFn: () => listCategoryMccs(database, ws) });
   const allCategories = (accounts.data ?? []).filter((a) => a.subtype === 'category');
   const roots = categories.filter((c) => c.parentId === null);
@@ -150,13 +164,20 @@ export function CategoriesPage() {
 
   const Row = ({ c, depth, first }: { c: AccountRow; depth: number; first: boolean }) => {
     const card = kind === 'expense' ? categoryMcc(c, allCategories, overrides.data ?? {}) : null;
+    const need = kind === 'expense' ? needOf(c.id, allCategories, needs.data ?? {}) : null;
+    const other: CategoryNeed | null = need ? (need.need === 'lifestyle' ? 'essential' : 'lifestyle') : null;
     return (
       <li>
         <ActionLine
           name={c.name}
           depth={depth}
           separator={!first}
-          meta={card && <MccNote mcc={card.mcc} source={card.source} />}
+          meta={
+            <>
+              {card && <MccNote mcc={card.mcc} source={card.source} />}
+              {need && <NeedNote name={c.name} need={need.need} source={need.source} />}
+            </>
+          }
         >
           {card && (
             <>
@@ -169,6 +190,16 @@ export function CategoriesPage() {
                 </LineAction>
               )}
             </>
+          )}
+          {need && other && (
+            <LineAction label={`Mark ${c.name} ${other}`} onClick={() => void run(() => saveCategoryNeed(database, ws, c.id, other))}>
+              {other === 'lifestyle' ? 'Lifestyle' : 'Essential'}
+            </LineAction>
+          )}
+          {need?.source === 'yours' && (
+            <LineAction label={`Clear the mark on ${c.name}`} onClick={() => void run(() => clearCategoryNeed(database, ws, c.id))}>
+              Clear mark
+            </LineAction>
           )}
           {depth === 0 && <LineAction onClick={() => add(c)}>+ Sub</LineAction>}
           <LineAction onClick={() => rename(c)}>Rename</LineAction>
@@ -204,7 +235,16 @@ export function CategoriesPage() {
       />
       <ErrorBox error={error} />
 
-      <Panel wide pad={false} header="Every category">
+      <Panel
+        wide
+        pad={false}
+        header="Every category"
+        footer={
+          kind === 'expense'
+            ? 'Essential or lifestyle decides what an emergency fund covers and how the Budget splits what you spent. A category with no mark follows its parent, and counts as essential at the top.'
+            : undefined
+        }
+      >
         <ul>
           {roots.map((c, index) => (
             <Row key={c.id} c={c} depth={0} first={index === 0} />

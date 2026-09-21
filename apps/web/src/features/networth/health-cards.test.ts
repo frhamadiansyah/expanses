@@ -1,6 +1,6 @@
-import type { HealthRatio } from '@expanses/core';
+import type { Goal, HealthRatio } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { periodChoices, periodRange, ratioDisplay, ratioTotals } from './health-cards';
+import { emergencyGoalBase, periodChoices, periodRange, ratioDisplay, ratioTotals, withEmergencyLoading } from './health-cards';
 
 const TODAY = '2026-09-12';
 
@@ -67,6 +67,42 @@ describe('ratioDisplay', () => {
   it('says it does not know instead of drawing a bar', () => {
     const display = ratioDisplay(ratio({ value: null, status: 'unknown' }));
     expect(display).toMatchObject({ value: '—', statusLabel: 'Not enough data', gaugePercent: 0 });
+  });
+});
+
+describe('withEmergencyLoading', () => {
+  it('blanks only the emergency fund row while goals have not loaded, leaving the good grade it would otherwise flash', () => {
+    const ratios = [ratio({ key: 'emergency_fund', status: 'good', value: 4.7 }), ratio({ key: 'savings_ratio', status: 'good', value: 23 })];
+    const loading = withEmergencyLoading(ratios, true);
+    expect(loading[0]).toMatchObject({ key: 'emergency_fund', value: null, status: 'unknown' });
+    expect(loading[1]).toEqual(ratios[1]);
+  });
+
+  it('leaves every row exactly as computed once goals have loaded', () => {
+    const ratios = [ratio({ key: 'emergency_fund', status: 'act', value: 4.7 })];
+    expect(withEmergencyLoading(ratios, false)).toEqual(ratios);
+  });
+});
+
+describe('the base the emergency card opens on', () => {
+  const stage = (targetMonths: number | null, paidOn: string | null = null) => ({ targetMonths, paidOn });
+  const goal = (id: string, kind: string, months: number[]) => ({ id, kind, stages: months.map((m) => stage(m)) }) as unknown as Pick<Goal, 'id' | 'kind' | 'stages'>;
+  const worked = (goalId: string, base?: 'essential' | 'all') => ({ goalId, kind: 'emergency' as const, inputs: base ? { months: 6, base } : { months: 6 } });
+
+  it('is the base of the emergency goal whose months it grades against', () => {
+    expect(emergencyGoalBase([goal('e', 'emergency', [6])], [worked('e', 'all')])).toBe('all');
+    // Two emergency goals: the one asking the most months is the one graded against.
+    expect(emergencyGoalBase([goal('a', 'emergency', [3]), goal('b', 'emergency', [9])], [worked('a', 'all'), worked('b', 'essential')])).toBe('essential');
+    expect(emergencyGoalBase([goal('a', 'emergency', [3]), goal('b', 'emergency', [9])], [worked('a', 'essential'), worked('b', 'all')])).toBe('all');
+  });
+
+  it('is essential for an emergency goal with no working, as the goal itself counts it', () => {
+    expect(emergencyGoalBase([goal('e', 'emergency', [6])], [])).toBe('essential');
+  });
+
+  it('is null with no emergency goal, so the card opens on its own default', () => {
+    expect(emergencyGoalBase([goal('h', 'holiday', [6])], [worked('h', 'all')])).toBeNull();
+    expect(emergencyGoalBase([], [])).toBeNull();
   });
 });
 

@@ -8,6 +8,7 @@ import {
   type Database,
   periodFlows,
   postTransaction,
+  saveCategoryNeed,
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -104,6 +105,36 @@ describe('periodFlows income and spending', () => {
 
     const flows = await periodFlows(database, ws, YEAR);
     expect(flows.incomeMinor).toBe(30_000_000);
+  });
+});
+
+describe('periodFlows lifestyle spending', () => {
+  const restaurants = (occurredOn: string, amountMinor: number, excludedFromReport = false) =>
+    postTransaction(database, ws, {
+      occurredOn,
+      description: 'Warung',
+      excludedFromReport,
+      lines: [
+        { accountId: categories['food_beverage.restaurants']!, amountMinor, currency: 'IDR' },
+        { accountId: bca.id, amountMinor: -amountMinor, currency: 'IDR' },
+      ],
+    });
+
+  it('sums signed spending in categories that resolve to lifestyle, leaving out excluded rows', async () => {
+    await saveCategoryNeed(database, ws, categories['food_beverage']!, 'lifestyle');
+    await groceries('2026-03-02', 3_000_000);
+    await restaurants('2026-03-05', 2_000_000);
+    await restaurants('2026-03-06', -500_000); // a refund
+    await restaurants('2026-03-07', 1_000_000, true); // marked "not my spending"
+
+    const flows = await periodFlows(database, ws, YEAR);
+    expect(flows.spendingMinor).toBe(4_500_000);
+    expect(flows.lifestyleSpendingMinor).toBe(1_500_000);
+  });
+
+  it('is nothing while no category is marked', async () => {
+    await restaurants('2026-03-05', 2_000_000);
+    expect((await periodFlows(database, ws, YEAR)).lifestyleSpendingMinor).toBe(0);
   });
 });
 

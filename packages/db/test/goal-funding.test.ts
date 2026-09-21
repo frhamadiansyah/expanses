@@ -13,8 +13,10 @@ import {
   recordTrade,
   retagTrade,
   saveAssetProfile,
+  saveCategoryNeed,
   saveEarmark,
   saveGoal,
+  saveGoalCalculator,
   saveTradeTemplate,
   upsertPrice,
   upsertRate,
@@ -280,6 +282,142 @@ describe('goalPlansFor', () => {
     const summary = await goalPlansFor(database, ws, TODAY);
     // Rp 30 jt in; Rp 23 jt spent, the interest included; Rp 1 jt of principal left the account beside it.
     expect(summary.capacityMonthlyMinor).toBe(6_000_000);
+  });
+
+  /** Rp 5 jt a month at restaurants, on top of the Rp 20 jt of groceries, with Food and beverage marked lifestyle. */
+  async function diningOut() {
+    const categories = await categoryIdsByKey(database, ws);
+    await saveCategoryNeed(database, ws, categories['food_beverage']!, 'lifestyle');
+    for (const month of ['06', '07', '08']) {
+      await postTransaction(database, ws, {
+        occurredOn: `2026-${month}-20`,
+        description: 'Dinner',
+        lines: [
+          { accountId: categories['food_beverage.restaurants']!, amountMinor: 5_000_000, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: -5_000_000, currency: 'IDR' },
+        ],
+      });
+    }
+  }
+
+  it('rounds the monthly target half away from zero rather than truncating', async () => {
+    const categories = await categoryIdsByKey(database, ws);
+    const groceriesEach = [20_000_000, 20_000_000, 20_000_005];
+    for (const [i, month] of ['06', '07', '08'].entries()) {
+      await postTransaction(database, ws, {
+        occurredOn: `2026-${month}-28`,
+        description: 'Salary',
+        lines: [
+          { accountId: bca.id, amountMinor: 30_000_000, currency: 'IDR' },
+          { accountId: categories['income.salary']!, amountMinor: -30_000_000, currency: 'IDR' },
+        ],
+      });
+      await postTransaction(database, ws, {
+        occurredOn: `2026-${month}-15`,
+        description: 'Living',
+        lines: [
+          { accountId: categories['household.groceries']!, amountMinor: groceriesEach[i]!, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: -groceriesEach[i]!, currency: 'IDR' },
+        ],
+      });
+    }
+    const emergencyId = await saveGoal(database, ws, {
+      name: 'Emergency fund',
+      kind: 'emergency',
+      growthBps: 0,
+      returnBps: 200,
+      stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2028-12-31' }],
+    });
+
+    const summary = await goalPlansFor(database, ws, TODAY);
+    const plan = summary.plans.find((row) => row.goalId === emergencyId)!;
+    // Rp 60.000.005 spent over 3 months divides to Rp 20.000.001,667 a month, which rounds up to
+    // Rp 20.000.002 — not the Rp 20.000.001 a floor would give.
+    expect(plan.stages[0]!.todayMinor).toBe(6 * 20_000_002);
+  });
+
+  it('clamps the emergency target at 0 once, on the whole sum, when refunds outrun essential spending', async () => {
+    const categories = await categoryIdsByKey(database, ws);
+    const kkb = await createAccount(database, ws, { name: 'Car loan', kind: 'liability', subtype: 'loan', currency: 'IDR', openingBalanceMinor: 84_000_000, openedOn: '2026-01-01' });
+    for (const month of ['06', '07', '08']) {
+      await postTransaction(database, ws, {
+        occurredOn: `2026-${month}-28`,
+        description: 'Salary',
+        lines: [
+          { accountId: bca.id, amountMinor: 30_000_000, currency: 'IDR' },
+          { accountId: categories['income.salary']!, amountMinor: -30_000_000, currency: 'IDR' },
+        ],
+      });
+      // A refund larger than any spending in the category: essential spending nets negative this month.
+      await postTransaction(database, ws, {
+        occurredOn: `2026-${month}-15`,
+        description: 'Refund',
+        lines: [
+          { accountId: categories['household.groceries']!, amountMinor: -25_000_000, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: 25_000_000, currency: 'IDR' },
+        ],
+      });
+      // Loan principal is added back in, but not enough to bring the sum positive.
+      await postTransaction(database, ws, {
+        occurredOn: `2026-${month}-05`,
+        description: 'Car installment',
+        lines: [
+          { accountId: kkb.id, amountMinor: 1_000_000, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: -1_000_000, currency: 'IDR' },
+        ],
+      });
+    }
+    const emergencyId = await saveGoal(database, ws, {
+      name: 'Emergency fund',
+      kind: 'emergency',
+      growthBps: 0,
+      returnBps: 200,
+      stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2028-12-31' }],
+    });
+
+    const summary = await goalPlansFor(database, ws, TODAY);
+    const plan = summary.plans.find((row) => row.goalId === emergencyId)!;
+    // Rp 75 jt refunded against Rp 3 jt of principal over the period: -72 jt signed, -24 jt a month.
+    // Clamped once on the sum, the target is 0 — not a negative number of months of nothing.
+    expect(plan.stages[0]!.todayMinor).toBe(0);
+  });
+
+  it('sizes an emergency goal on essential spending unless its working says all', async () => {
+    await salaryAndSpending();
+    await diningOut();
+    const emergencyId = await saveGoal(database, ws, {
+      name: 'Emergency fund',
+      kind: 'emergency',
+      growthBps: 0,
+      returnBps: 200,
+      stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2028-12-31' }],
+    });
+    const todayOf = async () => (await goalPlansFor(database, ws, TODAY)).plans.find((row) => row.goalId === emergencyId)!.stages[0]!.todayMinor;
+
+    // Typed by hand: the default, essential — the Rp 5 jt of dining out left out.
+    expect(await todayOf()).toBe(6 * 20_000_000);
+
+    await saveGoalCalculator(database, ws, { goalId: emergencyId, kind: 'emergency', inputs: { months: 6, base: 'all' }, today: TODAY });
+    expect(await todayOf()).toBe(6 * 25_000_000);
+  });
+
+  it('leaves what you can save alone: lifestyle is still money that left', async () => {
+    await salaryAndSpending();
+    await diningOut();
+    // Rp 30 jt in, Rp 25 jt out.
+    expect((await goalPlansFor(database, ws, TODAY)).capacityMonthlyMinor).toBe(5_000_000);
+  });
+
+  it('fits the emergency fund first, though it was ranked last', async () => {
+    await salaryAndSpending();
+    const emergencyId = await saveGoal(database, ws, {
+      name: 'Emergency fund',
+      kind: 'emergency',
+      growthBps: 0,
+      returnBps: 200,
+      stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2027-09-12' }],
+    });
+    expect((await goalPlansFor(database, ws, TODAY)).fits[0]!.goalId).toBe(emergencyId);
   });
 
   it('warns when more is set aside than the account holds', async () => {

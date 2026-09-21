@@ -48,7 +48,7 @@ describe('migration 0048', () => {
     expect((await listTransactions(database, ws))[0]).toMatchObject({ id, channel: null, excluded: false, photoCount: 0 });
 
     // `migrate` is set-based and sorted (migrations.ts:179), so it applies everything this build has that the
-    // database has not: 0048, the 0049 that is already on main, and 0054.
+    // database has not.
     expect(await migrate(database)).toEqual(MIGRATIONS.map((m) => m.version).filter((v) => v > 47));
     const rows = await database.db.values<[number]>(sql`SELECT count(*) FROM transaction_flags`);
     expect(Number(rows[0]![0])).toBe(0);
@@ -63,8 +63,8 @@ describe('migration 0048', () => {
   it('applies on top of a database that already has 0049', async () => {
     executor = createNodeExecutor();
     const database = createDatabase(executor);
-    await migrate(database, MIGRATIONS.filter((m) => m.version <= 47 || m.version === 49));
-    expect(await migrate(database)).toEqual(MIGRATIONS.map((m) => m.version).filter((v) => v > 47 && v !== 49));
+    await migrate(database, MIGRATIONS.filter((m) => m.version !== 48));
+    expect(await migrate(database)).toEqual([48]);
     const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
     const bank = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' });
     const groceries = (await listAccounts(database, ws)).find((a) => a.systemKey === 'household.groceries')!.id;
