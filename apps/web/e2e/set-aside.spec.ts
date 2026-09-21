@@ -216,3 +216,30 @@ test('a goal that was whole says when it stood whole and where the money went', 
   // A borrow is not a spend: still open.
   await expect(umrah.getByText('Done', { exact: true })).toHaveCount(0);
 });
+
+test('the goal form\'s hint reads today\'s balance, as the question does: money dated next month is not free yet', async ({ page }) => {
+  // Nothing is promised on BCA, so the hint falls back to the balance — today's, not one counting a future entry.
+  await addMoneyAccount(page, 'BCA', 'savings', '10000000');
+  await addGoal(page, 'Umrah 2027', '7500000');
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Income' }).click();
+  await typeAmount(page, form, '5000000');
+  await form.getByRole('button', { name: /^Received into/ }).click();
+  await page.getByRole('dialog', { name: 'Received into' }).getByRole('button', { name: 'BCA', exact: true }).click();
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Salary', exact: true }).click();
+  await form.getByLabel('Note').pressSequentially('Bonus');
+  const next = new Date();
+  next.setMonth(next.getMonth() + 1);
+  await form.getByLabel('Date').fill(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-15`);
+  await form.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(form).toHaveCount(0);
+
+  await page.goto('/goals');
+  await goalCard(page, 'Umrah 2027').getByRole('button', { name: 'Edit' }).click();
+  // 10.000.000 today; counting the 5.000.000 dated next month would say 15.000.000, a figure the question never uses.
+  await expect(page.getByText(/^Rp.10\.000\.000 free for this goal$/)).toBeVisible();
+  await expect(page.getByText(/15\.000\.000 free for this goal/)).toHaveCount(0);
+});

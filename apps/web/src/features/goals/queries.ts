@@ -74,9 +74,10 @@ export function useGoalWholeness() {
   return useQuery({ queryKey: ['goal-wholeness', ws.workspaceId], queryFn: () => goalWholeness(database, ws, isoDate()) });
 }
 
+/** Every goal's whole history: the card shows the newest six and reads its funded window from all of it (`cardHistory`). */
 export function useGoalHistory() {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['goal-history', ws.workspaceId], queryFn: () => goalHistory(database, ws, isoDate()) });
+  return useQuery({ queryKey: ['goal-history', ws.workspaceId], queryFn: () => goalHistory(database, ws, isoDate(), { limit: null }) });
 }
 
 /** Every recorded draw on a goal — the goal card reads which borrows were taken from a whole goal. */

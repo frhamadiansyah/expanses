@@ -80,7 +80,8 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
   };
 
   const views = useSetAsideViews().data ?? {};
-  const balances = useBalances().data ?? {};
+  // Today's balance, the one the views and the question read: a future-dated entry is not money here yet (ruling M4).
+  const balances = useBalances(isoDate()).data ?? {};
   /** The box's hint, from the readers' own figures: what is free for this goal there, or how short the typed figure leaves it. */
   const hintFor = (account: { id: string; name: string; currency: string | null }) => {
     const currency = currencyOf(account);

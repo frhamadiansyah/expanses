@@ -1,6 +1,6 @@
 import type { GoalPlanRow, GoalRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { dayMonth, fundedWindow, historyDay, roomFor, setAsideHint, GOAL_TEMPLATES, goalCard, templateDueOn, templateFor } from './goal-cards';
+import { cardHistory, dayMonth, fundedWindow, historyDay, roomFor, setAsideHint, GOAL_TEMPLATES, goalCard, templateDueOn, templateFor } from './goal-cards';
 
 const TODAY = '2026-09-12';
 
@@ -74,10 +74,10 @@ describe('goalCard', () => {
     expect(goalCard(plan()).dueLabel).toBe('Jun 2035');
   });
 
-  it('carries the warnings through', () => {
+  it('carries the risk warning through; the short state is its own lines, not a warning sentence (M7)', () => {
     const card = goalCard(plan({ riskWarning: 'Japan trip is due in 9 months', earmarkWarning: 'You set aside more than BCA Tahapan holds' }));
     expect(card.riskWarning).toContain('Japan trip');
-    expect(card.earmarkWarning).toContain('BCA Tahapan');
+    expect(card).not.toHaveProperty('earmarkWarning');
   });
 });
 
@@ -141,6 +141,33 @@ describe('done and short', () => {
     expect(card.done).toBe(false);
     expect(card.statusLabel).not.toBe('Done');
     expect(card.doneOn).toBeNull();
+  });
+
+  it('never reads Done for a goal with no stages: nothing paid is not everything paid (M2)', () => {
+    const card = goalCard(plan({ status: 'funded', goal: goal({ kind: 'umrah', stages: [] }), stages: [] }));
+    expect(card).toMatchObject({ done: false, doneOn: null, statusLabel: 'Funded' });
+  });
+
+  it('keeps a Done goal in the good tone though its plan reads behind (M2)', () => {
+    // Every stage paid; the plan still says behind (nothing more is set up). Done wins, and Done is not a warning.
+    const card = goalCard(plan({ status: 'behind', goal: goal({ kind: 'umrah', stages: [paidStage] }), stages: [paidPlan] }));
+    expect(card).toMatchObject({ statusLabel: 'Done', statusTone: 'good' });
+    // The same plan with a stage still open is Behind, in the warn tone.
+    expect(goalCard(plan({ status: 'behind', goal: goal({ kind: 'umrah', stages: [{ ...paidStage, paidOn: null }] }), stages: [{ ...paidPlan, state: 'saving' }] }))).toMatchObject({ statusLabel: 'Behind', statusTone: 'warn' });
+  });
+
+  it('shows six history lines and reads the funded window from all of them (M3)', () => {
+    const line = (day: number) => ({ key: `s${day}`, kind: 'set-aside' as const, occurredOn: `2026-09-${String(day).padStart(2, '0')}`, amountMinor: 100_000, currency: 'IDR', text: 'Jenius' });
+    // Newest first: the borrow, six set-asides after the target was reached, then the reached day itself — the eighth line.
+    const full = [
+      { key: 'b', kind: 'borrowed' as const, occurredOn: '2026-09-19', amountMinor: -1_800_000, currency: 'IDR', text: 'Laptop' },
+      line(18), line(17), line(16), line(15), line(14), line(13),
+      { key: 'r', kind: 'reached' as const, occurredOn: '2026-08-03', amountMinor: null, currency: 'IDR', text: 'Reached the target' },
+    ];
+    const { lines, stood } = cardHistory(full, () => true);
+    expect(lines.map((entry) => entry.key)).toEqual(['b', 's18', 's17', 's16', 's15', 's14']);
+    // Read from the six on show, the reached day is gone and the card would say "Fully funded until 19 Sep".
+    expect(stood).toEqual({ from: '2026-08-03', until: '2026-09-19', description: 'Laptop', amountMinor: 1_800_000, currency: 'IDR' });
   });
 
   it('lists what each account is short, in that account\'s money', () => {

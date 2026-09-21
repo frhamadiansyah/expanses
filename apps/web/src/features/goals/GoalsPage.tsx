@@ -19,7 +19,7 @@ import {
 } from '../../ui/native';
 import { Calculator, calculatorKindOf } from './Calculator';
 import { GoalForm } from './GoalForm';
-import { dayMonth, fundedWindow, type GoalCard, goalCard, GOAL_TEMPLATES, historyDay } from './goal-cards';
+import { cardHistory, dayMonth, type fundedWindow, type GoalCard, goalCard, GOAL_TEMPLATES, historyDay } from './goal-cards';
 import { useDraws, useEarmarks, useGoalCalculators, useGoalHistory, useGoalPlans, useGoals } from './queries';
 
 /**
@@ -88,9 +88,8 @@ const HISTORY_TITLES: Record<GoalHistoryEntry['kind'], string> = {
  * Under the figure, what the goal is short and — when it was whole before it lent money — the days it stood whole,
  * said as a fact rather than a failure (spec §7.2). The figures are the readers' own; nothing is worked out here.
  */
-function ShortNote({ card, history, wasWhole }: { card: GoalCard; history: GoalHistoryEntry[]; wasWhole: (key: string) => boolean }) {
+function ShortNote({ card, stood }: { card: GoalCard; stood: ReturnType<typeof fundedWindow> }) {
   if (card.shortLines.length === 0) return null;
-  const stood = fundedWindow(history, wasWhole);
   const many = card.shortLines.length > 1;
   return (
     <>
@@ -242,6 +241,7 @@ export function GoalsPage() {
       <div className="grid gap-x-6 lg:grid-cols-2">
         {cards.map((card, index) => {
           const plan = plans[index]!;
+          const { lines: historyLines, stood } = cardHistory(history[card.goalId] ?? [], (key) => wholeBorrows.has(key));
           return (
             <section key={card.goalId}>
               <Panel wide header={card.name} trailing={<StatusPill card={card} />} footer={`${card.kindLabel} · by ${card.dueLabel}`}>
@@ -252,7 +252,7 @@ export function GoalsPage() {
                     <>
                       of <Money minor={card.targetMinor} currency={ws.baseCurrency} />
                       {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from your figures</span>}
-                      <ShortNote card={card} history={history[card.goalId] ?? []} wasWhole={(key) => wholeBorrows.has(key)} />
+                      <ShortNote card={card} stood={stood} />
                     </>
                   }
                 />
@@ -338,9 +338,9 @@ export function GoalsPage() {
               {/* The short part of the old warning is said under the figure and on the Funded-by row; only the no-rate sentence is left. */}
               {plan.unconvertedWarning && <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{plan.unconvertedWarning}</p>}
 
-              {(history[card.goalId]?.length ?? 0) > 0 && (
+              {historyLines.length > 0 && (
                 <InsetGroup wide header="History">
-                  {history[card.goalId]!.map((entry) => (
+                  {historyLines.map((entry) => (
                     <InsetRow
                       key={entry.key}
                       testId="goal-history"

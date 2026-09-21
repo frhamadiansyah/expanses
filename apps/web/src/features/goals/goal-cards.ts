@@ -1,5 +1,5 @@
 import { formatMinor, type GoalKind, type StageState } from '@expanses/core';
-import type { GoalHistoryEntry, GoalPlanRow } from '@expanses/db';
+import { GOAL_HISTORY_LENGTH, type GoalHistoryEntry, type GoalPlanRow } from '@expanses/db';
 
 export const GOAL_KIND_LABELS: Record<GoalKind, string> = {
   emergency: 'Emergency fund',
@@ -48,7 +48,6 @@ export interface GoalCard {
   differenceMinor: number;
   stageLines: StageLine[];
   riskWarning: string | null;
-  earmarkWarning: string | null;
   /** Every stage paid. Never for an emergency fund: a standing level is rebuilt, not finished (ruling Q3). */
   done: boolean;
   /** The last day a stage was paid, when done. */
@@ -97,6 +96,15 @@ export function fundedWindow(
   return { from: reached?.occurredOn ?? null, until: borrow.occurredOn, description: borrow.text, amountMinor: Math.abs(borrow.amountMinor ?? 0), currency: borrow.currency };
 }
 
+/**
+ * What a goal's card shows of its history — the newest six — and the funded window, which is read from all of it: the
+ * day the goal reached its target can be older than the six, and cutting it off would say "until" when the app knows
+ * "from" (ruling M3). `full` is `goalHistory` with no limit, newest first.
+ */
+export function cardHistory(full: GoalHistoryEntry[], wasWhole: (key: string) => boolean): { lines: GoalHistoryEntry[]; stood: ReturnType<typeof fundedWindow> } {
+  return { lines: full.slice(0, GOAL_HISTORY_LENGTH), stood: fundedWindow(full, wasWhole) };
+}
+
 export function goalCard(plan: GoalPlanRow): GoalCard {
   const unpaid = plan.stages.filter((stage) => stage.state !== 'paid');
   const last = unpaid[unpaid.length - 1] ?? plan.stages[plan.stages.length - 1];
@@ -126,7 +134,6 @@ export function goalCard(plan: GoalPlanRow): GoalCard {
       state: stage.state,
     })),
     riskWarning: plan.riskWarning,
-    earmarkWarning: plan.earmarkWarning,
     done,
     doneOn: done ? (paidDays.at(-1) ?? null) : null,
     shortLines: plan.links.filter((link) => link.shortMinor > 0).map((link) => ({ accountName: link.name, shortMinor: link.shortMinor, currency: link.currency })),
