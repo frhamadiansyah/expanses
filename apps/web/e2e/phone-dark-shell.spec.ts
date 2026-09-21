@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { restoreAgedByDays } from './backup-reminders-fixture';
 import { addBank } from './recovery-fixture';
+import { tokenColour } from './securities';
 
 /*
  * The shell in the dark — what the audit found and the restyle did not cause: the kit resolved in the dark from
@@ -14,18 +15,6 @@ import { addBank } from './recovery-fixture';
  */
 
 test.use({ colorScheme: 'dark' });
-
-/** The token as a computed colour: put it on a probe and read back what the browser made of it. */
-async function tokenColour(page: Page, name: string): Promise<string> {
-  return page.evaluate((property) => {
-    const probe = document.createElement('span');
-    probe.style.color = `var(${property})`;
-    document.body.appendChild(probe);
-    const value = getComputedStyle(probe).color;
-    probe.remove();
-    return value;
-  }, name);
-}
 
 /** The colour an element is really painted in. */
 const painted = (target: Locator) => target.evaluate((node) => getComputedStyle(node).backgroundColor);
