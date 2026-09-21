@@ -2,16 +2,41 @@ import { MERCHANTS } from '@expanses/catalog';
 import { mccName } from '@expanses/core';
 import { archiveMerchantMcc, countMatchingPurchases, countPurchasesByPattern, listMerchantMccs, type MerchantMccRow, saveMerchantMcc } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { type FormEvent, useState } from 'react';
+import { Check, X } from 'lucide-react';
+import { type FormEvent, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Input, PageHeader } from '../../ui';
+import { Button, cx, Empty, ErrorBox } from '../../ui';
+import {
+  type CornerAction,
+  DestructiveRow,
+  Figure,
+  InsetGroup,
+  InsetRow,
+  LargeTitle,
+  type RecordColumn,
+  RecordTable,
+  TextRow,
+} from '../../ui/native';
 import { MccPicker } from './MccPicker';
-import { bundledRows } from './merchant-rows';
+import { type BundledRow, bundledRows } from './merchant-rows';
 
 const describeMcc = (mcc: string | null) => (mcc === null ? 'Ignored: the typical MCC is not used' : `${mcc} ${mccName(mcc) ?? ''}`.trim());
 const purchasesText = (count: number) => `${count} purchase${count === 1 ? '' : 's'}`;
+const statusWord = (row: BundledRow) => (row.status === 'typical' ? 'Typical' : row.status === 'yours' ? `Yours: ${row.yourMcc}` : 'Ignored');
+
+interface MemoryRow extends MerchantMccRow {
+  matches: number;
+}
+
+/** The ground a native screen is laid on, and the column a desktop reads it in. */
+function Screen({ children }: { children: ReactNode }) {
+  return (
+    <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
+      <div className="mx-auto max-w-4xl">{children}</div>
+    </div>
+  );
+}
 
 /** Merchant memory and the bundled merchant list: which MCC a purchase gets from its description. */
 export function MerchantsPage() {
@@ -29,7 +54,7 @@ export function MerchantsPage() {
     queryFn: async () => {
       const rows = await listMerchantMccs(database, ws);
       const counts = await countPurchasesByPattern(database, ws, rows.map((row) => row.pattern));
-      return rows.map((row) => ({ ...row, matches: counts[row.pattern] ?? 0 }));
+      return rows.map((row): MemoryRow => ({ ...row, matches: counts[row.pattern] ?? 0 }));
     },
   });
 
@@ -48,6 +73,12 @@ export function MerchantsPage() {
     }
   }
 
+  const clear = () => {
+    setEditingId(null);
+    setPattern('');
+    setMcc('');
+  };
+
   const startEdit = (row: { id?: string; pattern: string; mcc: string | null }) => {
     setEditingId(row.id ?? null);
     setPattern(row.pattern);
@@ -55,13 +86,9 @@ export function MerchantsPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (await save({ id: editingId ?? undefined, pattern, mcc: mcc || null })) {
-      setEditingId(null);
-      setPattern('');
-      setMcc('');
-    }
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
+    if (await save({ id: editingId ?? undefined, pattern, mcc: mcc || null })) clear();
   }
 
   async function remove(row: MerchantMccRow) {
@@ -70,109 +97,163 @@ export function MerchantsPage() {
     try {
       await archiveMerchantMcc(database, ws, row.id);
       await invalidate();
+      if (editingId === row.id) clear();
     } catch (e) {
       setError(e);
     }
   }
 
   const rows = bundledRows(MERCHANTS.merchants, memory.data ?? [], search);
+  const mine = memory.data ?? [];
+  const editing = editingId === null ? null : (mine.find((row) => row.id === editingId) ?? null);
+  const dirty = Boolean(editingId || pattern || mcc);
+
+  /* The primary action is the corner button, not a dark rectangle at the foot of the form. Glyphs at every width. */
+  const actions: CornerAction[] = [
+    {
+      key: 'save',
+      label: editingId ? 'Save changes' : 'Save merchant',
+      glyph: <Check size={22} aria-hidden />,
+      run: () => void submit(),
+      disabled: pattern.trim() === '',
+    },
+  ];
+  if (dirty) actions.push({ key: 'cancel', label: 'Cancel', glyph: <X size={22} aria-hidden />, run: clear });
+
+  /* A phone shows the merchant and its code; a desktop keeps every column it has today, actions included. */
+  const mineColumns: RecordColumn<MemoryRow>[] = [
+    { key: 'pattern', heading: 'Merchant text', cell: (row) => row.pattern },
+    { key: 'mcc', heading: 'MCC', cell: (row) => describeMcc(row.mcc) },
+    { key: 'matches', heading: 'Matches', numeric: true, cell: (row) => <Figure>{purchasesText(row.matches)}</Figure> },
+    {
+      key: 'actions',
+      heading: 'Change it',
+      cell: (row) => (
+        <span className="flex gap-2">
+          <Button variant="ghost" onClick={() => startEdit(row)}>
+            Edit
+          </Button>
+          <Button variant="ghost" onClick={() => void remove(row)}>
+            Remove
+          </Button>
+        </span>
+      ),
+    },
+  ];
+
+  const bundledColumns: RecordColumn<BundledRow>[] = [
+    { key: 'name', heading: 'Merchant', cell: (row) => row.name },
+    { key: 'status', heading: 'Now', cell: (row) => statusWord(row) },
+    { key: 'pattern', heading: 'Matched on', cell: (row) => `“${row.pattern}”` },
+    { key: 'mcc', heading: 'MCC', cell: (row) => describeMcc(row.mcc) },
+    { key: 'basis', heading: 'Why', cell: (row) => row.basis },
+    {
+      key: 'actions',
+      heading: 'Change it',
+      cell: (row) => (
+        <span className="flex gap-2">
+          <Button variant="ghost" onClick={() => startEdit({ pattern: row.pattern, mcc: row.yourMcc ?? row.mcc })}>
+            Use a different MCC
+          </Button>
+          {row.status !== 'ignored' && (
+            <Button variant="ghost" onClick={() => void save({ pattern: row.pattern, mcc: null })}>
+              Ignore
+            </Button>
+          )}
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Merchants & MCCs" action={<Link to="/cards" className="text-sm underline">All cards</Link>} />
-      <p className="text-sm text-slate-600">
-        Banks give points by merchant category code (MCC). A purchase uses the MCC typed on it, else a merchant below, else a typical code for well-known
-        merchants, else its category's MCC. Changes here apply to every card, including past cycles.
-      </p>
+    <Screen>
+      <LargeTitle
+        title="Merchants & MCCs"
+        back="All cards"
+        backTo="/cards"
+        actions={actions}
+        subtitle="Banks give points by merchant category code (MCC). A purchase uses the MCC typed on it, else a merchant below, else a typical code for well-known merchants, else its category's MCC. Changes here apply to every card, including past cycles."
+      />
       <ErrorBox error={error} />
-      {message && <p className="text-sm text-emerald-700">{message}</p>}
+      {message && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">{message}</p>}
 
-      <Card>
-        <h2 className="mb-3 text-sm font-semibold text-slate-600">Your merchants</h2>
-        <form onSubmit={submit} className="grid gap-3 md:grid-cols-2">
-          <Field label="Merchant text" hint="Matched as whole words in purchase descriptions, e.g. mcdonald.">
-            <Input value={pattern} onChange={(e) => setPattern(e.target.value)} required />
-          </Field>
-          <MccPicker label="MCC" value={mcc} onChange={setMcc} hint="Leave empty to ignore a typical merchant with the same text." />
-          <div className="flex gap-2 md:col-span-2">
-            <Button type="submit">{editingId ? 'Save changes' : 'Save merchant'}</Button>
-            {(editingId || pattern || mcc) && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setEditingId(null);
-                  setPattern('');
-                  setMcc('');
-                }}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
-        </form>
-        {memory.isSuccess && memory.data.length === 0 && <Empty>No merchants yet. Teach one here, or from a purchase's card details.</Empty>}
-        <ul className="mt-3 divide-y divide-slate-100">
-          {(memory.data ?? []).map((row) => (
-            <li key={row.id} className="flex items-center gap-3 py-2 text-sm">
-              <div className="min-w-0 flex-1">
-                <div className="font-medium">{row.pattern}</div>
-                <div className="text-xs text-slate-500">
-                  {describeMcc(row.mcc)} · matches {purchasesText(row.matches)}
-                </div>
-              </div>
-              <Button variant="ghost" onClick={() => startEdit(row)}>
-                Edit
-              </Button>
-              <Button variant="ghost" onClick={() => void remove(row)}>
-                Remove
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <form onSubmit={submit}>
+        <InsetGroup header={editingId ? 'Edit this merchant' : 'Teach a merchant'}>
+          <TextRow
+            label="Merchant text"
+            value={pattern}
+            onChange={(e) => setPattern(e.target.value)}
+            required
+            placeholder="mcdonald"
+            hint="Matched as whole words in purchase descriptions, e.g. mcdonald."
+          />
+        </InsetGroup>
+        <MccPicker label="MCC" value={mcc} onChange={setMcc} native hint="Leave empty to ignore a typical merchant with the same text." />
+        {/*
+         * The two row actions a desktop keeps in its table, given a place a thumb can reach: a row never holds a
+         * button, so on a phone they belong to the merchant that is open rather than to every line of the list.
+         */}
+        {pattern.trim() !== '' && (
+          <InsetGroup>
+            <InsetRow
+              title={<span className="text-[var(--ph-tint)]">Ignore the typical MCC</span>}
+              subtitle="Purchases matching this text keep their category's own code."
+              onClick={() => void save({ id: editingId ?? undefined, pattern, mcc: null }).then((ok) => ok && clear())}
+              chevron={false}
+            />
+          </InsetGroup>
+        )}
+        {editing && (
+          <InsetGroup>
+            <DestructiveRow label={`Forget “${editing.pattern}”`} onClick={() => void remove(editing)} />
+          </InsetGroup>
+        )}
+      </form>
 
-      <Card>
-        <h2 className="mb-1 text-sm font-semibold text-slate-600">Typical merchant codes</h2>
-        <p className="mb-3 text-xs text-slate-500">
-          Researched typical MCCs (verified {MERCHANTS.verifiedOn}). The bank's acquirer can assign another code; check a statement or bank app if points look
-          wrong.
-        </p>
-        <Field label="Search typical merchants">
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="McDonald's, 5814, fuel" />
-        </Field>
-        <ul className="mt-3 divide-y divide-slate-100">
-          {rows.map((row) => (
-            <li key={row.pattern} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-              <div className="min-w-0 flex-1">
-                <div className="font-medium">
-                  {row.name}{' '}
-                  <span
-                    className={cx(
-                      'rounded px-1.5 py-0.5 text-xs',
-                      row.status === 'typical' && 'bg-slate-100 text-slate-700',
-                      row.status === 'yours' && 'bg-emerald-100 text-emerald-800',
-                      row.status === 'ignored' && 'bg-amber-100 text-amber-800',
-                    )}
-                  >
-                    {row.status === 'typical' ? 'Typical' : row.status === 'yours' ? `Yours: ${row.yourMcc}` : 'Ignored'}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-500">
-                  “{row.pattern}” · {describeMcc(row.mcc)} · {row.basis}
-                </div>
-              </div>
-              <Button variant="ghost" onClick={() => startEdit({ pattern: row.pattern, mcc: row.yourMcc ?? row.mcc })}>
-                Use a different MCC
-              </Button>
-              {row.status !== 'ignored' && (
-                <Button variant="ghost" onClick={() => void save({ pattern: row.pattern, mcc: null })}>
-                  Ignore
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      </Card>
-    </div>
+      {memory.isSuccess && mine.length === 0 ? (
+        <InsetGroup header="Your merchants">
+          <InsetRow title="No merchants yet" subtitle="Teach one above, or from a purchase's card details." />
+        </InsetGroup>
+      ) : (
+        <RecordTable
+          header="Your merchants"
+          records={mine}
+          columns={mineColumns}
+          shape={{
+            key: (row) => row.id,
+            title: (row) => row.pattern,
+            subtitle: (row) => `${describeMcc(row.mcc)} · matches ${purchasesText(row.matches)}`,
+            value: () => 'Edit',
+            valueTone: () => 'tint',
+            onOpen: (row) => startEdit(row),
+          }}
+        />
+      )}
+
+      <InsetGroup header="Find a typical merchant">
+        <TextRow label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="McDonald's, 5814, fuel" aria-label="Search typical merchants" />
+      </InsetGroup>
+      {rows.length === 0 ? (
+        <Empty>No typical merchant matches that.</Empty>
+      ) : (
+        <RecordTable
+          header="Typical merchant codes"
+          records={rows}
+          columns={bundledColumns}
+          shape={{
+            key: (row) => row.pattern,
+            title: (row) => row.name,
+            subtitle: (row) => `“${row.pattern}” · ${describeMcc(row.mcc)} · ${row.basis}`,
+            value: (row) => statusWord(row),
+            valueTone: (row) => (row.status === 'yours' ? 'tint' : row.status === 'ignored' ? 'warn' : 'ink-3'),
+            onOpen: (row) => startEdit({ pattern: row.pattern, mcc: row.yourMcc ?? row.mcc }),
+          }}
+        />
+      )}
+      <p className={cx('px-[4px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]')}>
+        Researched typical MCCs (verified {MERCHANTS.verifiedOn}). The bank's acquirer can assign another code; check a statement or bank app if points look
+        wrong.
+      </p>
+    </Screen>
   );
 }
