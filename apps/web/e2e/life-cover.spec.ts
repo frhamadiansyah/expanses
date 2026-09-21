@@ -13,6 +13,8 @@ test('life cover adds every need once and takes off what is already there', asyn
   await expect(page.getByLabel('Inflation during support (%)', { exact: true })).toHaveValue('3.5');
   await expect(page.getByLabel('Return on the payout (%)', { exact: true })).toHaveValue('5');
   await expect(page.getByLabel('Years of support', { exact: true })).toHaveValue('10');
+  // The method and its sources are named; no link is fetched.
+  await expect(page.getByText(/^Capital needs analysis:.*CFP Board.*Insurance Information Institute/)).toBeVisible();
 
   await type(page, 'Yearly amount your family needs (IDR)', '120000000');
   await type(page, 'Debts to clear (IDR)', '300000000');

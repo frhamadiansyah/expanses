@@ -35,7 +35,14 @@ export async function twoLevelsWalk(page: Page) {
   await addEducationGoal(page);
   await page.getByRole('button', { name: 'Work out the amount' }).click();
 
+  // Spec §10: monthly tuition stays out of the fund, and the editor says so.
+  await expect(page.getByText('Monthly fees belong in the budget beside groceries; only the lumpy charges belong here.')).toBeVisible();
   await page.getByRole('button', { name: 'Add a level' }).click();
+  // The next offered name, and the three offered costs.
+  await expect(page.getByLabel('Level name', { exact: true })).toHaveValue('Preschool');
+  await expect(page.getByLabel('Enrollment is paid', { exact: true })).toHaveValue('once');
+  await expect(page.getByLabel('Academic is paid', { exact: true })).toHaveValue('yearly');
+  await expect(page.getByLabel('Other is paid', { exact: true })).toHaveValue('once');
   await typeInto(page, 'Starts in year', '2032');
   await typeInto(page, 'Until year', '2038');
   await typeInto(page, 'Enrollment today (IDR)', '45000000');
