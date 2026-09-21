@@ -190,6 +190,8 @@ export async function saveDepositAutomation(database: Database, ws: WorkspaceCon
   });
 }
 
+const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+
 function scheduleOf(settings: DepositAutomationRow, terms: Pick<DepositTermsRow, 'maturesOn'>): DepositSchedule {
   return {
     maturesOn: terms.maturesOn,
@@ -250,7 +252,12 @@ export async function listDueDeposits(database: Database, ws: WorkspaceContext, 
     const [event] = due;
     if (!event) continue;
     // The existing balance reader, as of the due day: a payout posted into the deposit earlier in the term is in it.
-    const principalMinor = (await nativeBalances(database, ws, event.dueOn))[settings.accountId] ?? 0;
+    let principalMinor = (await nativeBalances(database, ws, event.dueOn))[settings.accountId] ?? 0;
+    // A close the owner already took out themselves on its due day reads 0 there. What the deposit held until then is
+    // what earned the interest and what came back, so "Recorded it myself" has figures to record (final review m1).
+    if (principalMinor === 0 && event.kind === 'maturity' && settings.atMaturity === 'close') {
+      principalMinor = (await nativeBalances(database, ws, dayBefore(event.dueOn)))[settings.accountId] ?? 0;
+    }
     const grossMinor = depositInterest(principalMinor, row.terms.rateBps, event.days);
     const { taxMinor, netMinor } = withholdTax(grossMinor, settings.taxBps, settings.taxExempt);
     proposals.push({
@@ -409,7 +416,13 @@ export async function confirmDepositEvent(database: Database, ws: WorkspaceConte
 
     let archived = false;
     if (closing) {
-      await tx.update(depositAutomation).set({ enabled: 0, enabledOn: null, updatedAt: now }).where(eq(depositAutomation.accountId, deposit.id));
+      // Off, but the day it went on is kept: reopening the close switches it back on as it was, so a monthly payout of
+      // this term reopened after it (dated before the maturity) is still proposed. Nulling it lost that payout (C1).
+      await tx.update(depositAutomation).set({ enabled: 0, updatedAt: now }).where(eq(depositAutomation.accountId, deposit.id));
+    }
+    // Only a close the app posted archives. One recorded by hand stays open, at whatever the owner left in it, so its
+    // page keeps the "Recorded by hand" undo row; the owner archives it from there when they are done (I1).
+    if (closing && !byHand) {
       try {
         // The archive keeps its own refusal: it checks the balance and throws before it writes anything.
         await archiveAccountTx(tx, ws, deposit.id);

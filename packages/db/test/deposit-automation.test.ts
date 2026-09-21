@@ -371,7 +371,34 @@ describe('recorded it myself', () => {
     expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(false);
   });
 
-  it('archives a deposit the owner already emptied by hand', async () => {
+  it('proposes a close from the day before when the owner already moved the money out on the due day, so it can be recorded by hand', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    await database.transaction((tx) =>
+      postTransactionTx(tx, ws, {
+        occurredOn: '2026-10-15',
+        description: 'Deposito back',
+        lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 50_000_000, currency: 'IDR' }),
+      }),
+    );
+    const p = await next('2026-10-15');
+    expect(p).toMatchObject({ principalMinor: 50_000_000, grossMinor: 535_616, taxMinor: 107_123 });
+    await confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { byHand: true }));
+    expect(await logged()).toMatchObject([{ kind: 'maturity', principalMinor: 50_000_000, grossMinor: 535_616, recordedByHand: 1 }]);
+  });
+
+  it('keeps proposing a close from the due day when money is still in it', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    await database.transaction((tx) =>
+      postTransactionTx(tx, ws, {
+        occurredOn: '2026-10-15',
+        description: 'Part of it back',
+        lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 20_000_000, currency: 'IDR' }),
+      }),
+    );
+    expect(await next('2026-10-15')).toMatchObject({ principalMinor: 30_000_000 });
+  });
+
+  it('never archives a close recorded by hand, even once the owner emptied the deposit: its undo stays on its page', async () => {
     await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
     const p = await next('2026-10-15');
     // The owner's own transfer, posted before they tell the app they did it.
@@ -382,8 +409,14 @@ describe('recorded it myself', () => {
         lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 50_000_000, currency: 'IDR' }),
       }),
     );
-    expect((await confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { byHand: true }))).archived).toBe(true);
+    expect((await confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { byHand: true }))).archived).toBe(false);
     expect((await nativeBalances(database, ws))[bcaId]).toBe(51_000_000);
+    // Open at 0, automation off, and the owner archives it themselves when they are done.
+    expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(false);
+    expect((await listUndoableByHand(database, ws, depositoId)).map((row) => row.kind)).toEqual(['maturity']);
+    await archiveAccount(database, ws, depositoId);
+    expect((await listAccounts(database, ws)).map((a) => a.id)).not.toContain(depositoId);
   });
 });
 
@@ -571,6 +604,30 @@ describe('voiding is last in, first out across a maturity', () => {
     });
     await voidTransaction(database, ws, aug.interestTransactionId!);
     expect((await logged()).map((row) => row.dueOn)).toEqual([]);
+  });
+
+  it('proposes a monthly payout again after the close of its term was reopened first (the day the switch went on is kept)', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly', atMaturity: 'close' }));
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i += 1) ids.push((await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'))).interestTransactionId!);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabledOn).toBe('2026-07-15');
+    // The order NOT_LAST asks for: the close first, then the September payout.
+    await voidTransaction(database, ws, ids[2]!);
+    await voidTransaction(database, ws, ids[1]!);
+    expect((await logged()).map((row) => row.dueOn)).toEqual(['2026-08-15']);
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ enabled: true, enabledOn: '2026-07-15' });
+    expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'monthly', dueOn: '2026-09-15' }, waiting: 1, grossMinor: 180_479, taxMinor: 36_095 });
+  });
+
+  it('does the same for a close recorded by hand, undone by hand', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly', atMaturity: 'close' }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { byHand: true }));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { byHand: true }));
+    const byDay = async (dueOn: string) => (await logged()).find((row) => row.dueOn === dueOn)!.id;
+    await undoRecordedByHand(database, ws, await byDay('2026-10-15'));
+    await undoRecordedByHand(database, ws, await byDay('2026-09-15'));
+    expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'monthly', dueOn: '2026-09-15' }, waiting: 1 });
   });
 
   it('still reopens a monthly payout with only later payouts of the same term logged', async () => {
@@ -878,7 +935,7 @@ describe('undo recorded by hand', () => {
     expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'maturity', dueOn: '2026-10-15' }, principalMinor: 50_000_000 });
   });
 
-  it('un-archives a deposit a hand-recorded close archived, and leaves the owner’s own transfer alone', async () => {
+  it('undoes a hand-recorded close of a deposit the owner emptied, and leaves the owner’s own transfer alone', async () => {
     await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
     const p = await next('2026-10-15');
     await database.transaction((tx) =>
@@ -888,10 +945,13 @@ describe('undo recorded by hand', () => {
         lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 50_000_000, currency: 'IDR' }),
       }),
     );
-    expect((await confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { byHand: true }))).archived).toBe(true);
+    expect((await confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { byHand: true }))).archived).toBe(false);
     await undoRecordedByHand(database, ws, (await eventOn('2026-10-15')).id);
     expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
-    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${depositoId} AND action LIKE '%archive' ORDER BY rowid`)).toEqual([['archive'], ['unarchive']]);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(true);
+    // Never archived, so nothing was un-archived either.
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${depositoId} AND action LIKE '%archive' ORDER BY rowid`)).toEqual([]);
+    expect(await logged()).toEqual([]);
     expect((await nativeBalances(database, ws))[bcaId]).toBe(51_000_000);
   });
 

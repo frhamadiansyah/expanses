@@ -108,7 +108,8 @@ async function reopenLoggedTx(tx: Db, ws: WorkspaceContext, event: LoggedEvent):
     return;
   }
 
-  // A close: its confirm switched automation off and tried the archive. Both are undone (a deposit left open is
+  // A close: its confirm switched automation off (keeping the day it went on, so earlier payouts reopened after this
+  // are still proposed) and, when the app posted it, archived the deposit. Both are undone (a deposit left open is
   // simply left open).
   await tx
     .update(depositAutomation)
