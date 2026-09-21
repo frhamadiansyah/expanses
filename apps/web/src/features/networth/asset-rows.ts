@@ -118,7 +118,7 @@ export const soldRows = (groups: AssetGroup[]): AssetRow[] => groups.flatMap((gr
 export const liveGroups = (groups: AssetGroup[]): AssetGroup[] =>
   groups.map((group) => ({ ...group, rows: group.rows.filter((row) => !row.sold) })).filter((group) => group.rows.length > 0);
 /** Every group added up, or null with every missing rate named (sorted, once each) when any group has no total. */
-export function totalOf(groups: AssetGroup[]): { totalMinor: number | null; missing: string[] } {
+export function totalOf(groups: readonly { totalMinor: number | null; missing: readonly string[] }[]): { totalMinor: number | null; missing: string[] } {
   const missing = [...new Set(groups.flatMap((group) => group.missing))].sort();
   if (missing.length > 0 || groups.some((group) => group.totalMinor === null)) return { totalMinor: null, missing };
   return { totalMinor: groups.reduce((total, group) => total + group.totalMinor!, 0), missing: [] };
