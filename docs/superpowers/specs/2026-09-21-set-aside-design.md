@@ -59,7 +59,7 @@ account that is promised.
 | **Spend** | Money taken from a goal for what it was for | a `goal_draws` row, `intent = 'spend'`; the promise is lowered |
 | **Move** | The promise follows a transfer to the destination account | a `goal_draws` row, `intent = 'move'`; promises moved |
 | **Whole** | Covered ≥ target (`currentMinor ≥ totalTargetMinor > 0`) and not short on any account | derived |
-| **Done** | Every stage of the goal is paid | derived from `goal_stages.paid_on` |
+| **Done** | Every stage of the goal is paid — never for an emergency fund, which is a standing level: "Yes" draws it down and it reopens to be rebuilt (ruling 2026-09-21) | derived from `goal_stages.paid_on` and goal kind |
 
 An archived goal promises nothing: every reader here uses `listGoals` (which leaves archived goals out), so archiving
 stops the claim without deleting the earmark or its history.
