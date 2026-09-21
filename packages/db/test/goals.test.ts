@@ -16,10 +16,12 @@ import {
   saveAssetProfile,
   saveEarmark,
   saveGoal,
+  saveGoalTx,
   setStagePaid,
   type WorkspaceContext,
 } from '../src/index';
 import { createNodeExecutor } from '../src/node';
+import { goalStageTerms } from '../src/schema-health';
 import { setupDb } from './helpers';
 
 let database: Database;
@@ -203,5 +205,62 @@ describe('set-aside amounts', () => {
     await removeEarmark(database, ws, id, bca.id);
 
     await expect(listEarmarks(database, ws)).resolves.toEqual([]);
+  });
+});
+
+describe('a stage’s own return', () => {
+  it('is read back with the goal, and forgotten when the goal is typed by hand', async () => {
+    const { database, ws } = await setupDb();
+    const { goalId, stageIds } = await database.transaction((tx) =>
+      saveGoalTx(tx, ws, {
+        name: 'School', kind: 'education', growthBps: 1000, returnBps: 800, derived: true,
+        stages: [{ name: 'Preschool', targetMinor: 8_000_000, targetMonths: null, dueOn: '2027-07-01' }],
+      }),
+    );
+    await database.db.insert(goalStageTerms).values({ stageId: stageIds[0]!, workspaceId: ws.workspaceId, goalId, returnBps: 400, derivedKey: 'pre:0' });
+    expect((await listGoals(database, ws))[0]!.stages[0]!.returnBps).toBe(400);
+
+    const stage = (await listGoals(database, ws))[0]!.stages[0]!;
+    await saveGoal(database, ws, { id: goalId, name: 'School', kind: 'education', growthBps: 1000, returnBps: 800, stages: [{ ...stage, targetMinor: 9_000_000 }] });
+    expect((await listGoals(database, ws))[0]!.stages[0]!.returnBps).toBeNull();
+  });
+
+  it('goes with a stage that a derived save drops, and stays with the ones it keeps', async () => {
+    const { database, ws } = await setupDb();
+    const { goalId, stageIds } = await database.transaction((tx) =>
+      saveGoalTx(tx, ws, {
+        name: 'School', kind: 'education', growthBps: 1000, returnBps: 800, derived: true,
+        stages: [
+          { name: 'Preschool', targetMinor: 8_000_000, targetMonths: null, dueOn: '2027-07-01' },
+          { name: 'Primary', targetMinor: 9_000_000, targetMonths: null, dueOn: '2029-07-01' },
+        ],
+      }),
+    );
+    await database.db.insert(goalStageTerms).values([
+      { stageId: stageIds[0]!, workspaceId: ws.workspaceId, goalId, returnBps: 400, derivedKey: 'pre:0' },
+      { stageId: stageIds[1]!, workspaceId: ws.workspaceId, goalId, returnBps: 600, derivedKey: 'pri:0' },
+    ]);
+    const kept = (await listGoals(database, ws))[0]!.stages[1]!;
+    await database.transaction((tx) =>
+      saveGoalTx(tx, ws, { id: goalId, name: 'School', kind: 'education', growthBps: 1000, returnBps: 800, derived: true, stages: [kept] }),
+    );
+    expect((await listGoals(database, ws))[0]!.stages.map((stage) => stage.returnBps)).toEqual([600]);
+    expect((await database.db.select().from(goalStageTerms)).map((row) => row.stageId)).toEqual([stageIds[1]]);
+  });
+
+  it('gives stage ids back in the order the stages were given', async () => {
+    const { database, ws } = await setupDb();
+    const { goalId, stageIds } = await database.transaction((tx) =>
+      saveGoalTx(tx, ws, {
+        name: 'School', kind: 'education', growthBps: 1000, returnBps: 800,
+        stages: [
+          { name: 'Later', targetMinor: 1, targetMonths: null, dueOn: '2030-01-01' },
+          { name: 'Sooner', targetMinor: 1, targetMonths: null, dueOn: '2027-01-01' },
+        ],
+      }),
+    );
+    const stages = (await listGoals(database, ws)).find((row) => row.id === goalId)!.stages;
+    expect(stageIds).toEqual([stages.find((s) => s.name === 'Later')!.id, stages.find((s) => s.name === 'Sooner')!.id]);
+    expect(stages.every((stage) => stage.returnBps === null)).toBe(true);
   });
 });
