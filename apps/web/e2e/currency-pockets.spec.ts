@@ -183,6 +183,22 @@ test('a rate missing only for an earlier month leaves today’s net worth standi
   await expect(page.getByTestId('chart-missing')).toContainText('No USD rate');
 });
 
+test('an account without pockets opened at the pockets routes says it has none (M3, M7)', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, { name: 'Two Pockets', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '100' }] });
+  await page.getByRole('link', { name: 'Two Pockets', exact: true }).click();
+  await expect(page.getByText('2 pockets ·')).toBeVisible();
+  // A pocket is an account with no pockets of its own: its id on the pockets routes is not a Rp 0 parent.
+  await page.getByTestId('pocket-SGD').click();
+  const id = /\/net-worth\/assets\/([^/?#]+)/.exec(page.url())![1];
+  await page.goto(`/accounts/${id}`);
+  await expect(page.getByText('it has no pockets')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Add a pocket/ })).toHaveCount(0);
+  await page.goto(`/accounts/${id}/pocket`);
+  await expect(page.getByText('it has no pockets')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add pocket' })).toHaveCount(0);
+});
+
 test('the Money tile adds every account and pocket at today’s rates', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);

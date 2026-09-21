@@ -12,7 +12,7 @@ import { useAssetProfiles, useAssetValues, useDepositTerms } from '../networth/q
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { Empty, ErrorBox, errorMessage, Money } from '../../ui';
 import { type CornerAction, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, Panel, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
-import { moneySummary, parentTotal, pocketsOf } from './pockets';
+import { moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
 
 /** Sentinel for a bank the catalogue has never heard of. */
@@ -193,7 +193,7 @@ function AccountList({
   // The kit's grouped figure: the ≈ total, or the missing rate named — never a partial sum.
   const totalText = (account: AccountRow) => groupedFigure(parentTotal(pocketsOf(account.id, everything), balances, ws.baseCurrency, rates), ws.baseCurrency);
   const kindLine = (account: AccountRow) =>
-    parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketsOf(account.id, everything).length} pockets` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`;
+    parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, everything).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`;
   const parentFigure = (account: AccountRow) => {
     const figure = totalText(account);
     return <Figure tone={figure.complete ? 'ink' : 'warn'}>{figure.text}</Figure>;

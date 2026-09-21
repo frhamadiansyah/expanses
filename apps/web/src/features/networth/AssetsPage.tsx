@@ -4,6 +4,7 @@ import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
+import { pocketCount } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
 import { AddAssetForm } from './AddAssetForm';
 import { NetWorthTabs } from './NetWorthTabs';
@@ -29,7 +30,7 @@ function Row({ row, baseCurrency }: { row: AssetRow; baseCurrency: string }) {
         to="/accounts/$accountId"
         params={{ accountId: row.accountId }}
         title={row.name}
-        subtitle={`${row.pockets} pockets · each files its own row`}
+        subtitle={`${pocketCount(row.pockets)} · each files its own row`}
         figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency)}
       />
     );

@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { bankRateText, choosePocketCurrency, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
+import { bankRateText, choosePocketCurrency, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -82,6 +82,12 @@ describe('the pockets form', () => {
   it('offers the first currency not yet used', () => {
     expect(nextPocketCurrency([{ currency: 'IDR', balance: '', rate: '' }])).toBe('USD');
     expect(nextPocketCurrency([{ currency: 'IDR', balance: '', rate: '' }, { currency: 'USD', balance: '', rate: '' }])).toBe('SGD');
+  });
+});
+
+describe('a count of pockets', () => {
+  it('is singular for one, as an account left with one open pocket shows (M3)', () => {
+    expect([0, 1, 2].map(pocketCount)).toEqual(['0 pockets', '1 pocket', '2 pockets']);
   });
 });
 

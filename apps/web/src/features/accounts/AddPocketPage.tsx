@@ -1,5 +1,5 @@
 import { CURRENCIES, isoDate } from '@expanses/core';
-import { addPocket } from '@expanses/db';
+import { addPocket, pocketParentIds } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -7,6 +7,7 @@ import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/querie
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { NoPockets } from './PocketsPage';
 import { pocketsOf, readPockets } from './pockets';
 
 export function AddPocketPage() {
@@ -15,7 +16,8 @@ export function AddPocketPage() {
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
   const { accountId = '' } = useParams({ strict: false }) as { accountId?: string };
-  const accounts = useAccounts().data ?? [];
+  const loaded = useAccounts();
+  const accounts = loaded.data ?? [];
   const parent = accounts.find((a) => a.id === accountId);
   const taken = new Set(pocketsOf(accountId, accounts).map((p) => p.currency));
   const offered = CURRENCIES.filter((c) => !taken.has(c.code));
@@ -46,6 +48,8 @@ export function AddPocketPage() {
       setBusy(false);
     }
   }
+
+  if (loaded.isSuccess && parent && !pocketParentIds(accounts).has(parent.id)) return <NoPockets name={parent.name} />;
 
   return (
     <div className={SCREEN}>

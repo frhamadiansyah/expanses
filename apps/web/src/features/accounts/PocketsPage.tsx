@@ -1,10 +1,10 @@
-import { SPENDABLE_SUBTYPES } from '@expanses/db';
+import { pocketParentIds, SPENDABLE_SUBTYPES } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { ApproxFigure, approxLine, Hero, InsetGroup, InsetRow, LargeTitle, rateLine, SCREEN } from '../../ui/native';
-import { currencyName, parentTotal, pocketsOf } from './pockets';
+import { currencyName, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates, useOpenings } from './queries';
 
 /** An account with pockets: what it adds up to, each pocket in its own currency, and the ways to move or add one. */
@@ -23,6 +23,8 @@ export function PocketsPage() {
 
   if (accounts.isSuccess && !parent) return <div className={SCREEN}><LargeTitle title="Account" back="Accounts" backTo="/accounts" /><Empty>That account is not in this workspace.</Empty></div>;
   if (!parent) return <div className={SCREEN}>Loading…</div>;
+  // Any account id reaches this route; only one named as a parent has pockets to show, move between or add to.
+  if (!pocketParentIds(all).has(parent.id)) return <NoPockets name={parent.name} />;
 
   const total = parentTotal(pockets, balances.data ?? {}, ws.baseCurrency, held);
   const foreign = pockets.filter((p) => p.currency !== ws.baseCurrency && held[p.currency!] !== undefined);
@@ -40,7 +42,7 @@ export function PocketsPage() {
             <>
               {foreign.length > 0 && `≈ at ${foreign.map((p) => `${rateLine(held[p.currency!]!, p.currency!, ws.baseCurrency)}${stale.has(p.currency!) ? ' (last known)' : ''}`).join(' · ')}`}
               <span className="mt-[2px] block">
-                {pockets.length} pockets · {spendable ? 'can be spent from' : 'cannot be spent from directly'}
+                {pocketCount(pockets.length)} · {spendable ? 'can be spent from' : 'cannot be spent from directly'}
               </span>
             </>
           }
@@ -72,6 +74,16 @@ export function PocketsPage() {
         <InsetRow title="Add a pocket" subtitle="Another currency this account holds" to="/accounts/$accountId/pocket" params={{ accountId }} />
         <InsetRow title="See their transactions" to="/transactions" search={{ account: accountId }} />
       </InsetGroup>
+    </div>
+  );
+}
+
+/** Reached with an account that has no pockets: say so, rather than a Rp 0 account with a form that fails on submit. */
+export function NoPockets({ name }: { name: string }) {
+  return (
+    <div className={SCREEN}>
+      <LargeTitle title={name} back="Accounts" backTo="/accounts" />
+      <Empty>This account does not hold more than one currency, so it has no pockets.</Empty>
     </div>
   );
 }

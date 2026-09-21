@@ -98,6 +98,9 @@ export function spreadLine(cost: ExchangeCost | null, baseCurrency: string): { t
   return { title: 'The bank’s rate gained you', figure: formatMinor(-cost.costMinor, baseCurrency) };
 }
 
+/** "1 pocket", "3 pockets". */
+export const pocketCount = (n: number) => `${n} ${n === 1 ? 'pocket' : 'pockets'}`;
+
 export const moveDescription = (parent: AccountRow, from: AccountRow, to: AccountRow) => `${parent.name}: ${from.currency} → ${to.currency}`;
 
 export const currencyName = (code: string) => currencyInfo(code).name;
