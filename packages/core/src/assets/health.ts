@@ -158,8 +158,10 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
   // the whole payment would count the interest twice. The debt-servicing ratios below still take the whole payment.
   const base = settings.emergencyBase ?? DEFAULT_EMERGENCY_BASE;
   const emergencyOutgoing = monthly(emergencyOutgoingMinor(flows, base), flows.months);
-  const ownMonths = settings.emergencyTargetMonths;
-  const emergencyTarget = ownMonths && ownMonths > 0 ? ownMonths : DEFAULT_EMERGENCY_TARGET_MONTHS;
+  const ownMonths = settings.emergencyTargetMonths !== undefined && settings.emergencyTargetMonths > 0 ? settings.emergencyTargetMonths : null;
+  const emergencyTarget = ownMonths ?? DEFAULT_EMERGENCY_TARGET_MONTHS;
+  // With no months of its own the card is as it was (§3.3): graded at 3, its mark at the guide's 6.
+  const emergencyMark = ownMonths ?? 6;
   const graded = ownMonths
     ? `Graded against the ${emergencyTarget} months your emergency fund asks for.`
     : 'The guide asks 3–6 months, more with dependants or irregular income; set an emergency fund to grade against your own.';
@@ -196,8 +198,8 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       hasPeriod && emergencyOutgoing > 0,
       () => totals.liquidMinor / emergencyOutgoing,
       (value) => higherIsBetter(value, emergencyTarget),
-      emergencyTarget,
-      Math.max(9, emergencyTarget * 1.5),
+      emergencyMark,
+      Math.max(9, emergencyMark * 1.5),
       false,
       ownMonths ? `${emergencyTarget} months · your household` : '3–6 months',
       base === 'essential'

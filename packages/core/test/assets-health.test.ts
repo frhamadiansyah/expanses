@@ -198,11 +198,18 @@ describe('debt servicing', () => {
 
 describe('the emergency card grades against the household’s own months', () => {
   // 200 jt ÷ 41,773 jt a month = 4,79 months.
-  it('is good at 4,79 months against the guide’s 3 when the household has set no months', () => {
+  it('is good at 4,79 months against the guide’s 3 when the household has set no months, its mark at 6 as before (§3.3)', () => {
     const ratio = by(healthRatios(flows(), totals()), 'emergency_fund');
     expect(ratio.status).toBe('good');
-    expect(ratio.target).toBe(3);
+    // The mark on the bar is the guide's 6, as it was before a household could set its own months; the grade is 3.
+    expect(ratio.target).toBe(6);
+    expect(ratio.max).toBe(9);
     expect(ratio.benchmarkText).toBe('3–6 months');
+  });
+
+  it('still grades against 3 with no months of its own: 3,2 months is good though the mark is at 6', () => {
+    // 133,7 jt ÷ 41,773 jt = 3,2 months.
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 133_700_000 })).toBe('good');
   });
 
   it('is act at the same 4,79 months when the household’s own figure is 12', () => {
@@ -224,11 +231,12 @@ describe('the emergency card grades against the household’s own months', () =>
     expect(statusOf('emergency_fund', {}, { liquidMinor: 501_276_000 }, { emergencyTargetMonths: 12 })).toBe('good');
   });
 
-  it('falls back to the guide’s 3 months when the household’s own figure is zero or negative, and the label still says 3', () => {
+  it('falls back to the guide when the household’s own figure is zero or negative: graded at 3, marked at 6', () => {
     for (const bad of [0, -5]) {
       const ratio = by(healthRatios(flows(), totals(), { emergencyTargetMonths: bad }), 'emergency_fund');
-      expect(ratio.target).toBe(3);
-      expect(ratio.benchmarkText).toContain('3');
+      expect(ratio.target).toBe(6);
+      expect(ratio.benchmarkText).toBe('3–6 months');
+      expect(statusOf('emergency_fund', {}, { liquidMinor: 133_700_000 }, { emergencyTargetMonths: bad })).toBe('good');
     }
   });
 });
