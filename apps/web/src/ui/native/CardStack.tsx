@@ -5,7 +5,7 @@ import { usePhone } from '../../app/use-phone';
 import { useEscape } from '../../app/use-escape';
 import { CardFace } from '../../features/cards/CardFace';
 import { cx } from '../index';
-import { CARD_H, CARD_W, stackLayout } from './card-stack';
+import { CARD_H, CARD_W, faceIsBehind, stackLayout } from './card-stack';
 
 /**
  * Primitive 7: card art, in the Wallet stack the user chose for `/cards` (C3).
@@ -16,6 +16,10 @@ import { CARD_H, CARD_W, stackLayout } from './card-stack';
  * C3's known weakness is that only the front card's figures show. The answer built in here is the **strip** —
  * the band of a card its neighbour does not cover, which carries the card's name *and* its figure. All of them
  * read without a tap, on the page whose whole purpose is answering "how many miles have I got?".
+ *
+ * A covered card's face is handed over as `behind` (`faceIsBehind`), so the band a neighbour leaves showing
+ * carries the strip's two lines and nothing else — the card's own printed rows would otherwise sit in the same
+ * pixels as the strip, which reads as two texts smeared over one another.
  */
 
 export interface WalletCard {
@@ -75,7 +79,9 @@ export function CardStack({
       <div className="relative" style={{ width: layout.width, height: layout.height, maxWidth: '100%' }}>
       {layout.cards.map((placed, index) => {
         const card = cards[index]!;
-        const covered = placed.visible < (fan ? CARD_W : CARD_H);
+        // A card this stack clips to its strip is drawn `behind`: its own rows would print in the same pixels as
+        // the band below, so the face is colour alone and the strip is the only text in that edge.
+        const covered = faceIsBehind(placed, fan);
         // A tap on a covered card lifts it; on the front card, on a lifted card, or on a desktop it opens it.
         const opens = !phone || placed.lifted || index === cards.length - 1;
         const label = card.label ?? `${card.name}${card.last4 ? ` ending ${card.last4}` : ''} · ${card.figureLabel} ${card.figure}`;
@@ -105,6 +111,7 @@ export function CardStack({
                 network={card.network}
                 look={card.look}
                 size="md"
+                behind={covered}
               />
             </span>
             {/*

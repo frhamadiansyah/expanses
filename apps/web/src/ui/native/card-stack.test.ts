@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_H, CARD_W, cardFigure, cardsBeforeScrolling, FAN_X, stackLayout, STRIP } from './card-stack';
+import { CARD_H, CARD_W, cardFigure, cardsBeforeScrolling, faceIsBehind, FAN_X, stackLayout, STRIP } from './card-stack';
 
 const WALLET = ['bca-krisflyer', 'mandiri-skyz', 'bni-bonvoy'];
 
@@ -46,6 +46,30 @@ describe('stackLayout', () => {
     expect(cards.map((card) => card.left)).toEqual([0, FAN_X, FAN_X * 2]);
     expect(width).toBe(FAN_X * 2 + CARD_W);
     expect(height).toBe(CARD_H);
+  });
+});
+
+/**
+ * Which faces print their own rows. This is the whole of the `behind` wiring: a card the stack clips to a band
+ * must not print its bank mark, wordmark or digits, because they land in the same pixels as the strip's name and
+ * figure — two texts on one band, which is what the wall drew before this was pinned.
+ */
+describe('faceIsBehind', () => {
+  it('leaves every covered card to its strip and prints the front card whole', () => {
+    const { cards } = stackLayout(WALLET);
+    expect(cards.map((card) => faceIsBehind(card, false))).toEqual([true, true, false]);
+  });
+
+  it('opens the lifted card whole and leaves the band below it as it was', () => {
+    const { cards } = stackLayout(WALLET, { lifted: 0 });
+    // The front card is whole whether or not anything is lifted; the lift opens the card itself and slides the
+    // rest down, so the band under it is still a band.
+    expect(cards.map((card) => faceIsBehind(card, false))).toEqual([false, true, false]);
+  });
+
+  it('counts a fanned card as covered whenever only its leading edge shows', () => {
+    const { cards } = stackLayout(WALLET, { fan: true });
+    expect(cards.map((card) => faceIsBehind(card, true))).toEqual([true, true, false]);
   });
 });
 

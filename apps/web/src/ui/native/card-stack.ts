@@ -92,6 +92,23 @@ export function stackLayout(keys: readonly string[], options: StackOptions = {})
 }
 
 /**
+ * Whether a card's face is drawn *behind* the cards above it, so only its colour shows.
+ *
+ * A card showing less than its whole face is a band — its strip — and the face's own printed rows land in the
+ * very pixels the strip draws its two lines in: the bank mark and the wordmark on the one row, the digits over
+ * the figure. So a covered card is handed to `CardFace` as `behind`, which keeps the colour, the finish and the
+ * motif and prints none of the text. A card the stack leaves whole — the front one, or the one the user lifted
+ * — prints in full, because nothing is in front of it to hide it.
+ *
+ * Recorded as a function rather than as a comparison inside the component so the strip and the face read the
+ * same answer: a band carrying the strip's two lines *and* the card's own rows is two texts in one band, which
+ * is what the wall drew before this existed.
+ */
+export function faceIsBehind(card: StackedCard, fan: boolean): boolean {
+  return card.visible < (fan ? CARD_W : CARD_H);
+}
+
+/**
  * How many cards the stack shows before the page has to scroll.
  *
  * Six or seven, at a phone's height — recorded as a function rather than as a comment so `/cards` can say so
