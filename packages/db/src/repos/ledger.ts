@@ -10,6 +10,7 @@ import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
+import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { carryEventItemTx } from './event-items';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
@@ -187,8 +188,8 @@ export function postTransaction(database: Database, ws: WorkspaceContext, input:
   return database.transaction((tx) => postTransactionTx(tx, ws, input));
 }
 
-/** Voids inside an open transaction, so a caller can void and repost several transactions atomically. */
-export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+/** Marks one transaction void. What else the void means is `voidTransactionTx`'s; an edit keeps it (`replaceTransaction`). */
+async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
   const [row] = await tx
     .select({ status: transactions.status })
     .from(transactions)
@@ -197,6 +198,16 @@ export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string
   if (row.status === 'void') throw new LedgerError('ALREADY_VOID', `Transaction ${id} is already void`);
   await tx.update(transactions).set({ status: 'void' }).where(eq(transactions.id, id));
   await audit(tx, ws, 'void', id, {});
+}
+
+/** Voids inside an open transaction, so a caller can void and repost several transactions atomically. */
+export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+  await markVoidTx(tx, ws, id);
+  // A deposit event this posted is reopened, and the rest of what that event posted is voided with it.
+  for (const other of await reopenDepositEventTx(tx, ws, id)) {
+    const [row] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, other));
+    if (row?.status === 'posted') await voidTransactionTx(tx, ws, other);
+  }
 }
 
 export function voidTransaction(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
@@ -252,7 +263,8 @@ export function replaceTransaction(
     // What the original said about itself, so a correction that does not mention a fact keeps it, and one that
     // mentions it — `channel: null` — clears it. Read before the void, written as part of the replacement.
     const extras = (await extrasTablesExist(tx)) ? await extrasForTx(tx, ws, id) : null;
-    await voidTransactionTx(tx, ws, id);
+    // An edit voids without reopening anything: the replacement carries on what the original was.
+    await markVoidTx(tx, ws, id);
     // Keep import identity so re-importing the same statement still recognises the row.
     const replacement = await postTransactionTx(tx, ws, {
       ...input,
@@ -289,6 +301,8 @@ export function replaceTransaction(
     // What this payment bought off the plan is a fact about the same money: it follows the correction, and is cut to
     // fit when the correction is smaller.
     await carryEventItemTx(tx, ws, id, replacement);
+    // A deposit event it posted stays done, and its log takes the edited figures.
+    await followDepositEventTx(tx, ws, id, replacement);
     return replacement;
   });
 }

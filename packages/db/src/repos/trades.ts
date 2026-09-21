@@ -106,7 +106,7 @@ async function activeTrades(tx: Db, ws: WorkspaceContext, accountId?: string): P
 }
 
 /** The accounts a trade posts to: the holding, the cash side, and the income and tax categories. */
-async function tradeAccountsFor(tx: Db, ws: WorkspaceContext, accountId: string, cashAccountId: string | null): Promise<{ accounts: TradeAccounts; holdingName: string }> {
+export async function tradeAccountsFor(tx: Db, ws: WorkspaceContext, accountId: string, cashAccountId: string | null): Promise<{ accounts: TradeAccounts; holdingName: string }> {
   const ids = cashAccountId ? [accountId, cashAccountId] : [accountId];
   const rows = await tx
     .select({ id: accounts.id, name: accounts.name, currency: accounts.currency, workspaceId: accounts.workspaceId })

@@ -1,4 +1,5 @@
 import {
+  addMonthsToDate,
   DEFAULT_TAX_BPS,
   type DepositEvent,
   type DepositSchedule,
@@ -7,18 +8,25 @@ import {
   eventKey,
   type InterestPaid,
   type MaturityChoice,
+  needsPayout,
+  positionAfter,
   TERM_MONTHS,
   type TermMonths,
+  tradePostings,
+  transferLines,
+  uuidv7,
   withholdTax,
 } from '@expanses/core';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { depositAutomation, depositEvents, depositTerms } from '../schema-assets';
-import { type AccountRow, SPENDABLE_SUBTYPES } from './accounts';
-import type { DepositTermsRow } from './deposit-terms';
-import { nativeBalances } from './ledger';
+import { AccountError, type AccountRow, archiveAccountTx, SPENDABLE_SUBTYPES } from './accounts';
+import { automationTablesExist } from './deposit-event-log';
+import { type DepositTermsRow, getDepositTermsTx, saveDepositTermsTx } from './deposit-terms';
+import { nativeBalances, postTransactionTx } from './ledger';
+import { tradeAccountsFor } from './trades';
 
 export type DepositAutomationErrorCode =
   | 'NOT_READY'
@@ -41,20 +49,7 @@ export class DepositAutomationError extends Error {
   }
 }
 
-/**
- * Whether migration 0054 has run. Every read and write here asks first, so a database stopped at an older version
- * has every deposit off and nothing due. A positive answer is remembered per handle; a negative one is not, since
- * migrate() may run later on the same handle.
- */
-const automationTables = new WeakMap<Db, boolean>();
-
-export async function automationTablesExist(db: Db): Promise<boolean> {
-  if (automationTables.get(db)) return true;
-  const rows = await db.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'deposit_events'`);
-  const exists = rows.length > 0;
-  if (exists) automationTables.set(db, true);
-  return exists;
-}
+export { automationTablesExist };
 
 export interface DepositAutomationSettings {
   enabled: boolean;
@@ -286,4 +281,146 @@ export async function listDueDeposits(database: Database, ws: WorkspaceContext, 
     });
   }
   return proposals.sort((a, b) => a.event.dueOn.localeCompare(b.event.dueOn));
+}
+
+export interface ConfirmDepositEventInput {
+  accountId: string;
+  kind: DepositEvent['kind'];
+  dueOn: string;
+  /** Local YYYY-MM-DD, to check that this event is still the earliest due. */
+  today: string;
+  /** Posted only when the deposit does not roll over; logged either way. */
+  principalMinor: number;
+  /** Interest before tax, as it posts to `income.investment`: the computed figure, or the bank's, typed. */
+  grossMinor: number;
+  /** Tax withheld, as it posts to `government_taxes.estimated_tax`. What lands is `grossMinor − taxMinor`. */
+  taxMinor: number;
+  /** Maturity with a roll-over only. */
+  newRateBps?: number;
+  newTermMonths?: TermMonths;
+  /** Units of base per one major unit of the deposit's currency, when that is not the base. */
+  rateToBase?: number;
+  /**
+   * "Recorded it myself": the owner already put it in the ledger. Nothing is posted. The event is marked done with
+   * the figures on the card, so the tax report still has it. A roll-over still starts its next term.
+   */
+  byHand?: boolean;
+}
+
+export interface ConfirmedDepositEvent {
+  interestTransactionId: string | null;
+  principalTransactionId: string | null;
+  /** What landed (or, recorded by hand, what the owner said landed): gross − tax. */
+  netMinor: number;
+  archived: boolean;
+}
+
+const whole = (n: number | undefined): n is number => n !== undefined && Number.isSafeInteger(n) && n >= 0;
+
+/**
+ * Posts one due event through the ledger's own paths and marks it done, all in one transaction. The interest posts the
+ * way an investment payment does (`tradeAccountsFor` + `tradePostings`). Refuses anything that is not the earliest due
+ * event of an automated, open deposit of this workspace.
+ */
+export async function confirmDepositEvent(database: Database, ws: WorkspaceContext, input: ConfirmDepositEventInput): Promise<ConfirmedDepositEvent> {
+  if (!whole(input.grossMinor) || !whole(input.taxMinor) || !whole(input.principalMinor) || input.taxMinor > input.grossMinor) {
+    throw new DepositAutomationError('BAD_FIGURE', 'Every figure is a whole amount, not below zero, and the tax is not more than the interest');
+  }
+  const byHand = input.byHand === true;
+  const netMinor = input.grossMinor - input.taxMinor;
+  // The ledger refuses a zero line (ZERO_AMOUNT); say why in words before it gets there.
+  if (!byHand && input.grossMinor > 0 && netMinor === 0) throw new DepositAutomationError('BAD_FIGURE', 'The tax cannot take all of the interest');
+
+  return database.transaction(async (tx) => {
+    if (!(await automationTablesExist(tx))) throw new DepositAutomationError('NOT_READY', 'Update the app to automate a deposit');
+    const deposit = await liveDepositTx(tx, ws, input.accountId);
+    const settings = await automationTx(tx, ws, deposit.id);
+    const terms = await getDepositTermsTx(tx, ws, deposit.id);
+    if (!settings?.enabled || !terms) throw new DepositAutomationError('OFF', 'Automation is off for this deposit');
+
+    const [first] = dueDepositEvents(scheduleOf(settings, terms), await doneKeysTx(tx, ws, deposit.id), input.today);
+    if (!first || first.kind !== input.kind || first.dueOn !== input.dueOn) {
+      throw new DepositAutomationError('NOT_NEXT', 'This is not the next thing due on this deposit. Reopen it to see what is.');
+    }
+
+    const maturity = input.kind === 'maturity';
+    const closing = maturity && settings.atMaturity === 'close';
+    const rolling = maturity && !closing;
+    const lands = needsPayout(settings.atMaturity);
+    if (!byHand && lands) {
+      if (settings.payoutAccountId === null) throw new DepositAutomationError('NO_PAYOUT', 'Choose the account the money lands in first');
+      await checkPayoutTx(tx, ws, settings.payoutAccountId, deposit.currency, deposit.id);
+    }
+    if (closing && !byHand && input.principalMinor <= 0) throw new DepositAutomationError('BAD_FIGURE', 'Say how much came back');
+    if (rolling && (!(TERM_MONTHS as readonly number[]).includes(input.newTermMonths ?? 0) || !whole(input.newRateBps))) {
+      throw new DepositAutomationError('BAD_FIGURE', 'A roll-over needs its new term and rate');
+    }
+
+    const ratesToBase = deposit.currency !== ws.baseCurrency && input.rateToBase !== undefined ? { [deposit.currency]: input.rateToBase } : {};
+
+    let interestTransactionId: string | null = null;
+    if (!byHand && input.grossMinor > 0) {
+      const interestInto = lands ? settings.payoutAccountId! : deposit.id;
+      // The investment payment's own accounts and lines: net to where it lands, tax to estimated_tax, gross to income.
+      const { accounts: tradeAccounts } = await tradeAccountsFor(tx, ws, deposit.id, interestInto);
+      interestTransactionId = await postTransactionTx(tx, ws, {
+        occurredOn: input.dueOn,
+        description: `Interest: ${deposit.name}`,
+        lines: tradePostings(
+          { kind: 'income', occurredOn: input.dueOn, unitsMicro: 0, grossMinor: input.grossMinor, feeMinor: 0, taxMinor: input.taxMinor },
+          positionAfter([]),
+          tradeAccounts,
+        ),
+        ratesToBase,
+      });
+    }
+
+    let principalTransactionId: string | null = null;
+    if (closing && !byHand) {
+      principalTransactionId = await postTransactionTx(tx, ws, {
+        occurredOn: input.dueOn,
+        description: `${deposit.name} matured`,
+        lines: transferLines({ fromAccountId: deposit.id, toAccountId: settings.payoutAccountId!, amountMinor: input.principalMinor, currency: deposit.currency }),
+        ratesToBase,
+      });
+    }
+
+    const now = new Date().toISOString();
+    if (rolling) {
+      await saveDepositTermsTx(tx, ws, { accountId: deposit.id, maturesOn: addMonthsToDate(input.dueOn, input.newTermMonths!), rateBps: input.newRateBps! });
+      await tx
+        .update(depositAutomation)
+        .set({ termMonths: input.newTermMonths!, termStartedOn: input.dueOn, updatedAt: now })
+        .where(eq(depositAutomation.accountId, deposit.id));
+    }
+
+    await tx.insert(depositEvents).values({
+      id: uuidv7(),
+      workspaceId: ws.workspaceId,
+      accountId: deposit.id,
+      kind: input.kind,
+      dueOn: input.dueOn,
+      principalMinor: input.principalMinor,
+      grossMinor: input.grossMinor,
+      taxMinor: input.taxMinor,
+      netMinor,
+      interestTransactionId,
+      principalTransactionId,
+      recordedByHand: byHand ? 1 : 0,
+      confirmedAt: now,
+    });
+
+    let archived = false;
+    if (closing) {
+      await tx.update(depositAutomation).set({ enabled: 0, enabledOn: null, updatedAt: now }).where(eq(depositAutomation.accountId, deposit.id));
+      try {
+        // The archive keeps its own refusal: it checks the balance and throws before it writes anything.
+        await archiveAccountTx(tx, ws, deposit.id);
+        archived = true;
+      } catch (error) {
+        if (!(error instanceof AccountError)) throw error;
+      }
+    }
+    return { interestTransactionId, principalTransactionId, netMinor, archived };
+  });
 }
