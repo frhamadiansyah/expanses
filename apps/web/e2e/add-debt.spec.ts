@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { cardSection } from './card-section';
 
 /**
  * The debt picker, end to end: the three things a debt turns out to be, and where each one lands.
@@ -56,7 +57,7 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
   await expect(page.getByRole('heading', { name: 'BCA UnionPay' })).toBeVisible();
 
   // The catalogue's own terms: the bank's published annual fee, and the earn rules that came with it.
-  await page.getByRole('radio', { name: 'Card', exact: true }).click();
+  await cardSection(page, 'Card');
   await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
 });
 

@@ -48,6 +48,14 @@ export function categoryKeys(categoryId: string | null, accounts: readonly Accou
   return { key, rootKey: current?.systemKey ?? null, rootName: current && current.id !== categoryId ? current.name : null };
 }
 
+/** A category's glyph and tint, for a row that draws its own circle — the kit's rows tint an icon themselves. */
+export function categoryMark(categoryId: string | null, accounts: readonly AccountRow[]): { Glyph: LucideIcon; colour: string; name: string | null } {
+  const { key, rootKey } = categoryKeys(categoryId, accounts);
+  const category = categoryId ? accounts.find((a) => a.id === categoryId) : undefined;
+  const base = categoryId ? categoryVisual(key, rootKey) : UNKNOWN_VISUAL;
+  return { Glyph: ICONS[category?.icon ?? base.icon] ?? CircleHelp, colour: base.colour, name: category?.name ?? null };
+}
+
 const SIZES = { lg: { box: 'h-16 w-16', glyph: 32 }, md: { box: 'h-9 w-9', glyph: 18 }, sm: { box: 'h-6 w-6', glyph: 14 }, xs: { box: 'h-5 w-5', glyph: 12 } } as const;
 
 /** A round, tinted category mark: the glyph names the category, the colour its top-level parent. */

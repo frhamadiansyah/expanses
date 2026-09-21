@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
+import { cardSection } from './card-section';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -28,7 +29,7 @@ async function setUp(page: Page) {
   await page.getByRole('button', { name: 'Save terms' }).click();
   // Saving terms moves the page on to setting up rewards; the statement is one tab away.
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
-  await page.getByRole('radio', { name: 'Activity' }).click();
+  await cardSection(page, 'Activity');
   await expect(page.getByText('Statements')).toBeVisible();
 }
 
@@ -141,7 +142,7 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
 test('the tab you chose survives a reload', async ({ page }) => {
   await setUp(page);
   await openCard(page);
-  await page.getByRole('radio', { name: 'Card', exact: true }).click();
+  await cardSection(page, 'Card');
   await expect(page.getByRole('button', { name: 'Save terms' })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('radio', { name: 'Card', exact: true })).toHaveAttribute('aria-checked', 'true');
@@ -162,4 +163,15 @@ test('searching finds a purchase on an earlier statement and opens that statemen
   await expect(page.getByLabel('Search statements')).toHaveValue('');
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' })).toBeVisible();
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Superindo' })).toHaveCount(0);
+});
+
+test('on a desktop the section control and the section it switches share one column', async ({ page }) => {
+  await setUp(page);
+  await openCard(page);
+  await cardSection(page, 'Card');
+  const control = await page.getByRole('radiogroup', { name: 'Card sections' }).boundingBox();
+  const section = await page.locator('section', { has: page.getByRole('heading', { name: 'Card terms' }) }).first().boundingBox();
+  expect(control && section).toBeTruthy();
+  expect(Math.round(control!.x)).toBe(Math.round(section!.x));
+  expect(Math.round(control!.width)).toBe(Math.round(section!.width));
 });

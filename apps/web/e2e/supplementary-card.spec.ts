@@ -17,7 +17,7 @@ async function addCardAccount(page: Page) {
 
 async function openTheCard(page: Page) {
   await page.goto('/cards');
-  await page.getByRole('link', { name: 'Mandiri Bonvoy', exact: true }).click();
+  await page.getByRole('link', { name: /^Mandiri Bonvoy(,|$)/ }).click();
   await expect(page.getByRole('heading', { name: 'Mandiri Bonvoy' })).toBeVisible();
 }
 

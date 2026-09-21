@@ -1,11 +1,13 @@
 import type { CatalogCardLook } from '@expanses/catalog';
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { useState } from 'react';
-import { usePhone } from '../../app/use-phone';
+import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
+import { usePhone } from '../../app/use-phone';
 import { CardFace } from '../../features/cards/CardFace';
 import { cx } from '../index';
-import { CARD_H, CARD_W, faceIsBehind, stackLayout } from './card-stack';
+import { CARD_H, CARD_W, DESKTOP_CARD_W, faceIsBehind, stackLayout } from './card-stack';
+import { InsetGroup, InsetRow } from './InsetList';
+import { WalletSlotContext } from './wallet-slot';
 
 /**
  * Primitive 7: card art, in the Wallet stack the user chose for `/cards` (C3).
@@ -13,13 +15,15 @@ import { CARD_H, CARD_W, faceIsBehind, stackLayout } from './card-stack';
  * The art itself is **`CardFace`**, which already redraws a catalogue card from its official colours, finish and
  * motif. Nothing here redraws a card; this is the shelf the faces sit on.
  *
- * C3's known weakness is that only the front card's figures show. The answer built in here is the **strip** —
- * the band of a card its neighbour does not cover, which carries the card's name *and* its figure. All of them
- * read without a tap, on the page whose whole purpose is answering "how many miles have I got?".
+ * It is Apple Wallet's pile: every card is its own whole face at one width, and each card is laid over the one
+ * before it with a soft shadow along its edge, so what shows of a covered card is its top band. That band is the
+ * card's own print — its bank and name on the left and, in place of Wallet's field, the card's figure on the
+ * right — so every figure reads without a tap.
  *
- * A covered card's face is handed over as `behind` (`faceIsBehind`), so the band a neighbour leaves showing
- * carries the strip's two lines and nothing else — the card's own printed rows would otherwise sit in the same
- * pixels as the strip, which reads as two texts smeared over one another.
+ * The pile runs back to front, as Wallet's does: the rearmost card at the top, the front card last and whole.
+ * Tapping any card opens it — that same element rises to the top at the same width, the others slide off the
+ * bottom of the screen, and its page fades in below it. The ✕, the raised card or Escape put it back in its slot,
+ * and the others come back into theirs.
  */
 
 export interface WalletCard {
@@ -30,13 +34,12 @@ export interface WalletCard {
   holderName?: string | null;
   network?: string | null;
   look?: CatalogCardLook | null;
-  /** The figure on this card's strip — points, miles, or what is owed. Already a whole number of its unit. */
+  /** The figure on this card's band — points, miles, or what is owed. Already a whole number of its unit. */
   figure: string;
   figureLabel: string;
   /**
    * The line under the name: the digits, the cycle, what the points are worth — whatever the wall would lose if
-   * the card were only a name and a figure. Drawn on the strip as well as under the front card, so a covered
-   * card keeps it too.
+   * the card were only a name and a figure. Drawn in the facts row beside the card in front.
    */
   subtitle?: string;
   /**
@@ -49,135 +52,244 @@ export interface WalletCard {
   label?: string;
 }
 
+/** Wallet's own beat for a card moving: long enough to follow, with the settle of a spring. */
+const MOVE_MS = 420;
+const MOVE_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+
+function reducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 export function CardStack({
   cards,
+  raised = null,
   onOpen,
+  onClose,
+  children,
+  label,
   className,
 }: {
   cards: readonly WalletCard[];
-  /** Where a card goes when it is chosen — `/cards/$cardId`. A lift is a look; this is the journey. */
+  /** The key of the open card, raised to the top, or null for the stack at rest. */
+  raised?: string | null;
+  /** Opens a card that has no route of its own. A card with a route is a link and opens by going there. */
   onOpen?: (key: string) => void;
+  /** Puts the raised card back in its slot: the ✕, the raised card itself, Escape. */
+  onClose?: () => void;
+  /** The open card's page, laid out under the raised card. It leaves the card a slot (`useWalletSlot`). */
+  children?: ReactNode;
+  /** Names the stack as a region. The open card's page is outside it: it is the card's page, not the wall. */
+  label?: string;
   className?: string;
 }) {
   const phone = usePhone();
-  const [lifted, setLifted] = useState<number | null>(null);
-  // A lifted card is the innermost thing open, so Escape puts it back before it reaches anything behind it.
-  useEscape(() => setLifted(null), lifted !== null);
+  /*
+   * On a phone a card is as wide as the column inside the 16 px gutter, as Wallet draws it — so the stack
+   * measures the column it is given. A desktop draws Wallet's own card width, and never wider than its column.
+   */
+  const shelf = useRef<HTMLDivElement>(null);
+  const [column, setColumn] = useState<{ width: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    const node = shelf.current;
+    if (!node) return;
+    const measure = () => setColumn(node.clientWidth ? { width: node.clientWidth, left: node.getBoundingClientRect().left } : null);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
 
-  // A phone has height and no width, so the cards overlap downwards; a 1440px window has the opposite problem,
-  // so they fan sideways. One primitive, two geometries — not a phone layout stretched across a desktop.
-  const fan = !phone;
-  const layout = stackLayout(
-    cards.map((card) => card.key),
-    { lifted: phone ? lifted : null, fan },
-  );
+  const keys = cards.map((card) => card.key);
+  const raisedIndex = raised === null ? -1 : keys.indexOf(raised);
+  const cardWidth = phone ? (column?.width ?? CARD_W) : Math.min(column?.width ?? DESKTOP_CARD_W, DESKTOP_CARD_W);
+  const layout = stackLayout(keys, { raised: raisedIndex < 0 ? null : raisedIndex, cardWidth });
+  const isRaised = layout.raised !== null;
+  const raisedKey = isRaised ? raised : null;
+  // Faces are drawn at 240 and scaled to the card's width, so every printed row keeps its place on the card.
+  const scale = layout.cardWidth / CARD_W;
+  // The face's own corner, scaled with it, so a box and the art inside it round alike.
+  const radius = Math.round(14.4 * scale);
+  // The page's dots choose which plastic card on the account the raised card shows.
+  const [shown, setShown] = useState<{ last4: string | null; holderName?: string | null } | null>(null);
+  useEffect(() => setShown(null), [raisedKey]);
 
-  const front = cards[cards.length - 1];
+  /*
+   * FLIP: where every card was is read the moment the stack is asked to change state — during that render, while
+   * the page still shows the old one — and once the new places are committed each card is sent back to where it
+   * was by a transform and let go. So a card travels, continuously, from its slot to the top and back, whatever
+   * positioning each end uses; nothing is redrawn and nothing cuts.
+   */
+  const elements = useRef(new Map<string, HTMLDivElement>());
+  const committed = useRef<string | null | undefined>(undefined);
+  const before = useRef<Map<string, { rect: DOMRect; opacity: string }> | null>(null);
+  const scrollAtRest = useRef(0);
+  if (committed.current !== undefined && committed.current !== raisedKey && before.current === null) {
+    before.current = new Map([...elements.current].map(([key, node]) => [key, { rect: node.getBoundingClientRect(), opacity: getComputedStyle(node).opacity }]));
+  }
+  useLayoutEffect(() => {
+    const was = committed.current;
+    committed.current = raisedKey;
+    const rects = before.current;
+    before.current = null;
+    if (was === undefined || was === raisedKey || !rects) return;
+    // A raised card goes to the top of the screen, as in Wallet; closing it returns the reader to where they were.
+    if (was === null) {
+      scrollAtRest.current = window.scrollY;
+      window.scrollTo(0, 0);
+    } else if (raisedKey === null) {
+      window.scrollTo(0, scrollAtRest.current);
+      elements.current.get(was)?.querySelector<HTMLElement>('a,button')?.focus({ preventScroll: true });
+    }
+    if (reducedMotion()) return;
+    const moving: [HTMLDivElement, string][] = [];
+    for (const [key, node] of elements.current) {
+      const from = rects.get(key);
+      if (!from) continue;
+      const to = node.getBoundingClientRect();
+      const dx = from.rect.left - to.left;
+      const dy = from.rect.top - to.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+      // What React set is where the card lands; it starts from where it was, as it was, and is let go.
+      const opacity = node.style.opacity;
+      node.style.transition = 'none';
+      node.style.transform = `translate(${dx}px, ${dy}px)`;
+      node.style.opacity = from.opacity;
+      moving.push([node, opacity]);
+    }
+    if (moving.length === 0) return;
+    void document.body.offsetHeight;
+    for (const [node, opacity] of moving) {
+      node.style.transition = `transform ${MOVE_MS}ms ${MOVE_EASE}, opacity ${MOVE_MS}ms ease-out`;
+      node.style.transform = '';
+      node.style.opacity = opacity;
+    }
+  }, [raisedKey]);
+
+  // Escape puts the raised card back, as the ✕ does.
+  useEscape(() => onClose?.(), isRaised);
+
+  // The facts describe the card in front: the last card, whole at the bottom of the pile.
+  const described = isRaised ? undefined : cards[layout.front];
 
   return (
-    <div className={cx('mx-auto', className)} style={{ width: layout.width, maxWidth: '100%', marginBottom: 18 }}>
-      <div className="relative" style={{ width: layout.width, height: layout.height, maxWidth: '100%' }}>
-      {layout.cards.map((placed, index) => {
-        const card = cards[index]!;
-        // A card this stack clips to its strip is drawn `behind`: its own rows would print in the same pixels as
-        // the band below, so the face is colour alone and the strip is the only text in that edge.
-        const covered = faceIsBehind(placed, fan);
-        // A tap on a covered card lifts it; on the front card, on a lifted card, or on a desktop it opens it.
-        const opens = !phone || placed.lifted || index === cards.length - 1;
-        const label = card.label ?? `${card.name}${card.last4 ? ` ending ${card.last4}` : ''} · ${card.figureLabel} ${card.figure}`;
-        const shell = 'ph-focus absolute overflow-hidden rounded-[0.9rem] text-left transition-[top,left] duration-200';
-        /*
-         * The box is the band this card actually shows, not the whole card.
-         *
-         * A card whose box was the full 240 × 151 would put its own middle under the card in front of it, and a
-         * tap aimed at the middle of what you can see would open the neighbour instead. So the box is the strip —
-         * the art is drawn at full size inside it and clipped, which is exactly what the overlap did anyway.
-         */
-        const box = {
-          top: placed.top,
-          left: placed.left,
-          zIndex: placed.zIndex,
-          width: fan ? placed.visible : CARD_W,
-          height: fan ? CARD_H : placed.visible,
-        } as const;
-        const face = (
-          <>
-            <span className="pointer-events-none block" style={{ width: CARD_W, height: CARD_H }}>
-              <CardFace
-                issuer={card.issuer}
-                name={card.name}
-                last4={card.last4}
-                holderName={card.holderName}
-                network={card.network}
-                look={card.look}
-                size="md"
-                behind={covered}
-              />
-            </span>
-            {/*
-             * The strip: the band this card's neighbour leaves showing. It carries the figure, so a covered
-             * card still answers for itself — which is the whole reason the stack survives its own weakness.
-             * The second line is what a wall of cards would otherwise lose: the digits, the cycle, the worth.
-             *
-             * Overlapping downwards the strip is a band across the top; fanned sideways it is a column down the
-             * leading edge, because that is the shape of what is left showing in each geometry.
-             */}
-            {covered && (
-              <span
-                className={cx(
-                  'pointer-events-none absolute inset-0 flex flex-col gap-[1px] px-[10px] py-[9px]',
-                  fan ? 'justify-end' : 'justify-center',
-                )}
-                style={{
-                  background: fan
-                    ? 'linear-gradient(rgb(0 0 0 / 0), rgb(0 0 0 / 0.62))'
-                    : 'linear-gradient(rgb(0 0 0 / 0.52), rgb(0 0 0 / 0))',
-                }}
-              >
-                <span className={cx('flex gap-2', fan ? 'flex-col items-start' : 'items-baseline justify-between')}>
-                  <span className="min-w-0 max-w-full truncate text-[12.5px] leading-[16px] font-semibold text-white">{card.name}</span>
-                  <span className="tabular shrink-0 text-[13px] leading-[16px] font-bold whitespace-nowrap text-white">{card.figure}</span>
-                </span>
-                {card.subtitle && !fan && <span className="min-w-0 truncate text-[11px] leading-[14px] text-white/80">{card.subtitle}</span>}
-              </span>
-            )}
-          </>
-        );
-        // An open is a journey, so it is a real link wherever the route is known; a lift is only a look.
-        return opens && card.to ? (
-          <Link key={card.key} to={card.to} params={card.params} aria-label={label} className={shell} style={box}>
-            {face}
-          </Link>
-        ) : (
-          <button
-            key={card.key}
-            type="button"
-            onClick={() => (opens ? onOpen?.(card.key) : setLifted(index))}
-            aria-label={label}
-            className={shell}
-            style={box}
-          >
-            {face}
-          </button>
-        );
-      })}
-      </div>
-      {/*
-       * The front card has no neighbour above it, so it has no strip to carry its figure — and it is the one
-       * card whose figure must not need a tap either. Its line goes under the stack, where it names the card
-       * as well, so a stack of three reads as three figures however the cards are sitting.
-       */}
-      {front && (
-        <div className="mt-[10px]">
-          <p className="flex items-baseline justify-between gap-3">
-            <span className="min-w-0 truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-              {front.name} · {front.figureLabel}
-            </span>
-            <span className="tabular shrink-0 text-[15px] leading-[20px] font-semibold text-[var(--ph-ink)]">{front.figure}</span>
-          </p>
-          {front.subtitle && <p className="mt-[2px] truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{front.subtitle}</p>}
+    <div className={className}>
+      <section aria-label={label} className={cx(!isRaised && 'md:flex md:items-start md:gap-6 md:pb-5')}>
+        <div ref={shelf} className={cx(!isRaised && 'md:w-[380px] md:max-w-full md:shrink-0')}>
+          <div className="relative" style={{ width: layout.width, height: layout.height, maxWidth: '100%' }}>
+            {layout.cards.map((placed, index) => {
+              const card = cards[index]!;
+              const covered = faceIsBehind(placed);
+              // One link per card, named by the card and its figure, so a reader hears every figure moving through.
+              const name = card.label ?? card.name;
+              const named = card.figure && card.figure !== '—' ? `${name}, ${card.figure}` : name;
+              /*
+               * The control is the part of the card that shows — the whole face in front, the band or the pile's
+               * edge otherwise — laid over the art, so a tap, a pointer and a focus ring all land on what can be
+               * seen, and never on the part of a card the next one covers.
+               */
+              const whole = placed.visible >= layout.cardHeight;
+              const style: CSSProperties = {
+                height: placed.visible,
+                borderRadius: whole ? radius : `${radius}px ${radius}px 0 0`,
+                pointerEvents: 'auto',
+              };
+              const hit = 'ph-focus-inset absolute top-0 left-0 block w-full text-left';
+              /*
+               * Every card is drawn whole, at one width; the card after it is laid over it, so what shows is its top
+               * band. While another card is open the rest wait below the bottom of the screen, faded and inert — out
+               * of sight, out of the tab order and out of the accessibility tree — and come back up into their slots.
+               */
+              const hidden = placed.place === 'hidden';
+              const box: CSSProperties = hidden
+                ? { position: 'fixed', left: column?.left ?? 16, top: '100vh', zIndex: 1, opacity: 0 }
+                : { position: 'absolute', left: 0, top: placed.top, zIndex: placed.place === 'raised' ? 15 : placed.zIndex };
+              return (
+                <div
+                  key={card.key}
+                  ref={(node) => {
+                    if (node) elements.current.set(card.key, node);
+                    else elements.current.delete(card.key);
+                  }}
+                  data-testid="wallet-card"
+                  data-place={placed.place}
+                  data-front={index === layout.front ? '' : undefined}
+                  inert={hidden}
+                  aria-hidden={hidden || undefined}
+                  style={{
+                    ...box,
+                    width: layout.cardWidth,
+                    height: layout.cardHeight,
+                    borderRadius: radius,
+                    // A soft shadow cast up along each card's top edge onto the card beneath: the pile reads as cards.
+                    boxShadow: 'var(--ph-card-edge), var(--ph-card-lift)',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <Face
+                    card={placed.place === 'raised' && shown ? { ...card, last4: shown.last4, holderName: shown.holderName } : card}
+                    band={covered}
+                    scale={scale}
+                  />
+                  {placed.place === 'raised' ? (
+                    // The raised card is the page's header; tapping it closes it, as in Wallet.
+                    <button type="button" aria-label={name} className={hit} style={style} onClick={() => onClose?.()} />
+                  ) : card.to ? (
+                    <Link to={card.to} params={card.params} aria-label={named} className={hit} style={style} />
+                  ) : (
+                    <button type="button" aria-label={named} className={hit} style={style} onClick={() => onOpen?.(card.key)} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
+        {/*
+         * The front card's face is its art, so its figure sits beside the stack on a desktop and under it on a
+         * phone: one grouped row, the kit's own shape, so every card's figure reads without a tap.
+         */}
+        {described && (
+          <InsetGroup className="mt-[10px] md:mt-0 md:min-w-0 md:flex-1">
+            <InsetRow
+              testId="wallet-facts"
+              title={described.name}
+              subtitle={[described.figureLabel, described.subtitle].filter(Boolean).join(' · ')}
+              value={described.figure}
+              valueTone="ink"
+            />
+          </InsetGroup>
+        )}
+      </section>
+      {isRaised && (
+        <WalletSlotContext.Provider value={{ width: layout.cardWidth, height: layout.cardHeight, setShown }}>
+          {/* The page fades in under the raised card. */}
+          <div className="ph-fade-in">{children}</div>
+        </WalletSlotContext.Provider>
       )}
     </div>
+  );
+}
+
+/** One card's art, drawn at 240 and scaled to the stack's card width, whole or as its top band. */
+function Face({ card, band, scale }: { card: WalletCard; band: boolean; scale: number }) {
+  return (
+    <span
+      className="pointer-events-none absolute top-0 left-0 block origin-top-left overflow-hidden"
+      style={{ width: CARD_W, height: CARD_H, transform: scale === 1 ? undefined : `scale(${scale})`, borderRadius: 14.4 }}
+    >
+      <CardFace
+        issuer={card.issuer}
+        name={card.name}
+        last4={card.last4}
+        holderName={card.holderName}
+        network={card.network}
+        look={card.look}
+        size="md"
+        band={band ? card.figure : undefined}
+      />
+    </span>
   );
 }

@@ -56,6 +56,11 @@ export interface PlacedSegment {
   /** The name actually drawn: `label`, or `short` when the full one would have been clipped. */
   label: string;
   shortened: boolean;
+  /**
+   * What a screen reader says: always the full label. A shortened segment is a drawing made to fit a phone's
+   * track, and "Rules" is not the section's name — "Rewards rules" is.
+   */
+  name: string;
   /** The route this segment goes to, or `null` when it only changes something on the page. */
   route: SegmentRoute | null;
 }
@@ -98,9 +103,9 @@ export function fitSegments(items: readonly Segment[], width = PHONE_WIDTH, max 
     const placed = taken.map((item): PlacedSegment => {
       // The route travels with the segment whatever its label does: a shortened name is still the same address.
       const route = segmentRoute(item);
-      if (textWidth(item.label, 12.5) <= room) return { key: item.key, label: item.label, shortened: false, route };
-      if (item.short && textWidth(item.short, 12.5) <= room) return { key: item.key, label: item.short, shortened: true, route };
-      return { key: item.key, label: item.short ?? item.label, shortened: Boolean(item.short), route };
+      if (textWidth(item.label, 12.5) <= room) return { key: item.key, label: item.label, name: item.label, shortened: false, route };
+      if (item.short && textWidth(item.short, 12.5) <= room) return { key: item.key, label: item.short, name: item.label, shortened: true, route };
+      return { key: item.key, label: item.short ?? item.label, name: item.label, shortened: Boolean(item.short), route };
     });
     const fits = placed.every((segment) => textWidth(segment.label, 12.5) <= room);
     // The last pass keeps whatever it produced: one segment that still will not fit is a label nobody can

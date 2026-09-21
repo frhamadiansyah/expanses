@@ -3,7 +3,10 @@ import { deleteInstallment, saveInstallment } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Money } from '../../ui';
+import { Trash2 } from 'lucide-react';
+import { ErrorBox, Money } from '../../ui';
+import { InsetGroup, SwitchRow, TextRow } from '../../ui/native';
+import { ActionRow, ColumnGroup, GlyphButton, Line, SubmitRow, SUBTITLE, TextLine, TITLE } from '../cards/rows';
 import { useInstallments } from './queries';
 
 /**
@@ -59,81 +62,60 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
     }
   }
 
+  const plansNow = plans.data ?? [];
   return (
-    <Card className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Instalment plans</h2>
-        {!adding && (
-          <Button variant="secondary" onClick={() => setAdding(true)}>
-            Add a plan
-          </Button>
+    <>
+      <InsetGroup header="Instalment plans">
+        {plansNow.length === 0 && !adding && (
+          <TextLine tone="ink-3">None yet. A purchase the issuer turns into cicilan is recorded here, so the card's debt splits into billed and unbilled.</TextLine>
         )}
-      </div>
-
-      {(plans.data?.length ?? 0) === 0 && !adding && (
-        <p className="text-sm text-slate-500">None yet. A purchase the issuer turns into cicilan is recorded here, so the card's debt splits into billed and unbilled.</p>
-      )}
-
-      <div className="divide-y divide-slate-100 text-sm">
-        {(plans.data ?? []).map((plan) => {
+        {plansNow.map((plan) => {
           const split = installmentSplit(plan, today);
           return (
-            <div key={plan.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
-              <span className="min-w-0">
-                <span className="font-medium">{plan.description}</span>
-                <span className="block text-xs text-slate-500">
+            // Every figure of a plan is worth reading whole, so its lines wrap rather than truncate beside a figure.
+            <Line key={plan.id} testId="instalment-plan" pad="11px 4px 11px 13px" className="flex items-center gap-[8px]">
+              <span className="min-w-0 flex-1">
+                <span className={`block ${TITLE}`}>{plan.description}</span>
+                <span className={`mt-[2px] block ${SUBTITLE}`}>
                   {plan.months} months · <Money minor={plan.monthlyMinor} currency={currency} /> a month · ends {split.lastMonth}
                   {!plan.earnsPoints && ' · earns no points'}
                 </span>
-              </span>
-              <span className="flex items-center gap-3">
-                <span className="text-right text-xs text-slate-500">
-                  Billed <Money minor={split.billedMinor} currency={currency} />
-                  <span className="block">
-                    Still to come <Money minor={split.unbilledMinor} currency={currency} />
-                  </span>
+                <span className={`block ${SUBTITLE}`}>
+                  Billed <Money minor={split.billedMinor} currency={currency} /> · Still to come <Money minor={split.unbilledMinor} currency={currency} />
                 </span>
-                <Button variant="danger" onClick={() => void remove(plan.id)}>
-                  Remove
-                </Button>
               </span>
-            </div>
+              <GlyphButton label={`Remove ${plan.description}`} glyph={<Trash2 size={17} aria-hidden />} destructive onClick={() => void remove(plan.id)} />
+            </Line>
           );
         })}
-      </div>
+        {!adding && <ActionRow label="Add a plan" onClick={() => setAdding(true)} />}
+      </InsetGroup>
 
       {adding && (
-        <form onSubmit={add} className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-4">
-            <Field label="What it was">
-              <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="iBox Grand Indonesia" />
-            </Field>
-            <Field label={`Total (${currency})`}>
-              <Input value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="12.000.000" required />
-            </Field>
-            <Field label="Over how many months">
-              <Input value={months} inputMode="numeric" onChange={(e) => setMonths(e.target.value)} />
-            </Field>
-            <Field label="First billed">
-              <Input type="month" value={firstBilledMonth} onChange={(e) => setFirstBilledMonth(e.target.value)} />
-            </Field>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={earnsPoints} onChange={(e) => setEarnsPoints(e.target.checked)} />
-            This still earns points
-          </label>
+        <form onSubmit={add}>
+          {/* The plan's figures across a desktop, as they stood in a row of four before; down a phone. */}
+          <ColumnGroup
+            header="New instalment plan"
+            columns={[
+              [
+                <TextRow label="What it was" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="iBox Grand Indonesia" />,
+                <TextRow label={`Total (${currency})`} value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="12.000.000" required />,
+              ],
+              [
+                <TextRow label="Over how many months" value={months} inputMode="numeric" onChange={(e) => setMonths(e.target.value)} />,
+                <TextRow label="First billed" type="month" value={firstBilledMonth} onChange={(e) => setFirstBilledMonth(e.target.value)} />,
+              ],
+              [<SwitchRow label="This still earns points" checked={earnsPoints} onChange={setEarnsPoints} />],
+            ]}
+          />
           <ErrorBox error={error} />
-          <div className="flex gap-2">
-            <Button type="submit" disabled={busy}>
-              Save plan
-            </Button>
-            <Button variant="ghost" onClick={() => setAdding(false)}>
-              Cancel
-            </Button>
-          </div>
+          <InsetGroup>
+            <SubmitRow label="Save plan" disabled={busy} />
+            <ActionRow label="Cancel" quiet onClick={() => setAdding(false)} />
+          </InsetGroup>
         </form>
       )}
       {!adding && <ErrorBox error={error} />}
-    </Card>
+    </>
   );
 }
