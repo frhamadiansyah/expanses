@@ -2,8 +2,8 @@ import { assetFamily, type OwnableFamily, type OwnableFlow } from '@expanses/cor
 import { type ReactNode, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { usePhone } from '../../app/use-phone';
-import { cx, Input } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
+import { cx } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle, SCREEN, SearchField } from '../../ui/native';
 import { type HandOverRow, MORE_ROW_ID, type PickerRow, pickerRows } from './catalogue-view';
 
 /**
@@ -99,7 +99,7 @@ export function OwnablePicker({
   const list = (
     <>
       <div className="mb-[12px]">
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
+        <SearchField value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
       </div>
       {/* The list is the answer to what is typed above it, so a screen reader hears it change, not only sees it. */}
       <div aria-live="polite">
