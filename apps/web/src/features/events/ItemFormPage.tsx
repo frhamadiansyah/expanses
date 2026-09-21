@@ -167,6 +167,16 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
       </>,
     );
 
+  // Until the item being edited has loaded there is nothing to type into: a price typed in first would be overwritten
+  // as the item lands, and a Save would write the blank form over it.
+  if (itemId && !loaded)
+    return screen(
+      <>
+        <LargeTitle title={title} back="Back to the plan" backTo="/events/$eventId/plan" backParams={{ eventId }} backSearch={search} />
+        <p className="text-sm text-[var(--ph-ink-3)]">Loading…</p>
+      </>,
+    );
+
   // The Save action lives in the corner, so a phone never has to scroll to it; the `<form>` is what still submits.
   const saveAction: CornerAction = {
     key: 'save',
