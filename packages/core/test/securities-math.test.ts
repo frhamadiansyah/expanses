@@ -50,6 +50,14 @@ describe('percentShares', () => {
     expect(percentShares([0, 0])).toEqual([0, 0]);
     expect(percentShares([])).toEqual([]);
   });
+
+  it('divides exactly where plain float division does not: 390.000.000.000.117 is exactly 39% of 1.000.000.000.000.300', () => {
+    // part * 100 is 39.000.000.000.011.700 — past 2^53, so it is no longer the nearest double to the exact
+    // integer. Number(prod) / total then lands on 38,999999999999992895, and Math.floor reads it as 38, not 39.
+    // Only exact BigInt division gets this right. The second part (the largest) is also an exact percentage
+    // (61%), so the largest-remainder correction adds nothing and cannot hide a wrong first share.
+    expect(percentShares([390_000_000_000_117, 610_000_000_000_183])).toEqual([39, 61]);
+  });
 });
 
 describe('gainBps and formatBps', () => {
@@ -112,5 +120,21 @@ describe('portfolioSummary', () => {
   it('needs no rate for a foreign holding worth nothing, as sumToBase does', () => {
     const summary = portfolioSummary([{ currency: 'USD', valueMinor: 0, costMinor: 0, costBaseMinor: 0 }, holdings[4]!], 'IDR', {});
     expect(summary).toMatchObject({ valueBaseMinor: 5_740_000, missingRates: [], converted: false, currencyMoveMinor: 0 });
+  });
+
+  it('keeps the at-cost-rates line exact past 2^53, where value × costBase alone is Rp 800+ triliun', () => {
+    // 883.735.873 × 915.152.478 = 809.007…×10^15, well past Number.MAX_SAFE_INTEGER (2^53 ≈ 9,007×10^15) — an
+    // entirely ordinary foreign holding's value times its base cost, not a whale scenario. Chosen so a plain
+    // Number multiply-then-round actually gives a different integer (2.272.582.639.006) than exact BigInt
+    // division (2.272.582.639.005), not merely one that happens to still round the same by luck.
+    const holding = { currency: 'USD', valueMinor: 883_735_873, costMinor: 355_874, costBaseMinor: 915_152_478 };
+    expect(Number.isSafeInteger(holding.valueMinor * holding.costBaseMinor)).toBe(false);
+    const summary = portfolioSummary([holding], 'IDR', { USD: 16_000 });
+    expect(summary).toMatchObject({
+      valueBaseMinor: 141_397_739_680,
+      costBaseMinor: 915_152_478,
+      gainBaseMinor: 140_482_587_202,
+      currencyMoveMinor: -2_131_184_899_325, // 141.397.739.680 − 2.272.582.639.005 (the exact at-cost-rates figure)
+    });
   });
 });

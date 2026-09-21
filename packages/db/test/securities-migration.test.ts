@@ -65,5 +65,24 @@ describe('migration 0051', () => {
     expect(balancesBefore[bank.id]).toBe(12_345_678);
     expect(await databaseVersion(database)).toBe(Math.max(...MIGRATIONS.map((m) => m.version)));
     expect(await migrate(database)).toEqual([]);
+    // Nothing is backfilled (§2.1): the stock holding created before 0051 ran gets no security, no link (M5).
+    expect(await listHoldingLinks(database, ws)).toEqual([]);
+    expect(await listSecurities(database, ws)).toEqual([]);
+  });
+
+  it('checks the kind and source it stores (M8)', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+    const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    const now = new Date().toISOString();
+    await expect(
+      database.db.run(sql`INSERT INTO securities (id, workspace_id, name, market, currency, kind, source, created_at)
+        VALUES ('s1', ${ws.workspaceId}, 'BBCA', 'IDX', 'IDR', 'bogus', 'catalogue', ${now})`),
+    ).rejects.toThrow();
+    await expect(
+      database.db.run(sql`INSERT INTO securities (id, workspace_id, name, market, currency, kind, source, created_at)
+        VALUES ('s2', ${ws.workspaceId}, 'BBCA', 'IDX', 'IDR', 'share', 'bogus', ${now})`),
+    ).rejects.toThrow();
   });
 });
