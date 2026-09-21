@@ -202,3 +202,45 @@ test('a buy with no broker names the holding it adds to — and, with two, which
   await expect(page.getByRole('row').filter({ hasText: '1.775.000' })).toContainText('200');
   await expect(page.getByRole('row').filter({ hasText: 'Rp 875.000' })).toContainText('100');
 });
+
+test('every way in reaches Investments and Add a holding: Buy & sell, the Assets group, the picker and the inline form', async ({ page }) => {
+  await addHoldingFlow(page, { ...bbcaFirst(), broker: 'No broker', quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
+  await page.getByRole('button', { name: 'Add holding' }).click();
+  await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
+
+  // §7.1: a row at the top of Buy & sell, and the last row of the Assets page's Investments group.
+  await page.goto('/net-worth/trades');
+  await page.getByRole('link', { name: /^Investments/ }).click();
+  await expect(page).toHaveURL(/\/net-worth\/investments$/);
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: 'By stock and broker' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/investments$/);
+
+  // §7.5: Listed shares in the Add asset picker starts from a ticker.
+  await page.goto('/net-worth/assets/new');
+  await page.getByPlaceholder('Search everything you can own').pressSequentially('Listed shares');
+  await page.getByRole('button', { name: 'Listed shares' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
+  await expect(page.getByLabel('Ticker or name')).toBeVisible();
+
+  // …and the inline Add asset form keeps its fields, with Find it by ticker above them.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('button', { name: 'Add asset' }).click();
+  await page.getByLabel('What is it?').selectOption('stock');
+  await expect(page.getByLabel('How much')).toBeVisible();
+  await page.getByRole('link', { name: 'Find it by ticker' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
+});
+
+test.describe('with the list unreadable', () => {
+  test.use({ serviceWorkers: 'block' });
+
+  test('search says the list could not be read, and Name it myself still works (§6.3)', async ({ page }) => {
+    await page.route(/\/assets\/idx-[^/]+\.js$/, (route) => void route.abort());
+    await page.goto('/net-worth/investments/new');
+    await page.getByLabel('Ticker or name').pressSequentially('BBCA');
+    await expect(page.getByText('The ticker list could not be read. Name it yourself instead.')).toBeVisible();
+    await page.getByRole('button', { name: /Name it myself/ }).click();
+    await expect(page.getByLabel('Ticker', { exact: true })).toBeVisible();
+  });
+});
