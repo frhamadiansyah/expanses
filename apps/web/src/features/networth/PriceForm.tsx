@@ -1,9 +1,10 @@
-import { formatPriceMicro, formatUnits, isoDate, parsePriceMicro, unitsValueMinor } from '@expanses/core';
+import { formatMinor, formatPriceMicro, formatUnits, isoDate, parsePriceMicro, unitsValueMinor } from '@expanses/core';
 import { upsertPrice } from '@expanses/db';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, ErrorBox, Field, Input, Money } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, TextRow } from '../../ui/native';
 
 export function PriceForm({
   accountId,
@@ -25,6 +26,7 @@ export function PriceForm({
   const [typed, setTyped] = useState(priceMicro === null ? '' : formatPriceMicro(priceMicro, currency).replace(/[^\d.,]/g, ''));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
 
   let preview: number | null = null;
   try {
@@ -33,8 +35,8 @@ export function PriceForm({
     preview = null;
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
     setError(null);
     setBusy(true);
     try {
@@ -48,24 +50,19 @@ export function PriceForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2">
-      <div className="flex flex-wrap items-end gap-3">
-        <Field label={`${priceLabel} today`} className="min-w-48 flex-1">
-          <Input value={typed} onChange={(e) => setTyped(e.target.value)} inputMode="decimal" placeholder="1.842.000" />
-        </Field>
-        <Button type="submit" disabled={busy}>
-          Update price
-        </Button>
-      </div>
-      <p className="text-xs text-slate-500">
-        {formatUnits(unitsMicro)} {unitLabel}
-        {preview !== null && (
+    <form ref={form} onSubmit={submit}>
+      <InsetGroup
+        header="Today's price"
+        footer={
           <>
-            {' '}
-            × that price is <Money minor={preview} currency={currency} />
+            {formatUnits(unitsMicro)} {unitLabel}
+            {preview !== null && <> × that price is {formatMinor(preview, currency)}</>}
           </>
-        )}
-      </p>
+        }
+      >
+        <TextRow label={`${priceLabel} today`} value={typed} onChange={(e) => setTyped(e.target.value)} inputMode="decimal" placeholder="1.842.000" />
+        <InsetRow title="Update price" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+      </InsetGroup>
       <ErrorBox error={error} />
     </form>
   );

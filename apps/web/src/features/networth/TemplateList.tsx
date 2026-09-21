@@ -3,7 +3,8 @@ import { type AccountRow, deleteTradeTemplate, saveTradeTemplate, type TradeTemp
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { Button, ErrorBox, Field, Input, Select } from '../../ui';
+import { Panel } from './Panel';
 
 export function TemplateList({
   templates,
@@ -79,7 +80,7 @@ export function TemplateList({
   }
 
   return (
-    <Card className="space-y-3">
+    <Panel className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-semibold">Monthly buys and moves</h2>
         {!adding && holdings.length > 0 && (
@@ -186,6 +187,6 @@ export function TemplateList({
           <p className="text-xs text-slate-500">Nothing is bought automatically. On the day, this page shows it as due with the amount filled in. Today is {isoDate()}.</p>
         </form>
       )}
-    </Card>
+    </Panel>
   );
 }

@@ -3,7 +3,8 @@ import { saveDepositTerms } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input } from '../../ui';
+import { Button, ErrorBox, Field, Input } from '../../ui';
+import { Panel } from './Panel';
 import { depositLine } from './deposit-terms';
 import { useDepositTerms } from './queries';
 
@@ -23,7 +24,7 @@ export function DepositTermsCard({ accountId }: { accountId: string }) {
 
   if (!terms) return null;
   return (
-    <Card className="space-y-3">
+    <Panel className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">Deposit terms</h2>
@@ -44,7 +45,7 @@ export function DepositTermsCard({ accountId }: { accountId: string }) {
         />
       )}
       <p className="text-xs text-slate-500">When it matures, move the money to an account with a transfer.</p>
-    </Card>
+    </Panel>
   );
 }
 

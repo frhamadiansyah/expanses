@@ -1,9 +1,10 @@
 import { isoDate, parseMajor, type ValuationBasis } from '@expanses/core';
 import { recordValuation } from '@expanses/db';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, ErrorBox, Field, Input, Select } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { BASIS_LABELS } from './labels';
 
 const BASES: ValuationBasis[] = ['estimate', 'appraisal', 'listing', 'njop'];
@@ -16,9 +17,10 @@ export function ValuationForm({ accountId, currency }: { accountId: string; curr
   const [note, setNote] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
     setError(null);
     setBusy(true);
     try {
@@ -34,28 +36,26 @@ export function ValuationForm({ accountId, currency }: { accountId: string; curr
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2">
-      <div className="grid gap-3 md:grid-cols-3">
-        <Field label={`What it is worth now (${currency})`}>
-          <Input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="1.420.000.000" required />
-        </Field>
-        <Field label="Where that came from">
-          <Select value={basis} onChange={(e) => setBasis(e.target.value as ValuationBasis)}>
-            {BASES.map((option) => (
-              <option key={option} value={option}>
-                {BASIS_LABELS[option]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Note" hint="Optional, for example which bank appraised it.">
-          <Input value={note} onChange={(e) => setNote(e.target.value)} />
-        </Field>
-      </div>
-      <p className="text-xs text-slate-500">NJOP is kept for the tax report; your net worth uses the other estimates.</p>
-      <Button type="submit" disabled={busy}>
-        Save estimate
-      </Button>
+    <form ref={form} onSubmit={submit}>
+      <InsetGroup header="What it is worth now" footer="NJOP is kept for the tax report; your net worth uses the other estimates.">
+        <TextRow
+          label={`What it is worth now (${currency})`}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          inputMode="decimal"
+          placeholder="1.420.000.000"
+          required
+        />
+        <SelectRow label="Where that came from" value={basis} onChange={(e) => setBasis(e.target.value as ValuationBasis)}>
+          {BASES.map((option) => (
+            <option key={option} value={option}>
+              {BASIS_LABELS[option]}
+            </option>
+          ))}
+        </SelectRow>
+        <TextRow label="Note" hint="Optional, for example which bank appraised it." value={note} onChange={(e) => setNote(e.target.value)} />
+        <InsetRow title="Save estimate" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+      </InsetGroup>
       <ErrorBox error={error} />
     </form>
   );

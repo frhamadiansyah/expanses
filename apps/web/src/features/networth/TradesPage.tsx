@@ -1,10 +1,12 @@
-import { averagePriceMicro, formatPriceMicro, formatUnits, isoDate, minorToMajorString, positionAfter, presetFor } from '@expanses/core';
+import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, minorToMajorString, positionAfter, presetFor } from '@expanses/core';
 import { declareReinvestment, deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
+import { Button, Empty, ErrorBox, Money } from '../../ui';
+import { Figure, InsetGroup, InsetRow, LargeTitle, type RecordColumn, RecordTable, SelectRow } from '../../ui/native';
+import { Panel, SCREEN } from './Panel';
 import { NetWorthTabs } from './NetWorthTabs';
 import { ReinvestCell } from './ReinvestCell';
 import { useAssetProfiles, useAssetValues, usePositions, useTradeTemplates, useTrades, useDueTemplates } from './queries';
@@ -43,6 +45,12 @@ export function TradesPage() {
   const unitLabelOf = (accountId: string) => {
     const profile = (profiles.data ?? []).find((row) => row.accountId === accountId);
     return profile?.unitKind === 'grams' ? 'g' : profile?.unitKind === 'shares' ? 'shares' : 'units';
+  };
+  const EMPTY_VALUE = { costMinor: 0, valueMinor: 0 };
+  const valueOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId) ?? EMPTY_VALUE;
+  const heldText = (accountId: string) => {
+    const position = positions.data?.[accountId];
+    return position && position.unitsMicro > 0 ? `${formatUnits(position.unitsMicro)} ${unitLabelOf(accountId)}` : 'Sold';
   };
 
   /** Realized gains and income for the calendar year, from the difference between two walks. */
@@ -107,92 +115,101 @@ export function TradesPage() {
     });
   }
 
+  /*
+   * The holdings table, column for column, handed to the kit.
+   *
+   * At 390 px this was eight columns in a `w-full` table: they collided and the figures ran into each other.
+   * `RecordTable` keeps every one of them on a wide screen and draws a row per holding on a phone.
+   */
+  const holdingColumns: RecordColumn<(typeof holdings)[number]>[] = [
+    { key: 'name', heading: 'Holding', cell: (holding) => holding.name },
+    { key: 'held', heading: 'Held', numeric: true, cell: (holding) => heldText(holding.accountId) },
+    {
+      key: 'average',
+      heading: 'Average cost',
+      numeric: true,
+      cell: (holding) => {
+        const position = positions.data?.[holding.accountId];
+        const average = position ? averagePriceMicro(position) : null;
+        return average === null ? '—' : formatPriceMicro(average, holding.currency);
+      },
+    },
+    { key: 'cost', heading: 'Cost basis', numeric: true, cell: (holding) => <Money minor={valueOf(holding.accountId).costMinor} currency={holding.currency} /> },
+    { key: 'value', heading: 'Value', numeric: true, cell: (holding) => <Money minor={valueOf(holding.accountId).valueMinor} currency={holding.currency} /> },
+    {
+      key: 'unrealized',
+      heading: 'Unrealized',
+      numeric: true,
+      cell: (holding) => {
+        const value = valueOf(holding.accountId);
+        return <Money minor={value.valueMinor - value.costMinor} currency={holding.currency} tone="auto" />;
+      },
+    },
+    {
+      key: 'realized',
+      heading: 'Realized this year',
+      numeric: true,
+      cell: (holding) => {
+        const year = thisYear[holding.accountId] ?? { realizedMinor: 0, incomeMinor: 0 };
+        return year.realizedMinor === 0 ? <Figure tone="ink-3">—</Figure> : <Money minor={year.realizedMinor} currency={holding.currency} tone="auto" />;
+      },
+    },
+    {
+      key: 'income',
+      heading: 'Income this year',
+      numeric: true,
+      cell: (holding) => {
+        const year = thisYear[holding.accountId] ?? { realizedMinor: 0, incomeMinor: 0 };
+        return year.incomeMinor === 0 ? <Figure tone="ink-3">—</Figure> : <Money minor={year.incomeMinor} currency={holding.currency} />;
+      },
+    },
+  ];
+
   return (
-    <div className="space-y-4">
-      <PageHeader title="Buy & sell" />
+    <div className={SCREEN}>
+      <LargeTitle title="Buy & sell" />
       <NetWorthTabs />
       <ErrorBox error={values.error ?? trades.error ?? error} />
-      {notice && <Card className="bg-emerald-50 text-sm text-emerald-900 ring-emerald-200">{notice}</Card>}
+      {notice && (
+        <Panel className="text-[13px] leading-[17px] text-[var(--ph-tint)]" testId="trade-notice">
+          {notice}
+        </Panel>
+      )}
 
       {holdings.length === 0 && !values.isPending && <Empty>Add a fund, stock, bond or gold on the Assets tab first.</Empty>}
 
       {holdings.length > 0 && (
-        <Card className="overflow-x-auto">
-          <h2 className="mb-2 text-sm font-semibold">Holdings</h2>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-slate-500">
-                <th className="py-1">Holding</th>
-                <th className="py-1 text-right">Held</th>
-                <th className="py-1 text-right">Average cost</th>
-                <th className="py-1 text-right">Cost basis</th>
-                <th className="py-1 text-right">Value</th>
-                <th className="py-1 text-right">Unrealized</th>
-                <th className="py-1 text-right">Realized this year</th>
-                <th className="py-1 text-right">Income this year</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {holdings.map((holding) => {
-                const value = (values.data ?? []).find((row) => row.accountId === holding.accountId)!;
-                const position = positions.data?.[holding.accountId];
-                const average = position ? averagePriceMicro(position) : null;
-                const year = thisYear[holding.accountId] ?? { realizedMinor: 0, incomeMinor: 0 };
-                return (
-                  <tr key={holding.accountId}>
-                    <td className="py-2">{holding.name}</td>
-                    <td className="tabular py-2 text-right">
-                      {position && position.unitsMicro > 0 ? `${formatUnits(position.unitsMicro)} ${unitLabelOf(holding.accountId)}` : 'Sold'}
-                    </td>
-                    <td className="tabular py-2 text-right">{average === null ? '—' : formatPriceMicro(average, holding.currency)}</td>
-                    <td className="py-2 text-right">
-                      <Money minor={value.costMinor} currency={holding.currency} />
-                    </td>
-                    <td className="py-2 text-right">
-                      <Money minor={value.valueMinor} currency={holding.currency} />
-                    </td>
-                    <td className="py-2 text-right">
-                      <Money minor={value.valueMinor - value.costMinor} currency={holding.currency} tone="auto" />
-                    </td>
-                    <td className="py-2 text-right">
-                      {year.realizedMinor === 0 ? '—' : <Money minor={year.realizedMinor} currency={holding.currency} tone="auto" />}
-                    </td>
-                    <td className="py-2 text-right">{year.incomeMinor === 0 ? '—' : <Money minor={year.incomeMinor} currency={holding.currency} />}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
+        <RecordTable
+          header="Holdings"
+          records={holdings}
+          columns={holdingColumns}
+          shape={{
+            key: (holding) => holding.accountId,
+            title: (holding) => holding.name,
+            subtitle: (holding) => `${heldText(holding.accountId)} · cost ${formatMinor(valueOf(holding.accountId).costMinor, holding.currency)}`,
+            value: (holding) => <Money minor={valueOf(holding.accountId).valueMinor} currency={holding.currency} />,
+            valueTone: () => 'ink',
+          }}
+        />
       )}
 
       {(due.data?.length ?? 0) > 0 && (
-        <Card className="space-y-2">
-          <h2 className="text-sm font-semibold">Monthly buys due</h2>
+        <InsetGroup header="Monthly buys due" footer="Confirm the units and amount from the fund or broker confirmation before saving.">
           {(due.data ?? []).map((template) => (
-            <div key={template.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span>
-                {nameOf(template.accountId)}
-                {template.amountMinor !== null && (
-                  <>
-                    {' · '}
-                    <Money minor={template.amountMinor} currency={currencyOf(template.accountId)} />
-                  </>
-                )}
-                {` · due on the ${template.dayOfMonth}`}
-              </span>
-              <Button variant="secondary" onClick={() => recordFromTemplate(template.accountId, template.amountMinor, template.cashAccountId, template.id, template.goalId)}>
-                Record it
-              </Button>
-            </div>
+            <InsetRow
+              key={template.id}
+              title={nameOf(template.accountId)}
+              subtitle={`${template.amountMinor === null ? '' : `${formatMinor(template.amountMinor, currencyOf(template.accountId))} · `}due on the ${template.dayOfMonth}`}
+              // The row is the "Record it" it used to hold: a row never carries a button, it *is* the button.
+              label={`Record it · ${nameOf(template.accountId)}`}
+              onClick={() => recordFromTemplate(template.accountId, template.amountMinor, template.cashAccountId, template.id, template.goalId)}
+            />
           ))}
-          <p className="text-xs text-slate-500">Confirm the units and amount from the fund or broker confirmation before saving.</p>
-        </Card>
+        </InsetGroup>
       )}
 
       {holdings.length > 0 && (
-        <Card>
-          <h2 className="mb-2 text-sm font-semibold">{editing ? 'Edit this trade' : 'Record a buy, sell or income'}</h2>
+        <Panel header={editing ? 'Edit this trade' : 'Record a buy, sell or income'}>
           <TradeForm
             key={`${editing?.id ?? 'new'}-${initial?.accountId ?? ''}-${templateId ?? ''}`}
             holdings={holdings}
@@ -210,28 +227,30 @@ export function TradesPage() {
             }}
             onCancel={editing || initial ? () => { setEditing(null); setInitial(undefined); setTemplateId(null); } : undefined}
           />
-        </Card>
+        </Panel>
       )}
 
       {(trades.data?.length ?? 0) > 0 && (
-        <Card className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">History</h2>
-            <select className="rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filter} onChange={(e) => setFilter(e.target.value)}>
+        <Panel header="History" pad={false}>
+          <div className="border-b-[0.5px] border-[var(--ph-hair)]">
+            <SelectRow label="Show" value={filter} onChange={(e) => setFilter(e.target.value)}>
               <option value="all">All holdings</option>
               {holdings.map((holding) => (
                 <option key={holding.accountId} value={holding.accountId}>
                   {holding.name}
                 </option>
               ))}
-            </select>
+            </SelectRow>
           </div>
-          <div className="divide-y divide-slate-100 text-sm">
+          <div className="text-[13px]">
             {[...shown].reverse().map((trade) => (
-              <div key={trade.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <div
+                key={trade.id}
+                className="flex flex-wrap items-center justify-between gap-2 border-t-[0.5px] border-[var(--ph-hair)] px-[13px] py-[11px] first:border-t-0"
+              >
                 <span className="min-w-0">
-                  <span className="text-slate-500">{trade.occurredOn}</span>{' '}
-                  <span className="font-medium">{KIND_LABELS[trade.kind]}</span> {nameOf(trade.accountId)}
+                  <span className="text-[var(--ph-ink-3)]">{trade.occurredOn}</span>{' '}
+                  <span className="font-medium text-[var(--ph-ink)]">{KIND_LABELS[trade.kind]}</span> {nameOf(trade.accountId)}
                   {trade.kind !== 'income' && ` · ${formatUnits(trade.unitsMicro)} ${unitLabelOf(trade.accountId)}`}
                   {trade.cashAccountId === null && trade.kind === 'buy' && ' · opening position'}
                 </span>
@@ -239,7 +258,7 @@ export function TradesPage() {
                   {trade.kind === 'buy' && goalOptions.length > 0 && (
                     <select
                       aria-label="Goal for this buy"
-                      className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                      className="ph-focus rounded bg-transparent px-1 py-1 text-xs text-[var(--ph-tint)]"
                       value={trade.goalId ?? ''}
                       onChange={(e) => retag(trade, e.target.value)}
                     >
@@ -287,11 +306,11 @@ export function TradesPage() {
               </div>
             ))}
           </div>
-        </Card>
+        </Panel>
       )}
 
       {holdings.length > 0 && <TemplateList templates={templates.data ?? []} holdings={holdings} cashAccounts={cashAccounts} goals={goalOptions} />}
-      <p className="text-xs text-slate-500">
+      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
         Presets in use: {(profiles.data ?? []).filter((profile) => presetFor(profile.assetKind).valuationMode === 'market').length} holdings measured in units.
       </p>
     </div>

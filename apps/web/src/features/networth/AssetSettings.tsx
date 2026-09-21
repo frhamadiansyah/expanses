@@ -3,7 +3,8 @@ import { setAssetGroup, setAssetReporting, setLotSize } from '@expanses/db';
 import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { Button, ErrorBox, Field, Input, Select } from '../../ui';
+import { Panel } from './Panel';
 import { CodePicker } from '../ownables/CodePicker';
 import { PLAN_GROUP_LABELS, PLAN_GROUP_ORDER } from './labels';
 
@@ -75,7 +76,7 @@ export function AssetSettings({
   }
 
   return (
-    <Card className="space-y-3">
+    <Panel className="space-y-3">
       <h2 className="text-sm font-semibold">Settings</h2>
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Counts as" hint="Broker cash set to Investments is money meant to be invested, not your emergency buffer.">
@@ -130,6 +131,6 @@ export function AssetSettings({
         </Button>
         {notice && <span className="text-sm text-emerald-700">{notice}</span>}
       </div>
-    </Card>
+    </Panel>
   );
 }

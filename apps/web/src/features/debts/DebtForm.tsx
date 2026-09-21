@@ -1,13 +1,20 @@
 import { type DebtDirection, isoDate } from '@expanses/core';
 import { recordLoan } from '@expanses/db';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, type Segment, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
 import { type DebtDraft, debtDraftToInput, emptyDebtDraft, personSuggestions } from './debts-form';
 import { useDebtProfiles, usePeopleDebts } from './queries';
+
+/** The two ways money moves between people. A pair of pressed buttons was the shape the kit replaces. */
+const DIRECTIONS: readonly Segment[] = [
+  { key: 'lent', label: 'I lent money' },
+  { key: 'borrowed', label: 'I borrowed money' },
+];
 
 /** Records money handed to a person, or taken from one. */
 export function DebtForm({ onDone }: { onDone: () => void }) {
@@ -20,6 +27,7 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
   const [draft, setDraft] = useState<DebtDraft>(() => emptyDebtDraft(today));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
 
   const set = (patch: Partial<DebtDraft>) => setDraft((current) => ({ ...current, ...patch }));
   // A loan comes from money you hold, or a card. Another person's account is not a source.
@@ -41,8 +49,8 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
     nameTyped(draft.personName);
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
     setError(null);
     setBusy(true);
     try {
@@ -57,94 +65,97 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <Card>
-      <form onSubmit={submit} className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {(['lent', 'borrowed'] as const).map((direction) => (
-            <Button
-              key={direction}
-              variant={draft.direction === direction ? 'primary' : 'secondary'}
-              aria-pressed={draft.direction === direction}
-              onClick={() => directionChosen(direction)}
-            >
-              {direction === 'lent' ? 'I lent money' : 'I borrowed money'}
-            </Button>
-          ))}
-        </div>
+    <form ref={form} onSubmit={submit}>
+      <SegmentedControl
+        className="mb-[18px] md:max-w-2xl"
+        label="Which way the money went"
+        segments={DIRECTIONS}
+        value={draft.direction}
+        onChange={(key) => directionChosen(key as 'lent' | 'borrowed')}
+      />
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Person" hint={draft.existingAccountId ? 'Adding to what they already owe.' : 'A new person gets their own account.'}>
-            <Input value={draft.personName} onChange={(e) => nameTyped(e.target.value)} list="debt-people" placeholder="Andi" required />
-          </Field>
-          <datalist id="debt-people">
-            {suggestions.map((name) => (
-              <option key={name} value={name} />
+      <InsetGroup header={draft.direction === 'lent' ? 'Money you lent' : 'Money you borrowed'}>
+        <TextRow
+          label="Person"
+          hint={draft.existingAccountId ? 'Adding to what they already owe.' : 'A new person gets their own account.'}
+          value={draft.personName}
+          onChange={(e) => nameTyped(e.target.value)}
+          list="debt-people"
+          placeholder="Andi"
+          required
+        />
+        <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
+        <TextRow
+          label={`Amount (${currency})`}
+          value={draft.amount}
+          inputMode="decimal"
+          onChange={(e) => set({ amount: e.target.value })}
+          placeholder="10.000.000"
+          required
+        />
+        <SelectRow
+          label={draft.direction === 'lent' ? 'Paid from' : 'Received into'}
+          hint={draft.direction === 'lent' ? 'A credit card works: the card owes more, and the purchase still earns points.' : undefined}
+          value={draft.moneyId}
+          onChange={(e) => set({ moneyId: e.target.value, moneyIsCard: money.find((account) => account.id === e.target.value)?.subtype === 'credit_card' })}
+        >
+          <option value="">Choose…</option>
+          <optgroup label="Accounts">
+            {money.filter((account) => account.kind === 'asset').map((account) => (
+              <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
             ))}
-          </datalist>
-          <Field label="Date">
-            <Input type="date" value={draft.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
-          </Field>
-          <Field label={`Amount (${currency})`}>
-            <Input value={draft.amount} inputMode="decimal" onChange={(e) => set({ amount: e.target.value })} placeholder="10.000.000" required />
-          </Field>
-          <Field
-            label={draft.direction === 'lent' ? 'Paid from' : 'Received into'}
-            hint={draft.direction === 'lent' ? 'A credit card works: the card owes more, and the purchase still earns points.' : undefined}
-          >
-            <Select
-              value={draft.moneyId}
-              onChange={(e) => set({ moneyId: e.target.value, moneyIsCard: money.find((account) => account.id === e.target.value)?.subtype === 'credit_card' })}
-            >
-              <option value="">Choose…</option>
-              <optgroup label="Accounts">
-                {money.filter((account) => account.kind === 'asset').map((account) => (
-                  <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
-                ))}
-              </optgroup>
-              {draft.direction === 'lent' && (
-                <optgroup label="Credit cards">
-                  {money.filter((account) => account.subtype === 'credit_card').map((account) => (
-                    <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
-                  ))}
-                </optgroup>
-              )}
-            </Select>
-          </Field>
-          {draft.moneyIsCard && (
-            <>
-              <Field label="Category for points" hint="Not spending: it only tells the points engine what the card paid for.">
-                <Select value={draft.spendCategoryId} onChange={(e) => set({ spendCategoryId: e.target.value })}>
-                  <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
-                </Select>
-              </Field>
-              <Field label="MCC">
-                <Input value={draft.mcc} inputMode="numeric" onChange={(e) => set({ mcc: e.target.value })} placeholder="5311" />
-              </Field>
-            </>
+          </optgroup>
+          {draft.direction === 'lent' && (
+            <optgroup label="Credit cards">
+              {money.filter((account) => account.subtype === 'credit_card').map((account) => (
+                <option key={account.id} value={account.id}>{`${account.name} (${account.currency})`}</option>
+              ))}
+            </optgroup>
           )}
-          <Field label="What it is for" hint="Shown on their card, so you remember.">
-            <Input value={draft.reason} onChange={(e) => set({ reason: e.target.value })} placeholder="Motorcycle repair" />
-          </Field>
-          <Field label="Due by" hint="Optional. You are warned three weeks before.">
-            <Input type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
-          </Field>
-          {!draft.existingAccountId && (
-            <Field label="NIK or NPWP" hint="Optional, and only needed when this reaches your SPT.">
-              <Input value={draft.personIdNumber} inputMode="numeric" onChange={(e) => set({ personIdNumber: e.target.value })} />
-            </Field>
-          )}
-        </div>
+        </SelectRow>
+      </InsetGroup>
 
-        <ErrorBox error={error} />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>
-            Save
-          </Button>
-          <Button variant="ghost" onClick={onDone}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-    </Card>
+      {/* The datalist belongs to the Person box above; it draws nothing of its own. */}
+      <datalist id="debt-people">
+        {suggestions.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+
+      {draft.moneyIsCard && (
+        <InsetGroup header="What the card paid for" footer="Not spending: it only tells the points engine what the card paid for.">
+          <SelectRow label="Category for points" value={draft.spendCategoryId} onChange={(e) => set({ spendCategoryId: e.target.value })}>
+            <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
+          </SelectRow>
+          <TextRow label="MCC" value={draft.mcc} inputMode="numeric" onChange={(e) => set({ mcc: e.target.value })} placeholder="5311" />
+        </InsetGroup>
+      )}
+
+      <InsetGroup header="The rest of it">
+        <TextRow
+          label="What it is for"
+          hint="Shown on their card, so you remember."
+          value={draft.reason}
+          onChange={(e) => set({ reason: e.target.value })}
+          placeholder="Motorcycle repair"
+        />
+        <TextRow label="Due by" hint="Optional. You are warned three weeks before." type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+        {!draft.existingAccountId ? (
+          <TextRow
+            label="NIK or NPWP"
+            hint="Optional, and only needed when this reaches your SPT."
+            value={draft.personIdNumber}
+            inputMode="numeric"
+            onChange={(e) => set({ personIdNumber: e.target.value })}
+          />
+        ) : null}
+      </InsetGroup>
+
+      <ErrorBox error={error} />
+      <InsetGroup>
+        <InsetRow title="Save" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
+      </InsetGroup>
+    </form>
   );
 }

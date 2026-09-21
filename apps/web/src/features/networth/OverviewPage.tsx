@@ -1,4 +1,4 @@
-import { balanceSheet, isoDate, lastNMonths, monthOf, type ScheduleRow, type SheetGroup, type SheetTotals } from '@expanses/core';
+import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type ScheduleRow, type SheetGroup, type SheetTotals } from '@expanses/core';
 import { scheduleFor } from '@expanses/db';
 import { useQueries } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -6,7 +6,9 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { HealthRatios } from './HealthRatios';
 import { periodRange, type RatioPeriod } from './health-cards';
-import { Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
+import { Empty, ErrorBox, Money } from '../../ui';
+import { Hero, InsetGroup, InsetRow, LargeTitle } from '../../ui/native';
+import { Panel, PanelHeader, SCREEN } from './Panel';
 import { NetWorthTabs } from './NetWorthTabs';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
 import { useGoalPlans } from '../goals/queries';
@@ -42,41 +44,45 @@ function ShareBar({ groups, totalMinor }: { groups: SheetGroup[]; totalMinor: nu
   );
 }
 
+/**
+ * One side of the balance sheet: its share bar and legend on a panel, then a group per plan group.
+ *
+ * Each group's label is its own header, outside and above its rows, rather than a heading line inside one long
+ * card. The two columns stay two columns on a desktop — this and `/` are the only real grids in the app.
+ */
 function SheetColumn({ title, groups, totalMinor, currency }: { title: string; groups: SheetGroup[]; totalMinor: number; currency: string }) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{title}</span>
-        <Money minor={totalMinor} currency={currency} className="font-semibold" />
-      </div>
-      <ShareBar groups={groups} totalMinor={totalMinor} />
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-        {groups.map((group) => (
-          <span key={group.key} className="flex items-center gap-1.5">
-            <i className={`h-2 w-2 rounded-sm ${GROUP_COLORS[group.key] ?? 'bg-slate-400'}`} />
-            {group.label} {totalMinor > 0 ? Math.round((group.totalMinor / totalMinor) * 100) : 0}%
-          </span>
-        ))}
-      </div>
-      <div>
-        {groups.map((group) => (
-          <div key={group.key} className="border-t border-slate-100 py-2 first:border-t-0">
-            <div className="flex items-baseline justify-between gap-3 font-medium">
-              <span>{group.label}</span>
-              <Money minor={group.totalMinor} currency={currency} />
-            </div>
+    <div>
+      <PanelHeader title={title} trailing={<Money minor={totalMinor} currency={currency} />} />
+      <Panel wide className="space-y-2">
+        <ShareBar groups={groups} totalMinor={totalMinor} />
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-[var(--ph-ink-3)]">
+          {groups.map((group) => (
+            <span key={group.key} className="flex items-center gap-1.5">
+              <i className={`h-2 w-2 rounded-sm ${GROUP_COLORS[group.key] ?? 'bg-slate-400'}`} />
+              {group.label} {totalMinor > 0 ? Math.round((group.totalMinor / totalMinor) * 100) : 0}%
+            </span>
+          ))}
+        </div>
+      </Panel>
+      {groups.map((group) =>
+        group.rows.length === 0 ? (
+          <PanelHeader key={group.key} title={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />} />
+        ) : (
+          <InsetGroup key={group.key} wide header={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />}>
             {group.rows.map((row) => (
-              <div key={`${group.key}-${row.accountId}`} className="flex items-baseline justify-between gap-3 py-0.5 pl-4 text-sm text-slate-600">
-                <span className="min-w-0">
-                  {row.name}
-                  {row.note && <span className="block text-xs text-slate-400">{row.note}</span>}
-                </span>
-                <Money minor={row.amountMinor} currency={currency} className="text-slate-900" />
-              </div>
+              <InsetRow
+                key={`${group.key}-${row.accountId}`}
+                title={row.name}
+                subtitle={row.note ?? undefined}
+                value={<Money minor={row.amountMinor} currency={currency} />}
+                valueTone="ink"
+                chevron={false}
+              />
             ))}
-          </div>
-        ))}
-      </div>
+          </InsetGroup>
+        ),
+      )}
     </div>
   );
 }
@@ -159,8 +165,8 @@ export function OverviewPage() {
   const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Net worth" />
+    <div className={SCREEN}>
+      <LargeTitle title="Net worth" />
       <NetWorthTabs />
       <ErrorBox error={series.error ?? sheetInputs.error ?? values.error} />
 
@@ -178,55 +184,55 @@ export function OverviewPage() {
         </Empty>
       )}
 
+      {/* The one real desktop grid in the app, kept: the figure and its year on the left, what waits on the right. */}
       <div className="grid gap-4 md:grid-cols-[1.7fr_1fr]">
-        <Card className="space-y-3">
-          <div>
-            <div className="text-xs text-slate-500">Net worth</div>
-            <div data-testid="net-worth" className="text-3xl font-semibold">
-              <Money minor={sheet.netWorthMinor} currency={ws.baseCurrency} />
-            </div>
-            <div className="text-sm text-slate-500">
-              {sinceLastMonth !== null && (
+        <Panel
+          wide
+          header="Net worth"
+          footer="Month-end snapshots. Home and vehicles use your latest estimate; funds, shares and gold use the last price you entered."
+        >
+          <div data-testid="net-worth">
+            <Hero
+              minor={sheet.netWorthMinor}
+              currency={ws.baseCurrency}
+              caption={
                 <>
-                  <Money minor={sinceLastMonth} currency={ws.baseCurrency} tone="auto" /> since last month
+                  {sinceLastMonth !== null && <>{formatMinor(sinceLastMonth, ws.baseCurrency)} since last month</>}
+                  {sinceJanuary !== null && <> · {formatMinor(sinceJanuary, ws.baseCurrency)} since January</>}
                 </>
-              )}
-              {sinceJanuary !== null && (
-                <>
-                  {' · '}
-                  <Money minor={sinceJanuary} currency={ws.baseCurrency} tone="auto" /> since January
-                </>
-              )}
-            </div>
+              }
+            />
           </div>
           {points.length > 0 && <ValueChart values={points.map((point) => point.netWorthMinor)} labels={points.map((point) => MONTH_LABEL(point.month))} currency={ws.baseCurrency} />}
-          <p className="text-xs text-slate-500">Month-end snapshots. Home and vehicles use your latest estimate; funds, shares and gold use the last price you entered.</p>
-        </Card>
+        </Panel>
 
-        <Card className="space-y-2">
-          <h2 className="text-sm font-semibold">Needs attention</h2>
-          {attention.length === 0 && <p className="text-sm text-slate-500">Nothing waiting. Prices and estimates are fresh.</p>}
-          <div>
-            {attention.map((item) => (
-              <div key={item.key} className="flex items-start justify-between gap-3 border-t border-slate-100 py-2 text-sm first:border-t-0">
-                <span className="flex gap-2">
-                  <i className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.tone === 'warn' ? 'bg-amber-500' : 'bg-slate-300'}`} />
-                  {item.text}
-                </span>
-                <Link to={item.to} className="shrink-0 text-slate-600 underline">
-                  {item.action}
-                </Link>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <div>
+          <PanelHeader title="Needs attention" />
+          {attention.length === 0 ? (
+            <Panel wide>
+              <p className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing waiting. Prices and estimates are fresh.</p>
+            </Panel>
+          ) : (
+            <InsetGroup wide>
+              {attention.map((item) => (
+                /* The row is the link it used to hold; what it was called stays, on the right, in the tint. */
+                <InsetRow
+                  key={item.key}
+                  to={item.to}
+                  title={item.text}
+                  value={item.action}
+                  valueTone={item.tone === 'warn' ? 'warn' : 'tint'}
+                  chevron={false}
+                />
+              ))}
+            </InsetGroup>
+          )}
+        </div>
       </div>
 
-      <Card className="space-y-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold">Balance sheet</h2>
-          <span className="text-xs text-slate-500">Assets at today's value · debts at what you still owe</span>
-        </div>
+      <section className="mb-[18px]">
+        <PanelHeader title="Balance sheet" />
+        <p className="px-[4px] pb-[10px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Assets at today's value · debts at what you still owe</p>
         <div className="grid gap-6 md:grid-cols-2">
           <SheetColumn title="What you own" groups={sheet.assetGroups} totalMinor={sheet.assetsTotalMinor} currency={ws.baseCurrency} />
           <SheetColumn
@@ -236,13 +242,15 @@ export function OverviewPage() {
             currency={ws.baseCurrency}
           />
         </div>
-        <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg bg-slate-50 px-4 py-3 font-medium">
-          <span>
-            Net worth = <Money minor={sheet.assetsTotalMinor} currency={ws.baseCurrency} /> − <Money minor={sheet.liabilitiesTotalMinor} currency={ws.baseCurrency} />
-          </span>
-          <Money minor={sheet.netWorthMinor} currency={ws.baseCurrency} />
-        </div>
-      </Card>
+        <Panel wide>
+          <div className="flex flex-wrap items-baseline justify-between gap-2 text-[15px] leading-[20px] font-medium">
+            <span>
+              Net worth = <Money minor={sheet.assetsTotalMinor} currency={ws.baseCurrency} /> − <Money minor={sheet.liabilitiesTotalMinor} currency={ws.baseCurrency} />
+            </span>
+            <Money minor={sheet.netWorthMinor} currency={ws.baseCurrency} />
+          </div>
+        </Panel>
+      </section>
 
       <HealthRatios
         flows={flows.data}

@@ -1,22 +1,27 @@
 import type { PersonDebtRow } from '@expanses/db';
-import { Link } from '@tanstack/react-router';
+import { HelpCircle, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
+import { Empty, ErrorBox, Money } from '../../ui';
+import { type CornerAction, InsetGroup, InsetRow, LargeTitle } from '../../ui/native';
 import { NetWorthTabs } from '../networth/NetWorthTabs';
+import { PanelHeader, SCREEN } from '../networth/Panel';
 import { DebtForm } from './DebtForm';
 import { PersonCard } from './PersonCard';
 import { usePeopleDebts } from './queries';
 
+/**
+ * One side of the ledger.
+ *
+ * "Owed to you" and "You owe" were headings *inside* cards; they are group headers now, outside and above what
+ * they name, with the side's total beside them. That is the one thing the audit asks of this screen.
+ */
 function Column({ title, people, emptyText, currency }: { title: string; people: PersonDebtRow[]; emptyText: string; currency: string }) {
   const totalMinor = people.reduce((total, person) => total + person.totalMinor, 0);
   return (
-    <div className="space-y-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{title}</span>
-        <Money minor={totalMinor} currency={currency} className="font-semibold" />
-      </div>
-      {people.length === 0 && <p className="text-sm text-slate-500">{emptyText}</p>}
+    <div>
+      <PanelHeader title={title} trailing={<Money minor={totalMinor} currency={currency} />} />
+      {people.length === 0 && <p className="px-[4px] pb-[18px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{emptyText}</p>}
       {people.map((person) => (
         <PersonCard key={`${person.direction}-${person.personName}`} person={person} />
       ))}
@@ -35,23 +40,18 @@ export function DebtsPage() {
   const settled = people.data?.settled ?? [];
   const nothingYet = people.isSuccess && owedToYou.length === 0 && youOwe.length === 0 && settled.length === 0;
 
+  // While the inline form is open there is no action to show, and an empty corner would still take its gap.
+  const actions: CornerAction[] = adding
+    ? []
+    : [
+        { key: 'add', label: 'Add a loan', glyph: <Plus size={20} aria-hidden />, run: () => setAdding(true) },
+        // The inline form is still one tap away; the picker is for when you do not know what to call it.
+        { key: 'pick', label: 'What do you owe?', glyph: <HelpCircle size={20} aria-hidden />, to: '/debts/new' },
+      ];
+
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Lend &amp; borrow"
-        action={
-          // While the inline form is open there is no action to show, and an empty row would still take its gap.
-          !adding && (
-            <div className="flex items-center gap-4">
-              {/* The inline form is still one click away; the picker is for when you do not know what to call it. */}
-              <Link to="/debts/new" className="text-sm font-medium text-slate-600 underline-offset-4 hover:underline">
-                What do you owe?
-              </Link>
-              <Button onClick={() => setAdding(true)}>Add a loan</Button>
-            </div>
-          )
-        }
-      />
+    <div className={SCREEN}>
+      <LargeTitle title="Lend & borrow" actions={actions} />
       <NetWorthTabs />
       <ErrorBox error={people.error} />
 
@@ -71,21 +71,21 @@ export function DebtsPage() {
       )}
 
       {settled.length > 0 && (
-        <Card className="space-y-2">
-          <button type="button" className="text-sm font-semibold" onClick={() => setShowSettled((open) => !open)}>
-            {showSettled ? 'Hide' : 'Show'} settled ({settled.length})
-          </button>
+        <>
+          <InsetGroup>
+            <InsetRow title={`${showSettled ? 'Hide' : 'Show'} settled (${settled.length})`} chevron={false} onClick={() => setShowSettled((open) => !open)} />
+          </InsetGroup>
           {showSettled && (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-x-6 md:grid-cols-2">
               {settled.map((person) => (
                 <PersonCard key={`settled-${person.direction}-${person.personName}`} person={person} />
               ))}
             </div>
           )}
-        </Card>
+        </>
       )}
 
-      <p className="text-xs text-slate-500">
+      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
         Lending is not spending: the money moves from your account to the person, and comes back the same way. Only interest counts as income or as a cost.
       </p>
     </div>
