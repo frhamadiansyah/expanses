@@ -23,6 +23,7 @@ import {
   taggedMoveOfTx,
   takeBackTaggedArrivalTx,
   undoSetAsideTx,
+  withSavedStage,
 } from './set-aside-tx';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
@@ -283,10 +284,7 @@ export function replaceTransaction(
     const answered =
       input.setAside !== undefined ? input.setAside : carried && carryable(carried, input.lines) && (await stillPromisedTx(tx, ws, carried)) ? carried : null;
     // The same spend, carried or answered again, stays on the stage it paid: never the next one.
-    const setAside =
-      answered?.intent === 'spend' && saved?.intent === 'spend' && answered.goalId === saved.goalId && answered.accountId === saved.accountId
-        ? { ...answered, stageId: saved.stageId ?? null }
-        : answered && { ...answered, stageId: undefined };
+    const setAside = withSavedStage(answered, saved);
     // Keep import identity so re-importing the same statement still recognises the row.
     const replacement = await postTransactionTx(tx, ws, {
       ...input,

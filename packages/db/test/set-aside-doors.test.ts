@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   type AccountRow, archiveGoal, categoryIdsByKeyTx, confirmDraft, convertToPurchase, createAccount, createCardAccount, createDraft, type Database,
   goalContributionsFor, listDraws, listEarmarks, payCardPurchases, postTransaction, recordBillPayments, recordExtraPayment, recordLoan,
-  recordLoanPayment, recordRepayment, recordTaggedTransfer, recordTrade, saveAssetProfile, saveEarmark, saveExpenseTemplate, saveGoal,
+  recordLoanPayment, recordRepayment, recordTaggedTransfer, recordTrade, replaceTrade, saveAssetProfile, saveEarmark, saveExpenseTemplate, saveGoal,
   saveLoanTerms, type SetAsideChoice, setAsideChoiceOf, splitBill, type WorkspaceContext,
 } from '../src/index';
 // `categoryIdsByKeyTx(db, ws)` (categories.ts:183) is the reader main has; there is no non-Tx `categoryIdsByKey`.
@@ -126,6 +126,72 @@ describe('moving money for a goal', () => {
     await archiveGoal(database, ws, efId);
     const { transactionId } = await convertToPurchase(database, ws, { transactionId: expense, accountId: gold.id, unitsMicro: 4_000_000 });
     expect(transactionId).toBeTruthy();
+    expect(await listDraws(database, ws)).toEqual([]);
+  });
+});
+
+describe('turning an expense into a purchase, by what the answer was', () => {
+  let gold: AccountRow;
+  beforeEach(async () => {
+    gold = await createAccount(database, ws, { name: 'Antam', kind: 'asset', subtype: 'investment', currency: 'IDR' });
+    await saveAssetProfile(database, ws, { accountId: gold.id, assetKind: 'gold' });
+  });
+  const promised = async (goalId: string) => (await listEarmarks(database, ws)).find((row) => row.goalId === goalId && row.accountId === jenius.id)?.amountMinor ?? 0;
+  const expense = (setAside: SetAsideChoice) =>
+    postTransaction(database, ws, { occurredOn: DAY, description: 'Gold', lines: expenseLines({ categoryAccountId: electronics.id, paymentAccountId: jenius.id, amountMinor: 6_800_000, currency: 'IDR' }), setAside });
+
+  it('gives a spend back and does not spend it again on the purchase', async () => {
+    const id = await expense({ accountId: jenius.id, goalId: umrahId, intent: 'spend', overMinor: 1_800_000 });
+    expect(await promised(umrahId)).toBe(700_000);
+    await convertToPurchase(database, ws, { transactionId: id, accountId: gold.id, unitsMicro: 4_000_000 });
+    // Re-applied, the spend would read 700.000 again.
+    expect(await promised(umrahId)).toBe(7_500_000);
+    expect(await listDraws(database, ws)).toEqual([]);
+  });
+
+  it('drops a borrow from the goal the purchase is now for: that goal\'s money is its own to use', async () => {
+    const id = await expense(borrow());
+    await convertToPurchase(database, ws, { transactionId: id, accountId: gold.id, unitsMicro: 4_000_000, goalId: efId });
+    // The buy lowers the Emergency fund's cash promise by the whole 6.800.000; no borrow from itself is kept.
+    expect(await promised(efId)).toBe(23_200_000);
+    expect(await listDraws(database, ws)).toEqual([]);
+  });
+});
+
+describe('editing a buy through replaceTrade', () => {
+  let gold: AccountRow;
+  beforeEach(async () => {
+    gold = await createAccount(database, ws, { name: 'Antam', kind: 'asset', subtype: 'investment', currency: 'IDR' });
+    await saveAssetProfile(database, ws, { accountId: gold.id, assetKind: 'gold' });
+  });
+  const buy = (grossMinor: number, extra: { cashAccountId?: string; goalId?: string | null; setAside?: SetAsideChoice | null } = {}) => ({
+    accountId: gold.id,
+    kind: 'buy' as const,
+    occurredOn: DAY,
+    unitsMicro: 4_000_000,
+    grossMinor,
+    feeMinor: 0,
+    taxMinor: 0,
+    cashAccountId: extra.cashAccountId ?? jenius.id,
+    goalId: extra.goalId ?? null,
+    ...(extra.setAside === undefined ? {} : { setAside: extra.setAside }),
+  });
+
+  it('carries a borrow the edit does not mention, clamped to what it now pays, as replaceTransaction does', async () => {
+    const first = await recordTrade(database, ws, buy(6_800_000, { setAside: borrow() }));
+    const edited = await replaceTrade(database, ws, first.tradeId, buy(1_000_000));
+    expect(await listDraws(database, ws)).toEqual([expect.objectContaining({ transactionId: edited.transactionId, goalId: efId, intent: 'borrow', amountMinor: 1_000_000 })]);
+  });
+
+  it('clears it on null, and drops it when the buy is paid from elsewhere or is now for that goal', async () => {
+    const first = await recordTrade(database, ws, buy(6_800_000, { setAside: borrow() }));
+    const cleared = await replaceTrade(database, ws, first.tradeId, buy(6_800_000, { setAside: null }));
+    expect(await listDraws(database, ws)).toEqual([]);
+    const again = await replaceTrade(database, ws, cleared.tradeId, buy(6_800_000, { setAside: borrow() }));
+    const elsewhere = await replaceTrade(database, ws, again.tradeId, buy(6_800_000, { cashAccountId: broker.id }));
+    expect(await listDraws(database, ws)).toEqual([]);
+    const back = await replaceTrade(database, ws, elsewhere.tradeId, buy(6_800_000, { setAside: borrow() }));
+    await replaceTrade(database, ws, back.tradeId, buy(6_800_000, { goalId: efId }));
     expect(await listDraws(database, ws)).toEqual([]);
   });
 });

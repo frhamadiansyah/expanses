@@ -108,16 +108,25 @@ export function doorOfForm(draft: FormDraft, post: FormPost, accounts: readonly 
   }
 }
 
-const intentOf = (answer: SetAsideAnswer, door: Door): SetAsideIntent | null => (door.intents.length === 1 ? door.intents[0]! : answer.intent);
+/**
+ * The answer's intent, only while the door still offers it: picking "Move the promise to BCA" and then sending the money
+ * to the card leaves a move the door no longer has, and Save would throw. Such an answer is no answer, and neither is
+ * one naming a goal the question no longer lists.
+ */
+const intentOf = (check: Extract<SetAsideCheck, { kind: 'ask' }>, answer: SetAsideAnswer, door: Door): SetAsideIntent | null => {
+  if (!check.goals.some((goal) => goal.goalId === answer.goalId)) return null;
+  if (door.intents.length === 1) return door.intents[0]!;
+  return answer.intent && door.intents.includes(answer.intent) ? answer.intent : null;
+};
 
 export function readyOf(check: SetAsideCheck, answer: SetAsideAnswer | null, door: Door): boolean {
   if (check.kind !== 'ask') return true;
-  return !!answer && intentOf(answer, door) !== null;
+  return !!answer && intentOf(check, answer, door) !== null;
 }
 
 export function choiceOf(check: SetAsideCheck, answer: SetAsideAnswer | null, door: Door, whole?: { whole: boolean; since: string | null }): SetAsideChoice | null {
   if (check.kind !== 'ask' || !answer) return null;
-  const intent = intentOf(answer, door);
+  const intent = intentOf(check, answer, door);
   if (!intent) return null;
   const borrowing = intent === 'borrow' && whole?.whole === true;
   return {

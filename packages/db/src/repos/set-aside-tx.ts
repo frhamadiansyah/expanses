@@ -188,6 +188,17 @@ export async function taggedMoveOfTx(tx: Db, ws: WorkspaceContext, occurredOn: s
   return { occurredOn, fromAccountId: out[0]!.accountId, toAccountId: into[0]!.accountId, amountMinor: -out[0]!.amountMinor, landedMinor: into[0]!.amountMinor };
 }
 
+/**
+ * The answer an edit posts, with the stage its original spend paid: the same spend (carried, or given again by an edit
+ * form) stays on that stage, and any other answer picks afresh. `saved` is the original's answer, read before the void.
+ */
+export function withSavedStage(answered: SetAsideChoice | null, saved: SetAsideChoice | null): SetAsideChoice | null {
+  if (!answered) return null;
+  const { stageId: _ignored, ...fresh } = answered;
+  const same = answered.intent === 'spend' && saved?.intent === 'spend' && answered.goalId === saved.goalId && answered.accountId === saved.accountId;
+  return same ? { ...fresh, stageId: saved.stageId ?? null } : fresh;
+}
+
 /** Whether a carried answer still fits a replacement's lines: it still pays from the account, and a move still reaches its destination. */
 export function carryable(choice: SetAsideChoice, lines: readonly MoneyLine[]): boolean {
   if (outflowFrom(lines, choice.accountId) <= 0) return false;

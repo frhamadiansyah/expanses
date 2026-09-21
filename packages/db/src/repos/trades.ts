@@ -19,7 +19,7 @@ import { accounts, entries } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goals } from '../schema-goals';
 import { AssetError, assertAccountInWorkspace } from './assets';
-import { adjustSetAsideTx, type SetAsideChoice } from './set-aside-tx';
+import { adjustSetAsideTx, carryable, type SetAsideChoice, setAsideChoiceOfTx, setAsideTablesExist, stillPromisedTx, withSavedStage } from './set-aside-tx';
 import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
 import { postTransactionTx, voidTransactionTx } from './ledger';
@@ -203,7 +203,17 @@ async function recalculateSells(
 }
 
 /** Writes a trade and its ledger transaction inside an open database transaction. */
-export async function writeTradeTx(tx: Db, ws: WorkspaceContext, input: RecordTradeInput, replacesTradeId: string | null): Promise<TradeResult> {
+/**
+ * `saved` is an edit's original answer (replaceTrade): kept when `input.setAside` is undefined and it still pays from the
+ * same account, as replaceTransaction carries one; and its stage kept when the same spend is given again.
+ */
+export async function writeTradeTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  input: RecordTradeInput,
+  replacesTradeId: string | null,
+  saved: SetAsideChoice | null = null,
+): Promise<TradeResult> {
   await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
   if (input.cashAccountId) await assertAccountInWorkspace(tx, ws, input.cashAccountId, 'Cash account');
   const { accounts: tradeAccounts, holdingName } = await tradeAccountsFor(tx, ws, input.accountId, input.cashAccountId);
@@ -236,7 +246,7 @@ export async function writeTradeTx(tx: Db, ws: WorkspaceContext, input: RecordTr
         // A trade carries the two facts §4 scopes to "always", the same way every other way in does.
         excludedFromReport: input.excludedFromReport,
         photoIds: input.photoIds,
-        setAside: input.setAside,
+        setAside: withSavedStage(input.setAside !== undefined ? input.setAside : saved && carryable(saved, lines) ? saved : null, saved),
       })
     : null;
   const id = uuidv7();
@@ -298,8 +308,17 @@ export function recordTrade(database: Database, ws: WorkspaceContext, input: Rec
 /** Edits a trade: the old one and its transaction are retired and a fresh pair is written. */
 export function replaceTrade(database: Database, ws: WorkspaceContext, tradeId: string, input: RecordTradeInput): Promise<TradeResult> {
   return database.transaction(async (tx) => {
+    // The answer the old trade was saved with, read before the void reverses it, carried as an edit carries one.
+    const [prior] = await tx
+      .select({ transactionId: investmentTrades.transactionId })
+      .from(investmentTrades)
+      .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId)));
+    const saved = prior?.transactionId && (await setAsideTablesExist(tx)) ? await setAsideChoiceOfTx(tx, ws, prior.transactionId) : null;
     const old = await retire(tx, ws, tradeId, 'replaced');
-    const result = await writeTradeTx(tx, ws, input, tradeId);
+    // A borrow from the goal the buy is now for is its own money, and a goal archived or no longer set aside there
+    // is dropped rather than refused — the rules convertToPurchase and replaceTransaction follow.
+    const kept = saved && saved.goalId !== (input.goalId ?? null) && (await stillPromisedTx(tx, ws, saved)) ? saved : null;
+    const result = await writeTradeTx(tx, ws, input, tradeId, input.setAside === undefined ? kept : saved);
     const from = old.occurredOn < input.occurredOn ? old.occurredOn : input.occurredOn;
     const alreadyDone = new Set(result.recalculatedSells.map((sell) => sell.tradeId));
     const more = (await recalculateSells(tx, ws, input.accountId, from, input.ratesToBase)).filter((sell) => !alreadyDone.has(sell.tradeId));

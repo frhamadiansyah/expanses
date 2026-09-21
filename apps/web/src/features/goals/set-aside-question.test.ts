@@ -82,6 +82,23 @@ describe('choiceOf and readyOf', () => {
   });
 });
 
+describe('an answer the door no longer offers', () => {
+  const ask: SetAsideCheck = { kind: 'ask', overMinor: 1_800_000, freeMinor: 5_000_000, goals: [{ goalId: 'ef', name: 'Emergency fund', rank: 0, promisedMinor: 30_000_000, coveredMinor: 30_000_000, shortMinor: 0, borrowedShortMinor: 0 }] };
+
+  it('a move picked before the money was sent to a card is not an answer: Save waits instead of throwing', () => {
+    const toCard = spendingDoor('jenius', 6_800_000)!;
+    expect(readyOf(ask, { goalId: 'ef', intent: 'move' }, toCard)).toBe(false);
+    expect(choiceOf(ask, { goalId: 'ef', intent: 'move' }, toCard)).toBeNull();
+  });
+
+  it('nor is a goal the question no longer lists', () => {
+    const door = spendingDoor('jenius', 6_800_000)!;
+    expect(readyOf(ask, { goalId: 'umrah', intent: 'borrow' }, door)).toBe(false);
+    expect(choiceOf(ask, { goalId: 'umrah', intent: 'borrow' }, door)).toBeNull();
+    expect(readyOf(ask, { goalId: 'umrah', intent: null }, { ...door, intents: BORROW_ONLY })).toBe(false);
+  });
+});
+
 describe('postForDoor', () => {
   it('reads the outflow before a category is chosen: the question comes while the amount is typed', () => {
     const typed = draft({ mode: 'expense', moneyId: 'jenius', amount: '6800001' });
