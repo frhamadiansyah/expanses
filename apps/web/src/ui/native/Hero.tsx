@@ -55,21 +55,27 @@ export function Hero({
   minor,
   currency,
   direction = 'neutral',
+  approximate = false,
+  empty = '—',
   caption,
   progress,
   className,
 }: {
   icon?: ReactNode;
   iconColour?: string;
-  minor: number;
+  /** Null when there is no figure to show yet — a bill whose amount varies. `empty` is drawn in its place, quietly. */
+  minor: number | null;
   currency: string;
+  /** A figure that is an estimate, drawn with a leading `~` so it never reads as a sum already known. */
+  approximate?: boolean;
+  empty?: string;
   direction?: Direction;
   caption?: ReactNode;
   /** The bar under the figure, when the figure is part of the way to something. */
   progress?: { targetMinor: number; label: string };
   className?: string;
 }) {
-  const figure = heroFigure(minor, currency, direction);
+  const figure = minor === null ? ({ text: empty, tone: 'ink-3' } as const) : heroFigure(minor, currency, direction);
   const tint = icon && iconColour ? iconTint(iconColour) : null;
   return (
     <div className={cx('flex flex-col items-center text-center', className)} style={{ marginBottom: 18 }}>
@@ -82,9 +88,12 @@ export function Hero({
           {icon}
         </span>
       )}
-      <p className={cx('tabular text-[34px] leading-[40px] font-extrabold tracking-[-0.03em]', toneClass(figure.tone))}>{figure.text}</p>
+      <p className={cx('tabular text-[34px] leading-[40px] font-extrabold tracking-[-0.03em]', toneClass(figure.tone))}>
+        {approximate && minor !== null && '~'}
+        {figure.text}
+      </p>
       {caption && <p className="mt-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{caption}</p>}
-      {progress && (
+      {progress && minor !== null && (
         <ProgressBar
           className="mt-[12px] max-w-[320px]"
           currentMinor={minor}
