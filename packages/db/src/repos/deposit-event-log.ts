@@ -12,6 +12,29 @@ import { saveDepositTermsTx } from './deposit-terms';
  * calls the ledger, so the two modules do not import each other.
  */
 
+export type DepositAutomationErrorCode =
+  | 'NOT_READY'
+  | 'NOT_FOUND'
+  | 'BAD_PAYOUT'
+  | 'BAD_TERM'
+  | 'BAD_TAX'
+  | 'OFF'
+  | 'NOT_NEXT'
+  | 'BAD_FIGURE'
+  | 'NO_PAYOUT'
+  | 'NOT_LAST';
+
+/** Lives in this leaf so the void hook can refuse with it; `deposit-automation` re-exports it. */
+export class DepositAutomationError extends Error {
+  readonly code: DepositAutomationErrorCode;
+
+  constructor(code: DepositAutomationErrorCode, message: string) {
+    super(message);
+    this.name = 'DepositAutomationError';
+    this.code = code;
+  }
+}
+
 /**
  * Whether migration 0054 has run. Every read and write of its tables asks first, so a database stopped at an older
  * version has every deposit off and nothing due. A positive answer is remembered per handle; a negative one is not,
@@ -37,8 +60,9 @@ const postedBy = (ws: WorkspaceContext, transactionId: string) =>
  * A transaction a confirmed event posted has been voided: the event is reopened, so its proposal comes back and the
  * tax report drops it. Everything the confirm did is taken back with it, so the proposal returns as it was:
  * - the log row is deleted;
- * - a roll-over's new term is taken back to the maturity (while nothing later has been logged on it);
+ * - a roll-over's new term is taken back to the maturity;
  * - a close re-opens the deposit and turns its automation back on.
+ * Refused (NOT_LAST, which rolls the whole void back) while a later event of the deposit is logged across a maturity.
  *
  * Returns the event's other posting (a close's interest or principal), for the ledger to void through its own path:
  * an event is confirmed whole, so it is reopened whole. Hand-recorded events posted nothing and never reach here.
@@ -47,19 +71,24 @@ export async function reopenDepositEventTx(tx: Db, ws: WorkspaceContext, transac
   if (!(await automationTablesExist(tx))) return [];
   const [event] = await tx.select().from(depositEvents).where(postedBy(ws, transactionId));
   if (!event) return [];
+  // Reopening is last in, first out. A maturity started the term that every later event belongs to, and only the
+  // current term is ever proposed: reopening a maturity with anything logged after it, or anything before a maturity
+  // that is logged, would drop an event nothing proposes again. The owner voids the later one first.
+  const later = await tx
+    .select({ kind: depositEvents.kind })
+    .from(depositEvents)
+    .where(and(eq(depositEvents.workspaceId, ws.workspaceId), eq(depositEvents.accountId, event.accountId), gt(depositEvents.dueOn, event.dueOn)));
+  if (later.length > 0 && (event.kind === 'maturity' || later.some((row) => row.kind === 'maturity'))) {
+    throw new DepositAutomationError('NOT_LAST', 'A later payout of this deposit is recorded. Void that one first, then this one.');
+  }
   await tx.delete(depositEvents).where(eq(depositEvents.id, event.id));
   if (event.kind !== 'maturity') return [];
 
   const now = new Date().toISOString();
   const [settings] = await tx.select().from(depositAutomation).where(eq(depositAutomation.accountId, event.accountId));
   if (event.principalTransactionId === null) {
-    // A roll-over: its confirm moved the maturity on and started a term on the due day. Take that term back, unless
-    // something of the new term is already logged, which would be left without a term of its own.
-    const [later] = await tx
-      .select({ id: depositEvents.id })
-      .from(depositEvents)
-      .where(and(eq(depositEvents.accountId, event.accountId), gt(depositEvents.dueOn, event.dueOn)));
-    if (!later && settings?.termStartedOn === event.dueOn) {
+    // A roll-over: its confirm moved the maturity on and started a term on the due day. Take that term back.
+    if (settings?.termStartedOn === event.dueOn) {
       // The rate, the term's length and its start go back to what the confirm replaced (logged with the event).
       const [terms] = await tx.select({ rateBps: depositTerms.rateBps }).from(depositTerms).where(eq(depositTerms.accountId, event.accountId));
       await saveDepositTermsTx(tx, ws, { accountId: event.accountId, maturesOn: event.dueOn, rateBps: event.priorRateBps ?? terms?.rateBps ?? 0 });

@@ -24,33 +24,12 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { depositAutomation, depositEvents, depositTerms } from '../schema-assets';
 import { AccountError, type AccountRow, archiveAccountTx, SPENDABLE_SUBTYPES } from './accounts';
-import { automationTablesExist } from './deposit-event-log';
+import { automationTablesExist, DepositAutomationError, type DepositAutomationErrorCode } from './deposit-event-log';
 import { type DepositTermsRow, getDepositTermsTx, saveDepositTermsTx } from './deposit-terms';
 import { nativeBalances, postTransactionTx } from './ledger';
 import { tradeAccountsFor } from './trades';
 
-export type DepositAutomationErrorCode =
-  | 'NOT_READY'
-  | 'NOT_FOUND'
-  | 'BAD_PAYOUT'
-  | 'BAD_TERM'
-  | 'BAD_TAX'
-  | 'OFF'
-  | 'NOT_NEXT'
-  | 'BAD_FIGURE'
-  | 'NO_PAYOUT';
-
-export class DepositAutomationError extends Error {
-  readonly code: DepositAutomationErrorCode;
-
-  constructor(code: DepositAutomationErrorCode, message: string) {
-    super(message);
-    this.name = 'DepositAutomationError';
-    this.code = code;
-  }
-}
-
-export { automationTablesExist };
+export { automationTablesExist, DepositAutomationError, type DepositAutomationErrorCode };
 
 export interface DepositAutomationSettings {
   enabled: boolean;

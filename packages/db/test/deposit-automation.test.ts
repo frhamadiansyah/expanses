@@ -484,6 +484,76 @@ describe('voiding what an event posted reopens it', () => {
   });
 });
 
+/** Everything a refused void must leave as it was: the log, the terms, the settings, every balance and every status. */
+async function snapshot() {
+  return {
+    log: (await logged()).map(({ confirmedAt, ...row }) => row).sort((a, b) => a.dueOn.localeCompare(b.dueOn)),
+    terms: await getDepositTerms(database, ws, depositoId),
+    settings: await getDepositAutomation(database, ws, depositoId),
+    balances: await nativeBalances(database, ws),
+    statuses: await database.db.values(sql`SELECT id, status FROM transactions ORDER BY id`),
+    live: (await listAccounts(database, ws)).map((a) => a.id).sort(),
+  };
+}
+
+describe('voiding is last in, first out across a maturity', () => {
+  /** Monthly payouts, rolling the principal: Aug, Sep, the Oct maturity (rolls into a 3-month term), then 15 Nov. */
+  async function throughNovember() {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const ids: string[] = [];
+    for (const day of ['2026-08-15', '2026-09-15', '2026-10-15', '2026-11-15']) {
+      const today = day < '2026-10-15' ? '2026-10-15' : day;
+      ids.push((await confirmDepositEvent(database, ws, asProposed(await next(today), today, { newRateBps: 510, newTermMonths: 3 }))).interestTransactionId!);
+    }
+    expect((await logged()).map((row) => row.dueOn).sort()).toEqual(['2026-08-15', '2026-09-15', '2026-10-15', '2026-11-15']);
+    return { aug: ids[0]!, sep: ids[1]!, oct: ids[2]!, nov: ids[3]! };
+  }
+
+  it('refuses to void a roll-over while a payout of the term it started is logged, and changes nothing', async () => {
+    const { oct } = await throughNovember();
+    const before = await snapshot();
+    const refusal = voidTransaction(database, ws, oct);
+    await expect(refusal).rejects.toMatchObject({ code: 'NOT_LAST' });
+    await expect(voidTransaction(database, ws, oct)).rejects.toThrow('Void that one first');
+    expect(await snapshot()).toEqual(before);
+    expect(before.terms).toMatchObject({ maturesOn: '2027-01-15', rateBps: 510 });
+  });
+
+  it('refuses to void a payout from before a logged roll-over, and changes nothing', async () => {
+    const { aug } = await throughNovember();
+    const before = await snapshot();
+    await expect(voidTransaction(database, ws, aug)).rejects.toMatchObject({ code: 'NOT_LAST' });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('voids the roll-over once the later payout is voided first: term, rate and start come back', async () => {
+    const { oct, nov } = await throughNovember();
+    await voidTransaction(database, ws, nov);
+    expect((await logged()).map((row) => row.dueOn).sort()).toEqual(['2026-08-15', '2026-09-15', '2026-10-15']);
+    await voidTransaction(database, ws, oct);
+    expect((await logged()).map((row) => row.dueOn).sort()).toEqual(['2026-08-15', '2026-09-15']);
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2026-10-15', rateBps: 425 });
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ termMonths: 3, termStartedOn: null });
+    // The October maturity again, over its own 30 days at the old rate, on the principal of the due day:
+    // 50 000 000 × 4,25% × 30 / 365 = 174 657 (floored).
+    expect(await next('2026-11-15')).toMatchObject({
+      event: { kind: 'maturity', dueOn: '2026-10-15', periodFrom: '2026-09-15', days: 30 },
+      waiting: 0,
+      rateBps: 425,
+      grossMinor: 174_657,
+    });
+  });
+
+  it('still reopens a monthly payout with only later payouts of the same term logged', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const aug = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    await voidTransaction(database, ws, aug.interestTransactionId!);
+    expect((await logged()).map((row) => row.dueOn)).toEqual(['2026-09-15']);
+    expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'monthly', dueOn: '2026-08-15' }, waiting: 1 });
+  });
+});
+
 describe('recorded it myself, with the figures corrected', () => {
   it('logs the gross and tax the owner confirmed, not the estimate', async () => {
     await saveDepositAutomation(database, ws, on(depositoId, bcaId));
