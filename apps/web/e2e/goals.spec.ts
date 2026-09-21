@@ -125,6 +125,27 @@ test('a template button opens that template, not the first one', async ({ page }
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Hajj or umrah');
 });
 
+test('a new goal’s return follows when it is needed, until one is typed', async ({ page }) => {
+  const yearsAhead = (years: number) => {
+    const date = new Date();
+    date.setUTCFullYear(date.getUTCFullYear() + years);
+    return date.toISOString().slice(0, 10);
+  };
+  await page.goto('/goals');
+  await page.getByRole('button', { name: 'Holiday', exact: true }).click();
+  const expectedReturn = page.getByLabel('Expected return a year (%)');
+  await expect(expectedReturn).toHaveValue('4');
+
+  await page.getByLabel('Needed by').first().fill(yearsAhead(4));
+  await expect(expectedReturn).toHaveValue('6');
+  await expect(page.getByText(/^6% · 3 to 5 years/)).toBeVisible();
+
+  await expectedReturn.fill('');
+  await expectedReturn.pressSequentially('5');
+  await page.getByLabel('Needed by').first().fill(yearsAhead(8));
+  await expect(expectedReturn).toHaveValue('5');
+});
+
 test('works out a retirement target from your own figures', async ({ page }) => {
   await page.goto('/goals');
   await page.getByRole('button', { name: 'Add goal' }).first().click();
