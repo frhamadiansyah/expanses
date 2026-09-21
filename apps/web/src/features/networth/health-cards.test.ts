@@ -1,6 +1,6 @@
 import type { HealthRatio } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { periodChoices, periodRange, ratioDisplay } from './health-cards';
+import { periodChoices, periodRange, ratioDisplay, withEmergencyLoading } from './health-cards';
 
 const TODAY = '2026-09-12';
 
@@ -67,5 +67,19 @@ describe('ratioDisplay', () => {
   it('says it does not know instead of drawing a bar', () => {
     const display = ratioDisplay(ratio({ value: null, status: 'unknown' }));
     expect(display).toMatchObject({ value: '—', statusLabel: 'Not enough data', gaugePercent: 0 });
+  });
+});
+
+describe('withEmergencyLoading', () => {
+  it('blanks only the emergency fund row while goals have not loaded, leaving the good grade it would otherwise flash', () => {
+    const ratios = [ratio({ key: 'emergency_fund', status: 'good', value: 4.7 }), ratio({ key: 'savings_ratio', status: 'good', value: 23 })];
+    const loading = withEmergencyLoading(ratios, true);
+    expect(loading[0]).toMatchObject({ key: 'emergency_fund', value: null, status: 'unknown' });
+    expect(loading[1]).toEqual(ratios[1]);
+  });
+
+  it('leaves every row exactly as computed once goals have loaded', () => {
+    const ratios = [ratio({ key: 'emergency_fund', status: 'act', value: 4.7 })];
+    expect(withEmergencyLoading(ratios, false)).toEqual(ratios);
   });
 });
