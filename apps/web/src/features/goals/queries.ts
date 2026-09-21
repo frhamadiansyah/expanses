@@ -7,6 +7,7 @@ import {
   isSetAsideHolder,
   listEarmarks,
   listGoalCalculators,
+  listDraws,
   listGoals,
   setAsideChoiceOf,
   setAsideView,
@@ -76,6 +77,12 @@ export function useGoalWholeness() {
 export function useGoalHistory() {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['goal-history', ws.workspaceId], queryFn: () => goalHistory(database, ws, isoDate()) });
+}
+
+/** Every recorded draw on a goal — the goal card reads which borrows were taken from a whole goal. */
+export function useDraws() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['goal-draws', ws.workspaceId], queryFn: () => listDraws(database, ws, isoDate()) });
 }
 
 /** The server's own rule (`isSetAsideHolder`), asked synchronously so the form knows whether to offer a move. */

@@ -25,7 +25,7 @@ test('the laptop on a phone: borrowed from the Emergency fund, and the account p
   await expect(form).toHaveCount(0);
 
   await page.goto('/goals');
-  await expect(goalCard(page, 'Emergency fund').getByText(/short by Rp.?1\.800\.000/i).first()).toBeVisible();
+  await expect(goalCard(page, 'Emergency fund').getByText(/^Short by Rp.1\.800\.000$/)).toBeVisible();
   await expect(goalCard(page, 'Umrah 2027').getByText(/short by/i)).toHaveCount(0);
 
   await openAccountPage(page, 'Jenius');

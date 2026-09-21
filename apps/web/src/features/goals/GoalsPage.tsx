@@ -1,10 +1,17 @@
-import { formatUnits, type GoalKind, isoDate } from '@expanses/core';
-import { archiveGoal, type GoalLinkRow, type GoalRow, reorderGoals, setStagePaid } from '@expanses/db';
-import { Plus } from 'lucide-react';
-import { useState } from 'react';
-import { useApp } from '../../app/context';
-import { useInvalidateAll } from '../../lib/queries';
-import { Empty, ErrorBox, Money } from '../../ui';
+import { formatUnits, type GoalKind, isoDate } from "@expanses/core";
+import {
+  archiveGoal,
+  type GoalHistoryEntry,
+  type GoalLinkRow,
+  type GoalRow,
+  reorderGoals,
+  setStagePaid,
+} from "@expanses/db";
+import { Plus } from "lucide-react";
+import { useState } from "react";
+import { useApp } from "../../app/context";
+import { useInvalidateAll } from "../../lib/queries";
+import { Empty, ErrorBox, Money } from "../../ui";
 import {
   type CornerAction,
   DestructiveRow,
@@ -16,11 +23,25 @@ import {
   Panel,
   ProgressBar,
   SCREEN,
-} from '../../ui/native';
-import { Calculator, calculatorKindOf } from './Calculator';
-import { GoalForm } from './GoalForm';
-import { type GoalCard, goalCard, GOAL_TEMPLATES } from './goal-cards';
-import { useEarmarks, useGoalCalculators, useGoalPlans, useGoals } from './queries';
+} from "../../ui/native";
+import { Calculator, calculatorKindOf } from "./Calculator";
+import { GoalForm } from "./GoalForm";
+import {
+  dayMonth,
+  fundedWindow,
+  type GoalCard,
+  goalCard,
+  GOAL_TEMPLATES,
+  historyDay,
+} from "./goal-cards";
+import {
+  useDraws,
+  useEarmarks,
+  useGoalCalculators,
+  useGoalHistory,
+  useGoalPlans,
+  useGoals,
+} from "./queries";
 
 /**
  * What one link is worth, in the money it actually is.
@@ -32,7 +53,8 @@ import { useEarmarks, useGoalCalculators, useGoalPlans, useGoals } from './queri
  */
 function LinkAmount({ link }: { link: GoalLinkRow }) {
   const { ws } = useApp();
-  if (link.currency === ws.baseCurrency) return <Money minor={link.valueMinor} currency={link.currency} />;
+  if (link.currency === ws.baseCurrency)
+    return <Money minor={link.valueMinor} currency={link.currency} />;
   return (
     <>
       <Money minor={link.valueMinor} currency={link.currency} />
@@ -40,9 +62,9 @@ function LinkAmount({ link }: { link: GoalLinkRow }) {
         <> · no {ws.baseCurrency} rate yet</>
       ) : (
         <>
-          {' ('}
+          {" ("}
           <Money minor={link.baseMinor} currency={ws.baseCurrency} />
-          {')'}
+          {")"}
         </>
       )}
     </>
@@ -56,7 +78,18 @@ function FundingRow({ link, position }: GroupChild & { link: GoalLinkRow }) {
       <InsetRow
         position={position}
         title={link.name}
-        subtitle={link.kind === 'tagged' && link.unitsMicro !== null ? `${formatUnits(link.unitsMicro)} tagged` : 'set aside'}
+        subtitle={
+          link.kind === "tagged" && link.unitsMicro !== null ? (
+            `${formatUnits(link.unitsMicro)} tagged`
+          ) : link.shortMinor > 0 ? (
+            <>
+              set aside · short by{" "}
+              <Money minor={link.shortMinor} currency={link.currency} />
+            </>
+          ) : (
+            "set aside"
+          )
+        }
         value={<LinkAmount link={link} />}
         valueTone="ink"
         chevron={false}
@@ -65,9 +98,74 @@ function FundingRow({ link, position }: GroupChild & { link: GoalLinkRow }) {
   );
 }
 
+const HISTORY_TITLES: Record<GoalHistoryEntry["kind"], string> = {
+  "set-aside": "Set aside",
+  "taken-back": "Taken back",
+  borrowed: "Borrowed",
+  spent: "Spent",
+  moved: "Moved",
+  reached: "Reached the target",
+};
+
+/**
+ * Under the figure, what the goal is short and — when it was whole before it lent money — the days it stood whole,
+ * said as a fact rather than a failure (spec §7.2). The figures are the readers' own; nothing is worked out here.
+ */
+function ShortNote({
+  card,
+  history,
+  wasWhole,
+}: {
+  card: GoalCard;
+  history: GoalHistoryEntry[];
+  wasWhole: (key: string) => boolean;
+}) {
+  if (card.shortLines.length === 0) return null;
+  const stood = fundedWindow(history, wasWhole);
+  const many = card.shortLines.length > 1;
+  return (
+    <>
+      {card.shortLines.map((line) => (
+        <span
+          key={line.accountName}
+          className="mt-[2px] block text-[var(--ph-warn)]"
+        >
+          Short by <Money minor={line.shortMinor} currency={line.currency} />
+          {many && ` in ${line.accountName}`}
+        </span>
+      ))}
+      {stood && (
+        <span className="mt-[2px] block text-[var(--ph-ink-3)]">
+          <span className="block">
+            {stood.from === null
+              ? `Fully funded until ${dayMonth(stood.until)}`
+              : stood.from === stood.until
+                ? `Fully funded on ${dayMonth(stood.until)}`
+                : `Fully funded ${dayMonth(stood.from)} – ${dayMonth(stood.until)}`}
+          </span>
+          <span className="block">
+            <Money minor={stood.amountMinor} currency={stood.currency} /> went
+            to {stood.description}. Put it back and the fund is complete again.
+          </span>
+        </span>
+      )}
+    </>
+  );
+}
+
 /** The status the plan reached, on the group's own header line, keeping the tone the card decided. */
 function StatusPill({ card }: { card: GoalCard }) {
-  return <span className={card.statusTone === 'good' ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-warn)]'}>{card.statusLabel}</span>;
+  return (
+    <span
+      className={
+        card.statusTone === "good"
+          ? "text-[var(--ph-tint)]"
+          : "text-[var(--ph-warn)]"
+      }
+    >
+      {card.statusLabel}
+    </span>
+  );
 }
 
 export function GoalsPage() {
@@ -77,6 +175,13 @@ export function GoalsPage() {
   const summary = useGoalPlans(today);
   const goals = useGoals();
   const earmarks = useEarmarks();
+  const history = useGoalHistory().data ?? {};
+  // A history line's key is its draw's id, so a borrow can be asked whether the goal was whole when it was taken.
+  const wholeBorrows = new Set(
+    (useDraws().data ?? [])
+      .filter((draw) => draw.intent === "borrow" && draw.wasWhole)
+      .map((draw) => draw.id),
+  );
   const [editing, setEditing] = useState<GoalRow | null>(null);
   const [calculating, setCalculating] = useState<GoalRow | null>(null);
   const [adding, setAdding] = useState<GoalKind | null>(null);
@@ -86,7 +191,9 @@ export function GoalsPage() {
   const derived = new Set((calculators.data ?? []).map((row) => row.goalId));
   const plans = summary.data?.plans ?? [];
   const cards = plans.map(goalCard);
-  const shortfall = (summary.data?.neededMonthlyMinor ?? 0) - (summary.data?.capacityMonthlyMinor ?? 0);
+  const shortfall =
+    (summary.data?.neededMonthlyMinor ?? 0) -
+    (summary.data?.capacityMonthlyMinor ?? 0);
 
   async function move(goalId: string, by: number) {
     setError(null);
@@ -104,7 +211,12 @@ export function GoalsPage() {
   }
 
   async function archive(goal: GoalRow) {
-    if (!window.confirm(`Archive "${goal.name}"? Its tagged purchases keep their history.`)) return;
+    if (
+      !window.confirm(
+        `Archive "${goal.name}"? Its tagged purchases keep their history.`,
+      )
+    )
+      return;
     await archiveGoal(database, ws, goal.id);
     await invalidate();
   }
@@ -116,14 +228,25 @@ export function GoalsPage() {
 
   /* The primary action is a corner glyph at every width, not a dark rectangle beside the title. */
   const actions: CornerAction[] =
-    adding || editing ? [] : [{ key: 'add', label: 'Add goal', glyph: <Plus size={22} aria-hidden />, run: () => setAdding(GOAL_TEMPLATES[0]!.kind) }];
+    adding || editing
+      ? []
+      : [
+          {
+            key: "add",
+            label: "Add goal",
+            glyph: <Plus size={22} aria-hidden />,
+            run: () => setAdding(GOAL_TEMPLATES[0]!.kind),
+          },
+        ];
 
   return (
     <div className={SCREEN}>
       <LargeTitle title="Goals" actions={actions} />
       <ErrorBox error={summary.error ?? error} />
 
-      {calculating && <Calculator goal={calculating} onDone={() => setCalculating(null)} />}
+      {calculating && (
+        <Calculator goal={calculating} onDone={() => setCalculating(null)} />
+      )}
 
       {(adding || editing) && (
         <GoalForm
@@ -143,42 +266,69 @@ export function GoalsPage() {
           footer={
             shortfall > 0 ? (
               <>
-                Goals ask for <Money minor={shortfall} currency={ws.baseCurrency} /> more than you save. In this order,{' '}
-                {summary.data.fits.filter((fit) => fit.fits === 'full').length} fit, and the rest wait. Move a date, lower a target, or reorder them.
+                Goals ask for{" "}
+                <Money minor={shortfall} currency={ws.baseCurrency} /> more than
+                you save. In this order,{" "}
+                {summary.data.fits.filter((fit) => fit.fits === "full").length}{" "}
+                fit, and the rest wait. Move a date, lower a target, or reorder
+                them.
               </>
             ) : undefined
           }
         >
           <InsetRow
             title="Goals need each month"
-            value={<Money minor={summary.data.neededMonthlyMinor} currency={ws.baseCurrency} />}
+            value={
+              <Money
+                minor={summary.data.neededMonthlyMinor}
+                currency={ws.baseCurrency}
+              />
+            }
             valueTone="ink"
             chevron={false}
           />
           <InsetRow
             title="Set up each month"
             subtitle="Monthly buys and standing transfers"
-            value={<Money minor={summary.data.plannedMonthlyMinor} currency={ws.baseCurrency} />}
+            value={
+              <Money
+                minor={summary.data.plannedMonthlyMinor}
+                currency={ws.baseCurrency}
+              />
+            }
             valueTone="ink"
             chevron={false}
           />
           <InsetRow
             title="You save each month"
             subtitle="Take-home pay − spending − debt payments"
-            value={<Money minor={summary.data.capacityMonthlyMinor} currency={ws.baseCurrency} />}
+            value={
+              <Money
+                minor={summary.data.capacityMonthlyMinor}
+                currency={ws.baseCurrency}
+              />
+            }
             valueTone="ink"
             chevron={false}
           />
         </InsetGroup>
       )}
 
-      {cards.length === 0 && !adding && summary.isSuccess && <Empty>No goals yet. Start with an emergency fund, education or a holiday.</Empty>}
+      {cards.length === 0 && !adding && summary.isSuccess && (
+        <Empty>
+          No goals yet. Start with an emergency fund, education or a holiday.
+        </Empty>
+      )}
 
       {/* A chooser is a grouped list of rows with chevrons, not a wrapping set of outlined buttons. */}
       {!adding && !editing && (
         <InsetGroup header="Start from a template">
           {GOAL_TEMPLATES.map((template) => (
-            <InsetRow key={template.kind} title={template.label} onClick={() => setAdding(template.kind)} />
+            <InsetRow
+              key={template.kind}
+              title={template.label}
+              onClick={() => setAdding(template.kind)}
+            />
           ))}
         </InsetGroup>
       )}
@@ -188,14 +338,32 @@ export function GoalsPage() {
           const plan = plans[index]!;
           return (
             <section key={card.goalId}>
-              <Panel wide header={card.name} trailing={<StatusPill card={card} />} footer={`${card.kindLabel} · by ${card.dueLabel}`}>
+              <Panel
+                wide
+                header={card.name}
+                trailing={<StatusPill card={card} />}
+                footer={`${card.kindLabel} · by ${card.dueLabel}`}
+              >
                 <Hero
                   minor={card.currentMinor}
                   currency={ws.baseCurrency}
                   caption={
                     <>
-                      of <Money minor={card.targetMinor} currency={ws.baseCurrency} />
-                      {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from your figures</span>}
+                      of{" "}
+                      <Money
+                        minor={card.targetMinor}
+                        currency={ws.baseCurrency}
+                      />
+                      {derived.has(card.goalId) && (
+                        <span className="block text-[var(--ph-tint)]">
+                          Worked out from your figures
+                        </span>
+                      )}
+                      <ShortNote
+                        card={card}
+                        history={history[card.goalId] ?? []}
+                        wasWhole={(key) => wholeBorrows.has(key)}
+                      />
                     </>
                   }
                 />
@@ -221,14 +389,25 @@ export function GoalsPage() {
                       title={`${line.when} ${line.name}`}
                       subtitle={
                         <>
-                          <Money minor={line.todayMinor} currency={ws.baseCurrency} /> today, <Money minor={line.targetMinor} currency={ws.baseCurrency} /> then
+                          <Money
+                            minor={line.todayMinor}
+                            currency={ws.baseCurrency}
+                          />{" "}
+                          today,{" "}
+                          <Money
+                            minor={line.targetMinor}
+                            currency={ws.baseCurrency}
+                          />{" "}
+                          then
                         </>
                       }
                       value={line.stateLabel}
                       valueTone="tint"
                       chevron={false}
                       label={`${line.name}: ${line.stateLabel}`}
-                      onClick={() => togglePaid(line.stageId, line.state === 'paid')}
+                      onClick={() =>
+                        togglePaid(line.stageId, line.state === "paid")
+                      }
                     />
                   ))}
                 </InsetGroup>
@@ -237,27 +416,47 @@ export function GoalsPage() {
               <InsetGroup wide>
                 <InsetRow
                   title="Needed a month"
-                  value={<Money minor={card.neededMonthlyMinor} currency={ws.baseCurrency} />}
+                  value={
+                    <Money
+                      minor={card.neededMonthlyMinor}
+                      currency={ws.baseCurrency}
+                    />
+                  }
                   valueTone="ink"
                   chevron={false}
                 />
                 <InsetRow
                   title="Set up a month"
-                  value={<Money minor={card.plannedMonthlyMinor} currency={ws.baseCurrency} />}
+                  value={
+                    <Money
+                      minor={card.plannedMonthlyMinor}
+                      currency={ws.baseCurrency}
+                    />
+                  }
                   valueTone="ink"
                   chevron={false}
                 />
                 <InsetRow
-                  title={card.differenceMinor < 0 ? 'Short by' : 'Room'}
-                  value={<Money minor={Math.abs(card.differenceMinor)} currency={ws.baseCurrency} tone="none" />}
-                  valueTone={card.differenceMinor < 0 ? 'alarm' : 'ink'}
+                  title={card.differenceMinor < 0 ? "Short by" : "Room"}
+                  value={
+                    <Money
+                      minor={Math.abs(card.differenceMinor)}
+                      currency={ws.baseCurrency}
+                      tone="none"
+                    />
+                  }
+                  valueTone={card.differenceMinor < 0 ? "alarm" : "ink"}
                   chevron={false}
                 />
               </InsetGroup>
 
               {plan.links.length === 0 ? (
                 <InsetGroup wide header="Funded by">
-                  <InsetRow title="Nothing yet" subtitle="Tag a purchase or set money aside." chevron={false} />
+                  <InsetRow
+                    title="Nothing yet"
+                    subtitle="Tag a purchase or set money aside."
+                    chevron={false}
+                  />
                 </InsetGroup>
               ) : (
                 <InsetGroup
@@ -266,29 +465,97 @@ export function GoalsPage() {
                   footer={
                     plan.goal.standingNote ? (
                       <>
-                        {plan.goal.standingNote}, <Money minor={plan.goal.standingMonthlyMinor} currency={ws.baseCurrency} />
+                        {plan.goal.standingNote},{" "}
+                        <Money
+                          minor={plan.goal.standingMonthlyMinor}
+                          currency={ws.baseCurrency}
+                        />
                       </>
                     ) : undefined
                   }
                 >
                   {plan.links.map((link) => (
-                    <FundingRow key={`${link.accountId}-${link.kind}`} link={link} />
+                    <FundingRow
+                      key={`${link.accountId}-${link.kind}`}
+                      link={link}
+                    />
                   ))}
                 </InsetGroup>
               )}
 
-              {card.riskWarning && <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{card.riskWarning}</p>}
-              {card.earmarkWarning && <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{card.earmarkWarning}</p>}
+              {card.riskWarning && (
+                <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">
+                  {card.riskWarning}
+                </p>
+              )}
+              {/* The short part of the old warning is said under the figure and on the Funded-by row; only the no-rate sentence is left. */}
+              {plan.unconvertedWarning && (
+                <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">
+                  {plan.unconvertedWarning}
+                </p>
+              )}
+
+              {(history[card.goalId]?.length ?? 0) > 0 && (
+                <InsetGroup wide header="History">
+                  {history[card.goalId]!.map((entry) => (
+                    <InsetRow
+                      key={entry.key}
+                      testId="goal-history"
+                      title={HISTORY_TITLES[entry.kind]}
+                      subtitle={
+                        entry.text
+                          ? `${historyDay(entry.occurredOn, today)} · ${entry.text}`
+                          : historyDay(entry.occurredOn, today)
+                      }
+                      value={
+                        entry.amountMinor === null ? undefined : (
+                          <Money
+                            minor={entry.amountMinor}
+                            currency={entry.currency}
+                          />
+                        )
+                      }
+                      valueTone="ink"
+                      chevron={false}
+                    />
+                  ))}
+                </InsetGroup>
+              )}
 
               <InsetGroup wide>
                 <InsetRow title="Edit" onClick={() => setEditing(plan.goal)} />
-                {calculatorKindOf(plan.goal.kind) && <InsetRow title="Work out the amount" onClick={() => setCalculating(plan.goal)} />}
-                <InsetRow title="Move up" label={`Move ${card.name} up`} onClick={() => move(card.goalId, -1)} chevron={false} />
-                <InsetRow title="Move down" label={`Move ${card.name} down`} onClick={() => move(card.goalId, 1)} chevron={false} />
+                {calculatorKindOf(plan.goal.kind) && (
+                  <InsetRow
+                    title="Work out the amount"
+                    onClick={() => setCalculating(plan.goal)}
+                  />
+                )}
+                <InsetRow
+                  title="Move up"
+                  label={`Move ${card.name} up`}
+                  onClick={() => move(card.goalId, -1)}
+                  chevron={false}
+                />
+                <InsetRow
+                  title="Move down"
+                  label={`Move ${card.name} down`}
+                  onClick={() => move(card.goalId, 1)}
+                  chevron={false}
+                />
               </InsetGroup>
               {/* Its own group is the point: a row's height away from Move down is the wrong tap to make. */}
-              <InsetGroup wide>
-                <DestructiveRow label="Archive" onClick={() => archive(plan.goal)} />
+              <InsetGroup
+                wide
+                footer={
+                  card.done
+                    ? "Keeps the history, stops it claiming money."
+                    : undefined
+                }
+              >
+                <DestructiveRow
+                  label="Archive"
+                  onClick={() => archive(plan.goal)}
+                />
               </InsetGroup>
             </section>
           );
@@ -296,14 +563,17 @@ export function GoalsPage() {
       </div>
 
       {plans.some((plan) => plan.links.length > 0) && (
-        <InsetGroup header="What each asset is for" footer="Goals never change your net worth or the tax report; they only say what the money is for.">
+        <InsetGroup
+          header="What each asset is for"
+          footer="Goals never change your net worth or the tax report; they only say what the money is for."
+        >
           {plans.flatMap((plan) =>
             plan.links.map((link) => (
               <InsetRow
                 key={`${plan.goalId}-${link.accountId}-${link.kind}`}
                 testId="goal-asset"
                 title={link.name}
-                subtitle={`${link.kind === 'tagged' && link.unitsMicro !== null ? `${formatUnits(link.unitsMicro)} tagged` : 'set aside'} for ${plan.goal.name}`}
+                subtitle={`${link.kind === "tagged" && link.unitsMicro !== null ? `${formatUnits(link.unitsMicro)} tagged` : "set aside"} for ${plan.goal.name}`}
                 value={<LinkAmount link={link} />}
                 valueTone="ink"
                 chevron={false}
