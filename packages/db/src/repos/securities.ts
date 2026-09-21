@@ -283,14 +283,16 @@ export interface AddHoldingResult {
 }
 
 /**
- * The live holding of a security at a broker (or at no broker), if there is one. At a named broker the clash rule
+ * Every live holding of a security at a broker (or at no broker), oldest first. At a named broker the clash rule
  * (`linkHoldingTx`) already keeps this to at most one row. With no broker there can legitimately be several (§7.6
  * links legacy holdings with "No broker", and the clash rule does not apply to them) — ordered oldest first, so the
- * choice is deterministic rather than whichever row SQLite happens to return. `brokerlessHoldingsOf` names them all,
- * so a caller can tell the owner when a buy is about to land on one of several rather than silently picking one.
+ * choice is deterministic rather than whichever row SQLite happens to return.
+ *
+ * `holdingAtTx` (where a buy lands) and `brokerlessHoldingsOf` (what the form names) both read this one query, so the
+ * holding the form names is always the holding the buy lands on.
  */
-async function holdingAtTx(tx: Db, ws: WorkspaceContext, securityId: string, brokerAccountId: string | null): Promise<string | null> {
-  const [row] = await tx
+async function liveHoldingsTx(tx: Db, ws: WorkspaceContext, securityId: string, brokerAccountId: string | null): Promise<string[]> {
+  const rows = await tx
     .select({ accountId: holdingLinks.accountId })
     .from(holdingLinks)
     .innerJoin(accounts, eq(accounts.id, holdingLinks.accountId))
@@ -301,24 +303,18 @@ async function holdingAtTx(tx: Db, ws: WorkspaceContext, securityId: string, bro
       isNull(accounts.archivedAt),
     ))
     .orderBy(asc(accounts.createdAt), asc(accounts.id));
-  return row?.accountId ?? null;
+  return rows.map((row) => row.accountId);
 }
 
-/** Every live broker-less holding of a security, oldest first — the order a no-broker buy in `addHolding` picks from. */
+/** The live holding a buy of this security at this broker (or at no broker) lands on, if there is one. */
+async function holdingAtTx(tx: Db, ws: WorkspaceContext, securityId: string, brokerAccountId: string | null): Promise<string | null> {
+  return (await liveHoldingsTx(tx, ws, securityId, brokerAccountId))[0] ?? null;
+}
+
+/** Every live broker-less holding of a security, oldest first; the first is the one a no-broker buy in `addHolding` lands on. */
 export async function brokerlessHoldingsOf(database: Database, ws: WorkspaceContext, securityId: string): Promise<string[]> {
   if (!(await securityTablesExist(database.db))) return [];
-  const rows = await database.db
-    .select({ accountId: holdingLinks.accountId })
-    .from(holdingLinks)
-    .innerJoin(accounts, eq(accounts.id, holdingLinks.accountId))
-    .where(and(
-      eq(holdingLinks.workspaceId, ws.workspaceId),
-      eq(holdingLinks.securityId, securityId),
-      isNull(holdingLinks.brokerAccountId),
-      isNull(accounts.archivedAt),
-    ))
-    .orderBy(asc(accounts.createdAt), asc(accounts.id));
-  return rows.map((row) => row.accountId);
+  return liveHoldingsTx(database.db, ws, securityId, null);
 }
 
 /**

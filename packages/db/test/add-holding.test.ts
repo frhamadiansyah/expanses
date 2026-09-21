@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { rateFromAmounts } from '@expanses/core';
 import {
@@ -119,6 +119,15 @@ describe('addHolding', () => {
     expect(await listSecurities(database, ws)).toEqual([]);
   });
 
+  it('refuses a closed broker even when a holding of the stock is already kept there (m4)', async () => {
+    // With a holding already at the broker, the buy would land on it without linking anything — so addHolding's own
+    // check is the only thing between the owner and a buy recorded at a broker they closed.
+    const first = await addHolding(database, ws, { security: bbca, broker: { name: 'Stockbit', currency: 'IDR' }, buy: { occurredOn: '2026-03-02', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    await archiveAccount(database, ws, first.brokerAccountId!);
+    await expect(addHolding(database, ws, { security: { id: first.securityId }, broker: { accountId: first.brokerAccountId! }, buy: { occurredOn: '2026-04-02', unitsMicro: shares(100), grossMinor: 900_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } })).rejects.toThrow(/not found/);
+    expect((await positionsFor(database, ws))[first.accountId]!.unitsMicro).toBe(shares(100));
+  });
+
   it('refuses a broker that is a card or a bank, leaving nothing behind', async () => {
     const card = await createAccount(database, ws, { name: 'Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
     for (const broker of [card, bca]) {
@@ -189,6 +198,39 @@ describe('addHolding with no broker, deterministically (m2)', () => {
     expect(second.accountId).toBe(first.accountId);
     expect((await positionsFor(database, ws))[legacy.id]!.unitsMicro).toBe(shares(50));
   });
+
+  it('orders by when the holding was recorded, not by the order the rows happen to sit in (m2)', async () => {
+    const later = await addHolding(database, ws, { security: bbca, broker: null, buy: { occurredOn: '2026-01-05', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    // Written second, but recorded years earlier: it is the older holding, so the buy lands on it.
+    const earlier = await createAccount(database, ws, { name: 'BBCA legacy', kind: 'asset', subtype: 'investment', currency: 'IDR' });
+    await saveAssetProfile(database, ws, { accountId: earlier.id, assetKind: 'stock' });
+    await linkHolding(database, ws, { accountId: earlier.id, security: { id: later.securityId } });
+    await database.db.run(sql`UPDATE accounts SET created_at = '2020-01-01T00:00:00.000Z' WHERE id = ${earlier.id}`);
+
+    expect(await brokerlessHoldingsOf(database, ws, later.securityId)).toEqual([earlier.id, later.accountId]);
+    const buy = await addHolding(database, ws, { security: { id: later.securityId }, broker: null, buy: { occurredOn: '2026-02-01', unitsMicro: shares(10), grossMinor: 90_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    expect(buy.accountId).toBe(earlier.id);
+  });
+
+  it('names exactly the holding the buy lands on: never an archived one, never one kept at a broker (I4)', async () => {
+    // The oldest: broker-less, sold out and archived.
+    const archived = await addHolding(database, ws, { security: bbca, broker: null, buy: { occurredOn: '2026-01-05', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    await recordTrade(database, ws, { accountId: archived.accountId, kind: 'sell', occurredOn: '2026-01-09', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null });
+    await archiveAccount(database, ws, archived.accountId);
+    // Next: kept at a broker.
+    const atBroker = await addHolding(database, ws, { security: { id: archived.securityId }, broker: { name: 'Stockbit', currency: 'IDR' }, buy: { occurredOn: '2026-02-02', unitsMicro: shares(100), grossMinor: 880_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    // The newest: the only live holding with no broker.
+    const live = await addHolding(database, ws, { security: { id: archived.securityId }, broker: null, buy: { occurredOn: '2026-03-02', unitsMicro: shares(100), grossMinor: 890_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    expect(live.created).toBe(true);
+
+    const named = await brokerlessHoldingsOf(database, ws, archived.securityId);
+    expect(named).toEqual([live.accountId]);
+    expect(named).not.toContain(archived.accountId);
+    expect(named).not.toContain(atBroker.accountId);
+    const buy = await addHolding(database, ws, { security: { id: archived.securityId }, broker: null, buy: { occurredOn: '2026-04-02', unitsMicro: shares(10), grossMinor: 90_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    expect(buy.accountId).toBe(named[0]);
+    expect((await positionsFor(database, ws))[atBroker.accountId]!.unitsMicro).toBe(shares(100));
+  });
 });
 
 describe('addHolding is a set-aside door, as recordTrade is', () => {
@@ -247,6 +289,8 @@ describe('on a database without 0051', () => {
     })).rejects.toBeInstanceOf(AssetError);
     await expect(linkHolding(older, ows, { accountId: held.id, security: bbca })).rejects.toBeInstanceOf(AssetError);
     await expect(upsertSecurityPrice(older, ows, { securityId: 'none', onDate: '2026-09-19', priceMicro: 1 })).rejects.toBeInstanceOf(AssetError);
+    // The Add form asks which broker-less holdings a buy would land on; an older database has none (m3).
+    expect(await brokerlessHoldingsOf(older, ows, 'none')).toEqual([]);
 
     expect((await listAccounts(older, ows)).length).toBe(accountsBefore);
     expect(await nativeBalances(older, ows)).toEqual(balancesBefore);
