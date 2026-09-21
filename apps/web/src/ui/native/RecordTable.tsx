@@ -16,6 +16,13 @@ import type { Tone } from './row';
  *
  * Desktop is this product's paid tier, so the table is not a fallback — it is the better of the two, and it
  * keeps every column.
+ *
+ * **Becoming rows is not unconditional.** A record only collapses to one line if the columns left behind have a
+ * detail screen to go to — that is what the chevron promises. Where they have not, losing a column is worse than
+ * scrolling one, so the table stays a table on the phone as well, inside the horizontal-scroll container it
+ * already has. `shape` is how a caller says there is somewhere to go: given one, the phone shows rows; left out,
+ * the table is the answer at every width. The ruling is in the type rather than in a flag, so a screen cannot
+ * quietly drop `/review`'s Category column or `/accounts`'s Archive by forgetting to pass something.
  */
 
 export interface RecordColumn<T> {
@@ -43,23 +50,32 @@ export function RecordTable<T>({
   records,
   columns,
   shape,
+  rowKey,
+  rowTestId,
   header,
   className,
 }: {
   records: readonly T[];
   columns: readonly RecordColumn<T>[];
-  shape: RecordShape<T>;
+  /** Given, the phone shows one row a record. Left out, the table stays a table at every width — see above. */
+  shape?: RecordShape<T>;
+  /** How a record is identified when there is no `shape` to ask. One of the two is always present. */
+  rowKey?: (record: T) => string;
+  /** The `data-testid` each record carries, in either form, so a test names the record and not the layout. */
+  rowTestId?: (record: T) => string;
   header?: string;
   className?: string;
 }) {
   const phone = usePhone();
+  const keyOf = (record: T, index: number) => shape?.key(record) ?? rowKey?.(record) ?? String(index);
 
-  if (phone) {
+  if (phone && shape) {
     return (
       <InsetGroup header={header} className={className}>
         {records.map((record) => (
           <InsetRow
             key={shape.key(record)}
+            testId={rowTestId?.(record)}
             title={shape.title(record)}
             subtitle={shape.subtitle?.(record)}
             value={shape.value(record)}
@@ -97,8 +113,8 @@ export function RecordTable<T>({
             </tr>
           </thead>
           <tbody>
-            {records.map((record) => (
-              <tr key={shape.key(record)} className="border-t-[0.5px] border-[var(--ph-hair)] first:border-t-0">
+            {records.map((record, index) => (
+              <tr key={keyOf(record, index)} data-testid={rowTestId?.(record)} className="border-t-[0.5px] border-[var(--ph-hair)] first:border-t-0">
                 {columns.map((column) => (
                   <td
                     key={column.key}
