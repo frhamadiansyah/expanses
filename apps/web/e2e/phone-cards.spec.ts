@@ -84,9 +84,13 @@ test('a covered card prints only its strip, so no two lines of text share a band
   await expect(band).toHaveCount(1);
   await expect(band).toContainText(/KrisFlyer Visa Signature|Marriott Bonvoy/);
 
-  // The front card sits at the top of the pile, and the covered card peeks out below it rather than above.
+  // The front card sits at the top of the pile, as wide as the column inside the 16 px gutter, and the covered
+  // card peeks out below it rather than above.
   const whole = (await wall.getByRole('img').boundingBox())!;
   const peek = (await band.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(Math.round(whole.width)).toBe(viewport.width - 32);
+  expect(Math.round(whole.width / whole.height * 10)).toBe(16);
   expect(peek.y).toBeGreaterThanOrEqual(whole.y + whole.height - 1);
 
   // The facts under the stack are one grouped row for the card being looked at: the front one at rest, and the

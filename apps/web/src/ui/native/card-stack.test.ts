@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_H, CARD_W, cardFigure, cardsBeforeScrolling, faceIsBehind, FAN_X, stackLayout, STRIP } from './card-stack';
+import { CARD_H, CARD_W, cardFigure, cardHeightFor, cardsBeforeScrolling, faceIsBehind, FAN_X, stackLayout, STRIP } from './card-stack';
 
 const WALLET = ['bca-krisflyer', 'mandiri-skyz', 'bni-bonvoy'];
 
@@ -46,8 +46,18 @@ describe('stackLayout', () => {
     expect(stackLayout(WALLET, { lifted: 1 }).height).toBe(stackLayout(WALLET).height);
   });
 
-  it('fans sideways on a wide screen instead of overlapping downwards', () => {
-    const { cards, width, height, front } = stackLayout(WALLET, { fan: true });
+  it('draws a phone’s cards as wide as its column, on a card’s own shape', () => {
+    const layout = stackLayout(WALLET, { cardWidth: 358 });
+    expect(layout.cardWidth).toBe(358);
+    expect(layout.cardHeight).toBe(cardHeightFor(358));
+    expect(cardHeightFor(358)).toBe(226);
+    expect(layout.width).toBe(358);
+    expect(layout.height).toBe(STRIP * 2 + 226);
+    expect(layout.cards[1]!.clip).toBe(226 - STRIP);
+  });
+
+  it('fans sideways on a wide screen instead of overlapping downwards, at the desktop’s own width', () => {
+    const { cards, width, height, front } = stackLayout(WALLET, { fan: true, cardWidth: 358 });
     expect(cards.map((card) => card.top)).toEqual([0, 0, 0]);
     expect(cards.map((card) => card.left)).toEqual([0, FAN_X, FAN_X * 2]);
     expect(front).toBe(2);

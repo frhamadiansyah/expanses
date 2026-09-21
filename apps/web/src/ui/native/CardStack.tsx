@@ -1,6 +1,6 @@
 import type { CatalogCardLook } from '@expanses/catalog';
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { usePhone } from '../../app/use-phone';
 import { useEscape } from '../../app/use-escape';
 import { CardFace } from '../../features/cards/CardFace';
@@ -62,6 +62,21 @@ export function CardStack({
 }) {
   const phone = usePhone();
   const [lifted, setLifted] = useState<number | null>(null);
+  /*
+   * On a phone a card is as wide as the column inside the 16 px gutter, as Wallet draws it — so the stack
+   * measures the column it is given rather than assuming 240. The first paint uses 240 until the measure lands.
+   */
+  const shelf = useRef<HTMLDivElement>(null);
+  const [column, setColumn] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const node = shelf.current;
+    if (!node) return;
+    const measure = () => setColumn(node.clientWidth || null);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   // A lifted card is the innermost thing open, so Escape puts it back before it reaches anything behind it.
   useEscape(() => setLifted(null), lifted !== null);
 
@@ -70,14 +85,16 @@ export function CardStack({
   const fan = !phone;
   const layout = stackLayout(
     cards.map((card) => card.key),
-    { lifted: phone ? lifted : null, fan },
+    { lifted: phone ? lifted : null, fan, cardWidth: phone && column ? column : undefined },
   );
+  // Faces are drawn at 240 and scaled to the card's width, so every printed row keeps its place on the card.
+  const scale = layout.cardWidth / CARD_W;
 
   // The facts describe the card in front — the lifted one, once a covered card has been brought forward.
   const described = cards[layout.front];
 
   return (
-    <div className={className}>
+    <div className={className} ref={shelf}>
       <div className="relative mx-auto" style={{ width: layout.width, height: layout.height, maxWidth: '100%' }}>
       {layout.cards.map((placed, index) => {
         const card = cards[index]!;
@@ -106,8 +123,8 @@ export function CardStack({
         const face = (
           <>
             <span
-              className="pointer-events-none block"
-              style={{ width: CARD_W, height: CARD_H, marginTop: -placed.clip }}
+              className="pointer-events-none block origin-top-left"
+              style={{ width: CARD_W, height: CARD_H, marginTop: -placed.clip, transform: scale === 1 ? undefined : `scale(${scale})` }}
             >
               <CardFace
                 issuer={card.issuer}
