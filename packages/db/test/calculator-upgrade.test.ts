@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { sql } from 'drizzle-orm';
 import { goalCalculators } from '../src/schema-budget';
-import { getGoalCalculator, listGoals, saveGoal, saveGoalCalculator, setStagePaid, upgradeCalculatorGoals } from '../src/index';
+import { archiveGoal, getGoalCalculator, listGoals, saveGoal, saveGoalCalculator, setStagePaid, upgradeCalculatorGoals } from '../src/index';
 import { setupDb } from './helpers';
 
 /** A goal as the old calculator left it: stages already inflated, growth still applied on top. */
@@ -122,4 +123,126 @@ describe('upgrading an old working', () => {
     expect((await listGoals(database, ws))[0]!.stages).toHaveLength(2);
     expect(await upgradeCalculatorGoals(database, ws, '2026-02-01')).toEqual([]);
   });
+
+  it('drops a year its working no longer asks for once it is no longer paid', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await saveGoal(database, ws, { name: 'Aisha', kind: 'education', growthBps: 1000, returnBps: 800, stages: [{ name: 'x', targetMinor: 1, targetMonths: null, dueOn: '2032-01-01' }] });
+    const level = (id: string, startYear: number) => ({
+      id, name: id, startAge: null, untilAge: null, startYear, untilYear: startYear + 1, returnBps: null,
+      fees: [{ id: 'a', name: 'Academic', amountTodayMinor: 20_000_000, charged: 'yearly' as const }],
+    });
+    const inputs = (...levels: ReturnType<typeof level>[]) => ({ version: 2 as const, birthday: null, feeInflationBps: 1000, levels });
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs: inputs(level('pre', 2027), level('primary', 2040)) });
+    const paid = (await listGoals(database, ws))[0]!.stages[0]!;
+    await setStagePaid(database, ws, paid.id, '2027-01-02');
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs: inputs(level('primary', 2040)) });
+    await setStagePaid(database, ws, paid.id, null);
+
+    expect(await upgradeCalculatorGoals(database, ws, '2026-02-01')).toEqual([goalId]);
+    expect((await listGoals(database, ws))[0]!.stages.map((stage) => stage.name)).toEqual(['primary']);
+  });
+
+  it('never visits a retirement or emergency working already in today’s money: their dates count from the day they were done', async () => {
+    const { database, ws } = await setupDb();
+    const retirement = await saveGoal(database, ws, { name: 'Retirement', kind: 'retirement', growthBps: 350, returnBps: 1000, stages: [{ name: 'x', targetMinor: 1, targetMonths: null, dueOn: '2046-01-01' }] });
+    const emergency = await saveGoal(database, ws, { name: 'Emergency fund', kind: 'emergency', growthBps: 0, returnBps: 200, stages: [{ name: 'x', targetMinor: null, targetMonths: 3, dueOn: '2028-01-01' }] });
+    await saveGoalCalculator(database, ws, {
+      goalId: retirement, kind: 'retirement', today: '2026-09-21',
+      inputs: { version: 2, annualSpendTodayMinor: 120_000_000, yearsToRetirement: 20, yearsInRetirement: 20, inflationBps: 350, returnBeforeBps: 1000, returnInRetirementBps: 500 },
+    });
+    await saveGoalCalculator(database, ws, { goalId: emergency, kind: 'emergency', today: '2026-09-21', inputs: { months: 6 } });
+    const dates = async () => (await listGoals(database, ws)).map((goal) => [goal.name, goal.stages.map((stage) => stage.dueOn)]);
+    const before = await dates();
+    expect(before).toEqual([['Retirement', ['2046-09-21']], ['Emergency fund', ['2028-09-21']]]);
+
+    expect(await upgradeCalculatorGoals(database, ws, '2026-10-21')).toEqual([]);
+    expect(await dates()).toEqual(before);
+  });
+
+  it('upgrades a goal that is archived too, so it is right if it comes back', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await oldEducationGoal(database, ws);
+    await archiveGoal(database, ws, goalId);
+    expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([goalId]);
+    expect((await listGoals(database, ws, { includeArchived: true }))[0]!.stages.map((stage) => stage.targetMinor)).toEqual([100_000_000, 100_000_000, 100_000_000, 100_000_000]);
+  });
+
+  it('does not keep re-working a goal for a year drawn against that its working no longer asks for', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await saveGoal(database, ws, { name: 'Aisha', kind: 'education', growthBps: 1000, returnBps: 800, stages: [{ name: 'x', targetMinor: 1, targetMonths: null, dueOn: '2032-01-01' }] });
+    const level = (id: string, startYear: number) => ({
+      id, name: id, startAge: null, untilAge: null, startYear, untilYear: startYear + 1, returnBps: null,
+      fees: [{ id: 'a', name: 'Academic', amountTodayMinor: 20_000_000, charged: 'yearly' as const }],
+    });
+    const inputs = (...levels: ReturnType<typeof level>[]) => ({ version: 2 as const, birthday: null, feeInflationBps: 1000, levels });
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs: inputs(level('pre', 2027), level('primary', 2040)) });
+    const drawn = (await listGoals(database, ws))[0]!.stages[0]!;
+    // The set-aside branch's table, as its migration makes it: a draw names the stage it paid.
+    await database.execScript('CREATE TABLE goal_draws (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, goal_id TEXT NOT NULL, stage_id TEXT)');
+    await database.db.run(sql`INSERT INTO goal_draws (id, workspace_id, goal_id, stage_id) VALUES ('d1', ${ws.workspaceId}, ${goalId}, ${drawn.id})`);
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs: inputs(level('primary', 2040)) });
+    expect((await listGoals(database, ws))[0]!.stages.map((stage) => stage.id)).toContain(drawn.id);
+    expect(await upgradeCalculatorGoals(database, ws, '2026-02-01')).toEqual([]);
+  });
 });
+
+/**
+ * v1 stamped computed_at in UTC and dated its stages from the local day. 01:00 WIB on 1 January 2026 is
+ * 18:00 UTC on 31 December 2025: the stages say 2026, computed_at says 2025.
+ */
+describe('upgrading a working saved just after midnight in WIB', () => {
+  const AT_0100_WIB_NEW_YEAR = '2025-12-31T18:00:00.000Z';
+
+  it('keeps an education course in the years its stages were dated to', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await saveGoal(database, ws, {
+      name: 'University', kind: 'education', growthBps: 1000, returnBps: 1000, derived: true,
+      stages: [0, 1].map((i) => ({ name: `Year ${i + 1}`, targetMinor: Math.round(100_000_000 * 1.1 ** (10 + i)), targetMonths: null, dueOn: `${2036 + i}-01-01` })),
+    });
+    await database.db.insert(goalCalculators).values({
+      goalId, workspaceId: ws.workspaceId, kind: 'education', computedMinor: 0, computedAt: AT_0100_WIB_NEW_YEAR,
+      inputsJson: JSON.stringify({ feeTodayMinor: 100_000_000, startsInYears: 10, yearsOfStudy: 2, feeInflationBps: 1000 }),
+    });
+    await upgradeCalculatorGoals(database, ws, '2026-09-21');
+    expect((await listGoals(database, ws))[0]!.stages.map((stage) => stage.dueOn)).toEqual(['2036-01-01', '2037-01-01']);
+    expect((await getGoalCalculator(database, ws, goalId))!.inputs).toMatchObject({ levels: [{ startYear: 2036, untilYear: 2038 }] });
+  });
+
+  it('keeps a retirement date on the day its stage was dated to', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await saveGoal(database, ws, {
+      name: 'Retirement', kind: 'retirement', growthBps: 400, returnBps: 900, derived: true,
+      stages: [{ name: 'Retirement fund', targetMinor: 4_120_008_061, targetMonths: null, dueOn: '2046-01-01' }],
+    });
+    await database.db.insert(goalCalculators).values({
+      goalId, workspaceId: ws.workspaceId, kind: 'retirement', computedMinor: 0, computedAt: AT_0100_WIB_NEW_YEAR,
+      inputsJson: JSON.stringify({ annualSpendTodayMinor: 120_000_000, yearsToRetirement: 20, yearsInRetirement: 20, inflationBps: 350, returnInRetirementBps: 500 }),
+    });
+    expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([goalId]);
+    expect((await listGoals(database, ws))[0]!.stages[0]).toMatchObject({ targetMinor: 2_070_575_495, dueOn: '2046-01-01' });
+  });
+
+  it('only stamps an emergency fund whose figures are the same, rather than moving it back a day', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await saveGoal(database, ws, {
+      name: 'Emergency fund', kind: 'emergency', growthBps: 0, returnBps: 200, derived: true,
+      stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2028-01-01' }],
+    });
+    await database.db.insert(goalCalculators).values({ goalId, workspaceId: ws.workspaceId, kind: 'emergency', computedMinor: 0, computedAt: AT_0100_WIB_NEW_YEAR, inputsJson: JSON.stringify({ months: 6 }) });
+    expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([]);
+    expect((await listGoals(database, ws))[0]!.stages[0]!.dueOn).toBe('2028-01-01');
+    expect((await getGoalCalculator(database, ws, goalId))!.inputs).toMatchObject({ version: 2 });
+  });
+
+  it('dates from computed_at’s own day when the stages match none of the days around it', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await saveGoal(database, ws, {
+      name: 'Emergency fund', kind: 'emergency', growthBps: 0, returnBps: 200, derived: true,
+      stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2030-06-15' }],
+    });
+    await database.db.insert(goalCalculators).values({ goalId, workspaceId: ws.workspaceId, kind: 'emergency', computedMinor: 0, computedAt: AT_0100_WIB_NEW_YEAR, inputsJson: JSON.stringify({ months: 6 }) });
+    expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([goalId]);
+    expect((await listGoals(database, ws))[0]!.stages[0]!.dueOn).toBe('2027-12-31');
+  });
+});
+

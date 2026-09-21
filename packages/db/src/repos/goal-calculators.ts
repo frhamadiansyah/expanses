@@ -337,14 +337,15 @@ const stageFigure = (stage: { targetMinor: number | null; targetMonths: number |
   `${stage.dueOn}|${stage.targetMinor}|${stage.targetMonths}|${withReturns ? (stage.returnBps ?? null) : ''}`;
 
 /**
- * Same growth, return, stages and stage returns. Stages are compared as a set of figures, never by position: the goal
+ * Same growth, stages and stage returns. Stages are compared as a set of figures, never by position: the goal
  * lists them by date and sort, the working by level, and two levels can start on the same day. A stage the working no
  * longer asks for but that is kept anyway — paid, or drawn against — is no difference: a re-work would keep it too.
  * Without 0053 a stage has nowhere to keep a return, so returns are not compared.
  */
 function sameFigures(goal: GoalRow, derived: Derived, drawn: Set<string>, withReturns: boolean): boolean {
   if (goal.growthBps !== derived.growthBps) return false;
-  if (derived.returnBps !== null && goal.returnBps !== derived.returnBps) return false;
+  // The goal's own return is not compared: the upgrade gives a retirement working the goal's return as its return
+  // while saving, and the other kinds name none, so the two can never differ here.
   const left = goal.stages.map((stage) => ({ figure: stageFigure(stage, withReturns), kept: stage.paidOn !== null || drawn.has(stage.id) }));
   for (const stage of derived.stages) {
     const at = left.findIndex((candidate) => candidate.figure === stageFigure(stage, withReturns));
@@ -354,9 +355,36 @@ function sameFigures(goal: GoalRow, derived: Derived, drawn: Set<string>, withRe
   return left.every((stage) => stage.kept);
 }
 
+const shiftDay = (day: string, days: number) => {
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(Date.UTC(year!, month! - 1, date! + days)).toISOString().slice(0, 10);
+};
+
+/**
+ * The day a v1 working was done, on the same basis as its stages. v1 stamped computed_at in UTC but dated the stages
+ * from the local day — in WIB, the next day for anything saved between 00:00 and 06:59, and the next year on
+ * 1 January. So the stages decide: of computed_at's UTC day and the day either side (every time zone is within one),
+ * the one from which v1 would have dated the goal's first stage. Stages that match none leave the UTC day.
+ */
+function v1WorkedOn(row: GoalCalculatorRow, goal: GoalRow): string {
+  const utcDay = row.computedAt.slice(0, 10);
+  const first = goal.stages[0]?.dueOn; // listGoals gives them in date order
+  const years =
+    row.kind === 'emergency' ? 2 : row.kind === 'retirement' ? (row.inputs as RetirementInputs).yearsToRetirement : (row.inputs as EducationInputs).startsInYears;
+  // A working with no sensible years is refused by derive() and left alone; it needs no day.
+  if (typeof years !== 'number' || !Number.isFinite(years) || Math.abs(years) > 1000) return utcDay;
+  const v1Due = (day: string): string => {
+    if (row.kind !== 'education') return yearsFrom(day, years);
+    // v1 education put its first year a whole number of years on, truncated by Date.UTC.
+    const [year, month, date] = day.split('-').map(Number);
+    return new Date(Date.UTC(year! + Math.trunc(years), month! - 1, date!)).toISOString().slice(0, 10);
+  };
+  return [0, 1, -1].map((days) => shiftDay(utcDay, days)).find((day) => v1Due(day) === first) ?? utcDay;
+}
+
 /**
  * Works every goal worked out before today's-money stages out again, silently, and only when the figure changes: a v1
- * working is dated from its own computed_at, so the day it was worked out stays the day it was worked out. And (Part 2
+ * working is dated from the day it was worked out (`v1WorkedOn`), so that day stays the day it was worked out. And (Part 2
  * Q1) a v2 education working is re-read from today, so a level whose return was never typed follows its band as its
  * start draws near; its dates are years or ages, so `today` moves only those returns. Retirement and emergency v2 are
  * left alone: their dates count from the day they were worked out. A goal typed by hand has no calculator row, so is
@@ -371,7 +399,7 @@ export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceCo
   for (const row of rows) {
     const goal = goals.find((candidate) => candidate.id === row.goalId);
     if (!goal) continue;
-    const workedOn = isV2(row) ? today : row.computedAt.slice(0, 10);
+    const workedOn = isV2(row) ? today : v1WorkedOn(row, goal);
     // A retirement worked out before kept the goal's own return; it stays the return while saving.
     const inputs = row.kind === 'retirement' ? { ...(row.inputs as RetirementInputs), returnBeforeBps: goal.returnBps } : row.inputs;
     let derived: Derived;
