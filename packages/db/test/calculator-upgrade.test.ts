@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { goalCalculators } from '../src/schema-budget';
-import { archiveGoal, getGoalCalculator, listGoals, saveGoal, saveGoalCalculator, setStagePaid, upgradeCalculatorGoals } from '../src/index';
+import { archiveGoal, contextOf, createWorkspace, getGoalCalculator, listGoals, listWorkspaces, saveGoal, saveGoalCalculator, setStagePaid, upgradeCalculatorGoals } from '../src/index';
 import { setupDb } from './helpers';
 
 /** A goal as the old calculator left it: stages already inflated, growth still applied on top. */
@@ -38,6 +38,16 @@ describe('upgrading an old working', () => {
     expect((await getGoalCalculator(database, ws, goalId))!.inputs).toMatchObject({ version: 2 });
 
     expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([]);
+  });
+
+  it('keeps an education goal’s own return: its stages carry it, never a band (spec §8)', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await oldEducationGoal(database, ws);
+    await upgradeCalculatorGoals(database, ws, '2026-09-21');
+    const goal = (await listGoals(database, ws))[0]!;
+    expect(goal.returnBps).toBe(1000);
+    expect(goal.stages.map((stage) => stage.returnBps)).toEqual([1000, 1000, 1000, 1000]);
+    expect((await getGoalCalculator(database, ws, goalId))!.inputs).toMatchObject({ levels: [{ returnBps: 1000 }] });
   });
 
   it('keeps a retirement goal’s own return as the return while saving', async () => {
@@ -246,3 +256,57 @@ describe('upgrading a working saved just after midnight in WIB', () => {
   });
 });
 
+
+/**
+ * The bootstrap loop runs on every open. Running it twice on the same day must change nothing the second time, in
+ * every workspace, for every kind of working — v1 or v2, typed or untyped, paid or not.
+ */
+describe('upgrading on open, twice', () => {
+  const WORKED_OUT = '2024-06-01T03:00:00.000Z'; // two years back: a different return band from today's
+
+  async function fill(database: Awaited<ReturnType<typeof setupDb>>['database'], ws: Awaited<ReturnType<typeof setupDb>>['ws'], returnBps: number | null = 1000) {
+    const raw = async (name: string, kind: 'education' | 'retirement' | 'emergency', stages: { name: string; targetMinor: number | null; targetMonths: number | null; dueOn: string }[], inputs: object, goalReturn: number) => {
+      const goalId = await saveGoal(database, ws, { name, kind, growthBps: 1000, returnBps: goalReturn, derived: true, stages });
+      await database.db.insert(goalCalculators).values({ goalId, workspaceId: ws.workspaceId, kind, computedMinor: 0, computedAt: WORKED_OUT, inputsJson: JSON.stringify(inputs) });
+      return goalId;
+    };
+    // v1 education: the course starts five years after 2024-06-01, so 55 months out then, 32 months out today.
+    await raw('University', 'education', [0, 1].map((i) => ({ name: `Year ${i + 1}`, targetMinor: Math.round(100_000_000 * 1.1 ** (5 + i)), targetMonths: null, dueOn: `${2029 + i}-06-01` })),
+      { feeTodayMinor: 100_000_000, startsInYears: 5, yearsOfStudy: 2, feeInflationBps: 1000 }, returnBps ?? 1000);
+    await raw('Retirement', 'retirement', [{ name: 'Retirement fund', targetMinor: 4_120_008_061, targetMonths: null, dueOn: '2044-06-01' }],
+      { annualSpendTodayMinor: 120_000_000, yearsToRetirement: 20, yearsInRetirement: 20, inflationBps: 350, returnInRetirementBps: 500 }, 900);
+    await raw('Emergency fund', 'emergency', [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2026-06-01' }], { months: 6 }, 200);
+    // v2 education: one level typed, one untyped, one year paid — worked out two years back.
+    const goalId = await saveGoal(database, ws, { name: 'Aisha', kind: 'education', growthBps: 1000, returnBps: 800, stages: [{ name: 'x', targetMinor: 1, targetMonths: null, dueOn: '2032-01-01' }] });
+    const fee = [{ id: 'a', name: 'Academic', amountTodayMinor: 20_000_000, charged: 'yearly' as const }];
+    await saveGoalCalculator(database, ws, {
+      goalId, kind: 'education', today: '2024-06-01',
+      inputs: { version: 2, birthday: null, feeInflationBps: 1000, levels: [
+        { id: 'primary', name: 'Primary', startAge: null, untilAge: null, startYear: 2027, untilYear: 2029, returnBps: null, fees: fee },
+        { id: 'middle', name: 'Middle', startAge: null, untilAge: null, startYear: 2030, untilYear: 2031, returnBps: 450, fees: fee },
+      ] },
+    });
+    await setStagePaid(database, ws, (await listGoals(database, ws)).find((goal) => goal.id === goalId)!.stages[0]!.id, '2024-06-02');
+  }
+
+  const snapshot = async (database: Awaited<ReturnType<typeof setupDb>>['database']) =>
+    Promise.all(['goals', 'goal_stages', 'goal_stage_terms', 'goal_calculators'].map((table) => database.db.all(sql.raw(`SELECT * FROM ${table} ORDER BY 1, 2`))));
+
+  const openApp = async (database: Awaited<ReturnType<typeof setupDb>>['database'], today: string) => {
+    const changed: string[] = [];
+    for (const each of await listWorkspaces(database)) changed.push(...(await upgradeCalculatorGoals(database, contextOf(each), today)));
+    return changed;
+  };
+
+  it('changes nothing the second time, in any workspace', async () => {
+    const { database, ws } = await setupDb('IDR');
+    const usd = await createWorkspace(database, { name: 'Abroad', type: 'personal', baseCurrency: 'USD' });
+    await fill(database, ws);
+    await fill(database, usd);
+
+    expect(await openApp(database, '2026-09-21')).toHaveLength(8);
+    const once = await snapshot(database);
+    expect(await openApp(database, '2026-09-21')).toEqual([]);
+    expect(await snapshot(database)).toEqual(once);
+  });
+});

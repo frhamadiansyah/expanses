@@ -127,8 +127,12 @@ export function educationPlanStages(inputs: EducationPlanInputs, today: string):
   });
 }
 
-/** A working from before levels existed: one course, in calendar years counted from the day it was worked out. */
-export function educationFromV1(v1: EducationInputs, computedOn: string): EducationPlanInputs {
+/**
+ * A working from before levels existed: one course, in calendar years counted from the day it was worked out. The
+ * goal's own return, when given, becomes the course's typed return — a saved return is never rewritten (spec §8), and
+ * a typed return is one the bands leave alone.
+ */
+export function educationFromV1(v1: EducationInputs, computedOn: string, goalReturnBps: number | null = null): EducationPlanInputs {
   const startYear = Number(computedOn.slice(0, 4)) + Math.round(v1.startsInYears);
   return {
     version: 2,
@@ -142,7 +146,7 @@ export function educationFromV1(v1: EducationInputs, computedOn: string): Educat
         untilAge: null,
         startYear,
         untilYear: startYear + Math.round(v1.yearsOfStudy),
-        returnBps: null,
+        returnBps: goalReturnBps,
         fees: [{ id: 'fee', name: 'Fee', amountTodayMinor: v1.feeTodayMinor, charged: 'yearly' }],
       },
     ],

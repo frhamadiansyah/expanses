@@ -120,6 +120,12 @@ describe('a working from before levels', () => {
     });
   });
 
+  it('keeps the goal’s own return as the course’s typed return, so the upgrade never rewrites it (spec §8)', () => {
+    const plan = educationFromV1({ feeTodayMinor: 100_000_000, startsInYears: 10, yearsOfStudy: 4, feeInflationBps: 1000 }, '2026-09-13', 1000);
+    expect(plan.levels[0]!.returnBps).toBe(1000);
+    expect(educationPlanStages(plan, '2026-09-21').map((stage) => stage.returnBps)).toEqual([1000, 1000, 1000, 1000]);
+  });
+
   it('rounds a part year, unlike v1’s own Date.UTC, which truncated it', () => {
     // Math.round(2.5) = 3, so 2026 + 3 = 2029 — not the 2028 that Math.floor (v1's own Date.UTC coercion)
     // would give. Math.round(3.5) = 4, so the course runs 2029..2033, not 2028..2032.

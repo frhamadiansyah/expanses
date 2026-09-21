@@ -74,8 +74,12 @@ interface Derived {
 
 const isV1Education = (inputs: CalculatorInputs): inputs is EducationInputs => 'feeTodayMinor' in inputs;
 
-/** What a calculator's inputs imply, in today's money — the goal engine inflates once, at the growth given here. */
-function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goalName: string): Derived {
+/**
+ * What a calculator's inputs imply, in today's money — the goal engine inflates once, at the growth given here.
+ * `today` dates the working; `returnsOn` is the day a level's band is read from (months left from today, Q8), which
+ * for a v1 working upgraded on open is today, not the day it was first worked out.
+ */
+function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goalName: string, returnsOn = today): Derived {
   if (kind === 'emergency') {
     const inputs = raw as EmergencyInputs;
     const { months, household, income, base } = inputs;
@@ -95,7 +99,7 @@ function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goal
 
   if (kind === 'education') {
     const inputs = isV1Education(raw) ? educationFromV1(raw, today) : (raw as EducationPlanInputs);
-    const stages = educationPlanStages(inputs, today);
+    const stages = educationPlanStages(inputs, returnsOn);
     return {
       inputs,
       stages: stages.map((stage) => ({
@@ -265,7 +269,9 @@ export async function saveGoalCalculator(database: Database, ws: WorkspaceContex
     const inputs =
       input.kind === 'retirement' && (input.inputs as RetirementInputs).returnBeforeBps === undefined
         ? { ...(input.inputs as RetirementInputs), returnBeforeBps: goal.returnBps }
-        : input.inputs;
+        : input.kind === 'education' && isV1Education(input.inputs)
+          ? educationFromV1(input.inputs, input.today, goal.returnBps)
+          : input.inputs;
     const derived = derive(input.kind, inputs, input.today, goal.name);
     await writeCalculatorTx(tx, ws, goal, input.kind, derived);
     return derived.computedMinor;
@@ -405,11 +411,17 @@ export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceCo
     const goal = goals.find((candidate) => candidate.id === row.goalId);
     if (!goal) continue;
     const workedOn = isV2(row) ? today : v1WorkedOn(row, goal);
-    // A retirement worked out before kept the goal's own return; it stays the return while saving.
-    const inputs = row.kind === 'retirement' ? { ...(row.inputs as RetirementInputs), returnBeforeBps: goal.returnBps } : row.inputs;
+    // A working from before kept the goal's own return (spec §8): retirement's stays the return while saving, and a
+    // one-course education's becomes the course's typed return, so no band ever replaces it.
+    const inputs =
+      row.kind === 'retirement'
+        ? { ...(row.inputs as RetirementInputs), returnBeforeBps: goal.returnBps }
+        : row.kind === 'education' && isV1Education(row.inputs)
+          ? educationFromV1(row.inputs, workedOn, goal.returnBps)
+          : row.inputs;
     let derived: Derived;
     try {
-      derived = derive(row.kind, inputs, workedOn, goal.name);
+      derived = derive(row.kind, inputs, workedOn, goal.name, today);
     } catch {
       continue; // A working the rules now refuse is left exactly as it is, not half-rewritten.
     }
