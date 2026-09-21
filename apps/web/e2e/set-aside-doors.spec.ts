@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { addMoneyAccount, goalCard, jeniusWithTwoGoals, openExpense, typeAmount } from './set-aside';
+import { addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
 
 /*
  * Every door that pays money out of an account with money set aside, on the laptop's figures: Jenius holds
@@ -21,7 +21,8 @@ const LAST_MONTH = local(new Date(now.getFullYear(), now.getMonth() - 1, 15));
 
 async function expectShort(page: Page, goal: string, figure: RegExp) {
   await page.goto('/goals');
-  await expect(goalCard(page, goal).getByText(figure)).toBeVisible();
+  // The card says it twice since Task 13 — under the figure and on the Funded-by row — and both carry the same figure.
+  await expect(goalCard(page, goal).getByText(figure).first()).toBeVisible();
 }
 
 /** Answers the question in `scope`: the Emergency fund, borrowing. */
@@ -170,6 +171,32 @@ test('paying several bills asks once for what they take together, spread over th
   await expect(sheet).toHaveCount(0);
 
   await expectShort(page, 'Emergency fund', /short by Rp.2\.000\.000/i);
+});
+
+test('paying several bills with "Yes" counts the whole paid total against the goal, as one payment would', async ({ page }) => {
+  await jeniusWithTwoGoals(page);
+  await addBill(page, 'Rent', '3000000');
+  await addBill(page, 'School', '4000000');
+  await page.getByRole('button', { name: 'Select bills to pay' }).click();
+  await page.getByRole('checkbox', { name: 'Select Rent' }).click();
+  await page.getByRole('checkbox', { name: 'Select School' }).click();
+  await page.getByRole('button', { name: /^Pay 2 selected/ }).click();
+
+  const sheet = page.getByRole('dialog', { name: 'Pay several' });
+  await expect(sheet.getByText(/2\.000\.000 more than is free/)).toBeVisible();
+  await sheet.getByRole('button', { name: 'Take from Umrah 2027' }).click();
+  await sheet.getByRole('button', { name: 'Yes — this is what I saved for' }).click();
+  await sheet.getByRole('button', { name: 'Record 2 bills' }).click();
+  await expect(sheet).toHaveCount(0);
+
+  // 7.500.000 − (3.000.000 + 4.000.000) = 500.000 left promised. Spending only the bill that went over leaves 3.500.000.
+  await page.goto('/goals');
+  await expect(goalCard(page, 'Umrah 2027').getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/Rp.500\.000/);
+  await expect(goalCard(page, 'Umrah 2027').getByText('Done', { exact: true })).toBeVisible();
+  // And the free money is left free: 35.500.000 held − 30.500.000 promised = 5.000.000, as before the bills.
+  await openAccountPage(page, 'Jenius');
+  await expect(page.getByText(/^Rp.5\.000\.000$/).first()).toBeVisible();
+  await expect(page.getByText(/^Rp.30\.500\.000$/).first()).toBeVisible();
 });
 
 // ── Loans ─────────────────────────────────────────────────────────────────────────────────────────────────────────

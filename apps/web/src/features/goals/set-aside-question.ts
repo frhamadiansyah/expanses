@@ -1,4 +1,4 @@
-import { outflowFrom, type SetAsideCheck } from '@expanses/core';
+import { outflowFrom, type SetAsideCheck, spreadOver } from '@expanses/core';
 import type { AccountRow, RecordTradeInput, SetAsideChoice, SetAsideIntent } from '@expanses/db';
 import { type FormDraft, type FormPost, formToPost } from '../transactions/tx-form';
 
@@ -138,4 +138,34 @@ export function choiceOf(check: SetAsideCheck, answer: SetAsideAnswer | null, do
     wasWhole: borrowing,
     wholeSince: borrowing ? whole!.since : null,
   };
+}
+
+/**
+ * What each payment from one account carries when several are paid together under one answer (Pay several), so the
+ * answer does to the goal what it does to one payment of the same total (ruling M5).
+ *
+ * A borrow is what went over the free money, spread across the payments in order (`spreadOver`): one that still fit
+ * carries nothing. A spend is the whole payment up to what the goal promised (Q2): every payment carries it until the
+ * promise is used up, and only the first pays a stage (`stageId: null` after it) — one payment, one stage.
+ */
+export function payerChoices(
+  choice: SetAsideChoice | null,
+  amounts: readonly number[],
+  freeMinor: number | null,
+  promisedMinor: number,
+): (SetAsideChoice | null)[] {
+  if (!choice) return amounts.map(() => null);
+  if (choice.intent === 'spend') {
+    let left = promisedMinor;
+    let first = true;
+    return amounts.map((amount) => {
+      if (!(amount > 0) || left <= 0) return null;
+      left -= amount;
+      const carried: SetAsideChoice = first ? { ...choice, overMinor: amount } : { ...choice, overMinor: amount, stageId: null };
+      first = false;
+      return carried;
+    });
+  }
+  const overs = freeMinor === null ? amounts.map(() => 0) : spreadOver(amounts, freeMinor);
+  return overs.map((over) => (over > 0 ? { ...choice, overMinor: over } : null));
 }

@@ -2,7 +2,7 @@ import type { SetAsideCheck } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { emptyForm, type FormDraft, type FormPost } from '../transactions/tx-form';
-import { BORROW_ONLY, choiceOf, doorOfForm, MOVING, postForDoor, readyOf, SPENDING, spendingDoor, tradeDoor } from './set-aside-question';
+import { BORROW_ONLY, choiceOf, doorOfForm, MOVING, payerChoices, postForDoor, readyOf, SPENDING, spendingDoor, tradeDoor } from './set-aside-question';
 
 const account = (id: string, partial: Partial<AccountRow> = {}) => ({ id, name: id, kind: 'asset', subtype: 'savings', currency: 'IDR', ...partial }) as AccountRow;
 const ACCOUNTS = [account('jenius'), account('bca', { subtype: 'bank' }), account('card', { kind: 'liability', subtype: 'credit_card' }), account('gold', { subtype: 'investment' }), account('usd', { currency: 'USD' })];
@@ -104,6 +104,19 @@ describe('an answer the door no longer offers', () => {
     expect(choiceOf(ask, { goalId: 'ef', intent: 'move' }, toCard)).toBeNull();
   });
 
+  it('a door that only borrows sends a borrow, whatever answer was picked before the door changed (I5)', () => {
+    // "Yes" picked on the expense, then the To turned it into a tagged transfer: the door now only borrows.
+    const tagged = { ...spendingDoor('jenius', 6_800_000)!, intents: BORROW_ONLY, ownGoalId: 'umrah' };
+    expect(readyOf(ask, { goalId: 'ef', intent: 'spend' }, tagged)).toBe(true);
+    expect(choiceOf(ask, { goalId: 'ef', intent: 'spend' }, tagged)).toMatchObject({ intent: 'borrow', goalId: 'ef', overMinor: 1_800_000 });
+    expect(choiceOf(ask, { goalId: 'ef', intent: 'move' }, tagged)).toMatchObject({ intent: 'borrow', toAccountId: null });
+  });
+
+  it('a borrow on a door that could move carries no destination (M1, W14)', () => {
+    const moving = { ...spendingDoor('jenius', 20_000_000)!, intents: MOVING, toAccountId: 'bca' };
+    expect(choiceOf(ask, { goalId: 'ef', intent: 'borrow' }, moving)).toMatchObject({ intent: 'borrow', toAccountId: null });
+  });
+
   it('nor is a goal the question no longer lists', () => {
     const door = spendingDoor('jenius', 6_800_000)!;
     expect(readyOf(ask, { goalId: 'umrah', intent: 'borrow' }, door)).toBe(false);
@@ -128,5 +141,32 @@ describe('postForDoor', () => {
   it('has no door while the figure or the account is missing', () => {
     expect(postForDoor(draft({ mode: 'expense', moneyId: 'jenius', amount: '' }), ACCOUNTS)).toBeNull();
     expect(postForDoor(draft({ mode: 'expense', moneyId: '', amount: '5000' }), ACCOUNTS)).toBeNull();
+  });
+});
+
+describe('payerChoices: several bills from one account under one answer (M5)', () => {
+  const base = { accountId: 'jenius', goalId: 'umrah', overMinor: 2_000_000 } as const;
+
+  it('spreads a borrow: a bill that still fit what was free carries nothing', () => {
+    // 3.000.000 fits the 5.000.000 free; 4.000.000 takes it 2.000.000 over.
+    expect(payerChoices({ ...base, intent: 'borrow' }, [3_000_000, 4_000_000], 5_000_000, 7_500_000)).toEqual([null, { ...base, intent: 'borrow', overMinor: 2_000_000 }]);
+  });
+
+  it('spends the whole of every bill up to the promise, as one payment of the same total would, and pays one stage', () => {
+    const out = payerChoices({ ...base, intent: 'spend' }, [3_000_000, 4_000_000], 5_000_000, 7_500_000);
+    // Spreading it like a borrow would send the 3.000.000 bill with no answer, and the goal would lose only 4.000.000.
+    expect(out).toEqual([
+      { ...base, intent: 'spend', overMinor: 3_000_000 },
+      { ...base, intent: 'spend', overMinor: 4_000_000, stageId: null },
+    ]);
+  });
+
+  it('stops once the promise is used up, so a later bill is not refused for a promise that is gone', () => {
+    const out = payerChoices({ ...base, intent: 'spend' }, [5_000_000, 4_000_000, 1_000_000], 0, 7_500_000);
+    expect(out.map((choice) => choice?.overMinor ?? null)).toEqual([5_000_000, 4_000_000, null]);
+  });
+
+  it('carries nothing without an answer', () => {
+    expect(payerChoices(null, [3_000_000, 4_000_000], 5_000_000, 0)).toEqual([null, null]);
   });
 });

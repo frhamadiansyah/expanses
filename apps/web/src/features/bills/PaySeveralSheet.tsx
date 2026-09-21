@@ -1,11 +1,11 @@
-import { parseMajor, spreadOver } from '@expanses/core';
+import { parseMajor } from '@expanses/core';
 import { type MonthlyBill, recordBillPayments, type SetAsideChoice } from '@expanses/db';
 import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Input, Money } from '../../ui';
-import { spendingDoor } from '../goals/set-aside-question';
+import { payerChoices, spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { pillOf } from './bill-view';
 
@@ -14,6 +14,8 @@ interface PayerAnswer {
   ready: boolean;
   /** What the account had free when the question asked; null when it did not ask. */
   freeMinor: number | null;
+  /** What the goal picked promised on the account, in its money; 0 when nothing was picked. */
+  promisedMinor: number;
 }
 
 /**
@@ -24,9 +26,10 @@ function PayerQuestion({ accountId, total, onChange }: { accountId: string; tota
   const setAside = useSetAside(spendingDoor(accountId, total));
   const freeMinor = setAside.check.kind === 'ask' ? setAside.check.freeMinor : null;
   const { choice, ready } = setAside;
-  const key = JSON.stringify({ choice, ready, freeMinor });
+  const promisedMinor = (setAside.check.kind === 'ask' && setAside.check.goals.find((goal) => goal.goalId === choice?.goalId)?.promisedMinor) || 0;
+  const key = JSON.stringify({ choice, ready, freeMinor, promisedMinor });
   useEffect(() => {
-    onChange(accountId, { choice, ready, freeMinor });
+    onChange(accountId, { choice, ready, freeMinor, promisedMinor });
     // Keyed on what the answer says, not on the object's identity, which is new on every render.
   }, [accountId, key]);
   return <>{setAside.node}</>;
@@ -95,26 +98,24 @@ export function PaySeveralSheet({
     setError(null);
     setBusy(true);
     try {
-      // What went over the free money, spread across each account's payments in order: a bill that still fit
-      // what was free carries no answer, and the ones after it carry what they took beyond it.
-      const overs = new Map<string, number[]>();
+      // Each account's answer, laid over its payments in order: a borrow is what went over the free money, spread; a
+      // spend is the whole of each payment up to the promise, as one payment of the same total would be.
+      const carried = new Map<string, (SetAsideChoice | null)[]>();
       for (const payer of payers) {
         const answer = answers[payer];
         const mine = chosen.filter((bill) => bill.moneyAccountId === payer);
-        overs.set(payer, answer?.choice && answer.freeMinor !== null ? spreadOver(mine.map(amountOf), answer.freeMinor) : mine.map(() => 0));
+        carried.set(payer, payerChoices(answer?.choice ?? null, mine.map(amountOf), answer?.freeMinor ?? null, answer?.promisedMinor ?? 0));
       }
       const payments = chosen.map((bill) => {
         const currency = currencyOf(bill.moneyAccountId);
         const typed = amounts[bill.id]?.trim();
         const index = chosen.filter((other) => other.moneyAccountId === bill.moneyAccountId).indexOf(bill);
-        const over = overs.get(bill.moneyAccountId)![index]!;
-        const choice = answers[bill.moneyAccountId]?.choice;
         return {
           templateId: bill.id,
           billMonth: bill.billMonth,
           // Parsed here as it always was, so a figure that does not parse still says so.
           amountMinor: bill.amountMinor ?? (typed ? parseMajor(typed, currency) : 0),
-          setAside: choice && over > 0 ? { ...choice, overMinor: over } : null,
+          setAside: carried.get(bill.moneyAccountId)![index] ?? null,
         };
       });
       if (payments.some((payment) => !(payment.amountMinor > 0))) {
