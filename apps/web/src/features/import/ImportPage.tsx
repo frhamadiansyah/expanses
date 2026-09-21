@@ -1,9 +1,10 @@
 import { type CsvDateFormat, type CsvMapping, type CsvRow, detectDelimiter, formatMinor, mapCsvRows, parseCsv } from '@expanses/core';
 import { captureDrafts, existingExternalRefs, importRows } from '@expanses/db';
-import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { Button, Card, cx, ErrorBox, Field, PageHeader, Select } from '../../ui';
+import { ErrorBox, Select } from '../../ui';
+import { Figure, type GroupChild, InsetGroup, InsetRow, LargeTitle, RecordTable, SCREEN, SelectRow, SwitchRow } from '../../ui/native';
 
 const PREVIEW_LIMIT = 300;
 
@@ -52,6 +53,8 @@ export function ImportPage() {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // The real chooser, kept in the DOM behind a row: the row is its face, and the file is still the file.
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const account = all.find((a) => a.id === accountId);
   const currency = account?.currency ?? ws.baseCurrency;
@@ -89,17 +92,17 @@ export function ImportPage() {
   const set = (patch: Partial<CsvMapping>) => setMapping((m) => (m ? { ...m, ...patch } : m));
   const width = Math.max(0, ...table.slice(0, 5).map((r) => r.length));
   const columnNames = Array.from({ length: width }, (_, i) => (mapping?.hasHeader && table[0]?.[i] ? table[0][i]! : `Column ${i + 1}${table[0]?.[i] ? ` (${table[0][i]})` : ''}`));
-  const ColumnSelect = ({ label, value, onChange, allowNone }: { label: string; value: number | null; onChange: (v: number | null) => void; allowNone?: boolean }) => (
-    <Field label={label}>
-      <Select value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}>
-        {allowNone && <option value="">—</option>}
-        {columnNames.map((name, i) => (
-          <option key={i} value={i}>
-            {name}
-          </option>
-        ))}
-      </Select>
-    </Field>
+  const ColumnSelect = ({ label, value, onChange, allowNone, position }: GroupChild & { label: string; value: number | null; onChange: (v: number | null) => void; allowNone?: boolean }) => (
+    // `position` is handed on, not swallowed: `InsetGroup` clones each child to give it its place in the group,
+    // and a wrapper that dropped it would draw every one of these rows without its hairline.
+    <SelectRow position={position} label={label} value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}>
+      {allowNone && <option value="">—</option>}
+      {columnNames.map((name, i) => (
+        <option key={i} value={i}>
+          {name}
+        </option>
+      ))}
+    </SelectRow>
   );
 
   const toImport = mapped.rows.filter((r) => !duplicates.has(r.externalRef) && categoryFor(r));
@@ -179,150 +182,164 @@ export function ImportPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Import CSV" />
-      <Card className="grid gap-3 md:grid-cols-2">
-        <Field label="Into account">
-          <Select
-            value={accountId}
-            onChange={(e) => {
-              const next = all.find((a) => a.id === e.target.value);
-              setAccountId(e.target.value);
-              setMapping((m) => (m ? { ...m, negativeIsOutflow: next?.subtype !== 'credit_card' } : m));
-              setOverrides({});
-            }}
-          >
-            <option value="">Choose…</option>
-            {money.map((a) => (
-              <option key={a.id} value={a.id}>{`${a.name} (${a.currency})`}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="CSV file" hint="Export from your bank or card portal. Re-importing the same file skips rows already imported.">
-          <input type="file" accept=".csv,text/csv" onChange={(e) => void onFile(e)} disabled={!accountId} className="block w-full text-sm" />
-        </Field>
-      </Card>
-      {result && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{result}</p>}
+    <div className={SCREEN}>
+      <LargeTitle title="Import CSV" />
       <ErrorBox error={error} />
+
+      {/* The row opens the platform's own chooser; this is the chooser, so the file the app reads is the file. */}
+      <input ref={fileInput} type="file" accept=".csv,text/csv" onChange={(e) => void onFile(e)} className="sr-only" tabIndex={-1} />
+
+      <InsetGroup header="What to import" footer="Export from your bank or card portal. Re-importing the same file skips rows already imported.">
+        <SelectRow
+          label="Into account"
+          value={accountId}
+          onChange={(e) => {
+            const next = all.find((a) => a.id === e.target.value);
+            setAccountId(e.target.value);
+            setMapping((m) => (m ? { ...m, negativeIsOutflow: next?.subtype !== 'credit_card' } : m));
+            setOverrides({});
+          }}
+        >
+          <option value="">Choose…</option>
+          {money.map((a) => (
+            <option key={a.id} value={a.id}>{`${a.name} (${a.currency})`}</option>
+          ))}
+        </SelectRow>
+        {/* Dimmed and refusing the tap until an account is named, as every dimmed action row on this branch is. */}
+        <InsetRow
+          title="CSV file"
+          subtitle={mapping ? fileName : undefined}
+          value={mapping ? 'Choose another' : 'Choose…'}
+          chevron={false}
+          className={accountId ? undefined : 'opacity-40'}
+          onClick={() => accountId && fileInput.current?.click()}
+        />
+      </InsetGroup>
+
+      {result && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">{result}</p>}
 
       {mapping && account && (
         <>
-          <Card className="grid gap-3 md:grid-cols-3">
-            <label className="flex items-center gap-2 text-sm md:col-span-3">
-              <input type="checkbox" checked={mapping.hasHeader} onChange={(e) => set({ hasHeader: e.target.checked })} />
-              First row is a header
-            </label>
+          <InsetGroup header="Columns">
+            <SwitchRow label="First row is a header" checked={mapping.hasHeader} onChange={(hasHeader) => set({ hasHeader })} />
             <ColumnSelect label="Date column" value={mapping.dateColumn} onChange={(v) => set({ dateColumn: v ?? 0 })} />
-            <Field label="Date format">
-              <Select value={mapping.dateFormat} onChange={(e) => set({ dateFormat: e.target.value as CsvDateFormat })}>
-                <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-              </Select>
-            </Field>
+            <SelectRow label="Date format" value={mapping.dateFormat} onChange={(e) => set({ dateFormat: e.target.value as CsvDateFormat })}>
+              <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+              <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+              <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+            </SelectRow>
             <ColumnSelect label="Description column" value={mapping.descriptionColumn} onChange={(v) => set({ descriptionColumn: v ?? 0 })} />
-            <Field label="Amounts">
-              <Select
-                value={mapping.amountColumn === null ? 'two' : 'one'}
-                onChange={(e) => set(e.target.value === 'two' ? { amountColumn: null, outflowColumn: 0, inflowColumn: 1 } : { amountColumn: 0, outflowColumn: null, inflowColumn: null })}
-              >
-                <option value="one">One amount column</option>
-                <option value="two">Separate debit and credit columns</option>
-              </Select>
-            </Field>
-            {mapping.amountColumn !== null ? (
-              <>
-                <ColumnSelect label="Amount column" value={mapping.amountColumn} onChange={(v) => set({ amountColumn: v ?? 0 })} />
-                <Field label="Sign">
-                  <Select value={mapping.negativeIsOutflow ? 'neg' : 'pos'} onChange={(e) => set({ negativeIsOutflow: e.target.value === 'neg' })}>
-                    <option value="neg">Negative = money out (bank)</option>
-                    <option value="pos">Positive = charge (credit card)</option>
-                  </Select>
-                </Field>
-              </>
-            ) : (
-              <>
-                <ColumnSelect label="Money out (debit)" value={mapping.outflowColumn} onChange={(v) => set({ outflowColumn: v })} allowNone />
-                <ColumnSelect label="Money in (credit)" value={mapping.inflowColumn} onChange={(v) => set({ inflowColumn: v })} allowNone />
-              </>
+            <SelectRow
+              label="Amounts"
+              value={mapping.amountColumn === null ? 'two' : 'one'}
+              onChange={(e) => set(e.target.value === 'two' ? { amountColumn: null, outflowColumn: 0, inflowColumn: 1 } : { amountColumn: 0, outflowColumn: null, inflowColumn: null })}
+            >
+              <option value="one">One amount column</option>
+              <option value="two">Separate debit and credit columns</option>
+            </SelectRow>
+            {/*
+             * Two ways of reading a file's money, and only one of them at a time — written as four conditionals
+             * rather than one branch of fragments, because `InsetGroup` hands each *child* its place in the group
+             * and a fragment is a single child, which would leave one of its two rows unplaced.
+             */}
+            {mapping.amountColumn !== null && <ColumnSelect label="Amount column" value={mapping.amountColumn} onChange={(v) => set({ amountColumn: v ?? 0 })} />}
+            {mapping.amountColumn !== null && (
+              <SelectRow label="Sign" value={mapping.negativeIsOutflow ? 'neg' : 'pos'} onChange={(e) => set({ negativeIsOutflow: e.target.value === 'neg' })}>
+                <option value="neg">Negative = money out (bank)</option>
+                <option value="pos">Positive = charge (credit card)</option>
+              </SelectRow>
             )}
-          </Card>
+            {mapping.amountColumn === null && <ColumnSelect label="Money out (debit)" value={mapping.outflowColumn} onChange={(v) => set({ outflowColumn: v })} allowNone />}
+            {mapping.amountColumn === null && <ColumnSelect label="Money in (credit)" value={mapping.inflowColumn} onChange={(v) => set({ inflowColumn: v })} allowNone />}
+          </InsetGroup>
 
-          <Card>
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-slate-600">
-                {mapped.rows.length} rows · {duplicates.size} already imported · {mapped.errors.length} unreadable
-                {account.subtype === 'credit_card' && ' · Card payments default to Skip — record them as transfers from your bank.'}
-              </p>
-              <span className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => void onSendToReview()} disabled={busy || toReview.length === 0}>
-                  Send {toReview.length} to review
-                </Button>
-                <Button onClick={() => void onImport()} disabled={busy || toImport.length === 0}>
-                  Import {toImport.length} rows
-                </Button>
-              </span>
-            </div>
-            {mapped.errors.length > 0 && (
-              <ul className="mb-2 text-xs text-red-700">
-                {mapped.errors.slice(0, 10).map((e) => (
-                  <li key={e.rowNumber}>
-                    Row {e.rowNumber}: {e.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-slate-500">
-                    <th className="py-1 pr-2">Date</th>
-                    <th className="py-1 pr-2">Description</th>
-                    <th className="py-1 pr-2 text-right">Amount</th>
-                    <th className="py-1">Category</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mapped.rows.slice(0, PREVIEW_LIMIT).map((row) => {
-                    const duplicate = duplicates.has(row.externalRef);
-                    return (
-                      <tr key={row.externalRef} className={cx('border-t border-slate-100', duplicate && 'opacity-50')}>
-                        <td className="py-1 pr-2 whitespace-nowrap">{row.occurredOn}</td>
-                        <td className="py-1 pr-2">{row.description}</td>
-                        <td className={cx('tabular py-1 pr-2 text-right whitespace-nowrap', row.amountMinor > 0 ? 'text-red-700' : 'text-emerald-700')}>
-                          {row.amountMinor > 0 ? '−' : '+'}
-                          {formatMinor(Math.abs(row.amountMinor), currency)}
-                        </td>
-                        <td className="py-1">
-                          {duplicate ? (
-                            <span className="text-xs">Already imported</span>
-                          ) : (
-                            <Select aria-label={`Category for row ${row.rowNumber}`} value={categoryFor(row)} onChange={(e) => setOverrides({ ...overrides, [row.externalRef]: e.target.value })} className="py-1">
-                              <option value="">Skip</option>
-                              {(['expense', 'income'] as const).map((kind) => (
-                                <optgroup key={kind} label={kind === 'expense' ? 'Expense' : 'Income'}>
-                                  {/* An imported row is real spending, so it may only name the open workspace's categories — as
-                                      the draft queue and every recording picker already do. */}
-                                  {all
-                                    .filter((a) => a.kind === kind && a.archivedAt === null && inOpenBook(a))
-                                    .map((a) => (
-                                      <option key={a.id} value={a.id}>
-                                        {a.parentId ? `  ${a.name}` : a.name}
-                                      </option>
-                                    ))}
-                                </optgroup>
-                              ))}
-                            </Select>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {mapped.rows.length > PREVIEW_LIMIT && <p className="mt-2 text-xs text-slate-500">Showing first {PREVIEW_LIMIT} rows; all {mapped.rows.length} will import.</p>}
-            </div>
-          </Card>
+          <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+            {mapped.rows.length} rows · {duplicates.size} already imported · {mapped.errors.length} unreadable
+            {account.subtype === 'credit_card' && ' · Card payments default to Skip — record them as transfers from your bank.'}
+          </p>
+          {mapped.errors.length > 0 && (
+            <ul className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-alarm)]">
+              {mapped.errors.slice(0, 10).map((e) => (
+                <li key={e.rowNumber}>
+                  Row {e.rowNumber}: {e.message}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Two ways on with the file, both rows: the kit's one shape for an action, dimmed while it cannot run. */}
+          <InsetGroup>
+            <InsetRow
+              title={`Send ${toReview.length} to review`}
+              chevron={false}
+              className={busy || toReview.length === 0 ? 'opacity-40' : undefined}
+              onClick={() => !busy && void onSendToReview()}
+            />
+            <InsetRow
+              title={`Import ${toImport.length} rows`}
+              chevron={false}
+              className={busy || toImport.length === 0 ? 'opacity-40' : undefined}
+              onClick={() => !busy && void onImport()}
+            />
+          </InsetGroup>
+          {/*
+           * A row's category is chosen here, so the table stays a table on a phone — the same ruling `/review`
+           * makes, and `detail` is how it is said rather than left to be inferred from a missing column.
+           */}
+          <RecordTable
+            header="What will be imported"
+            records={mapped.rows.slice(0, PREVIEW_LIMIT)}
+            detail={{ kind: 'none' }}
+            shape={{
+              key: (row) => row.externalRef,
+              title: (row) => row.description,
+              subtitle: (row) => row.occurredOn,
+              value: (row) => <Figure>{`${row.amountMinor > 0 ? '−' : '+'}${formatMinor(Math.abs(row.amountMinor), currency)}`}</Figure>,
+            }}
+            columns={[
+              { key: 'date', heading: 'Date', cell: (row) => <span className="whitespace-nowrap">{row.occurredOn}</span> },
+              { key: 'description', heading: 'Description', cell: (row) => row.description },
+              {
+                key: 'amount',
+                heading: 'Amount',
+                numeric: true,
+                cell: (row) => <Figure>{`${row.amountMinor > 0 ? '−' : '+'}${formatMinor(Math.abs(row.amountMinor), currency)}`}</Figure>,
+              },
+              {
+                key: 'category',
+                heading: 'Category',
+                cell: (row) =>
+                  duplicates.has(row.externalRef) ? (
+                    <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Already imported</span>
+                  ) : (
+                    <Select
+                      aria-label={`Category for row ${row.rowNumber}`}
+                      value={categoryFor(row)}
+                      onChange={(e) => setOverrides({ ...overrides, [row.externalRef]: e.target.value })}
+                      className="py-1"
+                    >
+                      <option value="">Skip</option>
+                      {(['expense', 'income'] as const).map((kind) => (
+                        <optgroup key={kind} label={kind === 'expense' ? 'Expense' : 'Income'}>
+                          {/* An imported row is real spending, so it may only name the open workspace's categories — as
+                              the draft queue and every recording picker already do. */}
+                          {all
+                            .filter((a) => a.kind === kind && a.archivedAt === null && inOpenBook(a))
+                            .map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.parentId ? `  ${a.name}` : a.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      ))}
+                    </Select>
+                  ),
+              },
+            ]}
+          />
+          {mapped.rows.length > PREVIEW_LIMIT && (
+            <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Showing first {PREVIEW_LIMIT} rows; all {mapped.rows.length} will import.</p>
+          )}
         </>
       )}
     </div>
