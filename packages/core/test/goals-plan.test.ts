@@ -206,15 +206,27 @@ describe('fitByRank', () => {
     goal({ id: 'retire', name: 'Retirement', kind: 'retirement', rank: 4, stages: [] }),
   ];
 
-  it('funds goals by rank until the money runs out', () => {
+  it('funds compulsory goals first, then by rank, until the money runs out', () => {
     const fits = fitByRank(plans, goals, 7_000_000);
+    // Retirement is compulsory, so it follows the emergency fund though it is ranked last.
     expect(fits.map((fit) => [fit.goalId, fit.fits])).toEqual([
       ['ef', 'full'],
+      ['retire', 'partial'],
+      ['hajj', 'none'],
+      ['edu', 'none'],
+    ]);
+    expect(fits[1]!.fundedMonthlyMinor).toBe(7_000_000 - 5_000_000);
+  });
+
+  it('funds additional goals by rank once the compulsory ones are covered', () => {
+    const fits = fitByRank(plans, goals, 19_000_000);
+    expect(fits.map((fit) => [fit.goalId, fit.fits])).toEqual([
+      ['ef', 'full'],
+      ['retire', 'full'],
       ['hajj', 'full'],
       ['edu', 'partial'],
-      ['retire', 'none'],
     ]);
-    expect(fits[2]!.fundedMonthlyMinor).toBe(7_000_000 - 5_000_000 - 600_000);
+    expect(fits[3]!.fundedMonthlyMinor).toBe(19_000_000 - 5_000_000 - 12_000_000 - 600_000);
   });
 
   it('funds everything when there is enough to go round', () => {

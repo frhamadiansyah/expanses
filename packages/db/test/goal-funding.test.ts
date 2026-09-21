@@ -326,6 +326,18 @@ describe('goalPlansFor', () => {
     expect((await goalPlansFor(database, ws, TODAY)).capacityMonthlyMinor).toBe(5_000_000);
   });
 
+  it('fits the emergency fund first, though it was ranked last', async () => {
+    await salaryAndSpending();
+    const emergencyId = await saveGoal(database, ws, {
+      name: 'Emergency fund',
+      kind: 'emergency',
+      growthBps: 0,
+      returnBps: 200,
+      stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2027-09-12' }],
+    });
+    expect((await goalPlansFor(database, ws, TODAY)).fits[0]!.goalId).toBe(emergencyId);
+  });
+
   it('warns when more is set aside than the account holds', async () => {
     await saveEarmark(database, ws, { goalId: hajjId, accountId: bca.id, amountMinor: 80_000_000 });
 

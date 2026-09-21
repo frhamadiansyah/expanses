@@ -1,5 +1,6 @@
 import type { Risk } from '../assets/presets';
 import { roundHalfAwayFromZero } from '../money/money';
+import { fundingOrder } from './classes';
 
 export type GoalKind = 'emergency' | 'hajj' | 'umrah' | 'education' | 'retirement' | 'home' | 'wedding' | 'vehicle' | 'holiday' | 'other';
 
@@ -176,10 +177,14 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
   };
 }
 
-/** Fills goals from what you can save, best-ranked first, so you can see which ones fit. */
+/** Fills goals from what you can save: compulsory goals first, then additional ones, each in rank order. */
 export function fitByRank(plans: GoalPlan[], goals: Goal[], capacityMonthlyMinor: number): RankFit[] {
-  const rankOf = (goalId: string) => goals.find((goal) => goal.id === goalId)?.rank ?? Number.MAX_SAFE_INTEGER;
-  const ordered = [...plans].sort((a, b) => rankOf(a.goalId) - rankOf(b.goalId));
+  const order = fundingOrder(goals).map((goal) => goal.id);
+  const position = (goalId: string) => {
+    const index = order.indexOf(goalId);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  const ordered = [...plans].sort((a, b) => position(a.goalId) - position(b.goalId));
   let left = Math.max(0, capacityMonthlyMinor);
   return ordered.map((plan) => {
     const needed = plan.requiredMonthlyMinor;
