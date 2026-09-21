@@ -5,6 +5,7 @@ import {
   createAccount,
   createWorkspace,
   type Database,
+  goalContributionsFor,
   goalLinksFor,
   listEarmarks,
   listPhotos,
@@ -13,6 +14,7 @@ import {
   recordTaggedTransfer,
   recordTrade,
   saveAssetProfile,
+  saveEarmark,
   saveEvent,
   saveGoal,
   upsertPrice,
@@ -115,6 +117,25 @@ describe('a transfer tagged to a goal', () => {
     await voidTaggedTransfer(database, ws, result.transactionId);
 
     await expect(setAsideFor(retireId, rdn.id)).resolves.toBe(0);
+  });
+
+  it('gives the goal its own promise back on the source when a transfer that moved it is voided', async () => {
+    await saveEarmark(database, ws, { goalId: hajjId, accountId: bca.id, amountMinor: 7_500_000 });
+    const month = async () => (await goalContributionsFor(database, ws, '2026-09'))[hajjId] ?? 0;
+    const before = await month();
+
+    const result = await park(7_500_000, hajjId);
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(0);
+    await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(7_500_000);
+    // +7.500.000 arrived at RDN, −7.500.000 left the BCA promise: the month did not change.
+    await expect(month()).resolves.toBe(before);
+
+    await voidTaggedTransfer(database, ws, result.transactionId);
+
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
+    await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(0);
+    // The arrival is void and the taken-back promise is logged back: still nothing new this month.
+    await expect(month()).resolves.toBe(before);
   });
 });
 

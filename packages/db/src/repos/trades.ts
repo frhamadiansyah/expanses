@@ -1,5 +1,6 @@
 import {
   goalUnitsOf,
+  outflowFrom,
   type Position,
   positionAfter,
   sellBasisMinor,
@@ -18,7 +19,7 @@ import { accounts, entries } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goals } from '../schema-goals';
 import { AssetError, assertAccountInWorkspace } from './assets';
-import { adjustSetAsideTx } from './set-aside-tx';
+import { adjustSetAsideTx, type SetAsideChoice } from './set-aside-tx';
 import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
 import { postTransactionTx, voidTransactionTx } from './ledger';
@@ -56,6 +57,8 @@ export interface RecordTradeInput {
   excludedFromReport?: boolean;
   /** Photo rows written before the trade had a transaction — the contract note for this purchase. */
   photoIds?: string[];
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
 }
 
 export interface RecalculatedSell {
@@ -233,6 +236,7 @@ export async function writeTradeTx(tx: Db, ws: WorkspaceContext, input: RecordTr
         // A trade carries the two facts §4 scopes to "always", the same way every other way in does.
         excludedFromReport: input.excludedFromReport,
         photoIds: input.photoIds,
+        setAside: input.setAside,
       })
     : null;
   const id = uuidv7();
@@ -254,9 +258,9 @@ export async function writeTradeTx(tx: Db, ws: WorkspaceContext, input: RecordTr
     replacesTradeId,
     createdAt: new Date().toISOString(),
   });
-  // Money parked for this goal in the account that paid is now units, so it stops counting as cash.
+  // Money parked for this goal in the account that paid is now units: lowered by what left that account, in its currency.
   if (input.kind === 'buy' && input.goalId && input.cashAccountId) {
-    await adjustSetAsideTx(tx, ws, input.goalId, input.cashAccountId, -(input.grossMinor + input.feeMinor + input.taxMinor));
+    await adjustSetAsideTx(tx, ws, input.goalId, input.cashAccountId, -outflowFrom(lines, input.cashAccountId));
   }
   const recalculatedSells = await recalculateSells(tx, ws, input.accountId, input.occurredOn, input.ratesToBase);
   return { tradeId: id, transactionId, recalculatedSells };

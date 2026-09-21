@@ -5,6 +5,7 @@ import { accounts, entries, transactions } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { voidTransactionTx } from './ledger';
+import { setAsideChoiceOfTx, setAsideTablesExist, stillPromisedTx } from './set-aside-tx';
 import { writeTradeTx } from './trades';
 
 export interface ConvertToPurchaseInput {
@@ -64,6 +65,12 @@ export async function convertToPurchase(database: Database, ws: WorkspaceContext
     const paidByCard = moneyLine.subtype === 'credit_card';
     const spendCategoryId = paidByCard ? (lines.find((line) => line.kind === 'expense')?.accountId ?? null) : null;
 
+    // A borrow follows the money onto the purchase, unless the purchase is for that same goal. A spend or a move was
+    // undone by the void and is not re-applied: buying for a goal lowers that goal's cash promise on its own.
+    const carried = (await setAsideTablesExist(tx)) ? await setAsideChoiceOfTx(tx, ws, input.transactionId) : null;
+    // As an edit does (replaceTransaction), a borrow from a goal archived or no longer set aside here is dropped, not refused.
+    const keep =
+      carried && carried.intent === 'borrow' && carried.goalId !== (input.goalId ?? null) && (await stillPromisedTx(tx, ws, carried)) ? carried : null;
     await voidTransactionTx(tx, ws, input.transactionId);
     const result = await writeTradeTx(
       tx,
@@ -80,6 +87,7 @@ export async function convertToPurchase(database: Database, ws: WorkspaceContext
         goalId: input.goalId ?? null,
         spendCategoryId,
         mcc: original.mcc,
+        setAside: keep,
       },
       null,
     );

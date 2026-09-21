@@ -1,14 +1,15 @@
-import { exchangeLines } from '@expanses/core';
+import { exchangeLines, uuidv7 } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { goalEarmarks, goals } from '../schema-goals';
+import { goalDraws, goalEarmarks, goals } from '../schema-goals';
 import { systemAccountId } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
+import { recordContributionTx } from './goal-contributions';
 import { GoalDbError } from './goals';
 import { postTransactionTx, voidTransactionTx } from './ledger';
-import { adjustSetAsideTx, canHoldSetAside } from './set-aside-tx';
+import { adjustSetAsideTx, canHoldSetAside, type SetAsideChoice, setAsideTablesExist } from './set-aside-tx';
 
 export interface TaggedTransferInput {
   occurredOn: string;
@@ -34,6 +35,8 @@ export interface TaggedTransferInput {
   eventId?: string | null;
   /** Photo rows written before the transaction had an id. Tagging a goal cannot be what loses a receipt. */
   photoIds?: string[];
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
 }
 
 export interface TaggedTransferResult {
@@ -105,11 +108,41 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
       excludedFromReport: input.excludedFromReport,
       eventId: input.eventId,
       photoIds: input.photoIds,
+      setAside: input.setAside,
     });
 
     if (!input.goalId) return { transactionId, setAsideMinor: 0 };
     await tx.update(transactions).set({ goalId: input.goalId }).where(eq(transactions.id, transactionId));
     if (!(await canHoldSetAside(tx, ws, input.toAccountId))) return { transactionId, setAsideMinor: 0 };
+    // The goal's own promise on the source follows its money, so the goal does not count it in both places (spec §4.6).
+    const [own] = await tx
+      .select({ amountMinor: goalEarmarks.amountMinor })
+      .from(goalEarmarks)
+      .where(and(eq(goalEarmarks.goalId, input.goalId), eq(goalEarmarks.accountId, input.fromAccountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
+    const moved = Math.min(input.amountMinor, own?.amountMinor ?? 0);
+    if (moved > 0) {
+      await adjustSetAsideTx(tx, ws, input.goalId, input.fromAccountId, -moved);
+      await recordContributionTx(tx, ws, input.goalId, input.fromAccountId, -moved, input.occurredOn);
+    }
+    if (moved > 0 && (await setAsideTablesExist(tx))) {
+      // A move with no destination: the destination's own adjustment is voidTaggedTransfer's, as it always was.
+      await tx.insert(goalDraws).values({
+        id: uuidv7(),
+        workspaceId: ws.workspaceId,
+        transactionId,
+        goalId: input.goalId,
+        accountId: input.fromAccountId,
+        intent: 'move',
+        amountMinor: moved,
+        toAccountId: null,
+        toAmountMinor: null,
+        stageId: null,
+        wasWhole: 0,
+        wholeSince: null,
+        occurredOn: input.occurredOn,
+        createdAt: new Date().toISOString(),
+      });
+    }
     // The set-aside sits on the destination account, so it is counted in the destination account's own money —
     // parking US$100 against a goal sets US$100 aside, never Rp 1.600.000 of a USD balance.
     const setAsideMinor = await adjustSetAsideTx(tx, ws, input.goalId, input.toAccountId, landedMinor);

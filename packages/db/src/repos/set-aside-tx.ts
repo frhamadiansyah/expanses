@@ -1,11 +1,12 @@
 import { inflowTo, type MoneyLine, movedAmount, outflowFrom, uuidv7 } from '@expanses/core';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
 import { accounts } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalDraws, goalEarmarks, goalStages, goals } from '../schema-goals';
 import { SPENDABLE_SUBTYPES } from './accounts';
+import { recordContributionTx } from './goal-contributions';
 
 /**
  * Whether migration 0050 has run on this database. Every read and write of goal_draws asks first, so a database stopped
@@ -218,17 +219,28 @@ export async function undoSetAsideTx(tx: Db, ws: WorkspaceContext, transactionId
     if (draw.intent === 'move') {
       if (draw.toAccountId && draw.toAmountMinor) await adjustSetAsideTx(tx, ws, draw.goalId, draw.toAccountId, -draw.toAmountMinor);
       await adjustSetAsideTx(tx, ws, draw.goalId, draw.accountId, draw.amountMinor);
+      // A goal's own money moved by a tagged transfer logged the move as a contribution; taking it back logs the reverse.
+      if (draw.toAccountId === null) await recordContributionTx(tx, ws, draw.goalId, draw.accountId, draw.amountMinor, draw.occurredOn);
     }
   }
   if (rows.length > 0) await tx.delete(goalDraws).where(and(eq(goalDraws.transactionId, transactionId), eq(goalDraws.workspaceId, ws.workspaceId)));
 }
 
-/** The answer a transaction was saved with, as a posting would carry it again. */
+/**
+ * The answer a transaction was saved with, as a posting would carry it again. A tagged transfer's own move (a move with
+ * no destination) is not an answer the owner gave: it is skipped, so a tagged transfer that also borrowed reads its borrow.
+ */
 export async function setAsideChoiceOfTx(tx: Db, ws: WorkspaceContext, transactionId: string): Promise<SetAsideChoice | null> {
   const [draw] = await tx
     .select()
     .from(goalDraws)
-    .where(and(eq(goalDraws.transactionId, transactionId), eq(goalDraws.workspaceId, ws.workspaceId)))
+    .where(
+      and(
+        eq(goalDraws.transactionId, transactionId),
+        eq(goalDraws.workspaceId, ws.workspaceId),
+        or(ne(goalDraws.intent, 'move'), isNotNull(goalDraws.toAccountId)),
+      ),
+    )
     .limit(1);
   if (!draw) return null;
   return {

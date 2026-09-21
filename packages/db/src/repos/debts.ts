@@ -19,6 +19,7 @@ import { debtProfiles } from '../schema-debts';
 import { createAccountTx } from './accounts';
 import { categoryIdsByKeyTx } from './categories';
 import { postTransactionTx } from './ledger';
+import type { SetAsideChoice } from './set-aside-tx';
 
 export class DebtDbError extends Error {
   constructor(message: string) {
@@ -272,6 +273,8 @@ export interface RecordLoanInput {
   spendCategoryId?: string | null;
   mcc?: string | null;
   ratesToBase?: Record<string, number>;
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
 }
 
 export interface RecordRepaymentInput {
@@ -281,6 +284,8 @@ export interface RecordRepaymentInput {
   interestMinor?: number;
   moneyAccountId: string;
   ratesToBase?: Record<string, number>;
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
 }
 
 export interface ForgiveInput {
@@ -321,6 +326,8 @@ export interface SplitBillInput {
   eventId?: string | null;
   /** Photo rows written before the transaction had an id. A receipt is kept whoever else was at the table. */
   photoIds?: string[];
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
 }
 
 /** Money handed to a person, from a bank account or on a card. */
@@ -349,6 +356,7 @@ export async function recordLoan(database: Database, ws: WorkspaceContext, input
       lines,
       ratesToBase: input.ratesToBase,
       mcc: input.mcc ?? null,
+      setAside: input.setAside,
     });
     // Lending again to someone who had paid everything back puts them back on the open list.
     if (profile[0]?.status === 'settled') await setStatusTx(tx, ws, debtAccountId, 'open', null);
@@ -386,6 +394,7 @@ export async function recordRepayment(
       description: debtDescription(direction === 'lent' ? 'repayment' : 'repay', profile.personName),
       lines,
       ratesToBase: input.ratesToBase,
+      setAside: input.setAside,
     });
 
     const balanceMinor = owed - input.amountMinor;
@@ -466,6 +475,7 @@ export async function splitBill(database: Database, ws: WorkspaceContext, input:
       excludedFromReport: input.excludedFromReport,
       eventId: input.eventId,
       photoIds: input.photoIds,
+      setAside: input.setAside,
     });
     return { transactionId, debtAccountIds };
   });
