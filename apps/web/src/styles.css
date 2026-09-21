@@ -1,11 +1,23 @@
 @import "tailwindcss";
 
+/*
+ * The shell follows the reader's system, as the kit already does: the two palettes are the same nine names, and
+ * `light dark` is what lets the browser draw its own furniture — a scrollbar, a date picker, a file chooser — in
+ * the mode the rest of the page is in. Pinned to `light`, a black page kept a white scrollbar beside it.
+ */
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
 }
 
+/*
+ * The page the app is drawn on, in the kit's own colours rather than Tailwind's slate: a screen that has adopted
+ * the kit paints `.ph-screen` over this, and the ones that have not still sit on the app's ground instead of a
+ * white band showing at the foot of a dark page.
+ */
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply antialiased;
+  background: var(--ph-ground);
+  color: var(--ph-ink);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 

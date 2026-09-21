@@ -11,12 +11,13 @@ export function errorMessage(error: unknown): string {
 }
 
 const BUTTON = {
-  primary: 'bg-slate-900 text-white hover:bg-slate-700',
-  secondary: 'bg-white text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100',
-  danger: 'bg-white text-red-700 ring-1 ring-red-300 hover:bg-red-50',
+  /* `--ph-ink` as a fill with `--ph-surface` for its text is the app's one inverted shape: dark on light, light on dark. */
+  primary: 'bg-[var(--ph-ink)] text-[var(--ph-surface)] hover:bg-[var(--ph-ink-2)]',
+  secondary: 'bg-[var(--ph-surface)] text-[var(--ph-ink)] ring-1 ring-[var(--ph-track)] hover:bg-[var(--ph-fill)]',
+  danger: 'bg-[var(--ph-surface)] text-[var(--ph-alarm)] ring-1 ring-[var(--ph-alarm)] hover:bg-[var(--ph-alarm-panel)]',
   // Green, for the one button on a screen that settles money: recording a payment.
-  success: 'bg-emerald-700 text-white hover:bg-emerald-800',
-  ghost: 'text-slate-700 hover:bg-slate-100',
+  success: 'bg-[var(--ph-tint)] text-[var(--ph-surface)] hover:bg-[var(--ph-tint-ink)]',
+  ghost: 'text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]',
 };
 
 export function Button({
@@ -30,7 +31,7 @@ export function Button({
       type={type}
       className={cx(
         'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ph-focus)]',
         BUTTON[variant],
         className,
       )}
@@ -40,7 +41,8 @@ export function Button({
 }
 
 // Below md the text is 16px: iOS zooms the whole page when a field smaller than that takes focus.
-const FIELD = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base md:text-sm focus:border-slate-900 focus:outline-none';
+const FIELD =
+  'w-full rounded-lg border border-[var(--ph-track)] bg-[var(--ph-surface)] px-3 py-2 text-base text-[var(--ph-ink)] md:text-sm focus:border-[var(--ph-tint)] focus:outline-none';
 
 /** A text field; `leading` puts a short unit such as a currency code inside the field, before what is typed. */
 // The ref is spread onto the input like any other prop, so a screen can put the cursor in a box it owns.
@@ -48,7 +50,7 @@ export function Input({ className, leading, ...props }: InputHTMLAttributes<HTML
   if (!leading) return <input className={cx(FIELD, className)} {...props} />;
   return (
     <div className="relative">
-      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-500">
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-[var(--ph-ink-3)]">
         {leading}
       </span>
       <input className={cx(FIELD, className)} style={{ paddingLeft: `calc(${leading.length}ch + 1.25rem)` }} {...props} />
@@ -64,18 +66,18 @@ export function Field({ label, hint, children, className }: { label: string; hin
   const id = useId();
   return (
     <div className={cx('block', className)}>
-      <label htmlFor={id} className="mb-1 block text-xs font-medium text-slate-600">
+      <label htmlFor={id} className="mb-1 block text-xs font-medium text-[var(--ph-ink-2)]">
         {label}
       </label>
       {cloneElement(children, { id })}
-      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-[var(--ph-ink-3)]">{hint}</span>}
     </div>
   );
 }
 
 export function Card({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {
   return (
-    <section id={id} className={cx('rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200', className)}>
+    <section id={id} className={cx('rounded-xl bg-[var(--ph-surface)] p-4 shadow-sm ring-1 ring-[var(--ph-hair)]', className)}>
       {children}
     </section>
   );
@@ -101,8 +103,8 @@ export function RoundButton({ label, onClick, children, pressed }: { label: stri
       aria-label={label}
       aria-pressed={pressed}
       className={cx(
-        'flex h-11 w-11 items-center justify-center rounded-full shadow-sm ring-1 ring-slate-200/70',
-        pressed ? 'bg-slate-900 text-white' : 'bg-white text-slate-900',
+        'flex h-11 w-11 items-center justify-center rounded-full shadow-sm ring-1 ring-[var(--ph-hair)]',
+        pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-surface)] text-[var(--ph-ink)]',
       )}
     >
       {children}
@@ -111,15 +113,15 @@ export function RoundButton({ label, onClick, children, pressed }: { label: stri
 }
 
 export function Money({ minor, currency, className, tone }: { minor: number; currency: string; className?: string; tone?: 'auto' | 'none' }) {
-  const color = tone === 'auto' ? (minor < 0 ? 'text-red-700' : minor > 0 ? 'text-emerald-700' : '') : '';
+  const color = tone === 'auto' ? (minor < 0 ? 'text-[var(--ph-alarm)]' : minor > 0 ? 'text-[var(--ph-tint)]' : '') : '';
   return <span className={cx('tabular whitespace-nowrap', color, className)}>{formatMinor(minor, currency)}</span>;
 }
 
 export function ErrorBox({ error }: { error: unknown }) {
   if (!error) return null;
-  return <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{errorMessage(error)}</p>;
+  return <p className="rounded-lg bg-[var(--ph-alarm-panel)] px-3 py-2 text-sm text-[var(--ph-alarm-ink)]" role="alert">{errorMessage(error)}</p>;
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="py-8 text-center text-sm text-slate-500">{children}</p>;
+  return <p className="py-8 text-center text-sm text-[var(--ph-ink-3)]">{children}</p>;
 }

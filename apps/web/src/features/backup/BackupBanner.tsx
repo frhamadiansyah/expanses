@@ -10,10 +10,14 @@ import { afterUpdate, bannerStandsDown } from './after-update';
 import { type BackupSnooze, backupUrgency, bannerWords, daysSince, getLastBackupAt, reminderDue, setLastBackupAt, snoozeUntil } from './backupState';
 import { readSnooze, SNOOZE_KEY, subscribeToUpdateCard, updateCardDismissed } from './reminder-state';
 
+/*
+ * Three tones, in the app's own colours: `overdue` is the loudest and wears a ring, `warn` is the same amber
+ * without one, and `remind` is the kit's plain grey. A tinted panel needs its own ink, so the pair moves together.
+ */
 const TONE: Record<string, string> = {
-  overdue: 'bg-amber-100 text-amber-900 ring-1 ring-amber-300',
-  warn: 'bg-amber-100 text-amber-900',
-  remind: 'bg-slate-100 text-slate-700',
+  overdue: 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)] ring-1 ring-[var(--ph-warn)]',
+  warn: 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]',
+  remind: 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]',
 };
 
 /**

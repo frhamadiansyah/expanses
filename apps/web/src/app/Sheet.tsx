@@ -36,7 +36,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   }, []);
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-slate-900/40 md:items-center" onClick={onClose} role="presentation">
+    <div className="fixed inset-0 z-30 flex items-end justify-center bg-[var(--ph-scrim)] md:items-center" onClick={onClose} role="presentation">
       <div
         ref={panel}
         role="dialog"
@@ -44,17 +44,17 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         aria-label={title}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl outline-none md:max-w-2xl md:rounded-2xl"
+        className="max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl bg-[var(--ph-surface)] p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-300 md:hidden" aria-hidden />
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]"
           >
             <X size={18} aria-hidden />
           </button>

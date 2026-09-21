@@ -37,6 +37,32 @@
   --ph-selected: #ffffff;
   --ph-chevron: #c6c6c8;
 
+  /*
+   * A panel that says something in a tone: the banner the install hint sits in, a warning to back up, an error,
+   * a confirmation. The inks above are the colours for a statement on the page; these are the colours for a
+   * statement on its own tinted ground, which need a different value in the dark — a warning at #b25000 on black
+   * is a warning, and the same figure on a dark amber panel is mud.
+   *
+   * The light values are exactly what the app already painted, so adopting a token moves nothing.
+   */
+  --ph-info-panel: #f0f9ff;
+  --ph-info-ink: #0c4a6e;
+  --ph-warn-panel: #fef3c7;
+  --ph-warn-ink: #78350f;
+  --ph-alarm-panel: #fef2f2;
+  --ph-alarm-ink: #991b1b;
+  --ph-tint-panel: #ecfdf5;
+  --ph-tint-ink: #065f46;
+
+  /*
+   * The floating tab bar's own fill: the surface, 80% opaque, so the page shows through the blur behind it. It is
+   * a token rather than `bg-white/80` because a translucent white is a light-theme fact, not a colour.
+   */
+  --ph-chrome: rgb(255 255 255 / 0.8);
+
+  /* Behind a sheet: the page is dimmed, never inverted — a dark scrim in either mode. */
+  --ph-scrim: rgb(15 23 42 / 0.4);
+
   /* Focus is drawn in the tint, so it reads as the app's own rather than the browser's. */
   --ph-focus: #248a3d;
 }
@@ -61,6 +87,19 @@
     --ph-track: #2c2c2e;
     --ph-selected: #636366;
     --ph-chevron: #5a5a5e;
+
+    /* A tinted panel is lifted rather than inverted: a dark amber ground with a bright amber figure on it. */
+    --ph-info-panel: #102c40;
+    --ph-info-ink: #9ed0f5;
+    --ph-warn-panel: #3a2a08;
+    --ph-warn-ink: #ffcf70;
+    --ph-alarm-panel: #3b1512;
+    --ph-alarm-ink: #ffb3ab;
+    --ph-tint-panel: #0f2f1b;
+    --ph-tint-ink: #7ee79b;
+
+    --ph-chrome: rgb(28 28 30 / 0.8);
+    --ph-scrim: rgb(0 0 0 / 0.6);
 
     --ph-focus: #30d158;
   }
