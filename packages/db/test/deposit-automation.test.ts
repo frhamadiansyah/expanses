@@ -7,6 +7,7 @@ import {
   categoryIdsByKeyTx,
   type ConfirmDepositEventInput,
   confirmDepositEvent,
+  createBook,
   createWorkspace,
   depositIncomePayments,
   type Database,
@@ -14,10 +15,12 @@ import {
   type DepositProposal,
   getDepositAutomation,
   getDepositTerms,
+  inBook,
   listAccounts,
   listDueDeposits,
   nativeBalances,
   openCashAccount,
+  personalBook,
   postTransactionTx,
   replaceTransaction,
   saveDepositAutomation,
@@ -772,5 +775,25 @@ describe('editing the posted interest, beyond the tax the confirm posted', () =>
     // Tax withheld cannot be below zero (confirm refuses it too), so the log keeps gross = net + tax with tax 0.
     expect(await logged()).toMatchObject([{ grossMinor: 180_479, taxMinor: 0, netMinor: 180_479 }]);
     expect((await depositIncomePayments(database, ws))[0]).toMatchObject({ grossMinor: 180_479, taxMinor: 0 });
+  });
+
+  it('reads the tax from an edit made while another book is open, not as 0', async () => {
+    const personal = await personalBook(database, ws);
+    const business = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
+    const mine = await categoryIdsByKeyTx(database.db, inBook(ws, personal.id));
+    const theirs = await categoryIdsByKeyTx(database.db, inBook(ws, business));
+    expect(theirs['government_taxes.estimated_tax']).not.toBe(mine['government_taxes.estimated_tax']);
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const result = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    await replaceTransaction(database, inBook(ws, business), result.interestTransactionId!, {
+      occurredOn: '2026-08-15',
+      description: 'Interest: BCA Deposito',
+      lines: [
+        { accountId: bcaId, amountMinor: 144_401, currency: 'IDR' },
+        { accountId: mine['government_taxes.estimated_tax']!, amountMinor: 36_100, currency: 'IDR' },
+        { accountId: mine['income.investment']!, amountMinor: -180_501, currency: 'IDR' },
+      ],
+    });
+    expect(await logged()).toMatchObject([{ grossMinor: 180_501, taxMinor: 36_100, netMinor: 144_401 }]);
   });
 });
