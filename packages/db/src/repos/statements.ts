@@ -7,6 +7,7 @@ import { cardPostings, cardSettlements } from '../schema-cards';
 import { cardTerms } from '../schema-points';
 import { listInstallments } from './installments';
 import { postTransactionTx } from './ledger';
+import type { SetAsideChoice } from './set-aside-tx';
 
 export class StatementError extends Error {
   constructor(
@@ -245,7 +246,15 @@ export async function postingDates(database: Database, ws: WorkspaceContext, tra
 export async function payCardPurchases(
   database: Database,
   ws: WorkspaceContext,
-  input: { cardAccountId: string; fromAccountId: string; occurredOn: string; purchaseTransactionIds: readonly string[]; description?: string },
+  input: {
+    cardAccountId: string;
+    fromAccountId: string;
+    occurredOn: string;
+    purchaseTransactionIds: readonly string[];
+    description?: string;
+    /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+    setAside?: SetAsideChoice | null;
+  },
 ): Promise<string> {
   const ids = [...new Set(input.purchaseTransactionIds)];
   if (ids.length === 0) throw new StatementError('NOTHING_TO_PAY', 'Choose the purchases to pay');
@@ -273,6 +282,7 @@ export async function payCardPurchases(
       // How many purchases it settled is kept in the settlements themselves, so the description stays plain.
       description: input.description?.trim() || `${card.name} payment`,
       lines: transferLines({ fromAccountId: from.id, toAccountId: card.id, amountMinor: totalMinor, currency: card.currency }),
+      setAside: input.setAside,
     });
     for (const id of ids) {
       // A settlement left behind by a payment since deleted is replaced, not kept beside this one.

@@ -9,6 +9,7 @@ import { goalStageTerms } from '../schema-health';
 import { SPENDABLE_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
 import { healthTablesExist } from './health-tables';
+import { isPocketParentTx } from './set-aside-tx';
 
 export class GoalDbError extends Error {
   constructor(message: string) {
@@ -256,6 +257,8 @@ export async function saveEarmark(database: Database, ws: WorkspaceContext, inpu
     if (!SPENDABLE_SUBTYPES.includes(account.subtype)) {
       throw new GoalDbError('Only accounts that hold money can be set aside; a holding is tagged on each purchase instead');
     }
+    // A pocket parent holds no money of its own (currency pockets, ruling I5): set aside on one of its pockets.
+    if (await isPocketParentTx(tx, ws, input.accountId)) throw new GoalDbError('That account holds no money of its own. Set aside on one of its pockets.');
     const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, input.goalId), eq(goals.workspaceId, ws.workspaceId)));
     if (!goal) throw new GoalDbError('Goal not found in this workspace');
     const [before] = await tx

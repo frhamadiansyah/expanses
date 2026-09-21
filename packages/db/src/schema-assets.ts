@@ -24,7 +24,7 @@ export const assetProfiles = sqliteTable('asset_profiles', {
 export const depositTerms = sqliteTable('deposit_terms', {
   accountId: text('account_id').primaryKey(),
   workspaceId: text('workspace_id').notNull(),
-  /** The day the money comes back. Nothing is automated off it: the owner moves it with a transfer. */
+  /** The day the money comes back. Nothing is automated off it unless the owner switches automation on (0054). */
   maturesOn: text('matures_on').notNull(),
   rateBps: integer('rate_bps').notNull(),
   createdAt: text('created_at').notNull(),
@@ -84,4 +84,42 @@ export const tradeTemplates = sqliteTable('trade_templates', {
   goalId: text('goal_id'),
   kind: text('kind', { enum: ['buy', 'move'] }).notNull(),
   createdAt: text('created_at').notNull(),
+});
+
+/** A deposit's automation settings (0054). No row means off. Booleans are 0/1, read into booleans by the repo. */
+export const depositAutomation = sqliteTable('deposit_automation', {
+  accountId: text('account_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  enabled: integer('enabled').notNull(),
+  enabledOn: text('enabled_on'),
+  atMaturity: text('at_maturity', { enum: ['principal', 'principal_interest', 'close'] }).notNull(),
+  interestPaid: text('interest_paid', { enum: ['monthly', 'at_maturity'] }).notNull(),
+  payoutAccountId: text('payout_account_id'),
+  termMonths: integer('term_months').notNull(),
+  termStartedOn: text('term_started_on'),
+  keepRate: integer('keep_rate').notNull(),
+  taxBps: integer('tax_bps').notNull(),
+  taxExempt: integer('tax_exempt').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/** Each maturity or monthly payout the owner confirmed or recorded by hand (0054): gross, tax and net as posted or as stated. The tax report reads it. */
+export const depositEvents = sqliteTable('deposit_events', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  accountId: text('account_id').notNull(),
+  kind: text('kind', { enum: ['monthly', 'maturity'] }).notNull(),
+  dueOn: text('due_on').notNull(),
+  principalMinor: integer('principal_minor').notNull(),
+  grossMinor: integer('gross_minor').notNull(),
+  taxMinor: integer('tax_minor').notNull(),
+  netMinor: integer('net_minor').notNull(),
+  interestTransactionId: text('interest_transaction_id'),
+  principalTransactionId: text('principal_transaction_id'),
+  recordedByHand: integer('recorded_by_hand').notNull(),
+  /** A roll-over's rate, term length and stored term start before its confirm; put back when the event is reopened. */
+  priorRateBps: integer('prior_rate_bps'),
+  priorTermMonths: integer('prior_term_months'),
+  priorTermStartedOn: text('prior_term_started_on'),
+  confirmedAt: text('confirmed_at').notNull(),
 });

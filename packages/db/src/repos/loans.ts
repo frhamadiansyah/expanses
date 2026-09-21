@@ -16,6 +16,7 @@ import { accounts, entries, transactions } from '../schema';
 import { loanRatePeriods, loanTerms } from '../schema-loans';
 import { categoryIdsByKeyTx } from './categories';
 import { postTransactionTx } from './ledger';
+import type { SetAsideChoice } from './set-aside-tx';
 
 export class LoanDbError extends Error {
   constructor(message: string) {
@@ -290,6 +291,8 @@ export interface LoanPaymentInput {
   /** Admin charges or insurance riding on the same payment, by category. */
   extras?: { categoryId: string; amountMinor: number }[];
   ratesToBase?: Record<string, number>;
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
 }
 
 export interface AddRatePeriodInput {
@@ -309,6 +312,8 @@ export interface ExtraPaymentDbInput {
   /** Shorten the tenor and keep paying the same, or keep the tenor and lower the payment. */
   keep: 'payment' | 'tenor';
   ratesToBase?: Record<string, number>;
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
 }
 
 const line = (accountId: string, amountMinor: number, currency: string): PostingLine => ({ accountId, amountMinor, currency });
@@ -345,6 +350,7 @@ export async function recordLoanPayment(
       description: `Instalment: ${name}`,
       lines,
       ratesToBase: input.ratesToBase,
+      setAside: input.setAside,
     });
 
     const balanceMinor = owed - input.principalMinor;
@@ -409,6 +415,7 @@ export async function recordExtraPayment(
       description: `Extra payment: ${name}`,
       lines,
       ratesToBase: input.ratesToBase,
+      setAside: input.setAside,
     });
 
     let newPaymentMinor: number | null = null;

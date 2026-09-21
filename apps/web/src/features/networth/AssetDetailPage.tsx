@@ -1,5 +1,5 @@
 import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
-import { archiveAccount } from '@expanses/db';
+import { archiveAccount, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -10,10 +10,14 @@ import { useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { AssetSettings } from './AssetSettings';
+import { DepositProposalCard } from './DepositProposalCard';
 import { DepositTermsCard } from './DepositTermsCard';
+import { MaturitySettings } from './MaturitySettings';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
+import { RecordedByHand } from './RecordedByHand';
+import { SetAsidePanel } from './SetAsidePanel';
 import { useAssetProfile, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { ValuationForm } from './ValuationForm';
 import { ValueChart } from './ValueChart';
@@ -115,6 +119,13 @@ export function AssetDetailPage() {
             }
           />
 
+          {/* A due event of an automated deposit: directly under the hero, above every other group (spec §6.1). */}
+          {account?.subtype === 'time_deposit' && (
+            <DepositProposalCard accountId={accountId} onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })} />
+          )}
+          {/* B3: what is promised out of this account and what is free, right under the bank's figure. */}
+          <SetAsidePanel accountId={accountId} />
+
           {value.mode === 'market' && (
             <PriceForm
               accountId={accountId}
@@ -202,6 +213,8 @@ export function AssetDetailPage() {
       )}
 
       {value && <DepositTermsCard accountId={accountId} />}
+      {value && account?.subtype === 'time_deposit' && <MaturitySettings accountId={accountId} currency={value.currency} />}
+      {value && account?.subtype === 'time_deposit' && <RecordedByHand accountId={accountId} currency={value.currency} />}
 
       {/* Only once the profile is in: the form fills its boxes when it mounts, and an empty code reads as "type one". */}
       {value && !profile.isPending && (
@@ -215,7 +228,8 @@ export function AssetDetailPage() {
           coretaxCode={profile.data?.coretaxCode ?? null}
           // What the thing is, for the codes two items share: a saving account must not read back as a current one.
           itemId={account?.subtype}
-          taxTreatment={profile.data?.taxTreatment ?? null}
+          // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
+          taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
         />
       )}
 

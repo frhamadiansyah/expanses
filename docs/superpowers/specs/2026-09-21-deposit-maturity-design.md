@@ -1,7 +1,9 @@
 # Deposit maturity — design
 
 Status: approved · 2026-09-21
-Decisions: `decisions-deposit-maturity.md` (user, 2026-09-19; layout decided 2026-09-21)
+Decisions: `decisions-deposit-maturity.md` (user, 2026-09-19; layout decided 2026-09-21). The five open questions this
+spec first raised were answered by the user on 2026-09-21 ("ok" to all five recommendations). They are built into the
+body below, and §14 lists where each one landed.
 Mockup: `.superpowers/queue/deposit-maturity.html` — **S2** (switch and settings inline on the deposit's page) and
 **P1** (the due proposal on the deposit's own page only). S1, P2 and P3 were rejected and are not built.
 Migration: **0054**.
@@ -28,11 +30,15 @@ This adds automation as an optional layer, **per deposit and off by default**:
 - **The app proposes and the user confirms.** On the due day a proposal appears on the deposit's page (P1) with the
   computed figures, and every figure that reaches the ledger can be edited. Nothing is posted until the user
   confirms. If the app went unopened for a while, several events wait, and they are proposed one at a time in
-  date order.
+  date order. **Recorded it myself** marks the event done and posts nothing, for an event the owner already put in
+  the ledger by hand (§6.5).
 - **A quiet "Due" marker** on the deposit's row in the Net worth → Assets list, so a waiting proposal can be found
   there. It is only a marker. Proposals are confirmed on the deposit's page and nowhere else.
-- **Tax is withheld at source**, so the interest posted is net. By default the withheld share is 20% of gross
-  interest. The user can change the percentage, or mark the deposit tax-free, on that deposit.
+- **Tax is withheld at source.** The interest posts the way an investment payment does: the **gross** as income,
+  the **tax withheld** as a separate line, and the account receives the **net** (§6.4). By default the withheld
+  share is 20% of gross interest. The user can change the percentage, or mark the deposit tax-free, on that deposit.
+- **The tax report reads the log.** The SPT's final-income section lists each deposit's gross interest and the tax
+  withheld from the confirmed events (§6.6).
 
 ## 2. What exists today (read on 2026-09-21)
 
@@ -44,12 +50,14 @@ This adds automation as an optional layer, **per deposit and off by default**:
 | The deposit's page | `apps/web/src/features/networth/AssetDetailPage.tsx`, route `/net-worth/assets/$accountId`; renders `DepositTermsCard` |
 | Terms labels | `apps/web/src/features/networth/deposit-terms.ts` — `maturityLabel`, `rateLabel`, `depositLine` |
 | The assets list | `AssetsPage.tsx` + `asset-rows.ts` (`groupAssets`, `AssetRow`); a row's subtitle already carries a quiet "Update price" marker |
-| Posting | `postTransactionTx(tx, ws, input)` in `repos/ledger.ts`; lines from `incomeLines` and `transferLines` in `packages/core/src/ledger/lines.ts` |
+| Posting | `postTransactionTx(tx, ws, input)` in `repos/ledger.ts`; `transferLines` in `packages/core/src/ledger/lines.ts` |
+| How an investment payment posts tax | `tradePostings(input, position, accounts)` in `packages/core/src/assets/trades.ts`. Kind `income` gives: cash `+net`, `government_taxes.estimated_tax` `+tax` (when > 0), `income.investment` `−gross`. The accounts come from `tradeAccountsFor(tx, ws, holdingId, cashId)` in `repos/trades.ts` (exported by this work; it was module-private) |
+| The tax report's final-income section | `incomeInputsFor(database, ws, year)` in `repos/coretax-income.ts` → `investmentIncomeFor({ trades, holdings, year, baseCurrency })` in `packages/core/src/coretax/income.ts`; drawn by `IncomeSection.tsx`, banded by the holding's `taxTreatment` |
+| Month steps | `addMonths('YYYY-MM', n)` and `daysInMonth(year, month1)` in `packages/core/src/reports/periods.ts` |
 | Balances | `nativeBalances(database, ws, asOf?)` in `repos/ledger.ts` |
 | Categories by key | `categoryIdsByKeyTx(tx, ws)` (book-aware); `income.investment` is in `POSTED_INTO_KEYS`, so every book has one |
 | Archiving | `archiveAccount(database, ws, id)` in `repos/accounts.ts`; refuses an account whose balance is not zero |
 | Day count | `daysFrom(from, to)` in `packages/core/src/bills/schedule.ts` (exported) |
-| Month length | `daysInMonth(year, month1)` in `packages/core/src/reports/periods.ts` |
 | Rates | `resolveRates` in `repos/fx.ts`; `useResolveRates`, `checkManualRate`, `ratePreview` in the web |
 | Spendable subtypes | `SPENDABLE_SUBTYPES` in `repos/accounts.ts` (a deposit is not one) |
 
@@ -80,7 +88,7 @@ On the deposit's page, below the terms card, one inset group headed **At maturit
 | Roll over principal + interest | `InsetRow` | subtitle "Nothing lands; the deposit grows" | |
 | Don't roll over | `InsetRow` | subtitle "Everything lands in *payout*" | |
 | Interest paid | `SelectRow` | Monthly · At maturity | At maturity |
-| Lands in | `SelectRow` | this workspace's spendable, unarchived accounts that hold **the deposit's currency** | the first one, or none |
+| Lands in | `SelectRow` | this workspace's spendable, unarchived accounts that hold **the deposit's currency**, and not an account with pockets (choose one of its pockets) | the first one, or none |
 | Term | `SelectRow` | 1 month · 3 months · 6 months · 12 months | 1 month |
 | Keep the rate when it rolls over | `SwitchRow` | | on |
 | Tax-free deposit | `SwitchRow` | hint below | off |
@@ -119,7 +127,8 @@ has been confirmed, and today's date. Confirming an event writes the event to th
   - If the owner changes the maturity by hand on the terms card, the two dates stop agreeing, and the start is
     derived again. A stale start never survives a hand edit.
 - `addMonthsToDate(date, n)` keeps the day of the month. When the target month is shorter it uses that month's
-  last day: 31 Jan + 1 → 28 Feb 2027, 31 Jan + 2 → 31 Mar 2027.
+  last day: 31 Jan + 1 → 28 Feb 2027, 31 Jan + 2 → 31 Mar 2027. The month step is the existing `addMonths`, and
+  only the clamp is new.
 
 ### 4.2 The events of a term
 
@@ -140,6 +149,12 @@ An event is due when **all** of these hold:
 4. it is a maturity event, **or** `dueOn ≥ enabledOn`, the day automation was last switched on. Monthly payouts
    dated before that day are assumed to have been recorded by hand. A maturity that has already passed is still
    proposed, because the stored maturity date says it has not been handled.
+
+   A close switches automation off but **keeps** `enabledOn`, so reopening the close (§6.4) switches it back on as
+   it was, and a monthly payout of that term reopened afterwards is proposed again. The owner's own switch is
+   different (ruling, final review m2): turning it off clears `enabledOn`, and turning it on again sets it to that
+   day. A monthly payout dated before that day, confirmed earlier and then voided, is therefore not proposed again:
+   by this rule it is one the owner records by hand.
 
 Due events are sorted by date, and **only the earliest is proposed**. The ones after it are counted ("2 more
 waiting after this one"). Their figures depend on the event before them (a roll-over changes the rate and the
@@ -194,8 +209,13 @@ Every figure below is asserted in a test (§11). Each row names the wrong rule t
 | Rp 7.500.000 · 3,00% · 31 d, tax-free | gross 19 109, tax 0, net **19 109** | taxed: tax 3 821 (3 821,8), net 15 288; tax rounded 3 822 |
 | 3 monthly payouts vs one maturity, IDR | 180 479 + 180 479 + 174 657 = **535 615** gross | one maturity gives 535 616: each period is floored separately |
 | 31 Jan 2027 start, monthly, 3 months | due **28 Feb, 31 Mar, 30 Apr**; days 28, 31, 30 | chained dates: 28 Feb, 28 Mar, 28 Apr |
+| Rp 50.000.000 · 4,25% · 31 Jan → 28 Feb 2027 (28 d) | gross **163 013** (163 013,698) | 30/360 counts 30 days: 177 083; rounded 163 014 |
+| Rp 180.479 gross · 12,5% withheld | tax **22 559** (22 559,875), net 157 920 | rounded 22 560 |
+| Rp 1.000.000.000.020 · 10% · 365 d | gross **100 000 000 002** (exact) | a float `Math.floor(p × r × d / 3 650 000)` gives 100 000 000 001 |
 
-(The 36 095,8 is 180 479 × 0,2 = 36 095,8.)
+(The 36 095,8 is 180 479 × 0,2 = 36 095,8.) The worked example's own tax, 107 123,2, and its gross, 535 616,438,
+floor and round to the same figure. They pin the subtraction rule and the day count, not the rounding. The 31-day,
+30-day, 28-day, 12,5% and tax-free rows are the ones that tell floor from round.
 
 ### 5.3 The tax is country-neutral
 
@@ -206,9 +226,9 @@ The design keeps no Indonesian constant in code or copy:
 - **Tax withheld %** is a plain per-deposit figure. It defaults to **20** for every deposit in every currency,
   and the user can edit it.
 - **Tax-free deposit** is a per-deposit switch, **off by default** (taxed), and available on every deposit. Its
-  hint states the splitting rule in neutral words (§3). The app does not gate the switch on the principal being
-  ≤ Rp 7.500.000, because that gate is an Indonesian figure in an app screen. This goes against the dispatch
-  ruling and is raised in §14.
+  hint states the splitting rule in neutral words (§3). **There is no Rp 7.500.000 gate** (user decision,
+  2026-09-21). The switch is a plain per-deposit choice, and the copy says that splitting a sum doesn't make deposits
+  tax-free.
 - With automation **off** the tax still applies in the real world: the bank withholds it either way. The user
   records what actually arrived, which is already net. The app computes nothing then.
 
@@ -231,13 +251,15 @@ The rows (read-only until *Edit figures*):
 | Row | Maturity | Monthly |
 |---|---|---|
 | Principal | balance on the due day | balance on the due day |
-| Interest | net, with "after 20% tax" or "tax-free" | same |
-| What happens | "Roll over 3 months · interest to BCA Tahapan" / "Roll over 3 months · interest stays in the deposit" / "Everything to BCA Tahapan · the deposit closes" | "To BCA Tahapan" / "Stays in the deposit" |
+| Before tax | gross interest | same |
+| Interest | net (what lands), with "after 20% tax" (the setting's percentage), "after tax" once the gross or tax has been edited, or "tax-free" | same |
+| Then | "Roll over 3 months · interest to BCA Tahapan" / "Roll over 3 months · interest stays in the deposit" / "Everything to BCA Tahapan · the deposit closes" | "To BCA Tahapan" / "Stays in the deposit" |
 | New rate | the rate the next term will carry, when rolling over | — |
 
 The footer says that the figures are worked out from the stored rate and should be corrected to what the bank
-credited. When more events are waiting it adds "2 more waiting after this one." A second group holds two action
-rows, **Edit figures** and **Confirm**, the kit's action shape (the way `CashAccountForm` draws "Add account").
+credited. When more events are waiting it adds "2 more waiting after this one." A second group holds three action
+rows, **Edit figures**, **Recorded it myself** and **Confirm**, the kit's action shape (the way `CashAccountForm`
+draws "Add account"). Its footer says that *Recorded it myself* marks the event done and posts nothing.
 
 ### 6.3 Editing
 
@@ -246,14 +268,16 @@ deposit's currency, with `parseRate` for percentages:
 
 | Typed row | When | Posts as |
 |---|---|---|
-| Interest after tax | always | the interest transaction's amount |
+| Interest before tax | always | the `income.investment` line (gross) |
+| Tax withheld | unless the deposit is tax-free | the `government_taxes.estimated_tax` line. It must not exceed the gross |
 | Principal | maturity with *Don't roll over* | the transfer out of the deposit |
 | New rate % | maturity with a roll-over | `deposit_terms.rate_bps` of the new term. Pre-filled with the stored rate when *Keep the rate* is on; empty otherwise, and it must be typed |
 | New term | maturity with a roll-over | the new term's length (`SelectRow`, 1/3/6/12). Pre-filled with the stored term |
 | Rate: *base* per 1 *CCY* | deposit currency ≠ base **and** no stored rate is found for the due date | the posting's rate to base (as `CashAccountForm` asks it) |
 
-On a roll-over the principal is not posted (it stays where it is), so it is shown rather than typed. The gross and
-tax shown are the computed ones. Editing the net does not rewrite them, but the log records the net as posted.
+Below the two typed figures, a read-only **Lands** row shows `gross − tax` as it is typed. The net is never typed,
+so the ledger's three lines and the log always agree: gross = net + tax. On a roll-over the principal is not posted
+(it stays where it is), so it is shown rather than typed.
 
 ### 6.4 Confirming
 
@@ -262,36 +286,106 @@ One `database.transaction`, `tx` only. It **calls the existing write paths** and
 1. Re-check, inside the transaction: the deposit is a live `time_deposit` of this workspace, automation is on, and
    the event is **the earliest due event**. Anything else is refused with "This is not the next thing due on this
    deposit".
-2. **Interest**, when net > 0: `postTransactionTx` with `incomeLines({ incomeAccountId: income.investment,
-   depositAccountId: interestInto, amountMinor: net, currency })`, dated `dueOn`, described
-   "Interest: *deposit name*". `interestInto` is the deposit itself for *principal + interest* and the
-   **Lands in** account otherwise.
+2. **Interest**, when gross > 0, posts **the way an investment payment posts** (user decision 1). The code is
+   `postTransactionTx` with the lines of `tradePostings({ kind: 'income', grossMinor, taxMinor, feeMinor: 0,
+   unitsMicro: 0, occurredOn: dueOn }, positionAfter([]), accounts)`, where `accounts` comes from
+   `tradeAccountsFor(tx, ws, deposit, interestInto)`. The result is one transaction dated `dueOn`, described
+   "Interest: *deposit name*": `interestInto` **+net**, `government_taxes.estimated_tax` **+tax** (only when
+   tax > 0), and `income.investment` **−gross**. `interestInto` is the deposit itself for *principal + interest*
+   and the **Lands in** account otherwise. The category totals therefore show gross interest earned and tax paid,
+   as they do for dividends and coupons. A tax equal to the gross would leave a zero line, which `planPosting`
+   refuses, so confirm refuses it first with "The tax cannot take all of the interest".
 3. **Don't roll over**: `postTransactionTx` with `transferLines({ from: deposit, to: Lands in, amountMinor:
    principal })`, dated `dueOn`, described "*deposit name* matured".
 4. **Roll over** (either kind): `saveDepositTermsTx(tx, …)` with `maturesOn = addMonthsToDate(dueOn, newTerm)`
    and the new rate, then set the automation's `termMonths = newTerm` and `termStartedOn = dueOn`.
-5. **Log**: insert the event (deposit, kind, dueOn, principal, gross, tax, net, the transaction ids). A unique
-   index on (account, kind, dueOn) makes a double confirm fail and roll back the whole transaction.
-6. **Don't roll over**, last: switch automation off and archive the deposit with `archiveAccountTx` (extracted
-   from `archiveAccount`). The archive keeps its own refusal. If a principal edited below the balance leaves money
-   in the deposit, the archive refuses before it writes, the deposit stays open with automation off, and its
-   page's hero shows what is left.
+5. **Log**: insert the event (deposit, kind, dueOn, principal, gross, tax, net = gross − tax, the transaction ids,
+   `recorded_by_hand = 0`). A unique index on (account, kind, dueOn) makes a double confirm fail and roll back the
+   whole transaction.
+6. **Don't roll over**, last: switch automation off, **keeping `enabled_on`** (without it, reopening the close
+   could not bring back a monthly payout of that term; §4.3), and archive the deposit with `archiveAccountTx`
+   (extracted from `archiveAccount`). The archive keeps its own refusal. If a principal edited below the balance
+   leaves money in the deposit, the archive refuses before it writes, the deposit stays open with automation off,
+   and its page's hero shows what is left. A close *recorded by hand* never archives (§6.5).
 
 For a deposit in a currency other than the base currency, the page resolves the rate for `dueOn` before calling
 confirm, the same way `CashAccountForm` does. It uses `useResolveRates` and falls back to a stale stored rate, or
 asks for the manual rate row (`checkManualRate`, then `upsertRate`). The rate is passed as `ratesToBase`.
 
 After confirming, every query is invalidated. The next waiting event, if any, is proposed straight away. After
-*Don't roll over*, the page navigates to `/net-worth/assets`.
+*Don't roll over*, the page navigates to `/net-worth/assets` **only when the deposit archived**. When it stayed
+open (money left in it, or a close recorded by hand), the page stays, showing what is left.
 
-A confirmed event is final in the log. If the posted transaction is later deleted in the transaction list, the
-event is **not** proposed again. The log says it was handled, and the owner corrects the ledger as with any other
-transaction.
+**Voiding an event's posted transaction reopens the event; editing it keeps it.** Every void goes through
+`voidTransactionTx`, which removes the event's log row in the same database transaction. The proposal comes back
+as it was, and the tax report drops the event (§6.6):
+
+- a roll-over's new term is taken back: the maturity returns to the due day, and the rate, the term's length and
+  its stored start return to what the confirm replaced (0054 logs them as `prior_rate_bps`, `prior_term_months`,
+  `prior_term_started_on`). This happens only while nothing later is logged on that deposit;
+- a close is reopened whole: voiding either its interest or its principal transfer voids the other too, the
+  deposit is un-archived (`unarchiveAccountTx`, audited) and its automation is switched back on.
+
+An edit (void and replace as one step) keeps the event done; the log follows the replacement and takes its gross,
+tax and principal. A hand-recorded event posted nothing, so no void reaches it.
+
+### 6.5 Recorded it myself
+
+User decision 3. This is for an event the owner already put in the ledger by hand. It goes through the same
+`confirmDepositEvent` with `byHand: true`, in the same single transaction and with the same `NOT_NEXT` / `OFF`
+re-checks, and:
+
+- **posts nothing**: no interest transaction and no principal transfer. It needs no **Lands in** account and no
+  rate to base;
+- **logs the event** with the figures on the card (as computed, or as edited) and `recorded_by_hand = 1`, so the
+  queue moves on and the tax report still has it (§6.6);
+- **still starts the next term** on a roll-over (step 4), because the maturity is behind it either way. This uses the
+  card's new rate and term, so a rate that is not kept must still be typed;
+- on *Don't roll over*, still switches automation off (keeping `enabled_on`, step 6) but **never archives** (ruling,
+  final review I1). The deposit stays open at whatever the owner left in it, 0 if they already moved the money out,
+  so its page keeps the **Undo recorded by hand** row below; the owner archives it from that page (its Archive row
+  works once the balance is 0) when they are done. Archived, the event could no longer be reached, and figures
+  recorded wrongly would stay in the tax report for good. When the owner already moved the money out on the due
+  day, the card's principal is the balance at the end of the day before (the due day's reads 0), so there are
+  figures to record.
+
+With *principal + interest* and monthly payouts, a payout recorded by hand posts nothing into the deposit, so the
+next period's principal is the balance the owner's own postings left. The app never assumes that it compounded.
+
+**Undo recorded by hand** (ruling, 2026-09-21). A hand-recorded event has no transaction to void, so without its own
+undo a later by-hand event would block voiding an earlier roll-over forever (NOT_LAST). The deposit's page lists, in a
+"Recorded by hand" kit group, each hand-recorded event that nothing later blocks, newest first, one **Undo recorded by
+hand** row each. Undoing (`undoRecordedByHand`) removes that event's log row and takes back what its confirm did beyond
+the ledger, exactly as a void reopens an event: a roll-over's term, rate and start return; a close turns automation
+back on (a close recorded by hand never archived the deposit). Nothing is posted or voided; the owner's own transactions stay.
+The proposal returns and the tax report drops the event. It keeps the NOT_LAST order, and it refuses an event the app
+posted (`POSTED`: delete its transaction instead).
+
+### 6.6 The tax report reads the log
+
+User decision 2. The SPT's final-income section ("Income and final tax", `IncomeSection`) already lists what each
+holding paid in the year, gross and withheld, banded by how the holding's income is taxed. The deposit's events
+join it **through the same reader**:
+
+- `depositIncomePayments(database, ws)` shapes each logged event with gross > 0 as an income payment
+  (`kind: 'income'`, `occurredOn = dueOn`, gross, tax). `incomeInputsFor` passes these to
+  `investmentIncomeFor` together with the trades. No second reader is written.
+- A `cash` holding's payment is named **interest** (`IncomeKind` gains `'interest'`), so the row reads "BCA
+  Deposito · interest". This is the bunga deposito line.
+- The band is the deposit's own **How its income is taxed** (its asset profile's `taxTreatment`), set on the
+  deposit's page like any holding's. A time deposit nobody set reads **final** (`taxTreatmentOf`): its interest has
+  that one treatment, and the tax report is the one surface allowed to know it. Any other holding stays "Not set"
+  until the owner says.
+- Events recorded by hand are included with the figures the owner confirmed. The year is the due day's year.
+- A deposit in another currency is `foreign`, as a foreign holding is: listed in its own money and left out of
+  the withheld total.
+- Voiding an event's posted transaction reopens it, so it leaves the report; editing it keeps it, with the edited
+  gross and tax (§6.4). The log, not the ledger, is what the report reads.
 
 ## 7. The due marker (Net worth → Assets)
 
 `groupAssets` receives the set of deposit ids that have a due event. `AssetRow.due` is true for them, and the
-row's subtitle gains **"Due"** alongside the method and the tax code (`Balance · 0104 · Kas · Due`). The subtitle
+row's subtitle gains **"Due"** alongside the method and the tax code (`Ledger balance · 0104 · Kas dan Setara Kas · Due`). The subtitle
 uses the same quiet ink as the existing "Update price" marker, and the row's value tone does not change. The row
 still opens the deposit's page, which is where the proposal waits. Nothing else in the app carries the marker.
 
@@ -331,6 +425,11 @@ CREATE TABLE deposit_events (
   net_minor INTEGER NOT NULL,
   interest_transaction_id TEXT,
   principal_transaction_id TEXT,
+  recorded_by_hand INTEGER NOT NULL DEFAULT 0 CHECK (recorded_by_hand IN (0, 1)),
+  -- a roll-over's terms before its confirm, restored when the event is reopened (§6.4); NULL otherwise
+  prior_rate_bps INTEGER,
+  prior_term_months INTEGER CHECK (prior_term_months IS NULL OR prior_term_months IN (1, 3, 6, 12)),
+  prior_term_started_on TEXT,
   confirmed_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX deposit_events_once ON deposit_events (account_id, kind, due_on);
@@ -340,6 +439,8 @@ CREATE INDEX deposit_events_workspace ON deposit_events (workspace_id, account_i
 - There are no `REFERENCES` clauses, as in 0048. A later rebuild of `accounts` (0047's kind) must never have to
   defer keys for these tables.
 - No row means off. Nothing is backfilled.
+- `enabled_on` is cleared only by the owner switching automation off. A close switches it off and keeps `enabled_on`
+  (§6.4, step 6), so reopening the close restores it as it was.
 - 0054 is pure `CREATE`. It depends on nothing that 0050–0053 make, so it applies in any order among them.
 
 ## 9. Refusals the new surface inherits
@@ -352,11 +453,19 @@ Confirming posts money, so it inherits every refusal that already guards posting
 | Archived deposit or archived payout account | `archivedAt IS NULL` checked in the transaction |
 | Payout in another currency | refused on save and on confirm (`BAD_PAYOUT`), and never offered in **Lands in** |
 | Payout that is not a spendable account (a card, a loan, another deposit) | `SPENDABLE_SUBTYPES` |
-| Categories from two workspaces (books) | `postTransactionTx` (`TWO_BOOKS`); the income category comes from `categoryIdsByKeyTx(tx, ws)`, the open book's own |
+| Categories from two workspaces (books) | `postTransactionTx` (`TWO_BOOKS`); the income and tax categories come from `tradeAccountsFor` → `categoryIdsByKeyTx(tx, ws)`, the open book's own |
+| `income.investment` or `government_taxes.estimated_tax` missing | `tradeAccountsFor`'s own `AssetError` ("Reopen the app so default categories are restored") |
+| A tax that takes all the interest | `BAD_FIGURE` before posting (the ledger's `ZERO_AMOUNT` would refuse the zero net line) |
 | Missing rate to base | `planPosting` (`MISSING_RATE`); the page asks for the manual rate first |
 | Archiving a deposit that still holds money | `archiveAccountTx`'s own check |
 | Confirming twice, or out of order | `NOT_NEXT`, backed by the unique index |
 | Automation off | `OFF` |
+| No **Lands in** account chosen, on a confirm that posts to one | `NO_PAYOUT` |
+| A term other than 1/3/6/12 months, on save | `BAD_TERM` |
+| A tax percentage outside 0–100 or finer than two decimals, on save | `BAD_TAX` |
+| Reopening (void or *Undo recorded by hand*) an event while a later event is logged across a maturity | `NOT_LAST`, before anything is written (§6.4, §6.5) |
+| *Undo recorded by hand* on an event the app posted | `POSTED`: void its transaction instead (§6.5) |
+| An account with pockets as **Lands in** (a pocket parent holds no money of its own) | `BAD_PAYOUT` on save and on confirm ("Choose one of its pockets"), and never offered (`pocketParentIds`); its pockets are accepted. The ledger refuses it too (`POCKET_PARENT`) |
 
 The switch edits settings only. It does not edit or delete money, so none of the ledger's edit refusals apply to
 it.
@@ -378,14 +487,26 @@ kit tokens (`--ph-tint` for the check glyph), so dark mode follows without any l
 - **Repo**: settings round-trip and default-off; payout refusals (other workspace, other currency, archived, not
   spendable); older database (no tables) reads off and has no due events; proposals (queue order, principal from
   the due day's balance, figures); confirm for each choice; refusals (`NOT_NEXT`, double confirm, `OFF`, missing
-  payout); the archive refusal leaves the deposit open.
-- **Combinations** (repo): 3 choices × monthly/at maturity × taxed/tax-free × IDR/USD = 24 cases, each asserting the
-  final deposit and payout balances and the archived state as exact integers (table in the plan, Task 6).
+  payout); the archive refusal leaves the deposit open; gross and tax reach `income.investment` and
+  `estimated_tax`; *Recorded it myself* posts nothing, moves the queue on, still rolls the term over, switches a close's
+  automation off and never archives it, even an emptied deposit (the owner archives it); a close reopened before a
+  monthly payout of its term still proposes that payout again, and a seeded property test runs 100 random
+  close + monthly sequences of confirm, void and undo (in any order, NOT_LAST refusing) checking that no event is lost
+  or doubled and that the ledger and the tax report equal the log after every step.
+- **Tax report** (core + repo): a `cash` holding's payment reads as `interest`; `incomeInputsFor` reports the logged
+  gross and tax (not the net) under the deposit's treatment, includes events recorded by hand, keeps years apart,
+  and flags a USD deposit `foreign`.
+- **Combinations** (repo): 3 choices × monthly/at maturity × taxed/tax-free × IDR/USD × confirmed / first event
+  recorded by hand = 48 cases. Each one asserts as exact integers every net proposed, the final deposit and payout
+  balances, the gross and tax posted to the two categories, the gross and tax the tax report reads, and whether the
+  deposit is still open (table in the plan, Task 7).
 - **Web unit**: the proposal draft (pre-fill, per-currency reading, required rate), payout choices by currency,
   and `groupAssets` due marker.
-- **E2E**: the same 24 combinations walked through the real screens on chromium, with every typed amount and rate
-  entered per keystroke and the clock moved to the due day. Four combinations run on phone. Also: off by default;
-  an edited interest figure posts as typed; confirming one queued event proposes the next.
+- **E2E** (port 4174, targeted specs only): the same 24 combinations walked through the real screens on chromium,
+  plus six walks whose first event is *Recorded it myself*. Every typed amount and rate is entered per keystroke,
+  and the clock is moved to the due day. Four combinations and one by-hand walk run on phone. Also: off by default;
+  an edited gross and tax post as typed; *Recorded it myself* posts nothing and proposes the next; confirming one
+  queued event proposes the next; the tax report shows the confirmed gross and the withheld tax.
 
 ## 12. Out of scope
 
@@ -395,42 +516,46 @@ kit tokens (`--ph-tint` for the check glyph), so dark mode follows without any l
 - Terms other than 1/3/6/12 months, or day-based terms.
 - Business-day shifting of a due date that falls on a weekend or holiday. The figure is editable, and the date is
   the contractual one.
-- Feeding the logged gross/tax into the tax report (a later decision; see §14).
-- Dismissing a proposal without posting. See §14. Meanwhile, a maturity the owner handled by hand is cleared by
-  correcting the maturity date on the terms card, and switching automation off stops everything.
+- Guessing how deposit interest is taxed in the tax report: the deposit's own treatment decides (§6.6).
+- Dismissing a proposal without logging it. *Recorded it myself* logs it (§6.5). Switching automation off stops
+  everything.
 
 ## 13. Decisions taken here that the record did not cover
 
 1. **Interest paid** and **Term** are stored in `deposit_automation`, because the deposit carries neither (§2).
    Their defaults are At maturity and 1 month, and both rows sit in the group right under the switch.
 2. With *Roll over principal + interest* and monthly payouts, each monthly payout lands **in the deposit**
-   ("nothing lands; the deposit grows"). With the other two choices, monthly payouts land in **Lands in**.
+   ("nothing lands; the deposit grows") and compounds. The user confirmed this combination is allowed (decision 4,
+   2026-09-21). With the other two choices, monthly payouts land in **Lands in**.
 3. Only the earliest due event is proposed. Later ones are counted.
 4. Monthly payouts dated before the day automation was switched on are not proposed. A passed maturity is.
 5. Principal = the deposit's balance on the due day. A roll-over does not post the principal, so it is not typed.
-6. Interest is posted **net**, as one income transaction into `income.investment` (the key trades already post
-   investment income into). Gross and tax are kept in the event log, not posted as lines.
+6. Interest is posted **gross + tax, like an investment payment** (decision 1): `tradePostings` on
+   `tradeAccountsFor`'s accounts, so gross goes to `income.investment`, tax to `government_taxes.estimated_tax`, and
+   the net lands. The same gross and tax are kept in the event log.
 7. *Don't roll over* archives the deposit when it reaches zero, through the existing archive refusal, and turns
-   automation off either way.
+   automation off either way (keeping `enabled_on`). A close *recorded by hand* never archives: the owner archives
+   the deposit from its page, where the undo row stays reachable (ruling, final review I1).
 8. Tax is a per-deposit percentage (default 20) plus a tax-free switch, with no country gate (§5.3).
 9. The three choices are kit rows with a check glyph, not radios. The settings row is labelled "Term" rather
    than the mockup's "New term", because it also dates the current term's payouts.
-10. A confirmed event stays confirmed even if its transaction is later deleted.
+10. Voiding an event's posted transaction reopens it: the proposal returns and the tax report drops it (§6.4).
+    Editing the transaction keeps the event, with the edited figures.
+11. **Recorded it myself** logs the event with the card's figures and `recorded_by_hand = 1`, posts nothing, and
+    still rolls the term over or switches a close's automation off, without archiving (decision 3; §6.5).
+12. The tax report's final-income section reads the log through `investmentIncomeFor`, and a `cash` holding's
+    payment is named interest (decision 2; §6.6).
+13. What the user edits is the gross and the tax, never the net, so the ledger's lines and the log cannot disagree.
 
-## 14. Open questions
+## 14. Settled questions (user, 2026-09-21)
 
-1. **The tax-free gate.** The dispatch ruled that the tax-free option be offered only when the principal is
-   ≤ Rp 7.500.000. Encoding that threshold puts an Indonesian figure in a non-tax-report screen, which the
-   country-neutral rule forbids, so the switch is offered on every deposit and its copy carries the splitting
-   rule. Should the gate be added, keyed to the IDR currency?
-2. **Posting gross + tax, like trades.** `writeTradeTx` (via `tradePostings` in `packages/core/src/assets/trades.ts`) posts investment income as gross to `income.investment`
-   with the tax as a separate `government_taxes.estimated_tax` line. This design posts net only, as ruled. Should
-   deposit interest follow the trades' three-line shape instead, so that the category totals show gross interest
-   and tax paid?
-3. **Final-income section of the tax report.** Should the SPT's final-tax income list (bunga deposito, gross and
-   PPh withheld) read `deposit_events`?
-4. **Dismissing a proposal.** P1 shows only *Edit figures* and *Confirm*. Should there be a "Recorded it myself"
-   action that logs the event without posting?
-5. **Monthly interest with principal + interest.** Decision 13.2 (monthly payouts compound into the deposit) is a
-   reasonable reading, but many banks don't offer ARO principal + interest with monthly payout. Confirm it, or
-   refuse that combination?
+The five questions this spec first raised were answered with "ok" to each recommendation. None remains open.
+
+1. **The tax-free gate.** No Rp 7.500.000 gate. The switch is a plain per-deposit choice, and its copy carries the
+   splitting rule (§3, §5.3).
+2. **Posting gross + tax.** Yes, like investment trades: gross income plus a separate tax-withheld line, with the
+   account receiving the net (§6.4 step 2, §13.6).
+3. **The tax report's final-income section** reads gross and withheld from the confirmed-event log (§6.6, §13.12).
+4. **Recorded it myself.** Added. It marks the event done and posts nothing (§6.5, §13.11).
+5. **Monthly interest with principal + interest.** Allowed. Each monthly payout lands in the deposit and compounds
+   (§5, §13.2).

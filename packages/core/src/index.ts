@@ -241,6 +241,23 @@ export {
   type StagePlan,
   type StageState,
 } from './goals/plan';
+export {
+  type AccountSetAside,
+  type BorrowMark,
+  checkOutflow,
+  type DatedAmount,
+  type GoalShare,
+  inflowTo,
+  type MoneyLine,
+  movedAmount,
+  outflowFrom,
+  type SetAsideCheck,
+  type SetAsideClaim,
+  setAsideOn,
+  type SetAsideState,
+  spreadOver,
+  wholeSince,
+} from './goals/set-aside';
 export { formatLots, lotsOf, unitsFromLots } from './assets/units';
 export {
   borrowPostings,
@@ -414,3 +431,19 @@ export {
   type EventPlanLine,
   type EventPlanUnplanned,
 } from './events/plan';
+export {
+  addMonthsToDate,
+  DEFAULT_TAX_BPS,
+  type DepositEvent,
+  type DepositSchedule,
+  depositInterest,
+  dueDepositEvents,
+  eventKey,
+  type InterestPaid,
+  type MaturityChoice,
+  needsPayout,
+  TERM_MONTHS,
+  type TermMonths,
+  termStart,
+  withholdTax,
+} from './deposits/maturity';

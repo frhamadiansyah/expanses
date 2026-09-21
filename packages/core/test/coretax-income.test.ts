@@ -202,3 +202,17 @@ describe('how each row is taxed', () => {
     expect(rows).toEqual([expect.objectContaining({ kind: 'sale', treatment: 'final', grossMinor: 5_000_000 })]);
   });
 });
+
+describe('deposits', () => {
+  it('calls a cash holding’s payment interest, with its gross and its tax', () => {
+    const rows = investmentIncomeFor({
+      trades: [{ id: 't1', accountId: 'dep', kind: 'income', occurredOn: '2026-10-15', createdAt: '2026-10-15T00:00:00Z', unitsMicro: 0, grossMinor: 535_616, feeMinor: 0, taxMinor: 107_123 }],
+      holdings: [{ accountId: 'dep', name: 'BCA Deposito', assetKind: 'cash', currency: 'IDR', treatment: 'final' }],
+      year: 2026,
+      baseCurrency: 'IDR',
+    });
+    expect(rows).toEqual([
+      { accountId: 'dep', name: 'BCA Deposito', kind: 'interest', grossMinor: 535_616, taxMinor: 107_123, foreign: false, treatment: 'final', reinvestedInto: [] },
+    ]);
+  });
+});

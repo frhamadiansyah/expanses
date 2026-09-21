@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { depositLine, maturityLabel, rateLabel } from './deposit-terms';
+import { depositLine, maturityLabel, rateBpsFrom, rateInputText, rateLabel } from './deposit-terms';
 
 describe('what a deposit says about itself', () => {
   it('says the day the money comes back and what it pays', () => {
@@ -19,5 +19,14 @@ describe('what a deposit says about itself', () => {
   it('falls back to the date as stored rather than showing nonsense', () => {
     expect(maturityLabel('')).toBe('');
     expect(maturityLabel('not a date')).toBe('not a date');
+  });
+
+  it('turns a stored rate into what the box shows, and back', () => {
+    expect(rateInputText(425)).toBe('4,25');
+    expect(rateInputText(2000)).toBe('20');
+    expect(rateInputText(0)).toBe('');
+    expect(rateBpsFrom('4,25')).toBe(425);
+    expect(rateBpsFrom('6,37')).toBe(637); // 6.37 × 100 is 636.999… in floating point; the round is what keeps it 637
+    expect(rateBpsFrom('12,5')).toBe(1250);
   });
 });
