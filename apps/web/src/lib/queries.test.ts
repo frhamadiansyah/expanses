@@ -10,10 +10,13 @@ const rows = [
   { id: 'card', parentId: null, kind: 'liability', subtype: 'credit_card', currency: 'IDR', archivedAt: null },
   { id: 'food', parentId: null, kind: 'expense', subtype: 'category', currency: null, archivedAt: null },
   { id: 'dining', parentId: 'food', kind: 'expense', subtype: 'category', currency: null, archivedAt: null },
+  // Archived: never offered, whether a pocket or a plain account (P2-M1).
+  { id: 'old-jpy', parentId: 'valas', kind: 'asset', subtype: 'savings', currency: 'JPY', archivedAt: '2026-01-01' },
+  { id: 'closed', parentId: null, kind: 'asset', subtype: 'savings', currency: 'IDR', archivedAt: '2026-01-01' },
 ] as AccountRow[];
 
 describe('who can hold money', () => {
-  it('is every money account except a pocket parent', () => {
+  it('is every open money account except a pocket parent — an archived pocket or account is not offered', () => {
     expect(moneyHolders(rows).map((a) => a.id)).toEqual(['usd', 'sgd', 'mandiri', 'card']);
   });
 

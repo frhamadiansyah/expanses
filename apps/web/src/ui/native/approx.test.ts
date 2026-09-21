@@ -19,6 +19,11 @@ describe('a foreign figure with its converted value beneath', () => {
     expect(approxLine(5_400_000, 'IDR', 'IDR', {})).toBeNull();
     expect(approxLine(115_000, 'SGD', 'IDR', {})).toBe('No SGD rate yet');
   });
+
+  it('treats a rate of 0 or below as no rate, never printing ≈ Rp 0 (P2-M2)', () => {
+    expect(approxLine(115_000, 'SGD', 'IDR', { SGD: 0 })).toBe('No SGD rate yet');
+    expect(approxLine(115_000, 'SGD', 'IDR', { SGD: -12_680 })).toBe('No SGD rate yet');
+  });
 });
 
 describe('a rate in words', () => {

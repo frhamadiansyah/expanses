@@ -57,7 +57,9 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
       if (pocketed) {
         const read = readPockets(pockets);
         const settled = [];
-        // Every rate is settled before anything is written, so the one transaction below is all or nothing.
+        // Every rate is settled before any account is written, so the account and its pockets below are one
+        // transaction: all or nothing. The rates are not part of it — a typed rate is stored as soon as it is
+        // checked (`openingRateFor`), so a later pocket's refusal leaves an earlier typed rate saved for that day.
         for (const pocket of read) {
           settled.push({
             currency: pocket.currency,

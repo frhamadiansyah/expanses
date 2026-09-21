@@ -29,6 +29,9 @@ export async function checkManualRate(database: Database, from: string, to: stri
  * The rate an opening balance is posted at: typed (checked, stored as a manual rate for the opening date) or, left
  * blank, resolved for the opening date — stopping, with the currency named, only when none can be found. Nothing
  * for the base currency or an empty balance. One implementation for every form that opens money.
+ *
+ * A typed rate is stored here, as soon as it is checked — before, and outside, the caller's write of the account.
+ * If that write then fails, the rate stays stored for that day; it is the rate the owner typed, so it is kept.
  */
 export async function openingRateFor({
   database,

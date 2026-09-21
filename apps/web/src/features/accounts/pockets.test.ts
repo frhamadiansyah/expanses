@@ -22,6 +22,16 @@ describe('the pockets of an account', () => {
     expect(pocketsOf('v', accounts).map((a) => a.currency)).toEqual(['USD', 'SGD', 'IDR']);
   });
 
+  it('are assets only: a non-asset row under the same parent is neither listed nor summed (P2-M3)', () => {
+    const withDebt = [
+      ...accounts,
+      { id: 'e-loan', name: 'Valas · loan', parentId: 'v', kind: 'liability', subtype: 'loan', currency: 'IDR', archivedAt: null, sortOrder: 4 },
+    ] as AccountRow[];
+    expect(pocketsOf('v', withDebt).map((a) => a.id)).toEqual(['c-usd', 'a-sgd', 'b-idr']);
+    const balances = { 'c-usd': 240_000, 'a-sgd': 115_000, 'b-idr': 5_400_000, 'e-loan': -1_000_000 };
+    expect(parentTotal(pocketsOf('v', withDebt), balances, 'IDR', rates).totalMinor).toBe(58_982_000);
+  });
+
   it('add up to the mockup’s total, or to none when a rate is missing', () => {
     const balances = { 'c-usd': 240_000, 'a-sgd': 115_000, 'b-idr': 5_400_000 };
     expect(parentTotal(pocketsOf('v', accounts), balances, 'IDR', rates)).toEqual({ totalMinor: 58_982_000, missing: [] });
