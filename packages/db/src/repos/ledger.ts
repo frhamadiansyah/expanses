@@ -11,6 +11,7 @@ import { BILL_MONTH, billTablesExist } from './bill-months';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { carryEventItemTx } from './event-items';
+import { applySetAsideTx, carryable, type SetAsideChoice, setAsideChoiceOfTx, setAsideTablesExist, stillPromisedTx, undoSetAsideTx } from './set-aside-tx';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
@@ -54,6 +55,11 @@ export interface PostTransactionInput {
   eventId?: string | null;
   /** Photo rows written before the transaction had an id. */
   photoIds?: string[];
+  /**
+   * Which goal the money came out of, when it took more than was free (spec §4.4). Applied inside this posting;
+   * undefined on `replaceTransaction` means "carry the original's", null means none.
+   */
+  setAside?: SetAsideChoice | null;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -179,6 +185,7 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   // What the purchase was, beside what it cost: the channel, the exclusion, and the photos a form wrote before
   // this transaction had an id. Their own tables, so a database stopped before 0048 simply has none of it.
   if (await extrasTablesExist(tx)) await writeExtrasTx(tx, ws, id, input);
+  if (input.setAside && (await setAsideTablesExist(tx))) await applySetAsideTx(tx, ws, id, input.occurredOn, planned, input.setAside);
   await audit(tx, ws, 'post', id, input);
   return id;
 }
@@ -196,6 +203,8 @@ export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string
   if (!row) throw new LedgerError('NOT_FOUND', `Transaction ${id} not found`);
   if (row.status === 'void') throw new LedgerError('ALREADY_VOID', `Transaction ${id} is already void`);
   await tx.update(transactions).set({ status: 'void' }).where(eq(transactions.id, id));
+  // What an answer did to a goal is a fact about the same money: it goes when the money goes.
+  if (await setAsideTablesExist(tx)) await undoSetAsideTx(tx, ws, id);
   await audit(tx, ws, 'void', id, {});
 }
 
@@ -252,7 +261,11 @@ export function replaceTransaction(
     // What the original said about itself, so a correction that does not mention a fact keeps it, and one that
     // mentions it — `channel: null` — clears it. Read before the void, written as part of the replacement.
     const extras = (await extrasTablesExist(tx)) ? await extrasForTx(tx, ws, id) : null;
+    // Read before the void reverses it. An edit that does not mention the answer keeps it, clamped to what it now pays.
+    const carried = input.setAside === undefined && (await setAsideTablesExist(tx)) ? await setAsideChoiceOfTx(tx, ws, id) : null;
     await voidTransactionTx(tx, ws, id);
+    const setAside =
+      input.setAside !== undefined ? input.setAside : carried && carryable(carried, input.lines) && (await stillPromisedTx(tx, ws, carried)) ? carried : null;
     // Keep import identity so re-importing the same statement still recognises the row.
     const replacement = await postTransactionTx(tx, ws, {
       ...input,
@@ -273,6 +286,7 @@ export function replaceTransaction(
       ...(input.excludedFromReport === undefined ? { excludedFromReport: extras?.excluded ?? false } : {}),
       // A correction is still the same spending, so it stays with the event it was tagged to — unless it says otherwise.
       ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
+      setAside,
     });
     // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
     // facts about the same money: they follow the correction.

@@ -18,7 +18,7 @@ import { accounts, entries } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goals } from '../schema-goals';
 import { AssetError, assertAccountInWorkspace } from './assets';
-import { adjustSetAsideTx } from './goal-transfers';
+import { adjustSetAsideTx } from './set-aside-tx';
 import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
 import { postTransactionTx, voidTransactionTx } from './ledger';

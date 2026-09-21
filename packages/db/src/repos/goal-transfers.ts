@@ -3,12 +3,12 @@ import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { assetProfiles } from '../schema-assets';
 import { goalEarmarks, goals } from '../schema-goals';
-import { SPENDABLE_SUBTYPES, systemAccountId } from './accounts';
+import { systemAccountId } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { GoalDbError } from './goals';
 import { postTransactionTx, voidTransactionTx } from './ledger';
+import { adjustSetAsideTx, canHoldSetAside } from './set-aside-tx';
 
 export interface TaggedTransferInput {
   occurredOn: string;
@@ -40,51 +40,6 @@ export interface TaggedTransferResult {
   transactionId: string;
   /** What the goal now has set aside in the destination account. */
   setAsideMinor: number;
-}
-
-async function canHoldSetAside(tx: Db, ws: WorkspaceContext, accountId: string): Promise<boolean> {
-  const [account] = await tx
-    .select({ subtype: accounts.subtype })
-    .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
-  if (!account) return false;
-  // Money can wait for a goal wherever it can be set aside, or in a holding the owner groups as investments.
-  if (SPENDABLE_SUBTYPES.includes(account.subtype)) return true;
-  const [profile] = await tx
-    .select({ planGroup: assetProfiles.planGroup })
-    .from(assetProfiles)
-    .where(and(eq(assetProfiles.accountId, accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
-  return profile?.planGroup === 'invest';
-}
-
-/**
- * Moves a goal's set-aside on one account by `deltaMinor`, never below zero, and returns what is left.
- * Used when money is parked for a goal and when a purchase spends it.
- */
-export async function adjustSetAsideTx(tx: Db, ws: WorkspaceContext, goalId: string, accountId: string, deltaMinor: number): Promise<number> {
-  const [existing] = await tx
-    .select({ amountMinor: goalEarmarks.amountMinor })
-    .from(goalEarmarks)
-    .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
-  const next = Math.max(0, (existing?.amountMinor ?? 0) + deltaMinor);
-
-  if (next === 0) {
-    if (existing) {
-      await tx
-        .delete(goalEarmarks)
-        .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
-    }
-    return 0;
-  }
-  if (existing) {
-    await tx
-      .update(goalEarmarks)
-      .set({ amountMinor: next })
-      .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, accountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
-    return next;
-  }
-  await tx.insert(goalEarmarks).values({ goalId, accountId, workspaceId: ws.workspaceId, amountMinor: next });
-  return next;
 }
 
 async function assertGoal(tx: Db, ws: WorkspaceContext, goalId: string): Promise<void> {
