@@ -42,13 +42,15 @@ test('the backup screen lists the copies the app keeps, and restores one', async
   await addBank(page, 'Added afterwards', '5000');
 
   await page.goto('/backup');
-  const copies = page.getByRole('heading', { name: 'Safety copies on this device' }).locator('..');
+  // The group's heading sits outside it now, so the heading's parent is its own line rather than the whole card.
+  const copies = page.locator('section', { has: page.getByRole('heading', { name: 'Safety copies on this device' }) });
   await expect(copies).toContainText('The day’s copy');
   await expect(copies).toContainText('not a backup');
 
   page.once('dialog', (dialog) => void dialog.accept());
   const safety = page.waitForEvent('download');
-  await copies.getByRole('button', { name: 'Restore this copy' }).first().click();
+  // The row is the action now — a row never holds a button — so it is named for the copy it restores.
+  await copies.getByRole('button', { name: /Restore this copy from/ }).first().click();
   expect((await safety).suggestedFilename()).toMatch(/^expanses-before-restore-\d{4}-\d{2}-\d{2}\.sqlite3$/);
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with the copy from/ }).click()]);
 
@@ -63,12 +65,12 @@ test('the backup screen lists the copies the app keeps, and restores one', async
    * a file the user has to go and find again, and "Added afterwards" now exists nowhere else.
    */
   await page.goto('/backup');
-  await expect(page.getByRole('heading', { name: 'Safety copies on this device' }).locator('..')).toContainText('Taken before a restore');
+  await expect(page.locator('section', { has: page.getByRole('heading', { name: 'Safety copies on this device' }) })).toContainText('Taken before a restore');
 });
 
 test('the iPhone paragraph promises only what has been checked', async ({ page }) => {
   await page.goto('/backup');
-  const section = page.getByRole('heading', { name: 'Backups and your iPhone' }).locator('..');
+  const section = page.locator('section', { has: page.getByRole('heading', { name: 'Backups and your iPhone' }) });
   // Spec §8.2: no claim that a device backup covers this data until that has been checked on a device.
   await expect(section).toContainText('an iPhone backup does not carry your data with it');
   await expect(section).not.toContainText('back up with the rest of the phone');
