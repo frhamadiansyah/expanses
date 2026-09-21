@@ -1,5 +1,5 @@
 import { assetItem, isSupportedCurrency, type PriceRow, type SecurityKind, uuidv7 } from '@expanses/core';
-import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
@@ -149,7 +149,7 @@ export async function linkHoldingTx(
     const [broker] = await tx
       .select({ kind: accounts.kind, subtype: accounts.subtype, parentId: accounts.parentId })
       .from(accounts)
-      .where(and(eq(accounts.id, brokerAccountId), eq(accounts.workspaceId, ws.workspaceId)));
+      .where(and(eq(accounts.id, brokerAccountId), eq(accounts.workspaceId, ws.workspaceId), isNull(accounts.archivedAt)));
     if (!broker) throw new AssetError('Broker account not found in this workspace');
     // The owner's ruling: a broker is its cash account, subtype `fund`. A pocket is its parent's money in one
     // currency, so the parent is the broker and the pocket never is.
@@ -163,6 +163,9 @@ export async function linkHoldingTx(
   }
   if (security && brokerAccountId) {
     // Only a live holding clashes: one sold out and archived is history, and holdingAtTx looks past it the same way.
+    // Invariant this leaves open (m11): a (security, broker) pair is unique among LIVE holdings only, so an archived
+    // holding can still share one with a live holding recorded after it was archived. If a holding is ever
+    // unarchived, whoever wires that up for investments must refuse it when its (security, broker) is taken again.
     const [clash] = await tx
       .select({ accountId: holdingLinks.accountId })
       .from(holdingLinks)
@@ -261,7 +264,13 @@ export interface AddHoldingResult {
   trade: TradeResult;
 }
 
-/** The live holding of a security at a broker (or at no broker), if there is one. */
+/**
+ * The live holding of a security at a broker (or at no broker), if there is one. At a named broker the clash rule
+ * (`linkHoldingTx`) already keeps this to at most one row. With no broker there can legitimately be several (§7.6
+ * links legacy holdings with "No broker", and the clash rule does not apply to them) — ordered oldest first, so the
+ * choice is deterministic rather than whichever row SQLite happens to return. `brokerlessHoldingsOf` names them all,
+ * so a caller can tell the owner when a buy is about to land on one of several rather than silently picking one.
+ */
 async function holdingAtTx(tx: Db, ws: WorkspaceContext, securityId: string, brokerAccountId: string | null): Promise<string | null> {
   const [row] = await tx
     .select({ accountId: holdingLinks.accountId })
@@ -272,8 +281,26 @@ async function holdingAtTx(tx: Db, ws: WorkspaceContext, securityId: string, bro
       eq(holdingLinks.securityId, securityId),
       brokerAccountId ? eq(holdingLinks.brokerAccountId, brokerAccountId) : isNull(holdingLinks.brokerAccountId),
       isNull(accounts.archivedAt),
-    ));
+    ))
+    .orderBy(asc(accounts.createdAt), asc(accounts.id));
   return row?.accountId ?? null;
+}
+
+/** Every live broker-less holding of a security, oldest first — the order a no-broker buy in `addHolding` picks from. */
+export async function brokerlessHoldingsOf(database: Database, ws: WorkspaceContext, securityId: string): Promise<string[]> {
+  if (!(await securityTablesExist(database.db))) return [];
+  const rows = await database.db
+    .select({ accountId: holdingLinks.accountId })
+    .from(holdingLinks)
+    .innerJoin(accounts, eq(accounts.id, holdingLinks.accountId))
+    .where(and(
+      eq(holdingLinks.workspaceId, ws.workspaceId),
+      eq(holdingLinks.securityId, securityId),
+      isNull(holdingLinks.brokerAccountId),
+      isNull(accounts.archivedAt),
+    ))
+    .orderBy(asc(accounts.createdAt), asc(accounts.id));
+  return rows.map((row) => row.accountId);
 }
 
 /**
@@ -291,7 +318,7 @@ export function addHolding(database: Database, ws: WorkspaceContext, input: AddH
       const [broker] = await tx
         .select({ id: accounts.id, name: accounts.name })
         .from(accounts)
-        .where(and(eq(accounts.id, input.broker.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+        .where(and(eq(accounts.id, input.broker.accountId), eq(accounts.workspaceId, ws.workspaceId), isNull(accounts.archivedAt)));
       if (!broker) throw new AssetError('Broker account not found in this workspace');
       brokerAccountId = broker.id;
       brokerName = broker.name;

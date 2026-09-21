@@ -4,6 +4,8 @@ import {
   coretaxInputsFor,
   createAccount,
   type Database,
+  linkHolding,
+  listSecurities,
   postTransaction,
   recordLoan,
   recordLoanPayment,
@@ -13,6 +15,7 @@ import {
   saveDebtProfile,
   saveLoanTerms,
   upsertPrice,
+  upsertSecurityPrice,
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -102,6 +105,27 @@ describe('what the year holds', () => {
 
     const inputs = await coretaxInputsFor(database, ws, YEAR);
     expect(inputs.holdings.find((row) => row.accountId === gold.id)!.priceMicro).toBe(1_900_000_000_000);
+  });
+
+  it('prices a linked holding from its security, not from a second lookup on its own prices (I4)', async () => {
+    const stockbit = await createAccount(database, ws, { name: 'BBCA · Stockbit', kind: 'asset', subtype: 'investment', currency: 'IDR' });
+    const mandiri = await createAccount(database, ws, { name: 'BBCA · Mandiri', kind: 'asset', subtype: 'investment', currency: 'IDR' });
+    await saveAssetProfile(database, ws, { accountId: stockbit.id, assetKind: 'stock' });
+    await saveAssetProfile(database, ws, { accountId: mandiri.id, assetKind: 'stock' });
+    await recordTrade(database, ws, { accountId: stockbit.id, kind: 'buy', occurredOn: '2026-01-05', unitsMicro: 1_000 * 1_000_000, grossMinor: 8_750_000, feeMinor: 0, taxMinor: 0, cashAccountId: null });
+    await recordTrade(database, ws, { accountId: mandiri.id, kind: 'buy', occurredOn: '2026-01-05', unitsMicro: 500 * 1_000_000, grossMinor: 4_700_000, feeMinor: 0, taxMinor: 0, cashAccountId: null });
+    // A stale own price typed before the holding was linked — the carry-over copies it to the security but leaves
+    // this row in place (m12), so a second lookup that reads the holding's own prices would find it and disagree.
+    await upsertPrice(database, ws, { accountId: stockbit.id, onDate: '2026-06-01', priceMicro: 9_400_000_000 });
+    const bbca = { ticker: 'BBCA', name: 'BBCA', market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share' as const, source: 'catalogue' as const };
+    await linkHolding(database, ws, { accountId: stockbit.id, security: bbca });
+    await linkHolding(database, ws, { accountId: mandiri.id, security: bbca });
+    const [security] = await listSecurities(database, ws);
+    await upsertSecurityPrice(database, ws, { securityId: security!.id, onDate: '2026-12-31', priceMicro: 9_775_000_000 });
+
+    const inputs = await coretaxInputsFor(database, ws, YEAR);
+    expect(inputs.holdings.find((row) => row.accountId === stockbit.id)!.priceMicro).toBe(9_775_000_000);
+    expect(inputs.holdings.find((row) => row.accountId === mandiri.id)!.priceMicro).toBe(9_775_000_000);
   });
 
   it('leaves out a holding bought after the year ended', async () => {

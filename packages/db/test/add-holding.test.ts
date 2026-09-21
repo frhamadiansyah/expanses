@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { rateFromAmounts } from '@expanses/core';
 import {
-  type AccountRow, addHolding, archiveAccount, AssetError, checkLedgerIntegrity, createAccount, createDatabase, createWorkspace, type Database, getAssetProfile, listAccounts, listDraws, listEarmarks, listHoldingLinks,
+  type AccountRow, addHolding, archiveAccount, AssetError, brokerlessHoldingsOf, checkLedgerIntegrity, createAccount, createDatabase, createWorkspace, type Database, getAssetProfile, listAccounts, listDraws, listEarmarks, listHoldingLinks,
   linkHolding, listSecurities, migrate, recordTrade, MIGRATIONS, nativeBalances, positionsFor, saveAssetProfile, saveEarmark, saveGoal, schema, upsertSecurityPrice,
   type WorkspaceContext,
 } from '../src/index';
@@ -47,6 +47,41 @@ describe('addHolding', () => {
     expect((await positionsFor(database, ws))[first.accountId]!.unitsMicro).toBe(shares(1_500));
   });
 
+  it('keeps the same security at two brokers apart (I2)', async () => {
+    const stockbit = await addHolding(database, ws, { security: bbca, broker: { name: 'Stockbit', currency: 'IDR' }, buy: { occurredOn: '2026-03-02', unitsMicro: shares(1_000), grossMinor: 8_750_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    const mandiri = await addHolding(database, ws, { security: { id: stockbit.securityId }, broker: { name: 'Mandiri Sekuritas', currency: 'IDR' }, buy: { occurredOn: '2026-03-05', unitsMicro: shares(500), grossMinor: 4_700_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    expect(stockbit.created).toBe(true);
+    expect(mandiri.created).toBe(true);
+    expect(mandiri.accountId).not.toBe(stockbit.accountId);
+    const positions = await positionsFor(database, ws);
+    expect(positions[stockbit.accountId]!.unitsMicro).toBe(shares(1_000));
+    expect(positions[mandiri.accountId]!.unitsMicro).toBe(shares(500));
+    expect(await listHoldingLinks(database, ws)).toEqual(expect.arrayContaining([
+      { accountId: stockbit.accountId, securityId: stockbit.securityId, brokerAccountId: stockbit.brokerAccountId },
+      { accountId: mandiri.accountId, securityId: mandiri.securityId, brokerAccountId: mandiri.brokerAccountId },
+    ]));
+  });
+
+  it('keeps two securities at one broker apart (I3)', async () => {
+    const tlkm = { ticker: 'TLKM', name: 'TLKM name', market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share' as const, source: 'catalogue' as const };
+    const first = await addHolding(database, ws, { security: bbca, broker: { name: 'Stockbit', currency: 'IDR' }, buy: { occurredOn: '2026-03-02', unitsMicro: shares(1_000), grossMinor: 8_750_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    const second = await addHolding(database, ws, { security: tlkm, broker: { accountId: first.brokerAccountId! }, buy: { occurredOn: '2026-03-05', unitsMicro: shares(2_000), grossMinor: 3_800_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    expect(second.created).toBe(true);
+    expect(second.accountId).not.toBe(first.accountId);
+    expect(await listSecurities(database, ws)).toHaveLength(2);
+    expect(await listHoldingLinks(database, ws)).toHaveLength(2);
+  });
+
+  it('pins the new holding to the security’s currency, not the broker’s (m8, A11)', async () => {
+    const result = await addHolding(database, ws, {
+      security: bbca, // IDR
+      broker: { name: 'Interactive Brokers', currency: 'USD' },
+      buy: { occurredOn: '2026-03-02', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null },
+    });
+    const accounts = await listAccounts(database, ws);
+    expect(accounts.find((a) => a.id === result.accountId)).toMatchObject({ currency: 'IDR' });
+  });
+
   it('opens a fresh holding when the one at that broker was sold out and archived', async () => {
     const first = await addHolding(database, ws, { security: bbca, broker: { name: 'Stockbit', currency: 'IDR' }, buy: { occurredOn: '2026-03-02', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
     await recordTrade(database, ws, { accountId: first.accountId, kind: 'sell', occurredOn: '2026-03-09', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null });
@@ -77,6 +112,13 @@ describe('addHolding', () => {
     expect(await listSecurities(database, ws)).toEqual([]);
   });
 
+  it('refuses a broker the owner closed, leaving nothing behind (m10)', async () => {
+    const closed = await createAccount(database, ws, { name: 'Closed broker', kind: 'asset', subtype: 'fund', currency: 'IDR' });
+    await archiveAccount(database, ws, closed.id);
+    await expect(addHolding(database, ws, { security: bbca, broker: { accountId: closed.id }, buy: { occurredOn: '2026-03-02', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } })).rejects.toThrow(/not found/);
+    expect(await listSecurities(database, ws)).toEqual([]);
+  });
+
   it('refuses a broker that is a card or a bank, leaving nothing behind', async () => {
     const card = await createAccount(database, ws, { name: 'Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
     for (const broker of [card, bca]) {
@@ -89,6 +131,63 @@ describe('addHolding', () => {
     const voo = { ticker: 'VOO', name: 'VOO name', market: 'NYSE ARCA', currency: 'USD', lotSize: null, kind: 'etf' as const, source: 'catalogue' as const };
     const result = await addHolding(database, ws, { security: voo, broker: null, buy: { occurredOn: '2026-03-08', unitsMicro: shares(3), grossMinor: 149_460, feeMinor: 0, taxMinor: 0, cashAccountId: null, ratesToBase: { USD: 16_100 } } });
     expect(await getAssetProfile(database, ws, result.accountId)).toMatchObject({ assetKind: 'stock', coretaxCode: '0303' });
+  });
+});
+
+describe('addHolding’s cash side (I5)', () => {
+  it('moves nothing when the buy is "owned before this app" (a)', async () => {
+    const result = await addHolding(database, ws, {
+      security: bbca,
+      broker: { name: 'Stockbit', currency: 'IDR' },
+      buy: { occurredOn: '2026-03-02', unitsMicro: shares(1_000), grossMinor: 8_750_000, feeMinor: 0, taxMinor: 0, cashAccountId: null },
+    });
+    const balances = await nativeBalances(database, ws);
+    expect(balances[result.brokerAccountId!] ?? 0).toBe(0);
+    expect(balances[bca.id]).toBe(50_000_000);
+    await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
+  });
+
+  it('pays from a broker’s pocket, and refuses the parent’s cash (b)', async () => {
+    const ibkr = await createAccount(database, ws, { name: 'Interactive Brokers', kind: 'asset', subtype: 'fund', currency: 'USD' });
+    const usdPocket = await createAccount(database, ws, { name: 'Interactive Brokers · USD', kind: 'asset', subtype: 'fund', currency: 'USD', parentId: ibkr.id, openingBalanceMinor: 200_000_00, openedOn: '2026-01-01', openingRateToBase: 16_000 });
+
+    const result = await addHolding(database, ws, {
+      security: aapl,
+      broker: { accountId: ibkr.id },
+      buy: { occurredOn: '2026-03-08', unitsMicro: shares(10), grossMinor: 123_457, feeMinor: 0, taxMinor: 0, cashAccountId: usdPocket.id, ratesToBase: { USD: 16_000 } },
+    });
+    expect(result.brokerAccountId).toBe(ibkr.id);
+    expect(await listHoldingLinks(database, ws)).toEqual([{ accountId: result.accountId, securityId: result.securityId, brokerAccountId: ibkr.id }]);
+    const afterPocket = await nativeBalances(database, ws);
+    expect(afterPocket[usdPocket.id]).toBe(200_000_00 - 123_457);
+
+    await expect(addHolding(database, ws, {
+      security: { id: result.securityId },
+      broker: { accountId: ibkr.id },
+      buy: { occurredOn: '2026-04-01', unitsMicro: shares(1), grossMinor: 12_000, feeMinor: 0, taxMinor: 0, cashAccountId: ibkr.id },
+    })).rejects.toThrow();
+    expect(await listHoldingLinks(database, ws)).toHaveLength(1);
+    const afterRefusal = await nativeBalances(database, ws);
+    expect(afterRefusal[usdPocket.id]).toBe(200_000_00 - 123_457);
+    expect(afterRefusal[ibkr.id] ?? 0).toBe(0);
+  });
+});
+
+describe('addHolding with no broker, deterministically (m2)', () => {
+  it('lands a broker-less buy on the earliest-linked holding, not an arbitrary one', async () => {
+    const first = await addHolding(database, ws, { security: bbca, broker: null, buy: { occurredOn: '2026-01-05', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    // A second, legacy broker-less holding of the same security, linked after the first.
+    const legacy = await createAccount(database, ws, { name: 'BBCA legacy', kind: 'asset', subtype: 'investment', currency: 'IDR' });
+    await saveAssetProfile(database, ws, { accountId: legacy.id, assetKind: 'stock' });
+    await recordTrade(database, ws, { accountId: legacy.id, kind: 'buy', occurredOn: '2025-01-01', unitsMicro: shares(50), grossMinor: 400_000, feeMinor: 0, taxMinor: 0, cashAccountId: null });
+    await linkHolding(database, ws, { accountId: legacy.id, security: { id: first.securityId } });
+
+    expect(await brokerlessHoldingsOf(database, ws, first.securityId)).toEqual([first.accountId, legacy.id]);
+
+    const second = await addHolding(database, ws, { security: { id: first.securityId }, broker: null, buy: { occurredOn: '2026-02-01', unitsMicro: shares(10), grossMinor: 90_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } });
+    expect(second.created).toBe(false);
+    expect(second.accountId).toBe(first.accountId);
+    expect((await positionsFor(database, ws))[legacy.id]!.unitsMicro).toBe(shares(50));
   });
 });
 
