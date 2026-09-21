@@ -106,6 +106,7 @@ const goalPlanRow = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
   goal: goalRow('Hajj for two'),
   links: [],
   earmarkWarning: null,
+  unconvertedWarning: null,
   ...partial,
 });
 

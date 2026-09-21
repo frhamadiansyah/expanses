@@ -4,13 +4,14 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { entries, transactions } from '../schema';
 import { assetValuesAt } from './asset-values';
+import { setAsideViews } from './set-aside';
 
 export interface IdleCashRow {
   accountId: string;
   name: string;
   currency: string;
   planGroup: PlanGroup;
-  /** What the account holds on the date. */
+  /** What the account holds on the date and is free: money set aside for a goal is not idle. */
   amountMinor: number;
   /** Date the newest money arrived, so the screen can say how long it has waited. */
   since: string;
@@ -42,11 +43,15 @@ export async function idleCash(database: Database, ws: WorkspaceContext, onDate:
     if (known === undefined || arrival.occurredOn > known) lastArrival.set(arrival.accountId, arrival.occurredOn);
   }
 
+  // Money promised to a goal is not waiting to be invested: only what is free counts as idle.
+  const views = await setAsideViews(database, ws, { date: onDate });
   const rows: IdleCashRow[] = [];
   for (const value of values) {
     const since = lastArrival.get(value.accountId);
     if (since === undefined) continue;
-    rows.push({ accountId: value.accountId, name: value.name, currency: value.currency, planGroup: value.planGroup, amountMinor: value.valueMinor, since });
+    const view = views[value.accountId];
+    const amountMinor = view ? Math.max(0, view.freeMinor) : value.valueMinor;
+    rows.push({ accountId: value.accountId, name: value.name, currency: value.currency, planGroup: value.planGroup, amountMinor, since });
   }
   return rows;
 }

@@ -26,7 +26,7 @@ import { assetValuesAt } from './asset-values';
 import { periodFlows } from './flows';
 import { resolveRates } from './fx';
 import { type GoalRow, GoalDbError, listEarmarks, listGoals } from './goals';
-import { nativeBalances } from './ledger';
+import { setAsideViews } from './set-aside';
 import { listTrades } from './trades';
 import { listTradeTemplates } from './trade-templates';
 
@@ -34,12 +34,18 @@ export interface GoalLinkRow extends GoalLink {
   goalId: string;
   /** Set aside more than the account holds, so the link was capped at the balance. */
   overBalance: boolean;
+  /** What the goal promised on this account, in its own money. Null for tagged units. */
+  promisedMinor: number | null;
+  /** What of that promise the account does not hold (`setAsideOn`). 0 for tagged units. */
+  shortMinor: number;
 }
 
 export interface GoalPlanRow extends GoalPlan {
   goal: GoalRow;
   links: GoalLinkRow[];
   earmarkWarning: string | null;
+  /** The no-rate sentence alone, without the short-account one (spec §7.3). */
+  unconvertedWarning: string | null;
 }
 
 export interface GoalSummary {
@@ -107,29 +113,34 @@ export async function goalLinksFor(database: Database, ws: WorkspaceContext, dat
         currency: value.currency,
         risk,
         overBalance: false,
+        promisedMinor: null,
+        shortMinor: 0,
       });
     }
   }
 
   const earmarks = await listEarmarks(database, ws);
   if (earmarks.length > 0) {
-    const balances = await nativeBalances(database, ws, date);
+    // Shared out across the account's goals, never capped goal by goal: two goals cannot both count the same money.
+    const views = await setAsideViews(database, ws, { date });
     for (const earmark of earmarks) {
       if (!known.has(earmark.goalId)) continue;
-      const balanceMinor = Math.max(0, balances[earmark.accountId] ?? 0);
+      const view = views[earmark.accountId];
+      const share = view?.goals.find((goal) => goal.goalId === earmark.goalId);
       const account = values.find((row) => row.accountId === earmark.accountId);
       links.push({
         goalId: earmark.goalId,
         accountId: earmark.accountId,
-        name: account?.name ?? 'Account',
+        name: view?.name ?? account?.name ?? 'Account',
         kind: 'earmark',
         unitsMicro: null,
-        // The set-aside sits on the destination account and is counted in that account's own money:
-        // parking US$100 against a goal sets US$100 aside, never Rp 1.600.000 of a USD balance.
-        valueMinor: Math.min(earmark.amountMinor, balanceMinor),
-        currency: account?.currency ?? ws.baseCurrency,
+        // In the account's own money: parking US$100 against a goal sets US$100 aside, never Rp 1.600.000.
+        valueMinor: share?.coveredMinor ?? 0,
+        currency: view?.currency ?? account?.currency ?? ws.baseCurrency,
         risk: null,
-        overBalance: earmark.amountMinor > balanceMinor,
+        promisedMinor: earmark.amountMinor,
+        shortMinor: share?.shortMinor ?? 0,
+        overBalance: (share?.shortMinor ?? 0) > 0,
       });
     }
   }
@@ -192,22 +203,19 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
   const plans: GoalPlanRow[] = goalRows.map((goal) => {
     const mine = links.filter((link) => link.goalId === goal.id);
     const plan = goalPlan(goal, mine, monthlyFromTemplates(goal.id), monthlyOutgoingMinor, date);
-    const over = mine.find((link) => link.overBalance);
     // A link with no rate is left out of the total, so the total is honest; saying so is what keeps the
     // *goal* honest, and `earmarkWarning` is the slot the screen already paints for exactly this.
     const unconverted = mine.filter((link) => link.baseMinor === null);
-    const warnings = [
-      over ? `You set aside more for this goal than ${over.name} holds, so only what is there counts.` : null,
+    const short = mine.filter((link) => link.shortMinor > 0);
+    const shortWarning = short.length
+      ? short.map((link) => `${link.name} holds less than is set aside, so this goal is short by ${formatMinor(link.shortMinor, link.currency)} there.`).join(' ')
+      : null;
+    const unconvertedWarning =
       unconverted.length > 0
         ? `${unconverted.map((link) => formatMinor(link.valueMinor, link.currency)).join(', ')} is not counted here: no ${ws.baseCurrency} rate for ${date}.`
-        : null,
-    ].filter((warning): warning is string => warning !== null);
-    return {
-      ...plan,
-      goal,
-      links: mine,
-      earmarkWarning: warnings.length > 0 ? warnings.join(' ') : null,
-    };
+        : null;
+    const warnings = [shortWarning, unconvertedWarning].filter((warning): warning is string => warning !== null);
+    return { ...plan, goal, links: mine, earmarkWarning: warnings.length > 0 ? warnings.join(' ') : null, unconvertedWarning };
   });
 
   return {

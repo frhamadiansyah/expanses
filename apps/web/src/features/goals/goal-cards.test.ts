@@ -36,6 +36,7 @@ const plan = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
   goal: goal(),
   links: [],
   earmarkWarning: null,
+  unconvertedWarning: null,
   ...partial,
 });
 

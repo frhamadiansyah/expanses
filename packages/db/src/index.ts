@@ -41,6 +41,7 @@ export * from './repos/goals';
 export * from './repos/goal-funding';
 export * from './repos/goal-transfers';
 export * from './repos/set-aside-tx';
+export * from './repos/set-aside';
 export * from './repos/convert';
 export * as debtsSchema from './schema-debts';
 export * from './repos/debts';
