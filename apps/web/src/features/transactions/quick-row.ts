@@ -117,14 +117,24 @@ export function quickToInput(read: QuickRead, accounts: readonly AccountRow[]): 
 }
 
 /**
- * Accounts to pay with, as one list: an account with a single card is one choice showing its digits;
- * an account carrying several cards offers each card, so choosing it answers both questions at once.
+ * Accounts to pay with, as one list.
+ *
+ * An account with a single card is one choice, showing its digits. An account carrying several cards offers
+ * **each card first and then the account itself**: the digits answer both questions at once, and the account's
+ * own row is how a purchase is recorded when the card is not known or not worth saying.
+ *
+ * That last row was taken away without a decision — a shared statement could not be recorded at all unless a
+ * card was named — and it is restored here. It carries **no digits**, deliberately: it names no card, so a search
+ * for one card's digits has to find that card and not this, and `matchPayment` keeps saying which card it means.
  */
 export function paymentOptions(accounts: readonly AccountRow[], cards: readonly CardRow[]): PaymentOption[] {
   return accounts.flatMap((account): PaymentOption[] => {
     const own = cards.filter((card) => card.accountId === account.id);
-    if (own.length < 2) return [{ accountId: account.id, cardId: null, accountName: account.name, last4: own[0]?.last4 ?? null, holderName: null }];
-    return own.map((card) => ({ accountId: account.id, cardId: card.id, accountName: account.name, last4: card.last4, holderName: card.holderName }));
+    if (own.length < 2) {
+      return [{ accountId: account.id, cardId: null, accountName: account.name, last4: own[0]?.last4 ?? null, holderName: null }];
+    }
+    const itself: PaymentOption = { accountId: account.id, cardId: null, accountName: account.name, last4: null, holderName: null };
+    return [...own.map((card) => ({ accountId: account.id, cardId: card.id, accountName: account.name, last4: card.last4, holderName: card.holderName })), itself];
   });
 }
 

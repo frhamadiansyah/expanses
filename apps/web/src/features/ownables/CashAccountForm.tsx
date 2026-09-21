@@ -1,11 +1,12 @@
 import { cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { openCashAccount, upsertRate } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useId, useState } from 'react';
+import { type FormEvent, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
-import { Button, ErrorBox, InputRow, RowGroup, RowHint, SelectRow } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { fieldsFor } from './catalogue-view';
 
 /**
@@ -35,6 +36,7 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
   const [busy, setBusy] = useState(false);
   // A row is one line and has no room to explain itself, so the sentence lives under the group and the row points at it.
   const balanceHint = useId();
+  const form = useRef<HTMLFormElement>(null);
 
   const chosen = cashItem(item);
   const asks = fieldsFor('account', item);
@@ -81,25 +83,32 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2">
-      <RowHint>
-        {chosen.label} · {chosen.sub}
-        {locked && ' · cannot be spent from directly'}
-      </RowHint>
+    /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
+    <form ref={form} onSubmit={submit}>
       <ErrorBox error={error} />
-      <RowGroup>
-        <InputRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA Tahapan" required />
+      <InsetGroup
+        header={`${chosen.label}${locked ? ' · cannot be spent from directly' : ''}`}
+        footer={
+          <>
+            {chosen.sub}. The picker chose what kind of account this is. Name is what you call yours.
+            {locked && ' When it matures, move the money to an account with a transfer.'}
+          </>
+        }
+      >
+        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA Tahapan" required />
         {asks.includes('balance') && (
-          <InputRow
+          <TextRow
             label="Balance now"
             aria-describedby={balanceHint}
+            /* The sentence keeps its id, so the box still says out loud which line explains it. */
+            hint={<span id={balanceHint}>Optional. Posted as an opening balance.</span>}
             value={balance}
             onChange={(e) => setBalance(e.target.value)}
             inputMode="decimal"
             placeholder="0"
           />
         )}
-        {asks.includes('bank') && <InputRow label="Bank" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="BCA" />}
+        {asks.includes('bank') && <TextRow label="Bank" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="BCA" />}
         {asks.includes('currency') && (
           <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {CURRENCIES.map((c) => (
@@ -109,18 +118,23 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
             ))}
           </SelectRow>
         )}
-        {asks.includes('matures') && <InputRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
-        {asks.includes('rate') && <InputRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="6,25" />}
-        <InputRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
-        {foreign && <InputRow label={`Rate: ${ws.baseCurrency} per 1 ${currency}`} value={manualRate} onChange={(e) => setManualRate(e.target.value)} inputMode="decimal" />}
-      </RowGroup>
-      {asks.includes('balance') && <RowHint id={balanceHint}>Optional. Posted as an opening balance.</RowHint>}
-      {foreign && <RowHint>{ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}</RowHint>}
-      <RowHint>The picker chose what kind of account this is. Name is what you call yours.</RowHint>
-      {locked && <RowHint>When it matures, move the money to an account with a transfer.</RowHint>}
-      <Button type="submit" disabled={busy}>
-        Add account
-      </Button>
+        {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
+        {asks.includes('rate') && <TextRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="6,25" />}
+        <TextRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
+        {foreign && (
+          <TextRow
+            label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+            hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
+            value={manualRate}
+            onChange={(e) => setManualRate(e.target.value)}
+            inputMode="decimal"
+          />
+        )}
+      </InsetGroup>
+      <InsetGroup>
+        {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
+        <InsetRow title="Add account" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+      </InsetGroup>
     </form>
   );
 }

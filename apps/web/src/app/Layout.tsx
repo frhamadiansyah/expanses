@@ -46,11 +46,13 @@ function ReviewLink() {
   return (
     <Link
       to="/review"
-      className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
-      activeProps={{ className: 'bg-slate-100 font-medium text-slate-900' }}
+      className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
+      activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
     >
       Review
-      {pending > 0 && <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-white">{pending}</span>}
+      {pending > 0 && (
+        <span className="rounded-full bg-[var(--ph-ink)] px-2 py-0.5 text-[11px] font-medium text-[var(--ph-surface)]">{pending}</span>
+      )}
     </Link>
   );
 }
@@ -86,21 +88,21 @@ export function Layout() {
       className="min-h-dvh md:flex"
       style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
     >
-      <aside className="hidden w-56 shrink-0 border-r border-slate-200 bg-white p-4 md:block">
+      <aside className="hidden w-56 shrink-0 border-r border-[var(--ph-hair)] bg-[var(--ph-surface)] p-4 md:block">
         <button
           type="button"
           aria-label="Workspace"
           onClick={() => setChoosing(true)}
-          className="mb-6 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-slate-100"
+          className="mb-6 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[var(--ph-fill)]"
         >
           <WorkspaceDot book={openBook} />
           <span className="min-w-0 flex-1">
             <span className="block text-lg leading-tight font-semibold">Expanses</span>
-            <span className="block truncate text-xs text-slate-500">
+            <span className="block truncate text-xs text-[var(--ph-ink-3)]">
               {openBook?.name ?? workspaceName} · {openBook?.baseCurrency ?? ws.baseCurrency} · on this device
             </span>
           </span>
-          <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-slate-400" />
+          <ChevronsUpDown size={14} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
         </button>
         {choosing && <WorkspaceSheet onClose={() => setChoosing(false)} />}
         <nav className="space-y-1">
@@ -108,18 +110,23 @@ export function Layout() {
             <Link
               key={item.to}
               to={item.to}
-              className="block rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-              activeProps={{ className: 'bg-slate-100 font-medium text-slate-900' }}
+              className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
+              activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
               activeOptions={{ exact: item.to === '/' }}
             >
               {item.label}
             </Link>
           ))}
         </nav>
-        <div className="mt-6 space-y-1 border-t border-slate-200 pt-4">
+        <div className="mt-6 space-y-1 border-t border-[var(--ph-hair)] pt-4">
           <ReviewLink />
           {MORE.map((item) => (
-            <Link key={item.to} to={item.to} className="block rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100" activeProps={{ className: 'bg-slate-100 font-medium text-slate-900' }}>
+            <Link
+              key={item.to}
+              to={item.to}
+              className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
+              activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
+            >
               {item.label}
             </Link>
           ))}

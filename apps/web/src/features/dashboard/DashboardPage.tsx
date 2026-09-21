@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
-import { Card, cx, Empty, Money, PageHeader } from '../../ui';
+import { Empty, Money } from '../../ui';
+import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
 
 const sum = (rows: { amountBaseMinor: number }[]) => rows.reduce((s, r) => s + r.amountBaseMinor, 0);
 
@@ -69,9 +70,9 @@ export function DashboardPage() {
 
   if (accounts.isSuccess && money.length === 0) {
     return (
-      <div className="space-y-4">
-        <PageHeader title="Dashboard" />
-        <Card>
+      <div className={SCREEN}>
+        <LargeTitle title="Dashboard" />
+        <Panel wide>
           <Empty>
             Start by adding your bank accounts and credit cards on the{' '}
             <Link to="/accounts" className="font-medium underline">
@@ -79,7 +80,7 @@ export function DashboardPage() {
             </Link>{' '}
             page.
           </Empty>
-        </Card>
+        </Panel>
       </div>
     );
   }
@@ -94,81 +95,103 @@ export function DashboardPage() {
   const cards = money.filter((a) => a.subtype === 'credit_card');
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Dashboard" />
-      <Card>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs text-slate-500">Net worth</span>
-          <Link to="/net-worth" className="text-xs text-slate-600 underline">
-            See the full picture
-          </Link>
-        </div>
-        <div data-testid="net-worth" className="text-3xl font-semibold">
-          {nw ? <Money minor={nw.netWorthBaseMinor} currency={ws.baseCurrency} /> : '…'}
-        </div>
-        {nw && (
-          <div className="mt-2 flex gap-6 text-sm text-slate-600">
-            <span>
-              Assets <Money minor={nw.assetsBaseMinor} currency={ws.baseCurrency} />
-            </span>
-            <span>
-              Debts <Money minor={nw.liabilitiesBaseMinor} currency={ws.baseCurrency} />
-            </span>
-          </div>
-        )}
-        {warnings.map((w) => (
-          <p key={w} className="mt-2 text-xs text-amber-700">
-            {w}
-          </p>
-        ))}
-      </Card>
+    <div className={SCREEN}>
+      <LargeTitle title="Dashboard" />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <div className="text-xs text-slate-500">Spent this month</div>
-          <div className="text-xl font-semibold">{flows.data ? <Money minor={flows.data.spending} currency={ws.baseCurrency} /> : '…'}</div>
-          {flows.data && (
-            <div className="text-xs text-slate-500">
-              Last month <Money minor={flows.data.lastSpending} currency={ws.baseCurrency} />
+      {/*
+       * This and `/net-worth` are the only two screens in the app that lay out a real desktop grid, so the two
+       * columns are the point rather than a convenience: the figure and the year that led to it on the left,
+       * what the month has done and what the cards owe on the right. A phone stacks them in the same order.
+       */}
+      <div className="grid gap-4 md:grid-cols-[1.7fr_1fr]">
+        <div>
+          <Panel wide header="Net worth">
+            <div data-testid="net-worth">
+              {nw ? (
+                <Hero minor={nw.netWorthBaseMinor} currency={ws.baseCurrency} />
+              ) : (
+                <p className="py-6 text-center text-[34px] leading-[40px] font-extrabold tracking-[-0.03em] text-[var(--ph-ink-3)]">…</p>
+              )}
+            </div>
+          </Panel>
+
+          {nw && (
+            <InsetGroup wide>
+              <InsetRow title="Assets" value={<Money minor={nw.assetsBaseMinor} currency={ws.baseCurrency} />} valueTone="ink" chevron={false} />
+              <InsetRow title="Debts" value={<Money minor={nw.liabilitiesBaseMinor} currency={ws.baseCurrency} />} valueTone="alarm" chevron={false} />
+              {/* The underlined text link becomes the row it always meant: the whole line is the way through. */}
+              <InsetRow title="See the full picture" to="/net-worth" />
+            </InsetGroup>
+          )}
+
+          {warnings.length > 0 && (
+            <div className="mb-[18px]">
+              {warnings.map((w) => (
+                <p key={w} className="px-[4px] pb-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">
+                  {w}
+                </p>
+              ))}
             </div>
           )}
-        </Card>
-        <Card>
-          <div className="text-xs text-slate-500">Income this month</div>
-          <div className="text-xl font-semibold">{flows.data ? <Money minor={flows.data.income} currency={ws.baseCurrency} /> : '…'}</div>
-        </Card>
+
+          <Panel wide header="Net worth, last 6 months">
+            <ul className="space-y-[10px]">
+              {(trend.data ?? []).map((point) => (
+                <li key={point.month} className="grid grid-cols-[4.5rem_1fr_9rem] items-center gap-3 text-[13px] leading-[17px]">
+                  <span className="text-[var(--ph-ink-3)]">
+                    {new Date(`${point.month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })}
+                  </span>
+                  <span className="block h-[7px] overflow-hidden bg-[var(--ph-track)]" style={{ borderRadius: 99 }}>
+                    <span
+                      className="block h-full"
+                      style={{
+                        width: `${Math.round((Math.abs(point.value) / maxAbs) * 100)}%`,
+                        borderRadius: 99,
+                        background: point.value < 0 ? 'var(--ph-alarm)' : 'var(--ph-tint)',
+                      }}
+                    />
+                  </span>
+                  <Money minor={point.value} currency={ws.baseCurrency} className="text-right text-[var(--ph-ink)]" />
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        </div>
+
+        <div>
+          <InsetGroup wide header="This month">
+            <InsetRow
+              title="Spent"
+              subtitle={flows.data ? <>Last month <Money minor={flows.data.lastSpending} currency={ws.baseCurrency} /></> : undefined}
+              value={flows.data ? <Money minor={flows.data.spending} currency={ws.baseCurrency} /> : '…'}
+              valueTone="alarm"
+              chevron={false}
+            />
+            <InsetRow
+              title="Income"
+              value={flows.data ? <Money minor={flows.data.income} currency={ws.baseCurrency} /> : '…'}
+              valueTone="ink"
+              chevron={false}
+            />
+          </InsetGroup>
+
+          {cards.length > 0 && (
+            <InsetGroup wide header="Credit cards owed">
+              {cards.map((card) => (
+                /* The card's name was a link inside the line; now the line is the link, and it still lands on its transactions. */
+                <InsetRow
+                  key={card.id}
+                  to="/transactions"
+                  search={{ account: card.id }}
+                  title={card.name}
+                  value={<Money minor={displayAmount('liability', current.data?.balances[card.id] ?? 0)} currency={card.currency!} />}
+                  valueTone="ink"
+                />
+              ))}
+            </InsetGroup>
+          )}
+        </div>
       </div>
-
-      <Card>
-        <h2 className="mb-2 text-sm font-semibold text-slate-600">Net worth, last 6 months</h2>
-        <ul className="space-y-1">
-          {(trend.data ?? []).map((point) => (
-            <li key={point.month} className="grid grid-cols-[4.5rem_1fr_9rem] items-center gap-3 text-sm">
-              <span className="text-slate-500">{new Date(`${point.month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })}</span>
-              <div className="h-2 rounded bg-slate-100">
-                <div className={cx('h-2 rounded', point.value < 0 ? 'bg-red-500' : 'bg-slate-800')} style={{ width: `${Math.round((Math.abs(point.value) / maxAbs) * 100)}%` }} />
-              </div>
-              <Money minor={point.value} currency={ws.baseCurrency} className="text-right" />
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      {cards.length > 0 && (
-        <Card>
-          <h2 className="mb-2 text-sm font-semibold text-slate-600">Credit cards owed</h2>
-          <ul className="divide-y divide-slate-100">
-            {cards.map((card) => (
-              <li key={card.id} className="flex justify-between py-2 text-sm">
-                <Link to="/transactions" search={{ account: card.id }} className="hover:underline">
-                  {card.name}
-                </Link>
-                <Money minor={displayAmount('liability', current.data?.balances[card.id] ?? 0)} currency={card.currency!} />
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
     </div>
   );
 }

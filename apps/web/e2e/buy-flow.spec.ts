@@ -215,12 +215,15 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
   // The goal has the two grams against it — the whole point of tagging the buy. The figure beside them is a
   // valuation and moves with the price; what the tag decides is which goal the units belong to.
   await page.goto('/goals');
-  await expect(page.getByText('Antam gold bars · 2 tagged for Hajj fund')).toBeVisible();
+  // The line is a row of a group now, and a group's header sits above it: the holding's name, what it is tagged
+  // for and its figure are three parts of one row rather than one run of text, so the row is named and asked.
+  await expect(page.getByTestId('goal-asset').filter({ hasText: 'Antam gold bars' })).toContainText('tagged for Hajj fund');
 
   // The card owes the cost **and the fee** — 3.980.000 + 15.000 — and the bank was never touched.
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA KrisFlyer' }).first()).toContainText('3.995.000');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('50.000.000');
+  // An account is a row of the table now, not a list item — see `add-transaction.spec.ts` for the whole note.
+  await expect(page.getByRole('row').filter({ hasText: 'BCA KrisFlyer' }).first()).toContainText('3.995.000');
+  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('50.000.000');
 
   // And the refusals come with it: a trade's money half is corrected on Buy & sell or not at all. The receipt is
   // reached by the ⓘ at the end of the row — clicking the row itself edits in place on a desktop and opens
@@ -251,7 +254,7 @@ test('a sale pays its proceeds into a bank account and takes the units back out'
   await page.goto('/net-worth/trades');
   await expect(page.getByText('8 g').first()).toBeVisible();
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('54.200.000');
+  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('54.200.000');
 });
 
 test('a purchase paid by card reaches the points engine with the MCC and category it was given', async ({ page }) => {
@@ -281,7 +284,7 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
-  await page.getByRole('tab', { name: 'Points' }).click();
+  await page.getByRole('radio', { name: 'Points' }).click();
   // Units are recorded, so this is not spending — and it is still a card purchase, so it still earns.
   const row = page.locator('li:not([data-testid="statement-line"])', { hasText: 'Bought 1 Antam gold bars' });
   await expect(row).toContainText('MCC 5944 · typed');

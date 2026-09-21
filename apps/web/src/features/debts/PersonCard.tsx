@@ -4,15 +4,17 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, ErrorBox, Field, Input, Money, Select } from '../../ui';
+import { Button, cx, ErrorBox, Field, Input, Money, Select } from '../../ui';
 import { personCodeChoices } from '../ownables/catalogue-view';
 import { useDebtHistory, useDebtProfiles } from './queries';
 import { emptyRepaymentDraft, type RepaymentDraft, repaymentDraftToInput } from './debts-form';
+import { Panel } from '../../ui/native';
 
-const DUE_PILL: Record<string, string> = {
-  overdue: 'bg-red-100 text-red-800',
-  due_soon: 'bg-amber-100 text-amber-800',
-  none: 'bg-slate-100 text-slate-600',
+/** Overdue and due-soon in the kit's own inks, rather than as two more coloured pills. */
+const DUE_INK: Record<string, string> = {
+  overdue: 'text-[var(--ph-alarm)]',
+  due_soon: 'text-[var(--ph-warn)]',
+  none: 'text-[var(--ph-ink-3)]',
 };
 
 const HISTORY_LABELS: Record<string, string> = { lend: 'Lent', repayment: 'Repayment', forgive: 'Forgiven' };
@@ -22,10 +24,10 @@ function History({ accountId, currency }: { accountId: string; currency: string 
   const history = useDebtHistory(accountId);
   if ((history.data?.length ?? 0) === 0) return null;
   return (
-    <div className="divide-y divide-slate-100 text-xs">
+    <div className="divide-y divide-[var(--ph-hair)] text-xs">
       {(history.data ?? []).map((row) => (
         <div key={row.transactionId} className="flex items-baseline justify-between gap-3 py-1">
-          <span className="text-slate-500">{row.occurredOn}</span>
+          <span className="text-[var(--ph-ink-3)]">{row.occurredOn}</span>
           <span className="flex-1">
             {HISTORY_LABELS[row.kind]}
             {row.interestMinor > 0 && (
@@ -135,12 +137,12 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
   }
 
   return (
-    <Card className="space-y-2">
+    <Panel wide className="space-y-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-semibold">{person.personName}</h3>
+        <h3 className="text-[15px] leading-[20px] font-semibold text-[var(--ph-ink)]">{person.personName}</h3>
         <span className="flex items-center gap-2">
           {person.dueState !== 'none' && (
-            <span className={cx('rounded-full px-2 py-0.5 text-[11px] font-semibold', DUE_PILL[person.dueState])}>
+            <span className={cx('text-[11.5px] font-semibold tracking-[0.06em] uppercase', DUE_INK[person.dueState])}>
               {person.dueState === 'overdue' ? 'Overdue' : 'Due soon'}
             </span>
           )}
@@ -148,7 +150,7 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
         </span>
       </div>
 
-      <div className="divide-y divide-slate-100 text-sm">
+      <div className="divide-y divide-[var(--ph-hair)] text-sm">
         {person.loans.map((loan) => {
           const label = dueLabel(loan.dueOn, today, loan.status);
           return (
@@ -156,7 +158,7 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span className="min-w-0">
                   {loan.reason || 'No reason noted'}
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-[var(--ph-ink-3)]">
                     {' · since '}
                     {loan.openedOn}
                     {label && ` · ${label}`}
@@ -166,8 +168,8 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
                 <Money minor={loan.balanceMinor} currency={loan.currency} />
               </div>
               {loan.originalMinor > 0 && (
-                <div className="h-1.5 rounded-full bg-slate-100" title={`${Math.round((loan.repaidMinor / loan.originalMinor) * 100)}% back`}>
-                  <i className="block h-1.5 rounded-full bg-emerald-600" style={{ width: `${Math.min(100, (loan.repaidMinor / loan.originalMinor) * 100)}%` }} />
+                <div className="h-1.5 rounded-full bg-[var(--ph-track)]" title={`${Math.round((loan.repaidMinor / loan.originalMinor) * 100)}% back`}>
+                  <i className="block h-1.5 rounded-full bg-[var(--ph-tint)]" style={{ width: `${Math.min(100, (loan.repaidMinor / loan.originalMinor) * 100)}%` }} />
                 </div>
               )}
               {loan.status === 'open' && repayingId !== loan.accountId && (
@@ -181,7 +183,7 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
                 </div>
               )}
               {repayingId === loan.accountId && (
-                <div className="space-y-2 rounded-lg bg-slate-50 p-3">
+                <div className="space-y-2 rounded-lg bg-[var(--ph-ground)] p-3">
                   <div className="grid gap-3 md:grid-cols-4">
                     <Field label={`How much ${back} (${loan.currency})`}>
                       <Input value={draft.amount} inputMode="decimal" onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="3.000.000" />
@@ -220,10 +222,10 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
       </div>
 
       <ErrorBox error={error} />
-      <button type="button" className="text-xs text-slate-600 underline" onClick={() => setShowHistory((open) => !open)}>
+      <button type="button" className="ph-focus text-[12.5px] text-[var(--ph-tint)]" onClick={() => setShowHistory((open) => !open)}>
         {showHistory ? 'Hide history' : 'Show history'}
       </button>
       {showHistory && person.loans.map((loan) => <History key={loan.accountId} accountId={loan.accountId} currency={loan.currency} />)}
-    </Card>
+    </Panel>
   );
 }

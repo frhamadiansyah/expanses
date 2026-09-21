@@ -2,7 +2,8 @@ import { setKmkRate } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Input } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, TextRow } from '../../ui/native';
 import { useForeignCurrencies, useKmkRates } from './queries';
 
 /**
@@ -55,60 +56,54 @@ export function KmkRates({ taxYear }: { taxYear: number }) {
   const missing = needed.filter((currency) => rateOf(currency) === undefined);
 
   return (
-    <Card className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">Exchange rates for {taxYear}</h2>
-        <span className="text-xs text-slate-500">The Menteri Keuangan rate, which is the only one the form accepts</span>
-      </div>
-
+    <>
       <ErrorBox error={error ?? currencies.error ?? entered.error} />
-      {saved && <p className="text-xs text-emerald-700">{saved}</p>}
+      {saved && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">{saved}</p>}
 
       {missing.length > 0 && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Nothing is entered for {missing.join(', ')} yet, so anything held in {missing.length === 1 ? 'it' : 'them'} is reported as
-          nothing. Enter the rate before you file.
+        <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
+          Nothing is entered for {missing.join(', ')} yet, so anything held in {missing.length === 1 ? 'it' : 'them'} is reported as nothing. Enter the rate before you file.
         </p>
       )}
 
-      <div className="space-y-2">
-        {needed.map((currency) => (
-          <div key={currency} className="flex flex-wrap items-end gap-2">
-            <span className="w-12 pb-2 text-sm font-medium">{currency}</span>
-            <label className="flex-1 text-xs text-slate-500">
-              Rate to {ws.baseCurrency}
-              <Input
-                aria-label={`${currency} rate`}
-                value={draftOf(currency).rate}
-                onChange={(e) => change(currency, { rate: e.target.value })}
-                inputMode="decimal"
-                placeholder="17714"
-              />
-            </label>
-            <label className="flex-1 text-xs text-slate-500">
-              Decree
-              <Input
-                aria-label={`${currency} decree`}
-                value={draftOf(currency).note}
-                onChange={(e) => change(currency, { note: e.target.value })}
-                placeholder="KMK 42/MK/EF.2/2026"
-              />
-            </label>
-            <Button variant="secondary" onClick={() => void save(currency)}>
-              Save
-            </Button>
-          </div>
-        ))}
-      </div>
+      <InsetGroup
+        header={`Exchange rates for ${taxYear}`}
+        footer={`The Menteri Keuangan rate, which is the only one the form accepts. It is set weekly, Wednesday to Tuesday: use the week that contains 31 December ${taxYear}, and record which decree it came from so the figure can be traced back.`}
+      >
+        {needed.flatMap((currency) => [
+          <TextRow
+            key={`${currency}-rate`}
+            label={`${currency} rate`}
+            hint={`Rate to ${ws.baseCurrency}`}
+            value={draftOf(currency).rate}
+            onChange={(e) => change(currency, { rate: e.target.value })}
+            inputMode="decimal"
+            placeholder="17714"
+          />,
+          <TextRow
+            key={`${currency}-decree`}
+            label={`${currency} decree`}
+            value={draftOf(currency).note}
+            onChange={(e) => change(currency, { note: e.target.value })}
+            placeholder="KMK 42/MK/EF.2/2026"
+          />,
+        ])}
+      </InsetGroup>
 
-      <p className="text-xs text-slate-500">
-        The rate is set weekly, Wednesday to Tuesday. Use the week that contains 31 December {taxYear}, and record which decree it came
-        from so the figure can be traced back. Published at{' '}
+      {/* One group an action: a save row sharing a group with the fields it saves is a mistap from saving nothing. */}
+      {needed.map((currency) => (
+        <InsetGroup key={currency}>
+          <InsetRow title="Save" chevron={false} onClick={() => void save(currency)} />
+        </InsetGroup>
+      ))}
+
+      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+        The published figure is at{' '}
         <a href="https://fiskal.kemenkeu.go.id/informasi-publik/kurs-pajak" target="_blank" rel="noreferrer" className="underline">
           fiskal.kemenkeu.go.id
         </a>
         .
       </p>
-    </Card>
+    </>
   );
 }

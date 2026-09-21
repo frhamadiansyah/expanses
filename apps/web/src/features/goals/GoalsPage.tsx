@@ -1,9 +1,22 @@
 import { formatUnits, type GoalKind, isoDate } from '@expanses/core';
 import { archiveGoal, type GoalLinkRow, type GoalRow, reorderGoals, setStagePaid } from '@expanses/db';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
+import { Empty, ErrorBox, Money } from '../../ui';
+import {
+  type CornerAction,
+  DestructiveRow,
+  type GroupChild,
+  Hero,
+  InsetGroup,
+  InsetRow,
+  LargeTitle,
+  Panel,
+  ProgressBar,
+  SCREEN,
+} from '../../ui/native';
 import { Calculator, calculatorKindOf } from './Calculator';
 import { GoalForm } from './GoalForm';
 import { type GoalCard, goalCard, GOAL_TEMPLATES } from './goal-cards';
@@ -36,9 +49,25 @@ function LinkAmount({ link }: { link: GoalLinkRow }) {
   );
 }
 
+/** What funds a goal, as one row of its group. Named so the group can hand it its place and a test can name it. */
+function FundingRow({ link, position }: GroupChild & { link: GoalLinkRow }) {
+  return (
+    <div data-testid="goal-link">
+      <InsetRow
+        position={position}
+        title={link.name}
+        subtitle={link.kind === 'tagged' && link.unitsMicro !== null ? `${formatUnits(link.unitsMicro)} tagged` : 'set aside'}
+        value={<LinkAmount link={link} />}
+        valueTone="ink"
+        chevron={false}
+      />
+    </div>
+  );
+}
+
+/** The status the plan reached, on the group's own header line, keeping the tone the card decided. */
 function StatusPill({ card }: { card: GoalCard }) {
-  const tone = card.statusTone === 'good' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800';
-  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${tone}`}>{card.statusLabel}</span>;
+  return <span className={card.statusTone === 'good' ? 'text-[var(--ph-tint)]' : 'text-[var(--ph-warn)]'}>{card.statusLabel}</span>;
 }
 
 export function GoalsPage() {
@@ -85,12 +114,13 @@ export function GoalsPage() {
     await invalidate();
   }
 
+  /* The primary action is a corner glyph at every width, not a dark rectangle beside the title. */
+  const actions: CornerAction[] =
+    adding || editing ? [] : [{ key: 'add', label: 'Add goal', glyph: <Plus size={22} aria-hidden />, run: () => setAdding(GOAL_TEMPLATES[0]!.kind) }];
+
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Goals"
-        action={!adding && !editing ? <Button onClick={() => setAdding(GOAL_TEMPLATES[0]!.kind)}>Add goal</Button> : undefined}
-      />
+    <div className={SCREEN}>
+      <LargeTitle title="Goals" actions={actions} />
       <ErrorBox error={summary.error ?? error} />
 
       {calculating && <Calculator goal={calculating} onDone={() => setCalculating(null)} />}
@@ -108,181 +138,179 @@ export function GoalsPage() {
       )}
 
       {summary.data && (
-        <Card className="space-y-3">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <div className="text-xs text-slate-500">Goals need each month</div>
-              <div className="text-xl font-semibold">
-                <Money minor={summary.data.neededMonthlyMinor} currency={ws.baseCurrency} />
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Set up each month</div>
-              <div className="text-xl font-semibold">
-                <Money minor={summary.data.plannedMonthlyMinor} currency={ws.baseCurrency} />
-              </div>
-              <div className="text-xs text-slate-500">Monthly buys and standing transfers</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">You save each month</div>
-              <div className="text-xl font-semibold">
-                <Money minor={summary.data.capacityMonthlyMinor} currency={ws.baseCurrency} />
-              </div>
-              <div className="text-xs text-slate-500">Take-home pay − spending − debt payments</div>
-            </div>
-          </div>
-          {shortfall > 0 && (
-            <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm">
-              Goals ask for <Money minor={shortfall} currency={ws.baseCurrency} /> more than you save. In this order,{' '}
-              {summary.data.fits.filter((fit) => fit.fits === 'full').length} fit, and the rest wait. Move a date, lower a target, or reorder them.
-            </p>
-          )}
-        </Card>
+        <InsetGroup
+          header="Every month"
+          footer={
+            shortfall > 0 ? (
+              <>
+                Goals ask for <Money minor={shortfall} currency={ws.baseCurrency} /> more than you save. In this order,{' '}
+                {summary.data.fits.filter((fit) => fit.fits === 'full').length} fit, and the rest wait. Move a date, lower a target, or reorder them.
+              </>
+            ) : undefined
+          }
+        >
+          <InsetRow
+            title="Goals need each month"
+            value={<Money minor={summary.data.neededMonthlyMinor} currency={ws.baseCurrency} />}
+            valueTone="ink"
+            chevron={false}
+          />
+          <InsetRow
+            title="Set up each month"
+            subtitle="Monthly buys and standing transfers"
+            value={<Money minor={summary.data.plannedMonthlyMinor} currency={ws.baseCurrency} />}
+            valueTone="ink"
+            chevron={false}
+          />
+          <InsetRow
+            title="You save each month"
+            subtitle="Take-home pay − spending − debt payments"
+            value={<Money minor={summary.data.capacityMonthlyMinor} currency={ws.baseCurrency} />}
+            valueTone="ink"
+            chevron={false}
+          />
+        </InsetGroup>
       )}
 
-      {cards.length === 0 && !adding && summary.isSuccess && (
-        <Empty>No goals yet. Start with an emergency fund, education or a holiday.</Empty>
-      )}
+      {cards.length === 0 && !adding && summary.isSuccess && <Empty>No goals yet. Start with an emergency fund, education or a holiday.</Empty>}
 
+      {/* A chooser is a grouped list of rows with chevrons, not a wrapping set of outlined buttons. */}
       {!adding && !editing && (
-        <div className="flex flex-wrap gap-2">
+        <InsetGroup header="Start from a template">
           {GOAL_TEMPLATES.map((template) => (
-            <Button key={template.kind} variant="secondary" onClick={() => setAdding(template.kind)}>
-              + {template.label}
-            </Button>
+            <InsetRow key={template.kind} title={template.label} onClick={() => setAdding(template.kind)} />
           ))}
-        </div>
+        </InsetGroup>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-x-6 lg:grid-cols-2">
         {cards.map((card, index) => {
           const plan = plans[index]!;
           return (
-            <Card key={card.goalId} className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold">{card.name}</h2>
-                  <div className="text-xs text-slate-500">
-                    {card.kindLabel} · by {card.dueLabel}
-                  </div>
-                </div>
-                <StatusPill card={card} />
-              </div>
+            <section key={card.goalId}>
+              <Panel wide header={card.name} trailing={<StatusPill card={card} />} footer={`${card.kindLabel} · by ${card.dueLabel}`}>
+                <Hero
+                  minor={card.currentMinor}
+                  currency={ws.baseCurrency}
+                  caption={
+                    <>
+                      of <Money minor={card.targetMinor} currency={ws.baseCurrency} />
+                      {derived.has(card.goalId) && <span className="block text-[var(--ph-tint)]">Worked out from your figures</span>}
+                    </>
+                  }
+                />
+                {/*
+                 * The bar is drawn from a clamped figure rather than through `Hero`'s own `progress`: the kit
+                 * turns a bar alarm-red once its target is passed, which is what a budget means by it and the
+                 * opposite of what a goal does. Saving more than you set out to is not a warning.
+                 */}
+                <ProgressBar
+                  className="mx-auto max-w-[320px]"
+                  currentMinor={Math.min(card.currentMinor, card.targetMinor)}
+                  targetMinor={card.targetMinor}
+                  label={`${card.name} progress`}
+                />
+              </Panel>
 
-              <div>
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-lg font-semibold">
-                    <Money minor={card.currentMinor} currency={ws.baseCurrency} />
-                  </span>
-                  <span className="text-xs text-slate-500">
-                    of <Money minor={card.targetMinor} currency={ws.baseCurrency} />
-                    {derived.has(card.goalId) && <span className="block text-emerald-700">Worked out from your figures</span>}
-                  </span>
-                </div>
-                <div className="mt-1 h-1.5 rounded-full bg-slate-100">
-                  <div className="h-1.5 rounded-full bg-emerald-600" style={{ width: `${card.progressPercent}%` }} />
-                </div>
-              </div>
-
-              <div className="divide-y divide-slate-100 text-sm">
-                {card.stageLines.map((line) => (
-                  <div key={line.stageId} className="flex items-baseline justify-between gap-2 py-1.5">
-                    <span className="min-w-0">
-                      <span className="text-slate-500">{line.when}</span> {line.name}
-                      <span className="block text-xs text-slate-400">
-                        <Money minor={line.todayMinor} currency={ws.baseCurrency} /> today, <Money minor={line.targetMinor} currency={ws.baseCurrency} /> then
-                      </span>
-                    </span>
-                    <button type="button" className="shrink-0 text-xs text-slate-600 underline" onClick={() => togglePaid(line.stageId, line.state === 'paid')}>
-                      {line.stateLabel}
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div>
-                  <div className="text-xs text-slate-500">Needed a month</div>
-                  <Money minor={card.neededMonthlyMinor} currency={ws.baseCurrency} className="font-semibold" />
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500">Set up a month</div>
-                  <Money minor={card.plannedMonthlyMinor} currency={ws.baseCurrency} className="font-semibold" />
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500">{card.differenceMinor < 0 ? 'Short by' : 'Room'}</div>
-                  <Money minor={Math.abs(card.differenceMinor)} currency={ws.baseCurrency} className="font-semibold" tone="none" />
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-1 text-xs font-semibold text-slate-500">Funded by</div>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {plan.links.length === 0 && <span className="text-slate-500">Nothing yet. Tag a purchase or set money aside.</span>}
-                  {plan.links.map((link) => (
-                    <span key={`${link.accountId}-${link.kind}`} className="rounded bg-slate-100 px-2 py-1">
-                      <b>{link.name}</b> {link.kind === 'tagged' && link.unitsMicro !== null ? formatUnits(link.unitsMicro) : 'set aside'} ·{' '}
-                      <LinkAmount link={link} />
-                    </span>
+              {card.stageLines.length > 0 && (
+                <InsetGroup wide header="Stages">
+                  {card.stageLines.map((line) => (
+                    /* The small underlined button inside the line is gone: the line itself is what marks it paid. */
+                    <InsetRow
+                      key={line.stageId}
+                      title={`${line.when} ${line.name}`}
+                      subtitle={
+                        <>
+                          <Money minor={line.todayMinor} currency={ws.baseCurrency} /> today, <Money minor={line.targetMinor} currency={ws.baseCurrency} /> then
+                        </>
+                      }
+                      value={line.stateLabel}
+                      valueTone="tint"
+                      chevron={false}
+                      label={`${line.name}: ${line.stateLabel}`}
+                      onClick={() => togglePaid(line.stageId, line.state === 'paid')}
+                    />
                   ))}
-                </div>
-                {plan.goal.standingNote && (
-                  <p className="mt-1 text-xs text-slate-500">
-                    {plan.goal.standingNote}, <Money minor={plan.goal.standingMonthlyMinor} currency={ws.baseCurrency} />
-                  </p>
-                )}
-              </div>
+                </InsetGroup>
+              )}
 
-              {card.riskWarning && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{card.riskWarning}</p>}
-              {card.earmarkWarning && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{card.earmarkWarning}</p>}
+              <InsetGroup wide>
+                <InsetRow
+                  title="Needed a month"
+                  value={<Money minor={card.neededMonthlyMinor} currency={ws.baseCurrency} />}
+                  valueTone="ink"
+                  chevron={false}
+                />
+                <InsetRow
+                  title="Set up a month"
+                  value={<Money minor={card.plannedMonthlyMinor} currency={ws.baseCurrency} />}
+                  valueTone="ink"
+                  chevron={false}
+                />
+                <InsetRow
+                  title={card.differenceMinor < 0 ? 'Short by' : 'Room'}
+                  value={<Money minor={Math.abs(card.differenceMinor)} currency={ws.baseCurrency} tone="none" />}
+                  valueTone={card.differenceMinor < 0 ? 'alarm' : 'ink'}
+                  chevron={false}
+                />
+              </InsetGroup>
 
-              <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => setEditing(plan.goal)}>
-                  Edit
-                </Button>
-                {calculatorKindOf(plan.goal.kind) && (
-                  <Button variant="secondary" onClick={() => setCalculating(plan.goal)}>
-                    Work out the amount
-                  </Button>
-                )}
-                <Button variant="ghost" onClick={() => move(card.goalId, -1)} aria-label={`Move ${card.name} up`}>
-                  Move up
-                </Button>
-                <Button variant="ghost" onClick={() => move(card.goalId, 1)} aria-label={`Move ${card.name} down`}>
-                  Move down
-                </Button>
-                <Button variant="danger" onClick={() => archive(plan.goal)}>
-                  Archive
-                </Button>
-              </div>
-            </Card>
+              {plan.links.length === 0 ? (
+                <InsetGroup wide header="Funded by">
+                  <InsetRow title="Nothing yet" subtitle="Tag a purchase or set money aside." chevron={false} />
+                </InsetGroup>
+              ) : (
+                <InsetGroup
+                  wide
+                  header="Funded by"
+                  footer={
+                    plan.goal.standingNote ? (
+                      <>
+                        {plan.goal.standingNote}, <Money minor={plan.goal.standingMonthlyMinor} currency={ws.baseCurrency} />
+                      </>
+                    ) : undefined
+                  }
+                >
+                  {plan.links.map((link) => (
+                    <FundingRow key={`${link.accountId}-${link.kind}`} link={link} />
+                  ))}
+                </InsetGroup>
+              )}
+
+              {card.riskWarning && <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{card.riskWarning}</p>}
+              {card.earmarkWarning && <p className="mb-[10px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">{card.earmarkWarning}</p>}
+
+              <InsetGroup wide>
+                <InsetRow title="Edit" onClick={() => setEditing(plan.goal)} />
+                {calculatorKindOf(plan.goal.kind) && <InsetRow title="Work out the amount" onClick={() => setCalculating(plan.goal)} />}
+                <InsetRow title="Move up" label={`Move ${card.name} up`} onClick={() => move(card.goalId, -1)} chevron={false} />
+                <InsetRow title="Move down" label={`Move ${card.name} down`} onClick={() => move(card.goalId, 1)} chevron={false} />
+              </InsetGroup>
+              {/* Its own group is the point: a row's height away from Move down is the wrong tap to make. */}
+              <InsetGroup wide>
+                <DestructiveRow label="Archive" onClick={() => archive(plan.goal)} />
+              </InsetGroup>
+            </section>
           );
         })}
       </div>
 
       {plans.some((plan) => plan.links.length > 0) && (
-        <Card>
-          <h2 className="mb-2 text-sm font-semibold">What each asset is for</h2>
-          <div className="divide-y divide-slate-100 text-sm">
-            {plans.flatMap((plan) =>
-              plan.links.map((link) => (
-                <div key={`${plan.goalId}-${link.accountId}-${link.kind}`} className="flex items-baseline justify-between gap-3 py-2">
-                  <span>
-                    {link.name}
-                    <span className="text-slate-500">
-                      {' · '}
-                      {link.kind === 'tagged' && link.unitsMicro !== null ? `${formatUnits(link.unitsMicro)} tagged` : 'set aside'} for {plan.goal.name}
-                    </span>
-                  </span>
-                  <span>
-                    <LinkAmount link={link} />
-                  </span>
-                </div>
-              )),
-            )}
-          </div>
-          <p className="mt-2 text-xs text-slate-500">Goals never change your net worth or the tax report; they only say what the money is for.</p>
-        </Card>
+        <InsetGroup header="What each asset is for" footer="Goals never change your net worth or the tax report; they only say what the money is for.">
+          {plans.flatMap((plan) =>
+            plan.links.map((link) => (
+              <InsetRow
+                key={`${plan.goalId}-${link.accountId}-${link.kind}`}
+                testId="goal-asset"
+                title={link.name}
+                subtitle={`${link.kind === 'tagged' && link.unitsMicro !== null ? `${formatUnits(link.unitsMicro)} tagged` : 'set aside'} for ${plan.goal.name}`}
+                value={<LinkAmount link={link} />}
+                valueTone="ink"
+                chevron={false}
+              />
+            )),
+          )}
+        </InsetGroup>
       )}
     </div>
   );

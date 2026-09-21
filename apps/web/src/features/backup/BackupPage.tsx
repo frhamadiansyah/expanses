@@ -1,7 +1,7 @@
 import { isoDate, unzipStore, zipStore } from '@expanses/core';
 import { allPhotoRows, LATEST_VERSION } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { type ChangeEvent, useState } from 'react';
+import { type ChangeEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { newerDatabaseVersion } from '../../db/newer-database';
 import type { SnapshotInfo, SnapshotStore } from '../../db/open';
@@ -10,7 +10,8 @@ import { saveBytes } from '../../lib/download';
 import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
 import { photos } from '../../photos/store';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, PageHeader } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { DestructiveRow, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
 import { formatBytes, formatWhen } from '../recovery/recovery-copy';
 import { copyReasonWords, daysSince, getLastBackupAt, isSqliteFile, setLastBackupAt } from './backupState';
 
@@ -44,6 +45,13 @@ export function BackupPage() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingRestore | null>(null);
+  /*
+   * The two real choosers, kept in the DOM behind the rows that name them. A row that opens a picker it does
+   * not contain is a link to nowhere, and these are the inputs the file actually arrives on — the same
+   * arrangement the import screen uses.
+   */
+  const sqliteInput = useRef<HTMLInputElement>(null);
+  const zipInput = useRef<HTMLInputElement>(null);
 
   async function exportBackup(filename: string) {
     const bytes = await database.exportBytes();
@@ -246,99 +254,137 @@ export function BackupPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Backup" />
-      <Card className="space-y-3">
-        <p className="text-sm text-slate-700">
-          Your data lives only in this browser on this device. Nothing is sent to a server. If browser data is cleared, or Safari removes it after a week unused, it is gone — back up regularly.
-        </p>
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Backup files are <strong>not encrypted</strong>. Anyone with the file can read your finances. Store it somewhere private.
-        </p>
-        <p className="text-sm text-slate-600">
-          {last.data ? `Last backup downloaded ${daysSince(last.data) === 0 ? 'today' : `${daysSince(last.data)} days ago`}.` : 'No backup yet.'}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => void onExport()} disabled={busy || !!pending}>
-            Download backup
-          </Button>
-          <label className="inline-flex cursor-pointer items-center rounded-lg bg-white px-3 py-2 text-sm font-medium ring-1 ring-slate-300 hover:bg-slate-100">
-            Restore from file…
-            <input type="file" accept=".sqlite3,.db,application/vnd.sqlite3,application/octet-stream" className="sr-only" onChange={(e) => void onChooseFile(e)} disabled={busy || !!pending} />
-          </label>
-        </div>
-        <p className="text-xs text-slate-500">A backup made on any device or browser will do: it is the same file everywhere.</p>
-        <div className="flex flex-wrap gap-2">
-          {!!photoIndex.data?.length && (
-            <Button variant="secondary" onClick={() => void onDownloadPhotos()} disabled={busy || !!pending}>
-              Download photos ({photoIndex.data.length})
-            </Button>
-          )}
-          <label className="inline-flex cursor-pointer items-center rounded-lg bg-white px-3 py-2 text-sm font-medium ring-1 ring-slate-300 hover:bg-slate-100">
-            Restore photos…
-            <input type="file" accept=".zip,application/zip" className="sr-only" onChange={(e) => void onChoosePhotoZip(e)} disabled={busy || !!pending} />
-          </label>
-        </div>
-        <p className="text-xs text-slate-500">Photos live beside the database on this device. The backup file holds your figures; this zip holds the pictures.</p>
-        {done && <p className="text-sm text-emerald-700">{done}</p>}
-        <ErrorBox error={error} />
-      </Card>
+    <div className={SCREEN}>
+      <LargeTitle title="Backup" />
+
+      {/* The two sentences that are not an action: where the data lives, and what the file it makes is not. */}
+      <p className="mb-[10px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
+        Your data lives only in this browser on this device. Nothing is sent to a server. If browser data is cleared, or Safari removes it after a week unused, it is gone — back up regularly.
+      </p>
+      <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-alarm)]">
+        Backup files are <strong>not encrypted</strong>. Anyone with the file can read your finances. Store it somewhere private.
+      </p>
+
+      <InsetGroup header="Your figures" footer="A backup made on any device or browser will do: it is the same file everywhere.">
+        <InsetRow
+          title="Download backup"
+          subtitle={last.data ? `Last downloaded ${daysSince(last.data) === 0 ? 'today' : `${daysSince(last.data)} days ago`}.` : 'No backup yet.'}
+          chevron={false}
+          className={busy || !!pending ? 'opacity-40' : undefined}
+          onClick={() => !busy && !pending && void onExport()}
+        />
+        <InsetRow
+          title="Restore from file…"
+          chevron={false}
+          className={busy || !!pending ? 'opacity-40' : undefined}
+          onClick={() => !busy && !pending && sqliteInput.current?.click()}
+        />
+      </InsetGroup>
+
+      <InsetGroup header="Your photos" footer="Photos live beside the database on this device. The backup file holds your figures; this zip holds the pictures.">
+        {!!photoIndex.data?.length && (
+          <InsetRow
+            title={`Download photos (${photoIndex.data.length})`}
+            chevron={false}
+            className={busy || !!pending ? 'opacity-40' : undefined}
+            onClick={() => !busy && !pending && void onDownloadPhotos()}
+          />
+        )}
+        <InsetRow
+          title="Restore photos…"
+          chevron={false}
+          className={busy || !!pending ? 'opacity-40' : undefined}
+          onClick={() => !busy && !pending && zipInput.current?.click()}
+        />
+      </InsetGroup>
+
+      {done && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">{done}</p>}
+      <ErrorBox error={error} />
 
       {/* Directly under the action that raised it: the second press must never be somewhere the user has to go looking for. */}
       {pending && (
-        <Card className="space-y-3 ring-2 ring-amber-500">
-          <h2 className="font-semibold">Before you replace your data</h2>
-          <p className="text-sm text-slate-700">
-            Check that <strong>{pending.safetyName}</strong> is in your Downloads. It is your only copy of the data on this device right now. Continue only once it is there.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="danger" onClick={() => void onConfirmRestore()} disabled={busy}>
-              Replace my data with {pending.name}
-            </Button>
-            <Button variant="ghost" onClick={() => setPending(null)} disabled={busy}>
-              Cancel
-            </Button>
-          </div>
-        </Card>
+        <>
+          {/* Prose, so a `Panel`: `InsetGroup` places rows, and this is the sentence that has to be read first. */}
+          <Panel header="Before you replace your data">
+            <p className="text-[13px] leading-[17px] text-[var(--ph-warn)]">
+              Check that <strong>{pending.safetyName}</strong> is in your Downloads. It is your only copy of the data on this device right now. Continue only once it is there.
+            </p>
+          </Panel>
+          {/* Its own group, and its own air from Cancel: a replace-everything a row away from a cancel is the wrong tap. */}
+          <InsetGroup>
+            <DestructiveRow label={`Replace my data with ${pending.name}`} onClick={() => !busy && void onConfirmRestore()} />
+          </InsetGroup>
+          <InsetGroup>
+            <InsetRow title="Cancel" chevron={false} className={busy ? 'opacity-40' : undefined} onClick={() => !busy && setPending(null)} />
+          </InsetGroup>
+        </>
       )}
 
-      <Card className="space-y-3">
-        <h2 className="font-semibold">Safety copies on this device</h2>
-        <p className="text-sm text-slate-700">
-          Expanses keeps a copy of your data before every update and once on each day you open it, so a bad update or the wrong restore can be undone. They sit in this app's own storage on this device, which means they are <strong>not a backup</strong>: anything that loses your data loses them with it. Only a file you have downloaded and kept somewhere else is a backup.
-        </p>
+      <InsetGroup
+        header="Safety copies on this device"
+        footer={
+          <>
+            Expanses keeps a copy of your data before every update and once on each day you open it, so a bad update or the wrong restore can be undone. They sit in this app&apos;s own storage on this device, which means they are <strong>not a backup</strong>: anything that loses your data loses them with it. Only a file you have downloaded and kept somewhere else is a backup.
+          </>
+        }
+      >
         {kept.data?.length ? (
-          <ul className="divide-y divide-slate-200 text-sm">
-            {kept.data.map((copy) => (
-              <li key={copy.file} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span className="min-w-0">
-                  <span className="block text-slate-900">{formatWhen(copy.takenAt)}</span>
-                  <span className="block text-xs text-slate-500">
-                    {copyReasonWords(copy.reason)} · {formatBytes(copy.bytes)}
-                  </span>
-                </span>
-                <Button variant="secondary" className="min-h-11" disabled={busy || !!pending} onClick={() => void onChooseCopy(copy)}>
-                  Restore this copy
-                </Button>
-              </li>
-            ))}
-          </ul>
+          /* The row is the action: a row never holds a button, and "Restore" beside the moment is exactly what it is. */
+          kept.data.map((copy) => (
+            <InsetRow
+              key={copy.file}
+              title={formatWhen(copy.takenAt)}
+              subtitle={`${copyReasonWords(copy.reason)} · ${formatBytes(copy.bytes)}`}
+              value="Restore"
+              chevron={false}
+              label={`Restore this copy from ${formatWhen(copy.takenAt)}`}
+              className={busy || !!pending ? 'opacity-40' : undefined}
+              onClick={() => !busy && !pending && void onChooseCopy(copy)}
+            />
+          ))
         ) : (
-          <p className="text-sm text-slate-500">No copies on this device yet. One is taken the first time you open Expanses each day, and before any update to your data.</p>
+          <InsetRow
+            title="No copies on this device yet"
+            subtitle="One is taken the first time you open Expanses each day, and before any update to your data."
+            chevron={false}
+          />
         )}
-      </Card>
+      </InsetGroup>
 
-      <Card className="space-y-3">
-        <h2 className="font-semibold">Backups and your iPhone</h2>
+      <Panel header="Backups and your iPhone">
         {/* Spec §8.2: until the device check has actually been run on a phone, nothing here may say a
             device backup covers this data. What is true today is said instead. */}
-        <p className="text-sm text-slate-700">
-          Expanses runs in your browser today, so an iPhone backup does not carry your data with it: an iCloud or Finder backup does not include a website's storage, and Safari can clear it after a week or so without opening the app. When Expanses ships as an installed app we will check on a real phone what a device backup covers, and say so here then.
+        <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
+          Expanses runs in your browser today, so an iPhone backup does not carry your data with it: an iCloud or Finder backup does not include a website&apos;s storage, and Safari can clear it after a week or so without opening the app. When Expanses ships as an installed app we will check on a real phone what a device backup covers, and say so here then.
         </p>
-        <p className="text-sm text-slate-600">
+        <p className="mt-[10px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
           So keep downloading a backup of your own. A file you hold is the only copy that survives a lost phone, a deleted app, and a restore that goes wrong — and it opens on any device you install Expanses on.
         </p>
-      </Card>
+      </Panel>
+
+      {/*
+       * The two real choosers, out of the way at the foot of the page: every row above opens the one that names
+       * it, and what it opens is a real `<input type="file">` — so the file the app reads is the file the user
+       * chose, and a test can hand one over without a thumb.
+       */}
+      <input
+        ref={sqliteInput}
+        type="file"
+        accept=".sqlite3,.db,application/vnd.sqlite3,application/octet-stream"
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(e) => void onChooseFile(e)}
+        disabled={busy || !!pending}
+      />
+      <input
+        ref={zipInput}
+        type="file"
+        accept=".zip,application/zip"
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(e) => void onChoosePhotoZip(e)}
+        disabled={busy || !!pending}
+      />
     </div>
   );
 }

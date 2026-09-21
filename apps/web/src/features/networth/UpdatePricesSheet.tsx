@@ -3,7 +3,8 @@ import { upsertPrice } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input } from '../../ui';
+import { Button, ErrorBox, Field, Input } from '../../ui';
+import { Panel } from '../../ui/native';
 
 export interface StaleHolding {
   accountId: string;
@@ -47,7 +48,7 @@ export function UpdatePricesSheet({ holdings, onDone }: { holdings: StaleHolding
   }
 
   return (
-    <Card>
+    <Panel>
       <form onSubmit={submit} className="space-y-3">
         <div>
           <h2 className="text-sm font-semibold">Update prices</h2>
@@ -74,6 +75,6 @@ export function UpdatePricesSheet({ holdings, onDone }: { holdings: StaleHolding
           </Button>
         </div>
       </form>
-    </Card>
+    </Panel>
   );
 }

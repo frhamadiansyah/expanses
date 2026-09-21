@@ -1,10 +1,10 @@
 import { balanceSheet, carryOver, isoDate, readiness, reconciliation } from '@expanses/core';
 import { draftReport } from '@expanses/db';
-import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { Empty, ErrorBox, Money } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { useSheet } from '../networth/queries';
 import { FreezePanel } from './FreezePanel';
 import { BusinessSection } from './BusinessSection';
@@ -75,34 +75,36 @@ export function CoretaxPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Tax report" />
+    <div className={SCREEN}>
+      <LargeTitle title="Tax report" />
       <ErrorBox error={error ?? report.error ?? rows.error} />
 
-      <Card className="flex flex-wrap items-end justify-between gap-3">
-        <Field label="Tax year" className="w-40">
-          <Select value={String(taxYear)} onChange={(e) => setTaxYear(Number(e.target.value))}>
-            {years.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <span className="flex items-center gap-3">
-          {report.data && (
-            <span className={cx('rounded-full px-2 py-0.5 text-xs font-semibold', report.data.status === 'draft' ? 'bg-slate-100 text-slate-600' : 'bg-emerald-100 text-emerald-800')}>
-              {STATUS_LABELS[report.data.status]}
-              {report.data.filedOn && ` ${report.data.filedOn}`}
-            </span>
-          )}
-          {!report.data && (
-            <Button disabled={busy} onClick={() => void start()}>
-              Start the {taxYear} report
-            </Button>
-          )}
-        </span>
-      </Card>
+      <InsetGroup header="Tax year">
+        <SelectRow label="Tax year" value={String(taxYear)} onChange={(e) => setTaxYear(Number(e.target.value))}>
+          {years.map((year) => (
+            <option key={year} value={year}>
+              {year}
+            </option>
+          ))}
+        </SelectRow>
+        {report.data && (
+          <ReadOnlyRow
+            label="Status"
+            value={`${STATUS_LABELS[report.data.status]}${report.data.filedOn ? ` ${report.data.filedOn}` : ''}`}
+          />
+        )}
+      </InsetGroup>
+
+      {!report.data && (
+        <InsetGroup>
+          <InsetRow
+            title={`Start the ${taxYear} report`}
+            chevron={false}
+            className={busy ? 'opacity-40' : undefined}
+            onClick={() => !busy && void start()}
+          />
+        </InsetGroup>
+      )}
 
       {!report.data && report.isSuccess && (
         <Empty>
@@ -112,92 +114,101 @@ export function CoretaxPage() {
 
       {report.data && (
         <>
-          <Card className="space-y-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="text-sm font-semibold">Ikhtisar</h2>
-              <span className="text-sm text-slate-600">
-                Harta <Money minor={check.hartaMinor} currency={ws.baseCurrency} className="font-semibold text-slate-900" /> · Utang{' '}
-                <Money minor={check.utangMinor} currency={ws.baseCurrency} className="font-semibold text-slate-900" />
-              </span>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {sections.map((section) => (
-                <div key={section.section} className="rounded-xl p-3 ring-1 ring-slate-200">
-                  <div className="text-xs text-slate-500">{section.label}</div>
-                  <Money minor={section.valueMinor} currency={ws.baseCurrency} className="font-semibold" />
-                  <div className="text-xs text-slate-500">{section.rows.length === 1 ? '1 row' : `${section.rows.length} rows`}</div>
-                </div>
-              ))}
-            </div>
-            <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              The report says <Money minor={check.reportNetMinor} currency={ws.baseCurrency} />, and your balance sheet on 31 December {taxYear} says{' '}
-              <Money minor={check.netWorthMinor} currency={ws.baseCurrency} />.
-              {check.differenceMinor !== 0 && (
-                <>
-                  {' The gap is '}
-                  <Money minor={check.differenceMinor} currency={ws.baseCurrency} tone="auto" />.
-                  <ul className="mt-1 list-disc pl-4">
-                    {check.reasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
-          </Card>
+          <InsetGroup
+            header="Ikhtisar"
+            footer={
+              <>
+                Harta <Money minor={check.hartaMinor} currency={ws.baseCurrency} /> · Utang{' '}
+                <Money minor={check.utangMinor} currency={ws.baseCurrency} />. The report says{' '}
+                <Money minor={check.reportNetMinor} currency={ws.baseCurrency} />, and your balance sheet on 31 December {taxYear} says{' '}
+                <Money minor={check.netWorthMinor} currency={ws.baseCurrency} />.
+                {check.differenceMinor !== 0 && (
+                  <>
+                    {' The gap is '}
+                    <Money minor={check.differenceMinor} currency={ws.baseCurrency} tone="auto" />.
+                    <ul className="mt-[4px] list-disc pl-4">
+                      {check.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </>
+            }
+          >
+            {sections.map((section) => (
+              <InsetRow
+                key={section.section}
+                title={section.label}
+                subtitle={section.rows.length === 1 ? '1 row' : `${section.rows.length} rows`}
+                value={<Money minor={section.valueMinor} currency={ws.baseCurrency} />}
+                chevron={false}
+              />
+            ))}
+          </InsetGroup>
 
           {report.data.status === 'draft' && (
-            <Card className="grid gap-3 md:grid-cols-2">
-              <Field label="NPWP" hint="Sixteen digits. The converter sheet starts with it, so a file cannot be built without one.">
-                <Input value={npwp} inputMode="numeric" onChange={(e) => setNpwp(e.target.value)} placeholder="0011223344556677" />
-              </Field>
-              <Field label="Nama wajib pajak">
-                <Input value={taxpayerName} onChange={(e) => setTaxpayerName(e.target.value)} />
-              </Field>
-              <div className="flex items-center gap-3 md:col-span-2">
-                <Button
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void saveWho({ npwp: npwp.trim(), taxpayerName: taxpayerName.trim() })
-                  }
+            <>
+              <InsetGroup header="Who it is for">
+                <TextRow
+                  label="NPWP"
+                  hint="Sixteen digits. The converter sheet starts with it, so a file cannot be built without one."
+                  value={npwp}
+                  inputMode="numeric"
+                  onChange={(e) => setNpwp(e.target.value)}
+                  placeholder="0011223344556677"
+                />
+                <TextRow label="Nama wajib pajak" value={taxpayerName} onChange={(e) => setTaxpayerName(e.target.value)} />
+                <SelectRow
+                  label="Property and vehicles report"
+                  hint="The cost is what you paid; the others are what you say it is worth now."
+                  value={report.data.propertyBasis}
+                  onChange={(e) => void start(e.target.value as 'cost' | 'estimate' | 'njop' | 'appraisal', report.data!.repeatRows)}
                 >
-                  Save taxpayer details
-                </Button>
-                {savedWho && <span className="text-sm text-emerald-700">Saved</span>}
-              </div>
-              <Field label="Property and vehicles report" hint="The cost is what you paid; the others are what you say it is worth now.">
-                <Select value={report.data.propertyBasis} onChange={(e) => void start(e.target.value as 'cost' | 'estimate' | 'njop' | 'appraisal', report.data!.repeatRows)}>
                   <option value="cost">What I paid</option>
                   <option value="estimate">My estimate</option>
                   <option value="njop">NJOP from the PBB notice</option>
                   <option value="appraisal">An appraisal</option>
-                </Select>
-              </Field>
-              <Field label="Holdings bought over several years" hint="One row each, or a row per year of purchase.">
-                <Select value={report.data.repeatRows} onChange={(e) => void start(report.data!.propertyBasis, e.target.value as 'holding' | 'year')}>
+                </SelectRow>
+                <SelectRow
+                  label="Holdings bought over several years"
+                  hint="One row each, or a row per year of purchase."
+                  value={report.data.repeatRows}
+                  onChange={(e) => void start(report.data!.propertyBasis, e.target.value as 'holding' | 'year')}
+                >
                   <option value="holding">One row per holding</option>
                   <option value="year">One row per year of purchase</option>
-                </Select>
-              </Field>
-            </Card>
+                </SelectRow>
+              </InsetGroup>
+
+              {/* Its own group: an action sharing a group with the fields it saves is one mistap from saving a typo. */}
+              <InsetGroup>
+                <InsetRow
+                  title="Save taxpayer details"
+                  chevron={false}
+                  className={busy ? 'opacity-40' : undefined}
+                  onClick={() => !busy && void saveWho({ npwp: npwp.trim(), taxpayerName: taxpayerName.trim() })}
+                />
+              </InsetGroup>
+              {savedWho && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">Saved</p>}
+            </>
           )}
 
-          <Card className="space-y-2">
-            <h2 className="text-sm font-semibold">Before you file</h2>
-            {blocking.length === 0 && warnings.length === 0 && <p className="text-sm text-slate-500">Nothing missing. Every row has what its table asks for.</p>}
-            {[...blocking, ...warnings].map((link) => (
-              <div key={link.issue.key} className="flex items-start justify-between gap-3 border-t border-slate-100 py-2 text-sm first:border-t-0">
-                <span className="flex gap-2">
-                  <i className={cx('mt-1.5 h-2 w-2 shrink-0 rounded-full', link.issue.level === 'blocking' ? 'bg-red-500' : 'bg-amber-500')} />
-                  {link.issue.message}
-                </span>
-                <Link to={link.to} className="shrink-0 text-slate-600 underline">
-                  Fix
-                </Link>
-              </div>
-            ))}
-          </Card>
+          {[...blocking, ...warnings].length > 0 ? (
+            <InsetGroup header="Before you file">
+              {[...blocking, ...warnings].map((link) => (
+                <InsetRow
+                  key={link.issue.key}
+                  title={link.issue.message}
+                  subtitle={link.issue.level === 'blocking' ? 'Needs fixing before you file' : 'Worth a look'}
+                  value="Fix"
+                  to={link.to}
+                />
+              ))}
+            </InsetGroup>
+          ) : (
+            <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing missing. Every row has what its table asks for.</p>
+          )}
 
           <KmkRates taxYear={taxYear} />
           <IncomeSection taxYear={taxYear} />
@@ -209,7 +220,7 @@ export function CoretaxPage() {
             <SectionTable key={section.section} section={section} carry={carry} />
           ))}
 
-          <p className="text-xs text-slate-500">
+          <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
             Everything here stays on this device. The report holds your NPWP, NIK and account numbers, so nothing is sent anywhere and nothing is filed for you.
           </p>
         </>

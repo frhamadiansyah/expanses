@@ -200,8 +200,11 @@ test('money set aside on a foreign account is typed, saved and read back in that
 
   // Saved at all is the first assertion: this used to end in `IDR allows 0 decimal places`.
   await expect(page.getByRole('alert')).toHaveCount(0);
-  const fundedBy = page.getByText(/Wise USD.*set aside/).first();
+  // The funding line is a row of the goal's group now: the name, what kind of funding it is and the figure are
+  // three parts of one row rather than one run of text, so the line is named rather than matched whole.
+  const fundedBy = page.getByTestId('goal-link').filter({ hasText: 'Wise USD' }).first();
   await expect(fundedBy).toBeVisible();
+  await expect(fundedBy).toContainText('set aside');
   await expect(fundedBy).toContainText('US$100,03');
 
   // And the form opens on the figure it stored, in the same currency it asked for.

@@ -8,7 +8,8 @@ import { cx } from '../ui';
  * One string. The receipt, the transaction card's own page and a bill each held their own copy of it, and a
  * fourth screen would have held a fourth: shared, they cannot drift.
  */
-export const ROUND = 'flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-200/70 focus-visible:outline-2 focus-visible:outline-slate-900';
+export const ROUND =
+  'flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-ink)] shadow-sm ring-1 ring-[var(--ph-hair)] focus-visible:outline-2 focus-visible:outline-[var(--ph-focus)]';
 
 /**
  * The way back a screen owes its user: where it was opened from, or `fallback` when it was opened cold.

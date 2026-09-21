@@ -11,8 +11,13 @@ import { TABS } from './nav';
  * purchase is the commonest thing to do here, not the loudest.
  */
 export function TabBar({ onAdd, onAccount, accountOpen }: { onAdd: () => void; onAccount: () => void; accountOpen: boolean }) {
-  const cell = 'flex h-12 flex-1 items-center justify-center rounded-full text-slate-500 transition-colors';
-  const here = 'bg-slate-200/80 text-slate-900';
+  /*
+   * The shell's own chrome, in the app's own colours: the capsule is the kit's surface at 80%, so a phone on a
+   * black page gets a black bar and the same bar it always had on a white one. `--ph-fill` behind the tab you are
+   * on is the kit's grey, which is the same grey a group's rows take in either mode.
+   */
+  const cell = 'flex h-12 flex-1 items-center justify-center rounded-full text-[var(--ph-ink-3)] transition-colors';
+  const here = 'bg-[var(--ph-fill)] text-[var(--ph-ink)]';
   return (
     <div
       className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-3 md:hidden"
@@ -20,7 +25,7 @@ export function TabBar({ onAdd, onAccount, accountOpen }: { onAdd: () => void; o
     >
       <nav
         aria-label="Main"
-        className="pointer-events-auto flex w-full max-w-md items-center gap-1 rounded-full border border-slate-200/70 bg-white/80 p-1.5 shadow-lg shadow-slate-900/10 backdrop-blur-xl"
+        className="pointer-events-auto flex w-full max-w-md items-center gap-1 rounded-full border border-[var(--ph-hair)] bg-[var(--ph-chrome)] p-1.5 shadow-lg shadow-black/10 backdrop-blur-xl"
       >
         {TABS.slice(0, 2).map((tab) => (
           <Link key={tab.to} to={tab.to} className={cell} aria-label={tab.label} activeProps={{ className: here, 'aria-current': 'page' }}>

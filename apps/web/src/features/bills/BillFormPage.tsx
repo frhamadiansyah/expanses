@@ -1,11 +1,13 @@
 import { ordinal, parseMajor } from '@expanses/core';
 import { saveExpenseTemplate } from '@expanses/db';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { type FormEvent, useEffect, useId, useState } from 'react';
+import { useNavigate, useParams } from '@tanstack/react-router';
+import { Check } from 'lucide-react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
-import { Button, ErrorBox, InputRow, Kicker, PageHeader, RowGroup, RowHint, SelectRow } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { useExpenseTemplates } from '../transactions/queries';
 import { amountInput } from './bill-view';
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -39,6 +41,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
   const [loaded, setLoaded] = useState(false);
   // The amount's hint sits under the whole card, so the field has to say out loud which sentence explains it.
   const amountHint = useId();
+  const form = useRef<HTMLFormElement>(null);
 
   // A bill is recorded into the open book, so it picks from that book's categories.
   const categories = (accounts.data ?? []).filter((account) => account.kind === 'expense' && account.subtype === 'category' && inOpenBook(account));
@@ -83,23 +86,37 @@ export function BillFormPage({ billId }: { billId?: string }) {
     }
   }
 
-  // Cancel goes back the way Save would: to the bill's own page for an edit, to the list for a new one.
-  const cancel = 'block min-h-11 py-3 text-center text-sm font-medium text-slate-600 hover:text-slate-900';
+  /*
+   * Save is the corner button, as it is on every form in the kit — a glyph at every width, the user's choice.
+   * Cancel is where it already went: an edit came from the bill's own page, a new bill from the list, and that
+   * is exactly what the named back line above the title says. It stays a row of its own as well, because
+   * "Cancel" is an action this screen has always offered by that name.
+   */
+  const backTo = billId ? ('/bills/$billId' as const) : ('/bills' as const);
+  const backParams = billId ? { billId } : undefined;
 
   return (
-    <div className="mx-auto max-w-lg">
-      <PageHeader title={billId ? 'Edit bill' : 'New bill'} />
-      <form onSubmit={save} className="space-y-2">
+    <div className={SCREEN}>
+      <LargeTitle
+        title={billId ? 'Edit bill' : 'New bill'}
+        back={billId ? 'Bill' : 'Bills'}
+        backTo={backTo}
+        backParams={backParams}
+        actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, run: () => form.current?.requestSubmit() }]}
+      />
+      <form ref={form} onSubmit={save}>
         <ErrorBox error={error ?? templates.error} />
-        <RowGroup>
-          <InputRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Phone, water, gas" />
-          <InputRow
+        <InsetGroup>
+          <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Phone, water, gas" />
+          <TextRow
             label="Amount"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             inputMode="decimal"
             placeholder="150000"
             aria-describedby={amountHint}
+            /* The sentence keeps its id, so the box still says out loud which line explains it. */
+            hint={<span id={amountHint}>Leave it empty when it changes every month, like electricity. You'll be asked each time.</span>}
           />
           <SelectRow label="Category" value={categoryAccountId} onChange={(e) => setCategoryAccountId(e.target.value)}>
             <option value="">Choose a category</option>
@@ -117,11 +134,9 @@ export function BillFormPage({ billId }: { billId?: string }) {
               </option>
             ))}
           </SelectRow>
-        </RowGroup>
-        <RowHint id={amountHint}>Leave it empty when it changes every month, like electricity. You'll be asked each time.</RowHint>
+        </InsetGroup>
 
-        <Kicker>When</Kicker>
-        <RowGroup>
+        <InsetGroup header="When" footer="Earlier than the out day means the next month: out on the 28th, pay by the 5th.">
           <SelectRow label="Repeats" value="monthly" disabled>
             <option value="monthly">Every month</option>
           </SelectRow>
@@ -140,23 +155,11 @@ export function BillFormPage({ billId }: { billId?: string }) {
               </option>
             ))}
           </SelectRow>
-        </RowGroup>
-        <RowHint>Earlier than the out day means the next month: out on the 28th, pay by the 5th.</RowHint>
+        </InsetGroup>
 
-        <div className="pt-3">
-          <Button type="submit" className="w-full">
-            Save
-          </Button>
-        </div>
-        {billId ? (
-          <Link to="/bills/$billId" params={{ billId }} className={cancel}>
-            Cancel
-          </Link>
-        ) : (
-          <Link to="/bills" className={cancel}>
-            Cancel
-          </Link>
-        )}
+        <InsetGroup>
+          <InsetRow title="Cancel" chevron={false} to={backTo} params={backParams} />
+        </InsetGroup>
       </form>
     </div>
   );

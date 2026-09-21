@@ -31,20 +31,20 @@ export function AccountSheet({ onClose }: { onClose: () => void }) {
       <div className="-mx-1">
         {MORE_GROUPS.map((group) => (
           <section key={group.title} className="mb-4 last:mb-0">
-            <h3 className="mb-1 px-1 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">{group.title}</h3>
-            <div className="divide-y divide-slate-100">
+            <h3 className="mb-1 px-1 text-[11px] font-semibold tracking-wide text-[var(--ph-ink-3)] uppercase">{group.title}</h3>
+            <div className="divide-y divide-[var(--ph-hair)]">
               {group.items.map((item) => (
                 <Link
                   key={item.to}
                   to={item.to}
                   onClick={onClose}
-                  className="flex min-h-12 items-center gap-3 rounded-lg px-1 text-sm hover:bg-slate-50"
+                  className="flex min-h-12 items-center gap-3 rounded-lg px-1 text-sm text-[var(--ph-ink)] hover:bg-[var(--ph-fill)]"
                   activeProps={{ className: 'font-medium' }}
                 >
-                  <item.icon size={18} aria-hidden className="shrink-0 text-slate-500" />
+                  <item.icon size={18} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {note(item.to) && <span className="text-xs text-slate-500">{note(item.to)}</span>}
-                  <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
+                  {note(item.to) && <span className="text-xs text-[var(--ph-ink-3)]">{note(item.to)}</span>}
+                  <ChevronRight size={16} aria-hidden className="shrink-0 text-[var(--ph-chevron)]" />
                 </Link>
               ))}
             </div>

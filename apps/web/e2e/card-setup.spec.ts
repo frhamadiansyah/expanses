@@ -6,7 +6,7 @@ test('card setup guides billing date, then rewards, then a suggested base rule',
   await page.getByLabel('Type').selectOption('credit_card');
   await page.getByRole('button', { name: 'Add account' }).click();
 
-  const accountRow = page.locator('li', { has: page.getByRole('link', { name: 'Step Card', exact: true }) });
+  const accountRow = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Step Card', exact: true }) });
   await accountRow.getByRole('link', { name: 'Set up points' }).click();
 
   // Step 1: only card terms until the billing date exists.

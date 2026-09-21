@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { Empty, ErrorBox, Money } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from './options';
 import { useProgramAccounts } from './card-queries';
 import { compareTargets } from './recommend-targets';
@@ -42,8 +43,12 @@ export function RecommendPage() {
     ? `Compared as MCC ${resolved.mcc}${mccName(resolved.mcc) ? ` ${mccName(resolved.mcc)}` : ''} (${resolvedFrom}).`
     : 'Optional. Matches merchant keywords and merchant categories in your rules.';
 
-  async function compare(event: FormEvent) {
-    event.preventDefault();
+  /**
+   * The event is optional because the row that compares is a `type="button"` inside a real `<form>`: the form is
+   * what keeps Enter in a field comparing, and the row is what a thumb presses.
+   */
+  async function compare(event?: FormEvent) {
+    event?.preventDefault();
     setError(null);
     setBusy(true);
     try {
@@ -73,91 +78,104 @@ export function RecommendPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Which card should I use?" />
-      <Card>
-        <form onSubmit={compare} className="grid gap-3 md:grid-cols-2">
-          <Field label={`Amount (${ws.baseCurrency})`} hint={spentIn ? `The ${ws.baseCurrency} amount billed after conversion.` : undefined}>
-            <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" required />
-          </Field>
-          <Field label="Spent in" hint="Currency the merchant charges. Some cards earn more in certain currencies.">
-            <Select value={spentIn} onChange={(e) => setSpentIn(e.target.value)}>
-              <option value="">{ws.baseCurrency}</option>
-              {CURRENCIES.filter((c) => c.code !== ws.baseCurrency).map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Category">
-            <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <CategoryOptions ownerWide accounts={all} kind="expense" />
-            </Select>
-          </Field>
-          <Field label="Merchant" hint={merchantHint}>
-            <Input value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder="Sushi Tei" />
-          </Field>
-          <Field label="Date">
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-          <Field label="Compare in" hint="Value uses each card's redemption rate; a program converts through transfer partners.">
-            <Select value={compareIn} onChange={(e) => setCompareIn(e.target.value)}>
-              <option value={VALUE}>{ws.baseCurrency} value</option>
-              {(targets.data ?? []).map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="md:col-span-2">
-            <Button type="submit" disabled={busy}>
-              Compare cards
-            </Button>
-          </div>
-        </form>
-        <ErrorBox error={error} />
-      </Card>
+    <div className={SCREEN}>
+      <LargeTitle title="Which card should I use?" />
+
+      <form onSubmit={compare}>
+        <InsetGroup header="What you are buying">
+          <TextRow
+            label={`Amount (${ws.baseCurrency})`}
+            hint={spentIn ? `The ${ws.baseCurrency} amount billed after conversion.` : undefined}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            required
+          />
+          <SelectRow
+            label="Spent in"
+            hint="Currency the merchant charges. Some cards earn more in certain currencies."
+            value={spentIn}
+            onChange={(e) => setSpentIn(e.target.value)}
+          >
+            <option value="">{ws.baseCurrency}</option>
+            {CURRENCIES.filter((c) => c.code !== ws.baseCurrency).map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.code}
+              </option>
+            ))}
+          </SelectRow>
+          <SelectRow label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <CategoryOptions ownerWide accounts={all} kind="expense" />
+          </SelectRow>
+          <TextRow label="Merchant" hint={merchantHint} value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder="Sushi Tei" />
+          <TextRow label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <SelectRow
+            label="Compare in"
+            hint="Value uses each card's redemption rate; a program converts through transfer partners."
+            value={compareIn}
+            onChange={(e) => setCompareIn(e.target.value)}
+          >
+            <option value={VALUE}>{ws.baseCurrency} value</option>
+            {(targets.data ?? []).map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </SelectRow>
+        </InsetGroup>
+
+        {/* The row is the action; the form around it is what makes Enter in a field compare as well. */}
+        <InsetGroup>
+          <InsetRow title="Compare cards" chevron={false} className={busy ? 'opacity-40' : undefined} onClick={() => !busy && void compare()} />
+        </InsetGroup>
+      </form>
+
+      <ErrorBox error={error} />
 
       {results && results.list.length === 0 && <Empty>No credit cards yet.</Empty>}
       {results?.list.map((r, i) => {
         const { target } = results;
         const best = i === 0 && r.eligible && (target.kind === 'program' ? r.comparable && (r.compareUnits ?? 0) > 0 : r.points > 0);
+        /*
+         * One group per card, and no wrapping group around them all: a group is a `<section>`, and the specs find a
+         * card by asking which section says its name. A section holding every card would answer for all of them.
+         *
+         * The caveat is the row's own second line rather than a separate element — a row is one line of title, one
+         * of subtitle and one figure, and the caveat belongs to the card it is about.
+         */
+        const note = !r.eligible
+          ? 'Card currency differs from this purchase'
+          : r.points === 0
+            ? 'No earn rule matches — set up rules on the card page'
+            : target.kind === 'program' && !r.comparable
+              ? `Can't reach ${target.program} from this card`
+              : undefined;
         return (
-          <Card key={r.cardAccountId} className={cx(best && 'ring-2 ring-emerald-600')}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-medium">
-                  {best && <span className="mr-2 rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-800">Best</span>}
+          <InsetGroup key={r.cardAccountId}>
+            <InsetRow
+              title={
+                <>
+                  {best && <span className="mr-[6px] text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-tint)]">Best</span>}
                   {r.cardName}
-                </div>
-                {!r.eligible && <div className="text-xs text-slate-500">Card currency differs from this purchase</div>}
-                {r.eligible && r.points === 0 && <div className="text-xs text-slate-500">No earn rule matches — set up rules on the card page</div>}
-                {target.kind === 'program' && r.eligible && !r.comparable && <div className="text-xs text-slate-500">Can't reach {target.program} from this card</div>}
-                {r.capHeadroom.map((h) => (
-                  <div key={h.ruleId} className="text-xs text-slate-500">
-                    {h.ruleName}: {formatMinor(h.remainingMinor, ws.baseCurrency)} left this cycle
-                  </div>
-                ))}
-              </div>
-              <div className="text-right">
-                <div className="tabular font-semibold">{formatPoints(r.points)} pts</div>
-                {target.kind === 'program' ? (
-                  <div className="tabular text-sm">{r.compareUnits !== null ? `≈ ${formatPoints(r.compareUnits)} ${target.program}` : '—'}</div>
-                ) : (
-                  <>
-                    {r.valueMinor !== null && r.valueCurrency && (
-                      <div className="text-sm">
-                        ≈ <Money minor={r.valueMinor} currency={r.valueCurrency} />
-                      </div>
-                    )}
-                    {r.effectiveRateBps !== null && <div className="text-xs text-slate-500">{(r.effectiveRateBps / 100).toFixed(2)}% back</div>}
-                  </>
-                )}
-              </div>
-            </div>
-          </Card>
+                </>
+              }
+              subtitle={note}
+              value={`${formatPoints(r.points)} pts`}
+              chevron={false}
+            />
+            {target.kind === 'program' && r.eligible && (
+              <InsetRow title={`In ${target.program}`} value={r.compareUnits !== null ? `≈ ${formatPoints(r.compareUnits)} ${target.program}` : '—'} chevron={false} />
+            )}
+            {target.kind === 'value' && r.valueMinor !== null && !!r.valueCurrency && (
+              <InsetRow title="Worth at its best redemption" value={<Money minor={r.valueMinor} currency={r.valueCurrency} />} chevron={false} />
+            )}
+            {target.kind === 'value' && r.effectiveRateBps !== null && (
+              <InsetRow title="Back on what you spend" value={`${(r.effectiveRateBps / 100).toFixed(2)}% back`} chevron={false} />
+            )}
+            {r.capHeadroom.map((h) => (
+              <InsetRow key={h.ruleId} title={h.ruleName} subtitle="Left this cycle" value={formatMinor(h.remainingMinor, ws.baseCurrency)} chevron={false} />
+            ))}
+          </InsetGroup>
         );
       })}
     </div>

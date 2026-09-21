@@ -380,7 +380,8 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
 
   // All: the whole trip, both workspaces added up.
   const tabs = page.getByTestId('event-workspaces');
-  await expect(tabs.getByRole('button')).toHaveText(['All', 'Personal', 'Business']);
+  // A segmented control: the tabs are one radio group now, so the three of them are radios and not buttons.
+  await expect(tabs.getByRole('radio')).toHaveText(['All', 'Personal', 'Business']);
   await expect(page.getByTestId('event-total')).toContainText('4.840.000');
   await expect(page.getByTestId('event-detail-sheet')).toContainText('Restaurants');
   // The history is owner-wide on purpose — one trip is paid for out of several workspaces — but the category
@@ -391,7 +392,7 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Category for Supplier lunch' })).toHaveCount(1);
 
   // Business: its own share, and only the categories filed in it.
-  await tabs.getByRole('button', { name: 'Business' }).click();
+  await tabs.getByRole('radio', { name: 'Business' }).click();
   await expect(page.getByTestId('event-total')).toContainText('640.000');
   await expect(page.getByTestId('event-detail-sheet')).toContainText('Client lunches');
   await expect(page.getByTestId('event-detail-sheet')).not.toContainText('Restaurants');
@@ -407,11 +408,11 @@ test('an event reads whole, then one workspace at a time', async ({ page }) => {
   await page.getByTestId('open-plan').click();
   await expect(page.getByRole('heading', { name: 'Plan · Singapore holiday' })).toBeVisible();
   await page.getByRole('link', { name: 'Back to the event' }).click();
-  await expect(tabs.getByRole('button', { name: 'Business' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(tabs.getByRole('radio', { name: 'Business' })).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByTestId('event-total')).toContainText('640.000');
 
   // Back to All, and the whole trip is there again.
-  await tabs.getByRole('button', { name: 'All' }).click();
+  await tabs.getByRole('radio', { name: 'All' }).click();
   await expect(page.getByTestId('event-total')).toContainText('4.840.000');
 });
 
@@ -474,7 +475,7 @@ test('the screens that settle a receipt read the whole plan, not the open tab', 
 
   // Now read under the Business tab, where the Personal item is not part of the plan being shown.
   await page.goto(url);
-  await page.getByTestId('event-workspaces').getByRole('button', { name: 'Business' }).click();
+  await page.getByTestId('event-workspaces').getByRole('radio', { name: 'Business' }).click();
   await page.getByTestId('open-plan').click();
   await page.getByTestId('plan-item').filter({ hasText: 'Client entertaining' }).getByRole('link').click();
   await page.getByRole('link', { name: 'Link a purchase' }).click();

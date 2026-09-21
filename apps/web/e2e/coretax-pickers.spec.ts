@@ -32,7 +32,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await expect(page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true })).toBeVisible();
 
   // What was typed on the way in is said back: the day the money comes back, and what it pays for waiting.
-  const deposito = page.locator('li', { has: page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true }) });
+  const deposito = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true }) });
   await expect(deposito).toContainText('Matures 1 Mar 2027 · 6,25%');
 
   // And it can be put right, because a date typed off a certificate is a date that can be mistyped.
@@ -72,7 +72,9 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   await page.goto('/accounts');
-  await expect(page.locator('li', { has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) })).toContainText('120.000.000');
+  await expect(
+    page.getByRole('row').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) }),
+  ).toContainText('120.000.000');
 });
 
 test('a family, then the thing: an apartment and gold jewellery file under their own codes', async ({ page }) => {

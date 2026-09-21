@@ -24,7 +24,8 @@ import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { Button, cx, Empty, ErrorBox, Field, Input, Money, Select } from '../../ui';
+import { GROUP_RADIUS, LargeTitle } from '../../ui/native';
 import { InstallmentList } from '../loans/InstallmentList';
 import { BonusForm } from './BonusForm';
 import { BonusProgress } from './BonusProgress';
@@ -64,18 +65,36 @@ function useAction() {
   return { error, run };
 }
 
+/** The ground a native screen is laid on, and the column a desktop reads it in. */
+function Screen({ children }: { children: ReactNode }) {
+  return (
+    <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
+      <div className="mx-auto max-w-5xl">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * A section of a tab, on the kit's own shape: header outside and above, flat surface under it.
+ *
+ * Not `InsetGroup`, which hands each of its children a place in a group and so takes rows and only rows — and
+ * what these sections hold are forms, tables and lists. The surface, the radius and the header are the kit's all
+ * the same, rather than the ringed card with its title inside that the kit replaces.
+ */
 function Section({ title, step, children, action, id }: { title: string; step?: string; children: ReactNode; action?: ReactNode; id?: string }) {
   return (
-    <Card className="scroll-mt-4" id={id}>
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          {step && <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{step}</div>}
-          <h2 className="text-sm font-semibold text-slate-600">{title}</h2>
+    <section className="mb-[18px] scroll-mt-4" id={id}>
+      <div className="flex items-baseline justify-between gap-3 px-[4px] pb-[6px]">
+        <div className="min-w-0">
+          {step && <div className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-tint)] uppercase">{step}</div>}
+          <h2 className="text-[11.5px] leading-[14px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{title}</h2>
         </div>
         {action}
       </div>
-      {children}
-    </Card>
+      <div className="overflow-hidden bg-[var(--ph-surface)] p-[13px]" style={{ borderRadius: GROUP_RADIUS }}>
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -433,8 +452,8 @@ export function CardDetailPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <PageHeader title={card.name} action={<Link to="/cards" className="text-sm underline">All cards</Link>} />
+    <Screen>
+      <LargeTitle title={card.name} back="All cards" backTo="/cards" />
       <CardHero
         cp={cp}
         accounts={all}
@@ -965,6 +984,6 @@ export function CardDetailPage() {
       )}
 
       {on('card') && <InstallmentList cardAccountId={card.id} currency={currency} />}
-    </div>
+    </Screen>
   );
 }

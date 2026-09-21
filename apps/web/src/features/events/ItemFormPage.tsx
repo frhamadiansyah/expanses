@@ -1,18 +1,16 @@
 import { formatMinor, minorToMajorString, parseMajor } from '@expanses/core';
 import { listEventItems, saveEventItem } from '@expanses/db';
-import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { ChevronLeft } from 'lucide-react';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Check } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { Empty, ErrorBox } from '../../ui';
+import { InsetGroup, LargeTitle, ReadOnlyRow, SelectRow, TextRow, type CornerAction } from '../../ui/native';
 import { useCategorySetMembership, useSetCategories } from '../categories/set-queries';
 import { useCategoryWorkspaces } from '../workspaces/queries';
 import { afterSaving, itemFormGate } from './plan-view';
 import { useEventItemsReady, useEventPlan, useEvents } from './queries';
-
-/** The way back off a screen whose subject has gone, styled as the back link every other plan screen carries. */
-const BACK = '-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800';
 
 export function NewItemRoute() {
   const { eventId } = useParams({ from: '/events/$eventId/plan/new' });
@@ -54,6 +52,10 @@ const wholeOf = (typed: string) => (/^\d+$/.test(typed.trim()) ? Number(typed.tr
  * appends a second item instead, which is exactly how the interim card this screen replaces silently doubled a
  * category's planned figure. Here the whole list sits on the screen behind this form, so a duplicate could not hide —
  * but the id is passed all the same, because being visible is not the same as being right.
+ *
+ * Drawn with the native kit: every field is a line in one group, label left and answer right, and Save is the
+ * corner button — not a label stacked over an outlined box under a dark rectangle. The `<form>` is still the thing
+ * that submits, so Enter in any field saves exactly as it did.
  */
 export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: string; itemId?: string }) {
   const { database, ws } = useApp();
@@ -113,8 +115,8 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
   // The warning waits for a No; Save waits for the answer. `itemFormGate` holds the reasoning and is tested there.
   const { blocked, saveOff } = itemFormGate(ready);
 
-  async function save(submitted: FormEvent) {
-    submitted.preventDefault();
+  async function save(submitted?: FormEvent) {
+    submitted?.preventDefault();
     setError(null);
     try {
       const id = await saveEventItem(database, ws, eventId, {
@@ -142,114 +144,85 @@ export function ItemFormPage({ eventId, tab, itemId }: { eventId: string; tab?: 
     }
   }
 
-  /** A dead end is not an answer: whatever went missing, there is a way out that is not the browser's back button. */
-  const gone = (said: string, out: ReactNode) => (
-    <div className="mx-auto max-w-lg space-y-4">
-      <PageHeader title={itemId ? 'Edit item' : 'New item'} />
-      {out}
-      <Empty>{said}</Empty>
+  const title = itemId ? 'Edit item' : 'New item';
+  const screen = (children: ReactNode) => (
+    <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
+      <div className="mx-auto max-w-2xl">{children}</div>
     </div>
   );
 
+  /** A dead end is not an answer: whatever went missing, there is a way out that is not the browser's back button. */
   if (events.isSuccess && !event)
-    return gone(
-      'That event is no longer here.',
-      <Link to="/events" className={BACK}>
-        <ChevronLeft size={16} aria-hidden />
-        All events
-      </Link>,
+    return screen(
+      <>
+        <LargeTitle title={title} back="All events" backTo="/events" />
+        <Empty>That event is no longer here.</Empty>
+      </>,
     );
   if (itemId && plan.isSuccess && !existing)
-    return gone(
-      'That item is no longer on this plan.',
-      <Link to="/events/$eventId/plan" params={{ eventId }} search={search} className={BACK}>
-        <ChevronLeft size={16} aria-hidden />
-        Back to the plan
-      </Link>,
+    return screen(
+      <>
+        <LargeTitle title={title} back="Back to the plan" backTo="/events/$eventId/plan" backParams={{ eventId }} backSearch={search} />
+        <Empty>That item is no longer on this plan.</Empty>
+      </>,
     );
 
-  const saveButton = (
-    <Button type="submit" form="item-form" disabled={saveOff}>
-      Save
-    </Button>
-  );
+  // The Save action lives in the corner, so a phone never has to scroll to it; the `<form>` is what still submits.
+  const saveAction: CornerAction = {
+    key: 'save',
+    label: 'Save',
+    glyph: <Check size={22} aria-hidden />,
+    run: () => void save(),
+    disabled: saveOff,
+  };
 
-  return (
-    <div className="mx-auto max-w-lg space-y-3">
-      {/* The Save button lives in the header so a phone never has to scroll to it; `form` is what still submits. */}
-      <PageHeader title={itemId ? 'Edit item' : 'New item'} controls={saveButton} action={saveButton} />
-      <Link {...backTo} className="-mt-2 block min-h-11 py-3 text-sm font-medium text-slate-600 hover:text-slate-900">
-        Cancel
-      </Link>
+  return screen(
+    <>
+      {/* Back off a form is Cancel: the one word that says what leaving it does to what has been typed. */}
+      <LargeTitle title={title} back="Cancel" backTo={backTo.to} backParams={backTo.params} backSearch={backTo.search} actions={[saveAction]} />
       <ErrorBox error={error ?? plan.error} />
       {blocked && (
-        <Card className="text-sm text-amber-900 ring-amber-200">
+        <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-warn)]">
           This copy of your data is from before a plan was a list of things to buy, so nothing here can be saved yet. Open it once on a version that has finished
           updating, and the plan will be here.
-        </Card>
+        </p>
       )}
 
-      <form id="item-form" onSubmit={save} className="grid gap-3 md:grid-cols-2">
-        <Field label="What" className="md:col-span-2">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Stroller" />
-        </Field>
-        <Field label="How many">
-          <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="numeric" placeholder="1" />
-        </Field>
-        <Field label="Price each">
-          <Input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="500000" />
-        </Field>
-        {/* Read-only, and not part of what is saved: the estimate is the product of the two fields above it. */}
-        <Field label="Estimate">
-          <Input value={formatMinor(estimateMinor, ws.baseCurrency)} readOnly tabIndex={-1} className="bg-slate-50 text-slate-600" />
-        </Field>
-        <Field label="Category">
-          <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+      <form id="item-form" onSubmit={save}>
+        <InsetGroup header="The item" footer="No date. How many × price each makes the estimate; one of something is the ordinary case.">
+          <TextRow label="What" value={name} onChange={(e) => setName(e.target.value)} placeholder="Stroller" />
+          <TextRow label="How many" value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="numeric" placeholder="1" />
+          <TextRow label="Price each" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="500000" />
+          {/*
+           * Read-only, and not part of what is saved: the estimate is the product of the two fields above it. It
+           * stays an input rather than becoming a static row so that it keeps the label it is found by, and so the
+           * figure it shows is the figure a test can read off the form.
+           */}
+          <TextRow label="Estimate" value={formatMinor(estimateMinor, ws.baseCurrency)} readOnly tabIndex={-1} className="tabular text-[var(--ph-ink-3)]" />
+          <SelectRow label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">Not in a category</option>
             {planCategories.map((account) => (
               <option key={account.id} value={account.id}>
                 {planName(account.id, account.name)}
               </option>
             ))}
-          </Select>
-        </Field>
-        <Field label="Link" className="md:col-span-2">
-          <Input value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="tokopedia.com/…" />
-        </Field>
-        <Field label="Note" className="md:col-span-2">
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Second-hand ok" />
-        </Field>
+          </SelectRow>
+          <TextRow label="Link" value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="tokopedia.com/…" />
+          <TextRow label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Second-hand ok" />
+        </InsetGroup>
       </form>
-      <p className="px-1 text-xs text-slate-500">No date. How many × price each makes the estimate; one of something is the ordinary case.</p>
 
       {after && event && (
-        <Card className="space-y-1">
-          <h2 className="text-sm font-semibold">After saving</h2>
+        <InsetGroup header="After saving">
           {/* Not clamped again here: `afterSaving` clamps, so that the four screens do not each remember to. */}
-          <p className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="text-slate-500">{event.name}, planned</span>
-            <Money minor={after.plannedMinor} currency={ws.baseCurrency} className="font-semibold" />
-          </p>
-          <p className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="text-slate-500">Still to buy</span>
-            <Money minor={after.toBuyMinor} currency={ws.baseCurrency} className="font-semibold" />
-          </p>
-          {after.notPlannedMinor > 0 && (
-            <p className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="text-slate-500">Not planned</span>
-              <Money minor={after.notPlannedMinor} currency={ws.baseCurrency} className="font-semibold" />
-            </p>
-          )}
+          <ReadOnlyRow label={`${event.name}, planned`} value={formatMinor(after.plannedMinor, ws.baseCurrency)} />
+          <ReadOnlyRow label="Still to buy" value={formatMinor(after.toBuyMinor, ws.baseCurrency)} />
+          {after.notPlannedMinor > 0 && <ReadOnlyRow label="Not planned" value={formatMinor(after.notPlannedMinor, ws.baseCurrency)} />}
           {/* Money that came back answers no item, so saving one cannot move it — but leaving it out would under-state
               the event by exactly the refund, with nothing on the card to say where it went. */}
-          {after.moneyBackMinor > 0 && (
-            <p className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="text-slate-500">Money back</span>
-              <Money minor={after.moneyBackMinor} currency={ws.baseCurrency} className="font-semibold text-emerald-700" />
-            </p>
-          )}
-        </Card>
+          {after.moneyBackMinor > 0 && <ReadOnlyRow label="Money back" value={formatMinor(after.moneyBackMinor, ws.baseCurrency)} />}
+        </InsetGroup>
       )}
-    </div>
+    </>,
   );
 }

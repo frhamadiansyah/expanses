@@ -1,8 +1,8 @@
-import { dayMonth } from '@expanses/core';
-import { Link, useParams, useSearch } from '@tanstack/react-router';
-import { ChevronLeft } from 'lucide-react';
+import { dayMonth, formatMinor } from '@expanses/core';
+import { useParams, useSearch } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
-import { Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
+import { Empty, ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle } from '../../ui/native';
 import { useEventHistory, useEventPlan, useEvents } from './queries';
 
 /** One row of the list: a payment already tagged to this event, and how much of it no item claims yet. */
@@ -22,6 +22,10 @@ interface PurchaseRow {
  * are typed together and checked against it in one go. A receipt whose whole amount is already given to items cannot
  * answer another, so it is shown and said so rather than hidden: a list that quietly drops a receipt someone
  * remembers paying is a list they will not trust.
+ *
+ * Drawn with the native kit: one grouped inset list with its header outside it. What the receipt was is the row's
+ * figure, and what is left of it the line under that figure — the same shape the plan's own rows use for the
+ * difference, so the two lists read alike.
  */
 export function PickPurchasePage() {
   const { eventId } = useParams({ from: '/events/$eventId/plan/link' });
@@ -80,79 +84,82 @@ export function PickPurchasePage() {
     ? ({ to: '/events/$eventId/plan/$itemId', params: { eventId, itemId: named.id }, search: { ws: tab } } as const)
     : ({ to: '/events/$eventId/plan', params: { eventId }, search: { ws: tab } } as const);
 
+  /** The second line of a row: when it was paid, and what paid it. */
+  const subline = (row: PurchaseRow) => [dayMonth(row.occurredOn), row.paidWith].filter(Boolean).join(' · ');
+
+  /**
+   * The figure, and under it what is still unspoken for.
+   *
+   * What the receipt was comes first, because that is what the row is for; what is left of it is the second line,
+   * where the plan's own rows put the difference. A receipt entirely given away says so in words instead.
+   */
+  const figure = (row: PurchaseRow) => (
+    <span className="block text-right">
+      <span className="block">{formatMinor(row.totalMinor, ws.baseCurrency)}</span>
+      <span className="block text-[11.5px] leading-[14px] font-semibold text-[var(--ph-ink-3)]">
+        {row.leftMinor > 0 ? `${formatMinor(row.leftMinor, ws.baseCurrency)} left` : 'fully accounted for'}
+      </span>
+    </span>
+  );
+
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <PageHeader title="Link a purchase" />
-      <Link {...backTo} aria-label={named ? 'Back to the item' : 'Back to the plan'} className="-mt-2 mb-1 flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
-        <ChevronLeft size={16} aria-hidden />
-        {named ? 'Back to the item' : 'Back to the plan'}
-      </Link>
-      <ErrorBox error={events.error ?? plan.error ?? history.error} />
+    <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
+      <div className="mx-auto max-w-2xl">
+        <LargeTitle
+          title="Link a purchase"
+          back={named ? 'Back to the item' : 'Back to the plan'}
+          backTo={backTo.to}
+          backParams={backTo.params}
+          backSearch={backTo.search}
+        />
+        <ErrorBox error={events.error ?? plan.error ?? history.error} />
 
-      <p className="px-1 text-sm text-slate-500">
-        {named ? (
-          <>
-            Which payment bought <b className="font-semibold text-slate-700">{named.name}</b>? The next screen says what else the same receipt covers.
-          </>
-        ) : (
-          <>Which payment answered something on this plan? The next screen says what it covers.</>
-        )}
-      </p>
-
-      {rows.length === 0 ? (
-        <Empty>Nothing tagged to this event still has anything unaccounted for. Tag a payment first, or use Buy it now.</Empty>
-      ) : (
-        <Card>
-          <ul className="divide-y divide-slate-100">
-            {rows.map((row) => {
-              const body = (
-                <>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{row.description}</span>
-                    <span className="block truncate text-xs text-slate-500">
-                      {dayMonth(row.occurredOn)}
-                      {row.paidWith && ` · ${row.paidWith}`}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <Money minor={row.totalMinor} currency={ws.baseCurrency} className="block text-sm font-semibold" />
-                    <span className="block text-[11.5px] text-slate-500">
-                      {row.leftMinor > 0 ? (
-                        <>
-                          <Money minor={row.leftMinor} currency={ws.baseCurrency} /> left
-                        </>
-                      ) : (
-                        'fully accounted for'
-                      )}
-                    </span>
-                  </span>
-                </>
-              );
-              return row.leftMinor > 0 ? (
-                <li key={row.id}>
-                  <Link to="/events/$eventId/plan/link/$transactionId" params={{ eventId, transactionId: row.id }} search={search} className="flex items-center gap-3 py-2.5">
-                    {body}
-                  </Link>
-                </li>
-              ) : (
-                <li key={row.id} className="flex items-center gap-3 py-2.5 opacity-50" aria-disabled>
-                  {body}
-                </li>
-              );
-            })}
-          </ul>
-        </Card>
-      )}
-
-      {rows.length > 0 && open.length === 0 && (
-        <p className="px-1 text-xs text-slate-500">
-          Nothing tagged to this event still has anything unaccounted for. Tag a payment first, or use Buy it now.
+        <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
+          {named ? (
+            <>
+              Which payment bought <b className="font-semibold text-[var(--ph-ink)]">{named.name}</b>? The next screen says what else the same receipt covers.
+            </>
+          ) : (
+            <>Which payment answered something on this plan? The next screen says what it covers.</>
+          )}
         </p>
-      )}
-      <p className="px-1 text-xs text-slate-500">
-        Only payments already tagged to this event are here. The receipt itself is never split — saying what it covers
-        is a reading of it, and your statement and points are untouched.
-      </p>
+
+        {rows.length === 0 ? (
+          <Empty>Nothing tagged to this event still has anything unaccounted for. Tag a payment first, or use Buy it now.</Empty>
+        ) : (
+          <InsetGroup
+            header="Tagged to this event"
+            footer={
+              open.length === 0
+                ? 'Nothing tagged to this event still has anything unaccounted for. Tag a payment first, or use Buy it now.'
+                : undefined
+            }
+          >
+            {rows.map((row) =>
+              row.leftMinor > 0 ? (
+                <InsetRow
+                  key={row.id}
+                  title={row.description}
+                  subtitle={subline(row)}
+                  value={figure(row)}
+                  valueTone="ink"
+                  to="/events/$eventId/plan/link/$transactionId"
+                  params={{ eventId, transactionId: row.id }}
+                  search={search}
+                />
+              ) : (
+                // Shown and said so, never hidden — and pointing nowhere, because it has nothing left to answer with.
+                <InsetRow key={row.id} title={row.description} subtitle={subline(row)} value={figure(row)} />
+              ),
+            )}
+          </InsetGroup>
+        )}
+
+        <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+          Only payments already tagged to this event are here. The receipt itself is never split — saying what it covers is a reading of it, and your statement
+          and points are untouched.
+        </p>
+      </div>
     </div>
   );
 }

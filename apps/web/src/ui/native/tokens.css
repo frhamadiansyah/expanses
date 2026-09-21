@@ -1,0 +1,149 @@
+/*
+ * The native-iPhone palette, as one sheet.
+ *
+ * Every colour the seven primitives draw with is named here and nowhere else: a component that reaches for a
+ * literal is a component the dark theme cannot reach. The light palette is defined in full on bare `:root`, so
+ * a colour always has a value; the dark block redefines those same names and introduces none of its own.
+ *
+ * Imported by `ui/native/index.ts`, so importing any primitive brings its palette with it and no global
+ * stylesheet has to be edited to adopt one.
+ */
+
+:root {
+  /* iOS systemGroupedBackground — the page a group sits on. */
+  --ph-ground: #f2f2f7;
+  /* A group's fill. Flat: no ring, no shadow. */
+  --ph-surface: #ffffff;
+
+  --ph-ink: #1c1c1e;
+  --ph-ink-2: #3c3c43;
+  /* tertiaryLabel — subtitles, units, "not bought yet" */
+  --ph-ink-3: #8e8e93;
+
+  /* separator, drawn 0.5px */
+  --ph-hair: #e0e0e4;
+
+  /* The app's green. Links, selected segment text, progress. */
+  --ph-tint: #248a3d;
+  /* Money leaving, destructive actions, overdue. */
+  --ph-alarm: #c6301f;
+  /* Needs attention, unplanned. */
+  --ph-warn: #b25000;
+
+  /* The grey fill behind a circular corner button, and behind a segmented control's track. */
+  --ph-fill: #efeff2;
+  --ph-track: #e3e3e8;
+  /* The pill that marks the chosen segment. */
+  --ph-selected: #ffffff;
+  --ph-chevron: #c6c6c8;
+
+  /*
+   * A panel that says something in a tone: the banner the install hint sits in, a warning to back up, an error,
+   * a confirmation. The inks above are the colours for a statement on the page; these are the colours for a
+   * statement on its own tinted ground, which need a different value in the dark — a warning at #b25000 on black
+   * is a warning, and the same figure on a dark amber panel is mud.
+   *
+   * The light values are exactly what the app already painted, so adopting a token moves nothing.
+   */
+  --ph-info-panel: #f0f9ff;
+  --ph-info-ink: #0c4a6e;
+  --ph-warn-panel: #fef3c7;
+  --ph-warn-ink: #78350f;
+  --ph-alarm-panel: #fef2f2;
+  --ph-alarm-ink: #991b1b;
+  --ph-tint-panel: #ecfdf5;
+  --ph-tint-ink: #065f46;
+
+  /*
+   * The floating tab bar's own fill: the surface, 80% opaque, so the page shows through the blur behind it. It is
+   * a token rather than `bg-white/80` because a translucent white is a light-theme fact, not a colour.
+   */
+  --ph-chrome: rgb(255 255 255 / 0.8);
+
+  /* Behind a sheet: the page is dimmed, never inverted — a dark scrim in either mode. */
+  --ph-scrim: rgb(15 23 42 / 0.4);
+
+  /* Focus is drawn in the tint, so it reads as the app's own rather than the browser's. */
+  --ph-focus: #248a3d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ph-ground: #000000;
+    --ph-surface: #1c1c1e;
+
+    --ph-ink: #ffffff;
+    --ph-ink-2: #ebebf5;
+    --ph-ink-3: #8e8e93;
+
+    --ph-hair: #38383a;
+
+    /* systemGreen and systemRed as iOS lifts them for a dark ground: the light values fail contrast on black. */
+    --ph-tint: #30d158;
+    --ph-alarm: #ff453a;
+    --ph-warn: #ff9f0a;
+
+    --ph-fill: #2c2c2e;
+    --ph-track: #2c2c2e;
+    --ph-selected: #636366;
+    --ph-chevron: #5a5a5e;
+
+    /* A tinted panel is lifted rather than inverted: a dark amber ground with a bright amber figure on it. */
+    --ph-info-panel: #102c40;
+    --ph-info-ink: #9ed0f5;
+    --ph-warn-panel: #3a2a08;
+    --ph-warn-ink: #ffcf70;
+    --ph-alarm-panel: #3b1512;
+    --ph-alarm-ink: #ffb3ab;
+    --ph-tint-panel: #0f2f1b;
+    --ph-tint-ink: #7ee79b;
+
+    --ph-chrome: rgb(28 28 30 / 0.8);
+    --ph-scrim: rgb(0 0 0 / 0.6);
+
+    --ph-focus: #30d158;
+  }
+}
+
+/* The ground a native screen is laid on. A screen opts in; nothing is imposed on the app's own body. */
+.ph-screen {
+  background: var(--ph-ground);
+  color: var(--ph-ink);
+}
+
+/*
+ * One focus ring for the whole kit. Every control the kit draws is reachable by keyboard and says so when it
+ * is reached — the primitives are flat, so there is no border left to thicken and an outline is the only signal.
+ */
+.ph-focus:focus-visible {
+  outline: 2px solid var(--ph-focus);
+  outline-offset: 2px;
+}
+
+.ph-focus-inset:focus-visible {
+  outline: 2px solid var(--ph-focus);
+  outline-offset: -2px;
+}
+
+/*
+ * A hit area bigger than the picture.
+ *
+ * The kit's floor is 44 pt, and some native controls are genuinely smaller than that — a segmented control is
+ * about 32 tall on iOS itself. Drawing them at 44 to satisfy the floor would be inventing a shape iOS does not
+ * ship, so the target grows instead of the control: `::after` is an invisible box around it, hit-tested like any
+ * child, which leaves the drawn height — and every layout and measurement taken from it — exactly where it was.
+ *
+ * The same idea as the back link above a large title, which takes a 44 pt height and gives it back to the layout
+ * with negative margins; here the element's own box is the picture, so the extra height cannot live on it.
+ *
+ * `--ph-tap-y` / `--ph-tap-x` are how far it reaches on each side, set from `tapReach`.
+ */
+.ph-tap {
+  position: relative;
+}
+
+.ph-tap::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--ph-tap-y, 0px)) calc(-1 * var(--ph-tap-x, 0px));
+}

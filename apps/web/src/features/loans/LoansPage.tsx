@@ -1,10 +1,12 @@
 import { flatToEffectiveBps, isoDate, type LoanMethod, periodOn } from '@expanses/core';
 import { saveLoanTerms } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { type FormEvent, useState } from 'react';
+import { HelpCircle, Plus } from 'lucide-react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { Empty, ErrorBox, Money } from '../../ui';
+import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { NetWorthTabs } from '../networth/NetWorthTabs';
 import { emptyLoanTermsDraft, type LoanTermsDraft, loanTermsDraftToInput } from './loan-form';
 import { useLoans, useScheduledPayments } from './queries';
@@ -29,6 +31,7 @@ function TermsForm({ onDone }: { onDone: () => void }) {
   const [draft, setDraft] = useState<LoanTermsDraft>(() => emptyLoanTermsDraft(loanAccounts[0]?.id ?? '', today));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
   const set = (patch: Partial<LoanTermsDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
   const currency = accounts.find((account) => account.id === draft.accountId)?.currency ?? ws.baseCurrency;
@@ -36,8 +39,8 @@ function TermsForm({ onDone }: { onDone: () => void }) {
   const rateBps = Math.round((Number(draft.rate.replace(',', '.')) || 0) * 100);
   const effective = draft.method === 'flat' && tenor > 1 && rateBps > 0 ? flatToEffectiveBps(rateBps, tenor) : null;
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
     setError(null);
     setBusy(true);
     try {
@@ -53,98 +56,121 @@ function TermsForm({ onDone }: { onDone: () => void }) {
 
   if (loanAccounts.length === 0) {
     return (
-      <Card>
-        <p className="text-sm text-slate-600">
-          Every loan account already has its terms. Add another on{' '}
-          <Link to="/accounts" className="underline">
-            Accounts
-          </Link>{' '}
-          first, with what you still owe as its balance.
-        </p>
-        <Button variant="ghost" onClick={onDone}>
-          Close
-        </Button>
-      </Card>
+      <InsetGroup
+        footer={
+          <>
+            Every loan account already has its terms. Add another on{' '}
+            <Link to="/accounts" className="text-[var(--ph-tint)] underline">
+              Accounts
+            </Link>{' '}
+            first, with what you still owe as its balance.
+          </>
+        }
+      >
+        <InsetRow title="Close" chevron={false} onClick={onDone} />
+      </InsetGroup>
     );
   }
 
   return (
-    <Card>
-      <form onSubmit={submit} className="space-y-3">
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Which loan" hint="Its balance is what you still owe today.">
-            <Select value={draft.accountId} onChange={(e) => set({ accountId: e.target.value })}>
-              {loanAccounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Lender">
-            <Input value={draft.lenderName} onChange={(e) => set({ lenderName: e.target.value })} placeholder="Bank BTN" required />
-          </Field>
-          <Field label={`Amount borrowed (${currency})`} hint="The original amount, not what is left.">
-            <Input value={draft.originalAmount} inputMode="decimal" onChange={(e) => set({ originalAmount: e.target.value })} placeholder="700.000.000" required />
-          </Field>
-          <Field label="How interest is worked out">
-            <Select value={draft.method} onChange={(e) => set({ method: e.target.value as LoanMethod })}>
-              {Object.entries(METHOD_LABELS).map(([method, label]) => (
-                <option key={method} value={method}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Rate a year (%)" hint={effective ? `A flat ${draft.rate}% is about ${(effective / 100).toFixed(2)}% effective.` : 'Type 9 or 9,25.'}>
-            <Input value={draft.rate} inputMode="decimal" onChange={(e) => set({ rate: e.target.value })} placeholder="9" />
-          </Field>
-          <Field label="Rate kind" hint="A floating rate changes; you record each change as it comes.">
-            <Select value={draft.rateKind} onChange={(e) => set({ rateKind: e.target.value as 'fixed' | 'floating' })}>
-              <option value="fixed">Fixed</option>
-              <option value="floating">Floating</option>
-            </Select>
-          </Field>
-          <Field label="First payment on">
-            <Input type="date" value={draft.firstPaymentOn} onChange={(e) => set({ firstPaymentOn: e.target.value })} required />
-          </Field>
-          <Field label="Tenor in months" hint="180 months is 15 years.">
-            <Input value={draft.tenorMonths} inputMode="numeric" onChange={(e) => set({ tenorMonths: e.target.value })} placeholder="180" required />
-          </Field>
-          <Field label="Payment day" hint="1 to 28, so every month has it.">
-            <Input value={draft.paymentDay} inputMode="numeric" onChange={(e) => set({ paymentDay: e.target.value })} />
-          </Field>
-          <Field label={`Payment each month (${currency})`} hint="Leave empty to work it out from the rate.">
-            <Input value={draft.payment} inputMode="decimal" onChange={(e) => set({ payment: e.target.value })} />
-          </Field>
-          <Field label="What it bought" hint="A property makes this a mortgage, which the debt ratios treat apart.">
-            <Select value={draft.assetAccountId} onChange={(e) => set({ assetAccountId: e.target.value })}>
-              <option value="">Nothing in particular</option>
-              {assets.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="What it is for">
-            <Input value={draft.purpose} onChange={(e) => set({ purpose: e.target.value })} placeholder="House in Bintaro" />
-          </Field>
-        </div>
-        <ErrorBox error={error} />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>
-            Save terms
-          </Button>
-          <Button variant="ghost" onClick={onDone}>
-            Cancel
-          </Button>
-        </div>
-        <p className="text-xs text-slate-500">
-          The schedule is worked out from what the ledger says you owe, so the payments you record are always the truth. Nothing here is stored as a projection.
-        </p>
-      </form>
-    </Card>
+    <form ref={form} onSubmit={submit}>
+      <InsetGroup header="Which loan" footer="Its balance is what you still owe today.">
+        <SelectRow label="Which loan" value={draft.accountId} onChange={(e) => set({ accountId: e.target.value })}>
+          {loanAccounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </SelectRow>
+        <TextRow label="Lender" value={draft.lenderName} onChange={(e) => set({ lenderName: e.target.value })} placeholder="Bank BTN" required />
+        <TextRow
+          label={`Amount borrowed (${currency})`}
+          hint="The original amount, not what is left."
+          value={draft.originalAmount}
+          inputMode="decimal"
+          onChange={(e) => set({ originalAmount: e.target.value })}
+          placeholder="700.000.000"
+          required
+        />
+      </InsetGroup>
+
+      <InsetGroup header="The interest">
+        <SelectRow label="How interest is worked out" value={draft.method} onChange={(e) => set({ method: e.target.value as LoanMethod })}>
+          {Object.entries(METHOD_LABELS).map(([method, label]) => (
+            <option key={method} value={method}>
+              {label}
+            </option>
+          ))}
+        </SelectRow>
+        <TextRow
+          label="Rate a year (%)"
+          hint={effective ? `A flat ${draft.rate}% is about ${(effective / 100).toFixed(2)}% effective.` : 'Type 9 or 9,25.'}
+          value={draft.rate}
+          inputMode="decimal"
+          onChange={(e) => set({ rate: e.target.value })}
+          placeholder="9"
+        />
+        <SelectRow
+          label="Rate kind"
+          hint="A floating rate changes; you record each change as it comes."
+          value={draft.rateKind}
+          onChange={(e) => set({ rateKind: e.target.value as 'fixed' | 'floating' })}
+        >
+          <option value="fixed">Fixed</option>
+          <option value="floating">Floating</option>
+        </SelectRow>
+      </InsetGroup>
+
+      <InsetGroup header="The schedule">
+        <TextRow label="First payment on" type="date" value={draft.firstPaymentOn} onChange={(e) => set({ firstPaymentOn: e.target.value })} required />
+        <TextRow
+          label="Tenor in months"
+          hint="180 months is 15 years."
+          value={draft.tenorMonths}
+          inputMode="numeric"
+          onChange={(e) => set({ tenorMonths: e.target.value })}
+          placeholder="180"
+          required
+        />
+        <TextRow
+          label="Payment day"
+          hint="1 to 28, so every month has it."
+          value={draft.paymentDay}
+          inputMode="numeric"
+          onChange={(e) => set({ paymentDay: e.target.value })}
+        />
+        <TextRow
+          label={`Payment each month (${currency})`}
+          hint="Leave empty to work it out from the rate."
+          value={draft.payment}
+          inputMode="decimal"
+          onChange={(e) => set({ payment: e.target.value })}
+        />
+      </InsetGroup>
+
+      <InsetGroup header="What it is for">
+        <SelectRow
+          label="What it bought"
+          hint="A property makes this a mortgage, which the debt ratios treat apart."
+          value={draft.assetAccountId}
+          onChange={(e) => set({ assetAccountId: e.target.value })}
+        >
+          <option value="">Nothing in particular</option>
+          {assets.map((asset) => (
+            <option key={asset.id} value={asset.id}>
+              {asset.name}
+            </option>
+          ))}
+        </SelectRow>
+        <TextRow label="What it is for" value={draft.purpose} onChange={(e) => set({ purpose: e.target.value })} placeholder="House in Bintaro" />
+      </InsetGroup>
+
+      <ErrorBox error={error} />
+      <InsetGroup footer="The schedule is worked out from what the ledger says you owe, so the payments you record are always the truth. Nothing here is stored as a projection.">
+        <InsetRow title="Save terms" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
+      </InsetGroup>
+    </form>
   );
 }
 
@@ -164,23 +190,18 @@ export function LoansPage() {
   const paymentOf = (accountId: string) => payments.data?.[accountId] ?? 0;
   const monthlyMinor = open.reduce((total, loan) => total + paymentOf(loan.accountId), 0);
 
+  // While the inline form is open there is no action to show, and an empty corner would still take its gap.
+  const actions: CornerAction[] = adding
+    ? []
+    : [
+        { key: 'terms', label: 'Add loan terms', glyph: <Plus size={20} aria-hidden />, run: () => setAdding(true) },
+        // Terms go on a loan account that already exists; the picker is for the loan that does not yet.
+        { key: 'pick', label: 'What do you owe?', glyph: <HelpCircle size={20} aria-hidden />, to: '/debts/new' },
+      ];
+
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Loans"
-        action={
-          // While the inline form is open there is no action to show, and an empty row would still take its gap.
-          !adding && (
-            <div className="flex items-center gap-4">
-              {/* Terms go on a loan account that already exists; the picker is for the loan that does not yet. */}
-              <Link to="/debts/new" className="text-sm font-medium text-slate-600 underline-offset-4 hover:underline">
-                What do you owe?
-              </Link>
-              <Button onClick={() => setAdding(true)}>Add loan terms</Button>
-            </div>
-          )
-        }
-      />
+    <div className={SCREEN}>
+      <LargeTitle title="Loans" actions={actions} />
       <NetWorthTabs />
       <ErrorBox error={loans.error ?? payments.error} />
 
@@ -196,44 +217,30 @@ export function LoansPage() {
         </Empty>
       )}
 
-      {monthlyMinor > 0 && (
-        <Card className="flex flex-wrap items-baseline justify-between gap-3">
-          <span className="text-sm text-slate-600">The instalments the banks ask for each month</span>
-          <Money minor={monthlyMinor} currency={ws.baseCurrency} className="text-xl font-semibold" />
-        </Card>
-      )}
+      {monthlyMinor > 0 && <Hero minor={monthlyMinor} currency={ws.baseCurrency} caption="The instalments the banks ask for each month" />}
 
       {open.length > 0 && (
-        <Card className="space-y-2">
-          <h2 className="text-sm font-semibold">Still being paid</h2>
-          <div className="divide-y divide-slate-100">
-            {open.map((loan) => (
-              <div key={loan.accountId} className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm">
-                <span className="min-w-0">
-                  <Link to="/net-worth/loans/$accountId" params={{ accountId: loan.accountId }} className="font-medium underline">
-                    {nameOf(loan.accountId)}
-                  </Link>
-                  <span className="block text-xs text-slate-500">
-                    {loan.lenderName} · {(periodOn(loan.periods, today)?.rateBps ?? 0) / 100}% · {loan.tenorMonths} months from {loan.firstPaymentOn}
-                    {loan.isHomeLoan && ' · mortgage'}
-                  </span>
-                </span>
-                <Money minor={paymentOf(loan.accountId)} currency={ws.baseCurrency} />
-              </div>
-            ))}
-          </div>
-        </Card>
+        <InsetGroup header="Still being paid">
+          {open.map((loan) => (
+            <InsetRow
+              key={loan.accountId}
+              to="/net-worth/loans/$accountId"
+              params={{ accountId: loan.accountId }}
+              title={nameOf(loan.accountId)}
+              subtitle={`${loan.lenderName} · ${(periodOn(loan.periods, today)?.rateBps ?? 0) / 100}% · ${loan.tenorMonths} months from ${loan.firstPaymentOn}${loan.isHomeLoan ? ' · mortgage' : ''}`}
+              value={<Money minor={paymentOf(loan.accountId)} currency={ws.baseCurrency} />}
+              valueTone="ink"
+            />
+          ))}
+        </InsetGroup>
       )}
 
       {paidOff.length > 0 && (
-        <Card className="space-y-1">
-          <h2 className="text-sm font-semibold">Paid off</h2>
+        <InsetGroup header="Paid off">
           {paidOff.map((loan) => (
-            <div key={loan.accountId} className="text-sm text-slate-600">
-              {nameOf(loan.accountId)} · cleared {loan.statusOn}
-            </div>
+            <InsetRow key={loan.accountId} title={nameOf(loan.accountId)} subtitle={`cleared ${loan.statusOn}`} chevron={false} />
           ))}
-        </Card>
+        </InsetGroup>
       )}
     </div>
   );

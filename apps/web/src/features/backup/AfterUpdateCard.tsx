@@ -65,7 +65,7 @@ export function AfterUpdateCard() {
 
   const undone = note.kind === 'undone';
   return (
-    <div className={`mb-4 rounded-lg px-3 py-3 text-sm ${undone ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'}`} role="status">
+    <div className={`mb-4 rounded-lg px-3 py-3 text-sm ${undone ? 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]' : 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)]'}`} role="status">
       <p className="font-medium">{note.headline}</p>
       <p className="mt-1 leading-relaxed">{note.body}</p>
       <div className="mt-3 flex flex-wrap gap-2">

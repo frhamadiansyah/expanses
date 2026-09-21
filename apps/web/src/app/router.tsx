@@ -18,6 +18,7 @@ import { CardsPage } from '../features/cards/CardsPage';
 import { RecommendPage } from '../features/cards/RecommendPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { KitPage } from '../features/design/KitPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { AddAccountPage } from '../features/ownables/AddAccountPage';
 import { AddAssetPage } from '../features/ownables/AddAssetPage';
@@ -154,6 +155,9 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
+  // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives
+  // before the routes adopt them, not a screen anyone navigates to.
+  createRoute({ getParentRoute: () => rootRoute, path: '/design-kit', component: KitPage }),
 ]);
 
 export const router = createRouter({ routeTree });
