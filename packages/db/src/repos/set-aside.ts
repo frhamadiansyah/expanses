@@ -1,4 +1,4 @@
-import { type AccountSetAside, type BorrowMark, movedAmount, type SetAsideClaim, setAsideOn } from '@expanses/core';
+import { type AccountSetAside, type BorrowMark, fundingOrder, movedAmount, type SetAsideClaim, setAsideOn } from '@expanses/core';
 import { and, eq, inArray, lte, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -72,6 +72,9 @@ export async function setAsideViews(database: Database, ws: WorkspaceContext, op
   const goals = await listGoals(database, ws);
   if (goals.length === 0) return {};
   const active = new Map(goals.map((goal) => [goal.id, goal]));
+  // A shortage lands on the goals funded last: the compulsory ones (emergency, retirement) are funded first, whatever
+  // rank an older goal list left them at (health-ratios' fundingOrder, ruling at the merge).
+  const priority = new Map(fundingOrder(goals).map((goal, index) => [goal.id, index]));
   const promised = new Map<string, Map<string, number>>();
   const add = (accountId: string, goalId: string, minor: number) => {
     const byGoal = promised.get(accountId) ?? new Map<string, number>();
@@ -125,7 +128,7 @@ export async function setAsideViews(database: Database, ws: WorkspaceContext, op
     const claims: SetAsideClaim[] = [...promised.get(account.id)!].map(([goalId, minor]) => ({
       goalId,
       name: active.get(goalId)!.name,
-      rank: active.get(goalId)!.rank,
+      rank: priority.get(goalId)!,
       promisedMinor: Math.max(0, minor),
     }));
     const borrows: BorrowMark[] = draws

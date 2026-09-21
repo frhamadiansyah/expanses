@@ -77,8 +77,10 @@ The account's shortage is shared out, in the account's currency, in this order:
    carries at most the lesser of what it promised and the total it borrowed on this account. This is what makes a
    borrowed-from goal the one that reads short — and it is derived, so when the account is topped back up the shortage
    shrinks and the goal is whole again without anything being written.
-2. **Then the rest, lowest priority first** — the highest `rank` number (goals are ranked "the first is funded first").
-   Ties by goal id.
+2. **Then the rest, lowest priority first** — last in funding order (`fundingOrder`: the compulsory goals, the
+   emergency fund and retirement, are funded first, then the rest by `rank`). Ties by goal id. Raw `rank` is not the
+   order: an older goal list can rank a holiday above the emergency fund, and the holiday still takes the shortage
+   (ruling at the health-ratios merge).
 
 Each goal gets `promisedMinor`, `coveredMinor = promised − short`, `shortMinor`, and `borrowedShortMinor` (the part of
 its shortfall explained by its own borrows). The goals are returned in priority order.
@@ -173,7 +175,10 @@ Undo-then-redo stays only when the answer or the accounts change. Further rules:
   into its destination); a carried spend or move from `replaceTrade` or `convertToPurchase` is also dropped when the goal
   no longer promises anything on that account (`stillPromisedTx`), while a carried borrow stands as long as its goal is
   active;
-- voiding never un-pays an archived goal's stage (G2-M1).
+- voiding never un-pays an archived goal's stage (G2-M1);
+- a stage a draw names is never removed: `saveGoalTx` refuses a hand edit that drops it, and the calculator keeps it
+  (`drawnStageIds`, health-ratios M4). A kept, drawn, unpaid stage still counts toward the goal's total at its old
+  figure, so `goalWholeness` includes it; the owner can archive it.
 
 ### 4.5 Readers (`packages/db`)
 

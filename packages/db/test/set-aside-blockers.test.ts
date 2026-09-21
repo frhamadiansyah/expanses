@@ -244,3 +244,34 @@ describe('I5: a pocket parent holds no money, so nothing is promised on it', () 
     expect(await draws()).toEqual([]);
   });
 });
+
+describe('the shortage lands in funding order, compulsory goals funded first (health-ratios merge ruling)', () => {
+  it('shorts a holiday ranked above the emergency fund, not the fund', async () => {
+    const { reorderGoals, setAsideView } = await import('../src/index');
+    const holiday = await saveGoal(database, ws, { name: 'Bali', kind: 'holiday', growthBps: 0, returnBps: 0, stages: [{ name: 'Bali', targetMinor: 5_000_000, targetMonths: null, dueOn: '2027-06-30' }] });
+    // A legacy order: the holiday first, the fund after it. Raw rank would short the fund.
+    await reorderGoals(database, ws, [holiday, efId, umrahId]);
+    const mandiri = await createAccount(database, ws, { name: 'Mandiri', kind: 'asset', subtype: 'bank', currency: 'IDR', openingBalanceMinor: 6_000_000, openedOn: '2026-01-01' });
+    await saveEarmark(database, ws, { goalId: holiday, accountId: mandiri.id, amountMinor: 3_000_000 });
+    await saveEarmark(database, ws, { goalId: efId, accountId: mandiri.id, amountMinor: 3_000_000 });
+    await expenseFrom(mandiri, 2_000_000);
+    const view = (await setAsideView(database, ws, mandiri.id))!;
+    expect(view.shortMinor).toBe(2_000_000);
+    const byGoal = Object.fromEntries(view.goals.map((goal) => [goal.goalId, goal.shortMinor]));
+    expect(byGoal[holiday]).toBe(2_000_000);
+    expect(byGoal[efId]).toBe(0);
+  });
+});
+
+describe('a stage money was drawn against cannot be removed by hand (health-ratios M4, on goal_draws)', () => {
+  it('refuses the edit that drops the stage a "Yes" paid', async () => {
+    await expenseFrom(jenius, 6_800_000, spend(umrahId, jenius));
+    const { listGoals } = await import('../src/index');
+    const umrah = (await listGoals(database, ws)).find((goal) => goal.id === umrahId)!;
+    const [tickets, hotel] = umrah.stages;
+    expect(tickets!.paidOn).toBe(DAY);
+    await expect(
+      saveGoal(database, ws, { id: umrahId, name: umrah.name, kind: 'umrah', growthBps: 0, returnBps: 0, stages: [{ id: hotel!.id, name: 'Hotel', targetMinor: 5_000_000, targetMonths: null, dueOn: '2027-04-30' }] }),
+    ).rejects.toThrow(/Money was drawn against "Tickets"/);
+  });
+});
