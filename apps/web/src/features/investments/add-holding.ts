@@ -1,4 +1,4 @@
-import { parseMajor, parsePriceMicro, parseUnits, unitsFromLots, unitsValueMinor, UNITS_SCALE } from '@expanses/core';
+import { formatUnits, parseMajor, parsePriceMicro, parseUnits, unitsFromLots, unitsValueMinor, UNITS_SCALE } from '@expanses/core';
 import type { ListedSecurity } from '@expanses/catalog';
 import type { AccountRow, AddHoldingInput, NewSecurity, SecurityRow } from '@expanses/db';
 import { withCharged } from '../networth/trade-money';
@@ -82,6 +82,21 @@ const listedToNew = (s: ListedSecurity): NewSecurity => ({ ...s, source: 'catalo
 export const securityOf = (picked: Picked) => (picked.kind === 'held' ? picked.security : picked.kind === 'listed' ? listedToNew(picked.security) : picked.security);
 
 /**
+ * A stock picked from a list or named by hand that the owner already holds (the same market and ticker) is that
+ * security: `ensureSecurityTx` returns the existing row, and the buy lands where a buy of it would. Treating it as held
+ * lets the form say which holding it joins, however the owner reached it. Nothing with no ticker ever matches: two
+ * of those are always kept apart.
+ */
+export function asHeld(picked: Picked, held: readonly SecurityRow[]): Picked {
+  if (picked.kind === 'held') return picked;
+  const ticker = picked.security.ticker?.trim().toUpperCase();
+  if (!ticker) return picked;
+  const market = picked.security.market.trim().toUpperCase();
+  const found = held.find((s) => s.ticker === ticker && s.market === market);
+  return found ? { kind: 'held', security: found } : picked;
+}
+
+/**
  * What `addHolding` is handed, before `tradeRatesForSave` adds the rates — with the charged amount already on the buy
  * (`withCharged`), so the set-aside door reads what really left the account. Throws with words meant for the screen.
  */
@@ -115,6 +130,27 @@ export function planAddHolding(picked: Picked, draft: HoldingDraft, today: strin
  * `brokerlessHoldingsOf`). The form names it — and, when there are several, says which and how to reach the others —
  * so it never picks one silently. `names` are those holdings, oldest first.
  */
+const recordedOn = (createdAt: string) =>
+  new Date(`${createdAt.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+/**
+ * The names the note gives the broker-less holdings, oldest first. Two holdings with one name are told apart by the
+ * shares each holds, and when those match too, by the day each was recorded — never "BBCA" twice (m8).
+ */
+export function brokerlessNames(ids: readonly string[], accounts: readonly Pick<AccountRow, 'id' | 'name' | 'createdAt'>[], units: Readonly<Record<string, number>>): string[] {
+  const rows = ids.map((id) => {
+    const account = accounts.find((a) => a.id === id);
+    return { name: account?.name ?? 'a holding', createdAt: account?.createdAt ?? '', units: units[id] ?? 0 };
+  });
+  const count = <T>(key: (row: (typeof rows)[number]) => T, row: (typeof rows)[number]) => rows.filter((r) => key(r) === key(row)).length;
+  return rows.map((row) => {
+    if (count((r) => r.name, row) === 1) return row.name;
+    const shares = `${row.name} (${formatUnits(row.units)} shares`;
+    if (count((r) => `${r.name}\u0000${r.units}`, row) === 1 || !row.createdAt) return `${shares})`;
+    return `${shares}, recorded ${recordedOn(row.createdAt)})`;
+  });
+}
+
 export function brokerlessNote(names: readonly string[], label: string): string | null {
   if (names.length === 0) return null;
   const [first, ...rest] = names;
@@ -122,4 +158,20 @@ export function brokerlessNote(names: readonly string[], label: string): string 
   const times = names.length === 2 ? 'twice' : `${names.length} times`;
   const others = rest.length === 1 ? rest[0] : `${rest.slice(0, -1).join(', ')} or ${rest[rest.length - 1]}`;
   return `You hold ${label} ${times} with no broker named. This adds to ${first}, the first recorded; to add to ${others} instead, record the buy on Buy & sell.`;
+}
+
+/**
+ * The note under the form: only for a buy with no broker (a buy at a broker lands on that broker's holding, which the
+ * broker row already names), naming the broker-less holdings it could land on, told apart (`brokerlessNames`).
+ */
+export function landsOnNote(
+  brokerChoice: string,
+  brokerless: readonly string[],
+  accounts: readonly Pick<AccountRow, 'id' | 'name' | 'createdAt'>[],
+  positions: Readonly<Record<string, { unitsMicro: number }>>,
+  label: string,
+): string | null {
+  if (brokerChoice !== NO_BROKER_CHOICE) return null;
+  const units = Object.fromEntries(brokerless.map((id) => [id, positions[id]?.unitsMicro ?? 0]));
+  return brokerlessNote(brokerlessNames(brokerless, accounts, units), label);
 }

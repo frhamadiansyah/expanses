@@ -1,6 +1,6 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { brokerChoices, brokerlessNote, emptyHoldingDraft, NEW_BROKER, namedSecurity, OPENING, planAddHolding, totalOf, unitsOf } from './add-holding';
+import { asHeld, brokerChoices, brokerlessNames, brokerlessNote, emptyHoldingDraft, landsOnNote, NEW_BROKER, NO_BROKER_CHOICE, namedSecurity, OPENING, planAddHolding, totalOf, unitsOf } from './add-holding';
 
 const bbca = { ticker: 'BBCA', name: 'BBCA name', market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share' as const };
 const aapl = { ticker: 'AAPL', name: 'AAPL name', market: 'NASDAQ', currency: 'USD', lotSize: null, kind: 'share' as const };
@@ -65,6 +65,13 @@ describe('planAddHolding', () => {
     expect(plan.buy).toMatchObject({ grossMinor: 123_457, cashAccountId: 'bca', cashMinor: 20_000_001, goalId: 'pension' });
     expect(() => planAddHolding({ kind: 'listed', security: aapl }, { ...draft, charged: '' }, '2026-09-21', 'IDR')).toThrow(/Charged in IDR/);
   });
+  it('asks no charged amount for a foreign stock owned before this app, whatever the cash currency reads (m5)', () => {
+    // "Owned before this app" moves no money, so nothing was charged in rupiah: the buy is its own currency throughout.
+    const draft = { ...emptyHoldingDraft('2026-09-21', 'USD'), quantity: '10', price: '123,457', paidFrom: OPENING, charged: '' };
+    const plan = planAddHolding({ kind: 'listed', security: aapl }, draft, '2026-09-21', 'IDR');
+    expect(plan.buy).toMatchObject({ grossMinor: 123_457, cashAccountId: null });
+    expect(plan.buy.cashMinor).toBeUndefined();
+  });
   it('refuses a date after today and a nameless new broker', () => {
     const draft = { ...emptyHoldingDraft('2026-09-21', 'IDR'), quantity: '1', price: '1', paidFrom: OPENING };
     expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...draft, occurredOn: '2026-09-22' }, '2026-09-21', 'IDR')).toThrow(/after today/);
@@ -86,5 +93,63 @@ describe('brokerlessNote', () => {
   });
   it('says nothing when there is none: a new holding opens', () => {
     expect(brokerlessNote([], 'BBCA')).toBeNull();
+  });
+});
+
+describe('asHeld (m7)', () => {
+  const held = [{ id: 'sec-bbca', ...bbca, source: 'catalogue' as const }];
+  it('treats a stock named by hand that is already held as that security', () => {
+    const named = { kind: 'named' as const, security: { ...bbca, ticker: ' bbca ', market: 'idx', name: 'Typed name', lotSize: null, source: 'owner' as const } };
+    expect(asHeld(named, held)).toEqual({ kind: 'held', security: held[0] });
+  });
+  it('treats a listed stock already held as that security', () => {
+    expect(asHeld({ kind: 'listed', security: bbca }, held)).toEqual({ kind: 'held', security: held[0] });
+  });
+  it('leaves the same ticker on another market, and anything with no ticker, as new', () => {
+    const otc = { kind: 'named' as const, security: { ...bbca, market: 'OTC', source: 'owner' as const } };
+    expect(asHeld(otc, held)).toBe(otc);
+    const unnamed = { kind: 'named' as const, security: { ...bbca, ticker: null, name: 'BBCA', source: 'owner' as const } };
+    expect(asHeld(unnamed, [{ ...held[0]!, ticker: null, name: 'BBCA' }])).toBe(unnamed);
+  });
+});
+
+describe('brokerlessNames (m8)', () => {
+  const accounts = [
+    { id: 'a', name: 'BBCA', createdAt: '2019-03-04T01:00:00.000Z' },
+    { id: 'b', name: 'BBCA', createdAt: '2021-07-15T01:00:00.000Z' },
+    { id: 'c', name: 'BBCA old', createdAt: '2018-01-01T01:00:00.000Z' },
+  ];
+  it('keeps distinct names as they are', () => {
+    expect(brokerlessNames(['c', 'a'], accounts, { a: 300_000_000, c: 100_000_000 })).toEqual(['BBCA old', 'BBCA']);
+  });
+  it('tells two holdings with one name apart by the shares each holds', () => {
+    expect(brokerlessNames(['a', 'b'], accounts, { a: 300_000_000, b: 1_500_000_000 })).toEqual(['BBCA (300 shares)', 'BBCA (1.500 shares)']);
+  });
+  it('adds the day each was recorded when the shares match too', () => {
+    expect(brokerlessNames(['a', 'b'], accounts, { a: 300_000_000, b: 300_000_000 })).toEqual([
+      'BBCA (300 shares, recorded 4 Mar 2019)',
+      'BBCA (300 shares, recorded 15 Jul 2021)',
+    ]);
+  });
+  it('makes a note whose two names differ', () => {
+    const note = brokerlessNote(brokerlessNames(['a', 'b'], accounts, { a: 300_000_000, b: 1_500_000_000 }), 'BBCA')!;
+    expect(note).toBe('You hold BBCA twice with no broker named. This adds to BBCA (300 shares), the first recorded; to add to BBCA (1.500 shares) instead, record the buy on Buy & sell.');
+  });
+});
+
+describe('landsOnNote (m6, m8)', () => {
+  const accounts = [
+    { id: 'a', name: 'BBCA', createdAt: '2019-03-04T01:00:00.000Z' },
+    { id: 'b', name: 'BBCA', createdAt: '2021-07-15T01:00:00.000Z' },
+  ];
+  const positions = { a: { unitsMicro: 300_000_000 }, b: { unitsMicro: 1_500_000_000 } };
+  it('names the holdings, told apart by the shares each holds, for a buy with no broker', () => {
+    expect(landsOnNote(NO_BROKER_CHOICE, ['a', 'b'], accounts, positions, 'BBCA')).toBe(
+      'You hold BBCA twice with no broker named. This adds to BBCA (300 shares), the first recorded; to add to BBCA (1.500 shares) instead, record the buy on Buy & sell.',
+    );
+  });
+  it('says nothing for a buy kept at a broker, or a new one', () => {
+    expect(landsOnNote('stockbit-id', ['a', 'b'], accounts, positions, 'BBCA')).toBeNull();
+    expect(landsOnNote(NEW_BROKER, ['a'], accounts, positions, 'BBCA')).toBeNull();
   });
 });

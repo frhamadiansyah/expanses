@@ -12,9 +12,10 @@ import { useHeldRates } from '../accounts/queries';
 import { useGoals } from '../goals/queries';
 import { tradeDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
+import { usePositions } from '../networth/queries';
 import { baseCostPreview, tradeRatesForSave } from '../networth/trade-money';
 import { FormRows } from '../transactions/FormRow';
-import { brokerlessNote, emptyHoldingDraft, type HoldingDraft, NEW_BROKER, NO_BROKER_CHOICE, OPENING, type Picked, planAddHolding, securityOf, totalOf } from './add-holding';
+import { emptyHoldingDraft, type HoldingDraft, landsOnNote, NEW_BROKER, NO_BROKER_CHOICE, OPENING, type Picked, planAddHolding, securityOf, totalOf } from './add-holding';
 import { Dock } from './NameItForm';
 import { useBrokerlessHoldings } from './queries';
 
@@ -41,9 +42,10 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onCancel }: 
   const [busy, setBusy] = useState(false);
   const change = (patch: Partial<HoldingDraft>) => setDraft((d) => ({ ...d, ...patch }));
   // A buy with no broker lands on an existing holding of this stock with no broker named, when there is one: say which.
+  // A stock already held reaches here as `held` however it was picked (`asHeld`), named by hand included.
   const brokerless = useBrokerlessHoldings(picked.kind === 'held' ? picked.security.id : null).data ?? [];
-  const nameOf = (id: string) => accounts.find((a) => a.id === id)?.name ?? 'a holding';
-  const landsOn = draft.brokerChoice === NO_BROKER_CHOICE ? brokerlessNote(brokerless.map(nameOf), security.ticker ?? security.name) : null;
+  const positions = usePositions().data ?? {};
+  const landsOn = landsOnNote(draft.brokerChoice, brokerless, accounts, positions, security.ticker ?? security.name);
 
   // Every account that can pay — never a pocket parent, which holds nothing (`moneyHolders`) — as Buy & sell offers them.
   const money = moneyHolders(accounts).filter((a) => a.kind === 'asset' && SPENDABLE_SUBTYPES.includes(a.subtype));

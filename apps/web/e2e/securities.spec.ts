@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { expectBalance, startReport } from './deposit-maturity';
-import { addHoldingFlow, bbcaFirst, idxPending, setForeignList } from './securities';
+import { addHoldingFlow, BBCA_BY_HAND, bbcaFirst, idxPending, setForeignList } from './securities';
 import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
 import { todayIn } from './today';
 
@@ -168,6 +168,13 @@ test('a buy with no broker names the holding it adds to — and, with two, which
   await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
   await expect(page.getByText('This adds to BBCA, your BBCA with no broker named.')).toBeVisible();
   await expect(page.getByLabel('Total')).toHaveValue(/900\.000$/);
+  // m6: the note is about a buy with no broker. Kept at a broker, the buy lands there, and the note is gone.
+  await page.getByLabel('Where is it kept').selectOption({ label: 'Another broker…' });
+  await expect(page.getByText(/This adds to/)).toHaveCount(0);
+
+  // m7: the same stock named by hand is the stock already held, so the form says which holding it joins.
+  await addHoldingFlow(page, { search: 'BBCA', nameIt: BBCA_BY_HAND, broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
+  await expect(page.getByText('This adds to BBCA, your BBCA with no broker named.')).toBeVisible();
 
   // A holding from before, linked to BBCA with no broker: now there are two, and the form never picks silently.
   await page.goto('/net-worth/assets');

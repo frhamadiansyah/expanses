@@ -6,7 +6,7 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { LargeTitle, SCREEN } from '../../ui/native';
 import { usePositions } from '../networth/queries';
-import { brokerChoices, type Picked, securityOf } from './add-holding';
+import { asHeld, brokerChoices, type Picked, securityOf } from './add-holding';
 import { AddHoldingForm } from './AddHoldingForm';
 import { NameItForm } from './NameItForm';
 import { useHoldingLinks, useSecurities } from './queries';
@@ -31,7 +31,9 @@ export function AddHoldingPage() {
   const heldAt: Record<string, number> = {};
   if (picked?.kind === 'held') for (const l of links) if (l.securityId === picked.security.id && l.brokerAccountId) heldAt[l.brokerAccountId] = positions[l.accountId]?.unitsMicro ?? 0;
 
-  async function choose(next: Picked) {
+  async function choose(pick: Picked) {
+    // A stock already held is that security, whether it was searched for or named by hand (m7).
+    const next = asHeld(pick, securities);
     if (!link) {
       setPicked(next);
       setStep('form');
