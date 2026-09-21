@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, Field, Input } from '../../ui';
-import { Panel } from './Panel';
 import { depositLine } from './deposit-terms';
 import { useDepositTerms } from './queries';
+import { Panel } from '../../ui/native';
 
 /**
  * A time deposit's own two facts, on the account's own page: the day the money comes back and what it pays.

@@ -4,7 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, Field, Input } from '../../ui';
-import { Panel } from './Panel';
+import { Panel } from '../../ui/native';
 
 export interface StaleHolding {
   accountId: string;

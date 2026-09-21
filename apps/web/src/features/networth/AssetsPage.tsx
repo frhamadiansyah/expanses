@@ -1,10 +1,9 @@
 import { HelpCircle, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle } from '../../ui/native';
+import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
 import { AddAssetForm } from './AddAssetForm';
 import { NetWorthTabs } from './NetWorthTabs';
-import { Panel, SCREEN } from './Panel';
 import { UpdatePricesSheet } from './UpdatePricesSheet';
 import { type AssetGroup, type AssetRow, groupAssets, liveGroups, soldRows, staleRows, totalOf } from './asset-rows';
 import { useAssetProfiles, useAssetValues } from './queries';

@@ -4,9 +4,9 @@ import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, Field, Input, Select } from '../../ui';
-import { Panel } from './Panel';
 import { CodePicker } from '../ownables/CodePicker';
 import { PLAN_GROUP_LABELS, PLAN_GROUP_ORDER } from './labels';
+import { Panel } from '../../ui/native';
 
 /** Which side of the plan an asset counts on, and how many shares make a lot at your broker. */
 export function AssetSettings({

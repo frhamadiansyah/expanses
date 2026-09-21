@@ -10,10 +10,10 @@ import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
   DestructiveRow,
-  GROUP_RADIUS,
   InsetGroup,
   InsetRow,
   LargeTitle,
+  Panel,
   SegmentedControl,
   SelectRow,
   TextRow,
@@ -37,26 +37,6 @@ import { BACK_WORDS, chartUnder, differenceWords, gaugeFor, PLAN_WORDS, plannedL
 import { editInsteadIn } from '../workspaces/filing';
 import { useCategoryWorkspaces, useWorkspaceBadges } from '../workspaces/queries';
 import { useBooksInEvent, useEventHistory, useEventPlan, useEvents, useEventSuggestions } from './queries';
-
-/**
- * A flat surface for the parts of this page that are not rows.
- *
- * `InsetGroup` hands each of its children a place in the group, so it takes rows and only rows — and a donut, a
- * gauge and a day's list of transactions are none of them. They still belong on the kit's own shape, so they are
- * laid on the group's surface and its radius, from the kit's own tokens, rather than on the ringed card the kit
- * replaces or on a second set of numbers.
- */
-function Panel({ children, className, testId }: { children: ReactNode; className?: string; testId?: string }) {
-  return (
-    <div
-      data-testid={testId}
-      className={cx('mb-[18px] w-full overflow-hidden bg-[var(--ph-surface)] p-[13px] md:max-w-2xl', className)}
-      style={{ borderRadius: GROUP_RADIUS }}
-    >
-      {children}
-    </div>
-  );
-}
 
 /** A suggestion, a workspace's own row: wrapped so the group can still hand it its separator. */
 function TaggableRow({ position, ...row }: GroupChild & InsetRowProps) {

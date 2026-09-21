@@ -5,10 +5,10 @@ import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, cx, ErrorBox, Field, Input, Money, Select } from '../../ui';
-import { Panel } from '../networth/Panel';
 import { personCodeChoices } from '../ownables/catalogue-view';
 import { useDebtHistory, useDebtProfiles } from './queries';
 import { emptyRepaymentDraft, type RepaymentDraft, repaymentDraftToInput } from './debts-form';
+import { Panel } from '../../ui/native';
 
 /** Overdue and due-soon in the kit's own inks, rather than as two more coloured pills. */
 const DUE_INK: Record<string, string> = {

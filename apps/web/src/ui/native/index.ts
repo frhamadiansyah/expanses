@@ -14,6 +14,7 @@ export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
 export { DestructiveRow, PickerRow, ReadOnlyRow, SelectRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, type WalletCard } from './CardStack';
+export { Panel, PanelHeader, SCREEN } from './Panel';
 export { Figure, RecordTable, type RecordColumn, type RecordDetail, type RecordShape } from './RecordTable';
 
 /* The decisions, exported so a screen can ask the same questions the components ask. */
@@ -25,4 +26,5 @@ export { CORNER_MAX, backLabel, planCornerActions, type CornerAction, type Corne
 export { heroFigure, progressFraction, progressPercent, progressTone, type HeroFigure } from './hero-figure';
 export { planFormRow, type FormKind, type FormRowPlan } from './form-row';
 export { planRecordTable, reachableColumns, type PhoneForm, type RecordDestination, type RecordTablePlan } from './record-table';
+export { planPanel, type PanelPlan } from './surface';
 export { CARD_H, CARD_W, FAN_X, STRIP, cardFigure, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';
