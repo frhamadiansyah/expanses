@@ -25,9 +25,11 @@ test('a digital wallet and a fund account hold money, and the wallet pays for lu
   await expect(page.getByText('Warung Tegal')).toBeVisible();
 
   await page.goto('/accounts');
-  const wallet = page.locator('li', { has: page.getByRole('link', { name: 'GoPay', exact: true }) });
+  // An account is a table row now — the same five columns, scrollable at 390 px rather than wrapping the name
+  // into the balance. The row still holds the name as a link into its history, so the locator is the same fact.
+  const wallet = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'GoPay', exact: true }) });
   await expect(wallet).toContainText('455.000');
-  const fund = page.locator('li', { has: page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true }) });
+  const fund = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true }) });
   await expect(fund).toContainText('8.000.000');
 
   // Both are money the owner holds, so net worth counts them and the wallet's spending came off it.
