@@ -140,8 +140,8 @@ describe('saveGoal', () => {
 describe('a stage money was drawn against never dangles', () => {
   // The set-aside branch's table, as its migration makes it: a draw names the stage it paid.
   const drawAgainst = async (goalId: string, stageId: string) => {
-    await database.execScript('CREATE TABLE IF NOT EXISTS goal_draws (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, goal_id TEXT NOT NULL, stage_id TEXT)');
-    await database.db.run(sql`INSERT INTO goal_draws (id, workspace_id, goal_id, stage_id) VALUES (${uuidv7()}, ${ws.workspaceId}, ${goalId}, ${stageId})`);
+    // 0050's own table (set-aside): a spend's draw naming the stage it paid.
+    await database.db.run(sql`INSERT INTO goal_draws (id, workspace_id, transaction_id, goal_id, account_id, intent, amount_minor, stage_id, occurred_on, created_at) VALUES (${uuidv7()}, ${ws.workspaceId}, 'tx', ${goalId}, 'account', 'spend', 1, ${stageId}, '2026-09-19', '2026-09-19T00:00:00.000Z')`);
   };
 
   it('refuses a hand edit that removes it, and leaves the goal as it was', async () => {

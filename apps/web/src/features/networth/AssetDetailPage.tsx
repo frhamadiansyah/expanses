@@ -17,6 +17,7 @@ import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
 import { RecordedByHand } from './RecordedByHand';
+import { SetAsidePanel } from './SetAsidePanel';
 import { useAssetProfile, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { ValuationForm } from './ValuationForm';
 import { ValueChart } from './ValueChart';
@@ -122,6 +123,8 @@ export function AssetDetailPage() {
           {account?.subtype === 'time_deposit' && (
             <DepositProposalCard accountId={accountId} onClosed={(archived) => archived && void navigate({ to: '/net-worth/assets' })} />
           )}
+          {/* B3: what is promised out of this account and what is free, right under the bank's figure. */}
+          <SetAsidePanel accountId={accountId} />
 
           {value.mode === 'market' && (
             <PriceForm

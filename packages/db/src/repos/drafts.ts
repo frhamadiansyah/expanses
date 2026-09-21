@@ -5,6 +5,7 @@ import type { Database } from '../database';
 import { draftTransactions } from '../schema-drafts';
 import { existingExternalRefs } from './imports';
 import { postTransactionTx, type TransactionSource } from './ledger';
+import type { SetAsideChoice } from './set-aside-tx';
 
 export class DraftError extends Error {
   constructor(
@@ -197,7 +198,13 @@ export async function editDraft(
  * The draft is kept, marked confirmed and pointing at what it became, so a queue that was worked
  * through can still be read back afterwards.
  */
-export async function confirmDraft(database: Database, ws: WorkspaceContext, id: string): Promise<string> {
+export async function confirmDraft(
+  database: Database,
+  ws: WorkspaceContext,
+  id: string,
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  opts: { setAside?: SetAsideChoice | null } = {},
+): Promise<string> {
   const [draft] = await database.db
     .select()
     .from(draftTransactions)
@@ -219,6 +226,7 @@ export async function confirmDraft(database: Database, ws: WorkspaceContext, id:
         { accountId: draft.categoryAccountId!, amountMinor: draft.amountMinor, currency: draft.currency },
         { accountId: draft.accountId!, amountMinor: -draft.amountMinor, currency: draft.currency },
       ],
+      setAside: opts.setAside ?? null,
     });
     await tx
       .update(draftTransactions)

@@ -3,9 +3,10 @@ import { type EarmarkRow, type GoalRow, removeEarmark, saveEarmark, saveGoal } f
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
-import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
+import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, prefilledReturnBps, roomFor, setAsideHint, templateDueOn, templateFor } from './goal-cards';
+import { useSetAsideViews } from './queries';
 
 interface StageDraft {
   id?: string;
@@ -80,6 +81,24 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
     if (typed !== undefined) return typed;
     const earmark = earmarkOf(account.id);
     return earmark ? minorToMajorString(earmark.amountMinor, currencyOf(account)) : '';
+  };
+
+  const views = useSetAsideViews().data ?? {};
+  // Today's balance, the one the views and the question read: a future-dated entry is not money here yet (ruling M4).
+  const balances = useBalances(isoDate()).data ?? {};
+  /** The box's hint, from the readers' own figures: what is free for this goal there, or how short the typed figure leaves it. */
+  const hintFor = (account: { id: string; name: string; currency: string | null }) => {
+    const currency = currencyOf(account);
+    const room = roomFor(views[account.id]?.freeMinor ?? null, balances[account.id] ?? 0, earmarkOf(account.id)?.amountMinor ?? 0);
+    let typed: number | null = null;
+    try {
+      const text = setAside[account.id];
+      if (text !== undefined && text.trim() !== '') typed = parseMajor(text, currency);
+    } catch {
+      typed = null;
+    }
+    const hint = setAsideHint(room, typed, account.name, currency);
+    return hint.warn ? <span className="text-[var(--ph-warn)]">{hint.text}</span> : hint.text;
   };
 
   function pickKind(next: GoalKind) {
@@ -220,7 +239,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
             <p className="text-xs text-slate-500">From savings, cash or a deposit. Holdings are tagged on each purchase instead.</p>
             <div className="grid gap-3 md:grid-cols-2">
               {savingsAccounts.map((account) => (
-                <Field key={account.id} label={`${account.name} (${currencyOf(account)})`}>
+                <Field key={account.id} label={`${account.name} (${currencyOf(account)})`} hint={hintFor(account)}>
                   <Input value={setAsideText(account)} onChange={(e) => setSetAside({ ...setAside, [account.id]: e.target.value })} inputMode="decimal" />
                 </Field>
               ))}

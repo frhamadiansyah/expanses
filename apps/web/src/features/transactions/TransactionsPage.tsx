@@ -1,5 +1,18 @@
-import { categoryPath, formatMinor, isoDate, monthOf, parseLooseAmount, parseLooseDate, parsePeriod, periodLabel } from '@expanses/core';
-import { confirmDraft, createDraft, dismissDraft, editDraft, guessCategoryFromHistory, listTransactionsIn, ownerScope, postTransaction, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
+import { categoryPath, formatMinor, isoDate, monthOf, outflowFrom, parseLooseAmount, parseLooseDate, parsePeriod, periodLabel } from '@expanses/core';
+import {
+  confirmDraft,
+  createDraft,
+  dismissDraft,
+  editDraft,
+  guessCategoryFromHistory,
+  listTransactionsIn,
+  ownerScope,
+  postTransaction,
+  replaceTransaction,
+  type SetAsideChoice,
+  type TransactionView,
+  voidTransaction,
+} from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
 import { ArrowUpDown, CalendarDays, CalendarX2, Check, ChevronDown, ChevronLeft, CircleAlert, CreditCard, Ellipsis, Trash2, LayoutGrid, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
@@ -28,6 +41,8 @@ import { type TableHandlers, TransactionsTable } from './TransactionsTable';
 import { billTagOf, buildRows, dayTotal, EMPTY_FILTERS, filterRows, groupByCategory, groupByDay, type ListFilters, type ListRow, type Sort, sortRows, totals } from './list-model';
 import { useAssetValues, useTrades } from '../networth/queries';
 import { useGoals } from '../goals/queries';
+import { type Door, spendingDoor } from '../goals/set-aside-question';
+import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
 import { Recurring } from './Recurring';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
@@ -203,6 +218,8 @@ export function TransactionsPage() {
   const [converting, setConverting] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
+  /** A quick row that took promised money, waiting for its question to be answered in a sheet. */
+  const [asking, setAsking] = useState<{ door: Door; exclude: string | null; save: (choice: SetAsideChoice | null) => Promise<void>; settle: (saved: boolean) => void } | null>(null);
   const setFilter = <K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) => setFilters((f) => ({ ...f, [key]: value }));
   const setSearch = (patch: Partial<TransactionsSearch>) => void navigate({ search: (s: TransactionsSearch) => ({ ...s, ...patch }) });
 
@@ -310,6 +327,25 @@ export function TransactionsPage() {
     }
   }
 
+  /**
+   * Saves in place through `run`, unless the row takes promised money: then the question opens first and the row
+   * saves from its sheet. Resolves true only once something was saved — `TransactionsTable`'s TypingRow resets the
+   * typed row on true, so resolving true when the sheet merely *opens* (what `run(…, guarded(…))` would do, since
+   * `run` returns true after its work) clears the row before anything is saved, and closing the sheet loses it.
+   */
+  async function guarded(id: string, door: Door | null, exclude: string | null, save: (choice: SetAsideChoice | null) => Promise<void>): Promise<boolean> {
+    let asks = false;
+    try {
+      asks = await asksAboutSetAside(database, ws, door, exclude);
+    } catch (e) {
+      setError(e);
+      return false;
+    }
+    // Nothing to ask: a new row sends none; an edit sends none too, which clears an answer the row no longer needs.
+    if (!asks) return run(id, () => save(null));
+    return new Promise<boolean>((settle) => setAsking({ door: door!, exclude, save, settle }));
+  }
+
   function open(row: ListRow) {
     if (busy) return;
     setAdding(false);
@@ -348,8 +384,9 @@ export function TransactionsPage() {
   async function saveRecorded(id: string, values: QuickValues): Promise<boolean> {
     const { read } = readQuick(values, accounts, today, ws.baseCurrency);
     if (!read) return false;
-    return run(id, async () => {
-      await replaceTransaction(database, ws, id, { ...quickToInput(read, accounts), ratesToBase: await ratesFor(read) });
+    const input = quickToInput(read, accounts);
+    return guarded(id, spendingDoor(read.accountId, outflowFrom(input.lines, read.accountId)), id, async (choice) => {
+      await replaceTransaction(database, ws, id, { ...input, ratesToBase: await ratesFor(read), setAside: choice });
       close();
     });
   }
@@ -377,7 +414,10 @@ export function TransactionsPage() {
   async function recordTyped(values: QuickValues) {
     const { read } = readQuick(values, accounts, today, ws.baseCurrency);
     if (!read) return false;
-    return run('typing', async () => postTransaction(database, ws, { ...quickToInput(read, accounts), ratesToBase: await ratesFor(read) }));
+    const input = quickToInput(read, accounts);
+    return guarded('typing', spendingDoor(read.accountId, outflowFrom(input.lines, read.accountId)), null, async (choice) => {
+      await postTransaction(database, ws, { ...input, ratesToBase: await ratesFor(read), setAside: choice });
+    });
   }
 
   const keepTyped = (values: QuickValues) => run('typing', () => createDraft(database, ws, { source: 'manual', ...draftFields(values) }));
@@ -387,9 +427,16 @@ export function TransactionsPage() {
     });
 
   async function saveDraft(id: string, values: QuickValues, record: boolean): Promise<boolean> {
-    return run(id, async () => {
-      await editDraft(database, ws, id, draftFields(values));
-      if (record) await confirmDraft(database, ws, id);
+    const fields = draftFields(values);
+    if (!record) {
+      return run(id, async () => {
+        await editDraft(database, ws, id, fields);
+        close();
+      });
+    }
+    return guarded(id, spendingDoor(fields.accountId ?? '', Math.max(0, fields.amountMinor)), null, async (choice) => {
+      await editDraft(database, ws, id, fields);
+      await confirmDraft(database, ws, id, { setAside: choice });
       close();
     });
   }
@@ -1190,6 +1237,22 @@ export function TransactionsPage() {
       {/* The phone's swipe-Edit, once for the screen. Closing it is enough to put it away: the save has already
           invalidated everything, so the list underneath is redrawn without being told. */}
       {editSheetTx && <EditSheet tx={editSheetTx} onClose={() => setEditSheetTx(null)} />}
+      {asking && (
+        <SetAsideSheet
+          door={asking.door}
+          excludeTransactionId={asking.exclude}
+          onSave={async (choice) => {
+            await asking.save(choice);
+            await invalidate();
+            asking.settle(true);
+          }}
+          // Called after a save too; a promise that already settled true ignores the later false.
+          onClose={() => {
+            asking.settle(false);
+            setAsking(null);
+          }}
+        />
+      )}
     </div>
   );
 }
