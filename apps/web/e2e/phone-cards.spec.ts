@@ -22,7 +22,8 @@ test('the three card screens draw at 390px without scrolling sideways', async ({
   // A name someone typed is read whole or not at all: one line, never broken over two at a phone's width.
   expect((await title.boundingBox())!.height).toBeLessThanOrEqual(36);
   await expect(page.getByRole('radiogroup', { name: 'Card sections' }).getByRole('radio')).toHaveCount(4);
-  await expect(page.getByRole('radio', { name: 'Rules' })).toBeVisible();
+  // "Rules" is what fits at 390; "Rewards rules" is still what a screen reader hears.
+  await expect(page.getByRole('radio', { name: 'Rewards rules', exact: true })).toHaveText('Rules');
   const wideCard = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(wideCard).toBe(false);
 

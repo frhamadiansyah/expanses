@@ -60,8 +60,8 @@ test('the segmented control keeps its four segments on one line and equally wide
   const segments = group.getByRole('radio');
   await expect(segments).toHaveCount(4);
   // "Rewards rules" shortened so the fourth segment survived.
-  await expect(group.getByRole('radio', { name: 'Rules' })).toBeVisible();
-  await expect(group.getByRole('radio', { name: 'Rewards rules' })).toHaveCount(0);
+  // Drawn short, named in full: a screen reader hears the section's real name.
+  await expect(group.getByRole('radio', { name: 'Rewards rules', exact: true })).toHaveText('Rules');
 
   const boxes = await segments.evaluateAll((nodes) =>
     nodes.map((node) => {
