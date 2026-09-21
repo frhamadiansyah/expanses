@@ -904,7 +904,7 @@ export function TransactionsPage() {
         </button>
       )}
       {adding && (
-        <Sheet title="Add a transaction" onClose={() => setAdding(false)}>
+        <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
           <TransactionCard onDone={() => setAdding(false)} />
         </Sheet>
       )}

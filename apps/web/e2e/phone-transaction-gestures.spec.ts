@@ -263,9 +263,10 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
   // Both figures are on it, each in its own currency: the pair survived the trip through `formFromTransaction`,
   // which is the half a sheet showing one figure would have thrown away on its next Save.
   await expect(page.getByLabel('Note')).toHaveValue('Blue Bottle');
-  // US$100,00 at USD's own exponent, never "100": a pair reopened at the wrong exponent is a 100x error.
-  await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('100.00');
-  await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveText('1600000');
+  // US$100,00 at USD's own exponent, never "100": a pair reopened at the wrong exponent is a 100x error. The
+  // row shows a settled figure grouped the way the app writes money, so the exponent is read off the face.
+  await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('100,00');
+  await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveText('1.600.000');
 });
 
 /**

@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { AccountRow } from '@expanses/db';
 import { useApp } from '../../app/context';
@@ -7,9 +7,11 @@ import { usePhone } from '../../app/use-phone';
 import { useStoredRates } from '../../lib/queries';
 import { cx } from '../../ui';
 import { CurrencySheet } from './CurrencySheet';
+import { ROW_BODY_FLUSH, RowLead } from './FormRow';
 import { Keypad } from './Keypad';
 import {
   amountAfterEnter,
+  amountFace,
   amountFields,
   chargedHint,
   chargedInNeeded,
@@ -80,8 +82,10 @@ function MoneyField({
   onChange,
   onKeypad,
   className,
+  placeholder = 'Amount',
 }: {
   field: MoneyFieldSpec;
+  placeholder?: string;
   phone: boolean;
   onChange: (value: string) => void;
   onKeypad: () => void;
@@ -97,7 +101,7 @@ function MoneyField({
        * span keeps the figure exactly where it was, so this changes what receives the tap and not the look.
        */
       <button type="button" aria-label={label} onClick={onKeypad} className={cx(className, 'flex items-center self-stretch text-left')}>
-        <span className="min-w-0 flex-1 truncate">{value || <span className="text-slate-400">0</span>}</span>
+        <span className="min-w-0 flex-1 truncate">{value ? amountFace(value, currency) : <span className="text-[var(--ph-ink-3)]">{placeholder}</span>}</span>
       </button>
     );
   }
@@ -118,8 +122,8 @@ function MoneyField({
         if (text !== value) onChange(text);
         if (!submit) e.preventDefault();
       }}
-      placeholder="0"
-      className={cx(className, 'border-0 bg-transparent p-0 focus:outline-none')}
+      placeholder={placeholder}
+      className={cx(className, 'border-0 bg-transparent p-0 placeholder:text-[var(--ph-ink-3)] focus:outline-none')}
     />
   );
 }
@@ -181,73 +185,97 @@ export function AmountRow({
     // in one pass rather than re-filling a row that agrees with the estimate.
   }, [prefill]);
 
-  const fieldClass = 'min-w-0 flex-1 text-2xl tabular focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900';
+  const fieldClass = 'min-w-0 flex-1 text-[15px] leading-5 text-[var(--ph-ink)] tabular ph-focus-inset';
   const toggle = (which: 'amount' | 'charged') => setKeypad((was) => (was === which ? null : which));
   /** The field the dock is typing into, or null when it is shut. */
   const open = keypad === null ? null : keypad === 'amount' ? fields.amount : fields.charged;
+  const flagCircle = 'flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[19px] leading-none';
 
+  /*
+   * Option B's amount row (§3.3, C1-C3): it reads like any other row — a round flag for the currency in the lead,
+   * the figure where a row's title goes, the code as the caption on the right. It is **not** a giant number. The
+   * rows are drawn straight into the card's group, so the hairline between them is the group's own.
+   */
   return (
-    <div className="rounded-xl bg-white ring-1 ring-slate-200">
+    <>
       {/* While the dock is open the figure sits above the dock's own backdrop (z-30), so tapping it again
           puts the dock away rather than being swallowed by the sheet of glass the dock lays over the page —
           without that, the fourth way out is unreachable, which an e2e now holds in place. Only while the
           dock is open: raised at all times it would paint over any sheet that opened later. */}
-      <div className={cx('flex h-14 items-center gap-2 px-3', keypad !== null && 'relative z-40')}>
-        {/* The flag is drawn only where a figure may be typed in a currency of its own. A transfer's may not —
-            `currencyChoosable` says why — and a control the save ignores is worse than no control: this one
-            drew "Charged in IDR = 1600000" over a transfer that moved Rp 100. The code beside the figure still
-            says what it is being read in. */}
-        {choosable && (
-          <button
-            type="button"
-            onClick={() => {
-              // One thing open at a time: the dock is over the page, and the sheet has to be over the dock.
-              setKeypad(null);
-              setPicking(true);
-            }}
-            aria-label="Currency"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-          >
-            <span aria-hidden>{currencyFlag(currency)}</span>
-          </button>
-        )}
-        <MoneyField
-          field={fields.amount}
-          phone={phone}
-          onChange={(amount) => set({ amount })}
-          onKeypad={() => toggle('amount')}
-          className={fieldClass}
-        />
-        <span className="shrink-0 text-sm text-slate-500">{currency}</span>
-        {draft.amount !== '' && (
-          <button
-            type="button"
-            aria-label="Clear amount"
-            onClick={() => set({ amount: '' })}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"
-          >
-            <X size={16} aria-hidden />
-          </button>
-        )}
+      <div className={cx('flex items-center gap-[10px] pl-[10px]', keypad !== null && 'relative z-40 bg-[var(--ph-surface)]')}>
+        <RowLead>
+          {/* The flag is a control only where a figure may be typed in a currency of its own. A transfer's may
+              not — `currencyChoosable` says why — and a control the save ignores is worse than no control: this
+              one drew "Charged in IDR = 1600000" over a transfer that moved Rp 100. There the flag is only
+              drawn, so the row still says what it is being read in. */}
+          {choosable ? (
+            <button
+              type="button"
+              onClick={() => {
+                // One thing open at a time: the dock is over the page, and the sheet has to be over the dock.
+                setKeypad(null);
+                setPicking(true);
+              }}
+              aria-label="Currency"
+              className={cx(flagCircle, 'ph-focus')}
+            >
+              <span aria-hidden>{currencyFlag(currency)}</span>
+            </button>
+          ) : (
+            <span aria-hidden className={flagCircle}>
+              {currencyFlag(currency)}
+            </span>
+          )}
+        </RowLead>
+        {/* No vertical padding: the figure's button takes the row's whole 48px as its target, not 36 of it. */}
+        <span className={ROW_BODY_FLUSH}>
+          <MoneyField
+            field={fields.amount}
+            phone={phone}
+            onChange={(amount) => set({ amount })}
+            onKeypad={() => toggle('amount')}
+            className={fieldClass}
+          />
+          <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{currency}</span>
+          {draft.amount !== '' && (
+            <button
+              type="button"
+              aria-label="Clear amount"
+              onClick={() => set({ amount: '' })}
+              className="ph-focus ph-tap flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]"
+              style={{ '--ph-tap-y': '12px', '--ph-tap-x': '12px' } as CSSProperties}
+            >
+              <X size={12} aria-hidden />
+            </button>
+          )}
+        </span>
       </div>
 
       {fields.charged && (
-        <div className={cx('border-t border-slate-200 px-3 py-2', keypad !== null && 'relative z-40 bg-white')}>
-          {/* h-11 rather than h-10 for the same reason the row above is h-14: this is the figure that actually
-              posts, and its button takes the row's height, so the row's height is the thumb's target. 44px. */}
-          <div className="flex h-11 items-center gap-2 text-sm">
-            <span className="shrink-0 text-slate-600">
-              Charged in <em className="not-italic font-medium text-slate-900">{settled}</em>
+        <div className={cx(keypad !== null && 'relative z-40 bg-[var(--ph-surface)]')}>
+          <div className="flex items-center gap-[10px] pl-[10px]">
+            <RowLead>
+              <span aria-hidden className={flagCircle}>
+                {currencyFlag(settled)}
+              </span>
+            </RowLead>
+            {/* The hairline is drawn here by hand: this row sits inside its own wrapper, where the group's rule
+                for "every row but the first" cannot see it. */}
+            <span className={cx(ROW_BODY_FLUSH, 'border-t-[0.5px] border-[var(--ph-hair)]')}>
+              <MoneyField
+                field={fields.charged}
+                phone={phone}
+                onChange={setCharged}
+                onKeypad={() => toggle('charged')}
+                className={fieldClass}
+                placeholder="0"
+              />
+              <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
+                Charged in <em className="not-italic">{settled}</em>
+              </span>
             </span>
-            <MoneyField
-              field={fields.charged}
-              phone={phone}
-              onChange={setCharged}
-              onKeypad={() => toggle('charged')}
-              className="min-w-0 flex-1 text-right text-base tabular focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
-            />
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="pr-[13px] pb-2 pl-[54px] text-[12px] leading-4 text-[var(--ph-ink-3)]">
             {chargedHint({ rate, currency, accountCurrency: settled, onDate: draft.occurredOn, accountName: account?.name ?? 'the account', stale })}
           </p>
         </div>
@@ -277,6 +305,6 @@ export function AmountRow({
           onClose={() => setKeypad(null)}
         />
       )}
-    </div>
+    </>
   );
 }

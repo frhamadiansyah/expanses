@@ -201,7 +201,7 @@ test('a transfer moves money between two accounts and is filed in no workspace',
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await expect(form.getByRole('button', { name: 'Workspace for this transaction' })).toHaveCount(0);
   // The hint that keeps a fund purchase off this tab is the To row's own line.
-  await expect(form.getByText(/Use Buy or sell, so units are counted/)).toBeVisible();
+  await expect(form.getByText(/Use Buy \/ sell, so units are counted/)).toBeVisible();
   await form.getByRole('button', { name: 'Cancel' }).click();
 
   await addTransfer(page, { from: 'BCA Tahapan', to: 'Jenius (IDR)', amount: '500000', note: 'Top up' });

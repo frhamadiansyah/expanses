@@ -774,6 +774,23 @@ export function amountAfterDone(value: string, currency: string): { text: string
   return text === null ? { text: value, close: false } : { text, close: true };
 }
 
+/**
+ * How the phone's amount row shows a figure it is not typing: grouped the way the app writes money — "85.000",
+ * "120,00" — as the approved mockup draws it (B2). Display only: the text in the draft is untouched, so what is
+ * parsed on Save is exactly what was typed.
+ *
+ * Only a **settled** figure is grouped — one `settledAmount` would write back unchanged. An expression still being
+ * typed ("120000+35000"), or anything that cannot be read, is shown exactly as it stands, so the keypad never
+ * shows a figure other than the one it is holding.
+ */
+export function amountFace(value: string, currency: string): string {
+  if (value === '' || !currency || settledAmount(value, currency) !== value) return value;
+  const minor = evaluateAmount(value, currency);
+  if (minor === null) return value;
+  const { exponent } = currencyInfo(currency);
+  return new Intl.NumberFormat('id-ID', { minimumFractionDigits: exponent, maximumFractionDigits: exponent }).format(minor / 10 ** exponent);
+}
+
 /** The dock's keys, read left to right, top to bottom. DONE spans two rows; there is deliberately no Save. */
 export const KEYPAD_KEYS = ['C', '÷', '×', '⌫', '7', '8', '9', '−', '4', '5', '6', '+', '1', '2', '3', 'DONE', '0', '000', '00'] as const;
 

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   amountAfterDone,
   amountAfterEnter,
+  amountFace,
   amountFields,
   billMinor,
   canEditInSheet,
@@ -588,6 +589,23 @@ describe('the amount row on a desktop keyboard', () => {
     // thing in the app that decides it — this row must not have an opinion of its own.
     expect(amountAfterEnter('120.000', 'IDR')).toEqual({ text: '120000', submit: false });
     expect(amountAfterEnter('120.000+35.000', 'IDR')).toEqual({ text: '155000', submit: false });
+  });
+});
+
+describe("the amount row's face on a phone", () => {
+  it('groups a settled figure the way the app writes money', () => {
+    expect(amountFace('85000', 'IDR')).toBe('85.000');
+    expect(amountFace('1250000', 'IDR')).toBe('1.250.000');
+    expect(amountFace('120.00', 'USD')).toBe('120,00');
+    expect(amountFace('120', 'JPY')).toBe('120');
+  });
+
+  it('shows an expression, an unreadable text and an empty row exactly as they stand', () => {
+    expect(amountFace('120000+35000', 'IDR')).toBe('120000+35000');
+    expect(amountFace('12a', 'IDR')).toBe('12a');
+    expect(amountFace('', 'IDR')).toBe('');
+    // "120" in USD is not yet what DONE would write ("120.00"), so it is shown as typed rather than re-scaled.
+    expect(amountFace('120', 'USD')).toBe('120');
   });
 });
 
