@@ -237,6 +237,61 @@ describe('voiding and editing', () => {
   });
 });
 
+describe('an edit of a spend stays on the stage it paid', () => {
+  const spendUmrah = (): SetAsideChoice => ({ accountId: jenius.id, goalId: umrahId, intent: 'spend', overMinor: 1_800_000 });
+  const refile = (id: string, categoryAccountId: string, occurredOn: string, setAside?: SetAsideChoice | null) =>
+    replaceTransaction(database, ws, id, {
+      occurredOn,
+      description: 'Laptop',
+      lines: expenseLines({ categoryAccountId, paymentAccountId: jenius.id, amountMinor: 6_800_000, currency: 'IDR' }),
+      ...(setAside === undefined ? {} : { setAside }),
+    });
+  const paidOn = async () => (await stages(umrahId)).map((stage) => [stage.name, stage.paidOn]);
+
+  it('a category-only edit leaves a hand-dated stage alone and never pays the next one', async () => {
+    const office = await createAccount(database, ws, { name: 'Office', kind: 'expense', subtype: 'category', currency: null });
+    const id = await laptop(6_800_000, spendUmrah());
+    const tickets = (await stages(umrahId))[0]!;
+    await setStagePaid(database, ws, tickets.id, '2026-09-20');
+
+    await refile(id, office.id, DAY);
+
+    // Picking afresh would read [Tickets 20 Sep, Hotel 19 Sep]: one payment paying two stages.
+    expect(await paidOn()).toEqual([['Tickets', '2026-09-20'], ['Hotel', null]]);
+    expect(await draws()).toEqual([expect.objectContaining({ intent: 'spend', stageId: tickets.id, amountMinor: 6_800_000 })]);
+    expect(await promised(umrahId, jenius.id)).toBe(700_000);
+  });
+
+  it('the same answer given again by an edit form stays on that stage too', async () => {
+    const id = await laptop(6_800_000, spendUmrah());
+    const tickets = (await stages(umrahId))[0]!;
+    await setStagePaid(database, ws, tickets.id, '2026-09-20');
+
+    await refile(id, electronics.id, DAY, spendUmrah());
+
+    expect(await paidOn()).toEqual([['Tickets', '2026-09-20'], ['Hotel', null]]);
+  });
+
+  it('re-marks the stage the void un-paid with the edit\'s own date', async () => {
+    const id = await laptop(6_800_000, spendUmrah());
+
+    await refile(id, electronics.id, '2026-09-21');
+
+    expect(await paidOn()).toEqual([['Tickets', '2026-09-21'], ['Hotel', null]]);
+    // And a second edit still finds it: the carried stage is the one on the draw.
+    const [row] = await draws();
+    await refile(row!.transactionId, electronics.id, '2026-09-22');
+    expect(await paidOn()).toEqual([['Tickets', '2026-09-22'], ['Hotel', null]]);
+  });
+
+  it('an emergency-fund spend carried by an edit still pays no stage', async () => {
+    const id = await laptop(6_800_000, { accountId: jenius.id, goalId: efId, intent: 'spend', overMinor: 1_800_000 });
+    await refile(id, electronics.id, '2026-09-21');
+    expect((await stages(efId))[0]!.paidOn).toBeNull();
+    expect(await promised(efId, jenius.id)).toBe(23_200_000);
+  });
+});
+
 describe('an edit whose goal no longer promises anything there', () => {
   it('drops a carried borrow from an archived goal instead of refusing the edit', async () => {
     const id = await laptop(6_800_000, borrowEf(1_800_000));

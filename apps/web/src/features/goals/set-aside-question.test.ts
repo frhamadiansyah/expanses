@@ -24,12 +24,32 @@ describe('doorOfForm', () => {
     const lines = (to: string) => post([{ accountId: to, amountMinor: 20_000_000, currency: 'IDR' }, { accountId: 'jenius', amountMinor: -20_000_000, currency: 'IDR' }]);
     expect(doorOfForm(draft({ mode: 'transfer', moneyId: 'jenius', toId: 'bca' }), lines('bca'), ACCOUNTS, holds)).toMatchObject({ intents: MOVING, toAccountId: 'bca' });
     expect(doorOfForm(draft({ mode: 'transfer', moneyId: 'jenius', toId: 'card' }), lines('card'), ACCOUNTS, holds)).toMatchObject({ intents: SPENDING, toAccountId: null });
+    // An asset that cannot hold a set-aside (gold bars): offering the move would make Save throw (W12).
+    expect(doorOfForm(draft({ mode: 'transfer', moneyId: 'jenius', toId: 'gold' }), lines('gold'), ACCOUNTS, holds)).toMatchObject({ intents: SPENDING, toAccountId: null });
+  });
+
+  it('reads a cross-currency tagged transfer\'s outflow in rupiah, not the dollars that landed (W22)', () => {
+    const tagged: FormPost = { kind: 'transfer-goal', input: { occurredOn: '2026-09-19', description: 'x', amountMinor: 7_500_000, toAmountMinor: 46_875, fromAccountId: 'jenius', toAccountId: 'usd', goalId: 'umrah' } };
+    expect(doorOfForm(draft({ mode: 'transfer' }), tagged, ACCOUNTS, holds)).toMatchObject({ accountId: 'jenius', outflowMinor: 7_500_000 });
+  });
+
+  it('opens no door before an account is chosen (W2)', () => {
+    expect(spendingDoor('', 1)).toBeNull();
   });
 
   it('lets a tagged transfer use its own goal\'s money only where that money can go', () => {
     const tagged = (to: string): FormPost => ({ kind: 'transfer-goal', input: { occurredOn: '2026-09-19', description: 'x', amountMinor: 7_000_000, fromAccountId: 'jenius', toAccountId: to, goalId: 'umrah' } });
     expect(doorOfForm(draft({ mode: 'transfer' }), tagged('bca'), ACCOUNTS, holds)).toEqual({ accountId: 'jenius', outflowMinor: 7_000_000, ownGoalId: 'umrah', intents: BORROW_ONLY, toAccountId: 'bca' });
     expect(doorOfForm(draft({ mode: 'transfer' }), tagged('card'), ACCOUNTS, holds)).toMatchObject({ ownGoalId: null });
+  });
+
+  it('an edit of a tagged transfer is the tagged door again: the tag is kept, so its own goal\'s money is room', () => {
+    const lines = (to: string) => post([{ accountId: to, amountMinor: 7_000_000, currency: 'IDR' }, { accountId: 'jenius', amountMinor: -7_000_000, currency: 'IDR' }]);
+    const editing = (to: string) => draft({ mode: 'transfer', moneyId: 'jenius', toId: to, goalId: 'umrah', editing: true });
+    expect(doorOfForm(editing('bca'), lines('bca'), ACCOUNTS, holds)).toEqual({ accountId: 'jenius', outflowMinor: 7_000_000, ownGoalId: 'umrah', intents: BORROW_ONLY, toAccountId: 'bca' });
+    expect(doorOfForm(editing('card'), lines('card'), ACCOUNTS, holds)).toMatchObject({ ownGoalId: null, intents: BORROW_ONLY });
+    // An untagged edit still offers the move.
+    expect(doorOfForm({ ...editing('bca'), goalId: '' }, lines('bca'), ACCOUNTS, holds)).toMatchObject({ ownGoalId: null, intents: MOVING });
   });
 
   it('reads a cross-currency buy\'s outflow in the cash account\'s money', () => {
@@ -68,8 +88,27 @@ describe('choiceOf and readyOf', () => {
       accountId: 'jenius', goalId: 'ef', intent: 'borrow', overMinor: 1_800_000, toAccountId: null, wasWhole: true, wholeSince: '2026-08-03',
     });
     expect(choiceOf(ask, { goalId: 'ef', intent: 'spend' }, door, { whole: true, since: '2026-08-03' })).toMatchObject({ intent: 'spend', wasWhole: false, wholeSince: null });
+    // A borrow from a goal that was not whole records no "whole" window (X1).
+    expect(choiceOf(ask, { goalId: 'ef', intent: 'borrow' }, door, { whole: false, since: null })).toMatchObject({ intent: 'borrow', wasWhole: false, wholeSince: null });
     expect(choiceOf(ask, { goalId: 'ef', intent: null }, { ...door, intents: BORROW_ONLY })).toMatchObject({ intent: 'borrow' });
     expect(choiceOf(ask, { goalId: 'ef', intent: 'move' }, { ...door, intents: MOVING, toAccountId: 'bca' })).toMatchObject({ intent: 'move', toAccountId: 'bca' });
+  });
+});
+
+describe('an answer the door no longer offers', () => {
+  const ask: SetAsideCheck = { kind: 'ask', overMinor: 1_800_000, freeMinor: 5_000_000, goals: [{ goalId: 'ef', name: 'Emergency fund', rank: 0, promisedMinor: 30_000_000, coveredMinor: 30_000_000, shortMinor: 0, borrowedShortMinor: 0 }] };
+
+  it('a move picked before the money was sent to a card is not an answer: Save waits instead of throwing', () => {
+    const toCard = spendingDoor('jenius', 6_800_000)!;
+    expect(readyOf(ask, { goalId: 'ef', intent: 'move' }, toCard)).toBe(false);
+    expect(choiceOf(ask, { goalId: 'ef', intent: 'move' }, toCard)).toBeNull();
+  });
+
+  it('nor is a goal the question no longer lists', () => {
+    const door = spendingDoor('jenius', 6_800_000)!;
+    expect(readyOf(ask, { goalId: 'umrah', intent: 'borrow' }, door)).toBe(false);
+    expect(choiceOf(ask, { goalId: 'umrah', intent: 'borrow' }, door)).toBeNull();
+    expect(readyOf(ask, { goalId: 'umrah', intent: null }, { ...door, intents: BORROW_ONLY })).toBe(false);
   });
 });
 

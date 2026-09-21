@@ -1,15 +1,19 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   type AccountRow,
   addPhoto,
   createAccount,
+  createDatabase,
   createWorkspace,
   type Database,
   goalContributionsFor,
+  goalHistory,
   goalLinksFor,
   listEarmarks,
   listPhotos,
   listTransactions,
+  migrate,
+  MIGRATIONS,
   nativeBalances,
   recordTaggedTransfer,
   recordTrade,
@@ -22,7 +26,10 @@ import {
   voidTaggedTransfer,
   voidTransaction,
   type WorkspaceContext,
+  goalsSchema,
 } from '../src/index';
+import { eq } from 'drizzle-orm';
+import { createNodeExecutor, type NodeExecutor } from '../src/node';
 import { setupDb } from './helpers';
 
 const TODAY = '2026-09-12';
@@ -336,11 +343,11 @@ describe('deleting or editing a tagged transfer through the ledger\'s own doors'
       await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(2_000_000);
     });
 
-    it('an edit leaves them as before the transfer too: the replacement is a plain transfer', async () => {
+    it('an edit keeps the tag: the goal ends where a tagged transfer of the edited amount would leave it', async () => {
       const before = await snapshot();
       const result = await park(3_000_000, hajjId);
 
-      await replaceTransaction(database, ws, result.transactionId, {
+      const replacement = await replaceTransaction(database, ws, result.transactionId, {
         occurredOn: '2026-09-05',
         description: 'Transfer to RDN',
         lines: [
@@ -349,8 +356,32 @@ describe('deleting or editing a tagged transfer through the ledger\'s own doors'
         ],
       });
 
+      // 7.500.000 − 2.500.000 on BCA, 2.000.000 + 2.500.000 on RDN. Dropping the tag read 7.500.000 / 2.000.000;
+      // parking the old 3.000.000 again read 4.500.000 / 5.000.000.
+      await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(5_000_000);
+      await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(4_500_000);
+      expect((await listTransactions(database, ws, { id: replacement }))[0]!.goalId).toBe(hajjId);
+      // …and deleting the edited transfer still leaves the goal as it was before any of it.
+      await voidTransaction(database, ws, replacement);
       await expect(snapshot()).resolves.toEqual(before);
-      await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(2_000_000);
+    });
+
+    it('an edit that is no longer a transfer drops the tag and leaves the goal as before the transfer', async () => {
+      const before = await snapshot();
+      const food = await createAccount(database, ws, { name: 'Food', kind: 'expense', subtype: 'category', currency: null });
+      const result = await park(3_000_000, hajjId);
+
+      const replacement = await replaceTransaction(database, ws, result.transactionId, {
+        occurredOn: '2026-09-05',
+        description: 'Dinner',
+        lines: [
+          { accountId: food.id, amountMinor: 300_000, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: -300_000, currency: 'IDR' },
+        ],
+      });
+
+      await expect(snapshot()).resolves.toEqual(before);
+      expect((await listTransactions(database, ws, { id: replacement }))[0]!.goalId).toBeNull();
     });
 
     it('voidTaggedTransfer still does the same, once', async () => {
@@ -394,20 +425,142 @@ describe('deleting or editing a tagged transfer through the ledger\'s own doors'
       await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
     });
 
-    it('an edit that reposts the same money leaves them as before the transfer', async () => {
+    it('an edit that reposts the same money keeps the tag and parks the same money again', async () => {
       const before = await snapshot();
       const result = await toWise();
       const original = (await listTransactions(database, ws, { id: result.transactionId }))[0]!;
 
-      await replaceTransaction(database, ws, result.transactionId, {
+      const replacement = await replaceTransaction(database, ws, result.transactionId, {
         occurredOn: original.occurredOn,
         description: original.description,
         lines: original.entries.map((entry) => ({ accountId: entry.accountId, amountMinor: entry.amountMinor, currency: entry.currency })),
         ratesToBase: { USD: 16_000 },
       });
 
+      // Exactly as right after the transfer: US$100,03 more on Wise, Rp 1.600.000 less on BCA.
+      await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(5_900_000);
+      await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(15_004);
+      await voidTransaction(database, ws, replacement);
       await expect(snapshot()).resolves.toEqual(before);
-      await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(5_001);
     });
+  });
+});
+
+/*
+ * Before 0050 there is no draw to undo a moved promise with, so the tagged transfer must not move one: the source keeps
+ * its promise exactly as it did before the feature, and a void takes only the arrival back.
+ */
+describe('a tagged transfer on a database stopped at 49', () => {
+  let executor: NodeExecutor | undefined;
+  afterEach(() => executor?.close());
+
+  it('parks exactly as before, and a void leaves the goal its source promise', async () => {
+    executor = createNodeExecutor();
+    const older = createDatabase(executor);
+    await migrate(older, MIGRATIONS.filter((m) => m.version <= 49));
+    const oldWs = await createWorkspace(older, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    const jenius = await createAccount(older, oldWs, { name: 'Jenius', kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 42_500_000, openedOn: '2026-01-01' });
+    const bank = await createAccount(older, oldWs, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const umrah = await saveGoal(older, oldWs, { name: 'Umrah', kind: 'umrah', growthBps: 0, returnBps: 0, stages: [{ name: 'Tickets', targetMinor: 7_500_000, targetMonths: null, dueOn: '2027-03-31' }] });
+    await saveEarmark(older, oldWs, { goalId: umrah, accountId: jenius.id, amountMinor: 7_500_000 });
+    const held = async (accountId: string) => (await listEarmarks(older, oldWs)).find((row) => row.accountId === accountId)?.amountMinor ?? 0;
+    const month = async () => (await goalContributionsFor(older, oldWs, '2026-07'))[umrah] ?? 0;
+
+    const result = await recordTaggedTransfer(older, oldWs, { occurredOn: '2026-07-15', description: 'To BCA', amountMinor: 7_500_000, fromAccountId: jenius.id, toAccountId: bank.id, goalId: umrah });
+    expect(await held(jenius.id)).toBe(7_500_000);
+    expect(await held(bank.id)).toBe(7_500_000);
+    // The arrival only: no own move was logged against it.
+    expect(await month()).toBe(7_500_000);
+
+    await voidTaggedTransfer(older, oldWs, result.transactionId);
+    // Moving the source promise here left nothing anywhere after the void (and the month at −7.500.000).
+    expect(await held(jenius.id)).toBe(7_500_000);
+    expect(await held(bank.id)).toBe(0);
+    expect(await month()).toBe(0);
+  });
+});
+
+/*
+ * Dated in July, a month the suite never runs in, so a figure logged "today" instead of on the transfer's own day
+ * lands in the wrong month and shows. Every case sets Hajj's own promise aside first: saveEarmark logs it today.
+ */
+describe('what a tagged transfer of a goal\'s own money does to its month', () => {
+  const JULY = '2026-07-15';
+  const month = async (m: string) => (await goalContributionsFor(database, ws, m))[hajjId] ?? 0;
+  const draws = () => database.db.select().from(goalsSchema.goalDraws).where(eq(goalsSchema.goalDraws.workspaceId, ws.workspaceId));
+
+  beforeEach(async () => {
+    await saveEarmark(database, ws, { goalId: hajjId, accountId: bca.id, amountMinor: 7_500_000 });
+  });
+
+  it('moves part of the promise: only what it carried, and a void gives back only that', async () => {
+    const result = await park(5_000_000, hajjId, JULY);
+    // Moving the whole promise would read 0 here; the whole amount, clamped, reads the same.
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(2_500_000);
+    await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(5_000_000);
+    expect(await draws()).toEqual([expect.objectContaining({ intent: 'move', amountMinor: 5_000_000, toAccountId: null, occurredOn: JULY })]);
+    // +5.000.000 arrived, −5.000.000 of promise left BCA: nought, in July.
+    expect(await month('2026-07')).toBe(0);
+
+    await voidTaggedTransfer(database, ws, result.transactionId);
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
+    await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(0);
+    expect(await month('2026-07')).toBe(0);
+  });
+
+  it('moves no more than was promised, and a void gives back no more either', async () => {
+    const result = await park(10_000_000, hajjId, JULY);
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(0);
+    await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(10_000_000);
+    // The draw says 7.500.000: saying 10.000.000 would give Hajj 2.500.000 it never had on the void.
+    expect((await draws())[0]).toMatchObject({ amountMinor: 7_500_000 });
+    // 10.000.000 arrived, 7.500.000 of it was already set aside: 2.500.000 is new this month.
+    expect(await month('2026-07')).toBe(2_500_000);
+
+    await voidTaggedTransfer(database, ws, result.transactionId);
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
+    expect(await month('2026-07')).toBe(0);
+  });
+
+  it('dates the move on the transfer\'s own day, in July and not today', async () => {
+    const today = new Date().toISOString().slice(0, 7);
+    const before = await month(today);
+    await park(7_500_000, hajjId, JULY);
+    expect(await month('2026-07')).toBe(0);
+    expect(await month(today)).toBe(before);
+  });
+
+  it('into a card: the promise stays on the source, and nothing is drawn', async () => {
+    const card = await createAccount(database, ws, { name: 'BCA Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    await recordTaggedTransfer(database, ws, { occurredOn: JULY, description: 'Pay card', amountMinor: 5_000_000, fromAccountId: bca.id, toAccountId: card.id, goalId: hajjId });
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
+    expect(await draws()).toEqual([]);
+  });
+
+  it('across currencies, IDR to USD: the arrival counts once, and the move nets it to nought', async () => {
+    const wise = await createAccount(database, ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
+    // Rp 7.500.000 → US$468,75 at 16.000. The exchange account is credited Rp 7.500.000 too: counting it read +7.500.000.
+    await recordTaggedTransfer(database, ws, { occurredOn: JULY, description: 'To Wise', amountMinor: 7_500_000, toAmountMinor: 46_875, fromAccountId: bca.id, toAccountId: wise.id, goalId: hajjId, ratesToBase: { USD: 16_000 } });
+    await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(46_875);
+    expect(await month('2026-07')).toBe(0);
+    const july = ((await goalHistory(database, ws, '2026-07-31'))[hajjId] ?? []).filter((entry) => entry.occurredOn === JULY);
+    expect(july.map((entry) => [entry.kind, entry.amountMinor, entry.currency]).sort()).toEqual([
+      ['set-aside', 7_500_000, 'IDR'],
+      ['taken-back', -7_500_000, 'IDR'],
+    ]);
+  });
+
+  it('across accounts in USD: the move is counted in base, never in cents beside rupiah', async () => {
+    const wise = await createAccount(database, ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
+    const ibkr = await createAccount(database, ws, { name: 'IBKR cash', kind: 'asset', subtype: 'bank', currency: 'USD' });
+    await saveEarmark(database, ws, { goalId: hajjId, accountId: wise.id, amountMinor: 10_000 });
+    const result = await recordTaggedTransfer(database, ws, { occurredOn: JULY, description: 'To IBKR', amountMinor: 10_000, fromAccountId: wise.id, toAccountId: ibkr.id, goalId: hajjId, ratesToBase: { USD: 16_000 } });
+    await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(0);
+    await expect(setAsideFor(hajjId, ibkr.id)).resolves.toBe(10_000);
+    // +1.600.000 arrived (base) and −1.600.000 left the Wise promise (base). Logging −10.000 cents read +1.590.000.
+    expect(await month('2026-07')).toBe(0);
+    await voidTaggedTransfer(database, ws, result.transactionId);
+    await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(10_000);
+    expect(await month('2026-07')).toBe(0);
   });
 });
