@@ -52,7 +52,8 @@ changes; the first one is already on main. What is left:
 10% (the top of the long band's range and the retirement accumulation figure). A test asserts it (Part 2, Task 1).
 
 Band boundaries, in whole months until the money is needed: **≤ 12 → 4%**, **13–36 → 5%**, **37–60 → 6%**, **> 60 → 8%**.
-The bands are nominal and on a reksadana basis (net of fund fee, before the investor's own tax); the hint says so.
+The bands are nominal, net of fund fees, before the investor's own tax; the hint says so, in country-neutral words (C1
+ruling: instrument kinds, never a country's product names).
 
 ## 3. The emergency fund
 
@@ -92,7 +93,7 @@ user sees today changes until they mark a category lifestyle.
 
 ### 3.3 What does not change
 
-The ratio card's benchmark stays 3–6 months, graded as today. Accelerated debt paydown is never in the base. The
+**The ratio card grades against the household's own months** (user decision, 2026-09-21 — Q5 flipped): the months on its emergency goal, derived from the two answers or typed. A household with no emergency goal is graded as before: at least 3 months for good, with the bar's guide mark at 6 and the text "3–6 months". Accelerated debt paydown is never in the base. The
 income-based emergency route from the workbook is not built — no source was found for it.
 
 ## 4. Essential vs lifestyle
@@ -169,8 +170,9 @@ order on screen is the funding order.
 - each **education level's** return, from the months until the level starts (§10);
 - nothing that already exists — a goal's saved return is the user's and is never rewritten.
 
-The hint beside a prefilled return names the band and its range: "6% · 3–5 years · typically 5–7% · reksadana basis;
-a deposit earns about 0.8 of this after its final tax".
+The hint beside a prefilled return names the band and its range (`bandHint`): "6% · 3 to 5 years · typically 5–7%,
+net of fund fees; a deposit taxed at source earns less". Country-neutral by ruling (C1): no country's fund type or tax
+rate is named.
 
 ## 9. Calculators — today's money
 
@@ -204,15 +206,31 @@ page's monthly figure uses the return while saving, not the return while retired
 ### 9.4 Upgrading goals derived before this
 
 On open, every `goal_calculators` row without `version: 2` is worked out again under the rules above, in one
-transaction per goal, dated from its own `computed_at` so its due dates do not move. **Silently, and only if the figure
-changes** (provisional ruling, 2026-09-21): a goal whose stages and growth come out the same is only stamped `version: 2`.
-A goal whose target the user typed by hand has no `goal_calculators` row (typing breaks the link), so it is never
-touched:
+transaction per goal. The year each stage falls in still starts from the goal's own `computed_at` — a course "starting
+in 10 years" keeps counting from when it was first worked out, not from the day of the upgrade — but a v1 goal carries
+no birthday, and §10's rule for that case is not waived here: a level's year falls on **1 January**, so upgrading
+education v1 moves every stage's due date onto 1 January of its year, earlier than the day of the year `computed_at`
+itself fell on. That is the conservative direction — the goal is asked to save sooner, never later — and it is
+recorded in the upgrade's own ledger rather than left to surprise a reader of `dueOn`. **Silently, and only if the
+figure changes** (provisional ruling, 2026-09-21): a goal whose stages and growth come out the same is only stamped
+`version: 2`. A goal whose target the user typed by hand has no `goal_calculators` row (typing breaks the link), so it
+is never touched:
 
 - **education v1** (`feeTodayMinor`, `startsInYears`, `yearsOfStudy`, `feeInflationBps`) becomes one level named
-  "Course" in calendar years, with one yearly fee; its stages keep their ids and paid marks by position;
+  "Course" in calendar years, with one yearly fee, its due dates falling on 1 January per §10. The goal's own return
+  becomes the course's **typed** return (§8: a saved return is never rewritten), so no band replaces it. Its stages
+  keep their ids and paid marks by matching: by `derived_key` where the goal has keys; without keys, the same name and
+  day first, then the same name, then date-order position only when the counts are equal. A paid or drawn stage the
+  working no longer asks for is kept (§10);
 - **retirement v1** keeps the goal's own return as the return while saving;
-- **emergency v1** gets growth 0%.
+- **education v2** (user decision, Q8): re-read on every open from that day, only to move the band of a level whose
+  return was never typed. A level's band is always read from **today** (months left from today), never from the day
+  the working was first done — so the upgrade is idempotent: running it twice changes nothing;
+- **emergency v1** gets growth 0%;
+- **retirement v2 and emergency v2 are never revisited**: their dates count from the day they were worked out.
+
+The upgrade runs over **every workspace**, not only the one open (ruling, 2026-09-21); one workspace failing stops
+neither the others nor the app.
 
 Nothing else about the goal — name, rank, standing amount, set-asides, tags — is touched.
 
@@ -236,6 +254,9 @@ Nothing else about the goal — name, rank, standing amount, set-asides, tags �
   (`goal_stage_terms.return_bps`); `goalPlan` uses a stage's own return where it has one, else the goal's.
 - **Adding a level raises the target and never resets progress.** Progress is what funds the goal (tags and
   set-asides), which a level does not touch; a stage that was already there keeps its id and its paid mark.
+- **A paid or drawn stage the working no longer asks for is kept** (set-aside merge ruling): a re-work never deletes a
+  stage with a paid mark or a `goal_draws` row naming it, and a hand edit that removes a drawn stage is refused, so
+  `goal_draws.stage_id` never dangles.
 - **Monthly tuition stays out.** The editor's footer says it: monthly fees belong in the budget, not a fund.
 
 Worked example (mockup): uang pangkal Rp 45 juta once and Rp 20 juta a year for 6 years, starting in 6 years, 12%
@@ -264,26 +285,27 @@ cover = PV(yearly family need, years of support, inflation, return)
 - **Not built:** the workbook's lowest-of-four-methods and its after-the-fact "− assets + debts" (which double-counts on
   a needs-based result); any rounding down to a round number; a critical-illness or accident rider calculator — no
   published sizing rule exists; any income multiple; any country-specific benefit offset.
-- Nothing is saved; like the other calculators on that page, it answers a question you may not want to keep.
+- **The figures are remembered** (user decision, 2026-09-21; storage ruled 2026-09-21): "Keep these figures" stores what was typed in 0053's own `calculator_inputs` table (`workspace_id`, `kind` = `life_cover`, `inputs_json`, `updated_at`), guarded by `healthTablesExist` — not a reserved `goal_calculators` row, so no goal reader has anything to skip. A prefilled box never typed in is not stored, so it keeps following the balance sheet. No goal is made. A prefill whose accounts include a currency with no rate yet is not offered: the row says which currency and asks for the figure, rather than counting those accounts as nothing.
 
 ## 12. The workbook's four bugs — none inherited
 
 | Workbook bug | How this design avoids it |
 |---|---|
-| Gold outside total assets (`G22 = SUM(G24:G26)`) | Totals come from `balanceSheet`, which sums every account; the life-cover prefill reads it through `sheetTotals`, the one helper the net-worth page also uses |
+| Gold outside total assets (`G22 = SUM(G24:G26)`) | Totals come from `balanceSheet`, which sums every account; the life-cover prefill and the net-worth page both read it through `ratioTotals`, whose five totals come from `sheetTotals` alone, and both take the currencies with no rate from the balance sheet's own `missing` |
 | Jewellery outside the gold total (`G66 = SUM(G63)`) | No hand-listed rows anywhere; every total is a fold over accounts |
 | Weekly ×4 in one column, ×52/12 in another | One conversion table (`perMonthMinor`), 52/12 and 365/12; tests fail on ×4 and ×30 |
 | Retirement PMT with −1 outside the power | Every monthly figure goes through `monthlyNeededMinor` (`r·gap / ((1+r)^n − 1)`); nothing new writes its own annuity |
 
 ## 13. Storage — migration 0053 (`health_ratios`)
 
-Three side tables, all `CREATE TABLE`, no backfill, no change to an existing table:
+Four side tables, all `CREATE TABLE`, no backfill, no change to an existing table:
 
 | Table | Row | Absent means |
 |---|---|---|
 | `category_needs` | `category_account_id` PK, `workspace_id`, `need` ∈ {essential, lifestyle} | no mark of its own |
 | `budget_frequencies` | `budget_id` PK, `workspace_id`, `frequency` ∈ {daily, weekly, quarterly, yearly}, `amount_as_set_minor` > 0 | monthly |
 | `goal_stage_terms` | `stage_id` PK, `workspace_id`, `goal_id`, `return_bps` (nullable, ≥ 0), `derived_key` (nullable) | the goal's return; not derived |
+| `calculator_inputs` | (`workspace_id`, `kind`) PK, `kind` (`life_cover`), `inputs_json`, `updated_at` | nothing remembered; every box prefilled (§11) |
 
 Every read and write goes through `healthTablesExist(db)`, a `WeakMap<Db, boolean>` guard like `extrasTablesExist`. On
 a database without them: no marks (everything essential), every budget monthly, no stage returns — which is today's
@@ -319,16 +341,20 @@ cover with resources above / below needs.
 
 ## 17. Open questions
 
-1. **Default for the emergency base, and what an unmarked category counts as.** The record says the switch becomes
-   essential vs all but names no default. This design defaults to **essential** and counts an unmarked category as
-   **essential** (erring toward a larger fund, as the record does with the 24-month cell), so nothing changes until a
-   category is marked. Confirm or reverse.
-2. **Should the default categories come pre-marked** (e.g. Restaurants, Entertainment as lifestyle)? Built with none
-   marked, because a preset list was not agreed.
+1. ~~Default for the emergency base~~ — **user decision 2026-09-21:** essential, and an unmarked category counts as
+   essential.
+2. ~~Pre-marked default categories~~ — **user decision 2026-09-21:** no; default categories start unmarked.
 3. **The stacked band on the Budget page** is a new visual treatment, which the kit does not have. Built as rows
    (Essential spent, Lifestyle spent) until the kit decides.
 4. ~~The emergency template's return~~ — provisional ruling 2026-09-21: keep 2%, outside the horizon bands.
-5. **The emergency ratio card's guide** stays 3–6 months; it does not read the household months. Should it?
+5. ~~The emergency ratio card's guide~~ — **user decision 2026-09-21 (flipped):** it grades against the household's own months (§3.3).
 6. ~~Upgrading existing derived goals~~ — provisional ruling 2026-09-21: silently, only when the figure changes, never
    a hand-edited target (§9.4).
 7. ~~The calendar-year fallback~~ — provisional ruling 2026-09-21: 1 January, and the level's row subtitle says so.
+8. ~~A level's band on open~~ — **user decision 2026-09-21:** yes; on open, a level whose return was never typed
+   re-reads its band for the months left until it starts. A typed return is never touched.
+9. ~~Remembering life-cover inputs~~ — **user decision 2026-09-21:** yes; storage ruled the same day: 0053's own
+   `calculator_inputs` table, not a reserved `goal_calculators` row (§11, §13).
+10. ~~`computed_minor` for retirement now in today's money~~ — accepted: nothing outside the repo reads it.
+11. ~~v1 education's years move to 1 January~~ — **ruled 2026-09-21: accepted** (the user has no real data yet); §9.4
+    amended to say so.

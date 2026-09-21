@@ -10,7 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-21-health-ratios-design.md` — §§2 (retirement growth), 8–12, and §15's calculator rows. **Depends on Part 1** (`2026-09-21-health-ratios.md`) being merged: migration 0053, `healthTablesExist`, `goalStageTerms`, `emergencyDraftFrom`, the kit-built `Calculator.tsx`.
 
-**Provisional rulings carried (user may reverse):** the emergency template keeps 2% and stays outside the bands; existing derived goals are re-worked silently **only when the figure changes**, and a goal whose target was typed by hand is never touched; with no birthday, a level's years fall on 1 January and the level's row subtitle says so.
+**Rulings carried:** the emergency template keeps 2% and stays outside the bands (Q4); existing derived goals are re-worked silently **only when the figure changes**, and a goal whose target was typed by hand is never touched (Q6); with no birthday, a level's years fall on 1 January and the level's row subtitle says so (Q7).
+
+**User decisions (2026-09-21), built here:**
+- **Part 2 Q1 — yes:** on open, a level whose return was never typed re-reads its band for the months left until it starts (Task 7, `refreshBandReturns` inside `upgradeCalculatorGoals`). A typed return is never touched.
+- **Part 2 Q2 — yes:** the life-cover inputs are remembered in `goal_calculators.inputs_json` with **no schema change** (Task 10). Because 0017's `kind` CHECK allows only emergency/education/retirement and its `goal_id` is the key, the row is a reserved one — `goal_id = 'life-cover:' || workspace_id`, `kind = 'retirement'`, `inputs_json = { "calculator": "life_cover", "version": 2, … }` — which every goal reader skips (`isLifeCoverRow`). The clean alternative (widen the CHECK) is a table rebuild in 0055; not taken. **Superseded by the ruling (2026-09-21):** the inputs live in 0053's own `calculator_inputs` table (`packages/db/src/repos/calculator-inputs.ts`); there is no reserved `life-cover:` row and no `isLifeCoverRow`.
+- **Part 2 Q3 — accepted:** `computed_minor` for retirement now holds the pot in today's money, not on the day you stop. Nothing outside the repo reads it (local-first, no server).
 
 ## Global Constraints
 
@@ -18,6 +23,7 @@
 - **No new columns on existing tables** (`goals`, `goal_stages`, `goal_calculators`, `accounts`, …). Every read and write of `goal_stage_terms` goes through `healthTablesExist(db)`; without it a stage has no own return and paid marks are matched by position.
 - **Money is integer minor units.** A stage's target is **today's money** — the contract `GoalStage.targetMinor` already documents — and `goalPlan` alone inflates it, once, by `goal.growthBps`. No calculator writes a future figure into a stage again.
 - **One annuity per shape.** Every monthly figure goes through `monthlyNeededMinor` (`r·gap / ((1+r)^n − 1)`); every drawdown pot and income need through `presentValueOfYearsMinor`. Nothing writes its own annuity. The workbook's PMT, with −1 outside the power, is not reproduced anywhere.
+- **No float money in the new annuity.** `presentValueOfYearsMinor` is exact: with I = 10000 + inflation bps and R = 10000 + return bps, (1 + real) = R ÷ I is rational, so for whole years n the pot is `A·I·(Rⁿ − Iⁿ) ÷ (Rⁿ·(R − I))` in BigInt, rounded once with `divRound` (half away from zero); `A·n` when R = I. Years must be whole (a `CalculatorError` otherwise). Inflating a figure to a date stays `futureValueMinor` — the goal engine's own reader — so the page and the goal cannot disagree.
 - **Sum signed, then clamp.** Life cover is `needs − resources`, clamped at 0 after the sum, with the surplus reported — never a negative cover and never `Math.abs` on a term.
 - **18% appears nowhere**, and no prefill is above 10%. A test asserts every constant and band.
 - **Call the existing readers:** `goalPlan`, `futureValueMinor`, `monthlyNeededMinor`, `monthsUntil`, `savingPlanFor`, `balanceSheet`, `useSheet`, `useGoalPlans`, `useGoalCalculators`, `parseMajor`, `formatMinor`, `saveGoalTx`, `listGoals`. Grep before writing a new name.
@@ -170,7 +176,7 @@ Export all of it from `packages/core/src/index.ts`.
 - Modify: `packages/core/src/budget/calculators.ts`, `packages/core/src/index.ts`, `packages/core/test/calculators.test.ts`
 
 **Interfaces:**
-- Consumes: `roundHalfAwayFromZero`.
+- Consumes: `divRound` (`../assets/units`, internal), `futureValueMinor`.
 - Produces: `presentValueOfYearsMinor(annualTodayMinor, years, inflationBps, returnBps): number`; `RetirementInputs` gains `returnBeforeBps?: number` and `version?: 2`; `retirementTodayMinor(inputs): number`; `retirementTargetMinor` (unchanged values); `LifeCoverInputs`, `LifeCover`, `lifeCoverMinor(inputs)`.
 
 - [ ] **Step 1: Tests** (append to `calculators.test.ts`; the existing retirement tests stay and must still pass unchanged)
@@ -188,6 +194,16 @@ describe('the one real-rate annuity', () => {
   it('is nothing for no years', () => {
     expect(presentValueOfYearsMinor(120_000_000, 0, 350, 500)).toBe(0);
   });
+
+  it('refuses part of a year: the exact method is for whole years', () => {
+    expect(() => presentValueOfYearsMinor(120_000_000, 10.5, 350, 500)).toThrow(CalculatorError);
+  });
+
+  it('discounts at the real rate, not the nominal one or the plain difference', () => {
+    // Discounting at the nominal 5% gives 926.608.192; at the plain 1,5% difference, 1.106.662.146 — both wrong.
+    expect(presentValueOfYearsMinor(120_000_000, 10, 350, 500)).toBe(1_109_641_927);
+    expect(presentValueOfYearsMinor(3_000_000, 5, 350, 500)).toBe(14_369_257);
+  });
 });
 
 describe('retirement in today’s money', () => {
@@ -202,8 +218,12 @@ describe('retirement in today’s money', () => {
     expect(futureValueMinor(retirementTodayMinor(inputs), 350, 240)).toBe(4_120_008_061);
   });
 
-  it('keeps the figures it gave before', () => {
-    expect(retirementTargetMinor({ ...inputs, inflationBps: 500, returnInRetirementBps: 800 })).toBe(4_800_099_137);
+  it('is the figure the goal engine will show, to the minor unit', () => {
+    // The old one-step float said 4.800.099.137. The pot is now rounded once in today's money and inflated by
+    // futureValueMinor — exactly what goalPlan does to the stored stage — so page and goal agree: 4.800.099.136.
+    const other = { ...inputs, inflationBps: 500, returnInRetirementBps: 800 };
+    expect(retirementTargetMinor(other)).toBe(4_800_099_136);
+    expect(retirementTargetMinor(other)).toBe(futureValueMinor(retirementTodayMinor(other), 500, 240));
   });
 });
 
@@ -247,17 +267,25 @@ Import `futureValueMinor`, `lifeCoverMinor`, `presentValueOfYearsMinor`, `retire
 - [ ] **Step 3: Implement** in `calculators.ts`:
 
 ```ts
-/** The annuity of a yearly amount in today's money, at the real rate: what a pot must hold to pay it for `years`. */
-function presentValueOfYears(annualTodayMinor: number, years: number, inflationBps: number, returnBps: number): number {
-  if (years <= 0) return 0;
-  const real = (1 + returnBps / 10_000) / (1 + inflationBps / 10_000) - 1;
-  // Earning exactly what prices do: every year has to be there in full.
-  if (Math.abs(real) < 1e-12) return annualTodayMinor * years;
-  return (annualTodayMinor * (1 - (1 + real) ** -years)) / real;
-}
-
+/**
+ * The annuity of a yearly amount in today's money, at the real rate: what a pot must hold to pay it for `years`.
+ *
+ * Exact, not floating point. The real growth factor is R ÷ I (R = 10000 + return bps, I = 10000 + inflation bps), so
+ * Σ_{k=1}^{n} (I/R)^k = I·(Rⁿ − Iⁿ) ÷ (Rⁿ·(R − I)); multiplied by the amount and divided once, in BigInt, with
+ * `divRound` (half away from zero). Each year is drawn at its end, as the old retirementTargetMinor assumed.
+ */
 export function presentValueOfYearsMinor(annualTodayMinor: number, years: number, inflationBps: number, returnBps: number): number {
-  return roundHalfAwayFromZero(presentValueOfYears(annualTodayMinor, years, inflationBps, returnBps));
+  if (!Number.isSafeInteger(annualTodayMinor)) throw new CalculatorError('An amount is a whole number of minor units');
+  if (!Number.isInteger(years) || years < 0) throw new CalculatorError('Years are whole years, not below nothing');
+  if (!Number.isInteger(inflationBps) || !Number.isInteger(returnBps)) throw new CalculatorError('Rates are whole basis points');
+  if (years === 0) return 0;
+  const i = 10_000n + BigInt(inflationBps);
+  const r = 10_000n + BigInt(returnBps);
+  const amount = BigInt(annualTodayMinor);
+  // Earning exactly what prices do: every year has to be there in full.
+  if (i === r) return Number(amount * BigInt(years));
+  const n = BigInt(years);
+  return Number(divRound(amount * i * (r ** n - i ** n), r ** n * (r - i)));
 }
 
 export interface RetirementInputs {
@@ -284,14 +312,12 @@ export function retirementTodayMinor(inputs: RetirementInputs): number {
   return presentValueOfYearsMinor(inputs.annualSpendTodayMinor, inputs.yearsInRetirement, inputs.inflationBps, inputs.returnInRetirementBps);
 }
 
-/** The same pot in the money of the day you stop — for showing, never for storing in a stage. */
+/**
+ * The same pot in the money of the day you stop — for showing, never for storing in a stage. Inflated by the goal
+ * engine's own reader, so the Calculators page shows exactly what the goal will.
+ */
 export function retirementTargetMinor(inputs: RetirementInputs): number {
-  checkRetirement(inputs);
-  const inflation = 1 + inputs.inflationBps / 10_000;
-  return roundHalfAwayFromZero(
-    presentValueOfYears(inputs.annualSpendTodayMinor, inputs.yearsInRetirement, inputs.inflationBps, inputs.returnInRetirementBps) *
-      inflation ** inputs.yearsToRetirement,
-  );
+  return futureValueMinor(retirementTodayMinor(inputs), inputs.inflationBps, Math.round(inputs.yearsToRetirement * 12));
 }
 
 export interface LifeCoverInputs {
@@ -332,7 +358,7 @@ export function lifeCoverMinor(inputs: LifeCoverInputs): LifeCover {
 }
 ```
 
-Delete the old body of `retirementTargetMinor` (it is replaced above). Export the new names.
+Delete the old body of `retirementTargetMinor` (it is replaced above). Export the new names. The existing retirement tests keep their figures: `yearsToRetirement: 0` inflates by nothing, and `Math.round(2_400_000_000 * 1.05 ** 20)` is `futureValueMinor(2_400_000_000, 500, 240)` (both 6.367.914.492 — verified). `CalculatorsPage`/`Calculator` must pass whole years (`Math.round` of what was typed is not allowed — a fractional year shows the refusal).
 
 - [ ] **Step 4: Run** — test file, root gate. PASS.
 - [ ] **Step 5: Commit** — `feat(core): one real-rate annuity for retirement and life cover, and retirement in today's money`, trailer.
@@ -446,7 +472,7 @@ describe('a level’s years', () => {
       stages: stages.map((stage) => ({ id: stage.key, name: stage.name, targetMinor: stage.targetTodayMinor, targetMonths: null, dueOn: stage.dueOn, paidOn: null })),
     };
     // 88.822.021 for the once fee plus 320.358.885 for six yearly fees. Pricing all six at the first year's
-    // price, as the workbook does, gives 325.680.743.
+    // price, as the workbook does, gives 325.680.745.
     expect(goalPlan(goal, [], 0, 0, '2026-01-01').totalTargetMinor).toBe(409_180_906);
   });
 
@@ -824,7 +850,7 @@ function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goal
     const inputs = raw as EmergencyInputs;
     // …Part 1's checks on months, household, income and base, unchanged…
     return {
-      inputs: { ...inputs, version: 2 } as EmergencyInputs,
+      inputs: { ...inputs, version: 2 },
       stages: [{ name: goalName, targetMinor: null, targetMonths: Math.round(inputs.months), dueOn: yearsFrom(today, 2), key: 'emergency', returnBps: null }],
       growthBps: 0,
       returnBps: null,
@@ -858,7 +884,7 @@ function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goal
  * its stages — keeping each stage that was already there, and its paid mark, by the key the working gave it — the
  * stages' own returns, and the inputs. Name, rank, standing amount, set-asides and tags are left alone.
  */
-async function writeCalculatorTx(tx: Db, ws: WorkspaceContext, goal: typeof goalsTable.$inferSelect, kind: CalculatorKind, derived: Derived): Promise<void> {
+async function writeCalculatorTx(tx: Db, ws: WorkspaceContext, goal: typeof goalsTable.$inferSelect, kind: CalculatorKind, derived: Derived, computedAt = new Date().toISOString()): Promise<void> {
   const current = await tx.select().from(goalStages).where(and(eq(goalStages.goalId, goal.id), eq(goalStages.workspaceId, ws.workspaceId))).orderBy(asc(goalStages.dueOn), asc(goalStages.sort));
   const withTerms = await healthTablesExist(tx);
   const keyOf = new Map<string, string>(
@@ -890,7 +916,7 @@ async function writeCalculatorTx(tx: Db, ws: WorkspaceContext, goal: typeof goal
     }
   }
 
-  const row = { goalId: goal.id, workspaceId: ws.workspaceId, kind, inputsJson: JSON.stringify(derived.inputs), computedMinor: derived.computedMinor, computedAt: new Date().toISOString() };
+  const row = { goalId: goal.id, workspaceId: ws.workspaceId, kind, inputsJson: JSON.stringify(derived.inputs), computedMinor: derived.computedMinor, computedAt };
   const { goalId: _goalId, workspaceId: _workspaceId, ...changes } = row;
   await tx.insert(goalCalculators).values(row).onConflictDoUpdate({ target: goalCalculators.goalId, set: changes });
 }
@@ -925,9 +951,9 @@ export async function createGoalFromCalculator(database: Database, ws: Workspace
 }
 ```
 
-Delete the old `stagesFor`. `CreateGoalFromCalculatorInput` drops `growthBps` (the working decides it). Import `asc`, `goalStages`, `type Db`. `getGoalCalculator`/`listGoalCalculators` are unchanged.
+`EmergencyInputs` (Part 1) gains `version?: 2`, so the stamped inputs need no cast. Delete the old `stagesFor`. `CreateGoalFromCalculatorInput` drops `growthBps` (the working decides it). Import `asc`, `goalStages`, `type Db`. `getGoalCalculator`/`listGoalCalculators` are unchanged.
 
-- [ ] **Step 4: Run** — `goal-calculators.test.ts`, `goal-funding.test.ts`, `goals.test.ts`, root gate, `npx playwright test e2e/calculators.spec.ts e2e/goals.spec.ts`. PASS.
+- [ ] **Step 4: Run** — `goal-calculators.test.ts`, `goal-funding.test.ts`, `goals.test.ts`, root gate, `npx playwright test -c playwright.hr.config.ts '(^|/)calculators\.spec\.ts$' '(^|/)goals\.spec\.ts$'`. PASS.
 - [ ] **Step 5: Commit** — `fix(goals): a worked-out goal is stored in today's money and inflated once, and keeps its stages when re-worked`, trailer.
 
 ---
@@ -939,7 +965,7 @@ Delete the old `stagesFor`. `CreateGoalFromCalculatorInput` drops `growthBps` (t
 - Create: `packages/db/test/calculator-upgrade.test.ts`
 
 **Interfaces:**
-- Produces: `upgradeCalculatorGoals(database, ws): Promise<string[]>` — ids of goals whose figures changed.
+- Produces: `upgradeCalculatorGoals(database, ws, today: string): Promise<string[]>` — ids of goals whose figures changed: v1 workings re-stated in today's money (dated from their own `computed_at`), and (**user decision Part 2 Q1**) v2 education workings whose un-typed level returns now fall in another band for the months left from `today`.
 
 - [ ] **Step 1: Tests**
 
@@ -947,7 +973,7 @@ Delete the old `stagesFor`. `CreateGoalFromCalculatorInput` drops `growthBps` (t
 // packages/db/test/calculator-upgrade.test.ts
 import { describe, expect, it } from 'vitest';
 import { goalCalculators } from '../src/schema-budget';
-import { getGoalCalculator, listGoals, saveGoal, setStagePaid, upgradeCalculatorGoals } from '../src/index';
+import { getGoalCalculator, listGoals, saveGoal, saveGoalCalculator, setStagePaid, upgradeCalculatorGoals } from '../src/index';
 import { setupDb } from './helpers';
 
 /** A goal as the old calculator left it: stages already inflated, growth still applied on top. */
@@ -970,15 +996,20 @@ describe('upgrading an old working', () => {
     const before = (await listGoals(database, ws))[0]!.stages;
     await setStagePaid(database, ws, before[0]!.id, '2026-09-14');
 
-    expect(await upgradeCalculatorGoals(database, ws)).toEqual([goalId]);
+    expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([goalId]);
     const after = (await listGoals(database, ws))[0]!;
     expect(after.growthBps).toBe(1000);
     expect(after.stages.map((stage) => stage.targetMinor)).toEqual([100_000_000, 100_000_000, 100_000_000, 100_000_000]);
     expect(after.stages.map((stage) => stage.id)).toEqual(before.map((stage) => stage.id));
     expect(after.stages[0]!.paidOn).toBe('2026-09-14');
+    // A v1 course becomes calendar years, so its years fall on 1 January (Q7) — the only date that moves, and
+    // it moves because v2 cannot say "13 September" without a birthday. Needs-human item in the ledger.
+    expect(after.stages.map((stage) => stage.dueOn)).toEqual(['2036-01-01', '2037-01-01', '2038-01-01', '2039-01-01']);
+    // Its working keeps the day it was first worked out.
+    expect((await getGoalCalculator(database, ws, goalId))!.computedAt).toBe('2026-09-13T08:00:00.000Z');
     expect((await getGoalCalculator(database, ws, goalId))!.inputs).toMatchObject({ version: 2 });
 
-    expect(await upgradeCalculatorGoals(database, ws)).toEqual([]);
+    expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([]);
   });
 
   it('keeps a retirement goal’s own return as the return while saving', async () => {
@@ -991,7 +1022,7 @@ describe('upgrading an old working', () => {
       goalId, workspaceId: ws.workspaceId, kind: 'retirement', computedMinor: 4_120_008_061, computedAt: '2026-09-21T00:00:00.000Z',
       inputsJson: JSON.stringify({ annualSpendTodayMinor: 120_000_000, yearsToRetirement: 20, yearsInRetirement: 20, inflationBps: 350, returnInRetirementBps: 500 }),
     });
-    await upgradeCalculatorGoals(database, ws);
+    await upgradeCalculatorGoals(database, ws, '2026-09-21');
     expect((await listGoals(database, ws))[0]).toMatchObject({ growthBps: 350, returnBps: 900, stages: [{ targetMinor: 2_070_575_495, dueOn: '2046-09-21' }] });
   });
 
@@ -1002,8 +1033,32 @@ describe('upgrading an old working', () => {
       stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2028-09-13' }],
     });
     await database.db.insert(goalCalculators).values({ goalId, workspaceId: ws.workspaceId, kind: 'emergency', computedMinor: 0, computedAt: '2026-09-13T00:00:00.000Z', inputsJson: JSON.stringify({ months: 6 }) });
-    expect(await upgradeCalculatorGoals(database, ws)).toEqual([]);
+    expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([]);
     expect((await getGoalCalculator(database, ws, goalId))!.inputs).toMatchObject({ version: 2 });
+  });
+
+  it('re-reads the band for a level whose return was never typed, and leaves a typed one alone (Part 2 Q1)', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await saveGoal(database, ws, {
+      name: 'Aisha', kind: 'education', growthBps: 1000, returnBps: 800,
+      stages: [{ name: 'x', targetMinor: 1, targetMonths: null, dueOn: '2032-01-01' }],
+    });
+    const fee = [{ id: 'a', name: 'Academic', amountTodayMinor: 20_000_000, charged: 'yearly' as const }];
+    await saveGoalCalculator(database, ws, {
+      goalId, kind: 'education', today: '2026-01-01',
+      inputs: { version: 2, birthday: null, feeInflationBps: 1000, levels: [
+        { id: 'primary', name: 'Primary', startAge: null, untilAge: null, startYear: 2032, untilYear: 2033, returnBps: null, fees: fee },
+        { id: 'middle', name: 'Middle', startAge: null, untilAge: null, startYear: 2032, untilYear: 2033, returnBps: 450, fees: fee },
+      ] },
+    });
+    const returns = async () => Object.fromEntries((await listGoals(database, ws))[0]!.stages.map((stage) => [stage.name, stage.returnBps]));
+    expect(await returns()).toEqual({ Primary: 800, Middle: 450 }); // 72 months away: the > 5 years band
+
+    // Two years on, 48 months away: 3–5 years, 6%. The typed 4,5% stays.
+    expect(await upgradeCalculatorGoals(database, ws, '2028-01-01')).toEqual([goalId]);
+    expect(await returns()).toEqual({ Primary: 600, Middle: 450 });
+    // Same band on the next open: nothing to do.
+    expect(await upgradeCalculatorGoals(database, ws, '2028-02-01')).toEqual([]);
   });
 
   it('never touches a goal whose target was typed by hand', async () => {
@@ -1012,7 +1067,7 @@ describe('upgrading an old working', () => {
     const stages = (await listGoals(database, ws))[0]!.stages;
     // Typing by hand breaks the link: saveGoal without `derived` removes the calculator row.
     await saveGoal(database, ws, { id: goalId, name: 'University', kind: 'education', growthBps: 1000, returnBps: 1000, stages: stages.map((stage) => ({ ...stage, targetMinor: 300_000_000 })) });
-    expect(await upgradeCalculatorGoals(database, ws)).toEqual([]);
+    expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([]);
     expect((await listGoals(database, ws))[0]!.stages.every((stage) => stage.targetMinor === 300_000_000)).toBe(true);
   });
 });
@@ -1023,38 +1078,50 @@ describe('upgrading an old working', () => {
 - [ ] **Step 3: Implement**
 
 ```ts
+/**
+ * Same growth, return, stages and stage returns. Stages are compared as a set of figures, never by position: the
+ * goal lists them by date and sort, the working by level, and two levels can start on the same day.
+ */
+const stageFigure = (stage: { targetMinor: number | null; targetMonths: number | null; dueOn: string; returnBps?: number | null }) =>
+  `${stage.dueOn}|${stage.targetMinor}|${stage.targetMonths}|${stage.returnBps ?? null}`;
 const sameFigures = (goal: GoalRow, derived: Derived) =>
   goal.growthBps === derived.growthBps &&
   (derived.returnBps === null || goal.returnBps === derived.returnBps) &&
-  goal.stages.length === derived.stages.length &&
-  goal.stages.every((stage, index) => {
-    const next = derived.stages[index]!;
-    return stage.targetMinor === next.targetMinor && stage.targetMonths === next.targetMonths && stage.dueOn === next.dueOn;
-  });
+  JSON.stringify(goal.stages.map(stageFigure).sort()) === JSON.stringify(derived.stages.map(stageFigure).sort());
 
 /**
  * Works every goal worked out before today's-money stages out again — dated from its own computed_at, so no due date
  * moves — silently, and only when the figure changes. A goal typed by hand has no calculator row, so is never visited.
  * Returns the goals whose figures changed.
  */
-export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceContext): Promise<string[]> {
-  const rows = (await listGoalCalculators(database, ws)).filter((row) => (row.inputs as { version?: number }).version !== 2);
+export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceContext, today: string): Promise<string[]> {
+  const isV2 = (row: GoalCalculatorRow) => (row.inputs as { version?: number }).version === 2;
+  // v1 workings, dated from their own day; and (Part 2 Q1) v2 education workings, re-read from today so a level whose
+  // return was never typed follows its band as its start draws near. Its dates are years or ages, so `today` moves
+  // only those returns. Retirement and emergency v2 are left alone: their dates are relative to the day worked out.
+  const rows = (await listGoalCalculators(database, ws)).filter((row) => !isV2(row) || row.kind === 'education');
   const goals = await listGoals(database, ws, { includeArchived: true });
   const changed: string[] = [];
   for (const row of rows) {
     const goal = goals.find((candidate) => candidate.id === row.goalId);
     if (!goal) continue;
-    const today = row.computedAt.slice(0, 10);
+    const workedOn = isV2(row) ? today : row.computedAt.slice(0, 10);
     // A retirement worked out before kept the goal's own return; it stays the return while saving.
     const inputs = row.kind === 'retirement' ? { ...(row.inputs as RetirementInputs), returnBeforeBps: goal.returnBps } : row.inputs;
-    const derived = derive(row.kind, inputs, today, goal.name);
+    let derived: Derived;
+    try {
+      derived = derive(row.kind, inputs, workedOn, goal.name);
+    } catch {
+      continue; // A working the rules now refuse is left exactly as it is, not half-rewritten.
+    }
     await database.transaction(async (tx) => {
       if (sameFigures(goal, derived)) {
-        await tx.update(goalCalculators).set({ inputsJson: JSON.stringify(derived.inputs) }).where(eq(goalCalculators.goalId, goal.id));
+        if (!isV2(row)) await tx.update(goalCalculators).set({ inputsJson: JSON.stringify(derived.inputs) }).where(eq(goalCalculators.goalId, goal.id));
         return;
       }
       const [goalRow] = await tx.select().from(goalsTable).where(eq(goalsTable.id, goal.id));
-      await writeCalculatorTx(tx, ws, goalRow!, row.kind, derived);
+      // Keeps its computed_at: the working is re-stated, not redone on a new day.
+      await writeCalculatorTx(tx, ws, goalRow!, row.kind, derived, row.computedAt);
       changed.push(goal.id);
     });
   }
@@ -1067,7 +1134,7 @@ Import `listGoals`, `type GoalRow` from `./goals`. In `apps/web/src/db/bootstrap
 ```ts
   // Goals worked out before stages were kept in today's money are stated again once; a failure must not stop the app.
   try {
-    await upgradeCalculatorGoals(database, ws);
+    await upgradeCalculatorGoals(database, ws, isoDate());
   } catch (error) {
     console.warn('Upgrading worked-out goals failed', error);
   }
@@ -1140,7 +1207,7 @@ In `GoalForm.tsx`: add `const [returnTyped, setReturnTyped] = useState(!!goal);`
 
 `pickKind` sets `setReturnTyped(false)` along with the template's figures. The return field's hint becomes `bandHint(returnBandFor(monthsUntil(today, stages[0]?.dueOn ?? today)))` for kinds other than emergency and retirement, and today's hint for those two.
 
-- [ ] **Step 4: Run** — web vitest, root gate, `npx playwright test e2e/goals.spec.ts e2e/goal-classes.spec.ts`. PASS.
+- [ ] **Step 4: Run** — web vitest, root gate, `npx playwright test -c playwright.hr.config.ts '(^|/)goals\.spec\.ts$' '(^|/)goal-classes\.spec\.ts$'`. PASS.
 - [ ] **Step 5: Commit** — `feat(goals): a new goal's return follows how far away it is`, trailer.
 
 ---
@@ -1421,11 +1488,11 @@ test('two levels, a once fee and a yearly one, and a level added later raises th
 
 **Files:**
 - Create: `apps/web/src/features/calculators/life-cover-form.ts`, `apps/web/src/features/calculators/life-cover-form.test.ts`, `apps/web/e2e/life-cover.spec.ts`
-- Modify: `apps/web/src/features/calculators/CalculatorsPage.tsx`, `apps/web/e2e/calculators.spec.ts`, `packages/core/src/assets/health.ts`, `apps/web/src/features/networth/OverviewPage.tsx`, `packages/core/src/budget/calculators.ts` (delete `educationStages`), `packages/core/test/calculators.test.ts` (delete its tests), `packages/core/src/index.ts`
+- Modify: `packages/db/src/repos/goal-calculators.ts` (life-cover inputs remembered), `packages/db/test/goal-calculators.test.ts`, `apps/web/src/features/calculators/CalculatorsPage.tsx`, `apps/web/e2e/calculators.spec.ts`, `packages/core/src/assets/health.ts`, `apps/web/src/features/networth/OverviewPage.tsx`, `packages/core/src/budget/calculators.ts` (delete `educationStages`), `packages/core/test/calculators.test.ts` (delete its tests), `packages/core/src/index.ts`
 
 **Interfaces:**
 - Consumes: `lifeCoverMinor`, `goalPlan`, `educationPlanStages`, `retirementTargetMinor`, `savingPlanFor`, `balanceSheet`, `useSheet`, `useGoalPlans`, `EducationEditor`, `DRAWDOWN_RETURN_BPS`, `DEFAULT_INFLATION_BPS`.
-- Produces: `sheetTotals(sheet: BalanceSheet): SheetTotals` in core; `lifeCoverPrefill(totals, plans)`; `lifeCoverInputsOf(draft, prefill, currency)`.
+- Produces: `sheetTotals(sheet: BalanceSheet): SheetTotals` in core; `lifeCoverPrefill(totals, plans)`; `lifeCoverInputsOf(draft, prefill, currency)`; `LifeCoverDraft`; (db) `LIFE_COVER_ROW`, `saveLifeCoverDraft(database, ws, draft)`, `getLifeCoverDraft(database, ws): Promise<LifeCoverSaved | null>`; `listGoalCalculators`/`getGoalCalculator`/`upgradeCalculatorGoals` skip that row.
 
 - [ ] **Step 1: `sheetTotals` — one reader for both pages**
 
@@ -1453,6 +1520,7 @@ export function sheetTotals(sheet: BalanceSheet): SheetTotals {
 ```ts
 // apps/web/src/features/calculators/life-cover-form.test.ts
 import { describe, expect, it } from 'vitest';
+import { lifeCoverMinor } from '@expanses/core';
 import { lifeCoverInputsOf, lifeCoverPrefill } from './life-cover-form';
 
 const totals = { liquidMinor: 200_000_000, investMinor: 0, assetsMinor: 900_000_000, liabilitiesMinor: 300_000_000, netWorthMinor: 600_000_000 };
@@ -1477,6 +1545,17 @@ describe('life cover prefills', () => {
       annualNeedTodayMinor: 120_000_000, yearsOfSupport: 10, inflationBps: 350, returnBps: 500,
       debtsMinor: 300_000_000, educationMinor: 0, finalExpensesMinor: 25_000_000, liquidAssetsMinor: 200_000_000, inForceCoverMinor: 500_000_000,
     });
+  });
+
+  it('reads a dollar workspace in cents', () => {
+    // parseMajor in USD: "1.200,50" is 120.050 cents; an IDR-style read would make it 120.050 dollars.
+    const inputs = lifeCoverInputsOf(
+      { annualNeed: '30.000,00', years: '5', inflation: '3,5', returnPercent: '5', debts: '1.200,50', education: undefined, finalExpenses: '', liquidAssets: undefined, inForce: '' },
+      { debtsMinor: 0, liquidAssetsMinor: 0, educationMinor: 0 },
+      'USD',
+    );
+    expect(inputs).toMatchObject({ annualNeedTodayMinor: 3_000_000, debtsMinor: 120_050 });
+    expect(lifeCoverMinor(inputs).coverMinor).toBe(14_369_257 + 120_050);
   });
 });
 ```
@@ -1524,6 +1603,64 @@ export function lifeCoverInputsOf(draft: LifeCoverDraft, prefill: LifeCoverPrefi
 }
 ```
 
+- [ ] **Step 3b: Remember the life-cover figures (user decision Part 2 Q2) — no schema change**
+
+Test first, in `goal-calculators.test.ts`:
+
+```ts
+describe('the life-cover figures', () => {
+  it('are remembered per workspace as typed, and no goal reader ever sees them', async () => {
+    const { database, ws } = await setupDb();
+    expect(await getLifeCoverDraft(database, ws)).toBeNull();
+    const draft = { annualNeed: '120.000.000', years: '10', inflation: '3,5', returnPercent: '5', finalExpenses: '', inForce: '500.000.000', debts: undefined, education: '0', liquidAssets: undefined };
+    await saveLifeCoverDraft(database, ws, draft);
+    await saveLifeCoverDraft(database, ws, { ...draft, years: '15' });
+    // Untouched prefilled boxes stay untouched (undefined), so they keep following the balance sheet.
+    expect(await getLifeCoverDraft(database, ws)).toEqual({ ...draft, years: '15', debts: undefined, liquidAssets: undefined });
+    expect(await listGoalCalculators(database, ws)).toEqual([]);
+    expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([]);
+  });
+});
+```
+
+> **Superseded by the ruling (2026-09-21):** the sketch below was not built. Life-cover inputs are stored in 0053's `calculator_inputs` table through `repos/calculator-inputs.ts`, not a reserved `goal_calculators` row.
+
+In `goal-calculators.ts`:
+
+```ts
+/**
+ * The Calculators page's life-cover figures, kept in goal_calculators with no schema change (0017's kind CHECK allows
+ * only the three goal calculators, and goal_id is the key): one reserved row per workspace. `kind` says retirement only
+ * because the CHECK demands one of three; `calculator: 'life_cover'` in the JSON is what the row is, and every goal
+ * reader skips it by its id.
+ */
+export const LIFE_COVER_ROW = 'life-cover:';
+const lifeCoverId = (ws: WorkspaceContext) => `${LIFE_COVER_ROW}${ws.workspaceId}`;
+const isLifeCoverRow = (goalId: string) => goalId.startsWith(LIFE_COVER_ROW);
+
+/** What was typed, as typed; a prefilled box never touched is absent, so it keeps following the balance sheet. */
+export interface LifeCoverSaved {
+  annualNeed: string; years: string; inflation: string; returnPercent: string; finalExpenses: string; inForce: string;
+  debts: string | undefined; education: string | undefined; liquidAssets: string | undefined;
+}
+
+export async function saveLifeCoverDraft(database: Database, ws: WorkspaceContext, draft: LifeCoverSaved): Promise<void> {
+  const row = { goalId: lifeCoverId(ws), workspaceId: ws.workspaceId, kind: 'retirement' as const, inputsJson: JSON.stringify({ calculator: 'life_cover', version: 2, draft }), computedMinor: 0, computedAt: new Date().toISOString() };
+  const { goalId: _goalId, workspaceId: _workspaceId, ...changes } = row;
+  await database.db.insert(goalCalculators).values(row).onConflictDoUpdate({ target: goalCalculators.goalId, set: changes });
+}
+
+export async function getLifeCoverDraft(database: Database, ws: WorkspaceContext): Promise<LifeCoverSaved | null> {
+  const [row] = await database.db.select().from(goalCalculators).where(and(eq(goalCalculators.goalId, lifeCoverId(ws)), eq(goalCalculators.workspaceId, ws.workspaceId)));
+  if (!row) return null;
+  const { draft } = JSON.parse(row.inputsJson) as { draft: LifeCoverSaved };
+  // JSON drops undefined keys; put them back so "never touched" survives the round trip.
+  return { ...draft, debts: draft.debts ?? undefined, education: draft.education ?? undefined, liquidAssets: draft.liquidAssets ?? undefined };
+}
+```
+
+`listGoalCalculators` filters `!isLifeCoverRow(row.goalId)`; `getGoalCalculator` returns null for such an id. (`upgradeCalculatorGoals` reads through `listGoalCalculators`, so it never sees the row.) `LifeCoverDraft` in `life-cover-form.ts` is `LifeCoverSaved` re-exported, one shape.
+
 - [ ] **Step 4: The page**
 
 - **Education** section: `EducationEditor` with a draft opened by `addLevel(educationDraftFrom(undefined, ws.baseCurrency))`. The answer runs the existing readers: `educationPlanStages(inputs, today)` → a synthetic `Goal` (growth = `inputs.feeInflationBps`, return = first stage's return, stages with `returnBps`) → `goalPlan(goal, [], 0, 0, today)`; "You need" is `plan.totalTargetMinor`, "Save each month" is `plan.requiredMonthlyMinor`. Save passes `educationInputsOf(draft, ws.baseCurrency)`.
@@ -1541,6 +1678,15 @@ export function lifeCoverInputsOf(draft: LifeCoverDraft, prefill: LifeCoverPrefi
     annualNeed: '', years: '10', inflation: String(DEFAULT_INFLATION_BPS / 100), returnPercent: String(DRAWDOWN_RETURN_BPS / 100),
     finalExpenses: '', inForce: '', debts: undefined, education: undefined, liquidAssets: undefined,
   });
+  // Part 2 Q2: the figures come back as they were left. Loaded once; typing after that is the user's.
+  const remembered = useQuery({ queryKey: ['life-cover', ws.workspaceId], queryFn: () => getLifeCoverDraft(database, ws) });
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (!loaded && remembered.isSuccess) {
+      if (remembered.data) setCover(remembered.data);
+      setLoaded(true);
+    }
+  }, [loaded, remembered.isSuccess, remembered.data]);
   const shown = (typed: string | undefined, prefilled: number) => typed ?? minorToMajorString(prefilled, ws.baseCurrency);
   let result: LifeCover | null = null;
   try {
@@ -1563,6 +1709,9 @@ export function lifeCoverInputsOf(draft: LifeCoverDraft, prefill: LifeCoverPrefi
         <TextRow label={`Final expenses (${ws.baseCurrency})`} value={cover.finalExpenses} onChange={(e) => setCover({ ...cover, finalExpenses: e.target.value })} inputMode="numeric" />
         <TextRow label={`Liquid assets (${ws.baseCurrency})`} hint="From your balance sheet." value={shown(cover.liquidAssets, prefill.liquidAssetsMinor)} onChange={(e) => setCover({ ...cover, liquidAssets: e.target.value })} inputMode="numeric" />
         <TextRow label={`Cover already in force (${ws.baseCurrency})`} hint="Policies you hold, employer group cover included." value={cover.inForce} onChange={(e) => setCover({ ...cover, inForce: e.target.value })} inputMode="numeric" />
+      </InsetGroup>
+      <InsetGroup>
+        <InsetRow title="Keep these figures" chevron={false} onClick={() => void saveLifeCoverDraft(database, ws, cover).then(() => setSaved('Life cover figures'))} />
       </InsetGroup>
       {result && (
         <Panel wide testId="answer-life-cover">
@@ -1607,12 +1756,18 @@ test('life cover adds every need once and takes off what is already there', asyn
   await type('Liquid assets (IDR)', '2000000000');
   await expect(page.getByTestId('answer-life-cover')).toContainText('No further cover needed');
   await expect(page.getByTestId('answer-life-cover')).toContainText('915.358.073');
+
+  // Part 2 Q2: kept, and back after a reload.
+  await page.getByRole('button', { name: 'Keep these figures' }).click();
+  await page.reload();
+  await expect(page.getByLabel('Liquid assets (IDR)', { exact: true })).toHaveValue('2000000000');
+  await expect(page.getByTestId('answer-life-cover')).toContainText('915.358.073');
 });
 ```
 
 In `calculators.spec.ts`, the education tests drive the editor (Add a level, Starts in year, Until year, Academic today) instead of "Fee a year today"; add: the retirement answer's monthly figure with Return while saving 10% differs from the same inputs with it set to 5% (type both, compare the two figures) — the discriminator for the fixed defect.
 
-- [ ] **Step 6: Run** — core and web vitest, root gate, `npx playwright test e2e/life-cover.spec.ts e2e/calculators.spec.ts e2e/net-worth.spec.ts e2e/health-ratios.spec.ts`. PASS.
+- [ ] **Step 6: Run** — core and web vitest, root gate, `npx playwright test -c playwright.hr.config.ts '(^|/)life-cover\.spec\.ts$' '(^|/)calculators\.spec\.ts$' '(^|/)net-worth\.spec\.ts$' '(^|/)health-ratios\.spec\.ts$'`. PASS.
 - [ ] **Step 7: Commit** — `feat(calculators): life cover by capital needs, education by levels, and retirement saved at its saving return`, trailer.
 
 ---
@@ -1647,7 +1802,7 @@ Figures typed key by key (`pressSequentially(…, { delay: 30 })`), every assert
 
 ### Task 12: Final gate and the spec walk
 
-- [ ] **Step 1:** Root `npm run typecheck && npm test && npm run build`; `cd apps/web && npx playwright test --workers=2`.
+- [ ] **Step 1:** Root `npm run typecheck && npm test && npm run build`; `cd apps/web && npx playwright test -c playwright.hr.config.ts --workers=2`.
 - [ ] **Step 2:** `grep -rn "1800\|0\.18\|18%" packages apps/web/src` — nothing. `grep -rn "educationStages\|stagesFor" packages apps/web/src` — nothing. `grep -rn "Math.min(" packages/core/src/budget/calculators.ts` — nothing (no lowest-of-methods).
 - [ ] **Step 3:** Walk the table below; every row on screen and under a test.
 - [ ] **Step 4:** Commit fix-ups with the trailer. Do not merge or push.

@@ -1,4 +1,4 @@
-import { convertMinor, isoDate, isSupportedCurrency, uuidv7 } from '@expanses/core';
+import { convertMinor, isoDate, isSupportedCurrency, perMonthMinor, uuidv7 } from '@expanses/core';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { inBook, type WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
@@ -7,7 +7,9 @@ import { bookBudgetSettings, bookCategories, bookIncomeOverrides, books, bookTra
 import { budgetIncomeOverrides, budgetOverrides, budgets, budgetSettings } from '../schema-budget';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { categoryMccs } from '../schema-points';
+import { budgetFrequencies, categoryNeeds } from '../schema-health';
 import { findRate } from './fx';
+import { healthTablesExist } from './health-tables';
 // Making a workspace is where three things meet: the book itself, the categories it starts with, and the card
 // rules that name them. The other two live where they belong and are called from here.
 import { replanCatalogProgramsTx } from './catalog';
@@ -222,6 +224,17 @@ async function copyCategoriesTx(tx: Db, ws: WorkspaceContext, fromBookId: string
   for (const row of typed) {
     await tx.insert(categoryMccs).values({ categoryId: newIds.get(row.categoryId)!, workspaceId: ws.workspaceId, mcc: row.mcc });
   }
+
+  // Essential or lifestyle is, like the MCC, a property of what the category means — so it travels with the copy.
+  if (await healthTablesExist(tx)) {
+    const marks = await tx
+      .select({ categoryId: categoryNeeds.categoryAccountId, need: categoryNeeds.need })
+      .from(categoryNeeds)
+      .where(and(eq(categoryNeeds.workspaceId, ws.workspaceId), inArray(categoryNeeds.categoryAccountId, [...sourceIds])));
+    for (const row of marks) {
+      await tx.insert(categoryNeeds).values({ categoryAccountId: newIds.get(row.categoryId)!, workspaceId: ws.workspaceId, need: row.need });
+    }
+  }
 }
 
 export async function renameBook(database: Database, ws: WorkspaceContext, bookId: string, name: string): Promise<void> {
@@ -289,12 +302,41 @@ export async function setBookBaseCurrency(database: Database, ws: WorkspaceConte
 
     const caps = ids.length
       ? await tx
-          .select({ id: budgets.id, amountMinor: budgets.amountMinor })
+          .select({ id: budgets.id, amountMinor: budgets.amountMinor, categoryAccountId: budgets.categoryAccountId })
           .from(budgets)
           .where(and(eq(budgets.workspaceId, ws.workspaceId), inArray(budgets.categoryAccountId, ids)))
       : [];
+    // A cap typed in another unit keeps that unit: the amount as typed is converted once, and the month is worked out
+    // from it — never the month and the typed figure each rounded on their own, which could disagree by a unit.
+    const units =
+      caps.length && (await healthTablesExist(tx))
+        ? await tx
+            .select({ budgetId: budgetFrequencies.budgetId, frequency: budgetFrequencies.frequency, amountAsSetMinor: budgetFrequencies.amountAsSetMinor })
+            .from(budgetFrequencies)
+            .where(inArray(budgetFrequencies.budgetId, caps.map((cap) => cap.id)))
+        : [];
+    const unitOf = new Map(units.map((row) => [row.budgetId, row]));
     for (const cap of caps) {
-      await tx.update(budgets).set({ amountMinor: into(cap.amountMinor), updatedAt: now }).where(eq(budgets.id, cap.id));
+      const unit = unitOf.get(cap.id);
+      const asSet = unit ? into(unit.amountAsSetMinor) : 0;
+      if (unit && asSet > 0) {
+        await tx.update(budgetFrequencies).set({ amountAsSetMinor: asSet }).where(eq(budgetFrequencies.budgetId, cap.id));
+      } else if (unit) {
+        // Too small to exist in the new money as typed (the CHECK refuses 0): the line becomes monthly rather than
+        // failing the whole change.
+        await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, cap.id));
+      }
+      const monthlyMinor = unit && asSet > 0 ? perMonthMinor(asSet, unit.frequency) : into(cap.amountMinor);
+      if (monthlyMinor <= 0) {
+        // A cap of nothing a month cannot be stored (budgets.amount_minor > 0), and dropping it silently would lose
+        // the owner's plan: the change is refused, naming the line, and the whole transaction goes back.
+        const [category] = await tx.select({ name: accounts.name }).from(accounts).where(eq(accounts.id, cap.categoryAccountId));
+        throw new BookError(
+          'CAP_TOO_SMALL',
+          `The budget for ${category?.name ?? 'a category'} comes to nothing a month in ${currency}. Raise it or remove it, then change the currency.`,
+        );
+      }
+      await tx.update(budgets).set({ amountMinor: monthlyMinor, updatedAt: now }).where(eq(budgets.id, cap.id));
       // A month override is a cap for one month; it is the same figure in the same money.
       const overrides = await tx.select({ id: budgetOverrides.id, amountMinor: budgetOverrides.amountMinor }).from(budgetOverrides).where(eq(budgetOverrides.budgetId, cap.id));
       for (const override of overrides) {

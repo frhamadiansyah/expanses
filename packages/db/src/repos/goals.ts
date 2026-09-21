@@ -1,12 +1,14 @@
 import { type Goal, type GoalKind, type GoalStage, uuidv7 } from '@expanses/core';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { goalCalculators } from '../schema-budget';
 import { goalEarmarks, goalStages, goals } from '../schema-goals';
+import { goalStageTerms } from '../schema-health';
 import { SPENDABLE_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
+import { healthTablesExist } from './health-tables';
 
 export class GoalDbError extends Error {
   constructor(message: string) {
@@ -65,6 +67,14 @@ export async function listGoals(database: Database, ws: WorkspaceContext, opts: 
       ),
     )
     .orderBy(asc(goalStages.dueOn), asc(goalStages.sort));
+  // A stage's own return, where a calculator gave it one; without 0053 no stage has one.
+  const terms = (await healthTablesExist(database.db))
+    ? await database.db
+        .select({ stageId: goalStageTerms.stageId, returnBps: goalStageTerms.returnBps })
+        .from(goalStageTerms)
+        .where(eq(goalStageTerms.workspaceId, ws.workspaceId))
+    : [];
+  const returnOf = new Map(terms.map((row) => [row.stageId, row.returnBps]));
   return wanted.map((row) => ({
     id: row.id,
     workspaceId: row.workspaceId,
@@ -87,6 +97,7 @@ export async function listGoals(database: Database, ws: WorkspaceContext, opts: 
           targetMonths: stage.targetMonths,
           dueOn: stage.dueOn,
           paidOn: stage.paidOn,
+          returnBps: returnOf.get(stage.id) ?? null,
         }),
       ),
   }));
@@ -107,59 +118,93 @@ function checkStages(stages: SaveGoalStageInput[]): void {
 
 /** Adds or updates a goal with its stages. Stage ids passed back are kept, so tags and paid marks survive. */
 export async function saveGoal(database: Database, ws: WorkspaceContext, input: SaveGoalInput): Promise<string> {
+  checkGoal(input);
+  return (await database.transaction((tx) => saveGoalTx(tx, ws, input))).goalId;
+}
+
+function checkGoal(input: SaveGoalInput): void {
   if (!input.name.trim()) throw new GoalDbError('Give this goal a name');
   if (input.growthBps < 0 || input.returnBps < 0) throw new GoalDbError('Growth and return cannot be negative');
   checkStages(input.stages);
+}
 
+/** The body of `saveGoal`, for a caller already inside a transaction. Stage ids come back in the order given. */
+export async function saveGoalTx(tx: Db, ws: WorkspaceContext, input: SaveGoalInput): Promise<{ goalId: string; stageIds: string[] }> {
+  checkGoal(input);
   const id = input.id ?? uuidv7();
-  return database.transaction(async (tx) => {
-    const existing = await tx.select().from(goals).where(and(eq(goals.id, id), eq(goals.workspaceId, ws.workspaceId)));
-    const rank = input.rank ?? existing[0]?.rank ?? (await nextRank(tx, ws));
-    const row = {
-      id,
+  const existing = await tx.select().from(goals).where(and(eq(goals.id, id), eq(goals.workspaceId, ws.workspaceId)));
+  const rank = input.rank ?? existing[0]?.rank ?? (await nextRank(tx, ws));
+  const row = {
+    id,
+    workspaceId: ws.workspaceId,
+    name: input.name.trim(),
+    kind: input.kind,
+    rank,
+    growthBps: input.growthBps,
+    returnBps: input.returnBps,
+    standingMonthlyMinor: input.standingMonthlyMinor ?? 0,
+    standingNote: input.standingNote ?? null,
+    status: existing[0]?.status ?? ('active' as const),
+    createdAt: existing[0]?.createdAt ?? new Date().toISOString(),
+  };
+  const { id: _id, createdAt: _createdAt, ...changes } = row;
+  await tx.insert(goals).values(row).onConflictDoUpdate({ target: goals.id, set: changes });
+
+  const keptIds = input.stages.map((stage) => stage.id).filter((stageId): stageId is string => !!stageId);
+  const current = await tx.select({ id: goalStages.id, name: goalStages.name }).from(goalStages).where(eq(goalStages.goalId, id));
+  // A draw names the stage it paid, so that stage never goes (the set-aside ruling): a hand edit that drops it is
+  // refused, and a calculator's re-work keeps it (writeCalculatorTx passes it back).
+  const drawn = await drawnStageIds(tx, id);
+  const dropped = current.find((stage) => !keptIds.includes(stage.id) && drawn.has(stage.id));
+  if (dropped) throw new GoalDbError(`Money was drawn against "${dropped.name}", so it cannot be removed. Archive the goal instead.`);
+  for (const stage of current) {
+    if (!keptIds.includes(stage.id)) await tx.delete(goalStages).where(eq(goalStages.id, stage.id));
+  }
+  const stageIds: string[] = [];
+  for (const [index, stage] of input.stages.entries()) {
+    const stageRow = {
+      id: stage.id ?? uuidv7(),
+      goalId: id,
       workspaceId: ws.workspaceId,
-      name: input.name.trim(),
-      kind: input.kind,
-      rank,
-      growthBps: input.growthBps,
-      returnBps: input.returnBps,
-      standingMonthlyMinor: input.standingMonthlyMinor ?? 0,
-      standingNote: input.standingNote ?? null,
-      status: existing[0]?.status ?? ('active' as const),
-      createdAt: existing[0]?.createdAt ?? new Date().toISOString(),
+      name: stage.name.trim(),
+      targetMinor: stage.targetMinor ?? null,
+      targetMonths: stage.targetMonths ?? null,
+      dueOn: stage.dueOn,
+      sort: index,
+      paidOn: stage.paidOn ?? null,
     };
-    const { id: _id, createdAt: _createdAt, ...changes } = row;
-    await tx.insert(goals).values(row).onConflictDoUpdate({ target: goals.id, set: changes });
+    stageIds.push(stageRow.id);
+    const { id: _stageId, goalId: _goalId, workspaceId: _workspaceId, ...stageChanges } = stageRow;
+    await tx.insert(goalStages).values(stageRow).onConflictDoUpdate({ target: goalStages.id, set: stageChanges });
+  }
 
-    const keptIds = input.stages.map((stage) => stage.id).filter((stageId): stageId is string => !!stageId);
-    const current = await tx.select({ id: goalStages.id }).from(goalStages).where(eq(goalStages.goalId, id));
-    for (const stage of current) {
-      if (!keptIds.includes(stage.id)) await tx.delete(goalStages).where(eq(goalStages.id, stage.id));
+  if (await healthTablesExist(tx)) {
+    // A stage that went away takes its terms with it; a hand-typed save drops them all, like the calculator link.
+    const removed = current.map((stage) => stage.id).filter((stageId) => !keptIds.includes(stageId));
+    for (const stageId of removed) await tx.delete(goalStageTerms).where(eq(goalStageTerms.stageId, stageId));
+    if (!input.derived) {
+      await tx.delete(goalStageTerms).where(and(eq(goalStageTerms.goalId, id), eq(goalStageTerms.workspaceId, ws.workspaceId)));
     }
-    for (const [index, stage] of input.stages.entries()) {
-      const stageRow = {
-        id: stage.id ?? uuidv7(),
-        goalId: id,
-        workspaceId: ws.workspaceId,
-        name: stage.name.trim(),
-        targetMinor: stage.targetMinor ?? null,
-        targetMonths: stage.targetMonths ?? null,
-        dueOn: stage.dueOn,
-        sort: index,
-        paidOn: stage.paidOn ?? null,
-      };
-      const { id: _stageId, goalId: _goalId, workspaceId: _workspaceId, ...stageChanges } = stageRow;
-      await tx.insert(goalStages).values(stageRow).onConflictDoUpdate({ target: goalStages.id, set: stageChanges });
-    }
+  }
 
-    // An amount typed by hand is the owner's, so the goal stops being derived from a calculator.
-    // Only an existing goal can carry one, and saveGoal still has to work on a database that has
-    // not reached migration 0017 — creating a goal must not reach for a table that is not there yet.
-    if (!input.derived && existing.length > 0) {
-      await tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, id), eq(goalCalculators.workspaceId, ws.workspaceId)));
-    }
-    return id;
-  });
+  // An amount typed by hand is the owner's, so the goal stops being derived from a calculator.
+  // Only an existing goal can carry one, and saveGoal still has to work on a database that has
+  // not reached migration 0017 — creating a goal must not reach for a table that is not there yet.
+  if (!input.derived && existing.length > 0) {
+    await tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, id), eq(goalCalculators.workspaceId, ws.workspaceId)));
+  }
+  return { goalId: id, stageIds };
+}
+
+/**
+ * The stages of a goal that money was drawn against. The table is the set-aside work's (0050); on a database without
+ * it nothing was ever drawn. Read with plain SQL so this file needs nothing from that schema.
+ */
+export async function drawnStageIds(tx: Db, goalId: string): Promise<Set<string>> {
+  const table = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_draws'`);
+  if (table.length === 0) return new Set();
+  const rows = await tx.values<[string]>(sql`SELECT DISTINCT stage_id FROM goal_draws WHERE goal_id = ${goalId} AND stage_id IS NOT NULL`);
+  return new Set(rows.map((row) => row[0]));
 }
 
 async function nextRank(tx: Db, ws: WorkspaceContext): Promise<number> {

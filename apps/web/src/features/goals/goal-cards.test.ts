@@ -1,6 +1,6 @@
 import type { GoalPlanRow, GoalRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { GOAL_TEMPLATES, goalCard, templateDueOn, templateFor } from './goal-cards';
+import { GOAL_TEMPLATES, goalCard, prefilledReturnBps, templateDueOn, templateFor } from './goal-cards';
 
 const TODAY = '2026-09-12';
 
@@ -92,6 +92,11 @@ describe('templates', () => {
     }
   });
 
+  it('names no country scheme or product in a hint — only the tax report is local', () => {
+    for (const template of GOAL_TEMPLATES) expect(template.hint, template.kind).not.toMatch(/BPJS|JHT|DPLK|Taspen|reksadana|deposito/i);
+    expect(templateFor('retirement')!.hint).toMatch(/pension/i);
+  });
+
   it('asks an emergency fund for months, not an amount', () => {
     const emergency = templateFor('emergency')!;
     expect(emergency.stage.targetMonths).toBe(6);
@@ -114,5 +119,28 @@ describe('templates', () => {
   it('dates the first stage from today', () => {
     expect(templateDueOn(templateFor('holiday')!, TODAY)).toBe('2027-06-12');
     expect(templateDueOn(templateFor('emergency')!, TODAY)).toBe('2028-09-12');
+  });
+});
+
+describe('the return a goal opens with', () => {
+  it('comes from the band for the template’s first stage, except the two with figures of their own', () => {
+    const returnOf = (kind: string) => GOAL_TEMPLATES.find((template) => template.kind === kind)!.returnBps;
+    expect(returnOf('holiday')).toBe(400); // 9 months
+    expect(returnOf('vehicle')).toBe(500); // 36 months
+    expect(returnOf('hajj')).toBe(400); // 12 months — at 24 it would be 5%
+    expect(returnOf('home')).toBe(500); // 36 months
+    expect(returnOf('wedding')).toBe(500); // 24 months
+    expect(returnOf('education')).toBe(800); // 120 months — was 10%
+    expect(returnOf('retirement')).toBe(1000);
+    expect(returnOf('emergency')).toBe(200);
+    expect(GOAL_TEMPLATES.find((template) => template.kind === 'retirement')!.growthBps).toBe(350);
+    expect(Math.max(...GOAL_TEMPLATES.map((template) => template.returnBps))).toBeLessThanOrEqual(1000);
+  });
+
+  it('follows a stage’s date', () => {
+    expect(prefilledReturnBps('holiday', '2027-09-21', '2026-09-21')).toBe(400);
+    expect(prefilledReturnBps('holiday', '2030-09-21', '2026-09-21')).toBe(600);
+    expect(prefilledReturnBps('retirement', '2027-09-21', '2026-09-21')).toBe(1000);
+    expect(prefilledReturnBps('emergency', '2040-09-21', '2026-09-21')).toBe(200);
   });
 });

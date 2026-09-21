@@ -1,5 +1,6 @@
 import type { Risk } from '../assets/presets';
 import { roundHalfAwayFromZero } from '../money/money';
+import { fundingOrder } from './classes';
 
 export type GoalKind = 'emergency' | 'hajj' | 'umrah' | 'education' | 'retirement' | 'home' | 'wedding' | 'vehicle' | 'holiday' | 'other';
 
@@ -11,6 +12,8 @@ export interface GoalStage {
   targetMonths: number | null;
   dueOn: string;
   paidOn: string | null;
+  /** What money for this stage is expected to earn, when it differs from the goal's (an education level's). */
+  returnBps?: number | null;
 }
 
 export interface Goal {
@@ -131,6 +134,7 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
     const todayMinor = stage.targetMinor ?? (stage.targetMonths ?? 0) * monthlyOutgoingMinor;
     const targetMinor = futureValueMinor(todayMinor, goal.growthBps, months);
     const row = { stageId: stage.id, name: stage.name, dueOn: stage.dueOn, months, todayMinor, targetMinor };
+    const rate = stage.returnBps ?? goal.returnBps;
 
     if (stage.paidOn) {
       stages.push({ ...row, state: 'paid' });
@@ -140,14 +144,14 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
       stages.push({ ...row, state: 'later' });
       continue;
     }
-    const availableMinor = futureValueMinor(carryMinor, goal.returnBps, months);
+    const availableMinor = futureValueMinor(carryMinor, rate, months);
     if (availableMinor >= targetMinor) {
       // The surplus keeps funding the next stage, so bring it back to today's money.
-      carryMinor = roundHalfAwayFromZero((availableMinor - targetMinor) / yearlyFactor(goal.returnBps, months));
+      carryMinor = roundHalfAwayFromZero((availableMinor - targetMinor) / yearlyFactor(rate, months));
       stages.push({ ...row, state: 'covered' });
       continue;
     }
-    requiredMonthlyMinor = monthlyNeededMinor(targetMinor - availableMinor, goal.returnBps, months);
+    requiredMonthlyMinor = monthlyNeededMinor(targetMinor - availableMinor, rate, months);
     carryMinor = 0;
     stages.push({ ...row, state: 'saving' });
   }
@@ -176,10 +180,14 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
   };
 }
 
-/** Fills goals from what you can save, best-ranked first, so you can see which ones fit. */
+/** Fills goals from what you can save: compulsory goals first, then additional ones, each in rank order. */
 export function fitByRank(plans: GoalPlan[], goals: Goal[], capacityMonthlyMinor: number): RankFit[] {
-  const rankOf = (goalId: string) => goals.find((goal) => goal.id === goalId)?.rank ?? Number.MAX_SAFE_INTEGER;
-  const ordered = [...plans].sort((a, b) => rankOf(a.goalId) - rankOf(b.goalId));
+  const order = fundingOrder(goals).map((goal) => goal.id);
+  const position = (goalId: string) => {
+    const index = order.indexOf(goalId);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  const ordered = [...plans].sort((a, b) => position(a.goalId) - position(b.goalId));
   let left = Math.max(0, capacityMonthlyMinor);
   return ordered.map((plan) => {
     const needed = plan.requiredMonthlyMinor;
