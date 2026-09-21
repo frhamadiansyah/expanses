@@ -9,11 +9,12 @@ import './tokens.css';
 
 /* The primitives. */
 export { InsetGroup, InsetRow, toneClass, useWide, WideColumn, type GroupChild, type InsetRowProps } from './InsetList';
-export { CornerButton, LargeTitle } from './NavTitle';
+export { CornerButton, LargeTitle, OverflowMenu } from './NavTitle';
 export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
 export { DestructiveRow, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, type WalletCard } from './CardStack';
+export { useWalletSlot, type WalletSlot } from './wallet-slot';
 export { Panel, PanelHeader, SCREEN } from './Panel';
 export { Figure, RecordTable, type RecordColumn, type RecordDetail, type RecordShape } from './RecordTable';
 
@@ -27,4 +28,4 @@ export { heroFigure, progressFraction, progressPercent, progressTone, type HeroF
 export { planFormRow, planSwitchRow, type FormKind, type FormRowPlan, type SwitchRowPlan } from './form-row';
 export { planRecordTable, reachableColumns, type PhoneForm, type RecordDestination, type RecordTablePlan } from './record-table';
 export { planPanel, type PanelPlan } from './surface';
-export { CARD_H, CARD_W, FAN_X, STRIP, cardFigure, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';
+export { CARD_H, CARD_W, DESKTOP_CARD_W, STRIP, cardFigure, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';

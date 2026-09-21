@@ -1,12 +1,12 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
-import { Sparkles, Store } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Link, Outlet, useNavigate, useParams, useRouter, useSearch } from '@tanstack/react-router';
+import { ChevronLeft, Sparkles, Store, X } from 'lucide-react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Empty } from '../../ui';
-import { CardStack, type CornerAction, InsetGroup, InsetRow, LargeTitle, type WalletCard } from '../../ui/native';
+import { CardStack, CornerButton, type CornerAction, InsetGroup, InsetRow, LargeTitle, OverflowMenu, type WalletCard } from '../../ui/native';
 import { useCardIdentities, useCards, useProgramAccounts } from './card-queries';
 import { type CardPoints, formatPoints, loadCardPoints, pointsValue, shortDate } from './useCardPoints';
 
@@ -19,25 +19,30 @@ function Screen({ children }: { children: ReactNode }) {
   );
 }
 
-/** What the figure on a card's strip is called: the unit it is counted in, or that there is nothing counting yet. */
+/** What the figure on a card's band is called: the unit it is counted in, or that there is nothing counting yet. */
 const figureLabelOf = (cp: CardPoints) => {
   if (!cp.program) return 'Rewards';
   return cp.program.unit === 'miles' ? 'Miles' : cp.program.unit === 'cashback' ? 'Cashback' : 'Points';
 };
 
 /**
- * The card wall: C3, the Wallet stack.
+ * The card wall: C3, the Wallet stack — and, as in Apple Wallet, the open card too.
  *
- * Cards overlap like Apple Wallet, every card is visible at once, and tapping a covered one lifts it while the
- * rest slide down. The art is `CardFace`, unchanged — this screen only decides which cards are on the shelf and
- * what each one's figure says. Wide screens fan the stack sideways instead of overlapping it downwards.
+ * Cards overlap back to front, every card's top band shows its figure, and tapping a card opens it: this route
+ * stays mounted while `/cards/$cardId` is its child, so the card's own element rises to the top of the screen, the
+ * others slide away, and the card's page fades in below it. ✕, Back, Escape or a tap on the raised card put it back
+ * in its slot. The open card is laid out as Wallet lays out a pass (the user's Suica reference): ✕ on the left, ⋯
+ * on the right, the card, its tiles and its latest transactions; the card's sections are behind ⋯. The art is `CardFace`, unchanged — this screen only decides which cards
+ * are on the shelf and what each one's figure says.
  *
- * What the old two-column row carried — the digits, the cycle, what the points are worth — rides on each card's
- * strip, so a covered card still answers for itself without a tap.
+ * An account that is not in the stack — a debit account not earning yet — still opens its page on its own.
  */
 export function CardsPage() {
   const { database, ws } = useApp();
   const navigate = useNavigate();
+  const router = useRouter();
+  const { cardId } = useParams({ strict: false }) as { cardId?: string };
+  const { tab } = useSearch({ strict: false }) as { tab?: string };
   const accounts = useAccounts();
   const all = accounts.data ?? [];
   // A debit card is a bank account that earns, so it joins the credit cards once its terms are applied.
@@ -86,16 +91,87 @@ export function CardsPage() {
     };
   });
 
+  const raised = cardId !== undefined ? wallet.find((card) => card.key === cardId) : undefined;
+  /*
+   * Opened from the stack, the way back is the history's own steps, so ✕ and Back are one gesture and the stack is
+   * where they land; reached by a link from elsewhere, ✕ goes to the stack instead of out of the app. The same for
+   * ‹ from one of the card's sections back to the card. Where each was is the history's own index.
+   */
+  const at = () => (router.history.location.state as { __TSR_index?: number }).__TSR_index ?? 0;
+  const stackAt = useRef<number | null>(null);
+  const summaryAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (cardId === undefined) stackAt.current = at();
+    else if (!tab) summaryAt.current = at();
+  });
+  const back = (to: number | null, otherwise: () => void) => {
+    const now = at();
+    if (to !== null && now > to) router.history.go(to - now);
+    else otherwise();
+  };
+  const close = () => back(stackAt.current, () => void navigate({ to: '/cards' }));
+  // Opening a card moves focus to its heading, so a reader lands on the card they chose.
+  const header = useRef<HTMLDivElement>(null);
+  const raisedKey = raised?.key;
+  useEffect(() => {
+    if (raisedKey) header.current?.querySelector<HTMLElement>('h1')?.focus({ preventScroll: true });
+  }, [raisedKey]);
+
   // Corner actions are glyphs at every width, including desktop, and the journeys stay links.
   const actions: CornerAction[] = [
     { key: 'merchants', label: 'Merchants & MCCs', glyph: <Store size={20} aria-hidden />, to: '/cards/merchants' },
     { key: 'recommend', label: 'Which card?', glyph: <Sparkles size={20} aria-hidden />, to: '/recommend' },
   ];
+  /*
+   * An open card's sections — what the segmented tabs held on the card's page — are behind ⋯, each its own screen
+   * under the raised card. A debit card has no statement: its spending settles against the account as it happens.
+   */
+  const debit = all.find((account) => account.id === cardId)?.subtype !== 'credit_card';
+  const sections: CornerAction[] = cardId
+    ? [
+        ...(debit ? [] : [{ key: 'statement', label: 'Statement', search: { tab: 'statement' } }]),
+        { key: 'points', label: 'Points', search: { tab: 'points' } },
+        { key: 'rules', label: 'Rewards rules', search: { tab: 'rules' } },
+        { key: 'card', label: 'Card details', search: { tab: 'card' } },
+      ].map((item) => ({ ...item, to: '/cards/$cardId' as const, params: { cardId } }))
+    : [];
+
+  // A card's page for an account the stack does not hold stands on its own, as it always has. Until the stack has
+  // loaded it cannot be told which, so nothing is drawn rather than the wrong one.
+  if (cardId !== undefined && !raised) return data.isSuccess || accounts.isError ? <Outlet /> : null;
 
   return (
     <Screen>
-      <LargeTitle title="Cards & points" actions={actions} />
-      {accounts.isSuccess && cards.length === 0 && (
+      <div ref={header}>
+        {raised ? (
+          /*
+           * Wallet's bar over an open pass: ✕ on the left, ⋯ on the right, and no title — the raised card is the
+           * header. The card's name is still the heading a reader hears. In one of its sections the left button is
+           * the way back to the card instead.
+           */
+          <header className="mb-[14px] flex items-center justify-between gap-3" style={{ paddingTop: 8 }}>
+            {tab ? (
+              <CornerButton
+                label={`Back to ${raised.name}`}
+                onClick={() => back(summaryAt.current, () => void navigate({ to: '/cards/$cardId', params: { cardId: raised.key }, replace: true }))}
+              >
+                <ChevronLeft size={22} aria-hidden />
+              </CornerButton>
+            ) : (
+              <CornerButton label="Close" onClick={close}>
+                <X size={20} aria-hidden />
+              </CornerButton>
+            )}
+            <h1 tabIndex={-1} className="sr-only">
+              {raised.name}
+            </h1>
+            <OverflowMenu actions={sections} />
+          </header>
+        ) : (
+          <LargeTitle title="Cards & points" actions={actions} />
+        )}
+      </div>
+      {!raised && accounts.isSuccess && cards.length === 0 && (
         <Empty>
           Add a credit card on the{' '}
           <Link to="/accounts" className="underline">
@@ -104,13 +180,18 @@ export function CardsPage() {
           page first.
         </Empty>
       )}
-      {/* One section around the wall, so a card and its figures read as one thing however the stack is sitting. */}
       {wallet.length > 0 && (
-        <section aria-label="Your cards">
-          <CardStack cards={wallet} onOpen={(cardId) => void navigate({ to: '/cards/$cardId', params: { cardId } })} />
-        </section>
+        <CardStack
+          label="Your cards"
+          cards={wallet}
+          raised={raised?.key ?? null}
+          onClose={close}
+          onOpen={(key) => void navigate({ to: '/cards/$cardId', params: { cardId: key } })}
+        >
+          <Outlet />
+        </CardStack>
       )}
-      {spendable.length > 0 && (
+      {!raised && spendable.length > 0 && (
         <InsetGroup
           header="Earning on a debit card?"
           footer="A debit card earns on the account it spends from, so pick that account and apply its card's terms. It joins the cards above once it does."

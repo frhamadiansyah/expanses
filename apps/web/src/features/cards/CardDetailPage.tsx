@@ -21,11 +21,11 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, PanelHeader, ReadOnlyRow, SelectRow, TextRow, WideColumn } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, PanelHeader, ReadOnlyRow, SelectRow, TextRow, useWalletSlot, WideColumn } from '../../ui/native';
 import { InstallmentList } from '../loans/InstallmentList';
 import { BonusForm } from './BonusForm';
 import { BonusProgress } from './BonusProgress';
@@ -328,6 +328,9 @@ export function CardDetailPage() {
   const [redeemValue, setRedeemValue] = useState('');
   const [redeemCurrency, setRedeemCurrency] = useState(ws.baseCurrency);
   const [loadedTermsFor, setLoadedTermsFor] = useState<string | null>(null);
+  // Opened from the Wallet stack, the raised card is this page's header and the stack's screen is its ground.
+  const slot = useWalletSlot();
+  const Ground = slot ? Fragment : Screen;
   /** The tab the owner picked; until then the page opens where the card needs attention. */
   // Kept in the address, so a reload, the back button and a shared link all land on the same tab.
   const chosenTab: CardTab | null = route.useSearch().tab ?? null;
@@ -346,7 +349,13 @@ export function CardDetailPage() {
   }, [setupStep, navigate]);
 
   if (accounts.isSuccess && !card) return <Empty>Card not found.</Empty>;
-  if (!card || !data.data) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (!card || !data.data)
+    return (
+      <>
+        {slot && <div aria-hidden style={{ height: slot.height }} className="mb-5" />}
+        <p className="text-sm text-slate-500">Loading…</p>
+      </>
+    );
   const cp = data.data;
   const currency = card.currency!;
 
@@ -373,8 +382,17 @@ export function CardDetailPage() {
   // A card with no statement day opens on its terms; any other card opens on its statement, since rewards are optional.
   const active: CardTab = chosenTab ?? (step === 1 ? 'card' : isDebit ? 'points' : 'statement');
   const on = (tab: CardTab) => active === tab;
+  /*
+   * Opened from the Wallet stack, a card shows Wallet's summary: its tiles and its latest transactions. Its sections
+   * are screens of their own, reached from ⋯ or a tile, under the same raised card. A card still being set up has
+   * the step it is at under its summary, as the page always had.
+   */
+  const summary = !!slot && chosenTab === null;
+  const sections = !summary || step !== null;
   const openTab = (tab: CardTab, focusId?: string) => {
-    setChosenTab(tab);
+    // From the summary a section is a step forward, so Back returns to the summary; between sections it is a switch.
+    if (summary) void navigate({ search: { tab } });
+    else setChosenTab(tab);
     if (focusId) window.setTimeout(() => document.getElementById(focusId)?.scrollIntoView({ block: 'start' }), 0);
   };
   // Points for each purchase in the two cycles the page has worked out, shown beside the statement's own lines.
@@ -418,8 +436,11 @@ export function CardDetailPage() {
   };
 
   return (
-    <Screen>
-      <LargeTitle title={card.name} back="Cards" backTo="/cards" oneLine />
+    <Ground>
+      {!slot && <LargeTitle title={card.name} back="Cards" backTo="/cards" oneLine />}
+      {/* In a section the raised card is still the header, so the section leaves it its place. */}
+      {slot && !summary && <div aria-hidden data-testid="wallet-slot" className="mb-5" style={{ height: slot.height }} />}
+      {(!slot || summary) && (
       <CardHero
         cp={cp}
         accounts={all}
@@ -430,13 +451,16 @@ export function CardDetailPage() {
         pointsBalance={ledger.data ? { total: ledger.data.balance.total, posted: ledger.data.balance.postedTotal, estimated: ledger.data.balance.projectedTotal } : null}
         today={today}
         onTab={openTab}
+        lines={[...(cp.current?.lines ?? []), ...(cp.previous?.lines ?? [])]}
       />
+      )}
       {/*
        * The control and what it controls share one column at every width. On a desktop the hero is two columns,
        * and a control drawn in the right one of them sat over a section spanning both — it did not line up with
        * the thing it switches. That column is the page's whole width on a desktop, and the forms in it lay their
        * fields out across it, as the page did before the kit: a desktop is not a phone held sideways.
        */}
+      {sections && (
       <WideColumn>
       <div className="mt-[4px]">
       <CardTabs active={active} onChange={(tab) => setChosenTab(tab)} debit={isDebit} />
@@ -957,6 +981,7 @@ export function CardDetailPage() {
       {on('card') && <InstallmentList cardAccountId={card.id} currency={currency} />}
       </div>
       </WideColumn>
-    </Screen>
+      )}
+    </Ground>
   );
 }

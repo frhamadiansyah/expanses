@@ -69,7 +69,7 @@ export function CornerButton({
  * else — so a menu opened over a sheet closes the menu and leaves the sheet, and no second `document`
  * listener is added to argue about it.
  */
-function OverflowMenu({ actions }: { actions: CornerAction[] }) {
+export function OverflowMenu({ actions }: { actions: CornerAction[] }) {
   const [open, setOpen] = useState(false);
   useEscape(() => setOpen(false), open);
   return (

@@ -115,6 +115,7 @@ function Note({ children }: { children: string }) {
 
 export function KitPage() {
   const [cardTab, setCardTab] = useState('statement');
+  const [raisedCard, setRaisedCard] = useState<string | null>(null);
   const [netWorthTab, setNetWorthTab] = useState('overview');
   const [category, setCategory] = useState<string | null>('Belanja harian');
   const [merchant, setMerchant] = useState('Superindo Bintaro');
@@ -202,8 +203,10 @@ export function KitPage() {
         <DestructiveRow label="Delete this transaction" onClick={() => {}} />
       </InsetGroup>
 
-      <Note>7 · Card art — the Wallet stack. Every card's figure reads from its strip, without a tap.</Note>
-      <CardStack cards={WALLET} onOpen={() => {}} />
+      <Note>7 · Card art — the Wallet stack. Every card's figure reads from its band, without a tap; a tap raises it.</Note>
+      <CardStack cards={WALLET} raised={raisedCard} onOpen={setRaisedCard} onClose={() => setRaisedCard(null)}>
+        <Note>The open card's page goes here. Escape or a tap on the card puts it back.</Note>
+      </CardStack>
 
       <Note>A table becomes rows on a phone and stays a table on desktop. Narrow the window to see it change.</Note>
       <RecordTable header="This week" records={PURCHASES} columns={COLUMNS} shape={SHAPE} detail={{ kind: 'screen', open: () => {} }} />
