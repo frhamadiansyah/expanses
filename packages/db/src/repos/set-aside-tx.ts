@@ -6,7 +6,6 @@ import { accounts, entries } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalDraws, goalEarmarks, goalStages, goals } from '../schema-goals';
 import { SPENDABLE_SUBTYPES } from './accounts';
-import { recordContributionTx } from './goal-contributions';
 
 /**
  * Whether migration 0050 has run on this database. Every read and write of goal_draws asks first, so a database stopped
@@ -248,8 +247,6 @@ export async function undoSetAsideTx(tx: Db, ws: WorkspaceContext, transactionId
     if (draw.intent === 'move') {
       if (draw.toAccountId && draw.toAmountMinor) await adjustSetAsideTx(tx, ws, draw.goalId, draw.toAccountId, -draw.toAmountMinor);
       await adjustSetAsideTx(tx, ws, draw.goalId, draw.accountId, draw.amountMinor);
-      // A goal's own money moved by a tagged transfer logged the move as a contribution; taking it back logs the reverse.
-      if (draw.toAccountId === null) await recordContributionTx(tx, ws, draw.goalId, draw.accountId, draw.amountMinor, draw.occurredOn);
     }
   }
   if (rows.length > 0) await tx.delete(goalDraws).where(and(eq(goalDraws.transactionId, transactionId), eq(goalDraws.workspaceId, ws.workspaceId)));

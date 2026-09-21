@@ -6,7 +6,6 @@ import { accounts, transactions } from '../schema';
 import { goalDraws, goalEarmarks, goals } from '../schema-goals';
 import { systemAccountId } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
-import { recordContributionTx } from './goal-contributions';
 import { GoalDbError } from './goals';
 import { postTransactionTx, voidTransactionTx } from './ledger';
 import { adjustSetAsideTx, canHoldSetAside, type SetAsideChoice, setAsideTablesExist } from './set-aside-tx';
@@ -124,8 +123,8 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
     // source promise untouched, so a void cannot leave the goal with no promise anywhere.
     if (moved > 0 && (await setAsideTablesExist(tx))) {
       await adjustSetAsideTx(tx, ws, input.goalId, input.fromAccountId, -moved);
-      await recordContributionTx(tx, ws, input.goalId, input.fromAccountId, -moved, input.occurredOn);
-      // A move with no destination: the destination's own adjustment is taken back by voidTransactionTx.
+      // A move with no destination: the destination's own adjustment is taken back by voidTransactionTx. The draw is
+      // also what the monthly figure reads the move from, valued in base as the arrival is (goalContributionEvents).
       await tx.insert(goalDraws).values({
         id: uuidv7(),
         workspaceId: ws.workspaceId,

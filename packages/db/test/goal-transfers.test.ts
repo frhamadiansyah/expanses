@@ -7,6 +7,7 @@ import {
   createWorkspace,
   type Database,
   goalContributionsFor,
+  goalHistory,
   goalLinksFor,
   listEarmarks,
   listPhotos,
@@ -25,7 +26,9 @@ import {
   voidTaggedTransfer,
   voidTransaction,
   type WorkspaceContext,
+  goalsSchema,
 } from '../src/index';
+import { eq } from 'drizzle-orm';
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
 import { setupDb } from './helpers';
 
@@ -447,5 +450,90 @@ describe('a tagged transfer on a database stopped at 49', () => {
     expect(await held(jenius.id)).toBe(7_500_000);
     expect(await held(bank.id)).toBe(0);
     expect(await month()).toBe(0);
+  });
+});
+
+/*
+ * Dated in July, a month the suite never runs in, so a figure logged "today" instead of on the transfer's own day
+ * lands in the wrong month and shows. Every case sets Hajj's own promise aside first: saveEarmark logs it today.
+ */
+describe('what a tagged transfer of a goal\'s own money does to its month', () => {
+  const JULY = '2026-07-15';
+  const month = async (m: string) => (await goalContributionsFor(database, ws, m))[hajjId] ?? 0;
+  const draws = () => database.db.select().from(goalsSchema.goalDraws).where(eq(goalsSchema.goalDraws.workspaceId, ws.workspaceId));
+
+  beforeEach(async () => {
+    await saveEarmark(database, ws, { goalId: hajjId, accountId: bca.id, amountMinor: 7_500_000 });
+  });
+
+  it('moves part of the promise: only what it carried, and a void gives back only that', async () => {
+    const result = await park(5_000_000, hajjId, JULY);
+    // Moving the whole promise would read 0 here; the whole amount, clamped, reads the same.
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(2_500_000);
+    await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(5_000_000);
+    expect(await draws()).toEqual([expect.objectContaining({ intent: 'move', amountMinor: 5_000_000, toAccountId: null, occurredOn: JULY })]);
+    // +5.000.000 arrived, −5.000.000 of promise left BCA: nought, in July.
+    expect(await month('2026-07')).toBe(0);
+
+    await voidTaggedTransfer(database, ws, result.transactionId);
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
+    await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(0);
+    expect(await month('2026-07')).toBe(0);
+  });
+
+  it('moves no more than was promised, and a void gives back no more either', async () => {
+    const result = await park(10_000_000, hajjId, JULY);
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(0);
+    await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(10_000_000);
+    // The draw says 7.500.000: saying 10.000.000 would give Hajj 2.500.000 it never had on the void.
+    expect((await draws())[0]).toMatchObject({ amountMinor: 7_500_000 });
+    // 10.000.000 arrived, 7.500.000 of it was already set aside: 2.500.000 is new this month.
+    expect(await month('2026-07')).toBe(2_500_000);
+
+    await voidTaggedTransfer(database, ws, result.transactionId);
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
+    expect(await month('2026-07')).toBe(0);
+  });
+
+  it('dates the move on the transfer\'s own day, in July and not today', async () => {
+    const today = new Date().toISOString().slice(0, 7);
+    const before = await month(today);
+    await park(7_500_000, hajjId, JULY);
+    expect(await month('2026-07')).toBe(0);
+    expect(await month(today)).toBe(before);
+  });
+
+  it('into a card: the promise stays on the source, and nothing is drawn', async () => {
+    const card = await createAccount(database, ws, { name: 'BCA Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    await recordTaggedTransfer(database, ws, { occurredOn: JULY, description: 'Pay card', amountMinor: 5_000_000, fromAccountId: bca.id, toAccountId: card.id, goalId: hajjId });
+    await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
+    expect(await draws()).toEqual([]);
+  });
+
+  it('across currencies, IDR to USD: the arrival counts once, and the move nets it to nought', async () => {
+    const wise = await createAccount(database, ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
+    // Rp 7.500.000 → US$468,75 at 16.000. The exchange account is credited Rp 7.500.000 too: counting it read +7.500.000.
+    await recordTaggedTransfer(database, ws, { occurredOn: JULY, description: 'To Wise', amountMinor: 7_500_000, toAmountMinor: 46_875, fromAccountId: bca.id, toAccountId: wise.id, goalId: hajjId, ratesToBase: { USD: 16_000 } });
+    await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(46_875);
+    expect(await month('2026-07')).toBe(0);
+    const july = ((await goalHistory(database, ws, '2026-07-31'))[hajjId] ?? []).filter((entry) => entry.occurredOn === JULY);
+    expect(july.map((entry) => [entry.kind, entry.amountMinor, entry.currency]).sort()).toEqual([
+      ['set-aside', 7_500_000, 'IDR'],
+      ['taken-back', -7_500_000, 'IDR'],
+    ]);
+  });
+
+  it('across accounts in USD: the move is counted in base, never in cents beside rupiah', async () => {
+    const wise = await createAccount(database, ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
+    const ibkr = await createAccount(database, ws, { name: 'IBKR cash', kind: 'asset', subtype: 'bank', currency: 'USD' });
+    await saveEarmark(database, ws, { goalId: hajjId, accountId: wise.id, amountMinor: 10_000 });
+    const result = await recordTaggedTransfer(database, ws, { occurredOn: JULY, description: 'To IBKR', amountMinor: 10_000, fromAccountId: wise.id, toAccountId: ibkr.id, goalId: hajjId, ratesToBase: { USD: 16_000 } });
+    await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(0);
+    await expect(setAsideFor(hajjId, ibkr.id)).resolves.toBe(10_000);
+    // +1.600.000 arrived (base) and −1.600.000 left the Wise promise (base). Logging −10.000 cents read +1.590.000.
+    expect(await month('2026-07')).toBe(0);
+    await voidTaggedTransfer(database, ws, result.transactionId);
+    await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(10_000);
+    expect(await month('2026-07')).toBe(0);
   });
 });
