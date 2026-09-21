@@ -1,7 +1,7 @@
 import { balanceSheet, type SheetLiability } from '@expanses/core';
 import type { LoanTermsRow, PersonDebtRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { type CardFacts, type DebtAccount, type DebtInputs, bareFigure, groupDebts } from './debt-rows';
+import { type CardFacts, type DebtAccount, type DebtInputs, bareFigure, groupDebts, owedMinor } from './debt-rows';
 
 const account = (partial: Partial<DebtAccount> & Pick<DebtAccount, 'id' | 'name' | 'subtype'>): DebtAccount => ({
   kind: 'liability',
@@ -133,6 +133,18 @@ describe('groupDebts', () => {
     // 6.360.000 billed and unpaid, 2.100.000 bought since: the balance is both, read and not rebuilt.
     expect(row).toMatchObject({ name: 'BCA KrisFlyer', minor: 8_460_000, last4: '4417', icon: 'card' });
     expect(row!.detail).toBe('due 5 Oct · 2.100.000 unbilled');
+  });
+
+  it('lists a card at the very figure its own page reads for the Unpaid tile and the current balance', () => {
+    // Billed and unbilled with an instalment in it, a card paid past its bill, and a card with nothing on it yet.
+    for (const raw of [-8_460_000, 1_250_000, undefined]) {
+      const balances: Record<string, number> = raw === undefined ? {} : { kris: raw };
+      const debts = groupDebts(sample({ balances }));
+      const [row] = debts.groups.find((group) => group.kind === 'card')!.rows;
+      expect(row!.minor).toBe(owedMinor(balances, 'kris'));
+    }
+    expect(owedMinor({ kris: -8_460_000 }, 'kris')).toBe(8_460_000);
+    expect(owedMinor({ kris: 1_250_000 }, 'kris')).toBe(0);
   });
 
   it('says a card with nothing billed yet has nothing billed, and still owes what it has bought', () => {

@@ -88,6 +88,15 @@ describe('a segment that names a route', () => {
     });
   });
 
+  it('keeps the full label as the name a screen reader hears when the drawn one is shortened', () => {
+    const plan = fitSegments(CARD_TABS);
+    const rules = plan.shown.find((segment) => segment.key === 'rules');
+    expect(rules?.label).toBe('Rules');
+    expect(rules?.name).toBe('Rewards rules');
+    // A segment drawn whole is named by what is drawn.
+    expect(plan.shown.find((segment) => segment.key === 'points')?.name).toBe('Points');
+  });
+
   it('keeps a segment’s route when its label is shortened to fit', () => {
     const [debts] = fitSegments([{ key: 'debts', label: 'Lend & borrow', short: 'Debts', to: '/net-worth/debts' }], 90).shown;
     expect(debts?.label).toBe('Debts');

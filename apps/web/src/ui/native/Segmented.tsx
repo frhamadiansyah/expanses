@@ -85,6 +85,8 @@ export function SegmentedControl({
             'data-key': segment.key,
             role: 'radio' as const,
             'aria-checked': selected,
+            // A label shortened to fit is still announced by its whole name.
+            'aria-label': segment.shortened ? segment.name : undefined,
             tabIndex: selected ? 0 : -1,
             onKeyDown,
             /* flex-1 + basis-0 + min-w-0 is what makes the segments equal width and stops any of them wrapping. */

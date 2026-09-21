@@ -3,7 +3,7 @@ import { MoreHorizontal } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { cx } from '../index';
-import { backLabel, type CornerAction, planCornerActions } from './title';
+import { backLabel, type CornerAction, planCornerActions, titleSteps } from './title';
 
 /**
  * Primitive 3: the large title, and the corner buttons beside it.
@@ -69,7 +69,7 @@ export function CornerButton({
  * else — so a menu opened over a sheet closes the menu and leaves the sheet, and no second `document`
  * listener is added to argue about it.
  */
-function OverflowMenu({ actions }: { actions: CornerAction[] }) {
+export function OverflowMenu({ actions }: { actions: CornerAction[] }) {
   const [open, setOpen] = useState(false);
   useEscape(() => setOpen(false), open);
   return (
@@ -144,6 +144,7 @@ export function LargeTitle({
   actions = [],
   max,
   subtitle,
+  oneLine = false,
 }: {
   title: string;
   /** What back goes to, named: `‹ All cards`. A screen reached from two places cannot just say "Back". */
@@ -157,8 +158,14 @@ export function LargeTitle({
   /** How many corners this screen has. A wide screen has more; the phone has two. */
   max?: number;
   subtitle?: ReactNode;
+  /**
+   * A title that is a name someone typed, kept to one line: a long one steps down a size (`titleSteps`), and one
+   * longer still ends in an ellipsis with the whole name as its tooltip, rather than breaking over two lines.
+   */
+  oneLine?: boolean;
 }) {
   const plan = planCornerActions(actions, max);
+  const steps = oneLine && titleSteps(title);
   /*
    * The way back is a control a thumb has to find, so it is 44 tall like every other — and drawn as though it were
    * not: the negative margins give the hit area back to the layout, so the line still sits where 28px put it.
@@ -179,7 +186,14 @@ export function LargeTitle({
         ))}
       <div className="flex items-start justify-between gap-3" style={{ paddingTop: 8 }}>
         <div className="min-w-0 flex-1">
-          <h1 className="text-[30px] leading-[36px] font-extrabold tracking-[-0.03em] text-[var(--ph-ink)] md:text-[24px] md:leading-[30px]">
+          <h1
+            title={oneLine ? title : undefined}
+            className={cx(
+              'font-extrabold tracking-[-0.03em] text-[var(--ph-ink)] md:text-[24px] md:leading-[30px]',
+              steps ? 'text-[22px] leading-[36px]' : 'text-[30px] leading-[36px]',
+              oneLine && 'truncate',
+            )}
+          >
             {title}
           </h1>
           {subtitle && <p className="mt-[2px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{subtitle}</p>}

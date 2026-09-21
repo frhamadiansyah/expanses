@@ -1,5 +1,5 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
+import { Children, cloneElement, createContext, isValidElement, type ReactElement, type ReactNode, useContext } from 'react';
 import { cx } from '../index';
 import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from './group';
 import { GROUP_GAP, GROUP_RADIUS, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
@@ -61,6 +61,25 @@ function GroupHeader({ title, progress, trailing }: { title: string; progress?: 
   );
 }
 
+const Wide = createContext(false);
+
+/**
+ * A column whose groups all take its full width on a wide screen — a desktop tab body laid out in columns of its
+ * own, where each group already sits in a grid cell or is meant to span the page.
+ *
+ * Saying `wide` on every group of a screen is the same decision written thirty times, and the one that is
+ * forgotten is the group that sits narrower than its neighbours. The phone is untouched: there, every group is
+ * already the column.
+ */
+export function WideColumn({ children }: { children: ReactNode }) {
+  return <Wide.Provider value={true}>{children}</Wide.Provider>;
+}
+
+/** Whether the groups here take the full column: asked for, or inside a `WideColumn`. */
+export function useWide(wide: boolean): boolean {
+  return useContext(Wide) || wide;
+}
+
 /**
  * A grouped inset list.
  *
@@ -91,8 +110,9 @@ export function InsetGroup({
 }) {
   const items = Children.toArray(children).filter(isValidElement) as ReactElement<GroupChild>[];
   const positions = rowPositions(items.length);
+  const full = useWide(wide);
   return (
-    <section className={cx('w-full', wide ? '' : 'md:max-w-2xl', className)} style={{ marginBottom: GROUP_GAP }}>
+    <section className={cx('w-full', full ? '' : 'md:max-w-2xl', className)} style={{ marginBottom: GROUP_GAP }}>
       {header && <GroupHeader title={header} progress={progress} trailing={trailing} />}
       <div className="overflow-hidden bg-[var(--ph-surface)]" style={{ borderRadius: GROUP_RADIUS }}>
         {items.map((child, index) => cloneElement(child, { position: positions[index] }))}

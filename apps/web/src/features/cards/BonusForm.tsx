@@ -3,7 +3,9 @@ import { type AccountRow, saveCycleBonus } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { DestructiveRow, InsetGroup, TextRow } from '../../ui/native';
+import { ActionRow, GroupColumns, MultiSelectRow, SubmitRow } from './rows';
 import { CategoryOptions } from './options';
 import { mergeMatch } from './rule-values';
 
@@ -93,80 +95,66 @@ export function BonusForm({
   }
 
   return (
-    <Card className="bg-slate-50">
-      <form onSubmit={submit} className="grid gap-3 md:grid-cols-2">
-        <Field label="Bonus name">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Monthly spend bonus" required />
-        </Field>
-        <div className="md:col-span-2">
-          <div className="mb-1 text-xs font-semibold text-slate-600">Tiers</div>
-          <p className="mb-2 text-xs text-slate-500">Spend this much in a cycle and the bonus pays. The highest tier reached is the one that pays.</p>
+    <form onSubmit={submit}>
+      {/* The name and its tiers beside where it counts on a desktop, as the form stood in two columns before. */}
+      <GroupColumns>
+        <div className="min-w-0">
+          <InsetGroup header={initial ? `Edit bonus · ${initial.name}` : 'New bonus'}>
+            <TextRow label="Bonus name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Monthly spend bonus" required />
+          </InsetGroup>
+
+          {/* Each tier is its own group: two figures that belong together, and the way to take the tier away. */}
           {tiers.map((tier, index) => (
-            <div key={index} className="mb-2 grid gap-2 md:grid-cols-[1fr_1fr_auto] md:items-end">
-              <Field label={`Spend at least (${currency})`}>
-                <Input
-                  aria-label={`Tier ${index + 1} spend`}
-                  value={tier.spend}
-                  onChange={(e) => setTier(index, { spend: e.target.value })}
-                  inputMode="decimal"
-                  placeholder="20000000"
-                />
-              </Field>
-              <Field label={`Pays (${unit})`}>
-                <Input
-                  aria-label={`Tier ${index + 1} bonus`}
-                  value={tier.bonus}
-                  onChange={(e) => setTier(index, { bonus: e.target.value })}
-                  inputMode="numeric"
-                  placeholder="1000"
-                />
-              </Field>
-              <div className="pb-1">
-                {tiers.length > 1 && (
-                  <Button type="button" variant="ghost" onClick={() => setTiers((rows) => rows.filter((_, i) => i !== index))}>
-                    Remove
-                  </Button>
-                )}
-              </div>
-            </div>
+            <InsetGroup
+              key={index}
+              header={`Tier ${index + 1}`}
+              footer={index === 0 ? 'Spend this much in a cycle and the bonus pays. The highest tier reached is the one that pays.' : undefined}
+            >
+              <TextRow
+                label={`Spend at least (${currency})`}
+                aria-label={`Tier ${index + 1} spend`}
+                value={tier.spend}
+                onChange={(e) => setTier(index, { spend: e.target.value })}
+                inputMode="decimal"
+                placeholder="20000000"
+              />
+              <TextRow
+                label={`Pays (${unit})`}
+                aria-label={`Tier ${index + 1} bonus`}
+                value={tier.bonus}
+                onChange={(e) => setTier(index, { bonus: e.target.value })}
+                inputMode="numeric"
+                placeholder="1000"
+              />
+              {tiers.length > 1 && <DestructiveRow label="Remove" onClick={() => setTiers((rows) => rows.filter((_, i) => i !== index))} />}
+            </InsetGroup>
           ))}
-          <Button type="button" variant="secondary" onClick={() => setTiers((rows) => [...rows, { spend: '', bonus: '' }])}>
-            Add tier
-          </Button>
+          <InsetGroup>
+            <ActionRow label="Add tier" onClick={() => setTiers((rows) => [...rows, { spend: '', bonus: '' }])} />
+          </InsetGroup>
         </div>
 
-        <Field label="Only these categories" hint="None selected = every category. Ctrl/⌘-click for several.">
-          <Select multiple size={6} value={categoryIds} onChange={(e) => setCategoryIds(selected(e.target))}>
-            <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
-          </Select>
-        </Field>
-        <Field label="Never these categories" hint="Spending here does not count toward the threshold.">
-          <Select multiple size={6} value={excludeIds} onChange={(e) => setExcludeIds(selected(e.target))}>
-            <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
-          </Select>
-        </Field>
-        <Field label="Merchant keywords" hint="Comma-separated, matched in the description. Empty = any merchant.">
-          <Input value={merchants} onChange={(e) => setMerchants(e.target.value)} placeholder="grab, gojek" />
-        </Field>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Valid from">
-            <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
-          </Field>
-          <Field label="Valid until">
-            <Input type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
-          </Field>
-        </div>
+        <div className="min-w-0">
 
-        <div className="md:col-span-2">
+          <InsetGroup header="Where it counts">
+            <MultiSelectRow label="Only these categories" hint="None selected = every category. Ctrl/⌘-click for several." size={6} value={categoryIds} onChange={(e) => setCategoryIds(selected(e.target))}>
+              <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
+            </MultiSelectRow>
+            <MultiSelectRow label="Never these categories" hint="Spending here does not count toward the threshold." size={6} value={excludeIds} onChange={(e) => setExcludeIds(selected(e.target))}>
+              <CategoryOptions ownerWide accounts={accounts} kind="expense" placeholder={null} />
+            </MultiSelectRow>
+            <TextRow label="Merchant keywords" hint="Comma-separated, matched in the description. Empty = any merchant." value={merchants} onChange={(e) => setMerchants(e.target.value)} placeholder="grab, gojek" />
+            <TextRow label="Valid from" type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+            <TextRow label="Valid until" type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+          </InsetGroup>
+
           <ErrorBox error={error} />
+          <InsetGroup>
+            <SubmitRow label="Save bonus" />
+            <ActionRow label="Cancel" quiet onClick={onDone} />
+          </InsetGroup>
         </div>
-        <div className="flex gap-2 md:col-span-2">
-          <Button type="submit">Save bonus</Button>
-          <Button variant="ghost" onClick={onDone}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-    </Card>
+      </GroupColumns>
+    </form>
   );
 }

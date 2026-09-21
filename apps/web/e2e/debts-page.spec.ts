@@ -79,6 +79,9 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await page.getByRole('row', { name: /BCA Visa/ }).getByRole('cell').nth(2).click();
   await expect(page).toHaveURL(/\/cards\/[^/?]+/);
   await expect(page.getByRole('heading', { name: 'BCA Visa' })).toBeVisible();
+  // It opens raised out of the Wallet stack, and its Unpaid tile is the very figure the Debts row showed.
+  await expect(page.getByRole('region', { name: 'Your cards' }).locator('[data-place="raised"]')).toBeVisible();
+  await expect(page.getByTestId('tile-unpaid-balance')).toHaveText('Rp 2.450.000');
 
   await page.goto('/net-worth/loans');
   await page.getByRole('link', { name: 'Dewi', exact: true }).click();
