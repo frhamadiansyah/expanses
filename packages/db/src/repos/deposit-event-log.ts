@@ -4,7 +4,8 @@ import type { Db } from '../database';
 import { accounts, entries } from '../schema';
 import { depositAutomation, depositEvents, depositTerms } from '../schema-assets';
 // accounts.ts reaches the ledger, which calls in here: a cycle of function calls only, resolved long before any runs.
-import { unarchiveAccountTx } from './accounts';
+import { postedBalanceTx, unarchiveAccountTx } from './accounts';
+import { categoryIdsByKeyTx } from './categories';
 import { saveDepositTermsTx } from './deposit-terms';
 
 /**
@@ -112,7 +113,8 @@ export async function reopenDepositEventTx(tx: Db, ws: WorkspaceContext, transac
 /**
  * A transaction a confirmed event posted has been edited (voided and replaced as one step). The event stays done;
  * the log follows the replacement and takes its figures: the gross is what its income lines credit, the tax what
- * its expense lines debit, the principal what left the deposit.
+ * its tax category's line debits, the principal what left the deposit. A close edited to leave money in the deposit
+ * un-archives it.
  */
 export async function followDepositEventTx(tx: Db, ws: WorkspaceContext, fromId: string, toId: string): Promise<void> {
   if (!(await automationTablesExist(tx))) return;
@@ -127,7 +129,9 @@ export async function followDepositEventTx(tx: Db, ws: WorkspaceContext, fromId:
 
   if (event.interestTransactionId === fromId) {
     const grossMinor = Math.max(0, -sum((line) => line.kind === 'income'));
-    const taxMinor = Math.max(0, sum((line) => line.kind === 'expense'));
+    // Only the tax line the confirm posted (tradeAccountsFor's category): a fee added on an edit is not tax withheld.
+    const taxCategoryId = (await categoryIdsByKeyTx(tx, ws))['government_taxes.estimated_tax'];
+    const taxMinor = Math.max(0, sum((line) => line.accountId === taxCategoryId));
     await tx
       .update(depositEvents)
       .set({ interestTransactionId: toId, grossMinor, taxMinor, netMinor: grossMinor - taxMinor })
@@ -135,5 +139,11 @@ export async function followDepositEventTx(tx: Db, ws: WorkspaceContext, fromId:
   } else {
     const principalMinor = Math.max(0, -sum((line) => line.accountId === event.accountId));
     await tx.update(depositEvents).set({ principalTransactionId: toId, principalMinor }).where(eq(depositEvents.id, event.id));
+    // A close edited to take less than the deposit holds leaves money in it. As at confirm (spec §6.4, step 6), a
+    // deposit holding money stays open, with its automation off, so net worth still shows it.
+    const [deposit] = await tx.select({ archivedAt: accounts.archivedAt }).from(accounts).where(eq(accounts.id, event.accountId));
+    if (deposit && deposit.archivedAt !== null && (await postedBalanceTx(tx, event.accountId)) !== 0) {
+      await unarchiveAccountTx(tx, ws, event.accountId);
+    }
   }
 }

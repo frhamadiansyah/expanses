@@ -23,7 +23,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { depositAutomation, depositEvents, depositTerms } from '../schema-assets';
-import { AccountError, type AccountRow, archiveAccountTx, SPENDABLE_SUBTYPES } from './accounts';
+import { AccountError, type AccountRow, archiveAccountTx, postedBalanceTx, SPENDABLE_SUBTYPES } from './accounts';
 import { automationTablesExist, DepositAutomationError, type DepositAutomationErrorCode } from './deposit-event-log';
 import { type DepositTermsRow, getDepositTermsTx, saveDepositTermsTx } from './deposit-terms';
 import { nativeBalances, postTransactionTx } from './ledger';
@@ -332,6 +332,11 @@ export async function confirmDepositEvent(database: Database, ws: WorkspaceConte
       await checkPayoutTx(tx, ws, settings.payoutAccountId, deposit.currency, deposit.id);
     }
     if (closing && !byHand && input.principalMinor <= 0) throw new DepositAutomationError('BAD_FIGURE', 'Say how much came back');
+    // Proposed from the due day's balance (spec §5); money that left since then cannot come back twice. A close never
+    // drives the deposit below zero: it is refused, and the owner types what it holds now.
+    if (closing && !byHand && input.principalMinor > (await postedBalanceTx(tx, deposit.id))) {
+      throw new DepositAutomationError('BAD_FIGURE', 'The deposit holds less than that now. Type what came back.');
+    }
     if (rolling && (!(TERM_MONTHS as readonly number[]).includes(input.newTermMonths ?? 0) || !whole(input.newRateBps))) {
       throw new DepositAutomationError('BAD_FIGURE', 'A roll-over needs its new term and rate');
     }

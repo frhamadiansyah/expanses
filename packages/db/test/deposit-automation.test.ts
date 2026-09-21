@@ -678,6 +678,10 @@ describe('editing a close’s principal transfer', () => {
       lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 49_999_000, currency: 'IDR' }),
     });
     expect(await logged()).toMatchObject([{ principalMinor: 49_999_000, principalTransactionId: replacement, interestTransactionId: result.interestTransactionId }]);
+    // The 1 000 left behind keeps the deposit open (net worth shows it), with automation off, as a short close does.
+    expect((await nativeBalances(database, ws))[depositoId]).toBe(1_000);
+    expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(false);
     await voidTransaction(database, ws, replacement);
     expect(await logged()).toEqual([]);
     const balances = await nativeBalances(database, ws);
@@ -685,6 +689,59 @@ describe('editing a close’s principal transfer', () => {
     expect(balances[depositoId]).toBe(50_000_000);
     expect(await incomeAndTax()).toEqual({ income: 0, tax: 0 });
     expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
+  });
+});
+
+describe('a close after money left the deposit, and edits that are not the principal', () => {
+  it('refuses a close for more than the deposit holds now, and closes for what it holds', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    await database.transaction((tx) =>
+      postTransactionTx(tx, ws, {
+        occurredOn: '2026-10-20',
+        description: 'Broke part of it',
+        lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 10_000_000, currency: 'IDR' }),
+      }),
+    );
+    const proposal = await next('2026-10-25');
+    expect(proposal.principalMinor).toBe(50_000_000);
+    const before = await nativeBalances(database, ws);
+    await expect(confirmDepositEvent(database, ws, asProposed(proposal, '2026-10-25'))).rejects.toMatchObject({ code: 'BAD_FIGURE', message: expect.stringContaining('holds less') });
+    // One minor unit over is still refused; the exact balance is not.
+    await expect(confirmDepositEvent(database, ws, asProposed(proposal, '2026-10-25', { principalMinor: 40_000_001 }))).rejects.toMatchObject({ code: 'BAD_FIGURE' });
+    expect(await logged()).toEqual([]);
+    expect(await nativeBalances(database, ws)).toEqual(before);
+    const result = await confirmDepositEvent(database, ws, asProposed(proposal, '2026-10-25', { principalMinor: 40_000_000 }));
+    expect(result.archived).toBe(true);
+    expect((await nativeBalances(database, ws))[depositoId]).toBe(0);
+  });
+
+  it('leaves a close archived when an edit to its transfer still empties the deposit', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    const result = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    await replaceTransaction(database, ws, result.principalTransactionId!, {
+      occurredOn: '2026-10-16',
+      description: 'Deposito paid out',
+      lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 50_000_000, currency: 'IDR' }),
+    });
+    expect((await listAccounts(database, ws)).map((a) => a.id)).not.toContain(depositoId);
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${depositoId} AND action LIKE '%archive' ORDER BY rowid`)).toEqual([['archive']]);
+  });
+
+  it('reads only the tax line as tax withheld when an edit adds a bank fee', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const result = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    const keys = await categoryIdsByKeyTx(database.db, ws);
+    await replaceTransaction(database, ws, result.interestTransactionId!, {
+      occurredOn: '2026-08-15',
+      description: 'Interest: BCA Deposito',
+      lines: [
+        { accountId: bcaId, amountMinor: 139_384, currency: 'IDR' },
+        { accountId: keys['government_taxes.estimated_tax']!, amountMinor: 36_095, currency: 'IDR' },
+        { accountId: keys['miscellaneous.fees_charges']!, amountMinor: 5_000, currency: 'IDR' },
+        { accountId: keys['income.investment']!, amountMinor: -180_479, currency: 'IDR' },
+      ],
+    });
+    expect(await logged()).toMatchObject([{ grossMinor: 180_479, taxMinor: 36_095, netMinor: 144_384 }]);
   });
 });
 
