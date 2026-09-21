@@ -1,10 +1,12 @@
-import { uuidv7 } from '@expanses/core';
+import { BUDGET_FREQUENCIES, type BudgetFrequency, perMonthMinor, uuidv7 } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { budgetOverrides, budgets } from '../schema-budget';
+import { budgetFrequencies } from '../schema-health';
 import { bookOfCategory, hasBooks } from './books';
+import { healthTablesExist } from './health-tables';
 
 export class BudgetError extends Error {
   constructor(
@@ -18,7 +20,9 @@ export class BudgetError extends Error {
 
 export interface SaveBudgetInput {
   categoryAccountId: string;
+  /** The amount as typed, in the unit `frequency` names. Monthly when no unit is given. */
   amountMinor: number;
+  frequency?: BudgetFrequency;
 }
 
 export interface SetOverrideInput {
@@ -30,11 +34,14 @@ export interface SetOverrideInput {
 export interface BudgetRow {
   id: string;
   categoryAccountId: string;
-  /** What the plan says. */
+  /** What the plan says, as a monthly figure. */
   planMinor: number;
   /** What this month asks for: the override when there is one, otherwise the plan. */
   amountMinor: number;
   overridden: boolean;
+  /** The unit the plan was typed in, and the amount as typed. Monthly, and the plan itself, when set monthly. */
+  frequency: BudgetFrequency;
+  amountAsSetMinor: number;
 }
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -93,6 +100,11 @@ async function assertCategory(database: Database, ws: WorkspaceContext, accountI
 export async function saveBudget(database: Database, ws: WorkspaceContext, input: SaveBudgetInput): Promise<string> {
   assertWholeMinor(input.amountMinor);
   if (input.amountMinor <= 0) throw new BudgetError('AMOUNT_RANGE', 'A budget must be above zero; remove it instead');
+  const frequency = input.frequency ?? 'monthly';
+  if (!BUDGET_FREQUENCIES.includes(frequency)) throw new BudgetError('BAD_FREQUENCY', `${String(frequency)} is not a unit a budget can be set in`);
+  // Converted once, here. Every reader of budgets.amount_minor goes on reading a month.
+  const monthlyMinor = perMonthMinor(input.amountMinor, frequency);
+  if (monthlyMinor <= 0) throw new BudgetError('AMOUNT_RANGE', 'That comes to nothing a month; set it higher or choose a shorter period');
   await assertCategory(database, ws, input.categoryAccountId);
 
   const now = new Date().toISOString();
@@ -101,19 +113,26 @@ export async function saveBudget(database: Database, ws: WorkspaceContext, input
       .select({ id: budgets.id })
       .from(budgets)
       .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, input.categoryAccountId)));
+    const id = existing?.id ?? uuidv7();
     if (existing) {
-      await tx.update(budgets).set({ amountMinor: input.amountMinor, updatedAt: now }).where(eq(budgets.id, existing.id));
-      return existing.id;
+      await tx.update(budgets).set({ amountMinor: monthlyMinor, updatedAt: now }).where(eq(budgets.id, id));
+    } else {
+      await tx.insert(budgets).values({
+        id,
+        workspaceId: ws.workspaceId,
+        categoryAccountId: input.categoryAccountId,
+        amountMinor: monthlyMinor,
+        createdAt: now,
+        updatedAt: now,
+      });
     }
-    const id = uuidv7();
-    await tx.insert(budgets).values({
-      id,
-      workspaceId: ws.workspaceId,
-      categoryAccountId: input.categoryAccountId,
-      amountMinor: input.amountMinor,
-      createdAt: now,
-      updatedAt: now,
-    });
+    // Monthly is the absence of a row. Without 0053 the monthly figure is all that is kept, which is still the right money.
+    if (await healthTablesExist(tx)) {
+      await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, id));
+      if (frequency !== 'monthly') {
+        await tx.insert(budgetFrequencies).values({ budgetId: id, workspaceId: ws.workspaceId, frequency, amountAsSetMinor: input.amountMinor });
+      }
+    }
     return id;
   });
 }
@@ -126,6 +145,7 @@ export async function removeBudget(database: Database, ws: WorkspaceContext, cat
       .from(budgets)
       .where(and(eq(budgets.workspaceId, ws.workspaceId), eq(budgets.categoryAccountId, categoryAccountId)));
     if (!existing) return;
+    if (await healthTablesExist(tx)) await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, existing.id));
     await tx.delete(budgetOverrides).where(eq(budgetOverrides.budgetId, existing.id));
     await tx.delete(budgets).where(eq(budgets.id, existing.id));
   });
@@ -193,6 +213,13 @@ export async function listBudgets(database: Database, ws: WorkspaceContext, mont
     .from(budgetOverrides)
     .where(and(eq(budgetOverrides.workspaceId, ws.workspaceId), eq(budgetOverrides.month, month)));
   const overrideOf = new Map(overrides.map((row) => [row.budgetId, row.amountMinor]));
+  const units = (await healthTablesExist(database.db))
+    ? await database.db
+        .select({ budgetId: budgetFrequencies.budgetId, frequency: budgetFrequencies.frequency, amountAsSetMinor: budgetFrequencies.amountAsSetMinor })
+        .from(budgetFrequencies)
+        .where(eq(budgetFrequencies.workspaceId, ws.workspaceId))
+    : [];
+  const unitOf = new Map(units.map((row) => [row.budgetId, row]));
 
   return rows.map((row) => {
     const override = overrideOf.get(row.id);
@@ -202,6 +229,8 @@ export async function listBudgets(database: Database, ws: WorkspaceContext, mont
       planMinor: row.amountMinor,
       amountMinor: override ?? row.amountMinor,
       overridden: override !== undefined,
+      frequency: unitOf.get(row.id)?.frequency ?? 'monthly',
+      amountAsSetMinor: unitOf.get(row.id)?.amountAsSetMinor ?? row.amountMinor,
     };
   });
 }

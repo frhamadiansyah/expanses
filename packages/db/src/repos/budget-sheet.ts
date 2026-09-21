@@ -9,6 +9,7 @@ import { hasBooks, listBooks } from './books';
 import { getBudgetIncome } from './budget-settings';
 import { goalContributionsFor } from './goal-contributions';
 import { listBudgets } from './budgets';
+import { resolvedCategoryNeeds } from './category-needs';
 import { committedByCategory } from './expense-templates';
 import { periodFlows } from './flows';
 import { goalPlansFor } from './goal-funding';
@@ -65,7 +66,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
       ),
     );
 
-  const [amounts, budgets, income, flows, goals, contributions, eventSpending, committed] = await Promise.all([
+  const [amounts, budgets, income, flows, goals, contributions, eventSpending, committed, needs] = await Promise.all([
     // Events are held out of the caps unless this workspace asked for them; either way they get their own line,
     // and budgetSheet subtracts them from what is left only when the caps have not already counted them.
     categoryTotalsIn(database, ws, 'expense', from, to, { excludeEvents: !countEvents, billMonths: true }),
@@ -79,6 +80,8 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
     // Only for what it could not convert: the per-category figures are the budget page's own read. A bill left out
     // of "… of it is bills" is a gap in what this page shows, so the sheet's own banner has to name it.
     committedByCategory(database, ws),
+    // Each category's essential or lifestyle, walked once by the reader flows uses too.
+    resolvedCategoryNeeds(database.db, ws),
   ]);
 
   // A goal is kept in the owner's currency, and what it asks for every month is a plan rather than a payment: the
@@ -103,6 +106,7 @@ export async function budgetSheetFor(database: Database, ws: WorkspaceContext, m
     })),
     eventSpendingMinor: eventSpending.amountMinor,
     eventsInCaps: countEvents,
+    needs,
   });
 
   return {
