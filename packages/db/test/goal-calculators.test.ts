@@ -70,6 +70,22 @@ describe('a derived target', () => {
     expect(stages[0]).toMatchObject({ targetMonths: 6, targetMinor: null });
   });
 
+  it('remembers the two answers and the base beside the months', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await goal(database, ws, 'Emergency fund', 'emergency');
+    const inputs = { months: 24, household: 'children', income: 'irregular', base: 'all' } as const;
+    await saveGoalCalculator(database, ws, { goalId, kind: 'emergency', inputs, today: TODAY });
+    expect(await getGoalCalculator(database, ws, goalId)).toMatchObject({ inputs });
+    expect((await stagesOf(database, ws, goalId))[0]).toMatchObject({ targetMonths: 24, targetMinor: null });
+  });
+
+  it('refuses an answer it does not know', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await goal(database, ws, 'Emergency fund', 'emergency');
+    await expect(saveGoalCalculator(database, ws, { goalId, kind: 'emergency', inputs: { months: 6, household: 'big' } as never, today: TODAY })).rejects.toThrow(/household/);
+    await expect(saveGoalCalculator(database, ws, { goalId, kind: 'emergency', inputs: { months: 6, base: 'some' } as never, today: TODAY })).rejects.toThrow(/essential or all/);
+  });
+
   it('remembers the inputs, so the working can be reopened', async () => {
     const { database, ws } = await setupDb();
     const goalId = await goal(database, ws, 'Retirement', 'retirement');

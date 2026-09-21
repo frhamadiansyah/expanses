@@ -1,4 +1,15 @@
-import { type EducationInputs, educationStages, type RetirementInputs, retirementTargetMinor } from '@expanses/core';
+import {
+  EMERGENCY_BASES,
+  type EducationInputs,
+  type EmergencyBase,
+  educationStages,
+  HOUSEHOLDS,
+  type Household,
+  INCOME_STABILITIES,
+  type IncomeStability,
+  type RetirementInputs,
+  retirementTargetMinor,
+} from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -6,9 +17,15 @@ import { goalCalculators } from '../schema-budget';
 import { GoalDbError, type SaveGoalStageInput, saveGoal } from './goals';
 import { goals as goalsTable } from '../schema-goals';
 
-/** An emergency fund counts months of outgoings, which are read from the flows when the sheet is built. */
+/**
+ * An emergency fund counts months of outgoings, read from the flows when the sheet is built. The two answers are kept
+ * so the screen can say which of them produced the months; `base` says what the months multiply.
+ */
 export interface EmergencyInputs {
   months: number;
+  household?: Household;
+  income?: IncomeStability;
+  base?: EmergencyBase;
 }
 
 export type CalculatorKind = 'emergency' | 'education' | 'retirement';
@@ -33,8 +50,11 @@ export interface GoalCalculatorRow {
 /** The stages a calculator's inputs imply, in the shape saveGoal wants. */
 function stagesFor(input: SaveGoalCalculatorInput, goalName: string): { stages: SaveGoalStageInput[]; computedMinor: number } {
   if (input.kind === 'emergency') {
-    const { months } = input.inputs as EmergencyInputs;
+    const { months, household, income, base } = input.inputs as EmergencyInputs;
     if (!Number.isFinite(months) || months <= 0) throw new GoalDbError('An emergency fund needs a number of months above zero');
+    if (household !== undefined && !HOUSEHOLDS.includes(household)) throw new GoalDbError('That household is not one this app knows');
+    if (income !== undefined && !INCOME_STABILITIES.includes(income)) throw new GoalDbError('Income is salaried or irregular');
+    if (base !== undefined && !EMERGENCY_BASES.includes(base)) throw new GoalDbError('An emergency fund counts essential or all spending');
     // Months, not an amount: what it costs follows your spending, and is worked out when it is read.
     const dueOn = yearsFrom(input.today, 2);
     return { stages: [{ name: goalName, targetMinor: null, targetMonths: Math.round(months), dueOn }], computedMinor: 0 };

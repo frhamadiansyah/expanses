@@ -13,8 +13,10 @@ import {
   recordTrade,
   retagTrade,
   saveAssetProfile,
+  saveCategoryNeed,
   saveEarmark,
   saveGoal,
+  saveGoalCalculator,
   saveTradeTemplate,
   upsertPrice,
   upsertRate,
@@ -280,6 +282,48 @@ describe('goalPlansFor', () => {
     const summary = await goalPlansFor(database, ws, TODAY);
     // Rp 30 jt in; Rp 23 jt spent, the interest included; Rp 1 jt of principal left the account beside it.
     expect(summary.capacityMonthlyMinor).toBe(6_000_000);
+  });
+
+  /** Rp 5 jt a month at restaurants, on top of the Rp 20 jt of groceries, with Food and beverage marked lifestyle. */
+  async function diningOut() {
+    const categories = await categoryIdsByKey(database, ws);
+    await saveCategoryNeed(database, ws, categories['food_beverage']!, 'lifestyle');
+    for (const month of ['06', '07', '08']) {
+      await postTransaction(database, ws, {
+        occurredOn: `2026-${month}-20`,
+        description: 'Dinner',
+        lines: [
+          { accountId: categories['food_beverage.restaurants']!, amountMinor: 5_000_000, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: -5_000_000, currency: 'IDR' },
+        ],
+      });
+    }
+  }
+
+  it('sizes an emergency goal on essential spending unless its working says all', async () => {
+    await salaryAndSpending();
+    await diningOut();
+    const emergencyId = await saveGoal(database, ws, {
+      name: 'Emergency fund',
+      kind: 'emergency',
+      growthBps: 0,
+      returnBps: 200,
+      stages: [{ name: 'Emergency fund', targetMinor: null, targetMonths: 6, dueOn: '2028-12-31' }],
+    });
+    const todayOf = async () => (await goalPlansFor(database, ws, TODAY)).plans.find((row) => row.goalId === emergencyId)!.stages[0]!.todayMinor;
+
+    // Typed by hand: the default, essential — the Rp 5 jt of dining out left out.
+    expect(await todayOf()).toBe(6 * 20_000_000);
+
+    await saveGoalCalculator(database, ws, { goalId: emergencyId, kind: 'emergency', inputs: { months: 6, base: 'all' }, today: TODAY });
+    expect(await todayOf()).toBe(6 * 25_000_000);
+  });
+
+  it('leaves what you can save alone: lifestyle is still money that left', async () => {
+    await salaryAndSpending();
+    await diningOut();
+    // Rp 30 jt in, Rp 25 jt out.
+    expect((await goalPlansFor(database, ws, TODAY)).capacityMonthlyMinor).toBe(5_000_000);
   });
 
   it('warns when more is set aside than the account holds', async () => {

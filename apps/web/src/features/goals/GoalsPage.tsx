@@ -164,7 +164,7 @@ export function GoalsPage() {
           />
           <InsetRow
             title="You save each month"
-            subtitle="Take-home pay − spending − debt payments"
+            subtitle="Take-home pay − spending − loan principal"
             value={<Money minor={summary.data.capacityMonthlyMinor} currency={ws.baseCurrency} />}
             valueTone="ink"
             chevron={false}

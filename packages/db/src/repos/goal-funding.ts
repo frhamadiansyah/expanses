@@ -1,6 +1,9 @@
 import {
   addMonths,
   convertMinor,
+  DEFAULT_EMERGENCY_BASE,
+  type EmergencyBase,
+  emergencyOutgoingMinor,
   fitByRank,
   formatMinor,
   type GoalLink,
@@ -25,6 +28,7 @@ import { listAssetProfiles } from './assets';
 import { assetValuesAt } from './asset-values';
 import { periodFlows } from './flows';
 import { resolveRates } from './fx';
+import { type EmergencyInputs, listGoalCalculators } from './goal-calculators';
 import { type GoalRow, GoalDbError, listEarmarks, listGoals } from './goals';
 import { nativeBalances } from './ledger';
 import { listTrades } from './trades';
@@ -169,9 +173,16 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
   const links = await goalLinksFor(database, ws, date);
   // What you can put away is yours, not one workspace's, and it is counted in your own currency.
   const flows = await periodFlows(database, ownerScope(ws), { from: `${addMonths(monthOf(date), -11)}-01`, to: date });
-  // The same denominator the emergency ratio card divides by: spending already holds the loan interest,
-  // so only the principal is added to it. Adding the whole payment would count the interest twice.
-  const monthlyOutgoingMinor = perMonth(flows.spendingMinor + flows.debtPrincipalMinor, flows.months);
+  // What an emergency goal's months multiply: the function the ratio card divides by, on the base the goal's own
+  // working chose — essential unless it said all. Loan principal is inside either way; the interest never twice.
+  const baseOf = new Map<string, EmergencyBase>(
+    (await listGoalCalculators(database, ws))
+      .filter((row) => row.kind === 'emergency')
+      .map((row) => [row.goalId, (row.inputs as EmergencyInputs).base ?? DEFAULT_EMERGENCY_BASE]),
+  );
+  // Summed signed inside emergencyOutgoingMinor, then clamped once here: refunds larger than spending make a month of
+  // nothing, never a negative target.
+  const outgoingFor = (goalId: string) => Math.max(0, perMonth(emergencyOutgoingMinor(flows, baseOf.get(goalId) ?? DEFAULT_EMERGENCY_BASE), flows.months));
   // What is left over takes the same care: the interest is an expense, so subtracting the whole payment
   // beside spending would take it out twice and make every goal look further away than it is. The principal
   // is still subtracted — it builds equity, but the cash has left the account and cannot fund a goal.
@@ -191,7 +202,7 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
 
   const plans: GoalPlanRow[] = goalRows.map((goal) => {
     const mine = links.filter((link) => link.goalId === goal.id);
-    const plan = goalPlan(goal, mine, monthlyFromTemplates(goal.id), monthlyOutgoingMinor, date);
+    const plan = goalPlan(goal, mine, monthlyFromTemplates(goal.id), outgoingFor(goal.id), date);
     const over = mine.find((link) => link.overBalance);
     // A link with no rate is left out of the total, so the total is honest; saying so is what keeps the
     // *goal* honest, and `earmarkWarning` is the slot the screen already paints for exactly this.
