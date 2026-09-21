@@ -17,9 +17,11 @@ test('a card carries its bank and its last four digits', async ({ page }) => {
   await addCard(page, 'Mandiri Bonvoy', 'Mandiri', '1467');
   await expect(page.getByRole('link', { name: 'Mandiri Bonvoy', exact: true })).toBeVisible();
 
-  // The digits are what tell two cards on one statement apart, so they show where the cards are.
+  // The digits are what tell two cards on one statement apart, so they show where the cards are: on the card's
+  // own face in the wallet stack, and on the line under it that names the card.
   await page.goto('/cards');
-  await expect(page.getByTestId('card-last4')).toContainText('1467');
+  await expect(page.getByTestId('card-face')).toContainText('1467');
+  await expect(page.locator('section', { has: page.getByRole('link', { name: 'Mandiri Bonvoy', exact: true }) })).toContainText('···· 1467');
 });
 
 test('the same digits are refused at the same bank, and allowed at another', async ({ page }) => {
