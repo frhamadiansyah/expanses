@@ -111,3 +111,24 @@ export function fitSegments(items: readonly Segment[], width = PHONE_WIDTH, max 
   /* c8 ignore next — the loop above always returns at count === 1. */
   return { shown: [], overflow: [...items], segmentWidth: 0 };
 }
+
+/**
+ * Which segment a path selects: the **longest** key that is the path, or a parent of it.
+ *
+ * `find` is the obvious loop and it is wrong for a sectioned app. `/net-worth` is a prefix of
+ * `/net-worth/debts`, so the first match lights **Overview** on every net-worth section: the tab navigates, the
+ * address is right, and the control says the reader never left the overview. The longest match is the section
+ * actually being read, and it needs no special case for the section root — which is why it is the rule.
+ *
+ * A key is a parent only on a whole segment (`/net-worth/`), never on a shared prefix: `/net-worthish` is not
+ * under `/net-worth`, and must not light it.
+ */
+export function activeSegment(keys: readonly string[], pathname: string, fallback: string): string {
+  let best: string | null = null;
+  for (const key of keys) {
+    if (pathname !== key && !pathname.startsWith(`${key}/`)) continue;
+    if (best === null || key.length > best.length) best = key;
+  }
+  return best ?? fallback;
+}
+

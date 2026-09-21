@@ -21,7 +21,7 @@ export { Figure, RecordTable, type RecordColumn, type RecordDetail, type RecordS
 export { CHEVRON, GROUP_GAP, GROUP_RADIUS, MIN_TEXT, PHONE_WIDTH, ROW_ICON, ROW_PAD_X, ROW_PAD_Y, TAP, rowHeight, tapReach, textWidth } from './metrics';
 export { groupHeader, rowPositions, type GroupHeader, type HeaderProgress, type RowPosition } from './group';
 export { iconTint, moneyTone, planRow, type Direction, type RowLayout, type RowShape, type Tone } from './row';
-export { PHONE_MAX, SEGMENT_HEIGHT, SEGMENT_MORE, fitSegments, segmentRoute, type PlacedSegment, type Segment, type SegmentPlan, type SegmentRoute } from './segments';
+export { activeSegment, PHONE_MAX, SEGMENT_HEIGHT, SEGMENT_MORE, fitSegments, segmentRoute, type PlacedSegment, type Segment, type SegmentPlan, type SegmentRoute } from './segments';
 export { CORNER_MAX, backLabel, planCornerActions, type CornerAction, type CornerPlan } from './title';
 export { heroFigure, progressFraction, progressPercent, progressTone, type HeroFigure } from './hero-figure';
 export { planFormRow, planSwitchRow, type FormKind, type FormRowPlan, type SwitchRowPlan } from './form-row';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TAP, tapReach } from './metrics';
-import { fitSegments, SEGMENT_HEIGHT, SEGMENT_MORE, type Segment, segmentRoute } from './segments';
+import { activeSegment, fitSegments, SEGMENT_HEIGHT, SEGMENT_MORE, type Segment, segmentRoute } from './segments';
 
 /** The four tabs `/cards/$cardId` carries today as an underline row that wraps at 390px. */
 const CARD_TABS: Segment[] = [
@@ -123,3 +123,38 @@ describe('the segmented control against the tap floor', () => {
     expect(SEGMENT_MORE + tapReach(SEGMENT_MORE) * 2).toBeGreaterThanOrEqual(TAP);
   });
 });
+
+/**
+ * Which segment an address lights. The whole point is the case a `find` gets wrong: `/net-worth` is a prefix of
+ * every other net-worth route, so the first match would leave **Overview** lit while the reader is on Debts —
+ * the tab navigates and the control denies it.
+ */
+describe('activeSegment', () => {
+  const KEYS = ['/net-worth', '/net-worth/assets', '/net-worth/trades', '/net-worth/debts', '/net-worth/loans'];
+
+  it('lights the section being read, not the section that contains it', () => {
+    expect(activeSegment(KEYS, '/net-worth/debts', '/net-worth')).toBe('/net-worth/debts');
+    expect(activeSegment(KEYS, '/net-worth/loans', '/net-worth')).toBe('/net-worth/loans');
+  });
+
+  it('lights the overview only when the overview is the address', () => {
+    expect(activeSegment(KEYS, '/net-worth', '/net-worth')).toBe('/net-worth');
+  });
+
+  it('gives a page under a section that section, however deep it sits', () => {
+    expect(activeSegment(KEYS, '/net-worth/assets/abc-123', '/net-worth')).toBe('/net-worth/assets');
+  });
+
+  it('takes a key as a parent only on a whole segment, never on a shared prefix', () => {
+    expect(activeSegment(KEYS, '/net-worthish', '/net-worth')).toBe('/net-worth');
+  });
+
+  it('falls back when the address belongs to no segment at all', () => {
+    expect(activeSegment(KEYS, '/cards', '/net-worth')).toBe('/net-worth');
+  });
+
+  it('does not depend on the order the keys arrive in', () => {
+    expect(activeSegment([...KEYS].reverse(), '/net-worth/assets', '/net-worth')).toBe('/net-worth/assets');
+  });
+});
+

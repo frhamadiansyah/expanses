@@ -1,6 +1,6 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { usePhone } from '../../app/use-phone';
-import { type Segment, SegmentedControl } from '../../ui/native';
+import { activeSegment, type Segment, SegmentedControl } from '../../ui/native';
 
 /**
  * The five net-worth sections, as the kit's segmented control.
@@ -11,7 +11,8 @@ import { type Segment, SegmentedControl } from '../../ui/native';
  * one that moves — the case `/design-kit` demonstrates with these exact five labels.
  *
  * A wide screen has the room for all five, so it is given all five: the desktop loses no control to the phone's
- * limit. The key is the route itself, so which segment is lit is read off the address rather than stored twice.
+ * limit. The key is the route itself, so which segment is lit is read off the address rather than stored twice —
+ * and read as the **longest** matching route, or `/net-worth` would light Overview on every section.
  *
  * Each tab also *names* its route, so each is drawn as a real link: this is the app's main section navigation,
  * and a middle click, a ⌘-click and "open in a new tab" all have to keep working on it. Plain clicking,
@@ -27,6 +28,9 @@ const TABS = [
 
 type TabPath = (typeof TABS)[number]['key'];
 
+/** The tabs' keys, once: `activeSegment` reads the address against them on every render. */
+const TAB_KEYS = TABS.map((tab) => tab.key);
+
 /** The track on a wide screen. Wide enough that every label is drawn in full, none of them shortened. */
 const DESKTOP_WIDTH = 640;
 
@@ -34,8 +38,7 @@ export function NetWorthTabs() {
   const navigate = useNavigate();
   const phone = usePhone();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  // `/net-worth` matches only itself; every other section also claims what sits under it.
-  const active = TABS.find((tab) => pathname === tab.key || pathname.startsWith(`${tab.key}/`))?.key ?? '/net-worth';
+  const active = activeSegment(TAB_KEYS, pathname, '/net-worth');
 
   return (
     <SegmentedControl
