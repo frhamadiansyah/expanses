@@ -51,10 +51,11 @@ test('switches the ratios between the rolling year and a calendar year', async (
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
 
   await page.goto('/net-worth');
-  await page.getByRole('button', { name: 'Last 12 months' }).click();
-  await expect(page.getByRole('button', { name: 'Last 12 months' })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: '2026', exact: true }).click();
-  await expect(page.getByRole('button', { name: '2026', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  // The period switch is the kit's segmented control: a radio group, so the chosen one says `aria-checked`.
+  await page.getByRole('radio', { name: 'Last 12 months' }).click();
+  await expect(page.getByRole('radio', { name: 'Last 12 months' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: '2026', exact: true }).click();
+  await expect(page.getByRole('radio', { name: '2026', exact: true })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('moves net worth by the price difference only', async ({ page }) => {
