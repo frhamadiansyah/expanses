@@ -51,6 +51,68 @@ describe('adding pockets up', () => {
   it('needs no rate for the base currency itself', () => {
     expect(sumToBase({ amounts: [{ minor: 5_400_000, currency: 'IDR' }], baseCurrency: 'IDR', ratesToBase: {} })).toEqual({ totalMinor: 5_400_000, missing: [] });
   });
+
+  it('reads a zero-exponent and a three-decimal currency at their own exponent, not USD’s two (I-1)', () => {
+    // ¥30.000 at 108,3 = 3.249.000, not ¥300,00 (a hard-coded 2-decimal read would say Rp 32.490).
+    // KWD 1,234 at 53.000,7 = 65.402,8638 → 65.403.
+    expect(
+      sumToBase({
+        amounts: [
+          { minor: 30_000, currency: 'JPY' },
+          { minor: 1_234, currency: 'KWD' },
+          { minor: 1_000, currency: 'IDR' },
+        ],
+        baseCurrency: 'IDR',
+        ratesToBase: { JPY: 108.3, KWD: 53_000.7 },
+      }),
+    ).toEqual({ totalMinor: 3_249_000 + 65_403 + 1_000, missing: [] });
+  });
+
+  it('shifts the exponent the other way when the base itself is not IDR (I-1)', () => {
+    // ¥10.000 at a made-up 1 JPY = $0.01 is $100.00 (10.000 cents); $25.50 needs no rate since it is already base.
+    expect(
+      sumToBase({
+        amounts: [
+          { minor: 10_000, currency: 'JPY' },
+          { minor: 2_550, currency: 'USD' },
+        ],
+        baseCurrency: 'USD',
+        ratesToBase: { JPY: 0.01 },
+      }),
+    ).toEqual({ totalMinor: 10_000 + 2_550, missing: [] });
+  });
+
+  it('refuses a rate of 0, and lists several missing currencies sorted and deduplicated (M-5)', () => {
+    // USD: 0 is not a usable rate (rateOf refuses it, same as any other missing currency) — it must not throw
+    // convertMinor's "Invalid FX rate" instead of naming USD alongside SGD.
+    const got = sumToBase({
+      amounts: [
+        { minor: 100, currency: 'USD' },
+        { minor: 200, currency: 'SGD' },
+        { minor: 300, currency: 'SGD' },
+      ],
+      baseCurrency: 'IDR',
+      ratesToBase: { USD: 0 },
+    });
+    expect(got).toEqual({ totalMinor: null, missing: ['SGD', 'USD'] });
+  });
+
+  it('guards the running sum, not just the final total (M-1): a large term that cancels out must not lose units', () => {
+    // MAX_SAFE_INTEGER + 2 overflows float64 precision (rounds down to MAX_SAFE_INTEGER + 1) before −MAX_SAFE_INTEGER
+    // brings the total back under 2^53; a float64 accumulator silently returns 1 where the true sum is 2.
+    const MAX = Number.MAX_SAFE_INTEGER;
+    expect(
+      sumToBase({
+        amounts: [
+          { minor: MAX, currency: 'IDR' },
+          { minor: 2, currency: 'IDR' },
+          { minor: -MAX, currency: 'IDR' },
+        ],
+        baseCurrency: 'IDR',
+        ratesToBase: {},
+      }),
+    ).toEqual({ totalMinor: 2, missing: [] });
+  });
 });
 
 describe('what the bank’s rate cost', () => {
