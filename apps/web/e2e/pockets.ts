@@ -38,13 +38,22 @@ export async function openWithPockets(
  * funded foreign account with no rate at all, since opening one with a balance always stores the rate it opened at.
  * Pair it with an aborted rate route, so nothing can be fetched back.
  */
-export async function forgetRates(page: Page, target: string) {
+export const forgetRates = (page: Page, target: string) => rewriteRates(page, target, 'DELETE FROM fx_rates');
+
+/**
+ * Moves every rate the device holds back one day, so today's are only last-known: what a device sees on the first
+ * screen of the day, before anything has fetched the day's rates.
+ */
+export const ageRates = (page: Page, target: string) => rewriteRates(page, target, "UPDATE fx_rates SET on_date = date(on_date, '-1 day')");
+
+/** Runs one statement on the stored rates through a backup and a restore. */
+async function rewriteRates(page: Page, target: string, statement: string) {
   await page.goto('/backup');
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download backup' }).click();
   writeFileSync(target, readFileSync((await (await downloaded).path())!));
   const db = new BetterSqlite3(target);
-  db.prepare('DELETE FROM fx_rates').run();
+  db.prepare(statement).run();
   db.close();
 
   // The restore's confirm is accepted by the spec's own `dialog` handler (every spec using this has one).

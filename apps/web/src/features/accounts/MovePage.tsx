@@ -1,4 +1,4 @@
-import { evaluateAmount, formatMinor, isoDate } from '@expanses/core';
+import { evaluateAmount, type ExchangeCost, formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, postTransaction } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -44,12 +44,16 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  /** The spread the ledger recorded, kept only when it is not the one the screen showed (spec §10.3). */
+  const [recorded, setRecorded] = useState<ExchangeCost | null>(null);
   const set = (patch: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...patch }));
   const from = pockets.find((p) => p.id === draft.moneyId)!;
   const to = pockets.find((p) => p.id === draft.toId)!;
   const held = useHeldRates([from.currency!, to.currency!], draft.occurredOn);
   const view = moveView(draft, accounts, ws.baseCurrency, held.data?.rates ?? {});
   const spread = spreadLine(view.cost, ws.baseCurrency);
+  // Rates held for an earlier day: the save fetches the day's own, so the figure shown is only an estimate.
+  const lastKnown = held.data?.stale ?? [];
   const rateDate = draft.occurredOn > isoDate() ? isoDate() : draft.occurredOn;
 
   const settle = (which: 'amount' | 'toAmount', value: string, currency: string) => {
@@ -67,6 +71,13 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       const ratesToBase = await ratesForSave({ database, ws, draft: final, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Rate' });
       await postTransaction(database, ws, { ...post.input, ratesToBase });
       await invalidate();
+      // The posting converts at the rates the save resolved, which need not be the ones on screen. When the spread
+      // the ledger now holds differs from the one shown, say so instead of leaving the screen's figure standing.
+      const posted = moveView(final, accounts, ws.baseCurrency, ratesToBase).cost;
+      if (posted && posted.costMinor !== view.cost?.costMinor) {
+        setRecorded(posted);
+        return;
+      }
       await navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } });
     } catch (e) {
       setError(e);
@@ -83,6 +94,24 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     </option>
   );
   const idOf = (code: string) => pockets.find((p) => p.currency === code)!.id;
+
+  if (recorded) {
+    const line = spreadLine(recorded, ws.baseCurrency)!;
+    return (
+      <div className={SCREEN}>
+        <LargeTitle title="Moved" back={parent.name} backTo="/accounts/$accountId" backParams={{ accountId: parent.id }} />
+        <InsetGroup
+          header="Recorded"
+          footer={`The move was recorded at the rates for ${rateDate}, not the ones the screen showed, so this is the spread the ledger holds.`}
+        >
+          <InsetRow testId="recorded-spread" title={line.title} value={line.figure} valueTone="ink" chevron={false} />
+        </InsetGroup>
+        <InsetGroup>
+          <InsetRow title="Done" chevron={false} onClick={() => void navigate({ to: '/accounts/$accountId', params: { accountId: parent.id } })} />
+        </InsetGroup>
+      </div>
+    );
+  }
 
   return (
     <div className={SCREEN}>
@@ -119,12 +148,16 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       </InsetGroup>
       {spread && view.cost && (
         <InsetGroup
-          footer={`${formatMinor(evaluateOrZero(view.leaves), view.leaves.currency)} was worth ${formatMinor(view.cost.fromBaseMinor, ws.baseCurrency)} on ${draft.occurredOn}; ${formatMinor(
+          footer={`${lastKnown.length > 0 ? `At the last-known ${lastKnown.join(', ')} rates: ` : ''}${formatMinor(evaluateOrZero(view.leaves), view.leaves.currency)} was worth ${formatMinor(view.cost.fromBaseMinor, ws.baseCurrency)} on ${draft.occurredOn}; ${formatMinor(
             evaluateOrZero(view.arrives!),
             view.arrives!.currency,
-          )} is worth ${formatMinor(view.cost.toBaseMinor, ws.baseCurrency)}. The gap is the bank's spread, and it is recorded.`}
+          )} is worth ${formatMinor(view.cost.toBaseMinor, ws.baseCurrency)}. ${
+            lastKnown.length > 0
+              ? 'Moving it fetches the day’s rates and records the spread at those, which may differ.'
+              : 'The gap is the bank’s spread, and it is recorded.'
+          }`}
         >
-          <InsetRow testId="spread" title={spread.title} value={spread.figure} valueTone="ink" chevron={false} />
+          <InsetRow testId="spread" title={lastKnown.length > 0 ? `${spread.title} (last known)` : spread.title} value={spread.figure} valueTone="ink" chevron={false} />
         </InsetGroup>
       )}
       <InsetGroup>

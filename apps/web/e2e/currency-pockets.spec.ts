@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { forgetRates, mockRates, openWithPockets } from './pockets';
+import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -88,6 +88,33 @@ test('moving between pockets moves what the screen shows and says what the bank�
   await expect(page.getByTestId('spread')).toContainText('35.160');
   await page.getByRole('button', { name: 'Move it' }).click();
 
+  await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
+  await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
+});
+
+test('a spread shown at last-known rates says so, and the move shows the spread it recorded at the day’s rates (I1)', async ({ page }, testInfo) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  // The first move of the day: the device holds only yesterday's rates, and the day's differ from them.
+  await ageRates(page, testInfo.outputPath('aged.sqlite3'));
+  await page.unroute('https://api.frankfurter.dev/**');
+  await mockRates(page, { USD: 16_400, SGD: 12_800 });
+
+  await page.goto('/accounts');
+  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await page.getByRole('link', { name: /Move between pockets/ }).click();
+  await page.getByLabel('From').selectOption('USD');
+  await page.getByLabel('To').selectOption('SGD');
+  await page.getByLabel('Leaves USD').pressSequentially('500');
+  await page.getByLabel('Arrives SGD').pressSequentially('638');
+  // 500 × 16.250 − 638 × 12.680: the held rates, and marked as such.
+  await expect(page.getByTestId('spread')).toContainText('35.160');
+  await expect(page.getByTestId('spread')).toContainText('last known');
+  await page.getByRole('button', { name: 'Move it' }).click();
+
+  // 500 × 16.400 − 638 × 12.800: what the ledger records, at the rates the save fetched.
+  await expect(page.getByTestId('recorded-spread')).toContainText('33.600');
+  await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
 });
