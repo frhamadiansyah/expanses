@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { at, automate, confirmEach, expectBalance, openDeposit, settingsSaved, setUp, typeInto } from './deposit-maturity';
+import { at, automate, confirmEach, expectBalance, openDeposit, settingsSaved, setUp, startReport, typeInto } from './deposit-maturity';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -118,6 +118,29 @@ test('records it by hand: nothing posts, and the next one is proposed', async ({
   await expect(card).toContainText(/Interest due 15 Sept? 2026/);
   await expect(card).toContainText('1 more waiting');
   await expectBalance(page, s.payoutName, '1.000.000');
+});
+
+test('records it by hand with the figures typed on screen, and the tax report reads those', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'principal', paid: 'at_maturity', exempt: false });
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  const card = page.getByTestId('deposit-proposal');
+  await card.getByRole('button', { name: 'Edit figures' }).click();
+  // What the bank credited, typed over the estimate (535.616 and 107.123).
+  await typeInto(page, 'Interest before tax', '535.700');
+  await typeInto(page, 'Tax withheld', '107.140');
+  await card.getByRole('button', { name: 'Recorded it myself' }).click();
+  await expect(card).toHaveCount(0);
+  await expectBalance(page, s.payoutName, '1.000.000'); // nothing posted
+  await startReport(page, 2026);
+  const row = page.getByTestId('income-row').filter({ hasText: s.depositName });
+  await expect(row).toContainText('interest');
+  await expect(row).toContainText('535.700');
+  const finalBand = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Final tax' }) }).last();
+  await expect(finalBand).toContainText('107.140');
+  await expect(finalBand).not.toContainText('107.123');
 });
 
 test('proposes queued payouts one after another, never on their own', async ({ page }) => {
