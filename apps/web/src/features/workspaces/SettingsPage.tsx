@@ -1,33 +1,21 @@
 import { CURRENCIES, isoDate } from '@expanses/core';
 import { archiveBook, type BookRow, findRate, renameBook, setBookBaseCurrency, setBookEventsInBudget } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight } from 'lucide-react';
+
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { usePhone } from '../../app/use-phone';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, ErrorBox, Field, Input, PageHeader, Select } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { DestructiveRow, type GroupChild, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { SCREEN } from '../networth/Panel';
+import { SwitchRow } from '../networth/SwitchRow';
 import { useBooks } from './queries';
 import { WorkspaceDot } from './WorkspaceBadge';
 
 const KIND_LABEL: Record<string, string> = { personal: 'Personal', business: 'Business', family: 'Family', shared: 'Shared' };
 
-/** The row itself: who the workspace is, in the two words and one code that tell it apart from its neighbours. */
-function Face({ book }: { book: BookRow }) {
-  return (
-    <>
-      <WorkspaceDot book={book} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{book.name}</span>
-        <span className="block text-xs text-slate-500">
-          {KIND_LABEL[book.kind] ?? book.kind} · {book.baseCurrency}
-        </span>
-      </span>
-      <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
-    </>
-  );
-}
 
 /**
  * Everything one workspace can be told to do: what it is called, what it reads in, whether an event counts
@@ -103,62 +91,55 @@ function WorkspaceSettings({ book }: { book: BookRow }) {
     });
 
   return (
-    <div className="space-y-4 px-1 pt-3 pb-1">
+    <div className="pt-[10px]">
       <ErrorBox error={error} />
-      {note && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{note}</p>}
+      {note && <p className="pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-tint)]">{note}</p>}
 
-      <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-        <Field label="Name">
-          <Input value={name} onChange={(event) => setName(event.target.value)} />
-        </Field>
-        <div className="pb-1">
-          <Button onClick={rename} disabled={busy}>
-            Save
-          </Button>
-        </div>
-      </div>
+      <InsetGroup wide>
+        <TextRow label="Name" value={name} onChange={(event) => setName(event.target.value)} />
+        {/* The kit's rows take no `disabled`, so the guard that was on the button is on the call instead: a
+            press while one of these is in flight does nothing, exactly as a disabled button did nothing. */}
+        <InsetRow title="Save" chevron={false} onClick={() => !busy && rename()} className={busy ? 'opacity-40' : undefined} />
+      </InsetGroup>
 
-      <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-        <Field label="Reads in" hint="Its Cashflow, budgets and bills are converted into this.">
-          <Select value={currency} onChange={(event) => setCurrency(event.target.value)}>
-            {CURRENCIES.map((option) => (
-              <option key={option.code} value={option.code}>
-                {option.code} — {option.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {currency !== book.baseCurrency && (
-          <div className="pb-1">
-            <Button onClick={changeCurrency} disabled={busy}>
-              Change currency
-            </Button>
-          </div>
-        )}
-      </div>
-      {currency !== book.baseCurrency && rate.isSuccess && (
-        <p data-testid="currency-note" className={cx('text-xs', rate.data ? 'text-slate-500' : 'text-amber-700')}>
-          {rate.data
-            ? `Caps and expected income will be converted at ${rate.data.rate} from ${rate.data.onDate}`
-            : `No ${book.baseCurrency}→${currency} rate yet. Record one first.`}
-        </p>
-      )}
+      <InsetGroup
+        wide
+        footer={
+          currency !== book.baseCurrency && rate.isSuccess ? (
+            <span data-testid="currency-note" className={rate.data ? undefined : 'text-[var(--ph-warn)]'}>
+              {rate.data
+                ? `Caps and expected income will be converted at ${rate.data.rate} from ${rate.data.onDate}`
+                : `No ${book.baseCurrency}→${currency} rate yet. Record one first.`}
+            </span>
+          ) : (
+            'Its Cashflow, budgets and bills are converted into this.'
+          )
+        }
+      >
+        <SelectRow label="Reads in" value={currency} onChange={(event) => setCurrency(event.target.value)}>
+          {CURRENCIES.map((option) => (
+            <option key={option.code} value={option.code}>
+              {option.code} — {option.name}
+            </option>
+          ))}
+        </SelectRow>
+        {currency !== book.baseCurrency ? (
+          <InsetRow title="Change currency" chevron={false} onClick={() => !busy && changeCurrency()} className={busy ? 'opacity-40' : undefined} />
+        ) : null}
+      </InsetGroup>
 
-      <label className="flex items-start gap-2 text-sm text-slate-700">
-        <input type="checkbox" role="switch" className="mt-0.5" checked={book.countEventsInBudget} disabled={busy} onChange={(event) => void setEvents(event.target.checked)} />
-        Count event spending in this workspace&rsquo;s monthly budget
-      </label>
+      <InsetGroup wide>
+        <SwitchRow
+          label="Count event spending in this workspace’s monthly budget"
+          checked={book.countEventsInBudget}
+          onChange={(checked) => !busy && void setEvents(checked)}
+        />
+      </InsetGroup>
 
-      <div className="border-t border-slate-100 pt-3">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => (armed ? void archive() : setArmed(true))}
-          className={cx('rounded-lg px-2 py-1 text-xs font-medium', armed ? 'bg-red-700 text-white' : 'text-red-700 hover:bg-red-50')}
-        >
-          {armed ? 'Click again to archive' : 'Archive workspace'}
-        </button>
-      </div>
+      {/* Its own group: the air between two groups is the only undo a finger gets before an archive. */}
+      <InsetGroup wide>
+        <DestructiveRow label={armed ? 'Click again to archive' : 'Archive workspace'} onClick={() => !busy && (armed ? void archive() : setArmed(true))} />
+      </InsetGroup>
     </div>
   );
 }
@@ -169,39 +150,39 @@ function WorkspaceSettings({ book }: { book: BookRow }) {
  * A wide screen opens it where it stands, so the workspace above and below stay in view while it is being
  * changed; a phone has no room for that and lifts it into a sheet instead.
  */
-function WorkspaceRow({ book }: { book: BookRow }) {
+function WorkspaceRow({ book, position }: GroupChild & { book: BookRow }) {
   const phone = usePhone();
   const [open, setOpen] = useState(false);
 
-  if (phone) {
-    return (
-      <li data-testid="workspace-entry">
-        <button
-          type="button"
-          data-testid="settings-workspace-row"
-          onClick={() => setOpen(true)}
-          className="flex min-h-11 w-full items-center gap-3 rounded-lg px-1 py-2 text-left hover:bg-slate-50"
-        >
-          <Face book={book} />
-        </button>
-        {open && (
+  /* One row, both ways: the kit's own, so the dot, the name, the kind and the chevron are not drawn twice. */
+  const face = (
+    <InsetRow
+      position={position}
+      testId="settings-workspace-row"
+      icon={<WorkspaceDot book={book} />}
+      title={book.name}
+      subtitle={`${KIND_LABEL[book.kind] ?? book.kind} · ${book.baseCurrency}`}
+      chevron
+      onClick={() => setOpen((was) => (phone ? true : !was))}
+    />
+  );
+
+  return (
+    <div data-testid="workspace-entry">
+      {face}
+      {/* A wide screen opens it where it stands, so the neighbours stay in view; a phone lifts it into a sheet. */}
+      {open &&
+        (phone ? (
           <Sheet title={book.name} onClose={() => setOpen(false)}>
             <WorkspaceSettings book={book} />
           </Sheet>
-        )}
-      </li>
-    );
-  }
-
-  return (
-    <li data-testid="workspace-entry">
-      <details>
-        <summary data-testid="settings-workspace-row" className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-lg px-1 py-2 hover:bg-slate-50">
-          <Face book={book} />
-        </summary>
-        <WorkspaceSettings book={book} />
-      </details>
-    </li>
+        ) : (
+          /* On the ground, not on the group's own white: the groups inside it need something to sit on. */
+          <div className="bg-[var(--ph-ground)] px-[13px] pt-[10px]">
+            <WorkspaceSettings book={book} />
+          </div>
+        ))}
+    </div>
   );
 }
 
@@ -217,26 +198,21 @@ export function SettingsPage() {
   const books = useBooks();
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Settings" />
+    <div className={SCREEN}>
+      <LargeTitle title="Settings" />
 
-      <Card className="space-y-1">
-        <h2 className="text-sm font-semibold">Your money</h2>
-        <p className="text-sm">
-          {workspaceName} · <span className="font-medium">{ws.baseCurrency}</span>
-        </p>
-        <p className="text-xs text-slate-500">Net worth, balances, statements and the tax report are read in this currency.</p>
-      </Card>
+      {/* The section title moves outside the card it used to sit inside — the kit's one unmissable difference. */}
+      <InsetGroup header="Your money" footer="Net worth, balances, statements and the tax report are read in this currency.">
+        <ReadOnlyRow label={workspaceName} value={ws.baseCurrency} />
+      </InsetGroup>
 
-      <Card>
-        <h2 className="mb-1 text-sm font-semibold">Workspaces</h2>
-        {books.isSuccess && books.data.length === 0 && <p className="py-3 text-sm text-slate-500">{workspaceName} has no workspaces yet.</p>}
-        <ul className="divide-y divide-slate-100">
-          {(books.data ?? []).map((book) => (
-            <WorkspaceRow key={book.id} book={book} />
-          ))}
-        </ul>
-      </Card>
+      <InsetGroup header="Workspaces">
+        {books.isSuccess && books.data.length === 0 ? (
+          [<InsetRow key="none" title={`${workspaceName} has no workspaces yet.`} chevron={false} />]
+        ) : (
+          (books.data ?? []).map((book) => <WorkspaceRow key={book.id} book={book} />)
+        )}
+      </InsetGroup>
     </div>
   );
 }
