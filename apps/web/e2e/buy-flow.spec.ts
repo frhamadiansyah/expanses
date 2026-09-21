@@ -281,7 +281,7 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
-  await page.getByRole('tab', { name: 'Points' }).click();
+  await page.getByRole('radio', { name: 'Points' }).click();
   // Units are recorded, so this is not spending — and it is still a card purchase, so it still earns.
   const row = page.locator('li:not([data-testid="statement-line"])', { hasText: 'Bought 1 Antam gold bars' });
   await expect(row).toContainText('MCC 5944 · typed');

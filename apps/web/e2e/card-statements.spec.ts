@@ -28,7 +28,7 @@ async function setUp(page: Page) {
   await page.getByRole('button', { name: 'Save terms' }).click();
   // Saving terms moves the page on to setting up rewards; the statement is one tab away.
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
-  await page.getByRole('tab', { name: 'Statement' }).click();
+  await page.getByRole('radio', { name: 'Activity' }).click();
   await expect(page.getByText('Statements')).toBeVisible();
 }
 
@@ -141,10 +141,10 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
 test('the tab you chose survives a reload', async ({ page }) => {
   await setUp(page);
   await openCard(page);
-  await page.getByRole('tab', { name: 'Card & plans' }).click();
+  await page.getByRole('radio', { name: 'Card', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save terms' })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('tab', { name: 'Card & plans' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('radio', { name: 'Card', exact: true })).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByRole('button', { name: 'Save terms' })).toBeVisible();
 });
 

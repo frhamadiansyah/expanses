@@ -56,7 +56,7 @@ test('a card named from the catalogue arrives with its bank, its rules and the p
   await expect(page.getByRole('heading', { name: 'BCA UnionPay' })).toBeVisible();
 
   // The catalogue's own terms: the bank's published annual fee, and the earn rules that came with it.
-  await page.getByRole('tab', { name: 'Card & plans' }).click();
+  await page.getByRole('radio', { name: 'Card', exact: true }).click();
   await expect(page.getByLabel('Annual fee')).toHaveValue('125000');
 });
 

@@ -5,7 +5,8 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { isMoneyAccount, useInvalidateAll } from '../../lib/queries';
-import { Button, cx, ErrorBox, Field, Input, Select } from '../../ui';
+import { cx, ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, ProgressBar, type Segment, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
 import { CardFace } from './CardFace';
 import { bonusStanding, activeDuring } from './catalog-panel';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
@@ -16,20 +17,26 @@ import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 
 export type CardTab = 'statement' | 'points' | 'rules' | 'card';
 
-export const CARD_TABS: { key: CardTab; label: string }[] = [
-  { key: 'statement', label: 'Statement' },
+/**
+ * The card page's four sections, as the segmented control takes them.
+ *
+ * Four is the limit at phone width, and the four only fit because the page supplies the short form: "Rewards
+ * rules" is drawn as "Rules". The labels are decided at a phone's 390 px whatever the window is, so the control
+ * reads the same on both and a name never changes under a reader who has learnt it.
+ */
+export const CARD_TABS: (Segment & { key: CardTab })[] = [
+  { key: 'statement', label: 'Activity' },
   { key: 'points', label: 'Points' },
-  { key: 'rules', label: 'Rewards rules' },
-  { key: 'card', label: 'Card & plans' },
+  { key: 'rules', label: 'Rewards rules', short: 'Rules' },
+  { key: 'card', label: 'Card' },
 ];
 
-function Tile({ label, children, testId, action }: { label: string; children: ReactNode; testId: string; action?: ReactNode }) {
+/** A figure that is the point of its tile: 22 px, tabular, and never money that a caller formatted itself. */
+function TileFigure({ children, testId }: { children: ReactNode; testId?: string }) {
   return (
-    <section data-testid={testId} className="relative flex min-w-0 flex-col rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
-      <div className="truncate text-xs font-medium tracking-wide text-slate-500 uppercase">{label}</div>
+    <span data-testid={testId} className="tabular text-[22px] leading-[28px] font-extrabold tracking-[-0.02em] text-[var(--ph-ink)]">
       {children}
-      {action && <div className="mt-auto flex items-center gap-2 pt-2">{action}</div>}
-    </section>
+    </span>
   );
 }
 
@@ -58,52 +65,49 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
       onDone();
     } catch (e) {
       setError(e);
-    } finally {
+    }finally {
       setBusy(false);
     }
   }
 
   return (
     <form
-      className="mt-3 space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
         void pay();
       }}
     >
-      <Field label="Paid from">
-        <Select value={fromId} onChange={(event) => setFromId(event.target.value)}>
+      <InsetGroup header="Pay this bill" wide>
+        <SelectRow label="Paid from" value={fromId} onChange={(event) => setFromId(event.target.value)}>
           {payers.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
             </option>
           ))}
-        </Select>
-      </Field>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label={`Amount (${currency})`}>
-          <Input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
-        </Field>
-        <Field label="Paid on">
-          <Input type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} />
-        </Field>
-      </div>
+        </SelectRow>
+        <TextRow label={`Amount (${currency})`} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
+        <TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} />
+        <InsetRow
+          title={<span className={cx(busy ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-tint)]')}>Record payment</span>}
+          onClick={() => void pay()}
+          chevron={false}
+        />
+        <InsetRow title={<span className="text-[var(--ph-ink-2)]">Cancel</span>} onClick={onDone} chevron={false} />
+      </InsetGroup>
+      {/* Hidden, so Enter in any field still records the payment; a visible second button would be a second target. */}
+      <input type="submit" hidden />
       <ErrorBox error={error} />
-      <div className="flex gap-2">
-        <Button type="submit" disabled={busy}>
-          Record payment
-        </Button>
-        <Button variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
     </form>
   );
 }
 
 /**
- * The top of a card's page: the card itself with how much of the limit is used, then what the page is usually
- * opened for — the current bill, and the points: the balance beside what this cycle is adding.
+ * The top of a card's page: layout D2.
+ *
+ * The card itself with how much of the limit is used, then the two figures the page is opened for — the current
+ * bill and the points — as equals, and the four sections under them as a segmented control.
+ *
+ * On a wide screen the art keeps its column beside the tiles rather than the tiles being stretched across it.
  */
 export function CardHero({
   cp,
@@ -127,7 +131,7 @@ export function CardHero({
   pointsBalance: { total: number; posted: number; estimated: number } | null;
   today: string;
   onTab: (tab: CardTab, focusId?: string) => void;
-  /** The page's tabs, drawn under the three tiles. */
+  /** The page's tabs, drawn under the two tiles. */
   tabs: ReactNode;
 }) {
   const { database, ws } = useApp();
@@ -151,6 +155,7 @@ export function CardHero({
   });
 
   const unit = cp.program?.unit ?? 'points';
+  const unitLabel = unit === 'miles' ? 'Miles' : unit === 'cashback' ? 'Cashback' : 'Points';
   const result = cp.current;
   const bonus = result ? cp.bonuses.find((b) => activeDuring(b, result.cycle.end, result.cycle.end)) : undefined;
   const standing = bonus && result ? bonusStanding(bonus, result.earn.eligibleSpendByBonus[bonus.id] ?? 0, result.earn.bonusById[bonus.id] ?? 0) : null;
@@ -160,6 +165,24 @@ export function CardHero({
   const leftToPayMinor = last.data?.leftToPayMinor ?? 0;
   const owing = leftToPayMinor > 0;
   const due = dueOn ? dueIn(today, dueOn) : null;
+
+  /** What sits under the bill's figure: when it is due, that it is paid, or that nothing was billed. */
+  const billCaption = (): ReactNode => {
+    if (!cp.terms || !lastCycle) return 'Add the billing date to see statements.';
+    if (!last.data || last.data.closingMinor <= 0) return `Nothing billed on ${shortDate(lastCycle.end)}`;
+    if (!owing || !dueOn || !due) return `Paid in full · statement of ${shortDate(lastCycle.end)}`;
+    return (
+      <>
+        <span data-testid="due-date">
+          Due {shortDate(dueOn)} ·{' '}
+          <span className={cx(due.tone === 'late' && 'font-semibold text-[var(--ph-alarm)]', due.tone === 'soon' && 'font-semibold text-[var(--ph-warn)]')}>
+            {due.text}
+          </span>
+        </span>
+        {` · statement of ${shortDate(lastCycle.end)}`}
+      </>
+    );
+  };
 
   return (
     <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
@@ -171,7 +194,7 @@ export function CardHero({
           holderName={shown?.holderName}
           network={cp.catalog.entry?.network}
           look={cp.catalog.entry?.look}
-          className="!w-[17rem]"
+          className="!w-[17rem] max-w-full"
         />
         {/* One statement can carry several cards; the dots show each one's face in turn. */}
         {cards.length > 1 && (
@@ -184,48 +207,58 @@ export function CardHero({
                 aria-pressed={index === shownIndex}
                 title={`···· ${piece.last4 ?? '????'}${piece.holderName ? ` ${piece.holderName}` : ''}`}
                 onClick={() => setShownIndex(index)}
-                className={cx('h-2 rounded-full transition-all', index === shownIndex ? 'w-5 bg-slate-900' : 'w-2 bg-slate-300 hover:bg-slate-400')}
+                className={cx(
+                  'ph-focus h-2 rounded-full transition-all',
+                  index === shownIndex ? 'w-5 bg-[var(--ph-ink)]' : 'w-2 bg-[var(--ph-chevron)]',
+                )}
               />
             ))}
           </div>
         )}
+        {/*
+         * The limit bar. Two fills, not one: what is owed outright, and the part of it an instalment plan has not
+         * billed yet — which is why `ProgressBar` cannot draw it. The tokens are the kit's all the same.
+         */}
         {usage.usedPct !== null && (
-          <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-slate-200" data-testid="limit-bar">
-            <div className={cx('h-full', (usage.usedPct ?? 0) >= 80 ? 'bg-amber-500' : 'bg-slate-900')} style={{ width: `${usage.barUsedPct}%` }} />
+          <div className="mt-2 flex h-[7px] overflow-hidden rounded-full bg-[var(--ph-track)]" data-testid="limit-bar">
+            <div
+              className="h-full"
+              style={{ width: `${usage.barUsedPct}%`, background: (usage.usedPct ?? 0) >= 80 ? 'var(--ph-warn)' : 'var(--ph-tint)' }}
+            />
             {usage.barHeldPct > 0 && (
               <div
                 className="h-full"
                 title="Held by instalments"
-                style={{ width: `${usage.barHeldPct}%`, backgroundImage: 'repeating-linear-gradient(135deg, #475569 0 3px, #94a3b8 3px 6px)' }}
+                style={{ width: `${usage.barHeldPct}%`, backgroundImage: 'repeating-linear-gradient(135deg, var(--ph-ink-2) 0 3px, var(--ph-ink-3) 3px 6px)' }}
               />
             )}
           </div>
         )}
         {!debit && (
-          <div className="mt-1 text-xs text-slate-500" data-testid="card-owed">
+          <div className="mt-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]" data-testid="card-owed">
             Used {formatMinor(usage.usedMinor, currency)}
             {usage.usedPct !== null ? ` · ${usage.usedPct}%` : ''}
           </div>
         )}
         {usage.heldMinor > 0 && (
           <div
-            className="relative text-xs text-slate-500"
+            className="relative text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]"
             data-testid="card-instalments"
             onMouseEnter={() => setShowHeld(true)}
             onMouseLeave={() => setShowHeld(false)}
             onFocus={() => setShowHeld(true)}
             onBlur={() => setShowHeld(false)}
           >
-            <span tabIndex={0} aria-describedby={showHeld ? 'held-by-plans' : undefined} className="cursor-help underline decoration-dotted underline-offset-2 focus-visible:outline-2 focus-visible:outline-slate-900">
+            <span tabIndex={0} aria-describedby={showHeld ? 'held-by-plans' : undefined} className="ph-focus cursor-help underline decoration-dotted underline-offset-2">
               Instalments hold {formatMinor(usage.heldMinor, currency)}
             </span>
             {/* Each plan and what it still holds, on hover or keyboard focus. */}
             {showHeld && (
-              <div id="held-by-plans" role="tooltip" className="absolute top-full left-0 z-20 mt-1 w-80 rounded-lg bg-slate-900 p-2.5 text-xs text-white shadow-lg">
+              <div id="held-by-plans" role="tooltip" className="absolute top-full left-0 z-20 mt-1 w-80 rounded-[11px] bg-[var(--ph-ink)] p-2.5 text-xs text-white shadow-lg">
                 {holding.map(({ plan, split }) => (
                   <div key={plan.id} className="flex justify-between gap-3 py-0.5">
                     <span className="min-w-0">{plan.description}</span>
-                    <span className="shrink-0 tabular text-slate-300">
+                    <span className="shrink-0 tabular text-white/70">
                       {formatMinor(split.unbilledMinor, currency)} · {split.monthsLeft} of {plan.months} left
                     </span>
                   </div>
@@ -235,117 +268,80 @@ export function CardHero({
           </div>
         )}
         {usage.availableMinor !== null && limit !== null && (
-          <div className={cx('text-xs', usage.availableMinor < 0 ? 'font-medium text-red-700' : 'text-slate-500')} data-testid="card-available">
+          <div
+            className={cx('text-[12.5px] leading-[16px]', usage.availableMinor < 0 ? 'font-medium text-[var(--ph-alarm)]' : 'text-[var(--ph-ink-3)]')}
+            data-testid="card-available"
+          >
             {usage.availableMinor < 0 ? `Over the limit by ${formatMinor(-usage.availableMinor, currency)}` : `Available ${formatMinor(usage.availableMinor, currency)} of ${formatMinor(limit, currency)}`}
           </div>
         )}
       </div>
 
-      {/* The current bill and the points, then the tabs directly under them, so the whole block sits beside the card. */}
-      <div className="flex min-w-0 flex-col gap-3">
-        <div className={cx('grid min-w-0 flex-1 gap-3', !debit && 'md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
-          {!debit && (
-          <Tile
-            label="Current bill"
-            testId="tile-left-to-pay"
-            action={
-              cp.terms && lastCycle ? (
-                <Button className="px-2.5 py-1 text-xs" onClick={() => setPaying((open) => !open)} aria-expanded={paying}>
-                  Pay
-                </Button>
-              ) : (
-                <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => onTab('card')}>
-                  Enter billing date
-                </Button>
-              )
-            }
-          >
-            {cp.terms && lastCycle ? (
-              <>
-                <div className="mt-1 truncate text-xl font-semibold tabular">{formatMinor(leftToPayMinor, currency)}</div>
-                {last.data && last.data.closingMinor > 0 ? (
-                  owing && dueOn && due ? (
-                    <>
-                      <div className="mt-0.5 text-xs text-slate-700" data-testid="due-date">
-                        Due {shortDate(dueOn)} ·{' '}
-                        <span className={cx(due.tone === 'late' && 'font-semibold text-red-700', due.tone === 'soon' && 'font-semibold text-amber-700')}>{due.text}</span>
-                      </div>
-                      <div className="text-xs text-slate-500">Statement of {shortDate(lastCycle.end)}</div>
-                    </>
-                  ) : (
-                    <div className="mt-0.5 text-xs text-slate-500">
-                      Paid in full · statement of {shortDate(lastCycle.end)}
-                    </div>
-                  )
+      {/* The bill and the points as equals, then the sections directly under them. */}
+      <div className="flex min-w-0 flex-col">
+        {!debit && (
+          <div data-testid="tile-left-to-pay">
+            <InsetGroup header="Current bill" wide>
+              <InsetRow title={<TileFigure>{cp.terms && lastCycle ? formatMinor(leftToPayMinor, currency) : '—'}</TileFigure>} subtitle={billCaption()} />
+              {!paying &&
+                (cp.terms && lastCycle ? (
+                  <InsetRow title={<span className="text-[var(--ph-tint)]">Pay this bill</span>} onClick={() => setPaying(true)} />
                 ) : (
-                  <div className="mt-0.5 text-xs text-slate-500">Nothing billed on {shortDate(lastCycle.end)}</div>
-                )}
-              </>
-            ) : (
-              <div className="mt-1 text-xs text-slate-600">Add the billing date to see statements.</div>
-            )}
-            {paying && (
-              <div className="absolute top-full right-0 left-0 z-20 mt-2 rounded-xl bg-white p-3 shadow-lg ring-1 ring-slate-200 md:left-auto md:w-80">
-                <PayForm card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />
-              </div>
-            )}
-          </Tile>
-          )}
+                  <InsetRow title={<span className="text-[var(--ph-tint)]">Enter billing date</span>} onClick={() => onTab('card')} />
+                ))}
+            </InsetGroup>
+            {paying && <PayForm card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />}
+          </div>
+        )}
 
-          <Tile
-            label={unit === 'miles' ? 'Miles' : unit === 'cashback' ? 'Cashback' : 'Points'}
-            testId="tile-points"
-            action={
-              cp.program ? (
-                <>
-                  {pointsBalance && (
-                    <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => onTab('points', 'spend-points')}>
-                      Use {unit}
-                    </Button>
-                  )}
-                  {result && (
-                    <button type="button" onClick={() => onTab('points')} className="px-1 text-xs text-slate-600 underline underline-offset-2 hover:text-slate-900">
-                      See by rule
-                    </button>
-                  )}
-                </>
-              ) : (
-                <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => onTab(cp.terms ? 'rules' : 'card')}>
-                  Open rewards rules
-                </Button>
-              )
-            }
-          >
+        <div data-testid="tile-points">
+          <InsetGroup header={unitLabel} wide>
             {cp.program ? (
-              <>
-                <div className="mt-1 truncate text-xl font-semibold tabular" data-testid="tile-points-balance">
-                  {formatPoints(pointsBalance?.total ?? 0)} {unit}
-                </div>
-                {/* Posted, then what this cycle is adding; the cycle's dates are on hover, the spend is in the Points tab. */}
-                <div
-                  className="mt-0.5 text-xs text-slate-500"
-                  data-testid="tile-this-cycle"
-                  title={result ? `This cycle: ${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}` : undefined}
-                >
-                  {pointsSummary(pointsBalance?.posted ?? 0, pointsBalance?.estimated ?? 0, result ? result.earn.totalPoints : null)}
-                </div>
-                {standing && standing.next && (
-                  <div className="mt-2 flex items-center gap-2" title={`${bonus!.name}: ${formatMinor(standing.eligibleSpendMinor, currency)} of ${formatMinor(standing.next.minSpendMinor, currency)}`}>
-                    <div className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-slate-200">
-                      <div className="h-full rounded-full bg-emerald-600" style={{ width: `${Math.round(standing.fraction * 100)}%` }} />
-                    </div>
-                    <span className="min-w-0 truncate text-xs text-slate-500 tabular">
-                      {formatMinor(standing.remainingMinor, currency)} more for +{formatPoints(standing.next.bonus)} bonus
-                    </span>
-                  </div>
-                )}
-              </>
+              <InsetRow
+                title={
+                  <TileFigure testId="tile-points-balance">
+                    {formatPoints(pointsBalance?.total ?? 0)} {unit}
+                  </TileFigure>
+                }
+                /* Posted, then what this cycle is adding; the cycle's dates are on hover, the spend is in Points. */
+                subtitle={
+                  <span
+                    data-testid="tile-this-cycle"
+                    title={result ? `This cycle: ${shortDate(result.cycle.start)} – ${shortDate(result.cycle.end)}` : undefined}
+                  >
+                    {pointsSummary(pointsBalance?.posted ?? 0, pointsBalance?.estimated ?? 0, result ? result.earn.totalPoints : null)}
+                  </span>
+                }
+              />
             ) : (
-              <div className="mt-1 text-xs text-slate-600">Rewards are not set up for this card.</div>
+              <InsetRow title={<TileFigure>—</TileFigure>} subtitle="Rewards are not set up for this card." />
             )}
-          </Tile>
+            {cp.program && standing && standing.next && (
+              <InsetRow
+                title={`${formatMinor(standing.remainingMinor, currency)} more`}
+                subtitle={`for +${formatPoints(standing.next.bonus)} bonus · ${bonus!.name}`}
+                value={
+                  <ProgressBar
+                    className="w-[70px]"
+                    currentMinor={standing.eligibleSpendMinor}
+                    targetMinor={standing.next.minSpendMinor}
+                    label={`${bonus!.name}: ${formatMinor(standing.eligibleSpendMinor, currency)} of ${formatMinor(standing.next.minSpendMinor, currency)}`}
+                  />
+                }
+              />
+            )}
+            {cp.program && pointsBalance && (
+              <InsetRow title={<span className="text-[var(--ph-tint)]">Use {unit}</span>} onClick={() => onTab('points', 'spend-points')} />
+            )}
+            {cp.program && result && (
+              <InsetRow title={<span className="text-[var(--ph-tint)]">See by rule</span>} onClick={() => onTab('points')} />
+            )}
+            {!cp.program && (
+              <InsetRow title={<span className="text-[var(--ph-tint)]">Open rewards rules</span>} onClick={() => onTab(cp.terms ? 'rules' : 'card')} />
+            )}
+          </InsetGroup>
         </div>
-        <div>{tabs}</div>
+        <div className="md:max-w-2xl">{tabs}</div>
       </div>
     </div>
   );
@@ -354,23 +350,5 @@ export function CardHero({
 export function CardTabs({ active, onChange, debit = false }: { active: CardTab; onChange: (tab: CardTab) => void; debit?: boolean }) {
   // A debit card has no statement: its spending settles against the account as it happens.
   const shown = debit ? CARD_TABS.filter((tab) => tab.key !== 'statement') : CARD_TABS;
-  return (
-    <div role="tablist" aria-label="Card sections" className="flex gap-1 overflow-x-auto border-b border-slate-200">
-      {shown.map((tab) => (
-        <button
-          key={tab.key}
-          type="button"
-          role="tab"
-          aria-selected={active === tab.key}
-          onClick={() => onChange(tab.key)}
-          className={cx(
-            '-mb-px border-b-2 px-4 py-2.5 text-sm whitespace-nowrap',
-            active === tab.key ? 'border-slate-900 font-semibold text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-900',
-          )}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  );
+  return <SegmentedControl segments={shown} value={active} onChange={(key) => onChange(key as CardTab)} label="Card sections" className="mb-[14px]" />;
 }
