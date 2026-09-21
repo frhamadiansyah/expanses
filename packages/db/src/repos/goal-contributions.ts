@@ -1,5 +1,5 @@
 import { monthRange, uuidv7 } from '@expanses/core';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -11,13 +11,14 @@ import { goalContributions } from '../schema-budget';
    was parked there, while a buy paid from a wallet or a current account is fresh money. */
 const PARKED = ['savings', 'investment', 'fund'];
 
-/** Records a change to a set-aside. Nothing is written when the amount did not move. */
+/** Records a change to a set-aside, dated today unless told otherwise. Nothing is written when the amount did not move. */
 export async function recordContributionTx(
   tx: Db,
   ws: WorkspaceContext,
   goalId: string,
   accountId: string,
   deltaMinor: number,
+  occurredOn?: string,
 ): Promise<void> {
   if (deltaMinor === 0) return;
   const now = new Date();
@@ -27,10 +28,57 @@ export async function recordContributionTx(
     goalId,
     accountId,
     deltaMinor,
-    occurredOn: now.toISOString().slice(0, 10),
+    occurredOn: occurredOn ?? now.toISOString().slice(0, 10),
     source: 'earmark',
     createdAt: now.toISOString(),
   });
+}
+
+export interface ContributionEvent {
+  goalId: string;
+  kind: 'earmark' | 'transfer' | 'buy';
+  occurredOn: string;
+  /** Exactly the figure the monthly total adds for this event. */
+  amountMinor: number;
+  accountId: string | null;
+}
+
+/** Every dated event that reached a goal: a set-aside change, a tagged transfer's arrival, a tagged buy from everyday money. */
+export async function goalContributionEvents(database: Database, ws: WorkspaceContext, range: { from?: string; to?: string } = {}): Promise<ContributionEvent[]> {
+  const within = (column: typeof goalContributions.occurredOn | typeof transactions.occurredOn | typeof investmentTrades.occurredOn): SQL[] => [
+    ...(range.from ? [gte(column, range.from)] : []),
+    ...(range.to ? [lte(column, range.to)] : []),
+  ];
+  const events: ContributionEvent[] = [];
+
+  const changes = await database.db
+    .select({ goalId: goalContributions.goalId, accountId: goalContributions.accountId, deltaMinor: goalContributions.deltaMinor, occurredOn: goalContributions.occurredOn })
+    .from(goalContributions)
+    .where(and(eq(goalContributions.workspaceId, ws.workspaceId), ...within(goalContributions.occurredOn)));
+  for (const row of changes) events.push({ goalId: row.goalId, kind: 'earmark', occurredOn: row.occurredOn, amountMinor: row.deltaMinor, accountId: row.accountId });
+
+  // A tagged transfer is the only thing that writes a goal onto a transaction.
+  const arrivals = await database.db
+    .select({ goalId: transactions.goalId, accountId: entries.accountId, occurredOn: transactions.occurredOn, amountBaseMinor: entries.amountBaseMinor })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .where(and(eq(entries.workspaceId, ws.workspaceId), eq(transactions.status, 'posted'), ...within(transactions.occurredOn), sql`${transactions.goalId} is not null`, sql`${entries.amountBaseMinor} > 0`));
+  for (const row of arrivals) if (row.goalId) events.push({ goalId: row.goalId, kind: 'transfer', occurredOn: row.occurredOn, amountMinor: row.amountBaseMinor, accountId: row.accountId });
+
+  const parked = new Set(
+    (await database.db.select({ id: accounts.id, subtype: accounts.subtype }).from(accounts).where(eq(accounts.workspaceId, ws.workspaceId)))
+      .filter((account) => PARKED.includes(account.subtype))
+      .map((account) => account.id),
+  );
+  const buys = await database.db
+    .select({ goalId: investmentTrades.goalId, cashAccountId: investmentTrades.cashAccountId, occurredOn: investmentTrades.occurredOn, grossMinor: investmentTrades.grossMinor, feeMinor: investmentTrades.feeMinor, taxMinor: investmentTrades.taxMinor })
+    .from(investmentTrades)
+    .where(and(eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.kind, 'buy'), eq(investmentTrades.status, 'active'), ...within(investmentTrades.occurredOn), sql`${investmentTrades.goalId} is not null`));
+  for (const buy of buys) {
+    if (!buy.goalId || buy.cashAccountId === null || parked.has(buy.cashAccountId)) continue;
+    events.push({ goalId: buy.goalId, kind: 'buy', occurredOn: buy.occurredOn, amountMinor: buy.grossMinor + buy.feeMinor + buy.taxMinor, accountId: buy.cashAccountId });
+  }
+  return events;
 }
 
 /**
@@ -44,75 +92,6 @@ export async function recordContributionTx(
 export async function goalContributionsFor(database: Database, ws: WorkspaceContext, month: string): Promise<Record<string, number>> {
   const { from, to } = monthRange(month);
   const total: Record<string, number> = {};
-  const add = (goalId: string, minor: number) => {
-    total[goalId] = (total[goalId] ?? 0) + minor;
-  };
-
-  const contributions = await database.db
-    .select({ goalId: goalContributions.goalId, total: sql<number>`sum(${goalContributions.deltaMinor})` })
-    .from(goalContributions)
-    .where(
-      and(
-        eq(goalContributions.workspaceId, ws.workspaceId),
-        gte(goalContributions.occurredOn, from),
-        lte(goalContributions.occurredOn, to),
-      ),
-    )
-    .groupBy(goalContributions.goalId);
-  for (const row of contributions) add(row.goalId, Number(row.total));
-
-  // A tagged transfer is the only thing that writes a goal onto a transaction.
-  const transfers = await database.db
-    .select({ goalId: transactions.goalId, total: sql<number>`sum(${entries.amountBaseMinor})` })
-    .from(entries)
-    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
-    .where(
-      and(
-        eq(entries.workspaceId, ws.workspaceId),
-        eq(transactions.status, 'posted'),
-        gte(transactions.occurredOn, from),
-        lte(transactions.occurredOn, to),
-        sql`${transactions.goalId} is not null`,
-        sql`${entries.amountBaseMinor} > 0`,
-      ),
-    )
-    .groupBy(transactions.goalId);
-  for (const row of transfers) if (row.goalId) add(row.goalId, Number(row.total));
-
-  const parked = new Set(
-    (
-      await database.db
-        .select({ id: accounts.id, subtype: accounts.subtype })
-        .from(accounts)
-        .where(eq(accounts.workspaceId, ws.workspaceId))
-    )
-      .filter((account) => PARKED.includes(account.subtype))
-      .map((account) => account.id),
-  );
-
-  const buys = await database.db
-    .select({
-      goalId: investmentTrades.goalId,
-      cashAccountId: investmentTrades.cashAccountId,
-      grossMinor: investmentTrades.grossMinor,
-      feeMinor: investmentTrades.feeMinor,
-      taxMinor: investmentTrades.taxMinor,
-    })
-    .from(investmentTrades)
-    .where(
-      and(
-        eq(investmentTrades.workspaceId, ws.workspaceId),
-        eq(investmentTrades.kind, 'buy'),
-        eq(investmentTrades.status, 'active'),
-        gte(investmentTrades.occurredOn, from),
-        lte(investmentTrades.occurredOn, to),
-        sql`${investmentTrades.goalId} is not null`,
-      ),
-    );
-  for (const buy of buys) {
-    if (!buy.goalId || buy.cashAccountId === null || parked.has(buy.cashAccountId)) continue;
-    add(buy.goalId, buy.grossMinor + buy.feeMinor + buy.taxMinor);
-  }
-
+  for (const event of await goalContributionEvents(database, ws, { from, to })) total[event.goalId] = (total[event.goalId] ?? 0) + event.amountMinor;
   return total;
 }

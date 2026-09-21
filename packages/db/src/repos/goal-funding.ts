@@ -14,19 +14,21 @@ import {
   roundHalfAwayFromZero,
   unitsValueMinor,
   uuidv7,
+  wholeSince,
 } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import { ownerScope, type WorkspaceContext } from '../context';
 import type { Database } from '../database';
-import { auditLog } from '../schema';
+import { accounts, auditLog } from '../schema';
 import { investmentTrades } from '../schema-assets';
 import { goals } from '../schema-goals';
 import { listAssetProfiles } from './assets';
 import { assetValuesAt } from './asset-values';
 import { periodFlows } from './flows';
+import { goalContributionEvents } from './goal-contributions';
 import { resolveRates } from './fx';
 import { type GoalRow, GoalDbError, listEarmarks, listGoals } from './goals';
-import { setAsideViews } from './set-aside';
+import { type DrawRow, listDraws, setAsideViews } from './set-aside';
 import { listTrades } from './trades';
 import { listTradeTemplates } from './trade-templates';
 
@@ -225,4 +227,100 @@ export async function goalPlansFor(database: Database, ws: WorkspaceContext, dat
     capacityMonthlyMinor,
     fits: fitByRank(plans, goalRows, capacityMonthlyMinor),
   };
+}
+
+export interface GoalWholeness {
+  /** Covered set-aside at least the target, and short on no account. Derived, never stored. */
+  whole: boolean;
+  /** The day it last became whole, when the records can say (spec §7.2); null otherwise. */
+  since: string | null;
+}
+
+export async function goalWholeness(database: Database, ws: WorkspaceContext, date: string): Promise<Record<string, GoalWholeness>> {
+  const summary = await goalPlansFor(database, ws, date);
+  const events = await goalContributionEvents(database, ws, { to: date });
+  const draws = await listDraws(database, ws, date);
+  const out: Record<string, GoalWholeness> = {};
+  for (const plan of summary.plans) {
+    const whole = plan.totalTargetMinor > 0 && plan.currentMinor >= plan.totalTargetMinor && plan.links.every((link) => link.shortMinor === 0);
+    // Only a goal held wholly in base-currency set-asides has a dated trail: units and foreign money move for reasons no log keeps.
+    const traceable = plan.links.length > 0 && plan.links.every((link) => link.kind === 'earmark' && link.currency === ws.baseCurrency);
+    if (!whole || !traceable) {
+      out[plan.goalId] = { whole, since: null };
+      continue;
+    }
+    const mine = draws.filter((draw) => draw.goalId === plan.goalId);
+    const trail = [
+      ...events.filter((event) => event.goalId === plan.goalId && event.kind !== 'buy').map((event) => ({ occurredOn: event.occurredOn, amountMinor: event.amountMinor })),
+      ...mine.filter((draw) => draw.intent === 'spend').map((draw) => ({ occurredOn: draw.occurredOn, amountMinor: -draw.amountMinor })),
+    ];
+    const lastBorrow = mine.filter((draw) => draw.intent === 'borrow').map((draw) => draw.occurredOn).sort().at(-1) ?? null;
+    out[plan.goalId] = { whole, since: wholeSince(trail, plan.currentMinor, plan.totalTargetMinor, lastBorrow) };
+  }
+  return out;
+}
+
+export interface GoalHistoryEntry {
+  key: string;
+  kind: 'set-aside' | 'taken-back' | 'borrowed' | 'spent' | 'moved' | 'reached';
+  occurredOn: string;
+  /** Signed, in `currency`. Null for "reached the target", which is a day, not a movement. */
+  amountMinor: number | null;
+  currency: string;
+  text: string;
+}
+
+const HISTORY_LENGTH = 6;
+
+export async function goalHistory(database: Database, ws: WorkspaceContext, date: string): Promise<Record<string, GoalHistoryEntry[]>> {
+  const events = await goalContributionEvents(database, ws, { to: date });
+  const draws = await listDraws(database, ws, date);
+  const accountRows = await database.db.select({ id: accounts.id, name: accounts.name, currency: accounts.currency }).from(accounts).where(eq(accounts.workspaceId, ws.workspaceId));
+  const account = new Map(accountRows.map((row) => [row.id, row]));
+  const byGoal: Record<string, GoalHistoryEntry[]> = {};
+  const push = (goalId: string, entry: GoalHistoryEntry) => (byGoal[goalId] ??= []).push(entry);
+
+  events.forEach((event, index) => {
+    if (event.kind === 'buy') return;
+    const where = event.accountId ? account.get(event.accountId) : undefined;
+    push(event.goalId, {
+      key: `event-${index}`,
+      kind: event.amountMinor >= 0 ? 'set-aside' : 'taken-back',
+      occurredOn: event.occurredOn,
+      amountMinor: event.amountMinor,
+      // A set-aside change is in its account's money; a tagged transfer is counted in base, as the monthly figure counts it.
+      currency: event.kind === 'earmark' ? (where?.currency ?? ws.baseCurrency) : ws.baseCurrency,
+      text: where?.name ?? '',
+    });
+  });
+  for (const draw of draws) {
+    // A goal's own money moved by a tagged transfer (Task 6: a move with no destination) is already in the history
+    // twice over — the promise taken back off the source, the transfer set aside at the destination. A third line
+    // reading "Moved … to another account" would be the same money again.
+    if (draw.intent === 'move' && draw.toAccountId === null) continue;
+    const currency = account.get(draw.accountId)?.currency ?? ws.baseCurrency;
+    const kind = draw.intent === 'borrow' ? 'borrowed' : draw.intent === 'spend' ? 'spent' : 'moved';
+    push(draw.goalId, {
+      key: draw.id,
+      kind,
+      occurredOn: draw.occurredOn,
+      amountMinor: draw.intent === 'move' ? draw.amountMinor : -draw.amountMinor,
+      currency,
+      text: draw.intent === 'move' ? `to ${account.get(draw.toAccountId ?? '')?.name ?? 'another account'}` : draw.description,
+    });
+  }
+  const reached = new Map<string, DrawRow>();
+  for (const draw of draws) {
+    if (draw.intent !== 'borrow' || !draw.wasWhole || !draw.wholeSince) continue;
+    const known = reached.get(draw.goalId);
+    if (!known || known.occurredOn < draw.occurredOn) reached.set(draw.goalId, draw);
+  }
+  for (const [goalId, draw] of reached) push(goalId, { key: `reached-${draw.id}`, kind: 'reached', occurredOn: draw.wholeSince!, amountMinor: null, currency: ws.baseCurrency, text: 'Reached the target' });
+
+  for (const goalId of Object.keys(byGoal)) {
+    byGoal[goalId] = byGoal[goalId]!
+      .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn) || Number(b.kind === 'reached') - Number(a.kind === 'reached'))
+      .slice(0, HISTORY_LENGTH);
+  }
+  return byGoal;
 }

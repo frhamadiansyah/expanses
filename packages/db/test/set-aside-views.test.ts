@@ -1,12 +1,14 @@
 import { expenseLines, transferLines } from '@expanses/core';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type AccountRow,
   archiveGoal,
   createAccount,
   type Database,
+  goalHistory,
   goalLinksFor,
   goalPlansFor,
+  goalWholeness,
   idleCash,
   nativeBalances,
   netWorthAt,
@@ -147,5 +149,56 @@ describe('idleCash', () => {
     expect(rows.find((row) => row.accountId === bca.id)!.amountMinor).toBe(50_000_000);
     await saveEarmark(database, ws, { goalId: efId, accountId: jenius.id, amountMinor: 45_000_000 });
     expect((await idleCash(database, ws, DAY)).find((row) => row.accountId === jenius.id)!.amountMinor).toBe(0);
+  });
+});
+
+describe('the day a goal stood whole', () => {
+  afterEach(() => vi.useRealTimers());
+  const at = (iso: string) => vi.setSystemTime(new Date(`${iso}T09:00:00Z`));
+
+  async function dated() {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const pot = await createAccount(database, ws, { name: 'Pot', kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 40_000_000, openedOn: '2026-01-01' });
+    const fund = await goal('House fund', 30_000_000);
+    at('2026-02-04');
+    await saveEarmark(database, ws, { goalId: fund, accountId: pot.id, amountMinor: 24_000_000 });
+    at('2026-08-03');
+    await saveEarmark(database, ws, { goalId: fund, accountId: pot.id, amountMinor: 30_000_000 });
+    at('2026-09-01');
+    await saveEarmark(database, ws, { goalId: fund, accountId: pot.id, amountMinor: 31_000_000 });
+    at(DAY);
+    return { pot, fund };
+  }
+
+  it('is the day the set-aside rose to the target, not its first or latest change', async () => {
+    const { fund } = await dated();
+    expect((await goalWholeness(database, ws, DAY))[fund]).toEqual({ whole: true, since: '2026-08-03' });
+  });
+
+  it('is not whole while the account is short, and is again once topped up', async () => {
+    const { pot, fund } = await dated();
+    await postTransaction(database, ws, { occurredOn: DAY, description: 'Out', lines: transferLines({ fromAccountId: pot.id, toAccountId: bca.id, amountMinor: 20_000_000, currency: 'IDR' }) });
+    expect((await goalWholeness(database, ws, DAY))[fund]!.whole).toBe(false);
+    await postTransaction(database, ws, { occurredOn: DAY, description: 'Back', lines: transferLines({ fromAccountId: bca.id, toAccountId: pot.id, amountMinor: 20_000_000, currency: 'IDR' }) });
+    expect((await goalWholeness(database, ws, DAY))[fund]!.whole).toBe(true);
+  });
+
+  it('lists the history newest first, with the reached day of a borrow from a whole goal', async () => {
+    const { pot, fund } = await dated();
+    await postTransaction(database, ws, {
+      occurredOn: DAY,
+      description: 'Laptop',
+      lines: expenseLines({ categoryAccountId: electronics.id, paymentAccountId: pot.id, amountMinor: 10_800_000, currency: 'IDR' }),
+      setAside: { accountId: pot.id, goalId: fund, intent: 'borrow', overMinor: 1_800_000, wasWhole: true, wholeSince: '2026-08-03' },
+    });
+    const history = (await goalHistory(database, ws, DAY))[fund]!;
+    expect(history.map((entry) => [entry.kind, entry.occurredOn, entry.amountMinor])).toEqual([
+      ['borrowed', DAY, -1_800_000],
+      ['set-aside', '2026-09-01', 1_000_000],
+      ['reached', '2026-08-03', null],
+      ['set-aside', '2026-08-03', 6_000_000],
+      ['set-aside', '2026-02-04', 24_000_000],
+    ]);
+    expect(history[0]!.text).toBe('Laptop');
   });
 });
