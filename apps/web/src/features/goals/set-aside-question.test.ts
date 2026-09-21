@@ -2,7 +2,7 @@ import type { SetAsideCheck } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { emptyForm, type FormDraft, type FormPost } from '../transactions/tx-form';
-import { BORROW_ONLY, choiceOf, doorOfForm, MOVING, readyOf, SPENDING, spendingDoor, tradeDoor } from './set-aside-question';
+import { BORROW_ONLY, choiceOf, doorOfForm, MOVING, postForDoor, readyOf, SPENDING, spendingDoor, tradeDoor } from './set-aside-question';
 
 const account = (id: string, partial: Partial<AccountRow> = {}) => ({ id, name: id, kind: 'asset', subtype: 'savings', currency: 'IDR', ...partial }) as AccountRow;
 const ACCOUNTS = [account('jenius'), account('bca', { subtype: 'bank' }), account('card', { kind: 'liability', subtype: 'credit_card' }), account('gold', { subtype: 'investment' }), account('usd', { currency: 'USD' })];
@@ -70,5 +70,24 @@ describe('choiceOf and readyOf', () => {
     expect(choiceOf(ask, { goalId: 'ef', intent: 'spend' }, door, { whole: true, since: '2026-08-03' })).toMatchObject({ intent: 'spend', wasWhole: false, wholeSince: null });
     expect(choiceOf(ask, { goalId: 'ef', intent: null }, { ...door, intents: BORROW_ONLY })).toMatchObject({ intent: 'borrow' });
     expect(choiceOf(ask, { goalId: 'ef', intent: 'move' }, { ...door, intents: MOVING, toAccountId: 'bca' })).toMatchObject({ intent: 'move', toAccountId: 'bca' });
+  });
+});
+
+describe('postForDoor', () => {
+  it('reads the outflow before a category is chosen: the question comes while the amount is typed', () => {
+    const typed = draft({ mode: 'expense', moneyId: 'jenius', amount: '6800001' });
+    const read = postForDoor(typed, ACCOUNTS);
+    expect(read).not.toBeNull();
+    expect(doorOfForm(typed, read!, ACCOUNTS, holds)).toMatchObject({ accountId: 'jenius', outflowMinor: 6_800_001 });
+  });
+
+  it('reads a split\'s rows with a row still missing its category', () => {
+    const typed = draft({ mode: 'expense', moneyId: 'jenius', splits: [{ categoryId: '', amount: '4000000' }, { categoryId: 'food', amount: '2800001' }] as FormDraft['splits'] });
+    expect(doorOfForm(typed, postForDoor(typed, ACCOUNTS)!, ACCOUNTS, holds)).toMatchObject({ outflowMinor: 6_800_001 });
+  });
+
+  it('has no door while the figure or the account is missing', () => {
+    expect(postForDoor(draft({ mode: 'expense', moneyId: 'jenius', amount: '' }), ACCOUNTS)).toBeNull();
+    expect(postForDoor(draft({ mode: 'expense', moneyId: '', amount: '5000' }), ACCOUNTS)).toBeNull();
   });
 });

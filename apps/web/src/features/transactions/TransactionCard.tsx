@@ -20,7 +20,9 @@ import { Button, Card, ErrorBox, InputRow, RowGroup, Select, SelectRow } from '.
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { useGoals } from '../goals/queries';
+import { useCanHold, useGoals, useSetAsideChoiceOf } from '../goals/queries';
+import { doorOfForm, postForDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
@@ -134,6 +136,12 @@ function CardBody({
   const purchaseCurrency = byId.get(purchase.accountId)?.currency ?? ws.baseCurrency;
   const toAccount = byId.get(draft.toId);
   const crossCurrency = draft.mode === 'transfer' && !!account && !!toAccount && account.currency !== toAccount.currency;
+  const canHold = useCanHold();
+  // What Save would send, read by the function that builds it (a category not chosen yet does not hide the door).
+  const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
+  const door = post ? doorOfForm(draft, post, accounts, canHold) : null;
+  const saved = useSetAsideChoiceOf(initial?.id ?? null);
+  const setAside = useSetAside(door, { excludeTransactionId: initial?.id ?? null, initial: saved.data ?? null, toName: toAccount?.name });
 
   // A transfer may move money between any two money accounts; everything else has to be paid from or into one.
   const payable: PaymentOption[] = paymentOptions(
@@ -153,13 +161,15 @@ function CardBody({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // Enter submits too: the question is a condition on Save however Save is reached.
+    if (!setAside.ready) return;
     setError(null);
     setBusy(true);
     try {
       const post = formToPost(draft, accounts);
       if (post.kind === 'trade') {
         // Units are recorded, so this saves as a purchase and never touches spending.
-        await recordTrade(database, ws, post.input);
+        await recordTrade(database, ws, { ...post.input, setAside: setAside.choice });
       } else {
         // The manual rate, the rates the posting needs and the message asking for a missing one, all in the
         // one place both ways into a save go through. The rate field lives under Add more details and only
@@ -167,10 +177,11 @@ function CardBody({
         const ratesToBase = await ratesForSave({
           database, ws, draft, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
         });
-        if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase });
-        else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase });
-        else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase });
-        else await postTransaction(database, ws, { ...post.input, ratesToBase });
+        // Every branch sends the answer — an edit explicitly, so a question no longer asked clears the old answer.
+        if (post.kind === 'split') await splitBill(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else if (post.kind === 'transfer-goal') await recordTaggedTransfer(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else if (initial) await replaceTransaction(database, ws, initial.id, { ...post.input, ratesToBase, setAside: setAside.choice });
+        else await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
         const memory = formToMemory(draft, accounts);
         if (memory) await saveMerchantMcc(database, ws, memory);
       }
@@ -486,9 +497,10 @@ function CardBody({
         <FormRow label="Add more details" tone="muted" onClick={() => setSheet('details')} />
       </FormRows>
 
+      {setAside.node}
       <ErrorBox error={error} />
       <div className="flex gap-2">
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" disabled={busy || !setAside.ready}>
           Save
         </Button>
         <Button variant="ghost" onClick={onDone}>

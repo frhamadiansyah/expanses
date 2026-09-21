@@ -163,7 +163,7 @@ export async function attachPhoto(page: Page, form: Locator, file: { name: strin
  * there is no button of that name to press at all. Asking for the button unconditionally — as this plan's first
  * draft did — fails every chromium spec at the first field.
  */
-async function openAmount(form: Locator) {
+export async function openAmount(form: Locator) {
   // The card first, whichever shape it takes here: `getByLabel` answers the phone's button and the desktop's
   // input alike. Asking "is there a button?" before the card is drawn answers **no** for the phone too, and the
   // helper then walks past the dock and types into a button — which is how a green spec came to type nothing.

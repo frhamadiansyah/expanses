@@ -1,6 +1,6 @@
 import { outflowFrom, type SetAsideCheck } from '@expanses/core';
 import type { AccountRow, RecordTradeInput, SetAsideChoice, SetAsideIntent } from '@expanses/db';
-import type { FormDraft, FormPost } from '../transactions/tx-form';
+import { type FormDraft, type FormPost, formToPost } from '../transactions/tx-form';
 
 /** Where money leaves, how much of it, what it is for, and which answers the question may offer. */
 export interface Door {
@@ -45,6 +45,33 @@ export function tradeDoor(input: Pick<RecordTradeInput, 'kind' | 'cashAccountId'
     intents: input.goalId ? BORROW_ONLY : SPENDING,
     toAccountId: null,
   });
+}
+
+/** Stands in for a category not chosen yet. Never posted: only the money side of the lines is read. */
+const NO_CATEGORY_YET = '\u0000category-not-chosen';
+
+/**
+ * What Save would send, as far as the door needs it — read by `formToPost` itself, never a second way. The question
+ * has to come while the amount is typed, and the category is often picked after it: a draft missing only its
+ * category is read with a stand-in, which moves no money and changes no figure on the paying account. Anything else
+ * still missing (the figure, the account, a transfer's To) leaves no door yet.
+ */
+export function postForDoor(draft: FormDraft, accounts: readonly AccountRow[]): FormPost | null {
+  const read = (candidate: FormDraft) => {
+    try {
+      return formToPost(candidate, accounts);
+    } catch {
+      return null;
+    }
+  };
+  return (
+    read(draft) ??
+    read({
+      ...draft,
+      categoryId: draft.categoryId || NO_CATEGORY_YET,
+      splits: draft.splits.map((row) => ({ ...row, categoryId: row.categoryId || NO_CATEGORY_YET })),
+    })
+  );
 }
 
 /** The door the transaction card is, read off what `formToPost` will send — never off the typed figure a second way. */
