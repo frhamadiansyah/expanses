@@ -3,7 +3,7 @@ import { recordLoan } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, type Segment, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
@@ -31,7 +31,7 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
 
   const set = (patch: Partial<DebtDraft>) => setDraft((current) => ({ ...current, ...patch }));
   // A loan comes from money you hold, or a card. Another person's account is not a source.
-  const money = accounts.filter((account) => WALLET_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
+  const money = moneyHolders(accounts).filter((account) => WALLET_SUBTYPES.includes(account.subtype));
   const currency = money.find((account) => account.id === draft.moneyId)?.currency ?? ws.baseCurrency;
   const suggestions = people.data ? personSuggestions(people.data, draft.personName) : [];
 

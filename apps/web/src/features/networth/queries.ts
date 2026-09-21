@@ -115,9 +115,7 @@ export function useSheet(date?: string) {
     queryKey: ['sheet-inputs', ws.workspaceId, onDate, currencies.join(',')],
     queryFn: async () => {
       const rates = await resolveRates(currencies, onDate);
-      // An account in a currency with no rate is left out of the sheet's totals; `missingRates` says which, so a
-      // reader can flag it rather than pass the smaller figure off as the whole.
-      return { ...(await sheetInputsAt(database, ws, onDate, rates.rates)), missingRates: rates.missing };
+      return sheetInputsAt(database, ws, onDate, rates.rates);
     },
   });
 }

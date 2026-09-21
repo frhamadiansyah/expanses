@@ -23,12 +23,12 @@ export function DashboardPage() {
     queryFn: async () => {
       const balances = await nativeBalances(database, ws);
       const rates = await resolveRates(money.map((a) => a.currency!), today);
+      // `netWorthAt` names the rates it lacks and gives no figure without them — never a sum with that money as 0.
       const worth = await netWorthAt(database, ws, today, rates.rates);
-      const missingRates = [...new Set(money.map((a) => a.currency!).filter((currency) => currency !== ws.baseCurrency && rates.rates[currency] === undefined))];
       return {
         balances,
         rates,
-        result: { netWorthBaseMinor: worth.netWorthMinor, assetsBaseMinor: worth.assetsMinor, liabilitiesBaseMinor: worth.liabilitiesMinor, missingRates },
+        result: { netWorthBaseMinor: worth.netWorthMinor, assetsBaseMinor: worth.assetsMinor, liabilitiesBaseMinor: worth.liabilitiesMinor, missingRates: worth.missing },
       };
     },
   });
@@ -42,7 +42,8 @@ export function DashboardPage() {
         months.map(async (month) => {
           const asOf = month === thisMonth ? today : monthRange(month).to;
           const rates = await resolveRates(money.map((a) => a.currency!), asOf);
-          return { month, value: (await netWorthAt(database, ws, asOf, rates.rates)).netWorthMinor };
+          const worth = await netWorthAt(database, ws, asOf, rates.rates);
+          return { month, value: worth.netWorthMinor, missing: worth.missing };
         }),
       ),
   });
@@ -88,10 +89,11 @@ export function DashboardPage() {
   const nw = current.data?.result;
   const warnings = [
     ...(current.data?.rates.stale ?? []).map((c) => `${c} rate is out of date`),
-    ...(nw?.missingRates ?? []).map((c) => `No ${c} rate — ${c} accounts excluded`),
+    ...(nw?.missingRates ?? []).map((c) => `No ${c} rate yet — net worth cannot be added up without it`),
     ...(expiring.data ?? []).map((row) => `${row.expiringSoon.toLocaleString('id-ID')} ${row.unit} on ${row.cardName} expire on ${row.nextExpiryOn}`),
   ];
-  const maxAbs = Math.max(1, ...(trend.data ?? []).map((p) => Math.abs(p.value)));
+  const maxAbs = Math.max(1, ...(trend.data ?? []).map((p) => Math.abs(p.value ?? 0)));
+  const noRate = (missing: readonly string[]) => `No ${missing.join(', ')} rate yet`;
   const cards = money.filter((a) => a.subtype === 'credit_card');
 
   return (
@@ -107,8 +109,10 @@ export function DashboardPage() {
         <div>
           <Panel wide header="Net worth">
             <div data-testid="net-worth">
-              {nw ? (
+              {nw && nw.netWorthBaseMinor !== null ? (
                 <Hero minor={nw.netWorthBaseMinor} currency={ws.baseCurrency} />
+              ) : nw ? (
+                <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">{noRate(nw.missingRates)}, so net worth cannot be added up.</p>
               ) : (
                 <p className="py-6 text-center text-[34px] leading-[40px] font-extrabold tracking-[-0.03em] text-[var(--ph-ink-3)]">…</p>
               )}
@@ -117,8 +121,18 @@ export function DashboardPage() {
 
           {nw && (
             <InsetGroup wide>
-              <InsetRow title="Assets" value={<Money minor={nw.assetsBaseMinor} currency={ws.baseCurrency} />} valueTone="ink" chevron={false} />
-              <InsetRow title="Debts" value={<Money minor={nw.liabilitiesBaseMinor} currency={ws.baseCurrency} />} valueTone="alarm" chevron={false} />
+              <InsetRow
+                title="Assets"
+                value={nw.assetsBaseMinor !== null ? <Money minor={nw.assetsBaseMinor} currency={ws.baseCurrency} /> : noRate(nw.missingRates)}
+                valueTone={nw.assetsBaseMinor !== null ? 'ink' : 'warn'}
+                chevron={false}
+              />
+              <InsetRow
+                title="Debts"
+                value={nw.liabilitiesBaseMinor !== null ? <Money minor={nw.liabilitiesBaseMinor} currency={ws.baseCurrency} /> : noRate(nw.missingRates)}
+                valueTone={nw.liabilitiesBaseMinor !== null ? 'alarm' : 'warn'}
+                chevron={false}
+              />
               {/* The underlined text link becomes the row it always meant: the whole line is the way through. */}
               <InsetRow title="See the full picture" to="/net-worth" />
             </InsetGroup>
@@ -145,13 +159,17 @@ export function DashboardPage() {
                     <span
                       className="block h-full"
                       style={{
-                        width: `${Math.round((Math.abs(point.value) / maxAbs) * 100)}%`,
+                        width: `${Math.round((Math.abs(point.value ?? 0) / maxAbs) * 100)}%`,
                         borderRadius: 99,
-                        background: point.value < 0 ? 'var(--ph-alarm)' : 'var(--ph-tint)',
+                        background: (point.value ?? 0) < 0 ? 'var(--ph-alarm)' : 'var(--ph-tint)',
                       }}
                     />
                   </span>
-                  <Money minor={point.value} currency={ws.baseCurrency} className="text-right text-[var(--ph-ink)]" />
+                  {point.value !== null ? (
+                    <Money minor={point.value} currency={ws.baseCurrency} className="text-right text-[var(--ph-ink)]" />
+                  ) : (
+                    <span className="text-right text-[var(--ph-warn)]">{noRate(point.missing)}</span>
+                  )}
                 </li>
               ))}
             </ul>

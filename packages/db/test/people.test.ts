@@ -54,6 +54,18 @@ describe('peopleDebts', () => {
     expect(owedToYou[0]!.loans[0]).toMatchObject({ originalMinor: 10_000_000, balanceMinor: 10_000_000, repaidMinor: 0 });
   });
 
+  it('gives a person one card per currency, each total in its own currency (I2)', async () => {
+    const usd = await createAccount(database, ws, { name: 'USD Saver', kind: 'asset', subtype: 'bank', currency: 'USD', openingBalanceMinor: 100_000, openedOn: '2026-01-01', openingRateToBase: 16_250 });
+    await lend('Andi', 500_000);
+    await recordLoan(database, ws, { person: { name: 'Andi', direction: 'lent', currency: 'USD' }, occurredOn: '2026-08-05', amountMinor: 10_000, moneyAccountId: usd.id, ratesToBase: { USD: 16_250 } });
+
+    const { owedToYou } = await people();
+    expect(owedToYou.map((person) => [person.personName, person.currency, person.totalMinor])).toEqual([
+      ['Andi', 'IDR', 500_000],
+      ['Andi', 'USD', 10_000],
+    ]);
+  });
+
   it('keeps money lent and money borrowed on their own sides', async () => {
     await lend('Andi', 5_000_000);
     await borrow('Budi', 3_000_000);

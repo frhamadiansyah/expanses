@@ -100,8 +100,9 @@ export async function peopleDebts(database: Database, ws: WorkspaceContext, onDa
   const byPerson = new Map<string, PersonDebtRow>();
   for (const loan of loans) {
     const { personName, direction, ...row } = loan;
-    // One card per person per direction: money you lent Andi is not netted against money he lent you.
-    const key = `${direction}:${personName}`;
+    // One card per person per direction: money you lent Andi is not netted against money he lent you. And one per
+    // currency: a card's total is a figure in its currency, so dollars and rupiah lent to Andi are never added as one.
+    const key = `${direction}:${personName}:${row.currency}`;
     const card = byPerson.get(key) ?? { personName, direction, currency: row.currency, totalMinor: 0, loans: [], dueState: 'none' as DueState };
     card.loans.push(row);
     card.totalMinor += row.balanceMinor;

@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { type AccountRow, categoryIdsOfBook, listAccounts, nativeBalances, resolveRates } from '@expanses/db';
+import { type AccountRow, categoryIdsOfBook, listAccounts, nativeBalances, pocketParentIds, resolveRates } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useApp } from '../app/context';
@@ -76,6 +76,17 @@ export function useStoredRates() {
 
 export const isActive = (a: AccountRow) => a.archivedAt === null;
 export const isMoneyAccount = (a: AccountRow) => (a.kind === 'asset' || a.kind === 'liability') && isActive(a);
+
+/**
+ * Every money account that can hold money: `isMoneyAccount` minus pocket parents, which only add their pockets up.
+ * Every picker of money is built from this. `isMoneyAccount` itself stays as it is — `TransactionsPage` asks it
+ * whether an account's history is owner-wide, and a parent's is.
+ */
+export function moneyHolders(accounts: readonly AccountRow[]): AccountRow[] {
+  const parents = pocketParentIds(accounts);
+  return accounts.filter((a) => isMoneyAccount(a) && !parents.has(a.id));
+}
+
 export const isCategoryOf = (kind: 'expense' | 'income') => (a: AccountRow) => a.kind === kind && isActive(a);
 
 export { SUBTYPE_LABELS } from './account-types';

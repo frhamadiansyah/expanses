@@ -1,5 +1,4 @@
 import {
-  balanceSheet,
   EMERGENCY_RETURN_BPS,
   emergencyTargetMinor,
   HOUSEHOLDS,
@@ -10,7 +9,6 @@ import {
   minorToMajorString,
   parseMajor,
   savingPlanFor,
-  sheetTotals,
 } from '@expanses/core';
 import { createGoalFromCalculator, type EmergencyInputs, getLifeCoverDraft, saveLifeCoverDraft } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
@@ -23,6 +21,7 @@ import { EducationEditor } from '../goals/EducationEditor';
 import { addLevel, educationDraftFrom } from '../goals/education-model';
 import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS, monthsNote, typedMonths, withAnswers } from '../goals/emergency-form';
 import { useGoalPlans } from '../goals/queries';
+import { ratioTotals } from '../networth/health-cards';
 import { useSheet } from '../networth/queries';
 import { educationWorking } from './education-answer';
 import { LIFE_COVER_DEFAULTS, type LifeCoverDraft, type LifeCoverPrefill, lifeCoverPrefill, lifeCoverWorking } from './life-cover-form';
@@ -297,11 +296,9 @@ function LifeCoverSection({ today, onKept, onError }: { today: string; onKept: (
   const sheetInputs = useSheet();
   const goalPlans = useGoalPlans(today);
   const remembered = useQuery({ queryKey: ['life-cover', ws.workspaceId], queryFn: () => getLifeCoverDraft(database, ws) });
-  const prefill = lifeCoverPrefill(
-    sheetTotals(balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? [])),
-    goalPlans.data?.plans ?? [],
-    sheetInputs.data?.missingRates ?? [],
-  );
+  // The net-worth page's own reader: no totals, and the currencies named, while a row on the sheet has no rate.
+  const { totals, missing } = ratioTotals(sheetInputs.data);
+  const prefill = lifeCoverPrefill(totals, goalPlans.data?.plans ?? [], missing);
   if (!remembered.isSuccess) return null;
   return (
     <LifeCoverForm

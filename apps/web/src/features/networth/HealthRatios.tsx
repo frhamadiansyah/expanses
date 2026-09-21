@@ -43,6 +43,7 @@ const DESKTOP_TRACK = 640;
 export function HealthRatios({
   flows,
   totals,
+  missing,
   period,
   onPeriod,
   today,
@@ -50,7 +51,9 @@ export function HealthRatios({
   monthsNote,
 }: {
   flows: PeriodFlows | undefined;
-  totals: SheetTotals;
+  /** Null while a currency on the balance date has no rate; `missing` names it. */
+  totals: SheetTotals | null;
+  missing: readonly string[];
   period: RatioPeriod;
   onPeriod: (period: RatioPeriod) => void;
   today: string;
@@ -61,15 +64,20 @@ export function HealthRatios({
   const [settings, setSettings] = useState<RatioSettings>({ debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
   const phone = usePhone();
   // Q5: the card grades against the household's own months, read from its emergency goal — never a copy of them.
+  // Called whether or not the totals are there: hooks run on every render.
   const goals = useGoals();
   const calculators = useGoalCalculators();
   const emergencyTargetMonths = householdEmergencyMonths(goals.data ?? []) ?? undefined;
   // It opens on the base that goal counts, so the card and the goal it grades against measure the same months.
   const emergencyBase = settings.emergencyBase ?? emergencyGoalBase(goals.data ?? [], calculators.data ?? []) ?? DEFAULT_EMERGENCY_BASE;
-  const ratios = withEmergencyLoading(
-    healthRatios(flows ?? EMPTY_FLOWS, totals, { ...settings, emergencyBase, emergencyTargetMonths }),
-    goals.isPending || calculators.isPending,
-  );
+  // No ratios at all without every rate: a ratio worked out from a total that left some money at 0 is wrong, not partial.
+  const ratios =
+    totals === null
+      ? []
+      : withEmergencyLoading(
+          healthRatios(flows ?? EMPTY_FLOWS, totals, { ...settings, emergencyBase, emergencyTargetMonths }),
+          goals.isPending || calculators.isPending,
+        );
   const choices = periodChoices(today, earliestYear);
 
   /*
@@ -96,6 +104,14 @@ export function HealthRatios({
         max={phone ? undefined : segments.length}
       />
       <p className="px-[4px] pb-[10px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{monthsNote}</p>
+
+      {totals === null && (
+        <Panel wide className="mb-[18px]">
+          <p data-testid="ratios-missing" className="text-[15px] leading-[20px] text-[var(--ph-warn)]">
+            No {missing.join(', ')} rate yet, so the ratios cannot be worked out.
+          </p>
+        </Panel>
+      )}
 
       {/* Eleven tiles, still a grid on a desktop: four across, two on a tablet, one on a phone. */}
       <div className="mb-[18px] grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

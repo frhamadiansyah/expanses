@@ -15,12 +15,12 @@ describe('life cover prefills', () => {
       ]),
       plan('holiday', [{ state: 'saving', todayMinor: 30_000_000 }]),
     ]);
-    expect(prefill).toEqual({ debtsMinor: 300_000_000, liquidAssetsMinor: 200_000_000, educationMinor: 150_000_000, missingRates: [] });
+    expect(prefill).toEqual({ debtsMinor: 300_000_000, liquidAssetsMinor: 200_000_000, educationMinor: 150_000_000, missing: [] });
   });
 
   it('flags a currency with no rate rather than read its accounts as nothing', () => {
     const prefill = lifeCoverPrefill(totals, [], ['USD']);
-    expect(prefill).toMatchObject({ debtsMinor: null, liquidAssetsMinor: null, missingRates: ['USD'] });
+    expect(prefill).toMatchObject({ debtsMinor: null, liquidAssetsMinor: null, missing: ['USD'] });
     const working = lifeCoverWorking({ ...LIFE_COVER_DEFAULTS, annualNeed: '120000000' }, prefill, 'IDR');
     expect(working.result).toBeNull();
     expect(working.problems.debts).toMatch(/USD/);
@@ -29,10 +29,15 @@ describe('life cover prefills', () => {
     expect(lifeCoverWorking({ ...LIFE_COVER_DEFAULTS, annualNeed: '120000000', debts: '0', liquidAssets: '0' }, prefill, 'IDR').result).not.toBeNull();
   });
 
+  it('offers no sheet figures when the balance sheet has none to give, while a rate is missing', () => {
+    // ratioTotals gives null totals and names the currency; the prefill takes both as they come.
+    expect(lifeCoverPrefill(null, [], ['USD'])).toMatchObject({ debtsMinor: null, liquidAssetsMinor: null, missing: ['USD'] });
+  });
+
   it('uses what was typed over a prefill, and the prefill where nothing was', () => {
     const inputs = lifeCoverInputsOf(
       { annualNeed: '120.000.000', years: '10', inflation: '3,5', returnPercent: '5', debts: undefined, education: '0', finalExpenses: '25.000.000', liquidAssets: undefined, inForce: '500.000.000' },
-      { debtsMinor: 300_000_000, liquidAssetsMinor: 200_000_000, educationMinor: 150_000_000, missingRates: [] },
+      { debtsMinor: 300_000_000, liquidAssetsMinor: 200_000_000, educationMinor: 150_000_000, missing: [] },
       'IDR',
     );
     expect(inputs).toEqual({
@@ -52,7 +57,7 @@ describe('life cover prefills', () => {
     // parseMajor in USD: "1.200,50" is 120.050 cents; an IDR-style read would make it 120.050 dollars.
     const inputs = lifeCoverInputsOf(
       { annualNeed: '30.000,00', years: '5', inflation: '3,5', returnPercent: '5', debts: '1.200,50', education: undefined, finalExpenses: '', liquidAssets: undefined, inForce: '' },
-      { debtsMinor: 0, liquidAssetsMinor: 0, educationMinor: 0, missingRates: [] },
+      { debtsMinor: 0, liquidAssetsMinor: 0, educationMinor: 0, missing: [] },
       'USD',
     );
     expect(inputs).toMatchObject({ annualNeedTodayMinor: 3_000_000, debtsMinor: 120_050 });
@@ -64,14 +69,14 @@ describe('life cover prefills', () => {
   });
 
   it('answers the worked example both ways: cover to hold, then a surplus', () => {
-    const prefill = { debtsMinor: 0, liquidAssetsMinor: 0, educationMinor: 0, missingRates: [] };
+    const prefill = { debtsMinor: 0, liquidAssetsMinor: 0, educationMinor: 0, missing: [] };
     const draft = { ...LIFE_COVER_DEFAULTS, annualNeed: '120000000', debts: '300000000', education: '150000000', finalExpenses: '25000000', liquidAssets: '200000000', inForce: '500000000' };
     expect(lifeCoverWorking(draft, prefill, 'IDR').result).toMatchObject({ coverMinor: 884_641_927, surplusMinor: 0 });
     expect(lifeCoverWorking({ ...draft, liquidAssets: '2000000000' }, prefill, 'IDR').result).toMatchObject({ coverMinor: 0, surplusMinor: 915_358_073 });
   });
 
   it('puts each refusal on its own row and never throws, whatever is typed', () => {
-    const prefill = { debtsMinor: 0, liquidAssetsMinor: 0, educationMinor: 0, missingRates: [] };
+    const prefill = { debtsMinor: 0, liquidAssetsMinor: 0, educationMinor: 0, missing: [] };
     const bad = lifeCoverWorking({ ...LIFE_COVER_DEFAULTS, annualNeed: '120000000', inflation: '-', returnPercent: '-100', years: '2,5', inForce: '-1' }, prefill, 'IDR');
     expect(bad.result).toBeNull();
     expect(Object.keys(bad.problems).sort()).toEqual(['inForce', 'inflation', 'returnPercent', 'years']);

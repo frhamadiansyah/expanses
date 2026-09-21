@@ -22,6 +22,7 @@ import {
   keypadPress,
   postingCurrency,
   prefilledCharge,
+  receivedField,
   recentCurrencies,
   SPLIT_WITH_REFUSAL,
   splitTotalMinor,
@@ -1083,5 +1084,54 @@ describe('which currency the extras read a figure in', () => {
     // No account yet: "Total US$0,00" rather than "Total 0". Save still refuses it with "Choose an account".
     expect(postingCurrency(emptyForm('ws-1'), accounts, 'USD')).toBe('USD');
     expect(postingCurrency(emptyForm('ws-1'), accounts, 'JPY')).toBe('JPY');
+  });
+});
+
+describe('the second figure of a transfer', () => {
+  const pockets = [
+    { id: 'usd', name: 'Valas · USD', kind: 'asset', subtype: 'savings', currency: 'USD', parentId: 'valas' },
+    { id: 'sgd', name: 'Valas · SGD', kind: 'asset', subtype: 'savings', currency: 'SGD', parentId: 'valas' },
+    { id: 'kwd', name: 'Valas · KWD', kind: 'asset', subtype: 'savings', currency: 'KWD', parentId: 'valas' },
+    { id: 'idr', name: 'Valas · IDR', kind: 'asset', subtype: 'savings', currency: 'IDR', parentId: 'valas' },
+    { id: 'fx', name: 'Currency exchange', kind: 'equity', subtype: 'equity', currency: null, systemKey: 'currency_exchange', parentId: null },
+  ] as AccountRow[];
+  const move: FormDraft = { ...emptyForm('ws-1'), mode: 'transfer', moneyId: 'usd', toId: 'sgd', amount: '500', toAmount: '638', occurredOn: '2026-09-21' };
+
+  it('is read in the To account’s currency, and only when the two differ', () => {
+    expect(receivedField(move, pockets)).toEqual({ which: 'received', label: 'Received amount (SGD)', value: '638', currency: 'SGD' });
+    expect(receivedField({ ...move, toId: 'usd', moneyId: 'usd' }, pockets)).toBeNull();
+    expect(receivedField({ ...move, mode: 'expense' }, pockets)).toBeNull();
+  });
+
+  it('is the figure the posting moves — at KWD’s three decimals, not the From account’s two', () => {
+    // `1.5` tells all three apart: KWD 1.500 minor, USD (the From pocket) 150, IDR refuses it. (`1.500` would not:
+    // parseMajor reads it as 1500 minor in KWD and in IDR alike.)
+    const post = formToPost({ ...move, toId: 'kwd', toAmount: '1.5' }, pockets);
+    if (post.kind !== 'post') throw new Error('expected a plain posting');
+    const into = post.input.lines.find((line) => line.accountId === 'kwd')!;
+    const field = receivedField({ ...move, toId: 'kwd', toAmount: '1.5' }, pockets)!;
+    expect(into).toMatchObject({ currency: field.currency, amountMinor: evaluateAmount(field.value, field.currency) });
+    expect(into.amountMinor).toBe(1_500);
+  });
+
+  it('agrees with the posting at every keystroke', () => {
+    const typing = (text: string) => [...text].map((_, i) => text.slice(0, i + 1));
+    for (const out of typing('100.50')) {
+      for (const into of typing('1.630.000')) {
+        const draft = { ...move, toId: 'idr', amount: out, toAmount: into };
+        const leaves = amountFields(draft, pockets, 'IDR').amount;
+        const arrives = receivedField(draft, pockets)!;
+        const outMinor = evaluateAmount(leaves.value, leaves.currency);
+        const intoMinor = evaluateAmount(arrives.value, arrives.currency);
+        if (outMinor === null || intoMinor === null) {
+          expect(() => formToPost(draft, pockets)).toThrow();
+          continue;
+        }
+        const post = formToPost(draft, pockets);
+        if (post.kind !== 'post') throw new Error('expected a plain posting');
+        expect(post.input.lines.find((line) => line.accountId === 'usd')).toMatchObject({ currency: 'USD', amountMinor: -outMinor });
+        expect(post.input.lines.find((line) => line.accountId === 'idr')).toMatchObject({ currency: 'IDR', amountMinor: intoMinor });
+      }
+    }
   });
 });

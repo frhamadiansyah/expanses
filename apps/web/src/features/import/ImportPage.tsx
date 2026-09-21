@@ -2,7 +2,7 @@ import { type CsvDateFormat, type CsvMapping, type CsvRow, detectDelimiter, form
 import { captureDrafts, existingExternalRefs, importRows } from '@expanses/db';
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ErrorBox, Select } from '../../ui';
 import { Figure, type GroupChild, InsetGroup, InsetRow, LargeTitle, RecordTable, SCREEN, SelectRow, SwitchRow } from '../../ui/native';
 
@@ -43,7 +43,7 @@ export function ImportPage() {
   const resolveRates = useResolveRates();
   const all = useAccounts().data ?? [];
   const inOpenBook = useInOpenBook();
-  const money = all.filter(isMoneyAccount);
+  const money = moneyHolders(all);
   const [accountId, setAccountId] = useState('');
   const [fileName, setFileName] = useState('');
   const [table, setTable] = useState<string[][]>([]);

@@ -3,7 +3,7 @@ import { declareReinvestment, deleteTrade, retagTrade, type TradeRow } from '@ex
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Empty, ErrorBox, Money } from '../../ui';
 import { Figure, InsetGroup, InsetRow, LargeTitle, Panel, type RecordColumn, RecordTable, SCREEN, SelectRow } from '../../ui/native';
 import { NetWorthTabs } from './NetWorthTabs';
@@ -38,7 +38,7 @@ export function TradesPage() {
   const holdings = (values.data ?? [])
     .filter((row) => row.mode === 'market')
     .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency }));
-  const cashAccounts = (accounts.data ?? []).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
+  const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
   const nameOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.name ?? 'Holding';
   const currencyOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.currency ?? ws.baseCurrency;
   const unitLabelOf = (accountId: string) => {

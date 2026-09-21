@@ -1,4 +1,18 @@
-import { addMonths, DEFAULT_EMERGENCY_BASE, type EmergencyBase, type Goal, type HealthRatio, householdEmergencyMonths, monthOf, type RatioStatus } from '@expanses/core';
+import {
+  addMonths,
+  balanceSheet,
+  DEFAULT_EMERGENCY_BASE,
+  type EmergencyBase,
+  type Goal,
+  type HealthRatio,
+  householdEmergencyMonths,
+  monthOf,
+  type RatioStatus,
+  type SheetAsset,
+  type SheetLiability,
+  type SheetTotals,
+  sheetTotals,
+} from '@expanses/core';
 
 export type RatioPeriod = { key: 'ttm' } | { key: 'year'; year: number };
 
@@ -77,4 +91,18 @@ export function emergencyGoalBase(
   const goal = goals.find((each) => each.kind === 'emergency' && each.stages.some((stage) => !stage.paidOn && stage.targetMonths === months));
   const working = calculators.find((row) => row.kind === 'emergency' && row.goalId === goal?.id);
   return (working?.inputs as { base?: EmergencyBase } | undefined)?.base ?? DEFAULT_EMERGENCY_BASE;
+}
+
+/**
+ * The balance-sheet totals the ratios read on the period's balance date — or none, with the currencies named, while
+ * any row there has no rate: `sheetInputsAt` gives such a row 0, so a ratio built from it would be wrong, not partial.
+ * The five totals come from `sheetTotals` alone, the one reader the life cover prefill shares (spec §12).
+ */
+export function ratioTotals(inputs: { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] } | undefined): {
+  totals: SheetTotals | null;
+  missing: string[];
+} {
+  const missing = [...(inputs?.missing ?? [])];
+  if (missing.length > 0) return { totals: null, missing };
+  return { totals: sheetTotals(balanceSheet(inputs?.assets ?? [], inputs?.liabilities ?? [])), missing: [] };
 }
