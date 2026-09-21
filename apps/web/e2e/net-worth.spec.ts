@@ -101,3 +101,26 @@ test('every net-worth section tab is a real link, so it can be opened in a new t
   await expect(page).toHaveURL(/\/net-worth\/debts$/);
   await expect(page.getByRole('radio', { name: 'Lend & borrow' })).toHaveAttribute('aria-checked', 'true');
 });
+
+test('a currency with no rate stops the net worth figure and is named, instead of counting as 0', async ({ page }) => {
+  // Offline: no rate can be fetched, and none was ever typed for USD.
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Rupiah Saver');
+  await page.getByLabel('Current balance').pressSequentially('50000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Rupiah Saver', exact: true })).toBeVisible();
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
+  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Dollar Saver', exact: true })).toBeVisible();
+
+  await page.goto('/');
+  // Before, the dashboard printed Rp 50.000.000 as the net worth, the USD account silently at 0.
+  await expect(page.getByTestId('net-worth')).toContainText('No USD rate yet');
+  await expect(page.getByTestId('net-worth')).not.toContainText('50.000.000');
+
+  await page.goto('/net-worth');
+  await expect(page.getByTestId('net-worth')).toContainText('No USD rate yet');
+  await expect(page.getByTestId('net-worth')).not.toContainText('50.000.000');
+});

@@ -14,6 +14,7 @@ import {
   presetFor,
   type ValuationMode,
   type ValuationRow,
+  sumToBase,
 } from '@expanses/core';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
@@ -114,16 +115,22 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
   });
 }
 
+/**
+ * Assets, debts and the two netted, in the workspace currency — or null, with the missing rate named in `missing`,
+ * when a figure needs a rate there is none for. Never a partial sum with the unconvertible part counted as 0.
+ */
 export interface NetWorth {
-  assetsMinor: number;
-  liabilitiesMinor: number;
-  netWorthMinor: number;
+  assetsMinor: number | null;
+  liabilitiesMinor: number | null;
+  netWorthMinor: number | null;
+  /** Currencies without a rate to the workspace currency, sorted, once each. Empty when every figure is whole. */
+  missing: string[];
 }
 
-/** Assets at their value minus what is still owed, both in the workspace currency. */
+/** Assets at their value minus what is still owed, both through `sumToBase`: every rate, or no figure. */
 export async function netWorthAt(database: Database, ws: WorkspaceContext, date: string, ratesToBase: Record<string, number>): Promise<NetWorth> {
   const values = await assetValuesAt(database, ws, date);
-  const assetsMinor = values.reduce((total, row) => total + toBase(row.valueMinor, row.currency, ws, ratesToBase), 0);
+  const assets = sumToBase({ amounts: values.map((row) => ({ minor: row.valueMinor, currency: row.currency })), baseCurrency: ws.baseCurrency, ratesToBase });
 
   const liabilitySubtypes = BALANCE_SUBTYPES.liability as readonly string[];
   const rows = await database.db
@@ -131,17 +138,25 @@ export async function netWorthAt(database: Database, ws: WorkspaceContext, date:
     .from(accounts)
     .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'liability'), isNull(accounts.archivedAt)));
   const balances = await nativeBalances(database, ws, date);
-  const liabilitiesMinor = rows
-    .filter((row) => liabilitySubtypes.includes(row.subtype))
-    .reduce((total, row) => total - toBase(balances[row.id] ?? 0, row.currency ?? ws.baseCurrency, ws, ratesToBase), 0);
+  const owed = rows.filter((row) => liabilitySubtypes.includes(row.subtype)).map((row) => ({ minor: -(balances[row.id] ?? 0), currency: row.currency ?? ws.baseCurrency }));
+  const liabilities = sumToBase({ amounts: owed, baseCurrency: ws.baseCurrency, ratesToBase });
 
-  return { assetsMinor, liabilitiesMinor, netWorthMinor: assetsMinor - liabilitiesMinor };
+  const missing = [...new Set([...assets.missing, ...liabilities.missing])].sort();
+  const netWorthMinor = assets.totalMinor !== null && liabilities.totalMinor !== null ? assets.totalMinor - liabilities.totalMinor : null;
+  return { assetsMinor: assets.totalMinor, liabilitiesMinor: liabilities.totalMinor, netWorthMinor, missing };
 }
 
-function toBase(amountMinor: number, currency: string, ws: WorkspaceContext, ratesToBase: Record<string, number>): number {
+/**
+ * One figure in the workspace currency for the balance sheet's rows. A currency without a rate is added to `missing`
+ * and its row reads 0 — the caller must show `missing` rather than a total built from those rows.
+ */
+function toBase(amountMinor: number, currency: string, ws: WorkspaceContext, ratesToBase: Record<string, number>, missing: Set<string>): number {
   if (currency === ws.baseCurrency) return amountMinor;
   const rate = ratesToBase[currency];
-  if (rate === undefined) return 0;
+  if (rate === undefined || !(rate > 0)) {
+    missing.add(currency);
+    return 0;
+  }
   return convertMinor(amountMinor, currency, ws.baseCurrency, rate);
 }
 
@@ -155,13 +170,10 @@ export async function monthEndValues(database: Database, ws: WorkspaceContext, a
   return values;
 }
 
-export interface NetWorthPoint {
+export interface NetWorthPoint extends NetWorth {
   month: string;
   /** Date the point was measured: the last day of the month, or today for the month we are in. */
   onDate: string;
-  assetsMinor: number;
-  liabilitiesMinor: number;
-  netWorthMinor: number;
 }
 
 /** Net worth at the end of each month given as YYYY-MM, oldest first. Computed, never stored. */
@@ -185,6 +197,8 @@ export async function netWorthSeries(
 export interface SheetInputs {
   assets: SheetAsset[];
   liabilities: SheetLiability[];
+  /** Currencies with no rate: their rows read 0, so no total built from these rows may be shown while non-empty. */
+  missing: string[];
 }
 
 /**
@@ -198,11 +212,12 @@ export async function sheetInputsAt(
   ratesToBase: Record<string, number> = {},
 ): Promise<SheetInputs> {
   const values = await assetValuesAt(database, ws, date);
+  const missing = new Set<string>();
   const assets: SheetAsset[] = values.map((row) => ({
     accountId: row.accountId,
     name: row.name,
     planGroup: row.planGroup,
-    valueMinor: toBase(row.valueMinor, row.currency, ws, ratesToBase),
+    valueMinor: toBase(row.valueMinor, row.currency, ws, ratesToBase, missing),
   }));
 
   const liabilitySubtypes = BALANCE_SUBTYPES.liability as readonly string[];
@@ -218,7 +233,7 @@ export async function sheetInputsAt(
   const liabilities: SheetLiability[] = [];
   for (const row of rows) {
     if (!liabilitySubtypes.includes(row.subtype)) continue;
-    const balanceMinor = toBase(-(balances[row.id] ?? 0), row.currency ?? ws.baseCurrency, ws, ratesToBase);
+    const balanceMinor = toBase(-(balances[row.id] ?? 0), row.currency ?? ws.baseCurrency, ws, ratesToBase, missing);
     if (balanceMinor <= 0) continue;
     const subtype = row.subtype as SheetLiability['subtype'];
     liabilities.push({
@@ -230,7 +245,7 @@ export async function sheetInputsAt(
       note: null,
     });
   }
-  return { assets, liabilities };
+  return { assets, liabilities, missing: [...missing].sort() };
 }
 
 /**
