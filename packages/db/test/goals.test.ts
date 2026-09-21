@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { sql } from 'drizzle-orm';
+import { uuidv7 } from '@expanses/core';
 import {
   type AccountRow,
   archiveGoal,
@@ -16,10 +18,12 @@ import {
   saveAssetProfile,
   saveEarmark,
   saveGoal,
+  saveGoalTx,
   setStagePaid,
   type WorkspaceContext,
 } from '../src/index';
 import { createNodeExecutor } from '../src/node';
+import { goalStageTerms } from '../src/schema-health';
 import { setupDb } from './helpers';
 
 let database: Database;
@@ -133,6 +137,38 @@ describe('saveGoal', () => {
   });
 });
 
+describe('a stage money was drawn against never dangles', () => {
+  // The set-aside branch's table, as its migration makes it: a draw names the stage it paid.
+  const drawAgainst = async (goalId: string, stageId: string) => {
+    // 0050's own table (set-aside): a spend's draw naming the stage it paid.
+    await database.db.run(sql`INSERT INTO goal_draws (id, workspace_id, transaction_id, goal_id, account_id, intent, amount_minor, stage_id, occurred_on, created_at) VALUES (${uuidv7()}, ${ws.workspaceId}, 'tx', ${goalId}, 'account', 'spend', 1, ${stageId}, '2026-09-19', '2026-09-19T00:00:00.000Z')`);
+  };
+
+  it('refuses a hand edit that removes it, and leaves the goal as it was', async () => {
+    const id = await saveGoal(database, ws, hajj());
+    const [first, second] = (await listGoals(database, ws))[0]!.stages;
+    await drawAgainst(id, first!.id);
+    await expect(saveGoal(database, ws, { ...hajj(), id, stages: [{ ...hajj().stages[1]!, id: second!.id }] })).rejects.toThrow(/Setoran awal/);
+    expect((await listGoals(database, ws))[0]!.stages.map((stage) => stage.id)).toEqual([first!.id, second!.id]);
+  });
+
+  it('still lets a stage nothing was drawn against go', async () => {
+    const id = await saveGoal(database, ws, hajj());
+    const [first, second] = (await listGoals(database, ws))[0]!.stages;
+    await drawAgainst(id, first!.id);
+    await saveGoal(database, ws, { ...hajj(), id, stages: [{ ...hajj().stages[0]!, id: first!.id }] });
+    expect((await listGoals(database, ws))[0]!.stages.map((stage) => stage.id)).toEqual([first!.id]);
+    expect(second).toBeDefined();
+  });
+
+  it('removes freely on a database with no draws table', async () => {
+    const id = await saveGoal(database, ws, hajj());
+    const [, second] = (await listGoals(database, ws))[0]!.stages;
+    await saveGoal(database, ws, { ...hajj(), id, stages: [{ ...hajj().stages[1]!, id: second!.id }] });
+    expect((await listGoals(database, ws))[0]!.stages).toHaveLength(1);
+  });
+});
+
 describe('goal housekeeping', () => {
   it('writes a new order', async () => {
     const first = await saveGoal(database, ws, hajj());
@@ -203,5 +239,62 @@ describe('set-aside amounts', () => {
     await removeEarmark(database, ws, id, bca.id);
 
     await expect(listEarmarks(database, ws)).resolves.toEqual([]);
+  });
+});
+
+describe('a stage’s own return', () => {
+  it('is read back with the goal, and forgotten when the goal is typed by hand', async () => {
+    const { database, ws } = await setupDb();
+    const { goalId, stageIds } = await database.transaction((tx) =>
+      saveGoalTx(tx, ws, {
+        name: 'School', kind: 'education', growthBps: 1000, returnBps: 800, derived: true,
+        stages: [{ name: 'Preschool', targetMinor: 8_000_000, targetMonths: null, dueOn: '2027-07-01' }],
+      }),
+    );
+    await database.db.insert(goalStageTerms).values({ stageId: stageIds[0]!, workspaceId: ws.workspaceId, goalId, returnBps: 400, derivedKey: 'pre:0' });
+    expect((await listGoals(database, ws))[0]!.stages[0]!.returnBps).toBe(400);
+
+    const stage = (await listGoals(database, ws))[0]!.stages[0]!;
+    await saveGoal(database, ws, { id: goalId, name: 'School', kind: 'education', growthBps: 1000, returnBps: 800, stages: [{ ...stage, targetMinor: 9_000_000 }] });
+    expect((await listGoals(database, ws))[0]!.stages[0]!.returnBps).toBeNull();
+  });
+
+  it('goes with a stage that a derived save drops, and stays with the ones it keeps', async () => {
+    const { database, ws } = await setupDb();
+    const { goalId, stageIds } = await database.transaction((tx) =>
+      saveGoalTx(tx, ws, {
+        name: 'School', kind: 'education', growthBps: 1000, returnBps: 800, derived: true,
+        stages: [
+          { name: 'Preschool', targetMinor: 8_000_000, targetMonths: null, dueOn: '2027-07-01' },
+          { name: 'Primary', targetMinor: 9_000_000, targetMonths: null, dueOn: '2029-07-01' },
+        ],
+      }),
+    );
+    await database.db.insert(goalStageTerms).values([
+      { stageId: stageIds[0]!, workspaceId: ws.workspaceId, goalId, returnBps: 400, derivedKey: 'pre:0' },
+      { stageId: stageIds[1]!, workspaceId: ws.workspaceId, goalId, returnBps: 600, derivedKey: 'pri:0' },
+    ]);
+    const kept = (await listGoals(database, ws))[0]!.stages[1]!;
+    await database.transaction((tx) =>
+      saveGoalTx(tx, ws, { id: goalId, name: 'School', kind: 'education', growthBps: 1000, returnBps: 800, derived: true, stages: [kept] }),
+    );
+    expect((await listGoals(database, ws))[0]!.stages.map((stage) => stage.returnBps)).toEqual([600]);
+    expect((await database.db.select().from(goalStageTerms)).map((row) => row.stageId)).toEqual([stageIds[1]]);
+  });
+
+  it('gives stage ids back in the order the stages were given', async () => {
+    const { database, ws } = await setupDb();
+    const { goalId, stageIds } = await database.transaction((tx) =>
+      saveGoalTx(tx, ws, {
+        name: 'School', kind: 'education', growthBps: 1000, returnBps: 800,
+        stages: [
+          { name: 'Later', targetMinor: 1, targetMonths: null, dueOn: '2030-01-01' },
+          { name: 'Sooner', targetMinor: 1, targetMonths: null, dueOn: '2027-01-01' },
+        ],
+      }),
+    );
+    const stages = (await listGoals(database, ws)).find((row) => row.id === goalId)!.stages;
+    expect(stageIds).toEqual([stages.find((s) => s.name === 'Later')!.id, stages.find((s) => s.name === 'Sooner')!.id]);
+    expect(stages.every((stage) => stage.returnBps === null)).toBe(true);
   });
 });

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { isMoneyAccount, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ProgressBar, type Segment, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
 import { CardFace } from './CardFace';
@@ -13,6 +13,8 @@ import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
 import { limitUsage } from './limit-usage';
 import { pointsSummary } from './points-summary';
 import { useInstallments } from '../loans/queries';
+import { spendingDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 
 export type CardTab = 'statement' | 'points' | 'rules' | 'card';
@@ -46,21 +48,32 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
   const invalidate = useInvalidateAll();
   const currency = card.currency ?? ws.baseCurrency;
   // Only money that can pay a bill: bank, savings and cash, not holdings such as gold or shares.
-  const payers = accounts.filter((a) => isMoneyAccount(a) && SPENDABLE_SUBTYPES.includes(a.subtype) && a.currency === currency);
+  const payers = moneyHolders(accounts).filter((a) => SPENDABLE_SUBTYPES.includes(a.subtype) && a.currency === currency);
   const [fromId, setFromId] = useState(payers[0]?.id ?? '');
   const [amount, setAmount] = useState(minorToMajorString(amountMinor, currency));
   const [paidOn, setPaidOn] = useState(today);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // The figure `pay()` posts, read by the same parser at render so the question measures what will leave.
+  const minorTyped = (() => {
+    try {
+      return parseMajor(amount, currency);
+    } catch {
+      return 0;
+    }
+  })();
+  const setAside = useSetAside(spendingDoor(fromId, minorTyped));
 
   async function pay() {
+    // The hidden submit answers Enter: the question is a condition on it too.
+    if (!setAside.ready) return;
     setError(null);
     setBusy(true);
     try {
       const minor = parseMajor(amount, currency);
       if (!(minor > 0)) throw new Error('Enter the amount paid');
       if (!fromId) throw new Error(`Add a ${currency} bank account to pay the card from`);
-      await postTransaction(database, ws, { occurredOn: paidOn, description: `${card.name} payment`, lines: transferLines({ fromAccountId: fromId, toAccountId: card.id, amountMinor: minor, currency }) });
+      await postTransaction(database, ws, { occurredOn: paidOn, description: `${card.name} payment`, lines: transferLines({ fromAccountId: fromId, toAccountId: card.id, amountMinor: minor, currency }), setAside: setAside.choice });
       await invalidate();
       onDone();
     } catch (e) {
@@ -90,12 +103,14 @@ function PayForm({ card, accounts, amountMinor, today, onDone }: { card: Account
         <InsetRow
           title={<span className={cx(busy ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-tint)]')}>Record payment</span>}
           onClick={() => void pay()}
+          disabled={busy || !setAside.ready}
           chevron={false}
         />
         <InsetRow title={<span className="text-[var(--ph-ink-2)]">Cancel</span>} onClick={onDone} chevron={false} />
       </InsetGroup>
       {/* Hidden, so Enter in any field still records the payment; a visible second button would be a second target. */}
       <input type="submit" hidden />
+      {setAside.node}
       <ErrorBox error={error} />
     </form>
   );

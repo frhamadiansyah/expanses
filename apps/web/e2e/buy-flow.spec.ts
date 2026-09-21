@@ -120,7 +120,7 @@ test('turns an expense already recorded into the purchase it really was', async 
   await expect(page.getByText('12 g').first()).toBeVisible();
 });
 
-test('parks money at the broker for a goal, then buys one lot and the leftover keeps waiting', async ({ page }) => {
+test('parks money at the broker for a goal, then buys one lot and the leftover stays promised, not idle', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addAccount(page, 'RDN Stockbit', 'bank', 'Current balance', '0');
   await addStock(page);
@@ -173,9 +173,26 @@ test('parks money at the broker for a goal, then buys one lot and the leftover k
   await expect(buying).toHaveCount(0);
   await expect(page.getByText('Bought 100 BBRI shares')).toBeVisible();
 
-  // The leftover is still waiting at the broker, and the Overview says so.
+  // The leftover Rp 1.011.019 is still set aside for University, so none of it is idle: RDN holds 1.011.019 and promises
+  // 1.011.019, and only what is free (nought) waits to be invested (Task 4: idle = free, not balance).
   await page.goto('/net-worth');
-  await expect(page.getByText(/1\.011\.019 has been waiting in RDN Stockbit/)).toBeVisible();
+  // The attention list has drawn (the goal's own item is in it) before the absence is read.
+  await expect(page.getByText(/University for Aisyah needs more each month/)).toBeVisible();
+  await expect(page.getByText(/has been waiting in RDN Stockbit/)).toHaveCount(0);
+
+  // Rp 250.000 more, parked for no goal, is free: the Overview says exactly that, not the 1.261.019 the account holds.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Add transaction' }).click();
+  const topUp = page.getByRole('dialog', { name: 'Add a transaction' });
+  await topUp.getByRole('radio', { name: 'Transfer' }).click();
+  await topUp.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await topUp.getByLabel('To', { exact: true }).selectOption({ label: 'RDN Stockbit (IDR)' });
+  await topUp.getByLabel('Amount', { exact: true }).pressSequentially('250000');
+  await topUp.getByRole('button', { name: 'Save' }).click();
+  await expect(topUp).toHaveCount(0);
+  await page.goto('/net-worth');
+  await expect(page.getByText(/Rp.250\.000 has been waiting in RDN Stockbit/)).toBeVisible();
 });
 
 async function addGoal(page: Page, kind: string, name: string, amount: string, dueOn: string) {

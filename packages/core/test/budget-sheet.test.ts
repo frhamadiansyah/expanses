@@ -193,3 +193,84 @@ describe('a workspace that counts its events', () => {
     expect(sheet.leftOverActualMinor).toBe(10_000_000 - 1_400_000);
   });
 });
+
+describe('essential and lifestyle', () => {
+  it('splits what was spent into essential and lifestyle, signed, by each category’s resolved need', () => {
+    const sheet = budgetSheet({
+      month: '2026-09',
+      categories: [
+        { id: 'food', parentId: null, name: 'Food' },
+        { id: 'restaurants', parentId: 'food', name: 'Restaurants' },
+        { id: 'groceries', parentId: null, name: 'Groceries' },
+      ],
+      amounts: [
+        { accountId: 'restaurants', amountBaseMinor: 2_000_000 },
+        { accountId: 'restaurants', amountBaseMinor: -500_000 },
+        { accountId: 'groceries', amountBaseMinor: 3_000_000 },
+      ],
+      caps: [],
+      incomePlanMinor: 0,
+      incomeActualMinor: 0,
+      debtPaymentsPlanMinor: 0,
+      debtPaymentsActualMinor: 0,
+      savings: [],
+      eventSpendingMinor: 0,
+      eventsInCaps: false,
+      needs: { food: 'lifestyle', restaurants: 'lifestyle', groceries: 'essential' },
+    });
+    // Signed: the Rp 500.000 refund lowers the lifestyle figure (abs-then-sum would say 2,5 jt).
+    expect(sheet.lifestyleActualMinor).toBe(1_500_000);
+    expect(sheet.essentialActualMinor).toBe(3_000_000);
+    expect(sheet.essentialActualMinor + sheet.lifestyleActualMinor).toBe(sheet.spendingActualMinor);
+  });
+
+  it('nets a lifestyle category that is refunds only, rather than taking its absolute value', () => {
+    const sheet = budgetSheet({
+      month: '2026-09',
+      categories: [
+        { id: 'food', parentId: null, name: 'Food' },
+        { id: 'restaurants', parentId: 'food', name: 'Restaurants' },
+        { id: 'groceries', parentId: null, name: 'Groceries' },
+        { id: 'subscriptions', parentId: null, name: 'Subscriptions' },
+      ],
+      amounts: [
+        { accountId: 'restaurants', amountBaseMinor: 2_000_000 },
+        { accountId: 'restaurants', amountBaseMinor: -500_000 },
+        { accountId: 'groceries', amountBaseMinor: 3_000_000 },
+        // A cancelled subscription refunded in full: this lifestyle category nets negative on its own.
+        { accountId: 'subscriptions', amountBaseMinor: -500_000 },
+      ],
+      caps: [],
+      incomePlanMinor: 0,
+      incomeActualMinor: 0,
+      debtPaymentsPlanMinor: 0,
+      debtPaymentsActualMinor: 0,
+      savings: [],
+      eventSpendingMinor: 0,
+      eventsInCaps: false,
+      needs: { food: 'lifestyle', restaurants: 'lifestyle', groceries: 'essential', subscriptions: 'lifestyle' },
+    });
+    // Restaurants nets 1,5 jt and subscriptions nets -0,5 jt: summed signed, lifestyle is 1 jt, not
+    // 2 jt (abs-then-sum) and not overstating essential by taking the refund away from it instead.
+    expect(sheet.lifestyleActualMinor).toBe(1_000_000);
+    expect(sheet.essentialActualMinor + sheet.lifestyleActualMinor).toBe(sheet.spendingActualMinor);
+  });
+
+  it('counts everything essential when no needs are given', () => {
+    const sheet = budgetSheet({
+      month: '2026-09',
+      categories,
+      amounts,
+      caps: [],
+      incomePlanMinor: 0,
+      incomeActualMinor: 0,
+      debtPaymentsPlanMinor: 0,
+      debtPaymentsActualMinor: 0,
+      savings: [],
+      eventSpendingMinor: 0,
+      eventsInCaps: false,
+    });
+    expect(sheet.lifestyleActualMinor).toBe(0);
+    expect(sheet.essentialActualMinor).toBe(sheet.spendingActualMinor);
+  });
+});

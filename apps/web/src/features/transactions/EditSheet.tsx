@@ -2,15 +2,17 @@ import { isoDate, type PaymentOption } from '@expanses/core';
 import { type AccountRow, type CardRow, replaceTransaction, type TransactionView, voidTransaction } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { Ellipsis } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
-import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, ErrorBox, InputRow, RowGroup } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
-import { useGoals } from '../goals/queries';
+import { useCanHold, useGoals, useSetAsideChoiceOf } from '../goals/queries';
+import { doorOfForm, postForDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { useAssetValues } from '../networth/queries';
 import { AmountRow } from './AmountRow';
 import { CategoryPicker } from './CategoryPicker';
@@ -82,11 +84,16 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<FormDraft>) => setDraft((d) => ({ ...d, ...patch }));
+  const canHold = useCanHold();
+  const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
+  // The edit asks about the account as if it were not there, and opens on the answer it was saved with.
+  const saved = useSetAsideChoiceOf(tx.id);
+  const setAside = useSetAside(post ? doorOfForm(draft, post, accounts, canHold) : null, { excludeTransactionId: tx.id, initial: saved.data ?? null });
 
   // The same list the card offers, built the same way: every money account this one could be paid from, one row
   // per card on it. `canPayWith` keeps the account already chosen even when it is no longer spendable.
   const payable: PaymentOption[] = paymentOptions(
-    accounts.filter((a) => isMoneyAccount(a) && canPayWith(a, draft.moneyId)),
+    moneyHolders(accounts).filter((a) => canPayWith(a, draft.moneyId)),
     allCards as CardRow[],
   );
   const categoryName = draft.categoryId ? (accounts.find((a) => a.id === draft.categoryId)?.name ?? '') : '';
@@ -95,6 +102,7 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
   const missingRate = needsRate ? { from: needsRate, to: ws.baseCurrency, onDate: rateDate } : null;
 
   async function save() {
+    if (!setAside.ready) return;
     setError(null);
     setBusy(true);
     try {
@@ -111,7 +119,7 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
       });
       // The original stays under Show deleted: `replaceTransaction` voids it and posts a new id, as every
       // other edit on this app does.
-      await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase });
+      await replaceTransaction(database, ws, tx.id, { ...post.input, ratesToBase, setAside: setAside.choice });
       await invalidate();
       onClose();
     } catch (e) {
@@ -170,11 +178,12 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
           <FormRow label="More" value="Event, With, Photos…" onClick={() => setSheet('details')} />
         </FormRows>
 
+        {changeable && setAside.node}
         <ErrorBox error={error} />
         {/* Gated on the hook, not on a copy of its reasons: what the receipt and the list refuse to change, this
             refuses to change too, and says why rather than offering a Save that cannot work. */}
         {changeable ? (
-          <Button type="button" className="w-full justify-center" disabled={busy} onClick={() => void save()}>
+          <Button type="button" className="w-full justify-center" disabled={busy || !setAside.ready} onClick={() => void save()}>
             Save
           </Button>
         ) : (

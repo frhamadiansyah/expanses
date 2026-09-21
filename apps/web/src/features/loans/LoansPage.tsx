@@ -6,8 +6,10 @@ import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { useHeldRates } from '../accounts/queries';
 import { NetWorthTabs } from '../networth/NetWorthTabs';
+import { monthlyInstalments } from './instalments';
 import { emptyLoanTermsDraft, type LoanTermsDraft, loanTermsDraftToInput } from './loan-form';
 import { useLoans, useScheduledPayments } from './queries';
 
@@ -187,8 +189,10 @@ export function LoansPage() {
   const nameOf = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? 'Loan';
   // The instalment, worked out from what the ledger says is owed — not `periods[].paymentMinor`, which is
   // the figure the bank named *if it named one* and is 0 for a loan onboarded without typing it.
-  const paymentOf = (accountId: string) => payments.data?.[accountId] ?? 0;
-  const monthlyMinor = open.reduce((total, loan) => total + paymentOf(loan.accountId), 0);
+  // Each loan in its own currency; the total converted, or none with the missing rate named (`sumToBase`).
+  const held = useHeldRates(open.map((loan) => accounts.find((account) => account.id === loan.accountId)?.currency ?? ws.baseCurrency));
+  const instalments = monthlyInstalments(open, accounts, payments.data ?? {}, ws.baseCurrency, held.data?.rates ?? {});
+  const instalmentOf = (accountId: string) => instalments.rows.find((row) => row.accountId === accountId)!;
 
   // While the inline form is open there is no action to show, and an empty corner would still take its gap.
   const actions: CornerAction[] = adding
@@ -217,7 +221,16 @@ export function LoansPage() {
         </Empty>
       )}
 
-      {monthlyMinor > 0 && <Hero minor={monthlyMinor} currency={ws.baseCurrency} caption="The instalments the banks ask for each month" />}
+      {held.isSuccess && payments.isSuccess && instalments.total.totalMinor !== null && instalments.total.totalMinor > 0 && (
+        <Hero minor={instalments.total.totalMinor} currency={ws.baseCurrency} caption="The instalments the banks ask for each month" />
+      )}
+      {held.isSuccess && payments.isSuccess && instalments.total.totalMinor === null && (
+        <Panel header="Each month">
+          <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
+            No {instalments.total.missing.join(', ')} rate yet, so the instalments cannot be added up. Each loan below is in its own currency.
+          </p>
+        </Panel>
+      )}
 
       {open.length > 0 && (
         <InsetGroup header="Still being paid">
@@ -228,7 +241,7 @@ export function LoansPage() {
               params={{ accountId: loan.accountId }}
               title={nameOf(loan.accountId)}
               subtitle={`${loan.lenderName} · ${(periodOn(loan.periods, today)?.rateBps ?? 0) / 100}% · ${loan.tenorMonths} months from ${loan.firstPaymentOn}${loan.isHomeLoan ? ' · mortgage' : ''}`}
-              value={<Money minor={paymentOf(loan.accountId)} currency={ws.baseCurrency} />}
+              value={<Money minor={instalmentOf(loan.accountId).minor} currency={instalmentOf(loan.accountId).currency} />}
               valueTone="ink"
             />
           ))}

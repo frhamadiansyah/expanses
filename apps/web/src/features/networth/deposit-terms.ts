@@ -1,3 +1,5 @@
+import { parseRate } from '@expanses/core';
+
 /**
  * What a time deposit's terms read as, in one line.
  *
@@ -21,3 +23,9 @@ export function depositLine(terms: { maturesOn: string; rateBps: number }): stri
   const matures = `Matures ${maturityLabel(terms.maturesOn)}`;
   return terms.rateBps > 0 ? `${matures} · ${rateLabel(terms.rateBps)}` : matures;
 }
+
+/** Basis points back into the percent a form asks for, with the comma its placeholder shows: 425 is "4,25"; 0 is empty. */
+export const rateInputText = (rateBps: number): string => (rateBps === 0 ? '' : String(rateBps / 100).replace('.', ','));
+
+/** A typed percent into basis points, read by `parseRate`: "4,25" is 425, "12,5" is 1250. */
+export const rateBpsFrom = (text: string): number => Math.round(parseRate(text) * 100);

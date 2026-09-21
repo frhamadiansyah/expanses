@@ -3,10 +3,12 @@ import { recordLoan } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, type Segment, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
+import { spendingDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { type DebtDraft, debtDraftToInput, emptyDebtDraft, personSuggestions } from './debts-form';
 import { useDebtProfiles, usePeopleDebts } from './queries';
 
@@ -31,9 +33,19 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
 
   const set = (patch: Partial<DebtDraft>) => setDraft((current) => ({ ...current, ...patch }));
   // A loan comes from money you hold, or a card. Another person's account is not a source.
-  const money = accounts.filter((account) => WALLET_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
+  const money = moneyHolders(accounts).filter((account) => WALLET_SUBTYPES.includes(account.subtype));
   const currency = money.find((account) => account.id === draft.moneyId)?.currency ?? ws.baseCurrency;
   const suggestions = people.data ? personSuggestions(people.data, draft.personName) : [];
+  // Lending pays money out; borrowing brings it in and asks nothing. The figure is the one `submit` sends.
+  const lentMinor = (() => {
+    if (draft.direction !== 'lent') return 0;
+    try {
+      return debtDraftToInput(draft, currency, today).amountMinor;
+    } catch {
+      return 0;
+    }
+  })();
+  const setAside = useSetAside(draft.direction === 'lent' ? spendingDoor(draft.moneyId, lentMinor) : null);
 
   /** Typing a name the workspace already knows uses that account instead of opening a second one. */
   function nameTyped(personName: string) {
@@ -51,10 +63,12 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
+    // The form submits on Enter too: the question is a condition on every way in.
+    if (!setAside.ready) return;
     setError(null);
     setBusy(true);
     try {
-      await recordLoan(database, ws, debtDraftToInput(draft, currency, today));
+      await recordLoan(database, ws, { ...debtDraftToInput(draft, currency, today), setAside: setAside.choice });
       await invalidate();
       onDone();
     } catch (e) {
@@ -151,9 +165,16 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
         ) : null}
       </InsetGroup>
 
+      {setAside.node}
       <ErrorBox error={error} />
       <InsetGroup>
-        <InsetRow title="Save" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow
+          title="Save"
+          chevron={false}
+          disabled={!setAside.ready}
+          onClick={() => !busy && setAside.ready && form.current?.requestSubmit()}
+          className={busy ? 'opacity-40' : undefined}
+        />
         <InsetRow title="Cancel" chevron={false} onClick={onDone} />
       </InsetGroup>
     </form>

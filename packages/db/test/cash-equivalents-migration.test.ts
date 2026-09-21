@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createAccount, createDatabase, createWorkspace, type Database, migrate, MIGRATIONS, nativeBalances, type WorkspaceContext } from '../src/index';
+import { createAccount, createDatabase, createWorkspace, type Database, getDepositTerms, migrate, MIGRATIONS, nativeBalances, type WorkspaceContext } from '../src/index';
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
 
 let executor: NodeExecutor | undefined;
@@ -78,7 +78,7 @@ describe('migration 0047', () => {
     const balancesBefore = await nativeBalances(database, ws);
     expect(before.rows.length).toBeGreaterThan(4);
 
-    expect(await migrate(database)).toEqual([47, 48, 49]);
+    expect(await migrate(database)).toEqual(MIGRATIONS.map((m) => m.version).filter((v) => v > 46));
 
     const after = await accountsSchema();
     expect(after.rows).toEqual(before.rows);
@@ -158,6 +158,11 @@ describe('migration 0047', () => {
         ),
       ).rejects.toThrow();
     }
+  });
+
+  it('reads a deposit\'s terms as nothing, not a table error, on a database stopped before 0047', async () => {
+    expect(await database.db.values(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'deposit_terms'`)).toEqual([]);
+    expect(await getDepositTerms(database, ws, 'acc-bca')).toBeUndefined();
   });
 
   it('adds deposit_terms, which nothing had before, keyed to the account and refusing a negative rate', async () => {

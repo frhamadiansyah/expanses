@@ -1,6 +1,6 @@
-import type { HealthRatio } from '@expanses/core';
+import type { Goal, HealthRatio } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { periodChoices, periodRange, ratioDisplay } from './health-cards';
+import { emergencyGoalBase, periodChoices, periodRange, ratioDisplay, ratioTotals, withEmergencyLoading } from './health-cards';
 
 const TODAY = '2026-09-12';
 
@@ -67,5 +67,62 @@ describe('ratioDisplay', () => {
   it('says it does not know instead of drawing a bar', () => {
     const display = ratioDisplay(ratio({ value: null, status: 'unknown' }));
     expect(display).toMatchObject({ value: '—', statusLabel: 'Not enough data', gaugePercent: 0 });
+  });
+});
+
+describe('withEmergencyLoading', () => {
+  it('blanks only the emergency fund row while goals have not loaded, leaving the good grade it would otherwise flash', () => {
+    const ratios = [ratio({ key: 'emergency_fund', status: 'good', value: 4.7 }), ratio({ key: 'savings_ratio', status: 'good', value: 23 })];
+    const loading = withEmergencyLoading(ratios, true);
+    expect(loading[0]).toMatchObject({ key: 'emergency_fund', value: null, status: 'unknown' });
+    expect(loading[1]).toEqual(ratios[1]);
+  });
+
+  it('leaves every row exactly as computed once goals have loaded', () => {
+    const ratios = [ratio({ key: 'emergency_fund', status: 'act', value: 4.7 })];
+    expect(withEmergencyLoading(ratios, false)).toEqual(ratios);
+  });
+});
+
+describe('the base the emergency card opens on', () => {
+  const stage = (targetMonths: number | null, paidOn: string | null = null) => ({ targetMonths, paidOn });
+  const goal = (id: string, kind: string, months: number[]) => ({ id, kind, stages: months.map((m) => stage(m)) }) as unknown as Pick<Goal, 'id' | 'kind' | 'stages'>;
+  const worked = (goalId: string, base?: 'essential' | 'all') => ({ goalId, kind: 'emergency' as const, inputs: base ? { months: 6, base } : { months: 6 } });
+
+  it('is the base of the emergency goal whose months it grades against', () => {
+    expect(emergencyGoalBase([goal('e', 'emergency', [6])], [worked('e', 'all')])).toBe('all');
+    // Two emergency goals: the one asking the most months is the one graded against.
+    expect(emergencyGoalBase([goal('a', 'emergency', [3]), goal('b', 'emergency', [9])], [worked('a', 'all'), worked('b', 'essential')])).toBe('essential');
+    expect(emergencyGoalBase([goal('a', 'emergency', [3]), goal('b', 'emergency', [9])], [worked('a', 'essential'), worked('b', 'all')])).toBe('all');
+  });
+
+  it('is essential for an emergency goal with no working, as the goal itself counts it', () => {
+    expect(emergencyGoalBase([goal('e', 'emergency', [6])], [])).toBe('essential');
+  });
+
+  it('is null with no emergency goal, so the card opens on its own default', () => {
+    expect(emergencyGoalBase([goal('h', 'holiday', [6])], [worked('h', 'all')])).toBeNull();
+    expect(emergencyGoalBase([], [])).toBeNull();
+  });
+});
+
+describe('ratioTotals', () => {
+  const assets = [
+    { accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid' as const, valueMinor: 50_000_000 },
+    { accountId: 'fund', name: 'Money market fund', planGroup: 'invest' as const, valueMinor: 20_000_000 },
+    // A USD account on a day with no USD rate: sheetInputsAt gives its row 0 and names USD.
+    { accountId: 'usd', name: 'Dollar Saver', planGroup: 'liquid' as const, valueMinor: 0 },
+  ];
+  const liabilities = [{ accountId: 'card', name: 'Card', subtype: 'credit_card' as const, balanceMinor: 10_000_000, dueWithinYearMinor: 10_000_000, note: null }];
+
+  it('are the balance sheet’s totals when every rate is there', () => {
+    expect(ratioTotals({ assets, liabilities, missing: [] })).toEqual({
+      totals: { liquidMinor: 50_000_000, investMinor: 20_000_000, assetsMinor: 70_000_000, liabilitiesMinor: 10_000_000, netWorthMinor: 60_000_000 },
+      missing: [],
+    });
+  });
+
+  it('are none, with the currency named, while a rate is missing — never totals that count that money as 0', () => {
+    expect(ratioTotals({ assets, liabilities, missing: ['USD'] })).toEqual({ totals: null, missing: ['USD'] });
   });
 });

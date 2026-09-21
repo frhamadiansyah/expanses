@@ -29,7 +29,7 @@ const template = (id: string, accountId: string): TradeTemplateRow => ({
   createdAt: '2026-01-01T00:00:00Z',
 });
 
-const point = (month: string, netWorthMinor: number): NetWorthPoint => ({ month, onDate: `${month}-28`, assetsMinor: netWorthMinor, liabilitiesMinor: 0, netWorthMinor });
+const point = (month: string, netWorthMinor: number): NetWorthPoint => ({ month, onDate: `${month}-28`, assetsMinor: netWorthMinor, liabilitiesMinor: 0, netWorthMinor, missing: [] });
 
 describe('attentionItems', () => {
   it('says nothing when every value is fresh', () => {
@@ -106,6 +106,7 @@ const goalPlanRow = (partial: Partial<GoalPlanRow> = {}): GoalPlanRow => ({
   goal: goalRow('Hajj for two'),
   links: [],
   earmarkWarning: null,
+  unconvertedWarning: null,
   ...partial,
 });
 
@@ -120,10 +121,26 @@ describe('attentionItems with goals', () => {
   it('says nothing about a goal on track', () => {
     expect(attentionItems([], [], [goalPlanRow({ status: 'on_track', shortfallMonthlyMinor: 0 })])).toEqual([]);
   });
+});
 
-  it('passes on a set-aside amount above the balance', () => {
-    const items = attentionItems([], [], [goalPlanRow({ status: 'funded', earmarkWarning: 'You set aside more than BCA Tahapan holds' })]);
-    expect(items[0]!.text).toContain('BCA Tahapan');
+describe('attentionItems with a short account', () => {
+  const short = { accountId: 'jenius', name: 'Jenius', currency: 'IDR', balanceMinor: 21_000_000, setAsideMinor: 37_500_000, freeMinor: -16_500_000, shortMinor: 16_500_000, state: 'short' as const, goals: [] };
+  it('says it once for the account, not once per goal, and links to the account', () => {
+    const plans = [goalPlanRow({ goalId: 'ef', status: 'funded', earmarkWarning: 'Jenius holds less than is set aside…', unconvertedWarning: null }), goalPlanRow({ goalId: 'umrah', status: 'funded', earmarkWarning: 'Jenius holds less…', unconvertedWarning: null })];
+    const items = attentionItems([], [], plans, [], [], [], [short]);
+    // formatMinor (Intl id-ID) puts U+00A0 after "Rp" — the escape is the real string, as summaries.test.ts writes it.
+    expect(items).toEqual([{ key: 'short-jenius', tone: 'warn', text: 'Jenius: Rp\u00a037.500.000 set aside, Rp\u00a021.000.000 here', action: 'Review', to: '/net-worth/assets/$accountId', params: { accountId: 'jenius' } }]);
+  });
+  it('says nothing about an account that holds all it promised', () => {
+    expect(attentionItems([], [], [], [], [], [], [{ ...short, balanceMinor: 40_000_000, freeMinor: 2_500_000, shortMinor: 0, state: 'covered' as const }])).toEqual([]);
+  });
+  it('reads an overdrawn account as holding nothing, not a negative figure', () => {
+    const items = attentionItems([], [], [], [], [], [], [{ ...short, balanceMinor: -300_000, freeMinor: -37_800_000, shortMinor: 37_500_000 }]);
+    expect(items[0]!.text).toBe('Jenius: Rp\u00a037.500.000 set aside, Rp\u00a00 here');
+  });
+  it('still passes on a figure it could not convert', () => {
+    const items = attentionItems([], [], [goalPlanRow({ status: 'funded', unconvertedWarning: 'US$100,03 is not counted here' })]);
+    expect(items[0]!.text).toContain('US$100,03');
   });
 });
 
@@ -265,6 +282,12 @@ describe('deltaSince', () => {
   it('is null when the series does not reach back that far', () => {
     expect(deltaSince(points, 12)).toBeNull();
     expect(deltaSince([], 1)).toBeNull();
+  });
+
+  it('is nothing when either end has no figure for want of a rate — not a change measured from 0', () => {
+    const unpriced: NetWorthPoint = { ...point('2026-08', 0), assetsMinor: null, netWorthMinor: null, missing: ['USD'] };
+    expect(deltaSince([point('2026-07', 1_100_000_000), unpriced], 1)).toBeNull();
+    expect(deltaSince([unpriced, point('2026-09', 1_200_000_000)], 1)).toBeNull();
   });
 });
 

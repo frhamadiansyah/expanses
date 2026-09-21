@@ -11,13 +11,22 @@ import { expect, type Locator, type Page } from '@playwright/test';
  */
 export async function addTransaction(
   page: Page,
-  tx: { mode?: 'Expense' | 'Income'; description: string; paidWith: string; category: string; amount: string; date?: string },
+  tx: {
+    mode?: 'Expense' | 'Income';
+    description: string;
+    paidWith: string;
+    category: string;
+    amount: string;
+    date?: string;
+    /** Type the desktop's amount a key at a time, as a person does, instead of filling it in one go. */
+    keyByKey?: boolean;
+  },
 ) {
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   if (tx.mode && tx.mode !== 'Expense') await form.getByRole('radio', { name: tx.mode }).click();
   await openAmount(form);
-  await fillAmount(page, form, tx.amount);
+  await fillAmount(page, form, tx.amount, tx.keyByKey);
   await form.getByRole('button', { name: /^(Paid with|Received into)/ }).click();
   await page.getByRole('dialog', { name: /^(Paid with|Received into)$/ }).getByRole('button', { name: tx.paidWith, exact: true }).click();
   await form.getByRole('button', { name: /^Category/ }).click();
@@ -163,7 +172,7 @@ export async function attachPhoto(page: Page, form: Locator, file: { name: strin
  * there is no button of that name to press at all. Asking for the button unconditionally — as this plan's first
  * draft did — fails every chromium spec at the first field.
  */
-async function openAmount(form: Locator) {
+export async function openAmount(form: Locator) {
   // The card first, whichever shape it takes here: `getByLabel` answers the phone's button and the desktop's
   // input alike. Asking "is there a button?" before the card is drawn answers **no** for the phone too, and the
   // helper then walks past the dock and types into a button — which is how a green spec came to type nothing.
@@ -178,7 +187,7 @@ async function openAmount(form: Locator) {
 }
 
 /** The amount row is open. Type into whichever thing this viewport gave us. */
-export async function fillAmount(page: Page, form: Locator, amount: string) {
+export async function fillAmount(page: Page, form: Locator, amount: string, keyByKey = false) {
   const keypad = page.getByTestId('keypad');
   if (await keypad.isVisible()) {
     if (!/^\d+$/.test(amount)) throw new Error(`The keypad types digits: ${amount} has to be typed on a desktop`);
@@ -186,5 +195,8 @@ export async function fillAmount(page: Page, form: Locator, amount: string) {
     await keypad.getByRole('button', { name: 'DONE' }).click();
     return;
   }
-  await form.getByLabel('Amount', { exact: true }).fill(amount);
+  const input = form.getByLabel('Amount', { exact: true });
+  if (!keyByKey) return input.fill(amount);
+  await input.click();
+  await input.pressSequentially(amount, { delay: 30 });
 }

@@ -1,5 +1,5 @@
 import { formatMinor } from '@expanses/core';
-import type { AssetValueRow, GoalPlanRow, IdleCashRow, NetWorthPoint, PersonDebtRow, TradeTemplateRow } from '@expanses/db';
+import type { AccountSetAsideRow, AssetValueRow, GoalPlanRow, IdleCashRow, NetWorthPoint, PersonDebtRow, TradeTemplateRow } from '@expanses/db';
 
 export interface LoanAttention {
   accountId: string;
@@ -19,12 +19,13 @@ export interface AttentionItem {
   tone: 'warn' | 'info';
   text: string;
   action: string;
-  to: '/net-worth/assets' | '/net-worth/trades' | '/goals' | '/net-worth/debts' | '/net-worth/loans';
+  to: '/net-worth/assets' | '/net-worth/trades' | '/goals' | '/net-worth/debts' | '/net-worth/loans' | '/net-worth/assets/$accountId';
+  params?: { accountId: string };
 }
 
 const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
-/** What the owner should deal with: stale prices, monthly buys waiting, goals behind, and cash parked to be invested. */
+/** What the owner should deal with: stale prices, monthly buys waiting, goals behind, cash parked to be invested, and accounts that promised more than they hold. */
 export function attentionItems(
   values: AssetValueRow[],
   dueTemplates: TradeTemplateRow[],
@@ -32,6 +33,7 @@ export function attentionItems(
   idleCash: IdleCashRow[] = [],
   people: PersonDebtRow[] = [],
   loans: LoanAttention[] = [],
+  shortAccounts: AccountSetAsideRow[] = [],
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const value of values) {
@@ -49,9 +51,21 @@ export function attentionItems(
     if (plan.status === 'behind') {
       items.push({ key: `goal-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name} needs more each month than you have set up`, action: 'Review', to: '/goals' });
     }
-    if (plan.earmarkWarning) {
-      items.push({ key: `earmark-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name}: ${plan.earmarkWarning}`, action: 'Review', to: '/goals' });
+    // A short account is said once, below, for the account; a goal keeps only what could not be converted.
+    if (plan.unconvertedWarning) {
+      items.push({ key: `earmark-${plan.goalId}`, tone: 'warn', text: `${plan.goal.name}: ${plan.unconvertedWarning}`, action: 'Review', to: '/goals' });
     }
+  }
+  for (const account of shortAccounts) {
+    if (account.state !== 'short') continue;
+    items.push({
+      key: `short-${account.accountId}`,
+      tone: 'warn',
+      text: `${account.name}: ${formatMinor(account.setAsideMinor, account.currency)} set aside, ${formatMinor(Math.max(0, account.balanceMinor), account.currency)} here`,
+      action: 'Review',
+      to: '/net-worth/assets/$accountId',
+      params: { accountId: account.accountId },
+    });
   }
   for (const row of idleCash) {
     // Money put at a broker was meant to be invested; while it sits as cash it earns nothing.
@@ -115,7 +129,10 @@ export function deltaSince(points: NetWorthPoint[], monthsBack: number): number 
   if (points.length === 0) return null;
   const index = points.length - 1 - monthsBack;
   if (index < 0) return null;
-  return points[points.length - 1]!.netWorthMinor - points[index]!.netWorthMinor;
+  const last = points[points.length - 1]!.netWorthMinor;
+  const then = points[index]!.netWorthMinor;
+  // A point without a figure (a rate missing) measures nothing: no change is better than a change from 0.
+  return last === null || then === null ? null : last - then;
 }
 
 /** Months from January of the last point's year, for the "since January" figure. */

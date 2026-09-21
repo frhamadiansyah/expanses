@@ -1,6 +1,8 @@
+import type { Goal } from '../goals/plan';
+import type { BalanceSheet } from './balance-sheet';
+
 /**
- * The personal financial ratios as the CFP-aligned guides define them, with their published
- * benchmarks. Formulas and benchmarks live here and nowhere else; status bands are derived
+ * The personal financial ratios the planning guides use, with their benchmarks. Formulas and benchmarks live here and nowhere else; status bands are derived
  * from the benchmark rather than chosen per ratio.
  */
 export interface PeriodFlows {
@@ -20,6 +22,8 @@ export interface PeriodFlows {
    * already; adding the whole payment beside spending would count the interest twice.
    */
   debtPrincipalMinor: number;
+  /** The part of `spendingMinor` in categories that resolve to lifestyle, summed signed like spending itself. */
+  lifestyleSpendingMinor: number;
   /** Money that actually moved into holdings, savings or loan principal over the period. */
   putAwayMinor: number;
 }
@@ -32,14 +36,39 @@ export interface SheetTotals {
   netWorthMinor: number;
 }
 
+/**
+ * The five totals the ratios read, from a balance sheet: every account is inside its group's total, so nothing listed
+ * by hand can fall outside one (the workbook's gold and jewellery). The net-worth page and the life cover prefill both
+ * call this, so the two cannot disagree.
+ */
+export function sheetTotals(sheet: BalanceSheet): SheetTotals {
+  const groupTotal = (key: string) => sheet.assetGroups.find((group) => group.key === key)?.totalMinor ?? 0;
+  return {
+    liquidMinor: groupTotal('liquid'),
+    investMinor: groupTotal('invest'),
+    assetsMinor: sheet.assetsTotalMinor,
+    liabilitiesMinor: sheet.liabilitiesTotalMinor,
+    netWorthMinor: sheet.netWorthMinor,
+  };
+}
+
+export type EmergencyBase = 'essential' | 'all';
+export const EMERGENCY_BASES: readonly EmergencyBase[] = ['essential', 'all'];
+export const DEFAULT_EMERGENCY_BASE: EmergencyBase = 'essential';
+
 export interface RatioSettings {
   /**
-   * Adds what is left to pay on a debt each month — the principal — to the emergency fund denominator.
-   * On by default, because the emergency goal counts it too. The interest needs no setting: it is an
-   * expense, so it is inside spending either way.
+   * What the emergency fund's months multiply: essential spending (lifestyle categories left out) or all of it.
+   * Loan principal is added either way — it keeps arriving when income stops, and it is the only half of a loan
+   * payment spending does not already hold. The interest is an expense entry, inside spending already.
    */
-  emergencyIncludesDebtPayments?: boolean;
-  /** 3500 by the guide; 3000 is what OJK and Indonesian lenders quote. */
+  emergencyBase?: EmergencyBase;
+  /**
+   * The household's own months — its emergency goal's (user decision Q5, 2026-09-21). The card grades against these
+   * rather than a flat guide. Absent: `DEFAULT_EMERGENCY_TARGET_MONTHS`, and the card reads "3–6 months" as before.
+   */
+  emergencyTargetMonths?: number;
+  /** 3000 by default; 3500 is the looser guide. */
   debtServiceBenchmarkBps?: number;
 }
 
@@ -78,7 +107,34 @@ export interface HealthRatio {
 /** Watch runs from the benchmark out to this multiple of it; beyond that, act. */
 export const WATCH_BAND = 1.2;
 
-export const DEFAULT_DEBT_SERVICE_BPS = 3500;
+export const DEFAULT_DEBT_SERVICE_BPS = 3000;
+/** The guide's floor, used only while the household has set no months of its own. */
+export const DEFAULT_EMERGENCY_TARGET_MONTHS = 3;
+
+/**
+ * The months the household asked of its emergency fund: the largest `targetMonths` on an unpaid stage of any
+ * emergency goal, typed or worked out. Null when there is none.
+ */
+export function householdEmergencyMonths(goals: readonly Pick<Goal, 'kind' | 'stages'>[]): number | null {
+  const months = goals
+    .filter((goal) => goal.kind === 'emergency')
+    .flatMap((goal) => goal.stages)
+    .filter((stage) => !stage.paidOn && stage.targetMonths !== null && stage.targetMonths > 0)
+    .map((stage) => stage.targetMonths!);
+  return months.length > 0 ? Math.max(...months) : null;
+}
+
+/**
+ * What an emergency fund covers over the period, as a total. The ratio card and the emergency goal both size
+ * themselves with this and nothing else, so they cannot disagree. Signed: a refund lowers what it refunds.
+ */
+export function emergencyOutgoingMinor(
+  flows: Pick<PeriodFlows, 'spendingMinor' | 'lifestyleSpendingMinor' | 'debtPrincipalMinor'>,
+  base: EmergencyBase,
+): number {
+  const spending = base === 'essential' ? flows.spendingMinor - flows.lifestyleSpendingMinor : flows.spendingMinor;
+  return spending + flows.debtPrincipalMinor;
+}
 
 /** A period total as a monthly figure. */
 export const monthly = (totalMinor: number, months: number): number => (months > 0 ? totalMinor / months : 0);
@@ -97,15 +153,18 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
   const spending = monthly(flows.spendingMinor, flows.months);
   const debtPayments = monthly(flows.debtPaymentsMinor, flows.months);
   const consumerDebtPayments = monthly(flows.nonMortgageDebtPaymentsMinor, flows.months);
-  const debtPrincipal = monthly(flows.debtPrincipalMinor, flows.months);
   const putAway = monthly(flows.putAwayMinor, flows.months);
-  // On unless turned off. A loan payment is the least skippable outgoing when income stops, and the
-  // emergency goal already sizes itself the same way, so the card agrees with it.
-  const countsDebtPayments = settings.emergencyIncludesDebtPayments ?? true;
-  // Only the principal is added: the interest is an expense entry, so `spending` already carries it, and
-  // the whole payment here would count the interest twice — on a young mortgage, nearly the whole of it.
-  // The debt-servicing ratios below still take the whole payment, which is what they are meant to divide.
-  const emergencyOutgoing = spending + (countsDebtPayments ? debtPrincipal : 0);
+  // Only the principal is added to spending: the interest is an expense entry, so spending already carries it, and
+  // the whole payment would count the interest twice. The debt-servicing ratios below still take the whole payment.
+  const base = settings.emergencyBase ?? DEFAULT_EMERGENCY_BASE;
+  const emergencyOutgoing = monthly(emergencyOutgoingMinor(flows, base), flows.months);
+  const ownMonths = settings.emergencyTargetMonths !== undefined && settings.emergencyTargetMonths > 0 ? settings.emergencyTargetMonths : null;
+  const emergencyTarget = ownMonths ?? DEFAULT_EMERGENCY_TARGET_MONTHS;
+  // With no months of its own the card is as it was (§3.3): graded at 3, its mark at the guide's 6.
+  const emergencyMark = ownMonths ?? 6;
+  const graded = ownMonths
+    ? `Graded against the ${emergencyTarget} months your emergency fund asks for.`
+    : 'The guide asks 3–6 months, more with dependants or irregular income; set an emergency fund to grade against your own.';
   const debtBenchmark = (settings.debtServiceBenchmarkBps ?? DEFAULT_DEBT_SERVICE_BPS) / 100;
   const hasIncome = hasPeriod && income > 0;
   const hasNetWorth = totals.netWorthMinor > 0;
@@ -138,14 +197,14 @@ export function healthRatios(flows: PeriodFlows, totals: SheetTotals, settings: 
       'months',
       hasPeriod && emergencyOutgoing > 0,
       () => totals.liquidMinor / emergencyOutgoing,
-      (value) => higherIsBetter(value, 3),
-      6,
-      9,
+      (value) => higherIsBetter(value, emergencyTarget),
+      emergencyMark,
+      Math.max(9, emergencyMark * 1.5),
       false,
-      '3–6 months',
-      countsDebtPayments
-        ? 'Cash & equivalents ÷ monthly spending plus loan principal — the interest is already inside spending. The guide asks 3–6 months, 12 with dependants.'
-        : 'Cash & equivalents ÷ monthly spending. The guide asks 3–6 months, 12 with dependants.',
+      ownMonths ? `${emergencyTarget} months · your household` : '3–6 months',
+      base === 'essential'
+        ? `Cash & equivalents ÷ monthly essential spending plus loan principal. Lifestyle categories are left out; loan interest is already inside spending. ${graded}`
+        : `Cash & equivalents ÷ monthly spending plus loan principal. Loan interest is already inside spending. ${graded}`,
     ),
     ratio(
       'savings_ratio',

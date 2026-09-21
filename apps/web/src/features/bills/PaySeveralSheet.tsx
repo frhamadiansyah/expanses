@@ -1,11 +1,39 @@
 import { parseMajor } from '@expanses/core';
-import { type MonthlyBill, recordBillPayments } from '@expanses/db';
-import { useState } from 'react';
+import { type MonthlyBill, recordBillPayments, type SetAsideChoice } from '@expanses/db';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Input, Money } from '../../ui';
+import { payerChoices, spendingDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { pillOf } from './bill-view';
+
+interface PayerAnswer {
+  choice: SetAsideChoice | null;
+  ready: boolean;
+  /** What the account had free when the question asked; null when it did not ask. */
+  freeMinor: number | null;
+  /** What the goal picked promised on the account, in its money; 0 when nothing was picked. */
+  promisedMinor: number;
+}
+
+/**
+ * One paying account's question, asked about everything the sheet pays from it together: several bills from one
+ * account can each fit what is free and still, added up, take more than is free.
+ */
+function PayerQuestion({ accountId, total, onChange }: { accountId: string; total: number; onChange: (accountId: string, answer: PayerAnswer) => void }) {
+  const setAside = useSetAside(spendingDoor(accountId, total));
+  const freeMinor = setAside.check.kind === 'ask' ? setAside.check.freeMinor : null;
+  const { choice, ready } = setAside;
+  const promisedMinor = (setAside.check.kind === 'ask' && setAside.check.goals.find((goal) => goal.goalId === choice?.goalId)?.promisedMinor) || 0;
+  const key = JSON.stringify({ choice, ready, freeMinor, promisedMinor });
+  useEffect(() => {
+    onChange(accountId, { choice, ready, freeMinor, promisedMinor });
+    // Keyed on what the answer says, not on the object's identity, which is new on every render.
+  }, [accountId, key]);
+  return <>{setAside.node}</>;
+}
 
 /**
  * Paying several bills on one day: the ticked bills each become their own payment against their own
@@ -40,6 +68,22 @@ export function PaySeveralSheet({
   const [paidOn, setPaidOn] = useState(today);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [answers, setAnswers] = useState<Record<string, PayerAnswer>>({});
+
+  const chosen = bills.filter((bill) => ticked.has(bill.id));
+  /** The figure each bill posts: the fixed amount, or what was typed for one that varies (0 until it parses). */
+  const amountOf = (bill: MonthlyBill) => {
+    if (bill.amountMinor !== null) return bill.amountMinor;
+    try {
+      return parseMajor(amounts[bill.id]?.trim() ?? '', currencyOf(bill.moneyAccountId));
+    } catch {
+      return 0;
+    }
+  };
+  const payers = [...new Set(chosen.map((bill) => bill.moneyAccountId))];
+  const totalFrom = (payer: string) => chosen.filter((bill) => bill.moneyAccountId === payer).reduce((sum, bill) => sum + amountOf(bill), 0);
+  const answered = payers.every((payer) => answers[payer]?.ready === true);
+  const onAnswer = (accountId: string, answer: PayerAnswer) => setAnswers((current) => ({ ...current, [accountId]: answer }));
 
   const toggle = (id: string) =>
     setTicked((current) => {
@@ -50,14 +94,29 @@ export function PaySeveralSheet({
     });
 
   async function record() {
+    if (!answered) return;
     setError(null);
     setBusy(true);
     try {
-      const chosen = bills.filter((bill) => ticked.has(bill.id));
+      // Each account's answer, laid over its payments in order: a borrow is what went over the free money, spread; a
+      // spend is the whole of each payment up to the promise, as one payment of the same total would be.
+      const carried = new Map<string, (SetAsideChoice | null)[]>();
+      for (const payer of payers) {
+        const answer = answers[payer];
+        const mine = chosen.filter((bill) => bill.moneyAccountId === payer);
+        carried.set(payer, payerChoices(answer?.choice ?? null, mine.map(amountOf), answer?.freeMinor ?? null, answer?.promisedMinor ?? 0));
+      }
       const payments = chosen.map((bill) => {
         const currency = currencyOf(bill.moneyAccountId);
         const typed = amounts[bill.id]?.trim();
-        return { templateId: bill.id, billMonth: bill.billMonth, amountMinor: bill.amountMinor ?? (typed ? parseMajor(typed, currency) : 0) };
+        const index = chosen.filter((other) => other.moneyAccountId === bill.moneyAccountId).indexOf(bill);
+        return {
+          templateId: bill.id,
+          billMonth: bill.billMonth,
+          // Parsed here as it always was, so a figure that does not parse still says so.
+          amountMinor: bill.amountMinor ?? (typed ? parseMajor(typed, currency) : 0),
+          setAside: carried.get(bill.moneyAccountId)![index] ?? null,
+        };
       });
       if (payments.some((payment) => !(payment.amountMinor > 0))) {
         setError('Enter the amount of each ticked bill that varies');
@@ -113,13 +172,17 @@ export function PaySeveralSheet({
           <Input id="several-on" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} className="w-auto" />
         </div>
 
+        {payers.map((payer) => (
+          <PayerQuestion key={payer} accountId={payer} total={totalFrom(payer)} onChange={onAnswer} />
+        ))}
+
         {error && (
           <p role="alert" className="text-sm text-red-700">
             {error}
           </p>
         )}
 
-        <Button onClick={() => void record()} disabled={ticked.size === 0 || busy} className="w-full">
+        <Button onClick={() => void record()} disabled={ticked.size === 0 || busy || !answered} className="w-full">
           {ticked.size === 0 ? 'Record' : `Record ${ticked.size} ${ticked.size === 1 ? 'bill' : 'bills'}`}
         </Button>
       </div>

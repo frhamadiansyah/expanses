@@ -5,13 +5,15 @@ import { CalendarArrowUp, ChevronLeft, ChevronRight, Search, Undo2 } from 'lucid
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { canPayWith } from '../../lib/account-types';
-import { isMoneyAccount, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, cx, ErrorBox, Field, Input, Select } from '../../ui';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { StatementBand } from './StatementBand';
 import { cycleBack } from './statement-dates';
 import { groupStatementLines } from './statement-groups';
+import { spendingDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { formatPoints } from './useCardPoints';
 
 /** Points worked out for one purchase, with its merchant category code, for the statement's points column. */
@@ -53,7 +55,7 @@ export function StatementPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   // A bill is settled from money the owner can move — not from a deposit that is locked, nor from a holding.
-  const payers = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a) && a.kind === 'asset' && a.currency === card.currency);
+  const payers = moneyHolders(accounts).filter((a) => canPayWith(a) && a.kind === 'asset' && a.currency === card.currency);
   const [fromId, setFromId] = useState('');
   const [paidOn, setPaidOn] = useState(today);
   const [error, setError] = useState<unknown>(null);
@@ -83,6 +85,8 @@ export function StatementPanel({
   const groups = groupStatementLines(lines, plastic);
   const grouped = groups.length > 0 && groups[0]!.title !== null;
   const chosenMinor = chosen.reduce((sum, line) => sum + line.owedMinor, 0);
+  const payFrom = fromId || payers[0]?.id || '';
+  const setAside = useSetAside(spendingDoor(payFrom, chosenMinor));
 
   async function run(work: () => Promise<unknown>) {
     setError(null);
@@ -329,8 +333,16 @@ export function StatementPanel({
           className="mt-3 grid gap-3 rounded-lg bg-slate-50 p-3 md:grid-cols-[1fr_1fr_auto]"
           onSubmit={(event) => {
             event.preventDefault();
+            // Enter submits too: the question is a condition on it.
+            if (!setAside.ready) return;
             void run(async () => {
-              await payCardPurchases(database, ws, { cardAccountId: card.id, fromAccountId: fromId || payers[0]?.id || '', occurredOn: paidOn, purchaseTransactionIds: chosen.map((line) => line.transactionId) });
+              await payCardPurchases(database, ws, {
+                cardAccountId: card.id,
+                fromAccountId: payFrom,
+                occurredOn: paidOn,
+                purchaseTransactionIds: chosen.map((line) => line.transactionId),
+                setAside: setAside.choice,
+              });
               setSelected(new Set());
             });
           }}
@@ -350,8 +362,9 @@ export function StatementPanel({
           <Field label="Paid on">
             <Input type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required />
           </Field>
+          {setAside.node && <div className="md:col-span-3">{setAside.node}</div>}
           <div className="flex items-end">
-            <Button type="submit" disabled={busy || payers.length === 0}>
+            <Button type="submit" disabled={busy || payers.length === 0 || !setAside.ready}>
               Pay {money(chosenMinor)}
             </Button>
           </div>

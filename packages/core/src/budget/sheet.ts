@@ -1,4 +1,5 @@
 import type { CategoryAmount, CategoryNode } from '../reports/spending';
+import type { CategoryNeed } from './needs';
 
 /**
  * The monthly budget sheet: income, spending against its caps, debt payments and goal savings, with a
@@ -57,6 +58,8 @@ export interface BudgetSheetInput {
    * rather than optional, so no caller can forget to say which of the two totals it passed.
    */
   eventsInCaps: boolean;
+  /** Each category's resolved need. A category missing here counts as essential, as an unmarked one does. */
+  needs?: Readonly<Record<string, CategoryNeed>>;
 }
 
 export interface BudgetSheet {
@@ -67,6 +70,10 @@ export interface BudgetSheet {
   /** Only budgets with no budgeted ancestor, so a purchase is never counted twice. */
   capsTotalMinor: number;
   spendingActualMinor: number;
+  /** What was spent in categories that resolve to essential (or carry no mark), signed. */
+  essentialActualMinor: number;
+  /** What was spent in categories that resolve to lifestyle, signed. The two add back to `spendingActualMinor`. */
+  lifestyleActualMinor: number;
   /** What events cost this month: named either way, and inside the lines above only when `eventsInCaps`. */
   eventSpendingMinor: number;
   /** Carried through so a screen can say whether the lines above already contain the event line. */
@@ -132,6 +139,13 @@ export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
   walk(lines, false);
 
   const spendingActualMinor = lines.reduce((total, line) => total + line.totalMinor, 0);
+  // Signed, category by category, over exactly the categories the lines were built from; essential is the rest,
+  // so the two always add back to what was spent.
+  const lifestyleActualMinor = input.categories.reduce(
+    (total, category) => (input.needs?.[category.id] === 'lifestyle' ? total + (own.get(category.id) ?? 0) : total),
+    0,
+  );
+  const essentialActualMinor = spendingActualMinor - lifestyleActualMinor;
   const savingsPlanMinor = input.savings.reduce((total, row) => total + row.planMinor, 0);
   const savingsActualMinor = input.savings.reduce((total, row) => total + row.actualMinor, 0);
 
@@ -141,6 +155,8 @@ export function budgetSheet(input: BudgetSheetInput): BudgetSheet {
     savings: input.savings,
     capsTotalMinor,
     spendingActualMinor,
+    essentialActualMinor,
+    lifestyleActualMinor,
     eventSpendingMinor: input.eventSpendingMinor,
     eventsInCaps: input.eventsInCaps,
     overCount,

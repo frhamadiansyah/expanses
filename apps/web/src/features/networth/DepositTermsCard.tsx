@@ -1,10 +1,9 @@
-import { parseRate } from '@expanses/core';
 import { saveDepositTerms } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, Field, Input } from '../../ui';
-import { depositLine } from './deposit-terms';
+import { depositLine, rateBpsFrom, rateInputText } from './deposit-terms';
 import { useDepositTerms } from './queries';
 import { Panel } from '../../ui/native';
 
@@ -64,7 +63,7 @@ function DepositTermsForm({
   const invalidate = useInvalidateAll();
   const [maturesOn, setMaturesOn] = useState(current);
   // Basis points back into the percent the form asks for, with the comma its placeholder shows.
-  const [rate, setRate] = useState(rateBps === 0 ? '' : String(rateBps / 100).replace('.', ','));
+  const [rate, setRate] = useState(rateInputText(rateBps));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -73,7 +72,7 @@ function DepositTermsForm({
     setBusy(true);
     try {
       if (!maturesOn.trim()) throw new Error('Say the day the money comes back');
-      await saveDepositTerms(database, ws, { accountId, maturesOn, rateBps: rate.trim() ? Math.round(parseRate(rate) * 100) : 0 });
+      await saveDepositTerms(database, ws, { accountId, maturesOn, rateBps: rate.trim() ? rateBpsFrom(rate) : 0 });
       await invalidate();
       onSaved();
     } catch (e) {
