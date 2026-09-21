@@ -1,11 +1,13 @@
-import { isSupportedCurrency, type PriceRow, type SecurityKind, uuidv7 } from '@expanses/core';
-import { and, desc, eq, ne, sql } from 'drizzle-orm';
+import { assetItem, isSupportedCurrency, type PriceRow, type SecurityKind, uuidv7 } from '@expanses/core';
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { assetProfiles, prices } from '../schema-assets';
 import { holdingLinks, securities, securityPrices } from '../schema-securities';
-import { AssetError } from './assets';
+import { createAccountTx } from './accounts';
+import { AssetError, saveAssetProfileTx } from './assets';
+import { type RecordTradeInput, type TradeResult, writeTradeTx } from './trades';
 
 /**
  * Whether migration 0051 has run. Every read and write of the three tables asks first, so a database stopped at an
@@ -160,14 +162,17 @@ export async function linkHoldingTx(
     }
   }
   if (security && brokerAccountId) {
+    // Only a live holding clashes: one sold out and archived is history, and holdingAtTx looks past it the same way.
     const [clash] = await tx
       .select({ accountId: holdingLinks.accountId })
       .from(holdingLinks)
+      .innerJoin(accounts, eq(accounts.id, holdingLinks.accountId))
       .where(and(
         eq(holdingLinks.workspaceId, ws.workspaceId),
         eq(holdingLinks.securityId, security.id),
         eq(holdingLinks.brokerAccountId, brokerAccountId),
         ne(holdingLinks.accountId, input.accountId),
+        isNull(accounts.archivedAt),
       ));
     if (clash) throw new AssetError(`${labelOf(security)} at that broker is already another holding; record the buy on it instead`);
   }
@@ -236,4 +241,89 @@ export async function allSecurityPrices(database: Database, ws: WorkspaceContext
     .select({ securityId: securityPrices.securityId, onDate: securityPrices.onDate, priceMicro: securityPrices.priceMicro })
     .from(securityPrices)
     .where(eq(securityPrices.workspaceId, ws.workspaceId));
+}
+
+export interface AddHoldingInput {
+  /** A security already recorded, or one to record now — from a bundled list, or named by the owner. */
+  security: { id: string } | NewSecurity;
+  /** Where it is kept: a money account already open, a broker account to open now, or no broker. */
+  broker: { accountId: string } | { name: string; currency: string } | null;
+  /** The buy: the charged amount on it (`withCharged`), the rates `tradeRatesForSave` worked out, and its goal and set-aside answer. */
+  buy: Omit<RecordTradeInput, 'accountId' | 'kind'>;
+}
+
+export interface AddHoldingResult {
+  accountId: string;
+  securityId: string;
+  brokerAccountId: string | null;
+  /** False when the buy went on a holding of this security at this broker that already existed. */
+  created: boolean;
+  trade: TradeResult;
+}
+
+/** The live holding of a security at a broker (or at no broker), if there is one. */
+async function holdingAtTx(tx: Db, ws: WorkspaceContext, securityId: string, brokerAccountId: string | null): Promise<string | null> {
+  const [row] = await tx
+    .select({ accountId: holdingLinks.accountId })
+    .from(holdingLinks)
+    .innerJoin(accounts, eq(accounts.id, holdingLinks.accountId))
+    .where(and(
+      eq(holdingLinks.workspaceId, ws.workspaceId),
+      eq(holdingLinks.securityId, securityId),
+      brokerAccountId ? eq(holdingLinks.brokerAccountId, brokerAccountId) : isNull(holdingLinks.brokerAccountId),
+      isNull(accounts.archivedAt),
+    ));
+  return row?.accountId ?? null;
+}
+
+/**
+ * Record the security, open the broker, open and link the holding, record the buy — all or nothing (spec §7.5). The buy
+ * goes through `writeTradeTx` untouched, so its `goalId` and `setAside` answer post exactly as `recordTrade`'s do.
+ */
+export function addHolding(database: Database, ws: WorkspaceContext, input: AddHoldingInput): Promise<AddHoldingResult> {
+  return database.transaction(async (tx) => {
+    await requireTables(tx);
+    const security = 'id' in input.security ? await securityByIdTx(tx, ws, input.security.id) : await ensureSecurityTx(tx, ws, input.security);
+
+    let brokerAccountId: string | null = null;
+    let brokerName: string | null = null;
+    if (input.broker && 'accountId' in input.broker) {
+      const [broker] = await tx
+        .select({ id: accounts.id, name: accounts.name })
+        .from(accounts)
+        .where(and(eq(accounts.id, input.broker.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+      if (!broker) throw new AssetError('Broker account not found in this workspace');
+      brokerAccountId = broker.id;
+      brokerName = broker.name;
+    } else if (input.broker) {
+      const opened = await createAccountTx(tx, ws, { name: input.broker.name, kind: 'asset', subtype: 'fund', currency: input.broker.currency });
+      brokerAccountId = opened.id;
+      brokerName = opened.name;
+    }
+
+    const existing = await holdingAtTx(tx, ws, security.id, brokerAccountId);
+    let accountId = existing;
+    if (!accountId) {
+      const holding = await createAccountTx(tx, ws, {
+        name: brokerName ? `${labelOf(security)} · ${brokerName}` : labelOf(security),
+        kind: 'asset',
+        subtype: 'investment',
+        currency: security.currency,
+      });
+      const item = assetItem('stock');
+      await saveAssetProfileTx(tx, ws, {
+        accountId: holding.id,
+        assetKind: 'stock',
+        unitKind: 'shares',
+        lotSize: security.lotSize,
+        coretaxSection: item.section,
+        coretaxCode: item.code,
+      });
+      // Validates the broker (a money account in this workspace) before anything is bought.
+      await linkHoldingTx(tx, ws, { accountId: holding.id, securityId: security.id, brokerAccountId });
+      accountId = holding.id;
+    }
+    const trade = await writeTradeTx(tx, ws, { ...input.buy, accountId, kind: 'buy' }, null);
+    return { accountId, securityId: security.id, brokerAccountId, created: existing === null, trade };
+  });
 }
