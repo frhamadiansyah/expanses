@@ -26,3 +26,17 @@ export function taxBpsFrom(text: string): number {
   if (bps < 0 || bps > 10_000) throw new Error('Tax withheld is a percentage from 0 to 100');
   return bps;
 }
+
+/**
+ * One save after another: each task starts only once the one before it has settled, failed or not. The settings
+ * group saves a whole snapshot on every change, so this is what keeps an older snapshot from landing last and
+ * silently undoing a newer change (spec §3: saves are never lost).
+ */
+export function saveQueue(): (task: () => Promise<void>) => Promise<void> {
+  let tail: Promise<void> = Promise.resolve();
+  return (task) => {
+    const run = tail.then(task);
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}

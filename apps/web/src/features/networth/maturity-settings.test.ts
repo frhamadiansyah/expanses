@@ -1,7 +1,7 @@
 // apps/web/src/features/networth/maturity-settings.test.ts
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { payoutChoices, taxBpsFrom, termLabel } from './maturity-settings';
+import { payoutChoices, saveQueue, taxBpsFrom, termLabel } from './maturity-settings';
 
 const account = (id: string, partial: Partial<AccountRow>): AccountRow => ({
   id, workspaceId: 'ws', parentId: null, kind: 'asset', subtype: 'bank', name: id, icon: null, currency: 'IDR',
@@ -38,5 +38,54 @@ describe('the rest of the group', () => {
     expect(taxBpsFrom('0,0')).toBe(0);
     expect(() => taxBpsFrom('101')).toThrow();
     expect(() => taxBpsFrom('')).toThrow();
+  });
+});
+
+describe('settings saves', () => {
+  /** A save that finishes only when the test says so, so the database can be made to answer out of order. */
+  function deferred() {
+    let resolve!: () => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+  const tick = () => new Promise((res) => setTimeout(res, 0));
+
+  it('are applied in the order they were made, even when the first one is slow', async () => {
+    const enqueue = saveQueue();
+    const log: string[] = [];
+    const slow = deferred();
+    const first = enqueue(async () => {
+      log.push('older starts');
+      await slow.promise;
+      log.push('older lands');
+    });
+    const second = enqueue(async () => {
+      log.push('newer starts');
+      log.push('newer lands');
+    });
+    await tick();
+    // The newer snapshot waits: had it gone first, the older one would land last and undo it.
+    expect(log).toEqual(['older starts']);
+    slow.resolve();
+    await Promise.all([first, second]);
+    expect(log).toEqual(['older starts', 'older lands', 'newer starts', 'newer lands']);
+  });
+
+  it('keeps going after a save fails, and the failure reaches its own caller', async () => {
+    const enqueue = saveQueue();
+    const log: string[] = [];
+    const failing = deferred();
+    const first = enqueue(() => failing.promise);
+    const second = enqueue(async () => {
+      log.push('newer lands');
+    });
+    failing.reject(new Error('refused'));
+    await expect(first).rejects.toThrow('refused');
+    await second;
+    expect(log).toEqual(['newer lands']);
   });
 });

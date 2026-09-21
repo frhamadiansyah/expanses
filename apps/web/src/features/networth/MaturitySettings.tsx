@@ -7,7 +7,7 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { rateInputText } from './deposit-terms';
-import { MATURITY_CHOICES, payoutChoices, taxBpsFrom, termLabel } from './maturity-settings';
+import { MATURITY_CHOICES, payoutChoices, saveQueue, taxBpsFrom, termLabel } from './maturity-settings';
 import { useDepositAutomation, useDepositTerms } from './queries';
 
 /**
@@ -34,7 +34,7 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
   const [error, setError] = useState<unknown>(null);
   // Saves still on their way to the database: the group says so (aria-busy), so nothing reads it half-written.
   const [saving, setSaving] = useState(0);
-  const queue = useRef(Promise.resolve());
+  const queue = useRef(saveQueue());
   // The latest settings, including a change made before React re-rendered: two changes in one tick both survive.
   const latest = useRef(saved);
 
@@ -47,7 +47,7 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
     setSettings(next);
     setError(null);
     setSaving((n) => n + 1);
-    queue.current = queue.current.then(async () => {
+    void queue.current(async () => {
       try {
         await saveDepositAutomation(database, ws, {
           accountId: next.accountId,
