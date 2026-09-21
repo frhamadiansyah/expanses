@@ -34,6 +34,7 @@ import { CardFace } from './CardFace';
 import { useCardIdentities, useCards } from './card-queries';
 import { CatalogPicker } from './CatalogPicker';
 import { ruleQualifiers } from './rule-summary';
+import { capMeter } from './cap-meter';
 import { describeSuggestion } from './hint-text';
 import { PurchaseList, SuggestionFixes } from './PurchaseList';
 import { activeDuring } from './catalog-panel';
@@ -116,12 +117,12 @@ function CycleSummary({
         <InsetGroup header="By rule">
           {activeRules.map((rule) => {
             const used = result.earn.spendByRule[rule.id] ?? 0;
-            const fraction = rule.capSpendMinor ? Math.min(1, used / rule.capSpendMinor) : null;
+            const cap = rule.capSpendMinor ? capMeter(used, rule.capSpendMinor) : null;
             return (
               <FigureRow key={rule.id} title={rule.name} value={`${formatMinor(used, currency)} → ${formatPoints(result.earn.pointsByRule[rule.id] ?? 0)} ${unit}`}>
-                {fraction !== null && (
+                {cap !== null && (
                   <>
-                    <Meter fraction={fraction} tone={fraction >= 1 ? 'warn' : 'tint'} />
+                    <Meter fraction={cap.fraction} tone={cap.tone} />
                     <p className={cx('mt-[4px]', SUBTITLE)}>
                       Cap {formatMinor(rule.capSpendMinor!, currency)} · {formatMinor(Math.max(0, rule.capSpendMinor! - used), currency)} left
                     </p>
