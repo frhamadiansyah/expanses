@@ -125,6 +125,31 @@ describe('a budget typed in another unit', () => {
     expect((await listBudgets(database, book, MONTH)).find((row) => row.categoryAccountId === stamps.id)).toMatchObject({ frequency: 'monthly', amountAsSetMinor: 13, planMinor: 13 });
   });
 
+  it('refuses the change, naming the line, when a typed amount survives but its month comes to nothing', async () => {
+    const { database, ws } = await setupDb();
+    const biz = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const book = inBook(ws, biz);
+    const stamps = await createAccount(database, book, { name: 'Stamps', kind: 'expense', subtype: 'category', currency: null });
+    // Rp 160 a quarter is 1,3 cents → 1 cent, which survives; 1 cent a quarter is 0,33 of a cent a month → 0,
+    // which budgets.amount_minor > 0 refuses. A refusal that names the line, never a raw SQLite error.
+    await saveBudget(database, book, { categoryAccountId: stamps.id, amountMinor: 160, frequency: 'quarterly' });
+    await upsertRate(database, { fromCurrency: 'IDR', toCurrency: 'SGD', onDate: isoDate(), rate: 0.000083, source: 'manual', sourceDate: isoDate() });
+    await expect(setBookBaseCurrency(database, ws, biz, 'SGD')).rejects.toMatchObject({ name: 'BookError', code: 'CAP_TOO_SMALL', message: expect.stringContaining('Stamps') });
+    // Nothing moved: the whole change is one transaction.
+    expect((await listBudgets(database, book, MONTH)).find((row) => row.categoryAccountId === stamps.id)).toMatchObject({ frequency: 'quarterly', amountAsSetMinor: 160 });
+  });
+
+  it('refuses the change, naming the line, when a monthly cap comes to nothing in the new money', async () => {
+    const { database, ws } = await setupDb();
+    const biz = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const book = inBook(ws, biz);
+    const stamps = await createAccount(database, book, { name: 'Stamps', kind: 'expense', subtype: 'category', currency: null });
+    // Rp 50 a month is 0,4 of a cent → 0.
+    await saveBudget(database, book, { categoryAccountId: stamps.id, amountMinor: 50 });
+    await upsertRate(database, { fromCurrency: 'IDR', toCurrency: 'SGD', onDate: isoDate(), rate: 0.000083, source: 'manual', sourceDate: isoDate() });
+    await expect(setBookBaseCurrency(database, ws, biz, 'SGD')).rejects.toMatchObject({ name: 'BookError', code: 'CAP_TOO_SMALL', message: expect.stringContaining('Stamps') });
+  });
+
   it('stores the monthly figure alone on a database stopped before 0053', async () => {
     executor = createNodeExecutor();
     const database = createDatabase(executor);

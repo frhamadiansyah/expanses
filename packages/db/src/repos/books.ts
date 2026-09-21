@@ -302,7 +302,7 @@ export async function setBookBaseCurrency(database: Database, ws: WorkspaceConte
 
     const caps = ids.length
       ? await tx
-          .select({ id: budgets.id, amountMinor: budgets.amountMinor })
+          .select({ id: budgets.id, amountMinor: budgets.amountMinor, categoryAccountId: budgets.categoryAccountId })
           .from(budgets)
           .where(and(eq(budgets.workspaceId, ws.workspaceId), inArray(budgets.categoryAccountId, ids)))
       : [];
@@ -327,6 +327,15 @@ export async function setBookBaseCurrency(database: Database, ws: WorkspaceConte
         await tx.delete(budgetFrequencies).where(eq(budgetFrequencies.budgetId, cap.id));
       }
       const monthlyMinor = unit && asSet > 0 ? perMonthMinor(asSet, unit.frequency) : into(cap.amountMinor);
+      if (monthlyMinor <= 0) {
+        // A cap of nothing a month cannot be stored (budgets.amount_minor > 0), and dropping it silently would lose
+        // the owner's plan: the change is refused, naming the line, and the whole transaction goes back.
+        const [category] = await tx.select({ name: accounts.name }).from(accounts).where(eq(accounts.id, cap.categoryAccountId));
+        throw new BookError(
+          'CAP_TOO_SMALL',
+          `The budget for ${category?.name ?? 'a category'} comes to nothing a month in ${currency}. Raise it or remove it, then change the currency.`,
+        );
+      }
       await tx.update(budgets).set({ amountMinor: monthlyMinor, updatedAt: now }).where(eq(budgets.id, cap.id));
       // A month override is a cap for one month; it is the same figure in the same money.
       const overrides = await tx.select({ id: budgetOverrides.id, amountMinor: budgetOverrides.amountMinor }).from(budgetOverrides).where(eq(budgetOverrides.budgetId, cap.id));
