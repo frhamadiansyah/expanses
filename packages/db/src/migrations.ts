@@ -48,6 +48,7 @@ import bookIndexes from '../migrations/0046_book_indexes.sql?raw';
 import cashEquivalents from '../migrations/0047_cash_equivalents.sql?raw';
 import transactionExtras from '../migrations/0048_transaction_extras.sql?raw';
 import eventPlanItems from '../migrations/0049_event_plan_items.sql?raw';
+import depositAutomation from '../migrations/0054_deposit_automation.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -106,6 +107,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 47, name: 'cash_equivalents', sql: cashEquivalents },
   { version: 48, name: 'transaction_extras', sql: transactionExtras },
   { version: 49, name: 'event_plan_items', sql: eventPlanItems },
+  { version: 54, name: 'deposit_automation', sql: depositAutomation },
 ];
 
 /** The highest version this build of the app knows how to produce. */

@@ -85,3 +85,37 @@ export const tradeTemplates = sqliteTable('trade_templates', {
   kind: text('kind', { enum: ['buy', 'move'] }).notNull(),
   createdAt: text('created_at').notNull(),
 });
+
+/** A deposit's automation settings (0054). No row means off. Booleans are 0/1, read into booleans by the repo. */
+export const depositAutomation = sqliteTable('deposit_automation', {
+  accountId: text('account_id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  enabled: integer('enabled').notNull(),
+  enabledOn: text('enabled_on'),
+  atMaturity: text('at_maturity', { enum: ['principal', 'principal_interest', 'close'] }).notNull(),
+  interestPaid: text('interest_paid', { enum: ['monthly', 'at_maturity'] }).notNull(),
+  payoutAccountId: text('payout_account_id'),
+  termMonths: integer('term_months').notNull(),
+  termStartedOn: text('term_started_on'),
+  keepRate: integer('keep_rate').notNull(),
+  taxBps: integer('tax_bps').notNull(),
+  taxExempt: integer('tax_exempt').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/** Each maturity or monthly payout the owner confirmed or recorded by hand (0054): gross, tax and net as posted or as stated. The tax report reads it. */
+export const depositEvents = sqliteTable('deposit_events', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  accountId: text('account_id').notNull(),
+  kind: text('kind', { enum: ['monthly', 'maturity'] }).notNull(),
+  dueOn: text('due_on').notNull(),
+  principalMinor: integer('principal_minor').notNull(),
+  grossMinor: integer('gross_minor').notNull(),
+  taxMinor: integer('tax_minor').notNull(),
+  netMinor: integer('net_minor').notNull(),
+  interestTransactionId: text('interest_transaction_id'),
+  principalTransactionId: text('principal_transaction_id'),
+  recordedByHand: integer('recorded_by_hand').notNull(),
+  confirmedAt: text('confirmed_at').notNull(),
+});
