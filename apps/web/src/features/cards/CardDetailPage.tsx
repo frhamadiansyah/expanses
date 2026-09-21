@@ -25,7 +25,7 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } 
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, PanelHeader, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, PanelHeader, ReadOnlyRow, SelectRow, TextRow, WideColumn } from '../../ui/native';
 import { InstallmentList } from '../loans/InstallmentList';
 import { BonusForm } from './BonusForm';
 import { BonusProgress } from './BonusProgress';
@@ -45,7 +45,7 @@ import { purchasesOf } from './hint-text';
 import { TransferEstimates } from './TransferEstimates';
 import { refreshLedger, useCardLedger } from './useCardLedger';
 import { BookOpen, Plus, Trash2 } from 'lucide-react';
-import { ActionRow, Capsule, EARLIER, FigureRow, GlyphButton, Line, Meter, RowWithActions, Step, StepperRow, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
+import { ActionRow, Capsule, ColumnGroup, EARLIER, FigureRow, GlyphButton, Line, Meter, RowWithActions, Step, StepperRow, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
 import { type CardPoints, type CycleResult, formatPoints, loadCardPoints, loadCycleResult, pointsValue, shortDate } from './useCardPoints';
 
 const route = getRouteApi('/cards/$cardId');
@@ -434,9 +434,11 @@ export function CardDetailPage() {
       {/*
        * The control and what it controls share one column at every width. On a desktop the hero is two columns,
        * and a control drawn in the right one of them sat over a section spanning both — it did not line up with
-       * the thing it switches.
+       * the thing it switches. That column is the page's whole width on a desktop, and the forms in it lay their
+       * fields out across it, as the page did before the kit: a desktop is not a phone held sideways.
        */}
-      <div className="mt-[4px] md:max-w-2xl">
+      <WideColumn>
+      <div className="mt-[4px]">
       <CardTabs active={active} onChange={(tab) => setChosenTab(tab)} debit={isDebit} />
       <ErrorBox error={error} />
       {on('rules') && cp.catalog.entryId && <CatalogPanel cp={cp} today={today} run={run} />}
@@ -450,20 +452,26 @@ export function CardDetailPage() {
               void run(() => saveCardTerms(database, ws, { accountId: card.id, statementDay: Number(statementDay), dueDay: Number(dueDay), creditLimitMinor: optionalMinor(limit), annualFeeMinor: optionalMinor(fee) }));
             }}
           >
-            <InsetGroup
+            <ColumnGroup
               header="Card terms"
               footer={step === 1 ? 'Start with your billing date. It decides which purchases count toward each points cycle and when bonus caps reset.' : undefined}
-            >
-              <TextRow label="Billing date" hint="Day of the month" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required />
-              <TextRow label="Due date" hint="Day of the month" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="12" required />
-              <TextRow label={`Credit limit (${currency})`} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />
-              <TextRow label={`Annual fee (${currency})`} value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />
-              <ReadOnlyRow
-                label="Current balance"
-                value={`${formatMinor(owed, currency)}${cp.terms?.creditLimitMinor ? ` · ${Math.round((owed / cp.terms.creditLimitMinor) * 100)}% of limit` : ''}`}
-              />
-              <SubmitRow label="Save terms" />
-            </InsetGroup>
+              columns={[
+                [
+                  <TextRow label="Billing date" hint="Day of the month" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required />,
+                  <TextRow label="Due date" hint="Day of the month" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="12" required />,
+                ],
+                [
+                  <TextRow label={`Credit limit (${currency})`} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" />,
+                  <TextRow label={`Annual fee (${currency})`} value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" />,
+                  // The balance and its share of the limit are read whole, so they share the wider second column.
+                  <ReadOnlyRow
+                    label="Current balance"
+                    value={`${formatMinor(owed, currency)}${cp.terms?.creditLimitMinor ? ` · ${Math.round((owed / cp.terms.creditLimitMinor) * 100)}% of limit` : ''}`}
+                  />,
+                  <SubmitRow label="Save terms" />,
+                ],
+              ]}
+            />
           </form>
         </>
       )}
@@ -507,11 +515,14 @@ export function CardDetailPage() {
               });
             }}
           >
-            <InsetGroup header="Add a card">
-              <TextRow label="Last 4 digits" value={newLast4} onChange={(e) => setNewLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="8802" />
-              <TextRow label="Whose card" hint="Optional. Yours, or whoever holds the supplementary card." value={newHolder} onChange={(e) => setNewHolder(e.target.value)} placeholder="Spouse" />
-              <SubmitRow label="Add card" />
-            </InsetGroup>
+            <ColumnGroup
+              header="Add a card"
+              columns={[
+                [<TextRow label="Last 4 digits" value={newLast4} onChange={(e) => setNewLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="8802" />],
+                [<TextRow label="Whose card" hint="Optional. Yours, or whoever holds the supplementary card." value={newHolder} onChange={(e) => setNewHolder(e.target.value)} placeholder="Spouse" />],
+                [<SubmitRow label="Add card" />],
+              ]}
+            />
           </form>
         </>
       )}
@@ -537,19 +548,26 @@ export function CardDetailPage() {
               void run(() => createProgram(database, ws, { cardAccountId: card.id, name: programName, unit, cycleAnchor: anchor }));
             }}
           >
-            <InsetGroup header="Or set up manually">
-              <TextRow label="Program name" value={programName} onChange={(e) => setProgramName(e.target.value)} required />
-              <SelectRow label="Earns" value={unit} onChange={(e) => setUnit(e.target.value as RewardProgramRow['unit'])}>
-                <option value="points">Points</option>
-                <option value="miles">Miles</option>
-                <option value="cashback">Cashback</option>
-              </SelectRow>
-              <SelectRow label="Caps reset" value={anchor} onChange={(e) => setAnchor(e.target.value as RewardProgramRow['cycleAnchor'])}>
-                <option value="statement">Each statement cycle</option>
-                <option value="calendar">Each calendar month</option>
-              </SelectRow>
-              <SubmitRow label="Set up rewards" />
-            </InsetGroup>
+            <ColumnGroup
+              header="Or set up manually"
+              columns={[
+                [
+                  <TextRow label="Program name" value={programName} onChange={(e) => setProgramName(e.target.value)} required />,
+                  <SelectRow label="Earns" value={unit} onChange={(e) => setUnit(e.target.value as RewardProgramRow['unit'])}>
+                    <option value="points">Points</option>
+                    <option value="miles">Miles</option>
+                    <option value="cashback">Cashback</option>
+                  </SelectRow>,
+                ],
+                [
+                  <SelectRow label="Caps reset" value={anchor} onChange={(e) => setAnchor(e.target.value as RewardProgramRow['cycleAnchor'])}>
+                    <option value="statement">Each statement cycle</option>
+                    <option value="calendar">Each calendar month</option>
+                  </SelectRow>,
+                  <SubmitRow label="Set up rewards" />,
+                ],
+              ]}
+            />
           </form>
         </>
       )}
@@ -634,54 +652,62 @@ export function CardDetailPage() {
                   });
                 }}
               >
-                <InsetGroup header="Spend points" footer="Taken from the points that expire soonest, so none are lost that could have been used.">
-                  <TextRow label={`${cp.program.unit === 'miles' ? 'Miles' : 'Points'} spent`} value={spendPoints} onChange={(event) => setSpendPoints(event.target.value)} inputMode="decimal" required />
-                  {spendChoices.length > 0 && (
-                    <SelectRow
-                      label="What for"
-                      value={spendChoice}
-                      onChange={(event) => {
-                        const choice = spendChoices.find((option) => option.key === event.target.value);
-                        setSpendChoice(event.target.value);
-                        // A partner means the points moved to an airline or hotel; anything else was spent here.
-                        if (choice) setSpendKind(choice.kind);
-                        setSpendNote(choice ? choice.label : '');
-                      }}
-                    >
-                      <option value="">Choose…</option>
-                      {spendChoices.some((option) => option.kind === 'transfer') && (
-                        <optgroup label="Move to a partner">
-                          {spendChoices.filter((option) => option.kind === 'transfer').map((option) => (
-                            <option key={option.key} value={option.key}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {spendChoices.some((option) => option.kind === 'redeem') && (
-                        <optgroup label="Redeem">
-                          {spendChoices.filter((option) => option.kind === 'redeem').map((option) => (
-                            <option key={option.key} value={option.key}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      <option value="other">Something else…</option>
-                    </SelectRow>
-                  )}
-                  {(spendChoices.length === 0 || spendChoice === 'other') && (
-                    <TextRow label={spendChoices.length === 0 ? 'What for' : 'Describe it'} value={spendNote} onChange={(event) => setSpendNote(event.target.value)} placeholder="Statement credit" />
-                  )}
-                  <TextRow label={`What it fetched (${currency})`} hint="Leave empty if it had no cash value." value={spendValue} onChange={(event) => setSpendValue(event.target.value)} inputMode="decimal" />
-                  {(spendChoices.length === 0 || spendChoice === 'other') && (
-                    <SelectRow label="Kind" value={spendKind} onChange={(event) => setSpendKind(event.target.value as 'redeem' | 'transfer')}>
-                      <option value="redeem">Redeemed</option>
-                      <option value="transfer">Moved to a partner</option>
-                    </SelectRow>
-                  )}
-                  <SubmitRow label="Spend points" />
-                </InsetGroup>
+                <ColumnGroup
+                  header="Spend points"
+                  footer="Taken from the points that expire soonest, so none are lost that could have been used."
+                  columns={[
+                    [
+                      <TextRow label={`${cp.program.unit === 'miles' ? 'Miles' : 'Points'} spent`} value={spendPoints} onChange={(event) => setSpendPoints(event.target.value)} inputMode="decimal" required />,
+                      spendChoices.length > 0 && (
+                        <SelectRow
+                          label="What for"
+                          value={spendChoice}
+                          onChange={(event) => {
+                            const choice = spendChoices.find((option) => option.key === event.target.value);
+                            setSpendChoice(event.target.value);
+                            // A partner means the points moved to an airline or hotel; anything else was spent here.
+                            if (choice) setSpendKind(choice.kind);
+                            setSpendNote(choice ? choice.label : '');
+                          }}
+                        >
+                          <option value="">Choose…</option>
+                          {spendChoices.some((option) => option.kind === 'transfer') && (
+                            <optgroup label="Move to a partner">
+                              {spendChoices.filter((option) => option.kind === 'transfer').map((option) => (
+                                <option key={option.key} value={option.key}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {spendChoices.some((option) => option.kind === 'redeem') && (
+                            <optgroup label="Redeem">
+                              {spendChoices.filter((option) => option.kind === 'redeem').map((option) => (
+                                <option key={option.key} value={option.key}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <option value="other">Something else…</option>
+                        </SelectRow>
+                      ),
+                      (spendChoices.length === 0 || spendChoice === 'other') && (
+                        <TextRow label={spendChoices.length === 0 ? 'What for' : 'Describe it'} value={spendNote} onChange={(event) => setSpendNote(event.target.value)} placeholder="Statement credit" />
+                      ),
+                    ],
+                    [
+                      <TextRow label={`What it fetched (${currency})`} hint="Leave empty if it had no cash value." value={spendValue} onChange={(event) => setSpendValue(event.target.value)} inputMode="decimal" />,
+                      (spendChoices.length === 0 || spendChoice === 'other') && (
+                        <SelectRow label="Kind" value={spendKind} onChange={(event) => setSpendKind(event.target.value as 'redeem' | 'transfer')}>
+                          <option value="redeem">Redeemed</option>
+                          <option value="transfer">Moved to a partner</option>
+                        </SelectRow>
+                      ),
+                      <SubmitRow label="Spend points" />,
+                    ],
+                  ]}
+                />
               </form>
             </div>
           )}
@@ -689,7 +715,8 @@ export function CardDetailPage() {
           {on('points') && ledger.data && (
             <>
               <div data-testid="card-year-roi">
-                <InsetGroup
+                {/* Four figures, four columns on a desktop: the tiles the page had, as one group. */}
+                <ColumnGroup
                   header="What the annual fee bought"
                   footer={
                     <>
@@ -698,12 +725,13 @@ export function CardDetailPage() {
                       {ledger.data.roi.estimated ? ' · estimated, because some points were worked out rather than confirmed' : ''}
                     </>
                   }
-                >
-                  <InsetRow title="Earned" value={`${formatPoints(ledger.data.roi.pointsEarned)} ${cp.program.unit}`} valueTone="ink" />
-                  <InsetRow title="Worth" value={formatMinor(ledger.data.roi.valueMinor, currency)} valueTone="ink" />
-                  <InsetRow title="Annual fee" value={formatMinor(ledger.data.roi.annualFeeMinor, currency)} valueTone="ink" />
-                  <InsetRow title="Net" value={formatMinor(ledger.data.roi.netMinor, currency)} valueTone={ledger.data.roi.netMinor < 0 ? 'alarm' : 'tint'} />
-                </InsetGroup>
+                  columns={[
+                    [<InsetRow title="Earned" value={`${formatPoints(ledger.data.roi.pointsEarned)} ${cp.program.unit}`} valueTone="ink" />],
+                    [<InsetRow title="Worth" value={formatMinor(ledger.data.roi.valueMinor, currency)} valueTone="ink" />],
+                    [<InsetRow title="Annual fee" value={formatMinor(ledger.data.roi.annualFeeMinor, currency)} valueTone="ink" />],
+                    [<InsetRow title="Net" value={formatMinor(ledger.data.roi.netMinor, currency)} valueTone={ledger.data.roi.netMinor < 0 ? 'alarm' : 'tint'} />],
+                  ]}
+                />
               </div>
               {ledger.data.roi.realised && (
                 <div data-testid="card-year-realised">
@@ -900,19 +928,26 @@ export function CardDetailPage() {
                   });
                 }}
               >
-                <InsetGroup header="Add a value">
-                  <TextRow label="Redemption" value={redeemName} onChange={(e) => setRedeemName(e.target.value)} placeholder="Statement credit" />
-                  <TextRow label={cp.program.unit === 'miles' ? 'Miles redeemed' : 'Points redeemed'} value={redeemPoints} onChange={(e) => setRedeemPoints(e.target.value)} inputMode="numeric" placeholder="1000" required />
-                  <TextRow label="Worth" value={redeemValue} onChange={(e) => setRedeemValue(e.target.value)} inputMode="decimal" placeholder="2500" required />
-                  <SelectRow label="Currency" value={redeemCurrency} onChange={(e) => setRedeemCurrency(e.target.value)}>
-                    {CURRENCIES.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.code}
-                      </option>
-                    ))}
-                  </SelectRow>
-                  <SubmitRow label="Add value" />
-                </InsetGroup>
+                <ColumnGroup
+                  header="Add a value"
+                  columns={[
+                    [
+                      <TextRow label="Redemption" value={redeemName} onChange={(e) => setRedeemName(e.target.value)} placeholder="Statement credit" />,
+                      <TextRow label={cp.program.unit === 'miles' ? 'Miles redeemed' : 'Points redeemed'} value={redeemPoints} onChange={(e) => setRedeemPoints(e.target.value)} inputMode="numeric" placeholder="1000" required />,
+                    ],
+                    [
+                      <TextRow label="Worth" value={redeemValue} onChange={(e) => setRedeemValue(e.target.value)} inputMode="decimal" placeholder="2500" required />,
+                      <SelectRow label="Currency" value={redeemCurrency} onChange={(e) => setRedeemCurrency(e.target.value)}>
+                        {CURRENCIES.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.code}
+                          </option>
+                        ))}
+                      </SelectRow>,
+                    ],
+                    [<SubmitRow label="Add value" />],
+                  ]}
+                />
               </form>
             </>
           )}
@@ -921,6 +956,7 @@ export function CardDetailPage() {
 
       {on('card') && <InstallmentList cardAccountId={card.id} currency={currency} />}
       </div>
+      </WideColumn>
     </Screen>
   );
 }

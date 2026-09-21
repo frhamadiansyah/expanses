@@ -1,7 +1,7 @@
 import { Check, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { type CSSProperties, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
+import { Children, cloneElement, type CSSProperties, isValidElement, type ReactElement, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
 import { cx } from '../../ui';
-import { type GroupChild, InsetRow, type InsetRowProps, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP, toneClass, type Tone } from '../../ui/native';
+import { GROUP_GAP, GROUP_RADIUS, type GroupChild, InsetRow, type InsetRowProps, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, rowPositions, TAP, toneClass, type Tone } from '../../ui/native';
 
 /**
  * The card page's shapes that the kit's rows cannot be, composed from the kit's own measurements.
@@ -349,6 +349,67 @@ export function Meter({ fraction, tone = 'tint', label }: { fraction: number; to
       aria-valuemax={label ? 100 : undefined}
     >
       <div className="h-full" style={{ width: `${percent}%`, borderRadius: 99, background: tone === 'warn' ? 'var(--ph-warn)' : 'var(--ph-tint)' }} />
+    </div>
+  );
+}
+
+const COLUMNS = { 2: 'md:grid-cols-2', 3: 'md:grid-cols-3', 4: 'md:grid-cols-4' } as const;
+
+/**
+ * One group whose rows a desktop lays out in columns: the old page's form of three or four fields in a line.
+ *
+ * On a phone it is exactly an `InsetGroup` — one white shape, one list, a hairline between every row. On a wide
+ * screen the same rows stand in side-by-side columns inside that one shape, with a hairline between the columns,
+ * so a desktop reads a form across rather than down a 672 px strip. It is the same DOM at both widths: each
+ * column is a short list of its own, and the join between two columns is drawn as a row separator on the phone
+ * and as a vertical rule on the desktop.
+ */
+export function ColumnGroup({
+  header,
+  trailing,
+  footer,
+  columns,
+  testId,
+}: {
+  header?: string;
+  trailing?: ReactNode;
+  footer?: ReactNode;
+  /** Each column's rows, in the order a phone reads them. An empty column is left out. */
+  columns: ReactNode[][];
+  testId?: string;
+}) {
+  const filled = columns
+    .map((column) => Children.toArray(column).filter(isValidElement) as ReactElement<GroupChild>[])
+    .filter((column) => column.length > 0);
+  return (
+    <section className="w-full" style={{ marginBottom: GROUP_GAP }} data-testid={testId}>
+      {header && <PanelHeader title={header} trailing={trailing} />}
+      <div className={cx('overflow-hidden bg-[var(--ph-surface)] md:grid', COLUMNS[filled.length as keyof typeof COLUMNS])} style={{ borderRadius: GROUP_RADIUS }}>
+        {filled.map((rows, index) => {
+          const positions = rowPositions(rows.length);
+          return (
+            <div key={index} className="relative min-w-0">
+              {index > 0 && (
+                <>
+                  <span aria-hidden className="pointer-events-none absolute top-0 right-0 z-[1] bg-[var(--ph-hair)] md:hidden" style={{ height: 0.5, left: ROW_PAD_X }} />
+                  <span aria-hidden className="pointer-events-none absolute top-[11px] bottom-[11px] left-0 hidden bg-[var(--ph-hair)] md:block" style={{ width: 0.5 }} />
+                </>
+              )}
+              {rows.map((row, at) => cloneElement(row, { position: positions[at] }))}
+            </div>
+          );
+        })}
+      </div>
+      {footer && <p className="px-[4px] pt-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{footer}</p>}
+    </section>
+  );
+}
+
+/** Groups side by side on a desktop, stacked on a phone: a form whose groups each already have a header. */
+export function GroupColumns({ children, wide = 'even' }: { children: ReactNode; wide?: 'even' | 'second' }) {
+  return (
+    <div className={cx('md:grid md:items-start md:gap-x-[18px]', wide === 'even' ? 'md:grid-cols-2' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
+      {children}
     </div>
   );
 }

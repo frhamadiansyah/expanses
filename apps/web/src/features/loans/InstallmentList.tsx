@@ -6,7 +6,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { Trash2 } from 'lucide-react';
 import { ErrorBox, Money } from '../../ui';
 import { InsetGroup, SwitchRow, TextRow } from '../../ui/native';
-import { ActionRow, GlyphButton, Line, SubmitRow, SUBTITLE, TextLine, TITLE } from '../cards/rows';
+import { ActionRow, ColumnGroup, GlyphButton, Line, SubmitRow, SUBTITLE, TextLine, TITLE } from '../cards/rows';
 import { useInstallments } from './queries';
 
 /**
@@ -93,13 +93,21 @@ export function InstallmentList({ cardAccountId, currency }: { cardAccountId: st
 
       {adding && (
         <form onSubmit={add}>
-          <InsetGroup header="New instalment plan">
-            <TextRow label="What it was" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="iBox Grand Indonesia" />
-            <TextRow label={`Total (${currency})`} value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="12.000.000" required />
-            <TextRow label="Over how many months" value={months} inputMode="numeric" onChange={(e) => setMonths(e.target.value)} />
-            <TextRow label="First billed" type="month" value={firstBilledMonth} onChange={(e) => setFirstBilledMonth(e.target.value)} />
-            <SwitchRow label="This still earns points" checked={earnsPoints} onChange={setEarnsPoints} />
-          </InsetGroup>
+          {/* The plan's figures across a desktop, as they stood in a row of four before; down a phone. */}
+          <ColumnGroup
+            header="New instalment plan"
+            columns={[
+              [
+                <TextRow label="What it was" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="iBox Grand Indonesia" />,
+                <TextRow label={`Total (${currency})`} value={total} inputMode="decimal" onChange={(e) => setTotal(e.target.value)} placeholder="12.000.000" required />,
+              ],
+              [
+                <TextRow label="Over how many months" value={months} inputMode="numeric" onChange={(e) => setMonths(e.target.value)} />,
+                <TextRow label="First billed" type="month" value={firstBilledMonth} onChange={(e) => setFirstBilledMonth(e.target.value)} />,
+              ],
+              [<SwitchRow label="This still earns points" checked={earnsPoints} onChange={setEarnsPoints} />],
+            ]}
+          />
           <ErrorBox error={error} />
           <InsetGroup>
             <SubmitRow label="Save plan" disabled={busy} />

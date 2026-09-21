@@ -9,7 +9,7 @@ import { canPayWith } from '../../lib/account-types';
 import { isMoneyAccount, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, Panel, SelectRow, TextRow } from '../../ui/native';
-import { EARLIER, GlyphButton, Line, SearchField, StepperRow, SubmitRow, SUBTITLE, TITLE } from './rows';
+import { ColumnGroup, EARLIER, GlyphButton, Line, SearchField, StepperRow, SubmitRow, SUBTITLE, TITLE } from './rows';
 import { WorkspaceBadge } from '../workspaces/WorkspaceBadge';
 import { useWorkspaceBadges } from '../workspaces/queries';
 import { StatementBand } from './StatementBand';
@@ -400,21 +400,24 @@ export function StatementPanel({
             });
           }}
         >
-          <InsetGroup
+          <ColumnGroup
             header={`Pay ${chosen.length} purchase${chosen.length === 1 ? '' : 's'} now`}
             trailing={money(chosenMinor)}
             footer={payers.length === 0 ? `Add a ${currency} bank account to pay the card from.` : undefined}
-          >
-            <SelectRow label="Paid from" value={fromId || payers[0]?.id || ''} onChange={(event) => setFromId(event.target.value)}>
-              {payers.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </SelectRow>
-            <TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required />
-            <SubmitRow label={`Pay ${money(chosenMinor)}`} disabled={busy || payers.length === 0} />
-          </InsetGroup>
+            columns={[
+              [
+                <SelectRow label="Paid from" value={fromId || payers[0]?.id || ''} onChange={(event) => setFromId(event.target.value)}>
+                  {payers.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </SelectRow>,
+              ],
+              [<TextRow label="Paid on" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} required />],
+              [<SubmitRow label={`Pay ${money(chosenMinor)}`} disabled={busy || payers.length === 0} />],
+            ]}
+          />
         </form>
       )}
       <ErrorBox error={error ?? statement.error} />
