@@ -233,6 +233,23 @@ export {
   type StagePlan,
   type StageState,
 } from './goals/plan';
+export {
+  type AccountSetAside,
+  type BorrowMark,
+  checkOutflow,
+  type DatedAmount,
+  type GoalShare,
+  inflowTo,
+  type MoneyLine,
+  movedAmount,
+  outflowFrom,
+  type SetAsideCheck,
+  type SetAsideClaim,
+  setAsideOn,
+  type SetAsideState,
+  spreadOver,
+  wholeSince,
+} from './goals/set-aside';
 export { formatLots, lotsOf, unitsFromLots } from './assets/units';
 export {
   borrowPostings,
