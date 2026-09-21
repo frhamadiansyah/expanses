@@ -4,7 +4,8 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Money, Select } from '../../ui';
+import { ErrorBox, Money } from '../../ui';
+import { DestructiveRow, Figure, InsetGroup, InsetRow, Panel, RecordTable, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { useBusinessReport } from './queries';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -53,8 +54,9 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
     setOpen(false);
   }
 
-  async function save(event: FormEvent) {
-    event.preventDefault();
+  /** The event is optional: the row that saves is a `type="button"` inside a real `<form>`, which keeps Enter working. */
+  async function save(event?: FormEvent) {
+    event?.preventDefault();
     setError(null);
     try {
       const percent = normaPercent.trim() === '' ? null : Math.round(Number(normaPercent) * 100);
@@ -88,26 +90,25 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
   }
 
   return (
-    <Card className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">Business and freelance</h2>
-        <span className="text-xs text-slate-500">Turnover for {taxYear}, taken from the sales in each business wallet</span>
-      </div>
-
+    <Panel
+      header="Business and freelance"
+      footer={`Turnover for ${taxYear}, taken from the sales in each business wallet. This is the one section where the app works out tax rather than adding up what a slip said.`}
+      pad={false}
+    >
       <ErrorBox error={error ?? report.error} />
 
       {nothingYet && !open && (
-        <p className="text-xs text-slate-500">
+        <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
           No business set up yet. Point one at the wallet you run it through and every sale you record there becomes its turnover.
         </p>
       )}
 
       {(data?.problems.length ?? 0) > 0 && (
-        <ul className="space-y-1">
+        <ul className="mb-[14px] px-[4px] text-[13px] leading-[17px]">
           {data!.problems.map((problem) => (
             <li
               key={`${problem.sourceId}:${problem.message}`}
-              className={problem.level === 'blocking' ? 'text-xs text-amber-700' : 'text-xs text-slate-600'}
+              className={problem.level === 'blocking' ? 'text-[var(--ph-warn)]' : 'text-[var(--ph-ink-3)]'}
             >
               {problem.message}
             </li>
@@ -116,145 +117,178 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
       )}
 
       {data?.umkm.map((umkm) => (
-        <div key={umkm.sourceId} data-testid="umkm-row" className="border-t border-slate-100 pt-3 first:border-t-0">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <span className="text-sm font-medium">
-              {umkm.name} <span className="text-xs font-normal text-slate-500">{SCHEME_LABELS.umkm_final}</span>
-            </span>
-            <span className="text-xs text-slate-600">
-              tax for the year <Money minor={umkm.taxMinor} currency={ws.baseCurrency} className="font-semibold text-slate-900" />
-            </span>
-          </div>
-          <p className="mt-0.5 text-xs text-slate-500">
+        <div key={umkm.sourceId} data-testid="umkm-row">
+          {/*
+           * The business's name is a row, not the group's header: a header is drawn in capitals, and a name is a
+           * name. The tax owed is that row's second line, which is what the figure belongs to.
+           */}
+          <InsetGroup header={SCHEME_LABELS.umkm_final}>
+            <InsetRow
+              title={umkm.name}
+              subtitle={
+                <>
+                  tax for the year <Money minor={umkm.taxMinor} currency={ws.baseCurrency} />
+                </>
+              }
+              chevron={false}
+            />
+          </InsetGroup>
+
+          <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
             Turnover <Money minor={umkm.grossMinor} currency={ws.baseCurrency} /> · not taxed{' '}
             <Money minor={umkm.exemptMinor} currency={ws.baseCurrency} /> · taxed <Money minor={umkm.taxableMinor} currency={ws.baseCurrency} />
             {umkm.crossedInMonth !== null && ` · the exempt part ran out in ${MONTHS[umkm.crossedInMonth - 1]}`}
           </p>
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-slate-500">
-                  <th className="py-1">Month</th>
-                  <th className="py-1 text-right">Turnover</th>
-                  <th className="py-1 text-right">Running total</th>
-                  <th className="py-1 text-right">Taxed</th>
-                  <th className="py-1 text-right">0,5%</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {umkm.months.map((month) => (
-                  <tr key={month.month} className={month.turnoverMinor === 0 ? 'text-slate-400' : undefined}>
-                    <td className="py-1">{MONTHS[month.month - 1]}</td>
-                    <td className="tabular py-1 text-right">
-                      <Money minor={month.turnoverMinor} currency={ws.baseCurrency} />
-                    </td>
-                    <td className="tabular py-1 text-right">
-                      <Money minor={month.cumulativeMinor} currency={ws.baseCurrency} />
-                    </td>
-                    <td className="tabular py-1 text-right">
-                      <Money minor={month.taxableMinor} currency={ws.baseCurrency} />
-                    </td>
-                    <td className="tabular py-1 text-right">
-                      <Money minor={month.taxMinor} currency={ws.baseCurrency} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-1 flex gap-2">
-            <Button variant="secondary" onClick={() => remove(umkm.sourceId)}>
-              Remove
-            </Button>
-          </div>
+
+          <RecordTable
+            header="Month by month"
+            records={umkm.months}
+            detail={{ kind: 'none' }}
+            shape={{
+              key: (month) => String(month.month),
+              title: (month) => MONTHS[month.month - 1] ?? '',
+              value: (month) => <Money minor={month.turnoverMinor} currency={ws.baseCurrency} />,
+            }}
+            columns={[
+              { key: 'month', heading: 'Month', cell: (month) => MONTHS[month.month - 1] ?? '' },
+              {
+                key: 'turnover',
+                heading: 'Turnover',
+                numeric: true,
+                cell: (month) => (
+                  <Figure>
+                    <Money minor={month.turnoverMinor} currency={ws.baseCurrency} />
+                  </Figure>
+                ),
+              },
+              {
+                key: 'cumulative',
+                heading: 'Running total',
+                numeric: true,
+                cell: (month) => (
+                  <Figure>
+                    <Money minor={month.cumulativeMinor} currency={ws.baseCurrency} />
+                  </Figure>
+                ),
+              },
+              {
+                key: 'taxable',
+                heading: 'Taxed',
+                numeric: true,
+                cell: (month) => (
+                  <Figure>
+                    <Money minor={month.taxableMinor} currency={ws.baseCurrency} />
+                  </Figure>
+                ),
+              },
+              {
+                key: 'tax',
+                heading: '0,5%',
+                numeric: true,
+                cell: (month) => (
+                  <Figure>
+                    <Money minor={month.taxMinor} currency={ws.baseCurrency} />
+                  </Figure>
+                ),
+              },
+            ]}
+          />
+
+          <InsetGroup>
+            <DestructiveRow label="Remove" onClick={() => void remove(umkm.sourceId)} />
+          </InsetGroup>
         </div>
       ))}
 
       {data?.nppn.map((nppn) => (
-        <div key={nppn.sourceId} data-testid="nppn-row" className="border-t border-slate-100 pt-3 first:border-t-0">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <span className="text-sm font-medium">
-              {nppn.name} <span className="text-xs font-normal text-slate-500">{SCHEME_LABELS.nppn}</span>
-            </span>
-            <span className="text-xs text-slate-600">
-              net income <Money minor={nppn.netMinor} currency={ws.baseCurrency} className="font-semibold text-slate-900" />
-            </span>
-          </div>
-          <p className="mt-0.5 text-xs text-slate-500">
+        <div key={nppn.sourceId} data-testid="nppn-row">
+          <InsetGroup header={SCHEME_LABELS.nppn}>
+            <InsetRow
+              title={nppn.name}
+              subtitle={
+                <>
+                  net income <Money minor={nppn.netMinor} currency={ws.baseCurrency} />
+                </>
+              }
+              chevron={false}
+            />
+          </InsetGroup>
+
+          <p className="mb-[18px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
             Turnover <Money minor={nppn.grossMinor} currency={ws.baseCurrency} />
             {nppn.normaRateBps !== null && ` · norma ${(nppn.normaRateBps / 100).toLocaleString('id-ID')}%`}
             {' · added to your taxable income and taxed progressively, so no tax is worked out here'}
           </p>
-          <div className="mt-1 flex gap-2">
-            <Button variant="secondary" onClick={() => remove(nppn.sourceId)}>
-              Remove
-            </Button>
-          </div>
+
+          <InsetGroup>
+            <DestructiveRow label="Remove" onClick={() => void remove(nppn.sourceId)} />
+          </InsetGroup>
         </div>
       ))}
 
       {!open && (
-        <Button variant="secondary" onClick={() => setOpen(true)}>
-          Add a business
-        </Button>
+        <InsetGroup>
+          <InsetRow title="Add a business" chevron={false} onClick={() => setOpen(true)} />
+        </InsetGroup>
       )}
 
       {open && (
-        <form onSubmit={save} className="space-y-3 border-t border-slate-100 pt-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Name">
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Warung, freelance, affiliate" />
-            </Field>
-            <Field label="How it is taxed">
-              <Select value={scheme} onChange={(e) => setScheme(e.target.value as BusinessScheme)}>
-                <option value="umkm_final">UMKM final 0,5% of turnover</option>
-                <option value="nppn">Norma (NPPN) — a percentage of turnover is net income</option>
-              </Select>
-            </Field>
-            <Field label="Business wallet" hint="Sales you record in this account are its turnover. Keep it apart from the family wallet.">
-              <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-                <option value="">Choose an account</option>
-                {wallets.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+        <form onSubmit={save}>
+          <InsetGroup header="A new business">
+            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Warung, freelance, affiliate" />
+            <SelectRow label="How it is taxed" value={scheme} onChange={(e) => setScheme(e.target.value as BusinessScheme)}>
+              <option value="umkm_final">UMKM final 0,5% of turnover</option>
+              <option value="nppn">Norma (NPPN) — a percentage of turnover is net income</option>
+            </SelectRow>
+            <SelectRow
+              label="Business wallet"
+              hint="Sales you record in this account are its turnover. Keep it apart from the family wallet."
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+            >
+              <option value="">Choose an account</option>
+              {wallets.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </SelectRow>
             {scheme === 'nppn' && (
-              <Field label="Norma percentage" hint="From the KLU table for your trade and city. It differs by trade, so nothing is preset.">
-                <Input value={normaPercent} onChange={(e) => setNormaPercent(e.target.value)} inputMode="decimal" placeholder="50" />
-              </Field>
+              <TextRow
+                label="Norma percentage"
+                hint="From the KLU table for your trade and city. It differs by trade, so nothing is preset."
+                value={normaPercent}
+                onChange={(e) => setNormaPercent(e.target.value)}
+                inputMode="decimal"
+                placeholder="50"
+              />
             )}
             {scheme === 'nppn' && (
-              <Field label="KLU code" hint="Optional, for your own reference.">
-                <Input value={kluCode} onChange={(e) => setKluCode(e.target.value)} placeholder="73100" />
-              </Field>
+              <TextRow label="KLU code" hint="Optional, for your own reference." value={kluCode} onChange={(e) => setKluCode(e.target.value)} placeholder="73100" />
             )}
-          </div>
+            {scheme === 'umkm_final' && (
+              <SwitchRow
+                label="The first slice of the year's turnover is not taxed. Turn this off once that no longer applies to you."
+                checked={thresholdApplies}
+                onChange={setThresholdApplies}
+              />
+            )}
+          </InsetGroup>
 
-          {scheme === 'umkm_final' && (
-            <label className="flex items-start gap-2 text-xs text-slate-600">
-              <input type="checkbox" checked={thresholdApplies} onChange={(e) => setThresholdApplies(e.target.checked)} className="mt-0.5" />
-              <span>
-                The first slice of the year's turnover is not taxed. Turn this off once that no longer applies to you.
-              </span>
-            </label>
-          )}
-
-          <div className="flex gap-2">
-            <Button type="submit">Save business</Button>
-            <Button type="button" variant="secondary" onClick={reset}>
-              Cancel
-            </Button>
-          </div>
+          {/* Save is a row inside the form, so Enter in a field saves too; Cancel is in its own group, a row away. */}
+          <InsetGroup>
+            <InsetRow title="Save business" chevron={false} onClick={() => void save()} />
+          </InsetGroup>
+          <InsetGroup>
+            <InsetRow title="Cancel" chevron={false} onClick={reset} />
+          </InsetGroup>
         </form>
       )}
 
-      <p className="text-xs text-slate-500">
+      <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
         The only figures the app works out itself. Everywhere else it adds up what you recorded from a slip, but nobody withholds UMKM for
         you and no slip carries a norma percentage. Check both against what you actually paid.
       </p>
-    </Card>
+    </Panel>
   );
 }

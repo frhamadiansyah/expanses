@@ -1,16 +1,17 @@
 import { type CarryRow, CORETAX_SECTIONS, type CoretaxField, hartaLabel, utangLabel } from '@expanses/core';
 import { useApp } from '../../app/context';
-import { Card, cx, Money } from '../../ui';
+import { Money } from '../../ui';
+import { Figure, Panel, RecordTable } from '../../ui/native';
 import { carryPillLabel, type ScreenSection } from './report-rows';
 
-const PILL: Record<string, string> = {
-  new: 'bg-emerald-100 text-emerald-800',
-  removed: 'bg-red-100 text-red-800',
-  changed: 'bg-amber-100 text-amber-800',
-  same: 'bg-slate-100 text-slate-600',
-};
-
-/** One table of the form: its rows, what the codes mean, and what changed since last year. */
+/**
+ * One table of the form: its rows, what the codes mean, and what changed since last year.
+ *
+ * The five numeric columns overlapped illegibly at 390 px, and this is the case `RecordTable` names: **nothing
+ * here opens anything**, so a phone has no detail screen to hold the columns a row would drop. Losing a column
+ * is worse than scrolling one, so the table stays a table at every width inside its own sideways scroller —
+ * `detail: { kind: 'none' }` is how that is said, and the shape is given so the option stays open.
+ */
 export function SectionTable({ section, carry }: { section: ScreenSection; carry: CarryRow[] }) {
   const { ws } = useApp();
   const isUtang = section.section === 'utang';
@@ -19,76 +20,102 @@ export function SectionTable({ section, carry }: { section: ScreenSection; carry
   // Utang has no field definition of its own, so the check is inline: a separate boolean would
   // not tell the compiler that the section cannot be 'utang' here.
   const fields: readonly CoretaxField[] = section.section === 'utang' ? [] : CORETAX_SECTIONS[section.section].fields;
+  const labelOf = (code: string) => (isUtang ? utangLabel(code) : hartaLabel(code));
 
   return (
-    <Card className="space-y-2 overflow-x-auto">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">{section.label}</h2>
-        <span className="text-sm text-slate-600">
+    <Panel
+      header={section.label}
+      trailing={
+        <>
           {isUtang ? 'Owed ' : 'Worth '}
-          <Money minor={section.valueMinor} currency={ws.baseCurrency} className="font-semibold text-slate-900" />
+          <Money minor={section.valueMinor} currency={ws.baseCurrency} />
           {!isUtang && section.costMinor > 0 && (
             <>
               {' · cost '}
               <Money minor={section.costMinor} currency={ws.baseCurrency} />
             </>
           )}
-        </span>
-      </div>
-
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs text-slate-500">
-            <th className="py-1">Kode</th>
-            <th className="py-1">Nama</th>
-            {!isUtang && <th className="py-1">Tahun perolehan</th>}
-            {fields.map((field) => (
-              <th key={field.key} className="py-1">
-                {field.label}
-              </th>
-            ))}
-            {!isUtang && <th className="py-1 text-right">Harga perolehan</th>}
-            <th className="py-1 text-right">{isUtang ? 'Jumlah' : 'Nilai'}</th>
-            <th className="py-1" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {section.rows.map((row) => {
-            const change = carryOf.get(row.key);
-            return (
-              <tr key={row.key}>
-                <td className="py-1 whitespace-nowrap">
-                  <span className="font-medium">{row.code}</span>
-                  <span className="block text-xs text-slate-500">{isUtang ? utangLabel(row.code) : hartaLabel(row.code)}</span>
-                </td>
-                <td className="py-1">
-                  {row.name}
-                  {row.note && <span className="block text-xs text-slate-400">{row.note}</span>}
-                </td>
-                {!isUtang && <td className="tabular py-1">{row.acquiredYear ?? '—'}</td>}
-                {fields.map((field) => (
-                  <td key={field.key} className={cx('py-1', !row.fields[field.key] && field.required && 'text-red-700')}>
-                    {row.fields[field.key] || (field.required ? 'Needed' : '—')}
-                  </td>
-                ))}
-                {!isUtang && (
-                  <td className="py-1 text-right">
-                    <Money minor={row.costMinor} currency={ws.baseCurrency} />
-                  </td>
-                )}
-                <td className="py-1 text-right">
-                  <Money minor={row.valueMinor} currency={ws.baseCurrency} />
-                </td>
-                <td className="py-1 text-right">
-                  {change && change.status !== 'same' && (
-                    <span className={cx('rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap', PILL[change.status])}>{carryPillLabel(change.status)}</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </Card>
+        </>
+      }
+      pad={false}
+    >
+      <RecordTable
+        records={section.rows}
+        detail={{ kind: 'none' }}
+        shape={{
+          key: (row) => row.key,
+          title: (row) => row.name,
+          subtitle: (row) => `${row.code} · ${labelOf(row.code)}`,
+          value: (row) => <Money minor={row.valueMinor} currency={ws.baseCurrency} />,
+        }}
+        columns={[
+          {
+            key: 'code',
+            heading: 'Kode',
+            cell: (row) => (
+              <>
+                <span className="font-medium">{row.code}</span>
+                <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{labelOf(row.code)}</span>
+              </>
+            ),
+          },
+          {
+            key: 'name',
+            heading: 'Nama',
+            cell: (row) => (
+              <>
+                {row.name}
+                {row.note && <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{row.note}</span>}
+              </>
+            ),
+          },
+          ...(isUtang ? [] : [{ key: 'acquired', heading: 'Tahun perolehan', cell: (row: ScreenSection['rows'][number]) => <Figure>{row.acquiredYear ?? '—'}</Figure> }]),
+          ...fields.map((field) => ({
+            key: field.key,
+            heading: field.label,
+            cell: (row: ScreenSection['rows'][number]) =>
+              row.fields[field.key] ? (
+                <span>{row.fields[field.key]}</span>
+              ) : (
+                <span className={field.required ? 'text-[var(--ph-alarm)]' : undefined}>{field.required ? 'Needed' : '—'}</span>
+              ),
+          })),
+          ...(isUtang
+            ? []
+            : [
+                {
+                  key: 'cost',
+                  heading: 'Harga perolehan',
+                  numeric: true,
+                  cell: (row: ScreenSection['rows'][number]) => (
+                    <Figure>
+                      <Money minor={row.costMinor} currency={ws.baseCurrency} />
+                    </Figure>
+                  ),
+                },
+              ]),
+          {
+            key: 'value',
+            heading: isUtang ? 'Jumlah' : 'Nilai',
+            numeric: true,
+            cell: (row) => (
+              <Figure>
+                <Money minor={row.valueMinor} currency={ws.baseCurrency} />
+              </Figure>
+            ),
+          },
+          {
+            key: 'change',
+            heading: '',
+            cell: (row) => {
+              const change = carryOf.get(row.key);
+              return change && change.status !== 'same' ? (
+                <span className="text-[12.5px] leading-[16px] font-semibold whitespace-nowrap text-[var(--ph-warn)]">{carryPillLabel(change.status)}</span>
+              ) : null;
+            },
+          },
+        ]}
+      />
+    </Panel>
   );
 }
