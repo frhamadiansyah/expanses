@@ -35,6 +35,7 @@ import uobZenith from '../entries/uob-zenith.json';
 import type { CatalogEntry } from './types';
 
 export * from './types';
+export * from './securities';
 export { validateEntry } from './validate';
 export { feeOn, isStale, termsOn } from './lookup';
 export { type AppliedCategoryChoice, type CatalogPlan, planCatalogApply, type PlannedBonus, type PlannedPartner, type PlannedRule } from './plan';

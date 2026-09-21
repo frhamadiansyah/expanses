@@ -1,5 +1,6 @@
-import { type Position, parseMajor, parseUnits, priceMicroFrom, sellBasisMinor, type TradeKind } from '@expanses/core';
-import type { RecordTradeInput } from '@expanses/db';
+import { formatUnits, type Position, parseMajor, parseUnits, priceMicroFrom, sellBasisMinor, type TradeKind } from '@expanses/core';
+import type { RecordTradeInput, TradeRow } from '@expanses/db';
+import { bareFigure } from './debt-rows';
 
 export interface TradeDraft {
   kind: TradeKind;
@@ -27,6 +28,30 @@ export const emptyTradeDraft = (accountId: string, cashAccountId: string, today:
   cashAccountId,
   goalId: '',
 });
+
+/**
+ * A pre-filled amount, written the way the app writes money and the owner types it — `10.447.125`, `1.825,00` — never
+ * the raw `10447125`. `parseMajor` reads it back to the same figure.
+ */
+export const typedAmount = (minor: number, currency: string): string => bareFigure(minor, currency);
+
+/** An edit opens with the trade's own figures, each in the app's number format. */
+export function draftFromTrade(
+  trade: Pick<TradeRow, 'kind' | 'accountId' | 'occurredOn' | 'unitsMicro' | 'grossMinor' | 'feeMinor' | 'taxMinor' | 'cashAccountId' | 'goalId'>,
+  currency: string,
+): Partial<TradeDraft> {
+  return {
+    kind: trade.kind,
+    accountId: trade.accountId,
+    occurredOn: trade.occurredOn,
+    units: trade.unitsMicro === 0 ? '' : formatUnits(trade.unitsMicro),
+    gross: typedAmount(trade.grossMinor, currency),
+    fee: typedAmount(trade.feeMinor, currency),
+    tax: typedAmount(trade.taxMinor, currency),
+    cashAccountId: trade.cashAccountId ?? '',
+    goalId: trade.goalId ?? '',
+  };
+}
 
 const amount = (text: string, currency: string, label: string): number => {
   if (text.trim() === '') return 0;
@@ -107,4 +132,43 @@ export function sellPreview(draft: TradeDraft, position: Position | undefined, c
   } catch {
     return null;
   }
+}
+
+/**
+ * §m3's edit pre-fill, worked out once so the "same account" condition it turns on is something a test can call
+ * directly rather than only ever seeing through a mount: an edit opens "Charged in" from what its own transaction
+ * posted (`postedTradeMoney`), but only while the trade still pays from the account it was posted through — the
+ * owner switching the account first must not fill in a figure that belonged to the old one.
+ *
+ * Null leaves the row exactly as it is: a row already typed into is never overwritten (the caller only calls this
+ * once, guarded by its own ref), and a switched account waits for the owner's own figure.
+ */
+export function prefillCharged({
+  editingCashAccountId,
+  cashAccountId,
+  postedCash,
+  cashCurrency,
+  typed,
+}: {
+  /** The trade being edited pays from this account (null is Opening Balances) — `TradeRow.cashAccountId`. */
+  editingCashAccountId: string | null;
+  /** The account chosen on the form right now. */
+  cashAccountId: string;
+  /** What the trade's own transaction moved through the account (`postedTradeMoney`); a trade that moved nothing has none to fill. */
+  postedCash: number;
+  cashCurrency: string;
+  typed: string;
+}): string | null {
+  if ((editingCashAccountId ?? '') !== cashAccountId) return null;
+  return typed === '' ? typedAmount(postedCash, cashCurrency) : null;
+}
+
+/** Whether editing a trade is still waiting on its posted money to come back, so Save has nothing to send yet. */
+export function waitingForPostedMoney(editing: boolean, postedPending: boolean): boolean {
+  return editing && postedPending;
+}
+
+/** Whether the form may submit right now: the set-aside question is answered, and no read it depends on is still pending. */
+export function tradeFormReady(setAsideReady: boolean, waitingForPosted: boolean): boolean {
+  return setAsideReady && !waitingForPosted;
 }

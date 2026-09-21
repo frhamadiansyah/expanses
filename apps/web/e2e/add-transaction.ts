@@ -86,6 +86,8 @@ export async function addPurchase(
     goal?: string;
     pointsCategory?: string;
     mcc?: string;
+    /** What the paying account was charged in its own currency, when it is not the holding's. */
+    charged?: string;
   },
 ) {
   const sell = trade.mode === 'sell';
@@ -99,6 +101,7 @@ export async function addPurchase(
   if (trade.units) await form.getByLabel(/^(Units|Shares|Grams)$/).fill(trade.units);
   if (trade.fee) await form.getByLabel(/^Fee /).fill(trade.fee);
   await form.getByLabel(sell ? 'Proceeds into' : 'Paid with').selectOption({ label: trade.paidWith });
+  if (trade.charged) await form.getByLabel(/^Charged in /).pressSequentially(trade.charged);
   if (trade.date) await form.getByLabel('Date').fill(trade.date);
   if (trade.goal) await form.getByLabel(sell ? 'Sell from goal' : 'For goal').selectOption({ label: trade.goal });
   // Offered only on a credit card, and only when buying — the card's two facts, not the trade's.

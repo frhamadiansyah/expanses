@@ -13,6 +13,7 @@ export function PriceForm({
   priceMicro,
   unitsMicro,
   unitLabel,
+  note,
 }: {
   accountId: string;
   currency: string;
@@ -20,6 +21,8 @@ export function PriceForm({
   priceMicro: number | null;
   unitsMicro: number;
   unitLabel: string;
+  /** A line under the figure: for a holding linked to a security, whose price this is. */
+  note?: string;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -57,6 +60,7 @@ export function PriceForm({
           <>
             {formatUnits(unitsMicro)} {unitLabel}
             {preview !== null && <> × that price is {formatMinor(preview, currency)}</>}
+            {note && <span className="block">{note}</span>}
           </>
         }
       >

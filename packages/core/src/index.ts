@@ -153,6 +153,23 @@ export {
 } from './assets/position';
 export { type TradeAccounts, type TradeInput, tradeDescription, tradePostings } from './assets/trades';
 export {
+  formatBps,
+  gainBps,
+  percentShares,
+  perUnitInBase,
+  type PortfolioHolding,
+  type PortfolioSummary,
+  portfolioSummary,
+  positionInBase,
+  rateFromAmounts,
+  type SecurityKind,
+  taxHoldingName,
+  tradeCashMinor,
+  tradeCashMovedMinor,
+  type TradeRateNeeds,
+  tradeRateNeeds,
+} from './assets/securities';
+export {
   type AssetValue,
   type AssetValueInput,
   assetValueAt,
@@ -308,6 +325,7 @@ export {
   type DebtInput,
   type EstimatedInput,
   type HoldingInput,
+  type HoldingPurchase,
   type ReceivableInput,
   type ReportSection,
   type ReportSettings,

@@ -41,6 +41,12 @@ import { RecurringPage } from '../features/bills/RecurringPage';
 import { EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
+import { AddHoldingPage } from '../features/investments/AddHoldingPage';
+import { BrokerPage } from '../features/investments/BrokerPage';
+import { InvestmentsPage } from '../features/investments/InvestmentsPage';
+import { SecurityPage } from '../features/investments/SecurityPage';
+import { SecurityPricePage } from '../features/investments/SecurityPricePage';
+import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
 import { SettingsPage } from '../features/workspaces/SettingsPage';
 import { Layout } from './Layout';
 
@@ -159,6 +165,19 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
+  // The Assets page's Investments group, read by stock and by broker.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments', component: InvestmentsPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/investments/new',
+    component: AddHoldingPage,
+    validateSearch: (search: Record<string, unknown>): { link?: string } => ({ link: typeof search.link === 'string' ? search.link : undefined }),
+  }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId', component: SecurityPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId/price', component: SecurityPricePage }),
+  // The static `none` outranks `$accountId`: holdings kept with no broker named.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/broker/none', component: () => <BrokerPage none /> }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/broker/$accountId', component: () => <BrokerPage /> }),
   // "new" is a static segment, which outranks the `$accountId` below it however they are ordered here.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/new', component: AddAssetPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
@@ -187,6 +206,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
+  // Linked from nowhere: the owner reaches it by its address, to switch on what the app cannot sell yet.
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/developer', component: DeveloperSettingsPage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives
   // before the routes adopt them, not a screen anyone navigates to.
   createRoute({ getParentRoute: () => rootRoute, path: '/design-kit', component: KitPage }),

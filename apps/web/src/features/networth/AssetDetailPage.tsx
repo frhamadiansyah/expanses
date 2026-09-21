@@ -9,6 +9,7 @@ import { approxLine, Hero, InsetGroup, InsetRow, LargeTitle, Panel, rateLine, SC
 import { useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
+import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { AssetSettings } from './AssetSettings';
 import { DepositProposalCard } from './DepositProposalCard';
 import { DepositTermsCard } from './DepositTermsCard';
@@ -16,6 +17,7 @@ import { MaturitySettings } from './MaturitySettings';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
+import { StockAndBroker } from './StockAndBroker';
 import { RecordedByHand } from './RecordedByHand';
 import { SetAsidePanel } from './SetAsidePanel';
 import { useAssetProfile, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
@@ -44,9 +46,15 @@ export function AssetDetailPage() {
   const loans = useLoans();
   const balances = useBalances();
   const accounts = useAccounts();
+  // Declared with the page's other queries, before any early return: a hook after one breaks the rules of hooks.
+  const links = useHoldingLinks();
+  const securities = useSecurities();
   const [error, setError] = useState<unknown>(null);
 
   const value = values.data?.find((row) => row.accountId === accountId);
+  const linkedSecurityId = (links.data ?? []).find((l) => l.accountId === accountId)?.securityId ?? null;
+  const linkedToSecurity = Boolean(linkedSecurityId);
+  const linkedSecurity = (securities.data ?? []).find((s) => s.id === linkedSecurityId);
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
   // A pocket goes back to its account's page; any money account in a foreign currency shows ≈ and its opening rate.
   const parent = account?.parentId ? (accounts.data ?? []).find((row) => row.id === account.parentId) : undefined;
@@ -134,6 +142,7 @@ export function AssetDetailPage() {
               priceMicro={prices.data?.[0]?.priceMicro ?? null}
               unitsMicro={position?.unitsMicro ?? 0}
               unitLabel={unitLabel}
+              note={linkedSecurity ? `This price is ${linkedSecurity.ticker ?? linkedSecurity.name}'s, and values every broker that holds it.` : undefined}
             />
           )}
           {value.mode === 'snapshot' && <ValuationForm accountId={accountId} currency={value.currency} />}
@@ -166,6 +175,8 @@ export function AssetDetailPage() {
           <ValueChart values={history.data} labels={months.map(MONTH_LABEL)} currency={value.currency} />
         </Panel>
       )}
+
+      {value?.mode === 'market' && account?.subtype === 'investment' && <StockAndBroker accountId={accountId} />}
 
       {value?.mode === 'market' && (trades.data?.length ?? 0) > 0 && (
         <InsetGroup header="Buys, sells and income">
@@ -223,7 +234,8 @@ export function AssetDetailPage() {
           accountId={accountId}
           group={profile.data?.planGroup ?? value.planGroup}
           lotSize={profile.data?.lotSize ?? null}
-          showLotSize={value.mode === 'market' && profile.data?.unitKind !== 'grams'}
+          // A holding linked to a security takes its lot size from the security, so the box is not offered.
+          showLotSize={value.mode === 'market' && profile.data?.unitKind !== 'grams' && !linkedToSecurity}
           reportable={profile.data?.reportable ?? true}
           coretaxCode={profile.data?.coretaxCode ?? null}
           // What the thing is, for the codes two items share: a saving account must not read back as a current one.

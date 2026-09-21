@@ -19,6 +19,7 @@ import {
   monthEndValues,
   ownerScope,
   positionsFor,
+  postedTradeMoney,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
@@ -55,6 +56,16 @@ export function useDepositTerms() {
 export function useTrades(accountId?: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['trades', ws.workspaceId, accountId ?? 'all'], queryFn: () => listTrades(database, ws, { accountId }) });
+}
+
+/** What a trade being edited moved through its cash account, read off its own transaction (null: nothing to edit). */
+export function usePostedTradeMoney(tradeId: string | null) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['trades', ws.workspaceId, 'posted-money', tradeId],
+    queryFn: () => postedTradeMoney(database, ws, tradeId!),
+    enabled: tradeId !== null,
+  });
 }
 
 export function usePositions() {

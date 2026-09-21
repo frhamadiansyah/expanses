@@ -1,7 +1,8 @@
 import type { CoretaxSection } from '../assets/coretax-fields';
 import type { YearBucket } from '../assets/position';
 import { unitsValueMinor } from '../assets/units';
-import { convertMinor } from '../money/money';
+import { perUnitInBase, rateFromAmounts } from '../assets/securities';
+import { convertMinor, formatMinor } from '../money/money';
 import { sectionOfCode } from './codes';
 
 /** Bagian A has a table per harta section; Bagian B is the one utang table beside them. */
@@ -34,6 +35,13 @@ export interface CashInput {
   fields: Record<string, string>;
 }
 
+/** One buy of a foreign holding: what it cost in its currency and the base amount the ledger pinned that day. */
+export interface HoldingPurchase {
+  occurredOn: string;
+  nativeMinor: number;
+  baseMinor: number;
+}
+
 export interface HoldingInput {
   accountId: string;
   name: string;
@@ -44,6 +52,8 @@ export interface HoldingInput {
   /** Units and cost still held, by the year each parcel was bought. Cost is already historical IDR. */
   byYear: Record<string, YearBucket>;
   fields: Record<string, string>;
+  /** Foreign holdings only: each buy up to 31 December, for the note under the row. */
+  purchases?: HoldingPurchase[];
 }
 
 export interface EstimatedInput {
@@ -135,6 +145,22 @@ function cashRows(inputs: CoretaxInputs, settings: ReportSettings): CoretaxRow[]
   return rows;
 }
 
+const dayLabel = (isoDay: string) =>
+  new Date(`${isoDay}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+/** How a foreign row's cost was reached. Null for a base-currency holding. */
+function purchaseNote(holding: HoldingInput, year: string | null): string | null {
+  if (!holding.purchases || holding.currency === BASE) return null;
+  const list = holding.purchases.filter((p) => year === null || p.occurredOn.startsWith(year));
+  if (list.length === 0) return null;
+  if (list.length > 1) return `${list.length} purchases, each at its own day’s rate`;
+  const only = list[0]!;
+  const rate = rateFromAmounts(only.nativeMinor, holding.currency, only.baseMinor, BASE);
+  return `${formatMinor(only.nativeMinor, holding.currency)} at ${formatMinor(perUnitInBase(rate, holding.currency, BASE), BASE)} · ${dayLabel(only.occurredOn)}`;
+}
+
+const joinNotes = (...notes: (string | null)[]): string | null => notes.filter((note): note is string => Boolean(note)).join(' · ') || null;
+
 function holdingRows(inputs: CoretaxInputs, settings: ReportSettings): CoretaxRow[] {
   const rows: CoretaxRow[] = [];
   for (const holding of inputs.holdings) {
@@ -158,7 +184,7 @@ function holdingRows(inputs: CoretaxInputs, settings: ReportSettings): CoretaxRo
             valueMinor: value.amountMinor,
             balanceMinor: 0,
             fields: holding.fields,
-            note: value.note,
+            note: joinNotes(purchaseNote(holding, year), value.note),
           }),
         );
       }
@@ -180,7 +206,7 @@ function holdingRows(inputs: CoretaxInputs, settings: ReportSettings): CoretaxRo
         valueMinor: value.amountMinor,
         balanceMinor: 0,
         fields: holding.fields,
-        note: value.note,
+        note: joinNotes(purchaseNote(holding, null), value.note),
       }),
     );
   }

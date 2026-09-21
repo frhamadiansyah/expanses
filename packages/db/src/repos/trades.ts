@@ -1,5 +1,6 @@
 import {
   goalUnitsOf,
+  inflowTo,
   outflowFrom,
   type Position,
   positionAfter,
@@ -164,6 +165,47 @@ async function postedBasis(tx: Db, transactionId: string, holdingAccountId: stri
   return -rows.reduce((total, row) => total + row.amountMinor, 0);
 }
 
+/** What a posted trade moved through its cash account, when that is in another currency, and the rates it posted at. */
+export interface PostedTradeMoney {
+  cashMinor?: number;
+  ratesToBase: Record<string, number>;
+}
+
+/**
+ * What a posted trade moved through a cash account in another currency, and the rates it posted at — read back from
+ * its own lines before it is voided, so a sell reworked by an edit keeps its own day. The trade row has no column for
+ * either, and none is added: the ledger already holds both. A buy's figure is what left the account; anything else's,
+ * what reached it.
+ */
+async function postedMoneyTx(tx: Db, transactionId: string, accounts: TradeAccounts, kind: TradeKind): Promise<PostedTradeMoney> {
+  const lines = await tx
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, fxRateToBase: entries.fxRateToBase })
+    .from(entries)
+    .where(eq(entries.transactionId, transactionId));
+  const ratesToBase = Object.fromEntries(lines.map((line) => [line.currency, line.fxRateToBase]));
+  if (accounts.cashCurrency === accounts.holdingCurrency) return { ratesToBase };
+  // The cash line's signed lines summed, then clamped: what left for a buy (`outflowFrom`); otherwise what reached it —
+  // or, for a sell whose fees passed its proceeds, the shortfall that left it (one of the two is always zero). Nothing
+  // moved (the fees ate the proceeds exactly) is no charged figure at all.
+  const moved = kind === 'buy' ? outflowFrom(lines, accounts.cashAccountId) : inflowTo(lines, accounts.cashAccountId) + outflowFrom(lines, accounts.cashAccountId);
+  return { cashMinor: moved === 0 ? undefined : moved, ratesToBase };
+}
+
+/**
+ * The same read for an edit: Buy & sell opens a trade that crossed a currency with "Charged in" filled from what its
+ * own transaction posted, never empty. Reads only; the trade must be an active one of this workspace.
+ */
+export async function postedTradeMoney(database: Database, ws: WorkspaceContext, tradeId: string): Promise<PostedTradeMoney> {
+  const [row] = await database.db
+    .select()
+    .from(investmentTrades)
+    .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')));
+  if (!row) throw new AssetError('Trade not found in this workspace');
+  if (!row.transactionId) return { ratesToBase: {} };
+  const { accounts: tradeAccounts } = await tradeAccountsFor(database.db, ws, row.accountId, row.cashAccountId);
+  return postedMoneyTx(database.db, row.transactionId, tradeAccounts, row.kind);
+}
+
 /**
  * Reposts sells on or after `fromDate` whose average cost moved. The ledger stays immutable:
  * each changed sell is voided and posted again in the same database transaction.
@@ -186,14 +228,16 @@ async function recalculateSells(
     const oldBasisMinor = await postedBasis(tx, sell.transactionId!, accountId);
     if (oldBasisMinor === newBasisMinor) continue;
     const withCash = sell.cashAccountId === later[0]!.cashAccountId ? tradeAccounts : (await tradeAccountsFor(tx, ws, accountId, sell.cashAccountId)).accounts;
-    const input = toInput({ ...sell, cashAccountId: sell.cashAccountId });
+    const posted = await postedMoneyTx(tx, sell.transactionId!, withCash, sell.kind);
+    const input = toInput({ ...sell, cashAccountId: sell.cashAccountId, cashMinor: posted.cashMinor });
     const lines = tradePostings(input, position, withCash);
     await voidTransactionTx(tx, ws, sell.transactionId!);
     const replacement = await postTransactionTx(tx, ws, {
       occurredOn: sell.occurredOn,
       description: tradeDescription(input, holdingName),
       lines,
-      ratesToBase,
+      // The sell's own day. The edited trade's rates are only a fallback for a currency the sell never posted.
+      ratesToBase: { ...ratesToBase, ...posted.ratesToBase },
       replacesTransactionId: sell.transactionId,
     });
     await tx.update(investmentTrades).set({ transactionId: replacement }).where(eq(investmentTrades.id, sell.id));

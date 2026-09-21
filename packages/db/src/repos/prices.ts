@@ -4,6 +4,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { prices, valuations } from '../schema-assets';
 import { AssetError, assertAccountInWorkspace } from './assets';
+import { listSecurityPrices, securityOfHolding, upsertSecurityPriceTx } from './securities';
 
 export interface ValuationWithNote extends ValuationRow {
   id: string;
@@ -23,12 +24,20 @@ export async function upsertPrice(database: Database, ws: WorkspaceContext, inpu
   };
   await database.transaction(async (tx) => {
     await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
+    // A linked holding's price is its security's: one entry values every broker that holds it (spec §3.2).
+    const securityId = await securityOfHolding(tx, ws, input.accountId);
+    if (securityId) {
+      await upsertSecurityPriceTx(tx, ws, { securityId, onDate: input.onDate, priceMicro: input.priceMicro });
+      return;
+    }
     await tx.insert(prices).values(row).onConflictDoUpdate({ target: [prices.accountId, prices.onDate], set: row });
   });
 }
 
-/** Prices for one holding, newest first. */
+/** Prices for one holding, newest first. A linked holding's are its security's. */
 export async function listPrices(database: Database, ws: WorkspaceContext, accountId: string): Promise<PriceRow[]> {
+  const securityId = await securityOfHolding(database.db, ws, accountId);
+  if (securityId) return listSecurityPrices(database, ws, securityId);
   const rows = await database.db
     .select({ onDate: prices.onDate, priceMicro: prices.priceMicro })
     .from(prices)

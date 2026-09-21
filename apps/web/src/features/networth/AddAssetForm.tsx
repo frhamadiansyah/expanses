@@ -166,6 +166,11 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
           <SwitchRow label="I'd rather type what it is worth" checked={draft.typedInstead} onChange={(checked) => retarget(draft.itemId, checked)} />
         ) : null}
       </InsetGroup>
+      {draft.itemId === 'stock' && itemId === undefined && (
+        <InsetGroup footer="Or type it in below, as before.">
+          <InsetRow title="Find it by ticker" to="/net-worth/investments/new" />
+        </InsetGroup>
+      )}
 
       {buying && (
         <>

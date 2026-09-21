@@ -1,6 +1,7 @@
-import { evaluateAmount, expenseLines, incomeLines, parseMajor, splitExpenseLines } from '@expanses/core';
+import { evaluateAmount, expenseLines, incomeLines, isoDate, parseMajor, splitExpenseLines } from '@expanses/core';
 import type { AccountRow, TransactionView } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
+import { doorOfForm } from '../goals/set-aside-question';
 import {
   amountAfterDone,
   amountAfterEnter,
@@ -23,6 +24,7 @@ import {
   keypadPress,
   postingCurrency,
   prefilledCharge,
+  rateDateFor,
   receivedField,
   recentCurrencies,
   SPLIT_WITH_REFUSAL,
@@ -41,6 +43,9 @@ const accounts = [
   { id: 'acct-usd', name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' },
   // Something to buy and sell, so the trade tab's own draft has a holding with a currency of its own.
   { id: 'acct-gold', name: 'Antam gold', kind: 'asset', subtype: 'investment', currency: 'IDR' },
+  // A foreign holding, paid from an IDR account: the one shape I6 needs, where `formToPost`'s door and the
+  // paying account's currency (not the holding's) must agree on what "Charged in" is read in.
+  { id: 'acct-aapl', name: 'AAPL', kind: 'asset', subtype: 'investment', currency: 'USD' },
   { id: 'cat-restaurants', name: 'Restaurants', kind: 'expense', subtype: 'category', currency: null },
 ] as AccountRow[];
 
@@ -474,6 +479,43 @@ describe('a bill spread over several categories', () => {
       kind: 'trade',
       input: { excludedFromReport: false, photoIds: [] },
     });
+  });
+
+  it('passes the paying account’s own currency for “Charged in”, not the holding’s (I6)', () => {
+    // A USD holding (AAPL) bought for $1.825,00, paid from an IDR account: the 4th argument `formToPost` gives
+    // `purchaseDraftToInput` is `cashCurrency`. Dropped, `withCharged` would read "28.835.000" as USD cents —
+    // $288.350,00 — and refuse it outright, or post 1.000× too much; here it must read as IDR.
+    const foreignBuy: FormDraft = {
+      ...emptyForm('ws-1'),
+      mode: 'trade',
+      purchase: {
+        ...emptyForm('ws-1').purchase,
+        accountId: 'acct-aapl',
+        moneyId: 'acct-bank',
+        units: '10',
+        amount: '1825',
+        fee: '0',
+        charged: '28835000',
+        occurredOn: '2026-03-08',
+      },
+    };
+    const post = formToPost(foreignBuy, accounts);
+    expect(post).toMatchObject({ kind: 'trade', input: { grossMinor: 182_500, cashMinor: 28_835_000 } });
+    expect(doorOfForm(foreignBuy, post, accounts, () => false)).toMatchObject({ accountId: 'acct-bank', outflowMinor: 28_835_000 });
+  });
+
+  // m4 (8e9): the Buy / sell tab's rate row is dated by the purchase's own day, never the transaction day a
+  // tab visited earlier left on the draft.
+  it('dates the rate row by the trade’s own purchase day, not the draft’s transaction day (m4)', () => {
+    const trade: FormDraft = { ...draft, mode: 'trade', occurredOn: '2026-01-01', purchase: { ...emptyForm('ws-1').purchase, occurredOn: '2026-03-08' } };
+    expect(rateDateFor(trade)).toBe('2026-03-08');
+    expect(rateDateFor({ ...draft, occurredOn: '2026-03-08' })).toBe('2026-03-08');
+  });
+
+  // m4 (8a7): a future date is clamped to today, the same rule `tradeRatesForSave` applies before it resolves.
+  it('never dates the rate row after today (m4)', () => {
+    const future: FormDraft = { ...draft, mode: 'trade', purchase: { ...emptyForm('ws-1').purchase, occurredOn: '2099-01-01' } };
+    expect(rateDateFor(future)).toBe(isoDate());
   });
 
   it('still names the split row whose category is missing', () => {

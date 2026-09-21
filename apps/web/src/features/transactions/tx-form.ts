@@ -529,7 +529,9 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
     return {
       kind: 'trade',
       input: {
-        ...purchaseDraftToInput(draft.purchase, currency, isoDate()),
+        // The paying account's currency: a holding in another currency carries what was charged (`withCharged`),
+        // so the door (`postForDoor` → `tradeDoor`) weighs the money that left, in that account's own currency.
+        ...purchaseDraftToInput(draft.purchase, currency, isoDate(), accounts.find((a) => a.id === draft.purchase.moneyId)?.currency ?? currency),
         // §4: Photos and Exclude from report appear "always", and `extraRows` offers both on this tab. Buying
         // something is the one purchase with a contract note to keep, and the tab used to have nowhere to put
         // it: the rows were computed and never drawn. The trade's own fields stay `purchase`'s.
@@ -927,6 +929,16 @@ export function chargedHint({
   const shown = rate.toLocaleString(locale, { maximumFractionDigits: 4 });
   const source = stale ? `the last ${currency}→${accountCurrency} rate known` : `suggested from ${onDate}`;
   return `≈ ${shown} per 1 ${currency} · ${source}, change it to what ${accountName} charged`;
+}
+
+/**
+ * The day the rate row is dated by (§5.2): the Buy / sell tab's own purchase day, every other tab's transaction
+ * day — never later than today, exactly as `resolveRates` resolves it. §m4 (8e9): a trade's own day, not the
+ * transaction date left over from a tab visited earlier, is what a missing rate is asked and stored for.
+ */
+export function rateDateFor(draft: FormDraft): string {
+  const onDate = draft.mode === 'trade' ? draft.purchase.occurredOn : draft.occurredOn;
+  return onDate > isoDate() ? isoDate() : onDate;
 }
 
 /** Where the currency sheet keeps the last few codes chosen by hand. */
