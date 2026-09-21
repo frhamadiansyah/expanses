@@ -1,4 +1,5 @@
 import {
+  CalculatorError,
   educationStages,
   emergencyTargetMinor,
   HOUSEHOLDS,
@@ -147,15 +148,23 @@ export function CalculatorsPage() {
   const yearsToRetirement = num(retireAge) - num(ageNow);
   // The drawdown annuity is exact for whole years only; part of a year shows no answer rather than a guess.
   const retirementOk = money(annualSpend) > 0 && yearsToRetirement > 0 && Number.isInteger(num(yearsInRetirement)) && num(yearsInRetirement) > 0;
-  const retirementTarget = retirementOk
-    ? retirementTargetMinor({
+  // A half-typed rate ("," or "-") or one at or below -100% must not throw during render: refuse the row
+  // instead of letting the app-level ErrorBoundary take the whole screen.
+  let retirementTarget = 0;
+  if (retirementOk) {
+    try {
+      retirementTarget = retirementTargetMinor({
         annualSpendTodayMinor: money(annualSpend),
         yearsToRetirement,
         yearsInRetirement: num(yearsInRetirement),
         inflationBps: bps(inflation),
         returnInRetirementBps: bps(returnInRetirement),
-      })
-    : 0;
+      });
+    } catch (e) {
+      if (!(e instanceof CalculatorError)) throw e;
+      retirementTarget = 0;
+    }
+  }
 
   async function save(name: string, kind: 'emergency' | 'education' | 'retirement', inputs: EmergencyInputs | Record<string, number>) {
     setError(null);
