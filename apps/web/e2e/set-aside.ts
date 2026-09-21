@@ -86,3 +86,54 @@ export async function openAccountPage(page: Page, name: string) {
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: new RegExp(`^${name}`) }).first().click();
 }
+
+/**
+ * Jenius goes short: Rp 21.500.000 moved out to a new, empty BCA, answered as borrowing from Umrah. 16.500.000 of it
+ * was more than was free; Umrah can carry no more than its 7.500.000, so the other 9.000.000 falls on the Emergency fund.
+ */
+export async function transferOutBorrowingFromUmrah(page: Page) {
+  await addMoneyAccount(page, 'BCA', 'savings', '0');
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Jenius', exact: true }).click();
+  await form.getByLabel('To', { exact: true }).selectOption({ label: 'BCA (IDR)' });
+  await typeAmount(page, form, '21500000');
+  await expect(form.getByText(/16\.500\.000 more than is free/)).toBeVisible();
+  await form.getByRole('button', { name: 'Take from Umrah 2027' }).click();
+  await form.getByRole('button', { name: 'No — borrowing from it' }).click();
+  await form.getByLabel('Note').pressSequentially('To BCA');
+  await form.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(form).toHaveCount(0);
+}
+
+/**
+ * The text on the page whose nearest painted surface is a literal white — what a light-only colour leaves behind in
+ * the dark. Reads what the browser painted, so a token that resolves dark passes and a hard-coded white does not.
+ */
+export async function textOnWhite(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    // A filled control (the kit's primary button inverts in the dark, a light fill with dark ink) is its own ground,
+    // chosen on purpose; what this looks for is a surface — a panel, a group, a bar — left light.
+    const ground = (start: Element | null): string => {
+      for (let node = start; node; node = node.parentElement) {
+        const colour = getComputedStyle(node).backgroundColor;
+        if (colour !== 'rgba(0, 0, 0, 0)' && colour !== 'transparent') return node.closest('button,a,[role=button]') === node ? 'control' : colour;
+      }
+      return getComputedStyle(document.body).backgroundColor;
+    };
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+      const words = text.textContent?.trim();
+      const parent = text.parentElement;
+      if (!words || !parent || parent.closest('script,style')) continue;
+      const box = parent.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      if (ground(parent) === 'rgb(255, 255, 255)') found.push(words);
+    }
+    return found;
+  });
+}

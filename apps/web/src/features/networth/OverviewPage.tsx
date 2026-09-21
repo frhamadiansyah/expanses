@@ -10,7 +10,8 @@ import { Empty, ErrorBox, Money } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
 import { NetWorthTabs } from './NetWorthTabs';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
-import { useGoalPlans } from '../goals/queries';
+import { ShareBar, ShareLegend } from './ShareBar';
+import { useGoalPlans, useSetAsideViews } from '../goals/queries';
 import { usePeopleDebts } from '../debts/queries';
 import { loanAttention } from '../loans/attention';
 import { useInstallments, useLoans } from '../loans/queries';
@@ -27,22 +28,6 @@ const GROUP_COLORS: Record<string, string> = {
   long: 'bg-rose-800',
 };
 
-function ShareBar({ groups, totalMinor }: { groups: SheetGroup[]; totalMinor: number }) {
-  if (totalMinor <= 0) return null;
-  return (
-    <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-100">
-      {groups.map((group) => (
-        <span
-          key={group.key}
-          className={GROUP_COLORS[group.key] ?? 'bg-slate-400'}
-          style={{ width: `${(group.totalMinor / totalMinor) * 100}%` }}
-          title={`${group.label}: ${Math.round((group.totalMinor / totalMinor) * 100)}%`}
-        />
-      ))}
-    </div>
-  );
-}
-
 /**
  * One side of the balance sheet: its share bar and legend on a panel, then a group per plan group.
  *
@@ -50,19 +35,13 @@ function ShareBar({ groups, totalMinor }: { groups: SheetGroup[]; totalMinor: nu
  * card. The two columns stay two columns on a desktop — this and `/` are the only real grids in the app.
  */
 function SheetColumn({ title, groups, totalMinor, currency }: { title: string; groups: SheetGroup[]; totalMinor: number; currency: string }) {
+  const segments = groups.map((group) => ({ key: group.key, label: group.label, minor: group.totalMinor, className: GROUP_COLORS[group.key] ?? 'bg-slate-400' }));
   return (
     <div>
       <PanelHeader title={title} trailing={<Money minor={totalMinor} currency={currency} />} />
       <Panel wide className="space-y-2">
-        <ShareBar groups={groups} totalMinor={totalMinor} />
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-[var(--ph-ink-3)]">
-          {groups.map((group) => (
-            <span key={group.key} className="flex items-center gap-1.5">
-              <i className={`h-2 w-2 rounded-sm ${GROUP_COLORS[group.key] ?? 'bg-slate-400'}`} />
-              {group.label} {totalMinor > 0 ? Math.round((group.totalMinor / totalMinor) * 100) : 0}%
-            </span>
-          ))}
-        </div>
+        <ShareBar segments={segments} totalMinor={totalMinor} />
+        <ShareLegend segments={segments} totalMinor={totalMinor} />
       </Panel>
       {groups.map((group) =>
         group.rows.length === 0 ? (
@@ -116,6 +95,7 @@ export function OverviewPage() {
   const installments = useInstallments();
   const schedules = useLoanSchedules(loans.data ?? [], today);
   const goalSummary = useGoalPlans(today);
+  const setAsideViews = useSetAsideViews();
 
   const [period, setPeriod] = useState<RatioPeriod>({ key: 'ttm' });
   const range = periodRange(period, today);
@@ -142,6 +122,7 @@ export function OverviewPage() {
         today,
       ),
     ),
+    Object.values(setAsideViews.data ?? {}),
   );
   const sinceLastMonth = deltaSince(points, 1);
   const januaryMonths = monthsSinceJanuary(points);
@@ -218,6 +199,7 @@ export function OverviewPage() {
                 <InsetRow
                   key={item.key}
                   to={item.to}
+                  params={item.params}
                   title={item.text}
                   value={item.action}
                   valueTone={item.tone === 'warn' ? 'warn' : 'tint'}

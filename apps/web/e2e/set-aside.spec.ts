@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
+import { goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -49,6 +49,14 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   await openAccountPage(page, 'Jenius');
   // The bank's figure leads, and is the bank's: 42.500.000 − 6.800.000.
   await expect(page.getByText(/35\.700\.000/).first()).toBeVisible();
+  // Under it, the split: 37.500.000 still set aside, so free is 35.700.000 − 37.500.000 = −1.800.000, in alarm.
+  await expect(page.getByText(/^Rp.37\.500\.000$/).first()).toBeVisible();
+  const free = page.getByText(/^-Rp.1\.800\.000$/);
+  await expect(free).toBeVisible();
+  await expect(free.locator('..')).toHaveClass(/ph-alarm/);
+  // The shortfall sits on the goal that lent, not on Umrah below it.
+  await expect(page.getByRole('link', { name: /^Emergency fund.*Short by Rp.1\.800\.000.*30\.000\.000/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Umrah 2027.*Covered.*7\.500\.000/ })).toBeVisible();
   // And the list is unchanged: the bank's figure, nothing about goals.
   await page.goto('/accounts');
   await expect(page.getByText(/free to spend/i)).toHaveCount(0);
@@ -101,4 +109,46 @@ test('deleting the purchase gives the promise back', async ({ page }) => {
   await expect(umrah.getByText('Done')).toHaveCount(0);
   // The promise came back whole: the figure, not only the missing label.
   await expect(umrah.getByText(/7\.500\.000/).first()).toBeVisible();
+});
+
+test('an account that promised more than it holds says so on its page, and Net worth names it once', async ({ page }) => {
+  await jeniusWithTwoGoals(page);
+  await transferOutBorrowingFromUmrah(page);
+
+  await openAccountPage(page, 'Jenius');
+  await expect(page.getByText('You have promised more than this account holds.', { exact: false })).toBeVisible();
+  await expect(page.getByText(/Rp.37\.500\.000 is set aside but only Rp.21\.000\.000 is here/)).toBeVisible();
+  // 21.000.000 held − 37.500.000 promised, signed and in alarm.
+  const free = page.getByText(/^-Rp.16\.500\.000$/);
+  await expect(free).toBeVisible();
+  await expect(free.locator('..')).toHaveClass(/ph-alarm/);
+  // Umrah borrowed 16.500.000 but can be short no more than its own 7.500.000; the other 9.000.000 is the fund's.
+  // (Capping each goal at the balance on its own would leave Umrah's 7.500.000 covered.)
+  await expect(page.getByRole('link', { name: /^Umrah 2027.*Short by Rp.7\.500\.000/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Emergency fund.*Short by Rp.9\.000\.000/ })).toBeVisible();
+
+  await page.goto('/net-worth');
+  const jeniusRows = page.getByRole('link', { name: /Jenius/ });
+  await expect(jeniusRows).toHaveCount(1);
+  await expect(jeniusRows).toHaveAccessibleName(/^Jenius: Rp.37\.500\.000 set aside, Rp.21\.000\.000 here/);
+  await jeniusRows.click();
+  await expect(page).toHaveURL(/\/net-worth\/assets\/[^/]+$/);
+  await expect(page.getByText('You have promised more than this account holds.', { exact: false })).toBeVisible();
+
+  // Already short, so a small expense asks nothing: the account's own state says it, not every transaction.
+  const form = await openExpense(page, 'Jenius');
+  await typeAmount(page, form, '100000');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await expect(form.getByText(/more than is free/)).toHaveCount(0);
+  await expect(form.getByRole('button', { name: /^Take from/ })).toHaveCount(0);
+  await form.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(form).toHaveCount(0);
+
+  // The extra 100.000 is not a borrow, so it lands by rank, lowest priority first — but Umrah is already short all
+  // it promised, so it can only go to the Emergency fund: 9.100.000, and free now −16.600.000.
+  await openAccountPage(page, 'Jenius');
+  await expect(page.getByText(/^-Rp.16\.600\.000$/)).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Umrah 2027.*Short by Rp.7\.500\.000/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Emergency fund.*Short by Rp.9\.100\.000/ })).toBeVisible();
 });
