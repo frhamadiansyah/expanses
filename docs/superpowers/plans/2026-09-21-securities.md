@@ -2,29 +2,71 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Re-scanned 2026-09-22 against main `9fce369`** (the plan was first written against `28ae694`). Main has since gained currency pockets, health ratios, set-aside, deposit maturity, the Debts page and the Option B Add Transaction sheet. Every snippet below was re-read against that tree; where the first draft re-implemented something main now has, the snippet calls main's part instead. The ledger is `.superpowers/sdd/2026-09-21-securities/progress.md`.
+
 **Goal:** Give a holding a **security** (ticker, name, market, currency, lot size) and a **broker**, move the price from the holding to the security so one price values every broker that holds it, add the Investments list (by stock, then where kept), stock / price / broker pages and an Add a holding flow that starts from a ticker, make foreign holdings tradeable and report their rupiah cost at the rate of the day they were bought, and ship the IDX list to everyone and the US list as the paid convenience — without adding a byte of ticker data to the entry chunk.
 
-**Architecture:** Migration **0051** adds three side tables — `securities`, `holding_links`, `security_prices` — and no column anywhere; every read and write goes through `securityTablesExist(db)` (a `WeakMap<Db, boolean>` guard shaped exactly like `extrasTablesExist`). The price choke points `upsertPrice`, `listPrices` and `assetValuesAt` route a linked holding to its security, so every existing price screen stays correct without being touched. Base-currency cost comes from the ledger: each buy's holding line `amount_base_minor` is fed through `positionInBase` (a pure re-walk of `positionAfter`), which the tax inputs and the portfolio figures both read. Trades gain their missing rates through one web function, `tradeMoneyForSave`, called by `TradeForm`, the Add Transaction card's Buy / sell tab and the new Add a holding form. The two ticker lists are JSON files in `packages/catalog/securities/`, loaded by dynamic `import()` so each is its own chunk; `apps/web/scripts/check-bundle.mjs` fails the build if either leaks into the entry chunk or passes its budget. The paid tier is one seam, `apps/web/src/lib/entitlements.ts`.
+**Architecture:** Migration **0051** adds three side tables — `securities`, `holding_links`, `security_prices` — and no column anywhere; every read and write goes through `securityTablesExist(db)` (a `WeakMap<Db, boolean>` guard shaped exactly like `extrasTablesExist` / `setAsideTablesExist`). The price choke points `upsertPrice`, `listPrices` and `assetValuesAt` route a linked holding to its security, so every existing price screen stays correct without being touched. Base-currency cost comes from the ledger: each buy's holding line `amount_base_minor` is fed through `positionInBase` (a pure re-walk of `positionAfter`), which the tax inputs and the portfolio figures both read. Every figure that adds two currencies goes through core's **`sumToBase`** (a missing rate is `null` with the currency named, never the rest summed; a zero needs no rate), and every screen draws a foreign figure with the kit's **`ApproxFigure` / `approxLine` / `rateLine`** and a parent that adds its children with **`GroupedRow` / `groupedFigure`**, exactly as pockets do. A trade in another currency carries the charged amount on the input itself (`withCharged` → `cashMinor`), so the **set-aside door** (`tradeDoor`) asks about what really left the account; its rates come from one web function, `tradeRatesForSave`, which types a missing day rate through **`openingRateFor`**, called by `TradeForm`, the Add Transaction card's Buy / sell tab and the new Add a holding form. A later sell reposted by an edit keeps its own day's rates and cash amount (Task 7A). The two ticker lists are JSON files in `packages/catalog/securities/`, loaded by dynamic `import()` so each is its own chunk; `apps/web/scripts/check-bundle.mjs` fails the build if either leaks into the entry chunk or passes its budget. The paid tier is one seam, `apps/web/src/lib/entitlements.ts`; until store purchases exist, a **preview switch on a hidden developer settings screen** (`/settings/developer`) grants it on this device.
 
 **Tech Stack:** TypeScript monorepo — `packages/core` (pure), `packages/catalog`, `packages/db` (Drizzle over sqlite-proxy, SQL migrations as `?raw` imports, `better-sqlite3` in tests), `apps/web` (React 19, TanStack Router/Query, Tailwind 4); Vitest; Playwright (`chromium`, `phone`).
 
 **Spec:** `docs/superpowers/specs/2026-09-21-securities-design.md`
 
+## The owner's decisions (binding, 2026-09-21/22)
+
+1. **The US ticker list is paid.** Until store purchases exist it is unlocked by a **preview switch hidden in developer settings** — `/settings/developer`, linked from nowhere, reached by its address. The switch writes the device-local entitlement list the seam reads; turning it off is exactly a lapse. (Task 9, walked in Task 14.)
+2. **A broker is the existing broker cash account, subtype `fund`.** Not a bank, not a wallet, not a pocket: a `fund` account with no parent. A pocket parent that is a `fund` account *is* a broker (its pockets are its cash in each currency). "Another broker…" opens a new `fund` account. (Tasks 4, 6, 11, 12, 13.)
+3. **A foreign ETF opens as Listed shares (0303)**, like every holding added here; the owner changes the code per holding in the asset's settings, as today. Nothing defaults a fund code. (Task 6.)
+4. **Broker percentages use floor-and-remainder: 71 / 18 / 11.** (Tasks 1, 10.)
+5. **Buy & sell keeps its existing Edit and Delete** (`replaceTrade` / `deleteTrade`). No new surface edits or deletes a trade. (Tasks 7A, 8, 11.)
+
 ## Global Constraints
 
-- **No new columns on existing tables** (`transactions`, `accounts`, `entries`, `cards`, `asset_profiles`, `prices`, `expense_templates`, …). Drizzle names every column it knows on every insert, so a new column breaks any database stopped at an older version. New facts go in `securities`, `holding_links`, `security_prices`. Widening a CHECK would need a full table rebuild — none is needed here.
-- **Older databases:** every repository read or write of the three new tables asks `securityTablesExist(db)` first. Without them: `listSecurities` / `listHoldingLinks` return `[]`, `upsertPrice` / `listPrices` / `assetValuesAt` / `coretaxInputsFor` behave exactly as today, and `addHolding` / `linkHolding` / `upsertSecurityPrice` throw `AssetError` before writing anything. Migration tests seed an older database with `MIGRATIONS.filter((m) => m.version !== 51)` — never `<= 49`, because 0050, 0052–0054 land from other branches.
-- **Migration number is 0051 and only 0051.** The runner is set-based; 0051 is pure `CREATE TABLE` / `CREATE INDEX` and depends on nothing another migration makes. In `packages/db/test/database.test.ts`, insert `51` into the applied-versions list **in order**, keeping every other number main has at that moment.
-- **Money is integer minor units, never float.** IDR exponent 0, USD 2, JPY 0, KWD 3. Products that can pass 2^53 go through BigInt (`divRound`, `unitsValueMinor`, `priceMicroFrom`). Sum **signed** values, then clamp if a rule says so — never `Math.abs` before a sum. Shares of a whole: floor each, remainder to the **largest** (`percentShares`).
-- **Call existing readers; never write a second one.** A typed amount is read by `parseMajor`; units by `parseUnits`; a price by `parsePriceMicro`; a typed rate by `parseRate` + `checkManualRate`; units × price by `unitsValueMinor`; a conversion by `convertMinor`; a position by `positionAfter`; rates by `resolveRates` (`useResolveRates` / `useStoredRates`). Signatures below were read on 2026-09-21; if the compiler disagrees, re-read the type and match it rather than changing the function.
+- **No new columns on existing tables** (`transactions`, `accounts`, `entries`, `cards`, `asset_profiles`, `prices`, `expense_templates`, `goal_draws`, …). Drizzle names every column it knows on every insert, so a new column breaks any database stopped at an older version. New facts go in `securities`, `holding_links`, `security_prices`. Widening a CHECK would need a full table rebuild — none is needed here.
+- **Older databases:** every repository read or write of the three new tables asks `securityTablesExist(db)` first. Without them: `listSecurities` / `listHoldingLinks` return `[]`, `upsertPrice` / `listPrices` / `assetValuesAt` / `coretaxInputsFor` behave exactly as today, and `addHolding` / `linkHolding` / `upsertSecurityPrice` throw `AssetError` before writing anything. Migration tests seed an older database with `MIGRATIONS.filter((m) => m.version !== 51)` — never `<= 49` or `<= 50`, because 0050, 0053 and 0054 are on main and any later number may land from another branch.
+- **Migration number is 0051 and only 0051.** Main has `…0049, 0050, 0053, 0054`; the runner is set-based (`migrate` sorts by version and applies whatever is not recorded), so 0051 applies after 0054 on an existing database and in order on a fresh one. 0051 is pure `CREATE TABLE` / `CREATE INDEX` and depends on nothing another migration makes. **Every test's version list is derived from `MIGRATIONS`**, never typed: `database.test.ts` already derives its list — add `51` to its `arrayContaining([50, 51, 53, 54])` and nothing else.
+- **Money is integer minor units, never float.** IDR exponent 0, USD 2, JPY 0, KWD 3. Products that can pass 2^53 go through BigInt (`divRound`, `unitsValueMinor`, `priceMicroFrom`). Sum **signed** values, then clamp if a rule says so — never `Math.abs` before a sum. Shares of a whole: floor each, remainder to the **largest** (`percentShares`). A rate is a float (as `fx_rates.rate` is); a minor-unit amount never is.
+- **Call what main has; never write a second one.** Read-and-reuse list (each was grepped on main `9fce369`):
+  - typed input: `parseMajor` (amounts), `parseUnits` (units, and a typed lot size), `parsePriceMicro` (prices), `parseRate` + `checkManualRate` (a typed rate — through **`openingRateFor`**, `apps/web/src/lib/rates.ts`, which checks, stores it as the day's `manual` rate, or resolves the day and names the currency missing);
+  - arithmetic: `unitsValueMinor`, `convertMinor`, `positionAfter`, `sellBasisMinor`, `formatLots` / `lotsOf`, `divRound`;
+  - two currencies: **`sumToBase`** (`packages/core/src/money/exchange.ts`) for every total of amounts in several currencies — its missing-rate refusal (`totalMinor: null` + `missing`) and its zero-amount rule (a zero needs no rate) are the rules here too;
+  - drawing a foreign figure: **`approxLine`, `rateLine`, `groupedFigure`** (`ui/native/approx.ts`) and **`ApproxFigure`, `GroupedRow`** (`ui/native/Grouped.tsx`), all exported from `ui/native`;
+  - accounts: **`moneyHolders`** (`lib/queries.ts`) for every picker of money (a pocket parent holds nothing), **`pocketParentIds`** (`@expanses/db`) wherever a parent must be told from a pocket;
+  - rates on a screen: **`useHeldRates`** (`features/accounts/queries.ts`) — rates the device already holds, never a fetch because a screen opened; `useResolveRates` only inside a Save;
+  - trades: **`tradeAccountsFor` + `tradePostings`** (exported for deposit maturity) — the cash side of a trade is read off `tradePostings`, never restated; `writeTradeTx` / `replaceTrade` / `deleteTrade` as they are;
+  - set-aside: a buy is a **door** — `tradeDoor` (`features/goals/set-aside-question.ts`) + `useSetAside` (`SetAsideQuestion.tsx`) on every buy form, `setAside: setAside.choice` on every `recordTrade` / `replaceTrade` / `addHolding`, the saved answer opened with `useSetAsideChoiceOf` on an edit; `writeTradeTx`'s destination-less `move` draw for a buy tagged to a goal stays the only way a buy lowers a promise;
+  - Assets: `groupAssets` / `AssetGrouping` / `rowSubtitle` (`features/networth/asset-rows.ts`) — Investments reads the same `assetValuesAt` rows at the same held rates, so its figures are the Assets page's figures regrouped.
+  Signatures were read on 2026-09-22; if the compiler disagrees, re-read the type and match it rather than changing the function.
 - **Refusals are inherited, never bypassed.** No new surface edits or deletes a trade: trades are read-only on the stock, broker and Investments pages. Buy & sell's existing Edit/Delete (`replaceTrade` / `deleteTrade`) and the transaction surfaces' `isTrade` refusal are untouched. Every new repository function checks every id it is handed belongs to `ws.workspaceId`.
 - Inside `database.transaction((tx) => …)` use `tx` only — `database.db` there deadlocks on the mutex.
-- **Every screen is built from the native kit** `apps/web/src/ui/native/` (`LargeTitle`, `Hero`, `InsetGroup`, `InsetRow`, `TextRow`, `SelectRow`, `ReadOnlyRow`, `Panel`). Corner actions are glyphs at every width. Kit tokens only (`var(--ph-…)`), never a literal colour, so dark mode follows. No new visual treatment: no ticker tiles, no initials chips. A row never contains a button.
+- **Look.** The Add a holding flow (its form and Name it myself) is built in the **Option B** look the Add Transaction card's Buy / sell tab now has: one surface card (`overflow-hidden rounded-[11px] bg-[var(--ph-surface)]`) holding `FormRows` (`features/transactions/FormRow.tsx`) of `InputRow` / `SelectRow` (`ui`), `RowHint` under it, a second card for the goal, the set-aside question, and the dock (Cancel + the pill that saves). Read-only figures in that form are `InputRow readOnly`. The Investments, stock, price, broker and developer screens are built from the native kit (`LargeTitle`, `Hero`, `InsetGroup`, `InsetRow`, `TextRow`, `SelectRow`, `SwitchRow`, `ReadOnlyRow`, `ApproxFigure`, `GroupedRow`). Corner actions are glyphs at every width. Kit tokens only (`var(--ph-…)`), never a literal colour, so dark mode follows. No new visual treatment: no ticker tiles, no initials chips. A row never contains a button.
 - **Desktop is the highest paid tier and is never weakened.** Nothing is removed from Buy & sell, the Assets page, the inline Add asset form or the asset page; the new pages work by keyboard and by URL.
 - **Country-neutral.** No locale presets and no copy naming a country's currency ("exchange-rate movement", not "the rupiah's move"). Only the tax report is Indonesian (`Saham …`).
 - **The UI never contains the strings `Bank Central Asia` or `Apple Inc`** — `check-bundle.mjs` uses them as sentinels for the two lists.
-- Branch `feat/securities`. Commit per task; merge and push only when the user asks. Every commit message ends with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
-- **Gate before every commit, no exceptions:** from the root `npm run typecheck`, `npm test`, `npm run build` (which now includes the bundle check), then the task's targeted Playwright specs (`cd apps/web && npx playwright test <spec> --workers=2`). The full Playwright suite runs in Task 15. A per-package vitest run is the inner loop only.
+- Branch `feat/securities`. Commit per task; merge and push only when the user asks. Every commit message ends with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`. Never `git stash`.
+- **Gate before every commit, no exceptions:** from the root `npm run typecheck`, `npm test`, `npm run build` (which from Task 12 includes the bundle check), then the task's targeted Playwright specs. A per-package vitest run is the inner loop only. The full Playwright suite runs in Task 15.
+
+## Before Task 1
+
+The worktree was cut at `9fce369`. Main has since merged the card screens (`585a72d`): kit changes only (`LargeTitle` gains `oneLine`, `WideColumn` / `useWide`, `OverflowMenu` exported, the Wallet stack), no migration and nothing this plan calls changed shape. Merge `main` into `feat/securities` before Task 1 (`git merge main`, never a stash) and run the root gate once, so every task starts from the tree it will be merged into.
+
+## Playwright in this worktree
+
+Create **`apps/web/playwright.se.config.ts`** once, before the first Playwright run, and **never commit it** (it stays `??` in `git status`):
+
+```ts
+// apps/web/playwright.se.config.ts — untracked. This worktree's own port, so a run here never meets another branch's server.
+import { defineConfig } from '@playwright/test';
+import base from './playwright.config';
+
+export default defineConfig({
+  ...base,
+  use: { ...base.use, baseURL: 'http://localhost:4185' },
+  webServer: { command: 'npm run build && npx vite preview --port 4185 --strictPort', url: 'http://localhost:4185', reuseExistingServer: false, timeout: 180_000 },
+});
+```
+
+Every targeted run is `cd apps/web && npx playwright test -c playwright.se.config.ts --workers=2 <filters>`, and every filter is an **anchored** regex on the file name — `'/securities\.spec\.ts$'`, never `securities.spec.ts`, which also matches `phone-securities.spec.ts`. A spec that needs today's date reads it with `todayIn(page)` from `e2e/today.ts` (the browser's own local day), never `new Date().toISOString()`.
 
 ---
 
@@ -32,7 +74,7 @@
 
 | File | Responsibility |
 |---|---|
-| `packages/core/src/assets/securities.ts` | `SecurityKind`, `positionInBase`, `percentShares`, `gainBps`, `formatBps`, `portfolioSummary`, `tradeRateNeeds`, `rateFromAmounts`, `tradeCashMinor`, `perUnitInBase`, `taxHoldingName` |
+| `packages/core/src/assets/securities.ts` | `SecurityKind`, `positionInBase`, `percentShares`, `gainBps`, `formatBps`, `portfolioSummary` (through `sumToBase`), `tradeRateNeeds`, `rateFromAmounts`, `tradeCashMinor` (read off `tradePostings`), `perUnitInBase`, `taxHoldingName` |
 | `packages/core/src/coretax/rows.ts` | `HoldingPurchase`, `HoldingInput.purchases`, the purchase note on foreign rows |
 | `packages/core/src/index.ts` | export the above |
 | `packages/core/test/securities-math.test.ts`, `securities-trade-rates.test.ts`, `coretax-foreign-note.test.ts` | pure tests |
@@ -47,20 +89,23 @@
 | `packages/db/src/repos/securities.ts` | guard, securities, links, security prices, `addHolding` |
 | `packages/db/src/repos/base-costs.ts` | `baseCosts` |
 | `packages/db/src/repos/prices.ts`, `asset-values.ts`, `tax-inputs.ts` | routing and the tax inputs |
+| `packages/db/src/repos/trades.ts` | Task 7A: a reposted sell keeps its own rates and cash amount |
 | `packages/db/src/index.ts` | exports |
-| `packages/db/test/securities-migration.test.ts`, `securities.test.ts`, `security-prices.test.ts`, `add-holding.test.ts`, `tax-foreign-cost.test.ts`, `database.test.ts` | db tests |
-| `apps/web/src/lib/entitlements.ts` (+ `.test.ts`) | the paid seam |
-| `apps/web/src/features/networth/trade-money.ts` (+ `.test.ts`) | `tradeMoneyForSave`, `baseCostPreview` |
-| `apps/web/src/features/networth/TradeForm.tsx`, `TradesPage.tsx`, `AssetsPage.tsx`, `AssetDetailPage.tsx`, `AddAssetForm.tsx`, `StockAndBroker.tsx` | trade rows, entry rows, linking |
-| `apps/web/src/features/transactions/buy-in-form.ts`, `TransactionCard.tsx` | Charged in on the Buy / sell tab |
+| `packages/db/test/securities-migration.test.ts`, `securities.test.ts`, `security-prices.test.ts`, `add-holding.test.ts`, `tax-foreign-cost.test.ts`, `foreign-sells.test.ts`, `database.test.ts` | db tests |
+| `apps/web/src/lib/entitlements.ts` (+ `.test.ts`) | the paid seam and its preview switch |
+| `apps/web/src/features/workspaces/DeveloperSettingsPage.tsx` | the hidden screen with the preview switch |
+| `apps/web/src/features/networth/trade-money.ts` (+ `.test.ts`) | `withCharged`, `tradeRatesForSave`, `baseCostPreview` |
+| `apps/web/src/features/networth/TradeForm.tsx`, `TradesPage.tsx`, `AssetsPage.tsx`, `AssetDetailPage.tsx`, `AddAssetForm.tsx`, `StockAndBroker.tsx`, `PriceForm.tsx` | trade rows, entry rows, linking |
+| `apps/web/src/features/transactions/buy-in-form.ts` (+ test), `tx-form.ts`, `TransactionCard.tsx` | Charged in on the Buy / sell tab |
 | `apps/web/src/features/ownables/AddAssetPage.tsx` | Listed shares → the ticker flow |
 | `apps/web/src/features/investments/queries.ts` | query hooks, `usePortfolio` |
-| `apps/web/src/features/investments/portfolio-view.ts` (+ `.test.ts`) | stock rows, broker rows, price change lines, labels |
-| `apps/web/src/features/investments/add-holding.ts` (+ `.test.ts`) | the Add form's planner |
+| `apps/web/src/features/investments/portfolio-view.ts` (+ `.test.ts`) | stock rows, broker rows, price change lines |
+| `apps/web/src/features/investments/add-holding.ts` (+ `.test.ts`) | the Add form's planner, `brokerChoices` |
 | `apps/web/src/features/investments/InvestmentsPage.tsx`, `SecurityPage.tsx`, `SecurityPricePage.tsx`, `BrokerPage.tsx`, `AddHoldingPage.tsx`, `SecuritySearch.tsx`, `NameItForm.tsx`, `AddHoldingForm.tsx` | screens |
-| `apps/web/src/app/router.tsx` | five routes |
+| `apps/web/src/app/router.tsx` | seven routes (five Investments pages, Add a holding, `/settings/developer`) |
 | `apps/web/scripts/check-bundle.mjs`, `apps/web/package.json` | the size gate |
-| `apps/web/e2e/securities.ts`, `foreign-trades.spec.ts`, `securities.spec.ts`, `phone-securities.spec.ts` | end to end |
+| `apps/web/e2e/securities.ts`, `foreign-trades.spec.ts`, `securities.spec.ts`, `phone-securities.spec.ts` (+ `add-transaction.ts`'s `addPurchase` gains `charged`; `phone-dark-shell.spec.ts`'s `tokenColour` moves to `securities.ts`; accounts and balances through `set-aside.ts`'s `addMoneyAccount` and `deposit-maturity.ts`'s `expectBalance`) | end to end |
+| `apps/web/playwright.se.config.ts` | **untracked**, port 4185 |
 
 ---
 
@@ -73,8 +118,8 @@
 - Modify: `packages/core/src/index.ts`
 
 **Interfaces:**
-- Consumes: `positionAfter`, `Position`, `TradeRecord` (`assets/position.ts`); `divRound` (`assets/units.ts`, internal import); `convertMinor` (`money/money.ts`).
-- Produces: `type SecurityKind = 'share' | 'etf' | 'other'`; `positionInBase(trades: readonly TradeRecord[], baseCostOfBuy: Readonly<Record<string, number>>, upTo?: string): Position`; `percentShares(parts: readonly number[]): number[]`; `gainBps(valueMinor: number, costMinor: number): number | null`; `formatBps(bps: number, locale?: string): string`; `interface PortfolioHolding { currency; valueMinor; costMinor; costBaseMinor }`; `interface PortfolioSummary { valueBaseMinor; costBaseMinor; gainBaseMinor; gainBps: number | null; currencyMoveMinor; converted: boolean; missingRates: string[] }`; `portfolioSummary(holdings: readonly PortfolioHolding[], base: string, ratesToBase: Readonly<Record<string, number>>): PortfolioSummary`.
+- Consumes: `positionAfter`, `Position`, `TradeRecord` (`assets/position.ts`); `divRound` (`assets/units.ts`, internal import); **`sumToBase`** (`money/exchange.ts`) — every total of two currencies, with its missing-rate refusal and its zero-amount rule.
+- Produces: `type SecurityKind = 'share' | 'etf' | 'other'`; `positionInBase(trades: readonly TradeRecord[], baseCostOfBuy: Readonly<Record<string, number>>, upTo?: string): Position`; `percentShares(parts: readonly number[]): number[]`; `gainBps(valueMinor: number, costMinor: number): number | null`; `formatBps(bps: number, locale?: string): string`; `interface PortfolioHolding { currency; valueMinor; costMinor; costBaseMinor }`; `interface PortfolioSummary { valueBaseMinor: number | null; costBaseMinor: number; gainBaseMinor: number | null; gainBps: number | null; currencyMoveMinor: number | null; converted: boolean; missingRates: string[] }`; `portfolioSummary(holdings: readonly PortfolioHolding[], base: string, ratesToBase: Readonly<Record<string, number>>): PortfolioSummary`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -110,7 +155,8 @@ describe('positionInBase', () => {
 
   it('is not the native cost, nor the native cost at any single rate', () => {
     const native = positionAfter(trades);
-    expect(native.costMinor).toBe(231_628); // cents: what the old report wrongly filed as rupiah
+    // Cents: what the old report wrongly filed as rupiah. 289.535 − divRound(289.535 × 4, 15) = 289.535 − 77.209.
+    expect(native.costMinor).toBe(212_326);
     expect(positionInBase(trades, base).costMinor).not.toBe(Math.round((native.costMinor / 100) * 16_300));
   });
 
@@ -177,13 +223,22 @@ describe('portfolioSummary', () => {
     );
   });
 
-  it('leaves a currency with no rate out of every figure rather than counting it as nothing', () => {
-    const summary = portfolioSummary(holdings, 'IDR', {});
-    expect(summary.missingRates).toEqual(['USD']);
-    expect(summary.valueBaseMinor).toBe(25_430_500);
-    expect(summary.costBaseMinor).toBe(25_110_000);
-    expect(summary.converted).toBe(false);
-    expect(summary.currencyMoveMinor).toBe(0);
+  it('refuses a total it has no rate for, as sumToBase does: no figure and the currency named, never the rest summed', () => {
+    // The first draft summed the rupiah holdings alone (25.430.500) — exactly the partial total sumToBase exists to refuse.
+    expect(portfolioSummary(holdings, 'IDR', {})).toEqual({
+      valueBaseMinor: null,
+      costBaseMinor: 78_008_060, // what was put in is pinned in base, so it is known without today's rate
+      gainBaseMinor: null,
+      gainBps: null,
+      currencyMoveMinor: null,
+      converted: true,
+      missingRates: ['USD'],
+    });
+  });
+
+  it('needs no rate for a foreign holding worth nothing, as sumToBase does', () => {
+    const summary = portfolioSummary([{ currency: 'USD', valueMinor: 0, costMinor: 0, costBaseMinor: 0 }, holdings[4]!], 'IDR', {});
+    expect(summary).toMatchObject({ valueBaseMinor: 5_740_000, missingRates: [], converted: false, currencyMoveMinor: 0 });
   });
 });
 ```
@@ -194,7 +249,7 @@ describe('portfolioSummary', () => {
 
 ```ts
 // packages/core/src/assets/securities.ts
-import { convertMinor } from '../money/money';
+import { sumToBase } from '../money/exchange';
 import { type Position, positionAfter, type TradeRecord } from './position';
 import { divRound } from './units';
 
@@ -260,52 +315,37 @@ export interface PortfolioHolding {
 }
 
 export interface PortfolioSummary {
-  valueBaseMinor: number;
+  /** Today's value in base (`sumToBase`), or null when a rate is missing — never the sum of the rest. */
+  valueBaseMinor: number | null;
+  /** What was put in, in base: each buy pinned on its own day, so it needs no rate today. */
   costBaseMinor: number;
-  gainBaseMinor: number;
+  gainBaseMinor: number | null;
   gainBps: number | null;
-  /** How much of the gain is the rate moving: today's rate against the rate each holding was bought at. Signed. */
-  currencyMoveMinor: number;
-  /** True when any figure in it was converted at today's rate, so the total carries ≈. */
+  /** How much of the gain is the rate moving: today's rate against the rate each holding was bought at. Signed; null with the value. */
+  currencyMoveMinor: number | null;
+  /** True when a figure in it is (or would be) converted at today's rate, so the total carries ≈. */
   converted: boolean;
-  /** Currencies with no rate today, whose holdings are left out of every figure above. */
+  /** Currencies with no rate today, exactly as `sumToBase` names them. */
   missingRates: string[];
 }
 
 export function portfolioSummary(holdings: readonly PortfolioHolding[], base: string, ratesToBase: Readonly<Record<string, number>>): PortfolioSummary {
-  let valueBaseMinor = 0;
-  let costBaseMinor = 0;
-  let currencyMoveMinor = 0;
-  let converted = false;
-  const missing = new Set<string>();
-  for (const holding of holdings) {
-    if (holding.currency === base) {
-      valueBaseMinor += holding.valueMinor;
-      costBaseMinor += holding.costBaseMinor;
-      continue;
-    }
-    const rate = ratesToBase[holding.currency];
-    if (rate === undefined) {
-      missing.add(holding.currency);
-      continue;
-    }
-    const today = convertMinor(holding.valueMinor, holding.currency, base, rate);
-    valueBaseMinor += today;
-    costBaseMinor += holding.costBaseMinor;
-    converted = true;
-    if (holding.costMinor > 0) {
-      const atCostRate = Number(divRound(BigInt(holding.valueMinor) * BigInt(holding.costBaseMinor), BigInt(holding.costMinor)));
-      currencyMoveMinor += today - atCostRate;
-    }
-  }
+  const value = sumToBase({ amounts: holdings.map((h) => ({ minor: h.valueMinor, currency: h.currency })), baseCurrency: base, ratesToBase });
+  // Signed, and in base already: nothing here needs a rate.
+  const costBaseMinor = holdings.reduce((sum, h) => sum + h.costBaseMinor, 0);
+  // The move is the foreign holdings at today's rate (sumToBase again) less the same holdings at the rate each was bought at.
+  const foreign = holdings.filter((h) => h.currency !== base && h.costMinor > 0);
+  const today = sumToBase({ amounts: foreign.map((h) => ({ minor: h.valueMinor, currency: h.currency })), baseCurrency: base, ratesToBase });
+  const atCostRates = foreign.reduce((sum, h) => sum + divRound(BigInt(h.valueMinor) * BigInt(h.costBaseMinor), BigInt(h.costMinor)), 0n);
+  const valueBaseMinor = value.totalMinor;
   return {
     valueBaseMinor,
     costBaseMinor,
-    gainBaseMinor: valueBaseMinor - costBaseMinor,
-    gainBps: gainBps(valueBaseMinor, costBaseMinor),
-    currencyMoveMinor,
-    converted,
-    missingRates: [...missing].sort(),
+    gainBaseMinor: valueBaseMinor === null ? null : valueBaseMinor - costBaseMinor,
+    gainBps: valueBaseMinor === null ? null : gainBps(valueBaseMinor, costBaseMinor),
+    currencyMoveMinor: today.totalMinor === null || valueBaseMinor === null ? null : today.totalMinor - Number(atCostRates),
+    converted: holdings.some((h) => h.currency !== base && h.valueMinor !== 0),
+    missingRates: value.missing,
   };
 }
 ```
@@ -335,15 +375,15 @@ export {
 - Create: `packages/core/test/securities-trade-rates.test.ts`, `packages/core/test/coretax-foreign-note.test.ts`
 
 **Interfaces:**
-- Consumes: `convertMinor`, `currencyInfo`, `formatMinor`; `TradeKind`; `coretaxRows(taxYear, inputs, settings)` (existing signature, `rows.ts`).
-- Produces: `interface TradeRateNeeds { charged: boolean; derived: string | null; dayRates: string[] }`; `tradeRateNeeds(holding: string, cash: string, base: string): TradeRateNeeds`; `rateFromAmounts(amountMinor: number, currency: string, baseMinor: number, base: string): number`; `tradeCashMinor(kind: TradeKind, grossMinor: number, feeMinor: number, taxMinor: number): number`; `perUnitInBase(rate: number, currency: string, base: string): number`; `taxHoldingName(security: { ticker: string | null; name: string; kind: SecurityKind } | null, brokerName: string | null, accountName: string): string`; `interface HoldingPurchase { occurredOn: string; nativeMinor: number; baseMinor: number }`; `HoldingInput.purchases?: HoldingPurchase[]`.
+- Consumes: `convertMinor`, `currencyInfo`, `formatMinor`; **`tradePostings`, `TradeInput`, `TradeAccounts`** (`assets/trades.ts` — the postings deposit maturity also reuses); **`outflowFrom`, `inflowTo`** (`goals/set-aside.ts`); `coretaxRows(taxYear, inputs, settings)` (existing signature, `rows.ts`).
+- Produces: `interface TradeRateNeeds { charged: boolean; derived: string | null; dayRates: string[] }`; `tradeRateNeeds(holding: string, cash: string, base: string): TradeRateNeeds`; `rateFromAmounts(amountMinor: number, currency: string, baseMinor: number, base: string): number`; `tradeCashMinor(input: TradeInput): number` (read off `tradePostings`, never restated); `perUnitInBase(rate: number, currency: string, base: string): number`; `taxHoldingName(security: { ticker: string | null; name: string; kind: SecurityKind } | null, brokerName: string | null, accountName: string): string`; `interface HoldingPurchase { occurredOn: string; nativeMinor: number; baseMinor: number }`; `HoldingInput.purchases?: HoldingPurchase[]`.
 
 - [ ] **Step 1: Failing tests**
 
 ```ts
 // packages/core/test/securities-trade-rates.test.ts
 import { describe, expect, it } from 'vitest';
-import { convertMinor, perUnitInBase, rateFromAmounts, taxHoldingName, tradeCashMinor, tradeRateNeeds } from '../src/index';
+import { convertMinor, perUnitInBase, rateFromAmounts, taxHoldingName, tradeCashMinor, type TradeInput, tradeRateNeeds } from '../src/index';
 
 describe('tradeRateNeeds', () => {
   it('asks nothing when all of it is base', () => {
@@ -382,11 +422,15 @@ describe('rateFromAmounts', () => {
 });
 
 describe('tradeCashMinor', () => {
-  it('is what tradePostings moves through the cash account', () => {
-    expect(tradeCashMinor('buy', 1_000, 15, 3)).toBe(1_018);
-    expect(tradeCashMinor('sell', 1_000, 15, 3)).toBe(982);
-    expect(tradeCashMinor('income', 1_000, 15, 3)).toBe(997); // an income carries no fee
-    expect(tradeCashMinor('unit_change', 1_000, 0, 0)).toBe(0);
+  const trade = (kind: TradeInput['kind'], grossMinor: number, feeMinor: number, taxMinor: number): TradeInput => ({ kind, occurredOn: '2026-03-08', unitsMicro: 3_000_000, grossMinor, feeMinor, taxMinor });
+  it('is what tradePostings moves through the cash account — read off the postings, not restated', () => {
+    expect(tradeCashMinor(trade('buy', 1_000, 15, 3))).toBe(1_018);
+    expect(tradeCashMinor(trade('sell', 1_000, 15, 3))).toBe(982);
+    expect(tradeCashMinor(trade('income', 1_000, 15, 3))).toBe(997); // an income carries no fee
+    expect(tradeCashMinor({ ...trade('unit_change', 0, 0, 0) })).toBe(0);
+  });
+  it('is nothing for a sell whose fees ate the proceeds, never a negative amount to derive a rate from', () => {
+    expect(tradeCashMinor(trade('sell', 1_000, 900, 200))).toBe(0);
   });
 });
 
@@ -445,11 +489,13 @@ describe('a foreign holding’s row', () => {
 
 - [ ] **Step 2: Run to see both fail.**
 
-- [ ] **Step 3: Implement** — append to `securities.ts`:
+- [ ] **Step 3: Implement** — append to `securities.ts` (its imports go into the file's import block):
 
 ```ts
+import { inflowTo, outflowFrom } from '../goals/set-aside';
 import { currencyInfo } from '../money/currencies';
-import type { TradeKind } from './position';
+import { convertMinor } from '../money/money';
+import { type TradeAccounts, type TradeInput, tradePostings } from './trades';
 
 export interface TradeRateNeeds {
   /** The form asks what left or reached the cash account, in its own currency. */
@@ -473,12 +519,28 @@ export function rateFromAmounts(amountMinor: number, currency: string, baseMinor
   return baseMinor / 10 ** currencyInfo(base).exponent / (amountMinor / 10 ** currencyInfo(currency).exponent);
 }
 
-/** What moves through the cash account, in the holding's currency, exactly as `tradePostings` moves it. */
-export function tradeCashMinor(kind: TradeKind, grossMinor: number, feeMinor: number, taxMinor: number): number {
-  if (kind === 'buy') return grossMinor + feeMinor + taxMinor;
-  if (kind === 'sell') return grossMinor - feeMinor - taxMinor;
-  if (kind === 'income') return grossMinor - taxMinor;
-  return 0;
+/** Stand-ins for `tradePostings`: one currency on both sides, so it posts the cash line in the holding's currency. */
+const CASH = '\u0000cash';
+const ONE_CURRENCY: TradeAccounts = {
+  holdingAccountId: '\u0000holding',
+  holdingCurrency: 'XXX',
+  cashAccountId: CASH,
+  cashCurrency: 'XXX',
+  realizedGainsCategoryId: '\u0000gains',
+  investmentIncomeCategoryId: '\u0000income',
+  finalTaxCategoryId: '\u0000tax',
+};
+
+/**
+ * What moves through the cash account, in the holding's currency: the cash line `tradePostings` itself posts, read
+ * back with `outflowFrom` / `inflowTo` — so a change to how a trade posts can never leave this figure behind. A sell
+ * is posted against a position that holds exactly what it sells; its basis never touches the cash line.
+ */
+export function tradeCashMinor(input: TradeInput): number {
+  if (input.kind === 'unit_change') return 0;
+  const held = { unitsMicro: input.unitsMicro, costMinor: 0, realizedMinor: 0, incomeMinor: 0, byYear: {} };
+  const lines = tradePostings({ ...input, cashMinor: undefined }, held, ONE_CURRENCY);
+  return input.kind === 'buy' ? outflowFrom(lines, CASH) : inflowTo(lines, CASH);
 }
 
 /** One major unit of `currency` in base minor units — "Rp 15.800" per dollar. */
@@ -501,7 +563,6 @@ export function taxHoldingName(
 In `packages/core/src/coretax/rows.ts`:
 
 ```ts
-import { currencyInfo } from '../money/currencies';
 import { formatMinor } from '../money/money';
 import { perUnitInBase, rateFromAmounts } from '../assets/securities';
 
@@ -535,7 +596,7 @@ function purchaseNote(holding: HoldingInput, year: string | null): string | null
 const joinNotes = (...notes: (string | null)[]): string | null => notes.filter((note): note is string => Boolean(note)).join(' · ') || null;
 ```
 
-and in `holdingRows` change the two `note: value.note` to `note: joinNotes(purchaseNote(holding, year), value.note)` (per-year branch) and `note: joinNotes(purchaseNote(holding, null), value.note)` (one-row branch). Remove the unused `currencyInfo` import if the compiler says so. Export the new names from `index.ts` (`perUnitInBase`, `rateFromAmounts`, `taxHoldingName`, `tradeCashMinor`, `type TradeRateNeeds`, `tradeRateNeeds` from `./assets/securities`; `type HoldingPurchase` from `./coretax/rows`).
+and in `holdingRows` change the two `note: value.note` to `note: joinNotes(purchaseNote(holding, year), value.note)` (per-year branch) and `note: joinNotes(purchaseNote(holding, null), value.note)` (one-row branch). Export the new names from `index.ts` (`perUnitInBase`, `rateFromAmounts`, `taxHoldingName`, `tradeCashMinor`, `type TradeRateNeeds`, `tradeRateNeeds` from `./assets/securities`; `type HoldingPurchase` from `./coretax/rows`).
 
 - [ ] **Step 4: Run both test files → PASS; root gate.**
 - [ ] **Step 5: Commit** `feat(core): how a trade gets its rates, and the daftar harta names the broker`
@@ -664,14 +725,15 @@ describe('the bundled lists', () => {
 
 describe('validateSecurityList', () => {
   it('names each problem', () => {
-    const bad = { asOf: '2026-09-21', rows: [['BBCA', 'A', 'IDX', 's'], ['BBCA', 'B', 'IDX', 's'], ['bbri', 'C', 'IDX', 's'], ['TLKM', '', 'MARS', 'x']] };
+    // TLKM is a well-formed IDX ticker, so row 4's only problems are its name, market and kind.
+    const bad = { asOf: '2026-09-21', rows: [['BBCA', 'A', 'IDX', 's'], ['BBCA', 'B', 'IDX', 's'], ['bbri', 'C', 'IDX', 's'], ['TLKM', '', 'MARS', 'x'], ['AAPL', 'Apple', 'NASDAQ', 's']] };
     expect(validateSecurityList(bad, 'idx')).toEqual([
       'IDX:BBCA is listed twice',
       'Row 3: "bbri" is not a IDX ticker',
-      'Row 4: "TLKM" is not a IDX ticker',
       'Row 4: no name',
       'Row 4: unknown market "MARS"',
       'Row 4: kind must be s or e',
+      'Row 5: unknown market "NASDAQ"', // a US market is not the IDX list's, although AAPL has an IDX ticker's shape
     ]);
     expect(validateSecurityList({ rows: [] }, 'idx')).toEqual(['asOf must be YYYY-MM-DD']);
   });
@@ -822,7 +884,7 @@ Add to `packages/catalog/src/index.ts`: `export * from './securities';` — and 
 - Modify: `packages/db/src/migrations.ts`, `packages/db/src/index.ts`, `packages/db/test/database.test.ts`
 
 **Interfaces:**
-- Consumes: `AssetError`, `assertAccountInWorkspace` (`repos/assets.ts`); `SPENDABLE_SUBTYPES` (`repos/accounts.ts`); `isSupportedCurrency`, `uuidv7`, `SecurityKind`, `PriceRow` (core); `prices`, `assetProfiles` (`schema-assets.ts`).
+- Consumes: `AssetError` (`repos/assets.ts`); `isSupportedCurrency`, `uuidv7`, `SecurityKind`, `PriceRow` (core); `prices`, `assetProfiles` (`schema-assets.ts`); `accounts` (`schema.ts`). A broker is **a `fund` account that is not a pocket** (the owner's ruling): the check reads `subtype` and `parentId` on the row it already selects — a pocket parent qualifies, its pockets do not.
 - Produces: `securityTablesExist(db: Db): Promise<boolean>`; `interface SecurityRow { id; ticker: string | null; name; market; currency; lotSize: number | null; kind: SecurityKind; source: 'catalogue' | 'owner' }`; `interface NewSecurity { ticker: string | null; name; market; currency; lotSize: number | null; kind: SecurityKind; source: 'catalogue' | 'owner' }`; `interface HoldingLinkRow { accountId; securityId: string | null; brokerAccountId: string | null }`; `ensureSecurityTx(tx, ws, input: NewSecurity): Promise<SecurityRow>`; `securityByIdTx(tx, ws, id): Promise<SecurityRow>`; `listSecurities(database, ws)`; `listHoldingLinks(database, ws)`; `linkHoldingTx(tx, ws, input: { accountId: string; securityId?: string | null; brokerAccountId?: string | null })`; `linkHolding(database, ws, input: { accountId: string; security?: { id: string } | NewSecurity | null; brokerAccountId?: string | null }): Promise<void>`; `upsertSecurityPriceTx(tx, ws, input: { securityId; onDate; priceMicro })`; `upsertSecurityPrice(database, ws, input)`; `listSecurityPrices(database, ws, securityId): Promise<PriceRow[]>`; `allSecurityPrices(database, ws): Promise<{ securityId; onDate; priceMicro }[]>`; `securityOfHolding(db: Db, ws, accountId): Promise<string | null>`.
 
 - [ ] **Step 1: The migration**
@@ -833,7 +895,8 @@ Add to `packages/catalog/src/index.ts`: `export * from './securities';` — and 
 
    Three tables of their own and nothing else: no column on accounts, asset_profiles or prices, because the ORM
    names every column it knows on every insert (see 0028). Nothing is backfilled — a holding with no link reads
-   exactly as it did. Pure CREATE statements, so it lands in any order beside 0050, 0052, 0053 and 0054. */
+   exactly as it did. Pure CREATE statements, so it lands in any order beside 0050, 0053, 0054 and any later one:
+   migrate() is set-based, so on a database already at 0054 it simply applies 0051. */
 CREATE TABLE securities (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -958,6 +1021,7 @@ let database: Database;
 let ws: WorkspaceContext;
 let stockbit: AccountRow;
 let card: AccountRow;
+let bank: AccountRow;
 const bbca: NewSecurity = { ticker: 'bbca ', name: 'BBCA name', market: 'idx', currency: 'IDR', lotSize: 100, kind: 'share', source: 'catalogue' };
 const aapl: NewSecurity = { ticker: 'AAPL', name: 'AAPL name', market: 'NASDAQ', currency: 'USD', lotSize: 1, kind: 'share', source: 'owner' };
 
@@ -971,6 +1035,7 @@ beforeEach(async () => {
   ({ database, ws } = await setupDb());
   stockbit = await createAccount(database, ws, { name: 'Stockbit', kind: 'asset', subtype: 'fund', currency: 'IDR' });
   card = await createAccount(database, ws, { name: 'BCA Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+  bank = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR' });
 });
 
 describe('securities', () => {
@@ -1004,11 +1069,22 @@ describe('linkHolding', () => {
     expect(await listHoldingLinks(database, ws)).toEqual([]);
   });
 
-  it('refuses a broker that is not a money account, and an account from another workspace', async () => {
+  it('takes a broker only as its fund account: never a card, a bank or a pocket, and never from another workspace', async () => {
     const a = await holding('A');
-    await expect(linkHolding(database, ws, { accountId: a.id, brokerAccountId: card.id })).rejects.toThrow(/money account/);
+    await expect(linkHolding(database, ws, { accountId: a.id, brokerAccountId: card.id })).rejects.toThrow(/fund account/);
+    await expect(linkHolding(database, ws, { accountId: a.id, brokerAccountId: bank.id })).rejects.toThrow(/fund account/);
     const other = await createWorkspace(database, { name: 'Shared', type: 'shared', baseCurrency: 'IDR' });
     await expect(linkHolding(database, other, { accountId: a.id, brokerAccountId: stockbit.id })).rejects.toThrow(/not found/);
+    expect(await listHoldingLinks(database, ws)).toEqual([]);
+  });
+
+  it('takes a fund account that holds pockets as the broker, and refuses one of its pockets', async () => {
+    const ibkr = await createAccount(database, ws, { name: 'Interactive Brokers', kind: 'asset', subtype: 'fund', currency: 'USD' });
+    const usd = await createAccount(database, ws, { name: 'Interactive Brokers · USD', kind: 'asset', subtype: 'fund', currency: 'USD', parentId: ibkr.id });
+    const a = await holding('A', 'USD');
+    await expect(linkHolding(database, ws, { accountId: a.id, brokerAccountId: usd.id })).rejects.toThrow(/Interactive Brokers/);
+    await linkHolding(database, ws, { accountId: a.id, brokerAccountId: ibkr.id });
+    expect(await listHoldingLinks(database, ws)).toEqual([{ accountId: a.id, securityId: null, brokerAccountId: ibkr.id }]);
   });
 
   it('refuses a second holding for the same security at the same broker', async () => {
@@ -1057,7 +1133,6 @@ import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { assetProfiles, prices } from '../schema-assets';
 import { holdingLinks, securities, securityPrices } from '../schema-securities';
-import { SPENDABLE_SUBTYPES } from './accounts';
 import { AssetError } from './assets';
 
 /**
@@ -1198,12 +1273,18 @@ export async function linkHoldingTx(
   }
   if (brokerAccountId) {
     const [broker] = await tx
-      .select({ kind: accounts.kind, subtype: accounts.subtype })
+      .select({ kind: accounts.kind, subtype: accounts.subtype, parentId: accounts.parentId })
       .from(accounts)
       .where(and(eq(accounts.id, brokerAccountId), eq(accounts.workspaceId, ws.workspaceId)));
     if (!broker) throw new AssetError('Broker account not found in this workspace');
-    if (broker.kind !== 'asset' || !SPENDABLE_SUBTYPES.includes(broker.subtype)) {
-      throw new AssetError('A broker is the money account you keep there — choose a bank, cash or fund account');
+    // The owner's ruling: a broker is its cash account, subtype `fund`. A pocket is its parent's money in one
+    // currency, so the parent is the broker and the pocket never is.
+    if (broker.kind !== 'asset' || broker.subtype !== 'fund') {
+      throw new AssetError('A broker is the cash account you keep there — choose a fund account');
+    }
+    if (broker.parentId) {
+      const [parent] = await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, broker.parentId), eq(accounts.workspaceId, ws.workspaceId)));
+      throw new AssetError(`That is a pocket of ${parent?.name ?? 'another account'}; choose ${parent?.name ?? 'the account'} itself as the broker`);
     }
   }
   if (security && brokerAccountId) {
@@ -1288,9 +1369,9 @@ export async function allSecurityPrices(database: Database, ws: WorkspaceContext
 
 (`isNull` is used by Task 6's `holdingAtTx`; if the compiler flags it unused now, add it in Task 6 instead.)
 
-`packages/db/src/index.ts`: `export * from './repos/securities';` and `export * as securitiesSchema from './schema-securities';`. In `database.test.ts`, add `51` to the applied list in order.
+`packages/db/src/index.ts`: `export * from './repos/securities';` and `export * as securitiesSchema from './schema-securities';`. In `database.test.ts` the version list is already derived from `MIGRATIONS` (`const versions = MIGRATIONS.map(…)`); change only its presence check to `expect(versions).toEqual(expect.arrayContaining([50, 51, 53, 54]))` and its comment to name 0051 — never type a list.
 
-- [ ] **Step 5: Run** `cd packages/db && npx vitest run test/securities-migration.test.ts test/securities.test.ts test/database.test.ts` → PASS; root gate.
+- [ ] **Step 5: Run** `cd packages/db && npx vitest run test/securities-migration.test.ts test/securities.test.ts test/database.test.ts test/migration-safety.test.ts` → PASS; root gate.
 - [ ] **Step 6: Commit** `feat(db): securities, holding links and security prices (migration 0051)`
 
 ### Task 5: One price per security — the choke points
@@ -1438,7 +1519,7 @@ and replace the `accountPrices` line with:
 
 with `import { allSecurityPrices, listHoldingLinks } from './securities';`.
 
-- [ ] **Step 4: Run** the new file plus `test/prices.test.ts test/asset-values.test.ts test/net-worth-series.test.ts` → PASS; root gate.
+- [ ] **Step 4: Run** the new file plus `test/prices.test.ts test/asset-values.test.ts test/net-worth-series.test.ts test/pockets.test.ts test/deposits.test.ts` → PASS (`assetValuesAt` also values pockets and deposits); root gate; `npx playwright test -c playwright.se.config.ts --workers=2 '/assets\.spec\.ts$' '/net-worth\.spec\.ts$'`.
 - [ ] **Step 5: Commit** `feat(db): a linked holding is priced by its security, from every way in`
 
 ### Task 6: `addHolding` — one database transaction
@@ -1448,7 +1529,7 @@ with `import { allSecurityPrices, listHoldingLinks } from './securities';`.
 - Create: `packages/db/test/add-holding.test.ts`
 
 **Interfaces:**
-- Consumes: `createAccountTx(tx, ws, CreateAccountInput)`, `saveAssetProfileTx(tx, ws, SaveAssetProfileInput)`, `writeTradeTx(tx, ws, RecordTradeInput, replacesTradeId)`, `assetItem('stock')`, Task 4's functions.
+- Consumes: `createAccountTx(tx, ws, CreateAccountInput)`, `saveAssetProfileTx(tx, ws, SaveAssetProfileInput)`, `writeTradeTx(tx, ws, RecordTradeInput, replacesTradeId)` (which carries `goalId` and `setAside` exactly as `recordTrade` does — the set-aside door, its borrow/spend answer and the destination-less `move` draw on a buy tagged to a goal), `assetItem('stock')` (Listed shares, **0303**, for every holding opened here — a foreign ETF included, by the owner's ruling), Task 4's functions.
 - Produces: `interface AddHoldingInput { security: { id: string } | NewSecurity; broker: { accountId: string } | { name: string; currency: string } | null; buy: Omit<RecordTradeInput, 'accountId' | 'kind'> }`; `interface AddHoldingResult { accountId: string; securityId: string; brokerAccountId: string | null; created: boolean; trade: TradeResult }`; `addHolding(database, ws, input): Promise<AddHoldingResult>`.
 
 - [ ] **Step 1: Failing tests**
@@ -1459,8 +1540,8 @@ import { and, eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { rateFromAmounts } from '@expanses/core';
 import {
-  type AccountRow, addHolding, checkLedgerIntegrity, createAccount, type Database, getAssetProfile, listAccounts, listHoldingLinks, listSecurities,
-  nativeBalances, positionsFor, schema, type WorkspaceContext,
+  type AccountRow, addHolding, checkLedgerIntegrity, createAccount, type Database, getAssetProfile, listAccounts, listDraws, listEarmarks, listHoldingLinks,
+  listSecurities, nativeBalances, positionsFor, saveEarmark, saveGoal, schema, type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -1522,10 +1603,52 @@ describe('addHolding', () => {
     expect(await listSecurities(database, ws)).toEqual([]);
   });
 
-  it('refuses a broker that is a card', async () => {
+  it('refuses a broker that is a card or a bank, leaving nothing behind', async () => {
     const card = await createAccount(database, ws, { name: 'Card', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
-    await expect(addHolding(database, ws, { security: bbca, broker: { accountId: card.id }, buy: { occurredOn: '2026-03-02', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } })).rejects.toThrow(/money account/);
+    for (const broker of [card, bca]) {
+      await expect(addHolding(database, ws, { security: bbca, broker: { accountId: broker.id }, buy: { occurredOn: '2026-03-02', unitsMicro: shares(100), grossMinor: 875_000, feeMinor: 0, taxMinor: 0, cashAccountId: null } })).rejects.toThrow(/fund account/);
+    }
     expect(await listSecurities(database, ws)).toEqual([]);
+  });
+
+  it('opens a foreign ETF as Listed shares (0303), like every holding added here', async () => {
+    const voo = { ticker: 'VOO', name: 'VOO name', market: 'NYSE ARCA', currency: 'USD', lotSize: null, kind: 'etf' as const, source: 'catalogue' as const };
+    const result = await addHolding(database, ws, { security: voo, broker: null, buy: { occurredOn: '2026-03-08', unitsMicro: shares(3), grossMinor: 149_460, feeMinor: 0, taxMinor: 0, cashAccountId: null, ratesToBase: { USD: 16_100 } } });
+    expect(await getAssetProfile(database, ws, result.accountId)).toMatchObject({ assetKind: 'stock', coretaxCode: '0303' });
+  });
+});
+
+describe('addHolding is a set-aside door, as recordTrade is', () => {
+  const goal = (name: string, targetMinor: number) =>
+    saveGoal(database, ws, { name, kind: 'other', growthBps: 0, returnBps: 0, stages: [{ name, targetMinor, targetMonths: null, dueOn: '2030-12-31' }] });
+
+  it('lowers the promise of the goal the buy is for by what left the account, as a destination-less move', async () => {
+    const pension = await goal('Pension', 20_000_000);
+    await saveEarmark(database, ws, { goalId: pension, accountId: bca.id, amountMinor: 10_000_000 });
+    const result = await addHolding(database, ws, {
+      security: bbca,
+      broker: { name: 'Stockbit', currency: 'IDR' },
+      buy: { occurredOn: '2026-03-02', unitsMicro: shares(1_000), grossMinor: 8_750_000, feeMinor: 13_125, taxMinor: 0, cashAccountId: bca.id, goalId: pension },
+    });
+    expect(await listDraws(database, ws)).toEqual([
+      expect.objectContaining({ transactionId: result.trade.transactionId, goalId: pension, accountId: bca.id, intent: 'move', toAccountId: null, amountMinor: 8_763_125 }),
+    ]);
+    expect((await listEarmarks(database, ws)).find((row) => row.goalId === pension)!.amountMinor).toBe(1_236_875);
+  });
+
+  it('forwards the answer to "which goal paid" when the buy takes more than was free', async () => {
+    const emergency = await goal('Emergency fund', 45_000_000);
+    // Rp 50.000.000 in BCA, Rp 45.000.000 promised: Rp 5.000.000 free, so the buy takes Rp 3.763.125 from the fund.
+    await saveEarmark(database, ws, { goalId: emergency, accountId: bca.id, amountMinor: 45_000_000 });
+    const result = await addHolding(database, ws, {
+      security: bbca,
+      broker: { name: 'Stockbit', currency: 'IDR' },
+      buy: {
+        occurredOn: '2026-03-02', unitsMicro: shares(1_000), grossMinor: 8_750_000, feeMinor: 13_125, taxMinor: 0, cashAccountId: bca.id,
+        setAside: { accountId: bca.id, goalId: emergency, intent: 'borrow', overMinor: 3_763_125 },
+      },
+    });
+    expect(await listDraws(database, ws)).toEqual([expect.objectContaining({ transactionId: result.trade.transactionId, goalId: emergency, intent: 'borrow', amountMinor: 3_763_125 })]);
   });
 });
 ```
@@ -1534,7 +1657,7 @@ describe('addHolding', () => {
 
 - [ ] **Step 2: Run → FAIL.**
 
-- [ ] **Step 3: Implement** — append to `securities.ts`:
+- [ ] **Step 3: Implement** — append to `securities.ts` (its imports go into the file's import block):
 
 ```ts
 import { assetItem } from '@expanses/core';
@@ -1547,7 +1670,7 @@ export interface AddHoldingInput {
   security: { id: string } | NewSecurity;
   /** Where it is kept: a money account already open, a broker account to open now, or no broker. */
   broker: { accountId: string } | { name: string; currency: string } | null;
-  /** The buy, with the rates and the charged amount `tradeMoneyForSave` worked out. */
+  /** The buy: the charged amount on it (`withCharged`), the rates `tradeRatesForSave` worked out, and its goal and set-aside answer. */
   buy: Omit<RecordTradeInput, 'accountId' | 'kind'>;
 }
 
@@ -1575,7 +1698,10 @@ async function holdingAtTx(tx: Db, ws: WorkspaceContext, securityId: string, bro
   return row?.accountId ?? null;
 }
 
-/** Record the security, open the broker, open and link the holding, record the buy — all or nothing (spec §7.5). */
+/**
+ * Record the security, open the broker, open and link the holding, record the buy — all or nothing (spec §7.5). The buy
+ * goes through `writeTradeTx` untouched, so its `goalId` and `setAside` answer post exactly as `recordTrade`'s do.
+ */
 export function addHolding(database: Database, ws: WorkspaceContext, input: AddHoldingInput): Promise<AddHoldingResult> {
   return database.transaction(async (tx) => {
     await requireTables(tx);
@@ -1627,7 +1753,7 @@ export function addHolding(database: Database, ws: WorkspaceContext, input: AddH
 
 (If `existing` is found the broker was already validated when that holding was linked.)
 
-- [ ] **Step 4: Run → PASS; root gate.**
+- [ ] **Step 4: Run** the new file with `test/set-aside-doors.test.ts test/set-aside-final.test.ts test/trades.test.ts` → PASS; root gate.
 - [ ] **Step 5: Commit** `feat(db): add a holding — security, broker, holding and buy in one transaction`
 
 ### Task 7: Base-currency cost and the tax report (C2, §8.2)
@@ -1638,6 +1764,7 @@ export function addHolding(database: Database, ws: WorkspaceContext, input: AddH
 
 **Interfaces:**
 - Consumes: `listTrades`, `positionAfter`, `positionInBase`, `taxHoldingName`, `listHoldingLinks`, `listSecurities`, `entries`, `accounts`.
+- **Leaves alone:** `coretax-income.ts`, `incomeInputsFor`, `investmentIncomeFor` and `depositIncomePayments` — deposit maturity feeds its interest into the income attachment through them (kind `interest`), and set-aside reads `listTrades` / `positionsFor` as they are. `baseCosts` reads `listTrades` (active investment trades only; a deposit's payments are not trades) and changes nothing it reads; `coretaxInputsFor` changes only its `market` branch — the `derived` branch a deposit's balance files through is untouched.
 - Produces: `interface BaseCosts { positions: Record<string, Position>; buyBaseMinor: Record<string, number> }`; `baseCosts(database, ws, upTo?: string): Promise<BaseCosts>`; `coretaxInputsFor` gives foreign holdings base `byYear`, the C2 name and `purchases`.
 
 - [ ] **Step 1: Failing test**
@@ -1702,7 +1829,7 @@ describe('a foreign holding’s cost in the tax report', () => {
 });
 ```
 
-- [ ] **Step 2: Run → FAIL** (`byYear` holds cents, 146_000 / 85_628 shaped figures).
+- [ ] **Step 2: Run → FAIL** (`byYear` holds cents — `{ '2025': 133_834, '2026': 78_492 }` — filed as if they were rupiah).
 
 - [ ] **Step 3: Implement**
 
@@ -1731,11 +1858,14 @@ export async function baseCosts(database: Database, ws: WorkspaceContext, upTo?:
   const buyBaseMinor: Record<string, number> = {};
   const foreignBuys = trades.filter((trade) => trade.kind === 'buy' && trade.transactionId && foreign(trade));
   if (foreignBuys.length > 0) {
+    // Keyed by the few foreign holdings, not by every buy's transaction: one bound parameter per holding.
+    const holdingIds = [...new Set(foreignBuys.map((trade) => trade.accountId))];
     const lines = await database.db
       .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountBaseMinor: entries.amountBaseMinor })
       .from(entries)
-      .where(and(eq(entries.workspaceId, ws.workspaceId), inArray(entries.transactionId, foreignBuys.map((trade) => trade.transactionId!))));
+      .where(and(eq(entries.workspaceId, ws.workspaceId), inArray(entries.accountId, holdingIds)));
     for (const trade of foreignBuys) {
+      // Signed lines summed as they are: the holding's line of a buy is one debit, never an absolute value.
       buyBaseMinor[trade.id] = lines
         .filter((line) => line.transactionId === trade.transactionId && line.accountId === trade.accountId)
         .reduce((sum, line) => sum + line.amountBaseMinor, 0);
@@ -1783,7 +1913,7 @@ and replace the `inputs.holdings.push(…)` in the `market` branch with:
           ? {
               purchases: trades
                 .filter((trade) => trade.accountId === value.accountId && trade.kind === 'buy' && trade.occurredOn <= onDate)
-                .map((trade) => ({ occurredOn: trade.occurredOn, nativeMinor: trade.grossMinor + trade.feeMinor + trade.taxMinor, baseMinor: costs.buyBaseMinor[trade.id] ?? 0 })),
+                .map((trade) => ({ occurredOn: trade.occurredOn, nativeMinor: trade.grossMinor + trade.feeMinor + trade.taxMinor, baseMinor: costs.buyBaseMinor[trade.id]! })),
             }
           : {}),
       });
@@ -1791,91 +1921,252 @@ and replace the `inputs.holdings.push(…)` in the `market` branch with:
 
 Export `baseCosts` / `BaseCosts` from `index.ts`.
 
-- [ ] **Step 4: Run** the new file with `test/tax-inputs.test.ts test/tax-reports.test.ts test/tax-freeze.test.ts` → PASS; root gate.
+- [ ] **Step 4: Run** the new file with `test/tax-inputs.test.ts test/tax-reports.test.ts test/tax-freeze.test.ts test/coretax-income.test.ts test/deposit-automation.test.ts test/deposit-combinations.test.ts test/deposit-set-aside.test.ts test/set-aside-final.test.ts`, and `cd packages/core && npx vitest run test/coretax-income.test.ts test/coretax-rows.test.ts` → PASS (a deposit's interest still reads `interest`; set-aside's figures do not move); root gate; `npx playwright test -c playwright.se.config.ts --workers=2 '/coretax\.spec\.ts$' '/deposit-maturity\.spec\.ts$'`.
 - [ ] **Step 5: Commit** `fix(tax-report): a foreign holding's cost is the rupiah it cost on the day, and the row names the broker`
 
 ---
 
+### Task 7A: A reposted sell keeps its own day's rates and what reached the account
+
+*Added by the 2026-09-22 re-scan.* Task 8 makes a trade on a foreign holding possible for the first time. Buy & sell keeps its Edit and Delete (the owner's ruling), and both rework every later sell (`recalculateSells`). Today that rework posts each sell again with **the edited trade's** `ratesToBase` (the edit's day, or `undefined` from `deleteTrade`) and **no `cashMinor`** — the trade row has no column for it. So editing or deleting an AAPL buy with a later sell into a rupiah account either throws *"needs the amount in IDR"* / *"No USD→IDR rate"*, or re-posts the sell at the wrong day's rate. The sell's own transaction already holds both facts: its cash line (`amount_minor` in the cash currency) and each line's `fx_rate_to_base`. Read them back before the void; no column is added.
+
+**Files:**
+- Modify: `packages/db/src/repos/trades.ts`
+- Create: `packages/db/test/foreign-sells.test.ts`
+
+**Interfaces:**
+- Consumes: `inflowTo` (core); `entries` (`schema.ts`); `tradeAccountsFor`, `tradePostings` as they are.
+- Produces: internal `postedMoneyTx(tx, transactionId, accounts: TradeAccounts): Promise<{ cashMinor?: number; ratesToBase: Record<string, number> }>`; `recalculateSells` posts each sell with its own posted money. Signatures of `writeTradeTx`, `replaceTrade`, `deleteTrade` unchanged.
+
+- [ ] **Step 1: Failing test**
+
+```ts
+// packages/db/test/foreign-sells.test.ts
+import { rateFromAmounts } from '@expanses/core';
+import { and, eq } from 'drizzle-orm';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  type AccountRow, checkLedgerIntegrity, createAccount, type Database, deleteTrade, listTrades, nativeBalances, recordTrade, replaceTrade,
+  saveAssetProfile, schema, type WorkspaceContext,
+} from '../src/index';
+import { setupDb } from './helpers';
+
+const shares = (n: number) => n * 1_000_000;
+let database: Database;
+let ws: WorkspaceContext;
+let bca: AccountRow;
+let aapl: AccountRow;
+let secondBuy: string;
+
+beforeEach(async () => {
+  ({ database, ws } = await setupDb());
+  bca = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR', openingBalanceMinor: 1_000_000, openedOn: '2025-01-01' });
+  aapl = await createAccount(database, ws, { name: 'AAPL', kind: 'asset', subtype: 'investment', currency: 'USD' });
+  await saveAssetProfile(database, ws, { accountId: aapl.id, assetKind: 'stock' });
+  await recordTrade(database, ws, { accountId: aapl.id, kind: 'buy', occurredOn: '2025-03-08', unitsMicro: shares(10), grossMinor: 182_500, feeMinor: 0, taxMinor: 0, cashAccountId: null, ratesToBase: { USD: 15_800 } });
+  secondBuy = (await recordTrade(database, ws, { accountId: aapl.id, kind: 'buy', occurredOn: '2026-01-21', unitsMicro: shares(5), grossMinor: 107_035, feeMinor: 0, taxMinor: 0, cashAccountId: null, ratesToBase: { USD: 16_100 } })).tradeId;
+  // Sold 4 into a rupiah account: $895,00 net, Rp 14.588.501 arrived (non-round, so a re-derived rate would show).
+  await recordTrade(database, ws, {
+    accountId: aapl.id, kind: 'sell', occurredOn: '2026-06-01', unitsMicro: shares(4), grossMinor: 90_000, feeMinor: 500, taxMinor: 0, cashAccountId: bca.id,
+    cashMinor: 14_588_501, ratesToBase: { USD: rateFromAmounts(89_500, 'USD', 14_588_501, 'IDR') },
+  });
+});
+
+const sellLines = async () => {
+  const sell = (await listTrades(database, ws)).find((t) => t.kind === 'sell')!;
+  return database.db.select().from(schema.entries).where(and(eq(schema.entries.transactionId, sell.transactionId!), eq(schema.entries.accountId, bca.id)));
+};
+
+describe('a later sell reworked by an edit', () => {
+  it('keeps what reached the rupiah account, and its own day’s rate, when an earlier buy is deleted', async () => {
+    const result = await deleteTrade(database, ws, secondBuy);
+    expect(result.recalculatedSells).toHaveLength(1); // the basis moved: 4 of 10 at $182,50 now, not 4 of 15
+    expect((await sellLines()).map((l) => [l.amountMinor, l.currency, l.amountBaseMinor])).toEqual([[14_588_501, 'IDR', 14_588_501]]);
+    expect((await nativeBalances(database, ws))[bca.id]).toBe(1_000_000 + 14_588_501);
+    await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
+  });
+
+  it('does the same when an earlier buy is edited on another day at another rate', async () => {
+    const first = (await listTrades(database, ws)).find((t) => t.occurredOn === '2025-03-08')!;
+    await replaceTrade(database, ws, first.id, { accountId: aapl.id, kind: 'buy', occurredOn: '2025-03-08', unitsMicro: shares(10), grossMinor: 180_000, feeMinor: 0, taxMinor: 0, cashAccountId: null, ratesToBase: { USD: 15_800 } });
+    const sell = (await listTrades(database, ws)).find((t) => t.kind === 'sell')!;
+    const usdLines = await database.db.select().from(schema.entries).where(and(eq(schema.entries.transactionId, sell.transactionId!), eq(schema.entries.currency, 'USD')));
+    // Every USD line of the reposted sell is at the sell's own rate, never the edited buy's 15.800.
+    expect(new Set(usdLines.map((l) => l.fxRateToBase))).toEqual(new Set([rateFromAmounts(89_500, 'USD', 14_588_501, 'IDR')]));
+    expect((await sellLines()).map((l) => l.amountMinor)).toEqual([14_588_501]);
+    await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run → FAIL** (`deleteTrade` throws *needs the amount in IDR*).
+
+- [ ] **Step 3: Implement** — in `trades.ts`, add `inflowTo` to the `@expanses/core` import, and beside `postedBasis`:
+
+```ts
+/**
+ * What a posted trade moved through a cash account in another currency, and the rates it posted at — read back from
+ * its own lines before it is voided, so a sell reworked by an edit keeps its own day. The trade row has no column for
+ * either, and none is added: the ledger already holds both.
+ */
+async function postedMoneyTx(tx: Db, transactionId: string, accounts: TradeAccounts): Promise<{ cashMinor?: number; ratesToBase: Record<string, number> }> {
+  const lines = await tx
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, fxRateToBase: entries.fxRateToBase })
+    .from(entries)
+    .where(eq(entries.transactionId, transactionId));
+  const ratesToBase = Object.fromEntries(lines.map((line) => [line.currency, line.fxRateToBase]));
+  if (accounts.cashCurrency === accounts.holdingCurrency) return { ratesToBase };
+  // A sell's cash line is what reached the account: its signed lines summed, then clamped (`inflowTo`).
+  return { cashMinor: inflowTo(lines, accounts.cashAccountId), ratesToBase };
+}
+```
+
+and in `recalculateSells`, replace the three lines from `const input = toInput(…)` to the `postTransactionTx` call with:
+
+```ts
+    const posted = await postedMoneyTx(tx, sell.transactionId!, withCash);
+    const input = toInput({ ...sell, cashAccountId: sell.cashAccountId, cashMinor: posted.cashMinor });
+    const lines = tradePostings(input, position, withCash);
+    await voidTransactionTx(tx, ws, sell.transactionId!);
+    const replacement = await postTransactionTx(tx, ws, {
+      occurredOn: sell.occurredOn,
+      description: tradeDescription(input, holdingName),
+      lines,
+      // The sell's own day. The edited trade's rates are only a fallback for a currency the sell never posted.
+      ratesToBase: { ...ratesToBase, ...posted.ratesToBase },
+      replacesTransactionId: sell.transactionId,
+    });
+```
+
+(`TradeRow` has no `cashMinor`; `toInput` takes a `RecordTradeInput`, whose `cashMinor` is optional, so the spread type-checks.) A base-currency holding reads `ratesToBase` of `1` for every line and no `cashMinor`: exactly what it posts today.
+
+- [ ] **Step 4: Run** the new file with `test/trades.test.ts test/trades-card.test.ts test/set-aside-doors.test.ts test/set-aside-final.test.ts` → PASS; root gate.
+- [ ] **Step 5: Commit** `fix(trades): a sell reworked by an edit keeps its own day's rate and what reached the account`
+
 ## Step 4 — Trades that cross a currency
 
-### Task 8: `tradeMoneyForSave`, and the two existing trade forms
+### Task 8: `withCharged` and `tradeRatesForSave`, and the two existing trade forms
+
+*Rewritten by the 2026-09-22 re-scan.* The first draft parsed "Charged in" inside the save and passed `cashMinor` only to `recordTrade`. On main a buy is a **set-aside door**: `tradeDoor(input)` reads `input.cashMinor ?? cost` as what leaves the paying account, `useSetAside` asks which goal paid when that is more than is free, and the save sends `setAside: setAside.choice` (and `replaceTrade` carries a saved answer). A charged amount parsed only at save time would leave the door reading a USD holding's **cents as rupiah**. So the charged amount goes **on the input**, where the door, the question and the save all read the same figure; the save adds only the rates. The first draft's typed-rate branch (`parseRate` + `checkManualRate` + `upsertRate`) is `openingRateFor`, which main already has — it is called, not restated.
 
 **Files:**
 - Create: `apps/web/src/features/networth/trade-money.ts`, `apps/web/src/features/networth/trade-money.test.ts`, `apps/web/e2e/foreign-trades.spec.ts`
-- Modify: `apps/web/src/features/networth/TradeForm.tsx`, `apps/web/src/features/transactions/buy-in-form.ts`, `apps/web/src/features/transactions/TransactionCard.tsx`
+- Modify: `apps/web/src/features/networth/TradeForm.tsx`, `apps/web/src/features/transactions/buy-in-form.ts` (+ `buy-in-form.test.ts`), `apps/web/src/features/transactions/tx-form.ts`, `apps/web/src/features/transactions/TransactionCard.tsx`, `apps/web/e2e/add-transaction.ts` (`addPurchase` gains `charged`)
 
 **Interfaces:**
-- Consumes: `tradeRateNeeds`, `rateFromAmounts`, `tradeCashMinor`, `parseMajor`, `parseRate`, `convertMinor`, `isoDate` (core); `upsertRate`, `RecordTradeInput`, `Database` (db); `checkManualRate` (`apps/web/src/lib/rates.ts`); `useResolveRates`, `useStoredRates` (`lib/queries.ts`).
-- Produces: `tradeMoneyForSave(p: { database: Database; baseCurrency: string; input: RecordTradeInput; holdingCurrency: string; cashCurrency: string; charged: string; needsRate: string | null; manualRate: string; resolveRates: (currencies: string[], onDate: string) => Promise<{ rates: Record<string, number>; missing: string[] }>; onMissing: (currency: string) => void; where: string }): Promise<{ cashMinor?: number; ratesToBase: Record<string, number> }>`; `baseCostPreview(p: { amountMinor: number; holdingCurrency: string; cashCurrency: string; baseCurrency: string; charged: string; storedRates: Readonly<Record<string, number>> }): { rate: number | null; baseMinor: number | null }`; `PurchaseDraft.charged: string`.
+- Consumes: `tradeRateNeeds`, `rateFromAmounts`, `tradeCashMinor`, `parseMajor`, `convertMinor`, `isoDate` (core); `RecordTradeInput`, `Database`, `WorkspaceContext` (db); **`openingRateFor`** (`lib/rates.ts`); `useResolveRates` (`lib/queries.ts`); **`tradeDoor`** (`features/goals/set-aside-question.ts`), **`useSetAside`**, **`useSetAsideChoiceOf`** as `TradeForm` and `TransactionCard` already use them; `ratePreview` (`lib/rates.ts`).
+- Produces: `withCharged(input: RecordTradeInput, charged: string, holdingCurrency: string, cashCurrency: string): RecordTradeInput`; `tradeRatesForSave(p: { database: Database; ws: WorkspaceContext; input: RecordTradeInput; holdingCurrency: string; cashCurrency: string; needsRate: string | null; manualRate: string; resolveRates: (currencies: string[], onDate: string) => Promise<{ rates: Record<string, number> }>; onMissing: (currency: string) => void; where: string }): Promise<Record<string, number>>`; `baseCostPreview(p: { input: RecordTradeInput | null; holdingCurrency: string; cashCurrency: string; baseCurrency: string; heldRates: Readonly<Record<string, number>> }): { rate: number | null; baseMinor: number | null }`; `PurchaseDraft.charged: string`; `purchaseDraftToInput(draft, currency, today, cashCurrency = currency)`.
 
 - [ ] **Step 1: Failing unit tests**
 
 ```ts
 // apps/web/src/features/networth/trade-money.test.ts
 import { convertMinor } from '@expanses/core';
-import type { Database, RecordTradeInput } from '@expanses/db';
+import type { Database, RecordTradeInput, WorkspaceContext } from '@expanses/db';
 import { describe, expect, it, vi } from 'vitest';
-import { baseCostPreview, tradeMoneyForSave } from './trade-money';
+import { tradeDoor } from '../goals/set-aside-question';
+import { baseCostPreview, tradeRatesForSave, withCharged } from './trade-money';
 
 const buy = (grossMinor: number, extra: Partial<RecordTradeInput> = {}): RecordTradeInput => ({
   accountId: 'aapl', kind: 'buy', occurredOn: '2026-03-08', unitsMicro: 10_000_000, grossMinor, feeMinor: 0, taxMinor: 0, cashAccountId: 'bca', ...extra,
 });
-const common = { database: {} as Database, baseCurrency: 'IDR', needsRate: null, manualRate: '', where: 'Rate that day' };
+// Only a typed rate touches the database (openingRateFor → checkManualRate); none of these types one.
+const common = { database: {} as Database, ws: { baseCurrency: 'IDR' } as WorkspaceContext, needsRate: null, manualRate: '', where: 'Rate that day' };
 
-describe('tradeMoneyForSave', () => {
-  it('reads Charged in with parseMajor and works the rate out, never asking for a day rate', async () => {
+describe('withCharged', () => {
+  it('puts what left the rupiah account on the input, read by parseMajor', () => {
+    expect(withCharged(buy(123_457), '20.000.001', 'USD', 'IDR').cashMinor).toBe(20_000_001);
+  });
+  it('is the set-aside door’s figure: the question weighs the rupiah that left, never the dollar cents', () => {
+    expect(tradeDoor(withCharged(buy(123_457), '20.000.001', 'USD', 'IDR'))!.outflowMinor).toBe(20_000_001);
+  });
+  it('asks for it when the currencies differ, and leaves a one-currency trade and a unit change alone', () => {
+    expect(() => withCharged(buy(123_457), ' ', 'USD', 'IDR')).toThrow(/Charged in IDR/);
+    expect(() => withCharged(buy(123_457), 'abc', 'USD', 'IDR')).toThrow(/must be a number/);
+    expect(() => withCharged(buy(123_457), '0', 'USD', 'IDR')).toThrow(/more than zero/);
+    expect(withCharged(buy(182_500), '', 'USD', 'USD')).toEqual(buy(182_500));
+    expect(withCharged(buy(0, { kind: 'unit_change' }), '', 'USD', 'IDR').cashMinor).toBeUndefined();
+  });
+});
+
+describe('tradeRatesForSave', () => {
+  it('works the rate out from the two amounts and asks no day rate', async () => {
     const resolveRates = vi.fn();
-    const money = await tradeMoneyForSave({ ...common, input: buy(123_457), holdingCurrency: 'USD', cashCurrency: 'IDR', charged: '20.000.001', resolveRates, onMissing: vi.fn() });
-    expect(money.cashMinor).toBe(20_000_001);
-    expect(convertMinor(123_457, 'USD', 'IDR', money.ratesToBase.USD!)).toBe(20_000_001);
+    const rates = await tradeRatesForSave({ ...common, input: withCharged(buy(123_457), '20.000.001', 'USD', 'IDR'), holdingCurrency: 'USD', cashCurrency: 'IDR', resolveRates, onMissing: vi.fn() });
+    expect(convertMinor(123_457, 'USD', 'IDR', rates.USD!)).toBe(20_000_001);
     expect(resolveRates).not.toHaveBeenCalled();
   });
 
+  it('works a buy’s rate out from its whole cost, fee included — what the holding line posts', async () => {
+    const input = withCharged(buy(182_500, { feeMinor: 1_000 }), '28.993.000', 'USD', 'IDR');
+    const rates = await tradeRatesForSave({ ...common, input, holdingCurrency: 'USD', cashCurrency: 'IDR', resolveRates: vi.fn(), onMissing: vi.fn() });
+    expect(rates.USD).toBe(15_800); // 28.993.000 / 1.835,00 — the price alone would say 15.886,6
+  });
+
   it('works a sell’s rate out from the net proceeds', async () => {
-    const sell = buy(90_000, { kind: 'sell', feeMinor: 500, unitsMicro: 4_000_000 });
-    const money = await tradeMoneyForSave({ ...common, input: sell, holdingCurrency: 'USD', cashCurrency: 'IDR', charged: '1.458.850', resolveRates: vi.fn(), onMissing: vi.fn() });
-    expect(convertMinor(89_500, 'USD', 'IDR', money.ratesToBase.USD!)).toBe(1_458_850);
+    const sell = withCharged(buy(90_000, { kind: 'sell', feeMinor: 500, unitsMicro: 4_000_000 }), '1.458.850', 'USD', 'IDR');
+    const rates = await tradeRatesForSave({ ...common, input: sell, holdingCurrency: 'USD', cashCurrency: 'IDR', resolveRates: vi.fn(), onMissing: vi.fn() });
+    expect(convertMinor(89_500, 'USD', 'IDR', rates.USD!)).toBe(1_458_850);
   });
 
-  it('asks for Charged in when the currencies differ and it is empty', async () => {
-    await expect(tradeMoneyForSave({ ...common, input: buy(123_457), holdingCurrency: 'USD', cashCurrency: 'IDR', charged: ' ', resolveRates: vi.fn(), onMissing: vi.fn() })).rejects.toThrow(/IDR/);
+  it('refuses a cross-currency trade that reached it without the charged amount', async () => {
+    await expect(tradeRatesForSave({ ...common, input: buy(123_457), holdingCurrency: 'USD', cashCurrency: 'IDR', resolveRates: vi.fn(), onMissing: vi.fn() })).rejects.toThrow(/Charged in IDR/);
   });
 
-  it('takes the day’s rate for a foreign holding paid in its own currency', async () => {
-    const resolveRates = vi.fn().mockResolvedValue({ rates: { USD: 16_250 }, missing: [] });
-    const money = await tradeMoneyForSave({ ...common, input: buy(182_500, { cashAccountId: 'ibkr' }), holdingCurrency: 'USD', cashCurrency: 'USD', charged: '', resolveRates, onMissing: vi.fn() });
+  it('takes the day’s rate for a foreign holding paid in its own currency, through openingRateFor', async () => {
+    const resolveRates = vi.fn().mockResolvedValue({ rates: { USD: 16_250 } });
+    expect(await tradeRatesForSave({ ...common, input: buy(182_500, { cashAccountId: 'ibkr' }), holdingCurrency: 'USD', cashCurrency: 'USD', resolveRates, onMissing: vi.fn() })).toEqual({ USD: 16_250 });
     expect(resolveRates).toHaveBeenCalledWith(['USD'], '2026-03-08');
-    expect(money).toEqual({ ratesToBase: { USD: 16_250 } });
+  });
+
+  it('takes both day rates when neither side is the base currency', async () => {
+    // openingRateFor asks one currency at a time, in `dayRates` order (sorted): SGD, then USD.
+    const resolveRates = vi.fn().mockResolvedValueOnce({ rates: { SGD: 12_100 } }).mockResolvedValueOnce({ rates: { USD: 16_250 } });
+    const input = withCharged(buy(182_500, { cashAccountId: 'dbs' }), '2.452,00', 'USD', 'SGD');
+    expect(await tradeRatesForSave({ ...common, input, holdingCurrency: 'USD', cashCurrency: 'SGD', resolveRates, onMissing: vi.fn() })).toEqual({ SGD: 12_100, USD: 16_250 });
+    expect(resolveRates.mock.calls).toEqual([[['SGD'], '2026-03-08'], [['USD'], '2026-03-08']]);
   });
 
   it('says which rate is missing and where to type it', async () => {
     const onMissing = vi.fn();
-    const resolveRates = vi.fn().mockResolvedValue({ rates: {}, missing: ['USD'] });
-    await expect(tradeMoneyForSave({ ...common, input: buy(182_500), holdingCurrency: 'USD', cashCurrency: 'USD', charged: '', resolveRates, onMissing })).rejects.toThrow(/Rate that day/);
+    const resolveRates = vi.fn().mockResolvedValue({ rates: {} });
+    await expect(tradeRatesForSave({ ...common, input: buy(182_500, { cashAccountId: null }), holdingCurrency: 'USD', cashCurrency: 'USD', resolveRates, onMissing })).rejects.toThrow(/Rate that day/);
     expect(onMissing).toHaveBeenCalledWith('USD');
   });
 
   it('needs nothing when all of it is base, and nothing for a unit change', async () => {
     const resolveRates = vi.fn();
-    expect(await tradeMoneyForSave({ ...common, input: buy(8_750_000), holdingCurrency: 'IDR', cashCurrency: 'IDR', charged: '', resolveRates, onMissing: vi.fn() })).toEqual({ ratesToBase: {} });
-    expect(await tradeMoneyForSave({ ...common, input: buy(0, { kind: 'unit_change' }), holdingCurrency: 'USD', cashCurrency: 'IDR', charged: '', resolveRates, onMissing: vi.fn() })).toEqual({ ratesToBase: {} });
+    expect(await tradeRatesForSave({ ...common, input: buy(8_750_000), holdingCurrency: 'IDR', cashCurrency: 'IDR', resolveRates, onMissing: vi.fn() })).toEqual({});
+    expect(await tradeRatesForSave({ ...common, input: buy(0, { kind: 'unit_change' }), holdingCurrency: 'USD', cashCurrency: 'IDR', resolveRates, onMissing: vi.fn() })).toEqual({});
     expect(resolveRates).not.toHaveBeenCalled();
   });
 });
 
 describe('baseCostPreview', () => {
-  const p = { holdingCurrency: 'USD', baseCurrency: 'IDR', storedRates: { USD: 16_250 } };
-  it('is what left the account when paid in base', () => {
-    expect(baseCostPreview({ ...p, amountMinor: 182_500, cashCurrency: 'IDR', charged: '28.835.000' })).toEqual({ rate: 15_800, baseMinor: 28_835_000 });
+  const p = { holdingCurrency: 'USD', baseCurrency: 'IDR', heldRates: { USD: 16_250 } };
+  it('is what left the account when paid in base, at the rate the save will work out', () => {
+    expect(baseCostPreview({ ...p, cashCurrency: 'IDR', input: withCharged(buy(182_500), '28.835.000', 'USD', 'IDR') })).toEqual({ rate: 15_800, baseMinor: 28_835_000 });
+    expect(baseCostPreview({ ...p, cashCurrency: 'IDR', input: withCharged(buy(182_500, { feeMinor: 1_000 }), '28.993.000', 'USD', 'IDR') })).toEqual({ rate: 15_800, baseMinor: 28_993_000 });
   });
-  it('converts at the stored day rate when paid in the holding’s currency', () => {
-    expect(baseCostPreview({ ...p, amountMinor: 182_500, cashCurrency: 'USD', charged: '' })).toEqual({ rate: 16_250, baseMinor: 29_656_250 });
+  it('converts the whole cost at the held day rate when paid in the holding’s currency', () => {
+    expect(baseCostPreview({ ...p, cashCurrency: 'USD', input: buy(182_500, { feeMinor: 1_000 }) })).toEqual({ rate: 16_250, baseMinor: convertMinor(183_500, 'USD', 'IDR', 16_250) });
   });
   it('is nothing rather than a guess when it cannot be known', () => {
-    expect(baseCostPreview({ ...p, storedRates: {}, amountMinor: 182_500, cashCurrency: 'USD', charged: '' })).toEqual({ rate: null, baseMinor: null });
-    expect(baseCostPreview({ ...p, amountMinor: 182_500, cashCurrency: 'IDR', charged: 'abc' })).toEqual({ rate: null, baseMinor: null });
+    expect(baseCostPreview({ ...p, heldRates: {}, cashCurrency: 'USD', input: buy(182_500) })).toEqual({ rate: null, baseMinor: null });
+    expect(baseCostPreview({ ...p, cashCurrency: 'IDR', input: null })).toEqual({ rate: null, baseMinor: null });
   });
 });
+```
+
+And in `buy-in-form.test.ts`, beside the existing cases:
+
+```ts
+  it('carries what left a rupiah account for a dollar holding on the input, so the door reads it', () => {
+    const draft = { ...emptyPurchaseDraft('aapl', 'bca', '2026-03-08'), units: '10', amount: '1.234,57', charged: '20.000.001' };
+    expect(purchaseDraftToInput(draft, 'USD', '2026-03-08', 'IDR')).toMatchObject({ grossMinor: 123_457, cashMinor: 20_000_001 });
+    expect(() => purchaseDraftToInput({ ...draft, charged: '' }, 'USD', '2026-03-08', 'IDR')).toThrow(/Charged in IDR/);
+    expect(purchaseDraftToInput(draft, 'USD', '2026-03-08').cashMinor).toBeUndefined(); // one currency: no charged figure
+  });
 ```
 
 - [ ] **Step 2: Run → FAIL.**
@@ -1884,92 +2175,108 @@ describe('baseCostPreview', () => {
 
 ```ts
 // apps/web/src/features/networth/trade-money.ts
-import { convertMinor, isoDate, parseMajor, parseRate, rateFromAmounts, tradeCashMinor, tradeRateNeeds } from '@expanses/core';
-import { type Database, type RecordTradeInput, upsertRate } from '@expanses/db';
-import { checkManualRate } from '../../lib/rates';
+import { convertMinor, isoDate, parseMajor, rateFromAmounts, tradeCashMinor, tradeRateNeeds } from '@expanses/core';
+import type { Database, RecordTradeInput, WorkspaceContext } from '@expanses/db';
+import { openingRateFor } from '../../lib/rates';
+
+const chargedHere = (currency: string) => `Enter the amount in ${currency} under “Charged in ${currency}”`;
 
 /**
- * The rates and the charged amount a trade posts with (spec §5.2) — the one place all three trade forms get them.
- * One side in base: the rate is the ratio of the two amounts, used for this trade only. Otherwise: the day's rate,
- * and a rate typed under `where` when the day has none, checked and stored exactly as the Add Transaction rate row.
+ * What left (or reached) a paying account in another currency, put on the trade itself as `cashMinor` — so the
+ * set-aside door (`tradeDoor`), the question it asks and the save all read the one figure. Read by `parseMajor`; a
+ * one-currency trade and a unit change are returned as they came.
  */
-export async function tradeMoneyForSave(p: {
+export function withCharged(input: RecordTradeInput, charged: string, holdingCurrency: string, cashCurrency: string): RecordTradeInput {
+  if (input.kind === 'unit_change' || holdingCurrency === cashCurrency) return input;
+  if (charged.trim() === '') throw new Error(chargedHere(cashCurrency));
+  let cashMinor: number;
+  try {
+    cashMinor = parseMajor(charged, cashCurrency);
+  } catch {
+    throw new Error(`Charged in ${cashCurrency} must be a number`);
+  }
+  if (!(cashMinor > 0)) throw new Error(`Charged in ${cashCurrency} must be more than zero`);
+  return { ...input, cashMinor };
+}
+
+/**
+ * The rates a trade posts with (spec §5.2) — the one place all three trade forms get them. One side in base: the rate
+ * is the ratio of the two amounts (`tradeCashMinor` is what the holding side moves, read off `tradePostings`), used
+ * for this trade only and never stored. Otherwise each day rate comes from `openingRateFor`: a rate typed under
+ * `where` is checked and stored as the day's manual rate, exactly as every form that opens money does; none typed,
+ * the day is resolved, and a missing one is named and asked for.
+ */
+export async function tradeRatesForSave(p: {
   database: Database;
-  baseCurrency: string;
+  ws: WorkspaceContext;
   input: RecordTradeInput;
   holdingCurrency: string;
   /** The paying or receiving account's currency; the holding's own for an opening position. */
   cashCurrency: string;
-  charged: string;
   needsRate: string | null;
   manualRate: string;
-  resolveRates: (currencies: string[], onDate: string) => Promise<{ rates: Record<string, number>; missing: string[] }>;
+  resolveRates: (currencies: string[], onDate: string) => Promise<{ rates: Record<string, number> }>;
   onMissing: (currency: string) => void;
   where: string;
-}): Promise<{ cashMinor?: number; ratesToBase: Record<string, number> }> {
-  if (p.input.kind === 'unit_change') return { ratesToBase: {} };
-  const needs = tradeRateNeeds(p.holdingCurrency, p.cashCurrency, p.baseCurrency);
-  const moved = tradeCashMinor(p.input.kind, p.input.grossMinor, p.input.feeMinor, p.input.taxMinor);
+}): Promise<Record<string, number>> {
+  if (p.input.kind === 'unit_change') return {};
+  const base = p.ws.baseCurrency;
+  const needs = tradeRateNeeds(p.holdingCurrency, p.cashCurrency, base);
+  if (needs.charged && p.input.cashMinor === undefined) throw new Error(chargedHere(p.cashCurrency));
   const ratesToBase: Record<string, number> = {};
-  let cashMinor: number | undefined;
 
-  if (needs.charged) {
-    if (p.charged.trim() === '') throw new Error(`Enter the amount in ${p.cashCurrency} under “Charged in ${p.cashCurrency}”`);
+  if (needs.derived) {
+    const moved = tradeCashMinor(p.input);
+    ratesToBase[needs.derived] =
+      needs.derived === p.holdingCurrency
+        ? rateFromAmounts(moved, p.holdingCurrency, p.input.cashMinor!, base)
+        : rateFromAmounts(p.input.cashMinor!, p.cashCurrency, moved, base);
+  }
+
+  const onDate = p.input.occurredOn > isoDate() ? isoDate() : p.input.occurredOn;
+  for (const currency of needs.dayRates) {
+    const typed = p.needsRate === currency ? p.manualRate : '';
     try {
-      cashMinor = parseMajor(p.charged, p.cashCurrency);
-    } catch {
-      throw new Error(`Charged in ${p.cashCurrency} must be a number`);
+      // `openingBalanceMinor` only has to be non-zero here: the rate does not depend on the amount.
+      const rate = await openingRateFor({ database: p.database, ws: p.ws, currency, openedOn: onDate, openingBalanceMinor: p.input.grossMinor, typed, resolveRates: p.resolveRates });
+      ratesToBase[currency] = rate!;
+    } catch (error) {
+      if (typed.trim()) throw error; // the typed rate's own refusal: not a number, or ten times off
+      p.onMissing(currency);
+      throw new Error(`No ${currency}→${base} rate for ${onDate}. Type it under “${p.where}”.`);
     }
-    if (!(cashMinor > 0)) throw new Error(`Charged in ${p.cashCurrency} must be more than zero`);
-    if (needs.derived === p.holdingCurrency) ratesToBase[p.holdingCurrency] = rateFromAmounts(moved, p.holdingCurrency, cashMinor, p.baseCurrency);
-    if (needs.derived === p.cashCurrency) ratesToBase[p.cashCurrency] = rateFromAmounts(cashMinor, p.cashCurrency, moved, p.baseCurrency);
   }
-
-  if (needs.dayRates.length > 0) {
-    const rateDate = p.input.occurredOn > isoDate() ? isoDate() : p.input.occurredOn;
-    if (p.needsRate && p.manualRate.trim()) {
-      const rate = parseRate(p.manualRate);
-      await checkManualRate(p.database, p.needsRate, p.baseCurrency, rateDate, rate);
-      await upsertRate(p.database, { fromCurrency: p.needsRate, toCurrency: p.baseCurrency, onDate: rateDate, rate, source: 'manual', sourceDate: rateDate });
-    }
-    const resolved = await p.resolveRates(needs.dayRates, p.input.occurredOn);
-    if (resolved.missing.length > 0) {
-      p.onMissing(resolved.missing[0]!);
-      throw new Error(`No ${resolved.missing[0]}→${p.baseCurrency} rate for ${rateDate}. Type it under “${p.where}”.`);
-    }
-    for (const currency of needs.dayRates) ratesToBase[currency] = resolved.rates[currency]!;
-  }
-  return cashMinor === undefined ? { ratesToBase } : { cashMinor, ratesToBase };
+  return ratesToBase;
 }
 
-/** The read-only "Rate that day" and "Cost in {base}" rows, from what is typed and what is stored. Null when unknown. */
+/**
+ * The read-only "Rate that day" and "Cost in {base}" rows, from the very input the save will send: a buy's whole cost
+ * (fee and tax included — what the holding line posts), at the rate the save will work out or the day rate this
+ * device already holds (`useHeldRates`). Null when it cannot be known; never a guess.
+ */
 export function baseCostPreview(p: {
-  amountMinor: number;
+  input: RecordTradeInput | null;
   holdingCurrency: string;
   cashCurrency: string;
   baseCurrency: string;
-  charged: string;
-  storedRates: Readonly<Record<string, number>>;
+  heldRates: Readonly<Record<string, number>>;
 }): { rate: number | null; baseMinor: number | null } {
-  if (p.holdingCurrency === p.baseCurrency) return { rate: null, baseMinor: p.amountMinor };
-  if (!(p.amountMinor > 0)) return { rate: null, baseMinor: null };
+  const nothing = { rate: null, baseMinor: null };
+  if (!p.input || p.input.kind !== 'buy') return nothing;
+  const cost = tradeCashMinor(p.input);
+  if (p.holdingCurrency === p.baseCurrency) return { rate: null, baseMinor: cost };
   const needs = tradeRateNeeds(p.holdingCurrency, p.cashCurrency, p.baseCurrency);
   if (needs.derived === p.holdingCurrency) {
-    try {
-      const cashMinor = parseMajor(p.charged, p.cashCurrency);
-      if (!(cashMinor > 0)) return { rate: null, baseMinor: null };
-      return { rate: rateFromAmounts(p.amountMinor, p.holdingCurrency, cashMinor, p.baseCurrency), baseMinor: cashMinor };
-    } catch {
-      return { rate: null, baseMinor: null };
-    }
+    if (p.input.cashMinor === undefined) return nothing;
+    return { rate: rateFromAmounts(cost, p.holdingCurrency, p.input.cashMinor, p.baseCurrency), baseMinor: p.input.cashMinor };
   }
-  const rate = p.storedRates[p.holdingCurrency];
-  if (rate === undefined) return { rate: null, baseMinor: null };
-  return { rate, baseMinor: convertMinor(p.amountMinor, p.holdingCurrency, p.baseCurrency, rate) };
+  const rate = p.heldRates[p.holdingCurrency];
+  if (rate === undefined) return nothing;
+  return { rate, baseMinor: convertMinor(cost, p.holdingCurrency, p.baseCurrency, rate) };
 }
 ```
 
-**`TradeForm.tsx`** — add state and rows, and route the save through it:
+**`TradeForm.tsx`** — the set-aside door, the question and the save keep every line they have; the input they read gains the charged amount, and the save gains the rates. Add imports `tradeRateNeeds` (core), `RecordTradeInput` (db type), `useResolveRates` (`../../lib/queries`), `ratePreview` (`../../lib/rates`), `tradeRatesForSave`, `withCharged` (`./trade-money`). Then:
 
 ```tsx
   const resolveRates = useResolveRates();
@@ -1980,21 +2287,23 @@ export function baseCostPreview(p: {
   // An opening position pays from Opening Balances, which moves in the holding's own currency.
   const cashCurrency = cashAccount ? (cashAccount.currency ?? ws.baseCurrency) : currency;
   const needs = tradeRateNeeds(currency, cashCurrency, ws.baseCurrency);
+  /** What `submit` sends, before its rates: the one input the door, the question and the save all read. */
+  const typedInput = (): RecordTradeInput => withCharged(draftToInput(draft, currency, today), charged, currency, cashCurrency);
 ```
 
-In `submit`, replace the two lines building `input` and calling the repo with:
+replace the door's `tradeDoor(draftToInput(draft, currency, today))` with `tradeDoor(typedInput())`, and in `submit` replace the line building `input` with:
 
 ```tsx
-      const typed = draftToInput(draft, currency, today);
-      const money = await tradeMoneyForSave({
-        database, baseCurrency: ws.baseCurrency, input: typed, holdingCurrency: currency, cashCurrency,
-        charged, needsRate, manualRate, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
+      const typed = typedInput();
+      const ratesToBase = await tradeRatesForSave({
+        database, ws, input: typed, holdingCurrency: currency, cashCurrency,
+        needsRate, manualRate, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
       });
-      const input = { ...typed, ...money, templateId: templateId ?? null };
-      const result = editing ? await replaceTrade(database, ws, editing.id, input) : await recordTrade(database, ws, input);
+      // The answer still goes with every save — an edit explicitly, so a question no longer asked clears the old one.
+      const input = { ...typed, ratesToBase, templateId: templateId ?? null, setAside: setAside.choice };
 ```
 
-and after the Tax withheld field, inside the grid:
+(the `replaceTrade` / `recordTrade` line after it is unchanged), and after `setDraft(…)` on success: `setCharged(''); setManualRate(''); setNeedsRate(null);`. The Money account `Select`'s `onChange` also clears the charged figure: `change({ cashAccountId: e.target.value }); setCharged('');`. After the Tax withheld field, inside the grid, in this form's own `Field` / `Input` look:
 
 ```tsx
         {needs.charged && draft.kind !== 'unit_change' && (
@@ -2009,9 +2318,11 @@ and after the Tax withheld field, inside the grid:
         )}
 ```
 
-(imports: `tradeRateNeeds` from core, `useResolveRates` from `../../lib/queries`, `ratePreview` from `../../lib/rates`, `tradeMoneyForSave` from `./trade-money`.) Reset `charged` with the draft after a save.
+An edit of a trade that crossed a currency opens with Charged in empty and is refused until it is typed again (the trade row keeps no cash amount, and none is guessed).
 
-**`buy-in-form.ts`** — `PurchaseDraft` gains `/** What left or reached the paying account in its own currency, when it differs from the holding's. */ charged: string;` and `emptyPurchaseDraft` sets `charged: ''`.
+**`buy-in-form.ts`** — `PurchaseDraft` gains `/** What left or reached the paying account in its own currency, when it differs from the holding's. */ charged: string;`, `emptyPurchaseDraft` sets `charged: ''`, and `purchaseDraftToInput` gains a fourth parameter `cashCurrency = currency` and ends `return withCharged({ …the object it returns today… }, draft.charged, currency, cashCurrency);` (import `withCharged` from `../networth/trade-money`).
+
+**`tx-form.ts`** — in `formToPost`'s trade branch, pass the paying account's currency: `purchaseDraftToInput(draft.purchase, currency, isoDate(), accounts.find((a) => a.id === draft.purchase.moneyId)?.currency ?? currency)`. `postForDoor` → `doorOfForm` → `tradeDoor(post.input)` then reads the charged rupiah with no change of their own.
 
 **`TransactionCard.tsx`** —
 1. Replace `const rateDate = draft.occurredOn > isoDate() ? isoDate() : draft.occurredOn;` with
@@ -2024,123 +2335,135 @@ and after the Tax withheld field, inside the grid:
    const purchaseCashCurrency = purchaseMoney ? (purchaseMoney.currency ?? ws.baseCurrency) : purchaseCurrency;
    const purchaseNeeds = tradeRateNeeds(purchaseCurrency, purchaseCashCurrency, ws.baseCurrency);
    ```
-3. Replace `await recordTrade(database, ws, post.input);` with
+3. Replace `await recordTrade(database, ws, { ...post.input, setAside: setAside.choice });` with
    ```tsx
-        const money = await tradeMoneyForSave({
-          database, baseCurrency: ws.baseCurrency, input: post.input, holdingCurrency: purchaseCurrency, cashCurrency: purchaseCashCurrency,
-          charged: draft.purchase.charged, needsRate, manualRate: draft.manualRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
+        const ratesToBase = await tradeRatesForSave({
+          database, ws, input: post.input, holdingCurrency: purchaseCurrency, cashCurrency: purchaseCashCurrency,
+          needsRate, manualRate: draft.manualRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
         });
-        await recordTrade(database, ws, { ...post.input, ...money });
+        await recordTrade(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
    ```
-4. Under the Paid with / Proceeds into `SelectRow`:
+4. In the Option B trade rows, the Paid with / Proceeds into `SelectRow`'s `onChange` also clears `charged: ''`, and directly under it:
    ```tsx
             {purchaseNeeds.charged && (
               <InputRow
                 label={`Charged in ${purchaseCashCurrency}`}
+                hint={purchase.mode === 'buy' ? `What left ${purchaseMoney?.name ?? 'the account'}, in ${purchaseCashCurrency}.` : `What reached ${purchaseMoney?.name ?? 'the account'}, in ${purchaseCashCurrency}.`}
                 value={purchase.charged}
                 inputMode="decimal"
                 onChange={(e) => setPurchase({ charged: e.target.value })}
               />
             )}
    ```
-   The rate row is the existing Add more details `rate` row, which `needsRate` already draws.
+   The rate row is the existing Add more details rate row, which `needsRate` already draws — dated by the purchase's own day now (change 1).
 
-- [ ] **Step 4: E2E for the two existing forms** (combinations 7 and 8, by keystroke)
+**`e2e/add-transaction.ts`** — `addPurchase` gains `charged?: string`, typed after Paid with: `if (trade.charged) await form.getByLabel(/^Charged in /).pressSequentially(trade.charged);`.
+
+- [ ] **Step 4: E2E for the two existing forms** (combinations 7 and 8, by keystroke, plus the set-aside door across a currency)
 
 ```ts
 // apps/web/e2e/foreign-trades.spec.ts
 import { expect, type Page, test } from '@playwright/test';
+import { addPurchase } from './add-transaction';
+import { expectBalance } from './deposit-maturity';
+import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
   void page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
 });
 
-async function addAccount(page: Page, name: string, balance: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill(balance);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
-}
-
 /** A USD stock owned before the app, through the inline Add asset form that exists today. */
 async function addUsdStock(page: Page) {
   await page.goto('/net-worth/assets');
   await page.getByRole('button', { name: 'Add asset' }).click();
   await page.getByLabel('What is it?').selectOption('stock');
-  await page.getByLabel('Name', { exact: true }).fill('AAPL');
+  await page.getByLabel('Name', { exact: true }).pressSequentially('AAPL');
   await page.getByLabel('Currency').selectOption('USD');
-  await page.getByLabel('Opening rate').fill('15800');
+  await page.getByLabel('Opening rate').pressSequentially('15800');
   await page.getByLabel('Bought on').fill('2025-03-08');
-  await page.getByLabel('How much').fill('10');
-  await page.getByLabel('Total cost (USD)').fill('1825');
+  await page.getByLabel('How much').pressSequentially('10');
+  await page.getByLabel('Total cost (USD)').pressSequentially('1825');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await expect(page.getByRole('link', { name: /AAPL/ })).toBeVisible();
 }
 
 test('Buy & sell sells a USD holding into a rupiah account at exactly the rupiah that arrived', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', '1000000');
+  await addMoneyAccount(page, 'BCA Tahapan', 'bank', '1000000');
   await addUsdStock(page);
   await page.goto('/net-worth/trades');
   await page.getByLabel('What happened').selectOption('sell');
   await page.getByLabel('Holding').selectOption({ label: 'AAPL' });
   await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
   await page.getByLabel('Units, shares or grams').pressSequentially('3');
-  await page.getByLabel(/Proceeds, before fees/).pressSequentially('642.90');
+  await page.getByLabel(/Proceeds, before fees/).pressSequentially('642,90');
   await page.getByLabel('Charged in IDR').pressSequentially('10.447.125');
   await page.getByRole('button', { name: 'Record' }).click();
   await expect(page.getByTestId('trade-notice')).toContainText('Recorded');
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true }).locator('..')).toContainText('11.447.125');
+  await expectBalance(page, 'BCA Tahapan', '11.447.125'); // 1.000.000 + exactly what arrived
 });
 
 test('the Buy / sell tab asks what the rupiah account was charged for a USD buy', async ({ page }) => {
-  await addAccount(page, 'BCA Tahapan', '50000000');
+  await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
   await addUsdStock(page);
   await page.goto('/transactions');
-  await page.getByRole('button', { name: 'Add transaction' }).click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy / sell' }).click();
-  await form.getByLabel('What you bought or sold').selectOption({ label: 'Investments › AAPL' });
-  await form.getByLabel(/What it cost, before fees \(USD\)/).pressSequentially('214.30');
-  await form.getByLabel('Shares').pressSequentially('1');
-  await form.getByLabel('Paid with').selectOption({ label: 'BCA Tahapan' });
-  await form.getByLabel('Charged in IDR').pressSequentially('3.482.375');
-  await form.getByRole('button', { name: 'Save' }).click();
-  await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true }).locator('..')).toContainText('46.517.625');
+  await addPurchase(page, { what: 'AAPL', amount: '214,30', units: '1', paidWith: 'BCA Tahapan (IDR)', charged: '3.482.375' });
+  await expectBalance(page, 'BCA Tahapan', '46.517.625'); // 50.000.000 − 3.482.375
+});
+
+test('a USD buy from Jenius asks which goal paid for the rupiah that left, not the dollar cents', async ({ page }) => {
+  await jeniusWithTwoGoals(page); // Jenius Rp 42.500.000, Rp 37.500.000 promised: Rp 5.000.000 free
+  await addUsdStock(page);
+  await page.goto('/net-worth/trades');
+  await page.getByLabel('Money account').selectOption({ label: 'Jenius' });
+  await page.getByLabel('Holding').selectOption({ label: 'AAPL' });
+  await page.getByLabel('Units, shares or grams').pressSequentially('2');
+  await page.getByLabel(/What it cost, before fees/).pressSequentially('418,50');
+  await page.getByLabel('Charged in IDR').pressSequentially('6.800.000');
+  // 6.800.000 − 5.000.000 free. Read off the dollar figure, 41.850 "rupiah" would have fitted and asked nothing.
+  await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+  await page.getByRole('button', { name: 'Take from Emergency fund' }).click();
+  await page.getByRole('button', { name: 'No — borrowing from it' }).click();
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
+  await expect(page.getByTestId('trade-notice')).toContainText('Recorded');
+  await page.goto('/goals');
+  await expect(goalCard(page, 'Emergency fund').getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
 });
 ```
 
-Labels in this spec are the forms' real labels as of 2026-09-21; if one differs, read the component and use its label — never loosen the balance assertion.
+Labels here are the forms' real labels as of 2026-09-22 (the inline form's rate is `aria-label="Opening rate"`, the Buy / sell tab's money options read `Name (CUR)`); if one differs, read the component and use its label — never loosen a balance assertion. If the inline form gives a USD stock a lot size, `addPurchase`'s `units` becomes `lots`; the figures asserted do not change.
 
-- [ ] **Step 5: Run** unit tests, then `npx playwright test foreign-trades.spec.ts buy-flow.spec.ts add-transaction.spec.ts --workers=2`; root gate.
-- [ ] **Step 6: Commit** `fix(trades): a trade in another currency asks what was charged, and posts with its rates`
+- [ ] **Step 5: Run** `cd apps/web && npx vitest run src/features/networth/trade-money.test.ts src/features/transactions/buy-in-form.test.ts src/features/transactions/tx-form.test.ts`, then `npx playwright test -c playwright.se.config.ts --workers=2 '/foreign-trades\.spec\.ts$' '/buy-flow\.spec\.ts$' '/add-transaction\.spec\.ts$' '/set-aside-doors\.spec\.ts$' '/phone-add-transaction\.spec\.ts$'`; root gate.
+- [ ] **Step 6: Commit** `fix(trades): a trade in another currency asks what was charged, asks which goal paid for it, and posts with its rates`
 
 ---
 
 ## Step 5 — The paid seam, the lists in the app, and the size gate
 
-### Task 9: Entitlements, list queries, `check-bundle.mjs`
+### Task 9: Entitlements and the preview switch, list queries, `check-bundle.mjs`
+
+*Changed by the 2026-09-22 re-scan.* The owner ruled how the paid list is granted before store purchases exist: **a preview switch hidden in developer settings**. There is no developer settings screen on main, so this task builds one — `/settings/developer`, linked from nowhere — with one `SwitchRow`. The first draft's `useEntitlement` memoised the answer once, so a switch flipped on the same device would not reach an open search; it now subscribes. The first draft's `useTodayRates` called `useResolveRates` — a fetch and a write because a screen opened — where main has `useHeldRates` for exactly this; it is dropped.
 
 **Files:**
-- Create: `apps/web/src/lib/entitlements.ts`, `apps/web/src/lib/entitlements.test.ts`, `apps/web/src/features/investments/queries.ts`, `apps/web/scripts/check-bundle.mjs`
-- Modify: `apps/web/package.json`
+- Create: `apps/web/src/lib/entitlements.ts`, `apps/web/src/lib/entitlements.test.ts`, `apps/web/src/features/workspaces/DeveloperSettingsPage.tsx`, `apps/web/src/features/investments/queries.ts`, `apps/web/scripts/check-bundle.mjs`
+- Modify: `apps/web/src/app/router.tsx`, `apps/web/package.json` (in Task 12's commit, see below)
 
 **Interfaces:**
-- Consumes: `loadSecurityList`, `SecurityList` (catalog); `listSecurities`, `listHoldingLinks`, `listSecurityPrices`, `baseCosts` (db); `useResolveRates`.
-- Produces: `type Entitlement = 'foreign_securities'`; `ENTITLEMENTS_KEY`; `grantedEntitlements(storage?)`; `hasEntitlement(e, storage?)`; `useEntitlement(e)`; hooks `useSecurities`, `useHoldingLinks`, `useSecurityPrices(securityId)`, `useBaseCosts()`, `useSecurityList(list, enabled)`, `useTodayRates(currencies)`.
+- Consumes: `loadSecurityList`, `SecurityList` (catalog); `listSecurities`, `listHoldingLinks`, `listSecurityPrices`, `baseCosts` (db); `SwitchRow`, `InsetGroup`, `LargeTitle`, `SCREEN` (kit).
+- Produces: `type Entitlement = 'foreign_securities'`; `ENTITLEMENTS_KEY`; `grantedEntitlements(storage?)`; `hasEntitlement(e, storage?)`; `setPreviewEntitlement(e, on, storage?)`; `useEntitlement(e)`; `DeveloperSettingsPage`; route `/settings/developer`; hooks `useSecurities`, `useHoldingLinks`, `useSecurityPrices(securityId)`, `useBaseCosts()`, `useSecurityList(list, enabled)`.
 
 - [ ] **Step 1: Failing test**
 
 ```ts
 // apps/web/src/lib/entitlements.test.ts
 import { describe, expect, it } from 'vitest';
-import { hasEntitlement } from './entitlements';
+import { ENTITLEMENTS_KEY, hasEntitlement, setPreviewEntitlement } from './entitlements';
 
 const storage = (value: string | null) => ({ getItem: () => value });
+function memory(initial: string | null = null) {
+  const items = new Map<string, string>(initial === null ? [] : [[ENTITLEMENTS_KEY, initial]]);
+  return { getItem: (key: string) => items.get(key) ?? null, setItem: (key: string, value: string) => void items.set(key, value) };
+}
 
 describe('hasEntitlement', () => {
   it('is granted only when the list names it', () => {
@@ -2154,25 +2477,46 @@ describe('hasEntitlement', () => {
     expect(hasEntitlement('foreign_securities', null)).toBe(false);
   });
 });
+
+describe('setPreviewEntitlement', () => {
+  it('grants and withdraws the one entitlement, leaving anything else the list holds', () => {
+    const device = memory('["something_later"]');
+    setPreviewEntitlement('foreign_securities', true, device);
+    expect(hasEntitlement('foreign_securities', device)).toBe(true);
+    expect(JSON.parse(device.getItem(ENTITLEMENTS_KEY)!)).toEqual(['something_later', 'foreign_securities']);
+    setPreviewEntitlement('foreign_securities', false, device);
+    expect(hasEntitlement('foreign_securities', device)).toBe(false);
+    expect(JSON.parse(device.getItem(ENTITLEMENTS_KEY)!)).toEqual(['something_later']);
+  });
+  it('starts a list on a device that has none, and mends one it cannot read', () => {
+    const device = memory('{not json');
+    setPreviewEntitlement('foreign_securities', true, device);
+    expect(JSON.parse(device.getItem(ENTITLEMENTS_KEY)!)).toEqual(['foreign_securities']);
+  });
+});
 ```
 
 - [ ] **Step 2: Implement**
 
 ```ts
 // apps/web/src/lib/entitlements.ts
-import { useMemo } from 'react';
+import { useSyncExternalStore } from 'react';
 
 /** What the paid tier unlocks. Never the ability to record something owned — only the convenience (spec §6.5). */
 export type Entitlement = 'foreign_securities';
 const KNOWN: readonly Entitlement[] = ['foreign_securities'];
 
 /**
- * The one place that says what is granted. Today its source is a device-local list, which is what the end-to-end
- * tests set; when store purchases exist, this function reads them instead and nothing else changes.
+ * The one place that says what is granted. Today its source is a device-local list, written by the preview switch on
+ * the hidden developer settings screen (the owner's ruling) and by the end-to-end tests; when store purchases exist,
+ * this module reads them instead and nothing else changes.
  */
 export const ENTITLEMENTS_KEY = 'expanses.entitlements';
 
-function deviceStorage(): Pick<Storage, 'getItem'> | null {
+type Readable = Pick<Storage, 'getItem'>;
+type Writable = Pick<Storage, 'getItem' | 'setItem'>;
+
+function deviceStorage(): Storage | null {
   try {
     return window.localStorage;
   } catch {
@@ -2180,31 +2524,85 @@ function deviceStorage(): Pick<Storage, 'getItem'> | null {
   }
 }
 
-export function grantedEntitlements(storage: Pick<Storage, 'getItem'> | null = deviceStorage()): ReadonlySet<Entitlement> {
+/** Every string the list holds, as written — so a switch never drops an entry this build does not know. */
+function storedList(storage: Readable | null): string[] {
   try {
     const parsed: unknown = JSON.parse(storage?.getItem(ENTITLEMENTS_KEY) ?? '[]');
-    return new Set(Array.isArray(parsed) ? KNOWN.filter((known) => parsed.includes(known)) : []);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
   } catch {
-    return new Set();
+    return [];
   }
 }
 
-export const hasEntitlement = (entitlement: Entitlement, storage?: Pick<Storage, 'getItem'> | null): boolean =>
+export function grantedEntitlements(storage: Readable | null = deviceStorage()): ReadonlySet<Entitlement> {
+  const listed = storedList(storage);
+  return new Set(KNOWN.filter((known) => listed.includes(known)));
+}
+
+export const hasEntitlement = (entitlement: Entitlement, storage?: Readable | null): boolean =>
   grantedEntitlements(storage === undefined ? deviceStorage() : storage).has(entitlement);
 
+const listeners = new Set<() => void>();
+
+/** The preview switch: grants or withdraws one entitlement on this device. Withdrawing is exactly a lapse. */
+export function setPreviewEntitlement(entitlement: Entitlement, on: boolean, storage: Writable | null = deviceStorage()): void {
+  if (!storage) return;
+  const rest = storedList(storage).filter((item) => item !== entitlement);
+  storage.setItem(ENTITLEMENTS_KEY, JSON.stringify(on ? [...rest, entitlement] : rest));
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  // Another tab flipping the switch reaches this one too.
+  const onStorage = (event: StorageEvent) => event.key === ENTITLEMENTS_KEY && listener();
+  window.addEventListener('storage', onStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+/** Read on every change of the list, so a screen already open follows the switch. */
 export function useEntitlement(entitlement: Entitlement): boolean {
-  return useMemo(() => hasEntitlement(entitlement), [entitlement]);
+  return useSyncExternalStore(subscribe, () => hasEntitlement(entitlement), () => false);
 }
 ```
 
+```tsx
+// apps/web/src/features/workspaces/DeveloperSettingsPage.tsx
+import { InsetGroup, LargeTitle, SCREEN, SwitchRow } from '../../ui/native';
+import { setPreviewEntitlement, useEntitlement } from '../../lib/entitlements';
+
+/**
+ * Developer settings — linked from nowhere on purpose, reached by its address (`/settings/developer`). It holds what
+ * the owner switches on before the app can sell it: today, the US ticker list (the owner's ruling, 2026-09-21).
+ * When store purchases exist, the switch goes and the purchase grants the same entitlement.
+ */
+export function DeveloperSettingsPage() {
+  const foreign = useEntitlement('foreign_securities');
+  return (
+    <div className={SCREEN}>
+      <LargeTitle title="Developer" back="Settings" backTo="/settings" />
+      <InsetGroup
+        header="Previews"
+        footer="On this device only. Turning it off keeps every holding you added from the list; search just stops finding new US tickers."
+      >
+        <SwitchRow label="US ticker list" hint="The paid list, before purchases exist." checked={foreign} onChange={(on) => setPreviewEntitlement('foreign_securities', on)} />
+      </InsetGroup>
+    </div>
+  );
+}
+```
+
+Router, beside `/settings`: `createRoute({ getParentRoute: () => rootRoute, path: '/settings/developer', component: DeveloperSettingsPage }),`. Nothing links to it.
+
 ```ts
 // apps/web/src/features/investments/queries.ts
-import { isoDate } from '@expanses/core';
 import { loadSecurityList, type SecurityList } from '@expanses/catalog';
 import { baseCosts, listHoldingLinks, listSecurities, listSecurityPrices } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
-import { useResolveRates } from '../../lib/queries';
 
 export function useSecurities() {
   const { database, ws } = useApp();
@@ -2230,15 +2628,9 @@ export function useBaseCosts() {
 export function useSecurityList(list: SecurityList, enabled: boolean) {
   return useQuery({ queryKey: ['security-list', list], queryFn: () => loadSecurityList(list), enabled, staleTime: Infinity, gcTime: Infinity, retry: false });
 }
-
-/** Today's rate for each currency the portfolio holds, as the net worth pages resolve them. */
-export function useTodayRates(currencies: string[]) {
-  const { ws } = useApp();
-  const resolveRates = useResolveRates();
-  const today = isoDate();
-  return useQuery({ queryKey: ['today-rates', ws.workspaceId, today, [...currencies].sort().join(',')], queryFn: () => resolveRates(currencies, today) });
-}
 ```
+
+Today's rates on these screens are `useHeldRates` (`features/accounts/queries.ts`) — what the device holds, as the Assets page reads them; no screen here resolves a rate by opening.
 
 ```js
 // apps/web/scripts/check-bundle.mjs — run by `npm run build`. The ticker lists must never reach the entry chunk.
@@ -2249,14 +2641,20 @@ const dir = new URL('../dist/assets/', import.meta.url);
 const js = readdirSync(dir).filter((file) => file.endsWith('.js'));
 const read = (file) => readFileSync(new URL(file, dir));
 const kb = (bytes) => `${(bytes / 1000).toFixed(1)} KB`;
+// The entry chunk is the one index.html loads, read from index.html rather than guessed from a file name.
+const html = readFileSync(new URL('../dist/index.html', import.meta.url), 'utf8');
+const entry = [...html.matchAll(/<script\b[^>]*>/g)]
+  .map((tag) => tag[0])
+  .filter((tag) => tag.includes('type="module"'))
+  .map((tag) => /src="[^"]*\/assets\/([^"]+\.js)"/.exec(tag)?.[1])
+  .filter(Boolean);
 // Sentinels: a name each list carries and no line of the app's own code may contain.
 const LISTS = [
   { name: 'IDX list', sentinel: 'Bank Central Asia', budget: 25_000 },
   { name: 'US list', sentinel: 'Apple Inc', budget: 150_000 },
 ];
 const problems = [];
-const entry = js.filter((file) => file.startsWith('index-'));
-if (entry.length !== 1) problems.push(`expected one entry chunk, found ${entry.join(', ') || 'none'}`);
+if (entry.length !== 1) problems.push(`expected one entry chunk in index.html, found ${entry.join(', ') || 'none'}`);
 for (const file of entry) console.log(`entry ${file}: ${kb(read(file).length)} (${kb(gzipSync(read(file)).length)} gzipped)`);
 for (const list of LISTS) {
   const holders = js.filter((file) => read(file).includes(list.sentinel));
@@ -2276,8 +2674,8 @@ if (problems.length > 0) {
 
 `apps/web/package.json`: `"build": "vite build && node scripts/check-bundle.mjs"`. Until Task 12 imports `loadSecurityList` from a screen, the lists are not in the build at all, so the script would fail with "found in none": land this task's `package.json` change **in Task 12's commit**, and in this task only run the script by hand after a build to see it report.
 
-- [ ] **Step 3: Run** `cd apps/web && npx vitest run src/lib/entitlements.test.ts` → PASS; root gate.
-- [ ] **Step 4: Commit** `feat(web): the paid seam, the list and portfolio queries, and the bundle check`
+- [ ] **Step 3: Run** `cd apps/web && npx vitest run src/lib/entitlements.test.ts` → PASS; root gate; `npx playwright test -c playwright.se.config.ts --workers=2 '/navigation\.spec\.ts$'` (a new route beside `/settings`).
+- [ ] **Step 4: Commit** `feat(web): the paid seam and its hidden preview switch, the list queries, and the bundle check`
 
 ---
 
@@ -2285,13 +2683,15 @@ if (problems.length > 0) {
 
 ### Task 10: The portfolio view and the Investments page
 
+*Rewritten by the 2026-09-22 re-scan.* The first draft converted each row with its own `toBase`, summed a mixed broker with a missing rate counted as nothing (`sum + (b ?? 0)`), shared percentages among the brokers it could convert, read rates by resolving them when the screen opened, drew `≈` lines by hand and formatted lots from a float. Main has every part for this since currency pockets: `sumToBase`, `approxLine` / `rateLine` / `groupedFigure`, `ApproxFigure` / `GroupedRow`, `useHeldRates`, `formatLots`. Investments is also the Assets page's **Investments group, regrouped**: it reads the same `assetValuesAt` rows at the same held rates through the same `sumToBase`, so a test holds its total to `groupAssets`' figure, and a stale price reads "Update price" as `rowSubtitle` does.
+
 **Files:**
 - Create: `apps/web/src/features/investments/portfolio-view.ts`, `portfolio-view.test.ts`, `InvestmentsPage.tsx`
 - Modify: `apps/web/src/features/investments/queries.ts` (add `usePortfolio`), `apps/web/src/app/router.tsx`, `apps/web/src/features/networth/TradesPage.tsx`, `apps/web/src/features/networth/AssetsPage.tsx`
 
 **Interfaces:**
-- Consumes: `portfolioSummary`, `percentShares`, `gainBps`, `convertMinor`, `unitsValueMinor`, `perUnitInBase`, `formatMinor`, `currencyInfo` (core); `AssetValueRow`, `AssetProfileRow`, `AccountRow`, `HoldingLinkRow`, `SecurityRow` (db).
-- Produces: `NO_BROKER = 'none'`; `interface HoldingLine`; `interface StockRow`; `interface BrokerRow`; `interface PortfolioView { summary; stocks; brokers }`; `portfolioView(p: PortfolioInputs): PortfolioView`; `priceChangeLines(holdings, lastPriceMicro: number | null, newPriceMicro: number)`; `rateLabel(rate, currency, base): string`; `usePortfolio()`.
+- Consumes: `portfolioSummary`, `percentShares`, `gainBps`, **`sumToBase`**, `unitsValueMinor`, `formatLots`, `formatMinor`, `formatBps` (core); `AssetValueRow`, `AssetProfileRow`, `AccountRow`, `HoldingLinkRow`, `SecurityRow` (db); **`ApproxFigure`, `approxLine`, `GroupedRow`, `groupedFigure`** (kit); **`useHeldRates`** (`features/accounts/queries.ts`); `groupAssets` (test only).
+- Produces: `NO_BROKER = 'none'`; `interface HoldingLine`; `interface StockRow`; `interface BrokerRow`; `interface PortfolioView { summary; stocks; brokers }`; `portfolioView(p: PortfolioInputs): PortfolioView`; `priceChangeLines(holdings, lastPriceMicro: number | null, newPriceMicro: number)`; `dayLabel(isoDay)`; `usePortfolio()`.
 
 - [ ] **Step 1: Failing test** (the mockup's portfolio)
 
@@ -2299,23 +2699,24 @@ if (problems.length > 0) {
 // apps/web/src/features/investments/portfolio-view.test.ts
 import type { AccountRow, AssetProfileRow, AssetValueRow, HoldingLinkRow, SecurityRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { NO_BROKER, portfolioView, priceChangeLines, rateLabel } from './portfolio-view';
+import { groupAssets } from '../networth/asset-rows';
+import { NO_BROKER, portfolioView, priceChangeLines } from './portfolio-view';
 
-const value = (accountId: string, currency: string, units: number, valueMinor: number, costMinor: number): AssetValueRow =>
-  ({ accountId, name: accountId, currency, planGroup: 'invest', mode: 'market', unitsMicro: units * 1_000_000, stale: false, valueMinor, costMinor, source: 'price', asOf: '2026-09-19' }) as AssetValueRow;
+const value = (accountId: string, currency: string, units: number, valueMinor: number, costMinor: number, stale = false): AssetValueRow =>
+  ({ accountId, name: accountId, currency, planGroup: 'invest', mode: 'market', unitsMicro: units * 1_000_000, stale, valueMinor, costMinor, source: 'price', asOf: '2026-09-19' }) as AssetValueRow;
 const profile = (accountId: string, assetKind: AssetProfileRow['assetKind']) => ({ accountId, assetKind }) as AssetProfileRow;
-const account = (id: string, name: string, currency: string) => ({ id, name, currency, archivedAt: null }) as AccountRow;
+const account = (id: string, name: string, currency: string) => ({ id, name, currency, kind: 'asset', parentId: null, archivedAt: null }) as AccountRow;
 const security = (id: string, ticker: string, currency: string, lotSize: number | null): SecurityRow => ({ id, ticker, name: ticker, market: currency === 'IDR' ? 'IDX' : 'NASDAQ', currency, lotSize, kind: 'share', source: 'catalogue' });
 const link = (accountId: string, securityId: string | null, brokerAccountId: string | null): HoldingLinkRow => ({ accountId, securityId, brokerAccountId });
 const position = (costMinor: number) => ({ unitsMicro: 0, costMinor, realizedMinor: 0, incomeMinor: 0, byYear: {} });
 
+const listed = [
+  value('aapl-ib', 'USD', 10, 214_300, 182_500), value('voo-ib', 'USD', 3, 156_480, 149_460),
+  value('bbca-sb', 'IDR', 1_000, 9_775_000, 8_750_000), value('bbca-ms', 'IDR', 500, 4_887_500, 4_700_000),
+  value('tlkm-sb', 'IDR', 2_000, 5_740_000, 6_200_000, true), value('bbri-ms', 'IDR', 1_200, 5_028_000, 5_460_000),
+];
 const inputs = {
-  values: [
-    value('aapl-ib', 'USD', 10, 214_300, 182_500), value('voo-ib', 'USD', 3, 156_480, 149_460),
-    value('bbca-sb', 'IDR', 1_000, 9_775_000, 8_750_000), value('bbca-ms', 'IDR', 500, 4_887_500, 4_700_000),
-    value('tlkm-sb', 'IDR', 2_000, 5_740_000, 6_200_000), value('bbri-ms', 'IDR', 1_200, 5_028_000, 5_460_000),
-    value('gold', 'IDR', 10, 19_000_000, 18_600_000), value('fund', 'IDR', 100, 1_000_000, 900_000), value('sold', 'IDR', 0, 0, 0),
-  ],
+  values: [...listed, value('gold', 'IDR', 10, 19_000_000, 18_600_000), value('fund', 'IDR', 100, 1_000_000, 900_000), value('sold', 'IDR', 0, 0, 0)],
   profiles: [profile('gold', 'gold'), profile('fund', 'fund'), profile('sold', 'stock')],
   links: [
     link('aapl-ib', 'aapl', 'ib'), link('voo-ib', 'voo', 'ib'), link('bbca-sb', 'bbca', 'sb'),
@@ -2327,28 +2728,34 @@ const inputs = {
   baseCurrency: 'IDR',
   ratesToBase: { USD: 16_250 },
 };
+const withoutFund = { ...inputs, values: inputs.values.filter((v) => v.accountId !== 'fund') };
 
 describe('portfolioView', () => {
   it('reads by stock, largest first, a stock at two brokers once', () => {
-    const view = portfolioView({ ...inputs, values: inputs.values.filter((v) => v.accountId !== 'fund') });
+    const view = portfolioView(withoutFund);
     expect(view.stocks.map((s) => s.title)).toEqual(['AAPL', 'VOO', 'BBCA', 'TLKM', 'BBRI']);
     const bbca = view.stocks.find((s) => s.title === 'BBCA')!;
     expect(bbca).toMatchObject({ unitsMicro: 1_500_000_000, valueMinor: 14_662_500, costMinor: 13_450_000, gainBps: 901, lotSize: 100 });
     expect(bbca.holdings.map((h) => h.brokerName)).toEqual(['Stockbit', 'Mandiri Sekuritas']);
     expect(view.stocks.find((s) => s.title === 'AAPL')).toMatchObject({ currency: 'USD', valueMinor: 214_300, valueBaseMinor: 34_823_750, costBaseMinor: 28_835_000 });
+    expect(view.stocks.find((s) => s.title === 'TLKM')!.stale).toBe(true); // "Update price", as the Assets row says
   });
 
   it('sums the whole portfolio in base and names the exchange-rate part', () => {
-    const view = portfolioView({ ...inputs, values: inputs.values.filter((v) => v.accountId !== 'fund') });
-    expect(view.summary).toMatchObject({ valueBaseMinor: 85_682_250, costBaseMinor: 78_008_060, gainBps: 984, currencyMoveMinor: 1_199_070, converted: true });
+    expect(portfolioView(withoutFund).summary).toMatchObject({ valueBaseMinor: 85_682_250, costBaseMinor: 78_008_060, gainBps: 984, currencyMoveMinor: 1_199_070, converted: true });
   });
 
-  it('lists each broker with its own-currency total and a share that adds to 100', () => {
-    const view = portfolioView({ ...inputs, values: inputs.values.filter((v) => v.accountId !== 'fund') });
-    expect(view.brokers.map((b) => [b.name, b.leadCurrency, b.leadMinor, b.converted, b.sharePercent])).toEqual([
-      ['Interactive Brokers', 'USD', 370_780, false, 71],
-      ['Stockbit', 'IDR', 15_515_000, false, 18],
-      ['Mandiri Sekuritas', 'IDR', 9_915_500, false, 11],
+  it('is the Assets page’s Investments group regrouped: the same total at the same rates', () => {
+    const assets = groupAssets(listed, [], { accounts: inputs.accounts, baseCurrency: 'IDR', ratesToBase: inputs.ratesToBase });
+    expect(portfolioView({ ...inputs, values: listed }).summary.valueBaseMinor).toBe(assets.find((g) => g.group === 'invest')!.totalMinor);
+    expect(assets.find((g) => g.group === 'invest')!.totalMinor).toBe(85_682_250);
+  });
+
+  it('lists each broker in its own currency with a share that adds to 100 — floor and remainder, 71 · 18 · 11', () => {
+    expect(portfolioView(withoutFund).brokers.map((b) => [b.name, b.currency, b.valueMinor, b.sharePercent])).toEqual([
+      ['Interactive Brokers', 'USD', 370_780, 71],
+      ['Stockbit', 'IDR', 15_515_000, 18],
+      ['Mandiri Sekuritas', 'IDR', 9_915_500, 11],
     ]);
   });
 
@@ -2356,41 +2763,38 @@ describe('portfolioView', () => {
     const view = portfolioView(inputs);
     expect(view.stocks.find((s) => s.accountId === 'fund')).toMatchObject({ securityId: null, title: 'fund' });
     expect(view.stocks.some((s) => s.accountId === 'gold' || s.accountId === 'sold')).toBe(false);
-    expect(view.brokers.find((b) => b.key === NO_BROKER)).toMatchObject({ name: 'No broker named', leadMinor: 1_000_000 });
+    expect(view.brokers.find((b) => b.key === NO_BROKER)).toMatchObject({ name: 'No broker named', currency: 'IDR', valueMinor: 1_000_000 });
   });
 
-  it('leads a broker holding two currencies in base, converted', () => {
-    const view = portfolioView({ ...inputs, links: inputs.links.map((l) => (l.accountId === 'aapl-ib' ? { ...l, brokerAccountId: 'sb' } : l)) });
-    expect(view.brokers.find((b) => b.name === 'Stockbit')).toMatchObject({ leadCurrency: 'IDR', leadMinor: 34_823_750 + 15_515_000, converted: true });
+  it('adds a broker holding two currencies up in base through sumToBase, with no own-currency figure', () => {
+    const view = portfolioView({ ...withoutFund, links: withoutFund.links.map((l) => (l.accountId === 'aapl-ib' ? { ...l, brokerAccountId: 'sb' } : l)) });
+    expect(view.brokers.find((b) => b.name === 'Stockbit')).toMatchObject({ currency: null, valueMinor: null, total: { totalMinor: 34_823_750 + 15_515_000, missing: [] } });
+  });
+
+  it('refuses every total it has no rate for, naming the currency, and shares nothing out of a whole it cannot add up', () => {
+    const view = portfolioView({ ...withoutFund, ratesToBase: {} });
+    expect(view.summary).toMatchObject({ valueBaseMinor: null, missingRates: ['USD'] });
+    expect(view.brokers.find((b) => b.name === 'Interactive Brokers')!.total).toEqual({ totalMinor: null, missing: ['USD'] });
+    // Stockbit's own figure is exact in rupiah; only its share of a total nobody can add up is withheld.
+    expect(view.brokers.map((b) => b.sharePercent)).toEqual([null, null, null]);
+    expect(view.brokers.find((b) => b.name === 'Stockbit')!.valueMinor).toBe(15_515_000);
   });
 });
 
 describe('priceChangeLines', () => {
   it('is each holding’s value at the new price and its move from the last', () => {
-    const view = portfolioView(inputs);
-    const bbca = view.stocks.find((s) => s.title === 'BBCA')!;
+    const bbca = portfolioView(inputs).stocks.find((s) => s.title === 'BBCA')!;
     expect(priceChangeLines(bbca.holdings, 9_550_000_000, 9_775_000_000).map((l) => [l.valueMinor, l.changeMinor])).toEqual([[9_775_000, 225_000], [4_887_500, 112_500]]);
     expect(priceChangeLines(bbca.holdings, null, 9_775_000_000)[0]!.changeMinor).toBeNull();
   });
 });
-
-describe('rateLabel', () => {
-  it('is one unit of the currency in base', () => {
-    expect(rateLabel(16_250, 'USD', 'IDR')).toBe('Rp 16.250 / $'.replace(' ', ' '));
-  });
-});
 ```
-
-(`formatMinor` puts a no-break space after `Rp`; if its output differs, assert `\`${formatMinor(16_250, 'IDR')} / $\`` — the figure is what matters.)
 
 - [ ] **Step 2: Implement**
 
 ```ts
 // apps/web/src/features/investments/portfolio-view.ts
-import {
-  type AssetKind, convertMinor, currencyInfo, formatMinor, gainBps, percentShares, perUnitInBase, portfolioSummary, type PortfolioSummary,
-  type Position, unitsValueMinor,
-} from '@expanses/core';
+import { type AssetKind, gainBps, percentShares, portfolioSummary, type PortfolioSummary, type Position, sumToBase, unitsValueMinor } from '@expanses/core';
 import type { AccountRow, AssetProfileRow, AssetValueRow, HoldingLinkRow, SecurityRow } from '@expanses/db';
 
 export const NO_BROKER = 'none';
@@ -2407,6 +2811,8 @@ export interface HoldingLine {
   valueMinor: number;
   costMinor: number;
   costBaseMinor: number;
+  /** The owner should type a fresh price — the Assets page's own flag. */
+  stale: boolean;
 }
 
 export interface StockRow {
@@ -2423,9 +2829,10 @@ export interface StockRow {
   valueMinor: number;
   costMinor: number;
   costBaseMinor: number;
-  /** Null when there is no rate today for its currency. */
+  /** In base through `sumToBase`; null when there is no rate for its currency. For ordering only — the row draws `approxLine`. */
   valueBaseMinor: number | null;
   gainBps: number | null;
+  stale: boolean;
   holdings: HoldingLine[];
 }
 
@@ -2434,12 +2841,13 @@ export interface BrokerRow {
   accountId: string | null;
   name: string;
   holdings: HoldingLine[];
-  /** Its own currency when every holding there shares one, else base. */
-  leadCurrency: string;
-  leadMinor: number;
-  converted: boolean;
-  valueBaseMinor: number | null;
+  /** The one currency every holding here is in, and their total in it — or both null when there are two. */
+  currency: string | null;
+  valueMinor: number | null;
+  /** Everything here in base (`sumToBase`): null with the missing rates named, never the rest summed. */
+  total: { totalMinor: number | null; missing: string[] };
   costBaseMinor: number;
+  /** Floor and remainder to the largest (the owner's ruling); null unless every broker could be added up. */
   sharePercent: number | null;
 }
 
@@ -2457,6 +2865,7 @@ export interface PortfolioInputs {
   accounts: readonly AccountRow[];
   baseCosts: Readonly<Record<string, Position>>;
   baseCurrency: string;
+  /** The rates this device holds for today (`useHeldRates`) — the ones the Assets page adds up with. */
   ratesToBase: Readonly<Record<string, number>>;
 }
 
@@ -2467,11 +2876,7 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
   const securityOf = new Map(p.securities.map((s) => [s.id, s]));
   const kindOf = new Map(p.profiles.map((profile) => [profile.accountId, profile.assetKind]));
   const accountOf = new Map(p.accounts.map((a) => [a.id, a]));
-  const toBase = (minor: number, currency: string): number | null => {
-    if (currency === p.baseCurrency) return minor;
-    const rate = p.ratesToBase[currency];
-    return rate === undefined ? null : convertMinor(minor, currency, p.baseCurrency, rate);
-  };
+  const inBase = (amounts: readonly { minor: number; currency: string }[]) => sumToBase({ amounts, baseCurrency: p.baseCurrency, ratesToBase: p.ratesToBase });
 
   const lines: (HoldingLine & { securityId: string | null })[] = [];
   for (const value of p.values) {
@@ -2490,6 +2895,7 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
       valueMinor: value.valueMinor,
       costMinor: value.costMinor,
       costBaseMinor: value.currency === p.baseCurrency ? value.costMinor : (p.baseCosts[value.accountId]?.costMinor ?? 0),
+      stale: value.stale,
     });
   }
 
@@ -2501,16 +2907,22 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
       key, securityId: line.securityId, accountId: line.securityId ? null : line.accountId,
       title: security ? (security.ticker ?? security.name) : line.name, name: security?.name ?? line.name, market: security?.market || null,
       currency: line.currency, lotSize: security?.lotSize ?? null, unitsMicro: 0, valueMinor: 0, costMinor: 0, costBaseMinor: 0,
-      valueBaseMinor: 0, gainBps: null, holdings: [],
+      valueBaseMinor: null, gainBps: null, stale: false, holdings: [],
     };
+    // One security, one currency (linkHolding refuses another), so these are same-currency sums.
     row.unitsMicro += line.unitsMicro;
     row.valueMinor += line.valueMinor;
     row.costMinor += line.costMinor;
     row.costBaseMinor += line.costBaseMinor;
+    row.stale ||= line.stale;
     row.holdings.push(line);
     stocksByKey.set(key, row);
   }
-  const stocks = [...stocksByKey.values()].map((row) => ({ ...row, valueBaseMinor: toBase(row.valueMinor, row.currency), gainBps: gainBps(row.valueMinor, row.costMinor) }));
+  const stocks = [...stocksByKey.values()].map((row) => ({
+    ...row,
+    valueBaseMinor: inBase([{ minor: row.valueMinor, currency: row.currency }]).totalMinor,
+    gainBps: gainBps(row.valueMinor, row.costMinor),
+  }));
   stocks.sort((a, b) => byBaseValue(a, b) || a.title.localeCompare(b.title));
 
   const brokersByKey = new Map<string, HoldingLine[]>();
@@ -2521,26 +2933,26 @@ export function portfolioView(p: PortfolioInputs): PortfolioView {
   const brokers: BrokerRow[] = [...brokersByKey].map(([key, holdings]) => {
     const currencies = new Set(holdings.map((h) => h.currency));
     const single = currencies.size === 1 ? [...currencies][0]! : null;
-    const bases = holdings.map((h) => toBase(h.valueMinor, h.currency));
-    const valueBaseMinor = bases.some((b) => b === null) ? null : bases.reduce<number>((sum, b) => sum + b!, 0);
     return {
       key,
       accountId: key === NO_BROKER ? null : key,
       name: holdings[0]!.brokerName,
       holdings,
-      leadCurrency: single ?? p.baseCurrency,
-      leadMinor: single ? holdings.reduce((sum, h) => sum + h.valueMinor, 0) : bases.reduce<number>((sum, b) => sum + (b ?? 0), 0),
-      converted: single === null,
-      valueBaseMinor,
+      currency: single,
+      valueMinor: single ? holdings.reduce((sum, h) => sum + h.valueMinor, 0) : null,
+      total: inBase(holdings.map((h) => ({ minor: h.valueMinor, currency: h.currency }))),
       costBaseMinor: holdings.reduce((sum, h) => sum + h.costBaseMinor, 0),
       sharePercent: null,
     };
   });
-  brokers.sort((a, b) => byBaseValue(a, b) || a.name.localeCompare(b.name));
-  const known = brokers.filter((b) => b.valueBaseMinor !== null);
-  percentShares(known.map((b) => b.valueBaseMinor!)).forEach((share, i) => {
-    known[i]!.sharePercent = share;
-  });
+  const byTotal = (a: BrokerRow, b: BrokerRow) => (b.total.totalMinor ?? -1) - (a.total.totalMinor ?? -1);
+  brokers.sort((a, b) => byTotal(a, b) || a.name.localeCompare(b.name));
+  // A share is of a whole: with any broker unconvertible there is no whole, so no broker gets a share.
+  if (brokers.every((b) => b.total.totalMinor !== null)) {
+    percentShares(brokers.map((b) => b.total.totalMinor!)).forEach((share, i) => {
+      brokers[i]!.sharePercent = share;
+    });
+  }
 
   return {
     summary: portfolioSummary(lines.map((l) => ({ currency: l.currency, valueMinor: l.valueMinor, costMinor: l.costMinor, costBaseMinor: l.costBaseMinor })), p.baseCurrency, p.ratesToBase),
@@ -2557,19 +2969,18 @@ export function priceChangeLines(holdings: readonly HoldingLine[], lastPriceMicr
   });
 }
 
-/** "Rp 16.250 / $" */
-export const rateLabel = (rate: number, currency: string, base: string): string =>
-  `${formatMinor(perUnitInBase(rate, currency, base), base)} / ${currencyInfo(currency).symbol}`;
-
 /** "8 Mar 2025" */
 export const dayLabel = (isoDay: string): string =>
   new Date(`${isoDay}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 ```
 
+A rate is drawn with the kit's `rateLine` ("16.250 IDR per 1 USD") everywhere in these screens; the first draft's `rateLabel` ("Rp 16.250 / $") is not built.
+
 Add to `queries.ts`:
 
 ```ts
 import { useAccounts } from '../../lib/queries';
+import { useHeldRates } from '../accounts/queries';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
 import { portfolioView } from './portfolio-view';
 
@@ -2582,81 +2993,86 @@ export function usePortfolio() {
   const securities = useSecurities();
   const accounts = useAccounts();
   const costs = useBaseCosts();
-  const currencies = [...new Set((values.data ?? []).filter((v) => v.mode === 'market').map((v) => v.currency))].filter((c) => c !== ws.baseCurrency);
-  const rates = useTodayRates(currencies);
-  const parts = [values, profiles, links, securities, accounts, costs, rates];
+  // Exactly the Assets page's call — the same currencies, the same query — so both pages add up at the same rates.
+  const held = useHeldRates((values.data ?? []).map((row) => row.currency));
+  const parts = [values, profiles, links, securities, accounts, costs, held];
   const ready = parts.every((part) => part.data !== undefined);
   const view = ready
     ? portfolioView({
         values: values.data!, profiles: profiles.data!, links: links.data!, securities: securities.data!, accounts: accounts.data!,
-        baseCosts: costs.data!.positions, baseCurrency: ws.baseCurrency, ratesToBase: rates.data!.rates,
+        baseCosts: costs.data!.positions, baseCurrency: ws.baseCurrency, ratesToBase: held.data!.rates,
       })
     : null;
-  return { view, rates: rates.data?.rates ?? {}, costs: costs.data ?? null, securities: securities.data ?? [], isPending: !ready, error: parts.find((part) => part.error)?.error ?? null };
+  return {
+    view,
+    rates: held.data?.rates ?? {},
+    costs: costs.data ?? null,
+    securities: securities.data ?? [],
+    accounts: accounts.data ?? [],
+    isPending: !ready,
+    error: parts.find((part) => part.error)?.error ?? null,
+  };
 }
 ```
 
 ```tsx
 // apps/web/src/features/investments/InvestmentsPage.tsx
-import { formatBps, formatMinor, formatUnits, lotsOf } from '@expanses/core';
+import { formatBps, formatLots, formatMinor } from '@expanses/core';
 import { Plus } from 'lucide-react';
 import { useApp } from '../../app/context';
-import { Empty, ErrorBox, Money } from '../../ui';
-import { Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
-import { NetWorthTabs } from '../networth/NetWorthTabs';
+import { Empty, ErrorBox } from '../../ui';
+import { ApproxFigure, approxLine, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { type BrokerRow, type StockRow } from './portfolio-view';
 import { usePortfolio } from './queries';
 
-function stockSubtitle(row: StockRow, base: string): string {
-  const units =
-    row.lotSize && row.lotSize > 1
-      ? `${formatUnits(row.unitsMicro)} shares · ${formatUnits(Math.round(lotsOf(row.unitsMicro, row.lotSize) * 1_000_000))} lots`
-      : `${formatUnits(row.unitsMicro)} shares`;
+function stockSubtitle(row: StockRow): string {
   const where = row.holdings.length > 1 ? `${row.holdings.length} brokers` : row.holdings[0]!.brokerName;
   const gain = row.gainBps === null ? null : formatBps(row.gainBps);
-  const converted = row.currency !== base && row.valueBaseMinor !== null ? `≈ ${formatMinor(row.valueBaseMinor, base)}` : null;
-  return [units, where, gain, converted].filter(Boolean).join(' · ');
+  // The Assets page's own words for a price that needs typing again.
+  return [formatLots(row.unitsMicro, row.lotSize ?? 1), where, gain, row.stale ? 'Update price' : null].filter(Boolean).join(' · ');
 }
 
 function brokerSubtitle(row: BrokerRow): string {
   const count = `${row.holdings.length} ${row.holdings.length === 1 ? 'holding' : 'holdings'}`;
-  return [count, row.converted ? null : row.leadCurrency, row.sharePercent === null ? null : `${row.sharePercent}%`].filter(Boolean).join(' · ');
+  return [count, row.currency, row.sharePercent === null ? null : `${row.sharePercent}%`].filter(Boolean).join(' · ');
 }
 
+/** The Assets page's Investments group, read by stock and by broker. Reached from Assets and from Buy & sell. */
 export function InvestmentsPage() {
   const { ws } = useApp();
-  const { view, isPending, error } = usePortfolio();
+  const { view, rates, isPending, error } = usePortfolio();
   const base = ws.baseCurrency;
   return (
     <div className={SCREEN}>
       <LargeTitle
         title="Investments"
-        back="Buy & sell"
-        backTo="/net-worth/trades"
+        back="Assets"
+        backTo="/net-worth/assets"
         actions={[{ key: 'add', label: 'Add a holding', glyph: <Plus size={20} aria-hidden />, to: '/net-worth/investments/new' }]}
       />
-      <NetWorthTabs />
       <ErrorBox error={error} />
       {view && view.stocks.length === 0 && <Empty>No shares or funds yet. Add a holding to see it here.</Empty>}
       {view && view.stocks.length > 0 && (
         <>
-          <Hero
-            minor={view.summary.valueBaseMinor}
-            currency={base}
-            caption={
-              <span data-testid="portfolio-caption">
-                {view.summary.converted ? '≈ ' : ''}
-                {formatMinor(view.summary.gainBaseMinor, base)}
-                {view.summary.gainBps === null ? '' : ` · ${formatBps(view.summary.gainBps)} in ${base}`}
-                {view.summary.converted && view.summary.currencyMoveMinor !== 0 && (
-                  <span className="block">{formatMinor(view.summary.currencyMoveMinor, base)} of that is exchange-rate movement</span>
-                )}
-                {view.summary.missingRates.length > 0 && (
-                  <span className="block text-[var(--ph-warn)]">Not counted: no rate today for {view.summary.missingRates.join(', ')}</span>
-                )}
-              </span>
-            }
-          />
+          {view.summary.valueBaseMinor !== null ? (
+            <Hero
+              minor={view.summary.valueBaseMinor}
+              currency={base}
+              caption={
+                <span data-testid="portfolio-caption">
+                  {view.summary.converted ? '≈ ' : ''}
+                  {formatMinor(view.summary.gainBaseMinor!, base)}
+                  {view.summary.gainBps === null ? '' : ` · ${formatBps(view.summary.gainBps)} in ${base}`}
+                  {view.summary.currencyMoveMinor !== null && view.summary.currencyMoveMinor !== 0 && (
+                    <span className="block">{formatMinor(view.summary.currencyMoveMinor, base)} of that is exchange-rate movement</span>
+                  )}
+                </span>
+              }
+            />
+          ) : (
+            // The Assets page's own words when a rate is missing: no partial total, every figure below exact.
+            <Empty>No {view.summary.missingRates.join(', ')} rate yet, so your investments cannot be added up. Each figure below is exact.</Empty>
+          )}
           <InsetGroup>
             <ReadOnlyRow label="Put in" value={formatMinor(view.summary.costBaseMinor, base)} />
             <ReadOnlyRow label="Holdings" value={`${view.stocks.length} stocks · ${view.brokers.filter((b) => b.accountId).length} brokers`} />
@@ -2667,9 +3083,10 @@ export function InvestmentsPage() {
                 key={row.key}
                 testId="stock-row"
                 title={row.title}
-                subtitle={stockSubtitle(row, base)}
-                value={<Money minor={row.valueMinor} currency={row.currency} />}
-                valueTone="ink"
+                subtitle={stockSubtitle(row)}
+                // R1: its own currency leads; the ≈ line beneath it, from the kit, as pockets draw theirs.
+                value={<ApproxFigure figure={formatMinor(row.valueMinor, row.currency)} beneath={approxLine(row.valueMinor, row.currency, base, rates)} />}
+                valueTone={row.stale ? 'warn' : 'ink'}
                 {...(row.securityId
                   ? { to: '/net-worth/investments/security/$securityId', params: { securityId: row.securityId } }
                   : { to: '/net-worth/assets/$accountId', params: { accountId: row.accountId! } })}
@@ -2677,18 +3094,23 @@ export function InvestmentsPage() {
             ))}
           </InsetGroup>
           <InsetGroup header="Where they are kept">
-            {view.brokers.map((row) => (
-              <InsetRow
-                key={row.key}
-                testId="broker-row"
-                title={row.name}
-                subtitle={brokerSubtitle(row)}
-                value={<>{row.converted ? '≈ ' : ''}<Money minor={row.leadMinor} currency={row.leadCurrency} /></>}
-                valueTone="ink"
-                to={row.accountId ? '/net-worth/investments/broker/$accountId' : '/net-worth/investments/broker/none'}
-                params={row.accountId ? { accountId: row.accountId } : undefined}
-              />
-            ))}
+            {view.brokers.map((row) => {
+              const to = row.accountId ? { to: '/net-worth/investments/broker/$accountId' as const, params: { accountId: row.accountId } } : { to: '/net-worth/investments/broker/none' as const };
+              // Two currencies at one broker: a parent that adds its children up, exactly as a row of pockets.
+              return row.currency === null ? (
+                <GroupedRow key={row.key} testId="broker-row" title={row.name} subtitle={brokerSubtitle(row)} figure={groupedFigure(row.total, base)} {...to} />
+              ) : (
+                <InsetRow
+                  key={row.key}
+                  testId="broker-row"
+                  title={row.name}
+                  subtitle={brokerSubtitle(row)}
+                  value={<ApproxFigure figure={formatMinor(row.valueMinor!, row.currency)} beneath={approxLine(row.valueMinor!, row.currency, base, rates)} />}
+                  valueTone="ink"
+                  {...to}
+                />
+              );
+            })}
           </InsetGroup>
         </>
       )}
@@ -2698,6 +3120,7 @@ export function InvestmentsPage() {
 }
 ```
 
+No `NetWorthTabs` here: this is a page pushed from Assets (and Buy & sell) with a back line, like an asset's own page — the segmented control would light Overview for an address none of its five segments owns.
 
 Router: import the page and add
 `createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments', component: InvestmentsPage }),`
@@ -2708,9 +3131,9 @@ Entry rows: in `TradesPage.tsx` directly after `<NetWorthTabs />`:
         <InsetRow title="Investments" subtitle="By stock and by broker" to="/net-worth/investments" />
       </InsetGroup>
 ```
-In `AssetsPage.tsx`'s `Group`, after the rows: `{group.group === 'invest' && <InsetRow title="By stock and broker" to="/net-worth/investments" />}`.
+In `AssetsPage.tsx`'s `Group`, after the rows: `{group.group === 'invest' && <InsetRow title="By stock and broker" to="/net-worth/investments" />}` — `InsetGroup` places its children, so the row sits inside the Investments group as its last row, under the group's own total.
 
-- [ ] **Step 3: Run** `npx vitest run src/features/investments/portfolio-view.test.ts` → PASS; root gate; `npx playwright test net-worth.spec.ts assets.spec.ts buy-flow.spec.ts --workers=2`.
+- [ ] **Step 3: Run** `cd apps/web && npx vitest run src/features/investments/portfolio-view.test.ts src/features/networth/asset-rows.test.ts` → PASS; root gate; `npx playwright test -c playwright.se.config.ts --workers=2 '/net-worth\.spec\.ts$' '/assets\.spec\.ts$' '/buy-flow\.spec\.ts$' '/currency-pockets\.spec\.ts$'`.
 - [ ] **Step 4: Commit** `feat(investments): the portfolio read by stock and by broker`
 
 ### Task 11: The stock, price and broker pages
@@ -2720,20 +3143,20 @@ In `AssetsPage.tsx`'s `Group`, after the rows: `{group.group === 'invest' && <In
 - Modify: `apps/web/src/app/router.tsx`
 
 **Interfaces:**
-- Consumes: `usePortfolio`, `useSecurityPrices`, `useTrades` (`networth/queries.ts`), `priceChangeLines`, `rateLabel`, `dayLabel`, `upsertSecurityPrice`, `parsePriceMicro`, `formatPriceMicro`, `priceMicroFrom`, `rateFromAmounts`, `formatUnits`, `useBalances`.
+- Consumes: `usePortfolio`, `useSecurityPrices`, `useTrades` (`networth/queries.ts`), `priceChangeLines`, `dayLabel`, `upsertSecurityPrice`, `parsePriceMicro`, `formatPriceMicro`, `priceMicroFrom`, `rateFromAmounts`, `formatUnits`, `useBalances`; **`rateLine`, `approxLine`, `ApproxFigure`, `groupedFigure`** (kit); **`pocketParentIds`** (db) to tell a broker holding pockets from a plain one, for its idle cash, each pocket in its own currency.
 - Produces: routes `/net-worth/investments/security/$securityId`, `/…/price`, `/net-worth/investments/broker/$accountId`, `/net-worth/investments/broker/none`.
 
 - [ ] **Step 1: SecurityPage**
 
 ```tsx
 // apps/web/src/features/investments/SecurityPage.tsx
-import { convertMinor, formatBps, formatMinor, formatPriceMicro, formatUnits, gainBps, priceMicroFrom, rateFromAmounts } from '@expanses/core';
+import { formatBps, formatMinor, formatPriceMicro, formatUnits, gainBps, priceMicroFrom, rateFromAmounts } from '@expanses/core';
 import { useParams } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
+import { ApproxFigure, approxLine, Hero, InsetGroup, InsetRow, LargeTitle, rateLine, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { useTrades } from '../networth/queries';
-import { dayLabel, rateLabel } from './portfolio-view';
+import { dayLabel } from './portfolio-view';
 import { usePortfolio, useSecurityPrices } from './queries';
 
 const KIND = { buy: 'Bought', sell: 'Sold', income: 'Income from', unit_change: 'Units changed on' } as const;
@@ -2771,14 +3194,20 @@ export function SecurityPage() {
           <>
             {formatMinor(gain, stock.currency)}
             {stock.gainBps === null ? '' : ` · ${formatBps(stock.gainBps)}`}
-            {foreign && stock.valueBaseMinor !== null && rate !== undefined && <span className="block">≈ {formatMinor(stock.valueBaseMinor, base)} · at {rateLabel(rate, stock.currency, base)}</span>}
+            {foreign && (
+              // The kit's own ≈ line (or "No USD rate yet"), then the rate it used in the kit's own words.
+              <span className="block">
+                {approxLine(stock.valueMinor, stock.currency, base, rates)}
+                {rate !== undefined ? ` · at ${rateLine(rate, stock.currency, base)}` : ''}
+              </span>
+            )}
           </>
         }
       />
       {foreign && (
         <InsetGroup header={`In ${base}`} footer="Both are true: the figure above is what the stock did; this one includes the exchange rate moving.">
           {baseGain !== null && <ReadOnlyRow label={`Gain in ${base}`} value={`${formatMinor(baseGain, base)} · ${formatBps(gainBps(stock.valueBaseMinor!, stock.costBaseMinor) ?? 0)}`} />}
-          {stock.costMinor > 0 && stock.costBaseMinor > 0 && <ReadOnlyRow label="Bought at" value={rateLabel(rateFromAmounts(stock.costMinor, stock.currency, stock.costBaseMinor, base), stock.currency, base)} />}
+          {stock.costMinor > 0 && stock.costBaseMinor > 0 && <ReadOnlyRow label="Bought at" value={rateLine(rateFromAmounts(stock.costMinor, stock.currency, stock.costBaseMinor, base), stock.currency, base)} />}
         </InsetGroup>
       )}
       <InsetGroup>
@@ -2809,7 +3238,7 @@ export function SecurityPage() {
           {recent.map((trade) => {
             const pinned = trade.kind === 'buy' && foreign ? costs?.buyBaseMinor[trade.id] : undefined;
             const cost = trade.grossMinor + trade.feeMinor + trade.taxMinor;
-            const at = pinned && cost > 0 ? ` · at ${rateLabel(rateFromAmounts(cost, stock.currency, pinned, base), stock.currency, base)}` : '';
+            const at = pinned && cost > 0 ? ` · at ${rateLine(rateFromAmounts(cost, stock.currency, pinned, base), stock.currency, base)}` : '';
             return (
               // Read-only on purpose: a trade is changed only on Buy & sell, which works later sells out again (spec §9).
               <InsetRow
@@ -2828,7 +3257,7 @@ export function SecurityPage() {
 }
 ```
 
-(`convertMinor` is unused here if the compiler says so — remove it from the import.)
+(`Held at` rows lead in the holding's own currency with `<Money>`; a foreign stock's `≈` sits once, in the `Hero`.)
 
 - [ ] **Step 2: SecurityPricePage**
 
@@ -2920,35 +3349,51 @@ export function SecurityPricePage() {
 ```tsx
 // apps/web/src/features/investments/BrokerPage.tsx
 import { formatBps, formatMinor, formatUnits, gainBps } from '@expanses/core';
+import { pocketParentIds } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { useBalances } from '../../lib/queries';
-import { Empty, Money } from '../../ui';
-import { Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
+import { Empty } from '../../ui';
+import { ApproxFigure, approxLine, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { NO_BROKER } from './portfolio-view';
 import { usePortfolio } from './queries';
 
 export function BrokerPage({ none = false }: { none?: boolean }) {
   const { ws } = useApp();
   const { accountId } = useParams({ strict: false }) as { accountId?: string };
-  const { view, isPending } = usePortfolio();
+  const { view, rates, accounts, isPending } = usePortfolio();
   const balances = useBalances();
   const key = none ? NO_BROKER : (accountId ?? '');
   const broker = view?.brokers.find((b) => b.key === key);
   if (!broker) return <div className={SCREEN}><LargeTitle title="Broker" back="Investments" backTo="/net-worth/investments" />{!isPending && <Empty>Nothing is held here now.</Empty>}</div>;
   const base = ws.baseCurrency;
-  const cashIdle = broker.accountId ? balances.data?.[broker.accountId] : undefined;
+  // The broker's own cash: the account itself, or — a fund account holding pockets (`pocketParentIds`, the rule every
+  // pocket screen asks) — each open pocket in its own currency, since the parent holds nothing.
+  const isParent = broker.accountId !== null && pocketParentIds(accounts).has(broker.accountId);
+  const cashAccounts = isParent ? accounts.filter((a) => a.parentId === broker.accountId && a.archivedAt === null) : accounts.filter((a) => a.id === broker.accountId);
+  const cash = cashAccounts.map((a) => ({
+    id: a.id,
+    currency: a.currency ?? base,
+    minor: balances.data?.[a.id] ?? 0,
+  }));
   return (
     <div className={SCREEN}>
-      <LargeTitle title={broker.converted ? broker.name : `${broker.name} · ${broker.leadCurrency}`} back="Investments" backTo="/net-worth/investments" />
-      <Hero
-        minor={broker.leadMinor}
-        currency={broker.leadCurrency}
-        caption={broker.converted ? 'Converted at today’s rates' : broker.leadCurrency !== base && broker.valueBaseMinor !== null ? `≈ ${formatMinor(broker.valueBaseMinor, base)}` : undefined}
-      />
+      <LargeTitle title={broker.currency ? `${broker.name} · ${broker.currency}` : broker.name} back="Investments" backTo="/net-worth/investments" />
+      {broker.currency !== null ? (
+        <Hero minor={broker.valueMinor!} currency={broker.currency} caption={approxLine(broker.valueMinor!, broker.currency, base, rates) ?? undefined} />
+      ) : broker.total.totalMinor !== null ? (
+        <Hero minor={broker.total.totalMinor} currency={base} caption="≈ Converted at today’s rates" />
+      ) : (
+        <Empty>{groupedFigure(broker.total, base).text}: the holdings here cannot be added up. Each figure below is exact.</Empty>
+      )}
       <InsetGroup footer="A broker in one currency shows its own totals in that currency. Nothing is converted twice.">
         <ReadOnlyRow label="Put in" value={formatMinor(broker.costBaseMinor, base)} />
-        {cashIdle !== undefined && broker.holdings[0] && <ReadOnlyRow label="Cash idle" value={formatMinor(cashIdle, broker.leadCurrency)} />}
+        {broker.accountId &&
+          balances.data &&
+          cash.map((c) => (
+            // Each in its own currency, never converted: idle cash is a balance, not a value.
+            <ReadOnlyRow key={c.id} label={cash.length > 1 ? `Cash idle · ${c.currency}` : 'Cash idle'} value={formatMinor(c.minor, c.currency)} />
+          ))}
       </InsetGroup>
       <InsetGroup header="Holdings here">
         {broker.holdings.map((h) => {
@@ -2959,7 +3404,7 @@ export function BrokerPage({ none = false }: { none?: boolean }) {
               key={h.accountId}
               title={stock.title}
               subtitle={`${formatUnits(h.unitsMicro)} shares${bps === null ? '' : ` · ${formatBps(bps)}`}`}
-              value={<Money minor={h.valueMinor} currency={h.currency} />}
+              value={<ApproxFigure figure={formatMinor(h.valueMinor, h.currency)} beneath={broker.currency === null ? approxLine(h.valueMinor, h.currency, base, rates) : null} />}
               valueTone="ink"
               {...(stock.securityId ? { to: '/net-worth/investments/security/$securityId', params: { securityId: stock.securityId } } : { to: '/net-worth/assets/$accountId', params: { accountId: h.accountId } })}
             />
@@ -2971,7 +3416,7 @@ export function BrokerPage({ none = false }: { none?: boolean }) {
 }
 ```
 
-"Cash idle" uses the broker account's own currency: read it from `useAccounts()` rather than `leadCurrency` when the broker is converted — `formatMinor(cashIdle, accounts.find(a => a.id === broker.accountId)!.currency!)`. Write it that way.
+"Cash idle" is read in each account's own currency (a pocket parent holds nothing itself, so its pockets are read — `moneyHolders`' own rule); a one-currency broker's holdings draw no `≈` of their own because the `Hero` carries it once. `GroupedRow` is the Investments list's drawing of a two-currency broker (Task 10); this page's `Hero` is its total. When `main` at `585a72d` or later is merged in (the card screens added `LargeTitle`'s `oneLine`), pass `oneLine` on this title: it is a name the owner typed.
 
 Router (static `none` outranks `$accountId`):
 ```tsx
@@ -2981,27 +3426,31 @@ Router (static `none` outranks `$accountId`):
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/broker/$accountId', component: () => <BrokerPage /> }),
 ```
 
-- [ ] **Step 4: Root gate** (screens are walked end to end in Tasks 14–15).
+- [ ] **Step 4: Root gate** (screens are walked end to end in Tasks 14–15); `npx playwright test -c playwright.se.config.ts --workers=2 '/navigation\.spec\.ts$'`.
 - [ ] **Step 5: Commit** `feat(investments): a stock, its one price, and a broker`
 
 ### Task 12: Add a holding — search, Name it myself, the form
+
+*Rewritten by the 2026-09-22 re-scan.* Four things changed under this task. (1) **The look**: the Add Transaction card's Buy / sell tab is now Option B — one surface card of `FormRows` holding `InputRow` / `SelectRow`, a second card for the goal, the set-aside question, and a dock with Cancel and a pill that saves; Add a holding and Name it myself are built the same way. (2) **Set-aside**: this is a buy, so it is a **door** — `tradeDoor` on the planned buy, `useSetAside`, `setAside: setAside.choice` into `addHolding`, and a **For goal** row as both existing trade forms have (a buy for a goal lowers its promise through `writeTradeTx`'s destination-less move). (3) **Accounts**: Paid from is `moneyHolders` (a pocket parent holds nothing; the first draft's own filter offered it), and a broker is a `fund` account that is not a pocket (`brokerChoices`, the owner's ruling). (4) **Rates**: the preview reads `useHeldRates`, the charged amount goes on the input (`withCharged`) and the save's rates come from `tradeRatesForSave` — so the preview, the door and the save read one input, and the preview's rate includes the fee as the posted cost does (the first draft previewed the price alone, a different rate from the one saved whenever there was a fee).
 
 **Files:**
 - Create: `apps/web/src/features/investments/add-holding.ts`, `add-holding.test.ts`, `SecuritySearch.tsx`, `NameItForm.tsx`, `AddHoldingForm.tsx`, `AddHoldingPage.tsx`
 - Modify: `apps/web/src/app/router.tsx`, `apps/web/src/features/ownables/AddAssetPage.tsx`, `apps/web/src/features/networth/AddAssetForm.tsx`, `apps/web/package.json` (the build script from Task 9)
 
 **Interfaces:**
-- Consumes: `searchSecurities`, `loadSecurityList` via `useSecurityList`, `ListedSecurity`; `addHolding`, `linkHolding`, `NewSecurity`, `SecurityRow`, `AddHoldingInput`; `parseUnits`, `parsePriceMicro`, `parseMajor`, `unitsFromLots`, `unitsValueMinor`, `formatMinor`; `tradeMoneyForSave`, `baseCostPreview`; `useEntitlement`; `useStoredRates`, `useResolveRates`.
-- Produces: `type Picked = { kind: 'held'; security: SecurityRow } | { kind: 'listed'; security: ListedSecurity } | { kind: 'named'; security: NewSecurity }`; `interface NameDraft`; `namedSecurity(d: NameDraft): NewSecurity`; `interface HoldingDraft`; `NEW_BROKER`, `NO_BROKER_CHOICE`, `OPENING`; `unitsOf(quantity: string, lotSize: number | null): number`; `totalOf(draft, lotSize, currency): number | null`; `planAddHolding(picked, draft, today): AddHoldingInput`; route `/net-worth/investments/new` with search `{ link?: string }`.
+- Consumes: `searchSecurities`, `loadSecurityList` via `useSecurityList`, `ListedSecurity`; `addHolding`, `linkHolding`, `NewSecurity`, `SecurityRow`, `AddHoldingInput`, `AccountRow`; `parseUnits`, `parsePriceMicro`, `parseMajor`, `unitsFromLots`, `unitsValueMinor`, `UNITS_SCALE`, `formatMinor`, `formatUnits`, `isoDate`, `CURRENCIES`; **`withCharged`, `tradeRatesForSave`, `baseCostPreview`** (Task 8); **`tradeDoor`**, **`useSetAside`**, `useGoals`; **`moneyHolders`**, `useAccounts`, `useInvalidateAll`, `useResolveRates` (`lib/queries.ts`); **`useHeldRates`**; `useEntitlement`; `ratePreview`; `FormRows` (`features/transactions/FormRow.tsx`), `InputRow`, `SelectRow`, `RowHint`, `ErrorBox` (`ui`); `rateLine` (kit).
+- Produces: `type Picked = { kind: 'held'; security: SecurityRow } | { kind: 'listed'; security: ListedSecurity } | { kind: 'named'; security: NewSecurity }`; `interface NameDraft`; `namedSecurity(d: NameDraft): NewSecurity`; `interface HoldingDraft`; `NEW_BROKER`, `NO_BROKER_CHOICE`, `OPENING`; `unitsOf(quantity: string, lotSize: number | null): number`; `totalOf(draft, lotSize, currency): number | null`; `brokerChoices(accounts): AccountRow[]`; `planAddHolding(picked, draft, today, cashCurrency): AddHoldingInput`; route `/net-worth/investments/new` with search `{ link?: string }`.
 
 - [ ] **Step 1: Failing tests**
 
 ```ts
 // apps/web/src/features/investments/add-holding.test.ts
+import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { emptyHoldingDraft, NEW_BROKER, namedSecurity, OPENING, planAddHolding, totalOf, unitsOf } from './add-holding';
+import { brokerChoices, emptyHoldingDraft, NEW_BROKER, namedSecurity, OPENING, planAddHolding, totalOf, unitsOf } from './add-holding';
 
 const bbca = { ticker: 'BBCA', name: 'BBCA name', market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share' as const };
+const aapl = { ticker: 'AAPL', name: 'AAPL name', market: 'NASDAQ', currency: 'USD', lotSize: null, kind: 'share' as const };
 
 describe('unitsOf', () => {
   it('reads lots on a lot-sized security and shares otherwise', () => {
@@ -3017,9 +3466,10 @@ describe('unitsOf', () => {
 
 describe('totalOf', () => {
   it('is shares × price, exact, through parsePriceMicro', () => {
-    expect(totalOf({ quantity: '10', price: '182.50' }, null, 'USD')).toBe(182_500);
+    expect(totalOf({ quantity: '10', price: '182,50' }, null, 'USD')).toBe(182_500);
     expect(totalOf({ quantity: '7', price: '9.775' }, null, 'IDR')).toBe(68_425); // "9.775" is nine thousand rupiah
-    expect(totalOf({ quantity: '3', price: '312,5' }, null, 'IDR')).toBe(938); // 937,5 rounds half away from zero
+    // 1.562,5: half away from zero gives 1.563, half to even 1.562 — 3 × 312,5 = 937,5 could not tell them apart.
+    expect(totalOf({ quantity: '5', price: '312,5' }, null, 'IDR')).toBe(1_563);
     expect(totalOf({ quantity: '15', price: '8.750' }, 100, 'IDR')).toBe(13_125_000);
     expect(totalOf({ quantity: 'x', price: '1' }, null, 'IDR')).toBeNull();
   });
@@ -3030,26 +3480,47 @@ describe('namedSecurity', () => {
     expect(namedSecurity({ ticker: ' aapl ', name: 'Apple', market: 'nasdaq', currency: 'USD', lotSize: '' })).toEqual({ ticker: 'AAPL', name: 'Apple', market: 'NASDAQ', currency: 'USD', lotSize: null, kind: 'share', source: 'owner' });
     expect(namedSecurity({ ticker: '', name: 'Private fund', market: '', currency: 'IDR', lotSize: '' })).toMatchObject({ ticker: null, kind: 'other' });
     expect(() => namedSecurity({ ticker: 'X', name: ' ', market: '', currency: 'IDR', lotSize: '' })).toThrow(/name/);
+  });
+  it('reads a lot size with parseUnits, so "1.000" is a thousand shares, and refuses part of a share', () => {
+    expect(namedSecurity({ ticker: 'X', name: 'X', market: '', currency: 'IDR', lotSize: '1.000' }).lotSize).toBe(1_000);
+    expect(namedSecurity({ ticker: 'X', name: 'X', market: '', currency: 'IDR', lotSize: '1' }).lotSize).toBeNull(); // a lot of one is no lots
     expect(() => namedSecurity({ ticker: 'X', name: 'X', market: '', currency: 'IDR', lotSize: '2,5' })).toThrow(/whole/);
+  });
+});
+
+describe('brokerChoices', () => {
+  const acc = (id: string, subtype: string, parentId: string | null = null, archivedAt: string | null = null) =>
+    ({ id, name: id, kind: 'asset', subtype, parentId, archivedAt, currency: 'IDR' }) as AccountRow;
+  it('offers fund accounts that are not pockets — a parent holding pockets is a broker — and nothing else', () => {
+    const accounts = [acc('stockbit', 'fund'), acc('ibkr', 'fund'), acc('ibkr-usd', 'fund', 'ibkr'), acc('bca', 'bank'), acc('old', 'fund', null, '2026-01-01')];
+    expect(brokerChoices(accounts).map((a) => a.id)).toEqual(['stockbit', 'ibkr']);
   });
 });
 
 describe('planAddHolding', () => {
   it('builds the security, the new broker and an opening buy', () => {
     const draft = { ...emptyHoldingDraft('2026-09-21', 'IDR'), brokerChoice: NEW_BROKER, brokerName: 'Stockbit', quantity: '10', price: '8.750', fee: '13.125', paidFrom: OPENING };
-    expect(planAddHolding({ kind: 'listed', security: bbca }, draft, '2026-09-21')).toEqual({
+    expect(planAddHolding({ kind: 'listed', security: bbca }, draft, '2026-09-21', 'IDR')).toEqual({
       security: { ...bbca, source: 'catalogue' },
       broker: { name: 'Stockbit', currency: 'IDR' },
-      buy: { occurredOn: '2026-09-21', unitsMicro: 1_000_000_000, grossMinor: 8_750_000, feeMinor: 13_125, taxMinor: 0, cashAccountId: null },
+      buy: { occurredOn: '2026-09-21', unitsMicro: 1_000_000_000, grossMinor: 8_750_000, feeMinor: 13_125, taxMinor: 0, cashAccountId: null, goalId: null },
     });
+  });
+  it('carries what left a rupiah account for a dollar buy, and the goal it is for', () => {
+    const draft = { ...emptyHoldingDraft('2026-09-21', 'USD'), quantity: '10', price: '123,457', paidFrom: 'bca', charged: '20.000.001', goalId: 'pension' };
+    const plan = planAddHolding({ kind: 'listed', security: aapl }, draft, '2026-09-21', 'IDR');
+    expect(plan.buy).toMatchObject({ grossMinor: 123_457, cashAccountId: 'bca', cashMinor: 20_000_001, goalId: 'pension' });
+    expect(() => planAddHolding({ kind: 'listed', security: aapl }, { ...draft, charged: '' }, '2026-09-21', 'IDR')).toThrow(/Charged in IDR/);
   });
   it('refuses a date after today and a nameless new broker', () => {
     const draft = { ...emptyHoldingDraft('2026-09-21', 'IDR'), quantity: '1', price: '1', paidFrom: OPENING };
-    expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...draft, occurredOn: '2026-09-22' }, '2026-09-21')).toThrow(/after today/);
-    expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...draft, brokerChoice: NEW_BROKER, brokerName: ' ' }, '2026-09-21')).toThrow(/broker/);
+    expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...draft, occurredOn: '2026-09-22' }, '2026-09-21', 'IDR')).toThrow(/after today/);
+    expect(() => planAddHolding({ kind: 'listed', security: bbca }, { ...draft, brokerChoice: NEW_BROKER, brokerName: ' ' }, '2026-09-21', 'IDR')).toThrow(/broker/);
   });
 });
 ```
+
+(10 shares at $123,457 — three decimals, which `parsePriceMicro` keeps — is $1.234,57: `grossMinor` 123_457, the non-round figure Task 6 posts.)
 
 - [ ] **Step 2: Implement the planner**
 
@@ -3057,7 +3528,8 @@ describe('planAddHolding', () => {
 // apps/web/src/features/investments/add-holding.ts
 import { parseMajor, parsePriceMicro, parseUnits, unitsFromLots, unitsValueMinor, UNITS_SCALE } from '@expanses/core';
 import type { ListedSecurity } from '@expanses/catalog';
-import type { AddHoldingInput, NewSecurity, SecurityRow } from '@expanses/db';
+import type { AccountRow, AddHoldingInput, NewSecurity, SecurityRow } from '@expanses/db';
+import { withCharged } from '../networth/trade-money';
 
 export type Picked = { kind: 'held'; security: SecurityRow } | { kind: 'listed'; security: ListedSecurity } | { kind: 'named'; security: NewSecurity };
 
@@ -3086,12 +3558,20 @@ export interface HoldingDraft {
   occurredOn: string;
   /** A money account id, or OPENING. */
   paidFrom: string;
+  /** What left the paying account in its own currency, when it is not the security's. */
   charged: string;
+  /** The goal this buy is for, or ''. */
+  goalId: string;
 }
 
 export const emptyHoldingDraft = (today: string, currency: string): HoldingDraft => ({
-  brokerChoice: NO_BROKER_CHOICE, brokerName: '', brokerCurrency: currency, quantity: '', price: '', fee: '', occurredOn: today, paidFrom: OPENING, charged: '',
+  brokerChoice: NO_BROKER_CHOICE, brokerName: '', brokerCurrency: currency, quantity: '', price: '', fee: '', occurredOn: today, paidFrom: OPENING, charged: '', goalId: '',
 });
+
+/** The owner's ruling: a broker is its cash account, subtype `fund` — and a pocket's parent, never the pocket. */
+export function brokerChoices(accounts: readonly AccountRow[]): AccountRow[] {
+  return accounts.filter((a) => a.kind === 'asset' && a.subtype === 'fund' && a.parentId === null && a.archivedAt === null);
+}
 
 export function namedSecurity(d: NameDraft): NewSecurity {
   const name = d.name.trim();
@@ -3099,9 +3579,10 @@ export function namedSecurity(d: NameDraft): NewSecurity {
   const ticker = d.ticker.trim().toUpperCase() || null;
   let lotSize: number | null = null;
   if (d.lotSize.trim()) {
-    const size = Number(d.lotSize.trim());
-    if (!Number.isInteger(size) || size < 1) throw new Error('A lot is a whole number of shares');
-    lotSize = size;
+    // A count of shares, read the way every typed quantity is read: "1.000" is a thousand.
+    const micro = parseUnits(d.lotSize);
+    if (micro <= 0 || micro % UNITS_SCALE !== 0) throw new Error('A lot is a whole number of shares');
+    lotSize = micro / UNITS_SCALE;
   }
   return { ticker, name, market: d.market.trim().toUpperCase(), currency: d.currency, lotSize: lotSize === 1 ? null : lotSize, kind: ticker ? 'share' : 'other', source: 'owner' };
 }
@@ -3128,8 +3609,11 @@ export function totalOf(draft: Pick<HoldingDraft, 'quantity' | 'price'>, lotSize
 const listedToNew = (s: ListedSecurity): NewSecurity => ({ ...s, source: 'catalogue' });
 export const securityOf = (picked: Picked) => (picked.kind === 'held' ? picked.security : picked.kind === 'listed' ? listedToNew(picked.security) : picked.security);
 
-/** What `addHolding` is handed, before `tradeMoneyForSave` adds the rates. Throws with words meant for the screen. */
-export function planAddHolding(picked: Picked, draft: HoldingDraft, today: string): AddHoldingInput {
+/**
+ * What `addHolding` is handed, before `tradeRatesForSave` adds the rates — with the charged amount already on the buy
+ * (`withCharged`), so the set-aside door reads what really left the account. Throws with words meant for the screen.
+ */
+export function planAddHolding(picked: Picked, draft: HoldingDraft, today: string, cashCurrency: string): AddHoldingInput {
   const security = securityOf(picked);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose a date');
   if (draft.occurredOn > today) throw new Error('A purchase cannot be dated after today');
@@ -3144,17 +3628,22 @@ export function planAddHolding(picked: Picked, draft: HoldingDraft, today: strin
     if (!draft.brokerName.trim()) throw new Error('Name the broker');
     broker = { name: draft.brokerName.trim(), currency: draft.brokerCurrency };
   } else if (draft.brokerChoice !== NO_BROKER_CHOICE) broker = { accountId: draft.brokerChoice };
-  return {
-    security: picked.kind === 'held' ? { id: picked.security.id } : security,
-    broker,
-    buy: { occurredOn: draft.occurredOn, unitsMicro, grossMinor, feeMinor, taxMinor: 0, cashAccountId: draft.paidFrom === OPENING ? null : draft.paidFrom },
-  };
+  const cashAccountId = draft.paidFrom === OPENING ? null : draft.paidFrom;
+  const { accountId: _account, kind: _kind, ...buy } = withCharged(
+    { accountId: '', kind: 'buy', occurredOn: draft.occurredOn, unitsMicro, grossMinor, feeMinor, taxMinor: 0, cashAccountId, goalId: draft.goalId || null },
+    draft.charged,
+    security.currency,
+    cashAccountId === null ? security.currency : cashCurrency,
+  );
+  return { security: picked.kind === 'held' ? { id: picked.security.id } : security, broker, buy };
 }
 ```
 
-(`UNITS_SCALE`: if not exported from core's index today, export it beside `unitsFromLots` — it is the existing constant, not a new one.)
+(`UNITS_SCALE` is exported from core's index today.)
 
 - [ ] **Step 3: The three components and the page**
+
+The search list is the kit's inset rows, as the category picker's list is; the two forms are Option B.
 
 ```tsx
 // apps/web/src/features/investments/SecuritySearch.tsx
@@ -3218,16 +3707,17 @@ export function SecuritySearch({ query, onQuery, held, heldUnits, onPick, onName
 // apps/web/src/features/investments/NameItForm.tsx
 import { CURRENCIES } from '@expanses/core';
 import { type FormEvent, useState } from 'react';
-import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { ErrorBox, InputRow, RowHint, SelectRow } from '../../ui';
+import { FormRows } from '../transactions/FormRow';
 import { type NameDraft, namedSecurity, type Picked } from './add-holding';
 
-export function NameItForm({ base, onDone }: { base: string; onDone: (picked: Picked) => void }) {
+/** Name it myself, in the Add Transaction card's Option B look: one card of rows, a line under it, the dock. */
+export function NameItForm({ base, onDone, onCancel }: { base: string; onDone: (picked: Picked) => void; onCancel: () => void }) {
   const [draft, setDraft] = useState<NameDraft>({ ticker: '', name: '', market: '', currency: base, lotSize: '' });
   const [error, setError] = useState<unknown>(null);
   const change = (patch: Partial<NameDraft>) => setDraft((d) => ({ ...d, ...patch }));
-  const next = (event?: FormEvent) => {
-    event?.preventDefault();
+  const next = (event: FormEvent) => {
+    event.preventDefault();
     try {
       onDone({ kind: 'named', security: namedSecurity(draft) });
     } catch (e) {
@@ -3235,21 +3725,43 @@ export function NameItForm({ base, onDone }: { base: string; onDone: (picked: Pi
     }
   };
   return (
-    <form onSubmit={next}>
-      <InsetGroup header="Name it myself" footer="Typed once. From then on it behaves like every other holding.">
-        <TextRow label="Ticker" value={draft.ticker} onChange={(e) => change({ ticker: e.target.value })} placeholder="Optional" autoCapitalize="characters" />
-        <TextRow label="Name" value={draft.name} onChange={(e) => change({ name: e.target.value })} placeholder="Company or fund" required />
-        <TextRow label="Market" value={draft.market} onChange={(e) => change({ market: e.target.value })} placeholder="Optional" autoCapitalize="characters" />
+    <form onSubmit={next} className="flex flex-col gap-[10px]">
+      <FormRows>
+        <InputRow label="Ticker" value={draft.ticker} onChange={(e) => change({ ticker: e.target.value })} placeholder="Optional" autoCapitalize="characters" />
+        <InputRow label="Name" value={draft.name} onChange={(e) => change({ name: e.target.value })} placeholder="Company or fund" required />
+        <InputRow label="Market" value={draft.market} onChange={(e) => change({ market: e.target.value })} placeholder="Optional" autoCapitalize="characters" />
         <SelectRow label="Currency" value={draft.currency} onChange={(e) => change({ currency: e.target.value })}>
           {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
         </SelectRow>
-        <TextRow label="Shares in a lot" value={draft.lotSize} onChange={(e) => change({ lotSize: e.target.value })} inputMode="numeric" placeholder="None" />
-      </InsetGroup>
-      <ErrorBox error={error} />
-      <InsetGroup>
-        <InsetRow title="Continue" onClick={() => next()} chevron={false} />
-      </InsetGroup>
+        <InputRow label="Shares in a lot" value={draft.lotSize} onChange={(e) => change({ lotSize: e.target.value })} inputMode="numeric" placeholder="None" />
+      </FormRows>
+      <RowHint>Typed once. From then on it behaves like every other holding.</RowHint>
+      <Dock error={error} onCancel={onCancel} save="Continue" />
     </form>
+  );
+}
+
+/**
+ * The Add Transaction card's dock, as that card draws it: the error above, Cancel beside a pill that submits the form.
+ * Exported for `AddHoldingForm`; kept here rather than lifted into the kit, since only these two forms use it yet.
+ */
+export function Dock({ error, onCancel, save, disabled = false }: { error: unknown; onCancel: () => void; save: string; disabled?: boolean }) {
+  return (
+    <div className="flex flex-col gap-2 pt-1">
+      <ErrorBox error={error} />
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onCancel} className="ph-focus min-h-11 shrink-0 rounded-full px-4 text-[15px] text-[var(--ph-ink-2)] active:bg-[var(--ph-fill)]">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={disabled}
+          className="ph-focus min-h-11 flex-1 rounded-full bg-[var(--ph-tint)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-50"
+        >
+          {save}
+        </button>
+      </div>
+    </div>
   );
 }
 ```
@@ -3257,65 +3769,81 @@ export function NameItForm({ base, onDone }: { base: string; onDone: (picked: Pi
 ```tsx
 // apps/web/src/features/investments/AddHoldingForm.tsx
 import { CURRENCIES, formatMinor, formatUnits, isoDate } from '@expanses/core';
-import { type AccountRow, addHolding } from '@expanses/db';
+import { type AccountRow, addHolding, type AddHoldingInput, type RecordTradeInput } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { useInvalidateAll, useResolveRates, useStoredRates } from '../../lib/queries';
+import { moneyHolders, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
-import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
-import { baseCostPreview, tradeMoneyForSave } from '../networth/trade-money';
+import { InputRow, RowHint, SelectRow } from '../../ui';
+import { rateLine } from '../../ui/native';
+import { useHeldRates } from '../accounts/queries';
+import { useGoals } from '../goals/queries';
+import { tradeDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
+import { baseCostPreview, tradeRatesForSave } from '../networth/trade-money';
+import { FormRows } from '../transactions/FormRow';
 import { emptyHoldingDraft, type HoldingDraft, NEW_BROKER, NO_BROKER_CHOICE, OPENING, type Picked, planAddHolding, securityOf, totalOf } from './add-holding';
-import { rateLabel } from './portfolio-view';
+import { Dock } from './NameItForm';
 
-export function AddHoldingForm({ picked, accounts, brokers, heldAt }: {
+export function AddHoldingForm({ picked, accounts, brokers, heldAt, onCancel }: {
   picked: Picked;
   accounts: readonly AccountRow[];
-  /** Money accounts offered as a broker: fund accounts and any account already named as one. */
+  /** `brokerChoices(accounts)`: fund accounts that are not pockets. */
   brokers: readonly AccountRow[];
   /** Units of this security already held at each broker account id. */
   heldAt: Readonly<Record<string, number>>;
+  onCancel: () => void;
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const navigate = useNavigate();
   const resolveRates = useResolveRates();
-  const storedRates = useStoredRates();
+  const goals = useGoals().data ?? [];
   const today = isoDate();
   const security = securityOf(picked);
   const [draft, setDraft] = useState<HoldingDraft>(() => ({ ...emptyHoldingDraft(today, security.currency), brokerChoice: brokers[0]?.id ?? NEW_BROKER }));
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [manualRate, setManualRate] = useState('');
-  const [stored, setStored] = useState<Record<string, number>>({});
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const change = (patch: Partial<HoldingDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
-  const money = accounts.filter((a) => a.kind === 'asset' && SPENDABLE_SUBTYPES.includes(a.subtype) && a.archivedAt === null);
+  // Every account that can pay — never a pocket parent, which holds nothing (`moneyHolders`) — as Buy & sell offers them.
+  const money = moneyHolders(accounts).filter((a) => a.kind === 'asset' && SPENDABLE_SUBTYPES.includes(a.subtype));
   const cash = money.find((a) => a.id === draft.paidFrom);
   const cashCurrency = cash ? (cash.currency ?? ws.baseCurrency) : security.currency;
   const total = totalOf(draft, security.lotSize, security.currency);
   const lotted = (security.lotSize ?? 1) > 1;
+  const foreign = security.currency !== ws.baseCurrency;
 
-  useEffect(() => {
-    if (security.currency === ws.baseCurrency) return;
-    void storedRates([security.currency], draft.occurredOn).then((r) => setStored(r.rates));
-  }, [storedRates, security.currency, draft.occurredOn, ws.baseCurrency]);
-  const preview = total === null ? { rate: null, baseMinor: null } : baseCostPreview({ amountMinor: total, holdingCurrency: security.currency, cashCurrency, baseCurrency: ws.baseCurrency, charged: draft.charged, storedRates: stored });
+  /** The plan the save sends, or null while it is incomplete: the one input the preview, the door and the save read. */
+  const plan = ((): AddHoldingInput | null => {
+    try {
+      return planAddHolding(picked, draft, today, cashCurrency);
+    } catch {
+      return null;
+    }
+  })();
+  const input: RecordTradeInput | null = plan ? { ...plan.buy, accountId: '', kind: 'buy' } : null;
+  // A buy is a set-aside door (spec §4.6 of set-aside): it asks which goal paid when it takes more than is free.
+  const setAside = useSetAside(input ? tradeDoor(input) : null);
+  const held = useHeldRates(foreign ? [security.currency] : [], draft.occurredOn);
+  const preview = baseCostPreview({ input, holdingCurrency: security.currency, cashCurrency, baseCurrency: ws.baseCurrency, heldRates: held.data?.rates ?? {} });
 
-  async function submit(event?: FormEvent) {
-    event?.preventDefault();
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!setAside.ready) return;
     setError(null);
     setBusy(true);
     try {
-      const plan = planAddHolding(picked, draft, today);
-      const moneyFor = await tradeMoneyForSave({
-        database, baseCurrency: ws.baseCurrency, input: { ...plan.buy, accountId: '', kind: 'buy' }, holdingCurrency: security.currency, cashCurrency,
-        charged: draft.charged, needsRate, manualRate, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
+      const planned = planAddHolding(picked, draft, today, cashCurrency);
+      const ratesToBase = await tradeRatesForSave({
+        database, ws, input: { ...planned.buy, accountId: '', kind: 'buy' }, holdingCurrency: security.currency, cashCurrency,
+        needsRate, manualRate, resolveRates, onMissing: setNeedsRate, where: 'Rate that day',
       });
-      const result = await addHolding(database, ws, { ...plan, buy: { ...plan.buy, ...moneyFor } });
+      const result = await addHolding(database, ws, { ...planned, buy: { ...planned.buy, ratesToBase, setAside: setAside.choice } });
       await invalidate();
       await navigate({ to: '/net-worth/investments/security/$securityId', params: { securityId: result.securityId } });
     } catch (e) {
@@ -3327,54 +3855,55 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt }: {
 
   const label = security.ticker ?? security.name;
   return (
-    <form onSubmit={submit}>
-      <InsetGroup header={`Adding ${label}`} footer={[security.name, security.market || null, `trades in ${security.currency}`].filter(Boolean).join(' · ')}>
+    <form onSubmit={submit} className="flex flex-col gap-[10px]">
+      <RowHint>{[`Adding ${label}`, security.name, security.market || null, `trades in ${security.currency}`].filter(Boolean).join(' · ')}</RowHint>
+      <FormRows>
         <SelectRow label="Where is it kept" value={draft.brokerChoice} onChange={(e) => change({ brokerChoice: e.target.value })}>
           {brokers.map((b) => <option key={b.id} value={b.id}>{b.name}{heldAt[b.id] ? ` · you hold ${formatUnits(heldAt[b.id]!)}` : ''}</option>)}
           <option value={NEW_BROKER}>Another broker…</option>
           <option value={NO_BROKER_CHOICE}>No broker</option>
         </SelectRow>
+        {draft.brokerChoice === NEW_BROKER && <InputRow label="Broker name" value={draft.brokerName} onChange={(e) => change({ brokerName: e.target.value })} required />}
         {draft.brokerChoice === NEW_BROKER && (
-          <>
-            <TextRow label="Broker name" value={draft.brokerName} onChange={(e) => change({ brokerName: e.target.value })} required />
-            <SelectRow label="Its currency" value={draft.brokerCurrency} onChange={(e) => change({ brokerCurrency: e.target.value })}>
-              {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
-            </SelectRow>
-          </>
+          <SelectRow label="Its currency" value={draft.brokerCurrency} onChange={(e) => change({ brokerCurrency: e.target.value })}>
+            {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
+          </SelectRow>
         )}
-      </InsetGroup>
-      <InsetGroup header="What you bought" footer={lotted ? `${security.lotSize} shares a lot.` : `${security.market || 'This'} has no lot size.`}>
-        <TextRow label={lotted ? 'Lots' : 'Shares'} value={draft.quantity} onChange={(e) => change({ quantity: e.target.value })} inputMode="decimal" />
-        <TextRow label={`Price per share (${security.currency})`} value={draft.price} onChange={(e) => change({ price: e.target.value })} inputMode="decimal" />
-        <ReadOnlyRow label="Total" value={total === null ? '—' : formatMinor(total, security.currency)} />
-        <TextRow label={`Fee (${security.currency})`} value={draft.fee} onChange={(e) => change({ fee: e.target.value })} inputMode="decimal" placeholder="0" />
-        <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => change({ occurredOn: e.target.value })} />
-      </InsetGroup>
-      <InsetGroup header="Paid from">
+        <InputRow label={lotted ? 'Lots' : 'Shares'} hint={lotted ? `${security.lotSize} shares a lot.` : undefined} value={draft.quantity} onChange={(e) => change({ quantity: e.target.value })} inputMode="decimal" />
+        <InputRow label={`Price per share (${security.currency})`} value={draft.price} onChange={(e) => change({ price: e.target.value })} inputMode="decimal" />
+        <InputRow label="Total" readOnly tabIndex={-1} value={total === null ? '—' : formatMinor(total, security.currency)} />
+        <InputRow label={`Fee (${security.currency})`} value={draft.fee} onChange={(e) => change({ fee: e.target.value })} inputMode="decimal" placeholder="0" />
+        <InputRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => change({ occurredOn: e.target.value })} />
         <SelectRow label="Paid from" value={draft.paidFrom} onChange={(e) => change({ paidFrom: e.target.value, charged: '' })}>
-          {money.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          {money.map((a) => <option key={a.id} value={a.id}>{`${a.name} (${a.currency ?? ws.baseCurrency})`}</option>)}
           <option value={OPENING}>Owned before this app</option>
         </SelectRow>
         {cashCurrency !== security.currency && (
-          <TextRow label={`Charged in ${cashCurrency}`} value={draft.charged} onChange={(e) => change({ charged: e.target.value })} inputMode="decimal" />
+          <InputRow label={`Charged in ${cashCurrency}`} hint={`What left ${cash?.name ?? 'the account'}, in ${cashCurrency}.`} value={draft.charged} onChange={(e) => change({ charged: e.target.value })} inputMode="decimal" />
         )}
         {needsRate ? (
-          <TextRow label="Rate that day" value={manualRate} onChange={(e) => setManualRate(e.target.value)} inputMode="decimal" hint={ratePreview(manualRate, needsRate, ws.baseCurrency) ?? undefined} />
+          <InputRow label="Rate that day" hint={ratePreview(manualRate, needsRate, ws.baseCurrency) ?? `${ws.baseCurrency} per 1 ${needsRate}`} value={manualRate} onChange={(e) => setManualRate(e.target.value)} inputMode="decimal" />
         ) : (
-          security.currency !== ws.baseCurrency && <ReadOnlyRow label="Rate that day" value={preview.rate === null ? '—' : rateLabel(preview.rate, security.currency, ws.baseCurrency)} />
+          foreign && <InputRow label="Rate that day" readOnly tabIndex={-1} value={preview.rate === null ? '—' : rateLine(preview.rate, security.currency, ws.baseCurrency)} />
         )}
-        {security.currency !== ws.baseCurrency && <ReadOnlyRow label={`Cost in ${ws.baseCurrency}`} value={preview.baseMinor === null ? '—' : formatMinor(preview.baseMinor, ws.baseCurrency)} />}
-      </InsetGroup>
-      <ErrorBox error={error} />
-      <InsetGroup>
-        <InsetRow title="Add holding" onClick={() => void submit()} chevron={false} disabled={busy} />
-      </InsetGroup>
+        {foreign && <InputRow label={`Cost in ${ws.baseCurrency}`} readOnly tabIndex={-1} value={preview.baseMinor === null ? '—' : formatMinor(preview.baseMinor, ws.baseCurrency)} />}
+      </FormRows>
+      {goals.length > 0 && (
+        <FormRows>
+          <SelectRow label="For goal" hint="Each purchase can fund a different goal." value={draft.goalId} onChange={(e) => change({ goalId: e.target.value })}>
+            <option value="">No goal</option>
+            {goals.map((goal) => <option key={goal.id} value={goal.id}>{goal.name}</option>)}
+          </SelectRow>
+        </FormRows>
+      )}
+      {setAside.node}
+      <Dock error={error} onCancel={onCancel} save="Add holding" disabled={busy || !setAside.ready} />
     </form>
   );
 }
 ```
 
-The fee is read only by `planAddHolding`. Cost in base previews the price total only; the posted cost includes the fee, which `planAddHolding` carries.
+`Cost in {base}` is the whole cost the holding line posts — price, fee and tax — at the rate the save will use: worked out from Charged in, or the day rate this device holds.
 
 ```tsx
 // apps/web/src/features/investments/AddHoldingPage.tsx
@@ -3386,7 +3915,7 @@ import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { LargeTitle, SCREEN } from '../../ui/native';
 import { usePositions } from '../networth/queries';
-import { type Picked, securityOf } from './add-holding';
+import { brokerChoices, type Picked, securityOf } from './add-holding';
 import { AddHoldingForm } from './AddHoldingForm';
 import { NameItForm } from './NameItForm';
 import { useHoldingLinks, useSecurities } from './queries';
@@ -3408,8 +3937,6 @@ export function AddHoldingPage() {
 
   const heldUnits: Record<string, number> = {};
   for (const l of links) if (l.securityId) heldUnits[l.securityId] = (heldUnits[l.securityId] ?? 0) + (positions[l.accountId]?.unitsMicro ?? 0);
-  const brokerIds = new Set(links.map((l) => l.brokerAccountId).filter(Boolean));
-  const brokers = accounts.filter((a) => a.archivedAt === null && (a.subtype === 'fund' || brokerIds.has(a.id)));
   const heldAt: Record<string, number> = {};
   if (picked?.kind === 'held') for (const l of links) if (l.securityId === picked.security.id && l.brokerAccountId) heldAt[l.brokerAccountId] = positions[l.accountId]?.unitsMicro ?? 0;
 
@@ -3429,14 +3956,15 @@ export function AddHoldingPage() {
     }
   }
 
-  const back = () => (step === 'search' ? void navigate({ to: link ? '/net-worth/assets/$accountId' : '/net-worth/investments', params: link ? { accountId: link } : undefined }) : setStep('search'));
+  const leave = () => void navigate(link ? { to: '/net-worth/assets/$accountId', params: { accountId: link } } : { to: '/net-worth/investments' });
+  const back = () => (step === 'search' ? leave() : setStep('search'));
   return (
     <div className={SCREEN}>
       <LargeTitle title={link ? 'Which ticker is it?' : 'Add a holding'} back={step === 'search' ? (link ? 'Asset' : 'Investments') : 'Search'} onBack={back} />
       <ErrorBox error={error} />
       {step === 'search' && <SecuritySearch query={query} onQuery={setQuery} held={securities} heldUnits={heldUnits} onPick={(p) => void choose(p)} onNameIt={() => setStep('name')} />}
-      {step === 'name' && <NameItForm base={ws.baseCurrency} onDone={(p) => void choose(p)} />}
-      {step === 'form' && picked && <AddHoldingForm picked={picked} accounts={accounts} brokers={brokers} heldAt={heldAt} />}
+      {step === 'name' && <NameItForm base={ws.baseCurrency} onDone={(p) => void choose(p)} onCancel={back} />}
+      {step === 'form' && picked && <AddHoldingForm picked={picked} accounts={accounts} brokers={brokerChoices(accounts)} heldAt={heldAt} onCancel={back} />}
     </div>
   );
 }
@@ -3452,7 +3980,7 @@ Router:
   }),
 ```
 
-`AddAssetPage.tsx`: `onChoose={(id) => (id === 'stock' ? void navigate({ to: '/net-worth/investments/new' }) : setChosen(id))}`.
+`AddAssetPage.tsx`: add `const navigate = useNavigate();` and `onChoose={(id) => (id === 'stock' ? void navigate({ to: '/net-worth/investments/new' }) : setChosen(id))}`.
 
 `AddAssetForm.tsx`: directly after the first `InsetGroup` closes, add
 ```tsx
@@ -3466,7 +3994,7 @@ Every existing field stays.
 
 `apps/web/package.json`: `"build": "vite build && node scripts/check-bundle.mjs"` (from Task 9) — now both lists are reachable from a screen.
 
-- [ ] **Step 4: Run** unit tests; `npm run build` from the root and read the bundle check's output (entry chunk unchanged in content, each list in one chunk under budget); root gate; `npx playwright test assets.spec.ts buy-flow.spec.ts income-treatment.spec.ts --workers=2`.
+- [ ] **Step 4: Run** `cd apps/web && npx vitest run src/features/investments/add-holding.test.ts`; `npm run build` from the root and read the bundle check's output (the entry chunk named by `index.html` holds neither list, each list in one chunk under budget); root gate; `npx playwright test -c playwright.se.config.ts --workers=2 '/assets\.spec\.ts$' '/buy-flow\.spec\.ts$' '/income-treatment\.spec\.ts$' '/asset-reporting\.spec\.ts$'`.
 - [ ] **Step 5: Commit** `feat(investments): add a holding from a ticker, or name it yourself`
 
 ### Task 13: Linking a holding recorded before this build
@@ -3476,7 +4004,7 @@ Every existing field stays.
 - Modify: `apps/web/src/features/networth/AssetDetailPage.tsx`, `apps/web/src/features/networth/PriceForm.tsx`
 
 **Interfaces:**
-- Consumes: `useHoldingLinks`, `useSecurities`, `linkHolding`, `useAccounts`.
+- Consumes: `useHoldingLinks`, `useSecurities`, `linkHolding`, `useAccounts`, **`brokerChoices`** (Task 12 — the one rule for what a broker is).
 - Produces: `StockAndBroker({ accountId }: { accountId: string })`.
 
 - [ ] **Step 1: Component**
@@ -3489,6 +4017,7 @@ import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow } from '../../ui/native';
+import { brokerChoices } from '../investments/add-holding';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
 
 /** Which ticker a holding is and where it is kept (spec §7.6). */
@@ -3498,7 +4027,7 @@ export function StockAndBroker({ accountId }: { accountId: string }) {
   const link = (useHoldingLinks().data ?? []).find((l) => l.accountId === accountId);
   const security = (useSecurities().data ?? []).find((s) => s.id === link?.securityId);
   const accounts = useAccounts().data ?? [];
-  const brokers = accounts.filter((a) => a.archivedAt === null && (a.subtype === 'fund' || a.id === link?.brokerAccountId));
+  const brokers = brokerChoices(accounts);
   const [error, setError] = useState<unknown>(null);
 
   async function keptAt(brokerAccountId: string) {
@@ -3524,8 +4053,8 @@ export function StockAndBroker({ accountId }: { accountId: string }) {
 }
 ```
 
-- [ ] **Step 2: Place it.** In `AssetDetailPage.tsx`, for a holding valued by units × price (`value.mode === 'market'`) and `account?.subtype === 'investment'`, render `<StockAndBroker accountId={accountId} />` above the "Buys, sells and income" group. Where `AssetSettings` is rendered, pass `showLotSize={existingCondition && !linkedToSecurity}` with `const linkedToSecurity = Boolean((useHoldingLinks().data ?? []).find((l) => l.accountId === accountId)?.securityId);`. In `PriceForm.tsx`, accept an optional `note?: string` prop and show it as the form's hint; AssetDetailPage passes `"This price is {TICKER}'s, and values every broker that holds it."` for a linked holding. `upsertPrice` already routes the write (Task 5).
-- [ ] **Step 3: Root gate; `npx playwright test assets.spec.ts net-worth.spec.ts --workers=2`.**
+- [ ] **Step 2: Place it.** In `AssetDetailPage.tsx`, for a holding valued by units × price (`value.mode === 'market'`) and `account?.subtype === 'investment'`, render `<StockAndBroker accountId={accountId} />` above the "Buys, sells and income" group. Where `AssetSettings` is rendered, pass `showLotSize={existingCondition && !linkedToSecurity}` with `const links = useHoldingLinks();` declared beside the page's other query hooks (before any early return — a hook after one breaks the rules of hooks) and `const linkedToSecurity = Boolean((links.data ?? []).find((l) => l.accountId === accountId)?.securityId);`. In `PriceForm.tsx`, accept an optional `note?: string` prop and show it as the form's hint; AssetDetailPage passes `"This price is {TICKER}'s, and values every broker that holds it."` for a linked holding. `upsertPrice` already routes the write (Task 5).
+- [ ] **Step 3: Root gate; `npx playwright test -c playwright.se.config.ts --workers=2 '/assets\.spec\.ts$' '/net-worth\.spec\.ts$' '/deposit-maturity\.spec\.ts$'`** (the asset page carries the deposit's cards too).
 - [ ] **Step 4: Commit** `feat(assets): a holding from before can be given its ticker and its broker`
 
 ---
@@ -3534,10 +4063,13 @@ export function StockAndBroker({ accountId }: { accountId: string }) {
 
 ### Task 14: End to end — the combination table, on a desktop and on a phone
 
+*Rewritten by the 2026-09-22 re-scan*: the paid list is granted through the developer screen's switch (and lapsed by turning it off); accounts are opened with `set-aside.ts`'s `addMoneyAccount` and read back with `deposit-maturity.ts`'s `expectBalance` rather than a third copy of each; money options read `Name (CUR)`; read-only figures in the Option B form are asserted with `toHaveValue`; rates read in the kit's words (`15.800 IDR per 1 USD`); the tax year and every "today" come from `todayIn`; the set-aside door is walked on Add a holding.
+
 **Files:**
 - Create: `apps/web/e2e/securities.ts`, `apps/web/e2e/securities.spec.ts`, `apps/web/e2e/phone-securities.spec.ts`
+- Modify: `apps/web/e2e/phone-dark-shell.spec.ts` (`tokenColour` moves out, into `./securities.ts`, and is imported back)
 
-Every money figure the test enters is typed with `pressSequentially`, never `fill()` — setup rows that are not under test (account names, opening balances) may use `fill`. Every assertion is a figure, never a label alone.
+Every money figure the test enters is typed with `pressSequentially`, never `fill()` — setup rows that are not under test (account names, opening balances, a date input) may use `fill`. Every assertion is a figure, never a label alone; where a label is the point (a refusal, a group), a figure beside it proves the screen is the right one.
 
 - [ ] **Step 1: Helpers**
 
@@ -3545,38 +4077,33 @@ Every money figure the test enters is typed with `pressSequentially`, never `fil
 // apps/web/e2e/securities.ts
 import { expect, type Page } from '@playwright/test';
 
-export async function grantForeignList(page: Page) {
-  await page.addInitScript(() => localStorage.setItem('expanses.entitlements', JSON.stringify(['foreign_securities'])));
+/** The owner's preview switch (developer settings, linked from nowhere): the US list, granted on this device. */
+export async function setForeignList(page: Page, on: boolean) {
+  await page.goto('/settings/developer');
+  const box = page.getByLabel('US ticker list');
+  if (on) await box.check();
+  else await box.uncheck();
+  await expect(box).toBeChecked({ checked: on });
 }
 
-export async function addBank(page: Page, name: string, balance: string, type = 'bank', currency = 'IDR') {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption(type);
-  if (currency !== 'IDR') await page.getByLabel('Currency').selectOption(currency);
-  await page.getByLabel('Current balance').fill(balance);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
-}
-
-/** Search, pick, and fill the Add a holding form by keystroke. */
+/** Search, pick, and fill the Add a holding form by keystroke. Money options read `Name (CUR)`, as the form draws them. */
 export async function addHoldingFlow(page: Page, o: {
   search: string; pick?: string; nameIt?: { ticker: string; name: string; market: string; currency: string };
-  broker: string | { new: string; currency?: string }; quantity: string; price: string; fee?: string; paidFrom: string; charged?: string; rate?: string;
+  broker: string | { new: string; currency?: string }; quantity: string; price: string; fee?: string; paidFrom: string; charged?: string;
 }) {
   await page.goto('/net-worth/investments/new');
   await page.getByLabel('Ticker or name').pressSequentially(o.search);
   if (o.nameIt) {
     await page.getByRole('button', { name: /Name it myself/ }).click();
-    await page.getByLabel('Ticker').pressSequentially(o.nameIt.ticker);
+    await page.getByLabel('Ticker', { exact: true }).pressSequentially(o.nameIt.ticker);
     await page.getByLabel('Name', { exact: true }).pressSequentially(o.nameIt.name);
-    await page.getByLabel('Market').pressSequentially(o.nameIt.market);
-    await page.getByLabel('Currency').selectOption(o.nameIt.currency);
+    await page.getByLabel('Market', { exact: true }).pressSequentially(o.nameIt.market);
+    await page.getByLabel('Currency', { exact: true }).selectOption(o.nameIt.currency);
     await page.getByRole('button', { name: 'Continue' }).click();
   } else {
     await page.getByRole('button', { name: new RegExp(`^${o.pick ?? o.search}\\b`) }).first().click();
   }
-  if (typeof o.broker === 'string') await page.getByLabel('Where is it kept').selectOption({ label: new RegExp(`^${o.broker}`) as unknown as string });
+  if (typeof o.broker === 'string') await page.getByLabel('Where is it kept').selectOption({ label: o.broker });
   else {
     await page.getByLabel('Where is it kept').selectOption({ label: 'Another broker…' });
     await page.getByLabel('Broker name').pressSequentially(o.broker.new);
@@ -3587,44 +4114,52 @@ export async function addHoldingFlow(page: Page, o: {
   if (o.fee) await page.getByLabel(/^Fee/).pressSequentially(o.fee);
   await page.getByLabel('Paid from').selectOption({ label: o.paidFrom });
   if (o.charged) await page.getByLabel(/^Charged in/).pressSequentially(o.charged);
-  if (o.rate) await page.getByLabel('Rate that day').pressSequentially(o.rate);
+}
+
+/** The token as a computed colour — moved here from phone-dark-shell.spec.ts, which now imports it. */
+export async function tokenColour(page: Page, name: string): Promise<string> {
+  return page.evaluate((property) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${property})`;
+    document.body.appendChild(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  }, name);
 }
 ```
-
-(If a `selectOption` with a regex label is refused by the Playwright version, select by the option's exact text read from the page — the broker option text is its name, plus " · you hold N" when held.)
 
 - [ ] **Step 2: The walk** — one `test` per row of spec §10, in this file:
 
 ```ts
 // apps/web/e2e/securities.spec.ts
 import { expect, test } from '@playwright/test';
-import { addBank, addHoldingFlow, grantForeignList } from './securities';
+import { expectBalance, startReport } from './deposit-maturity';
+import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
+import { addHoldingFlow, setForeignList } from './securities';
+import { todayIn } from './today';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
   void page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
 });
 
-const balanceOf = async (page: import('@playwright/test').Page, name: string) => {
-  await page.goto('/accounts');
-  return page.getByRole('link', { name, exact: true }).locator('..');
-};
-
 test('1–4: BBCA at two brokers is one stock, one price values both, and the bank moved by exactly what was paid', async ({ page }) => {
-  await addBank(page, 'BCA Tahapan', '50000000');
-  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', fee: '13.125', paidFrom: 'BCA Tahapan' });
-  await expect(page.getByText('Rp 8.750.000')).toBeVisible(); // Total: 10 lots × 100 × 8.750
+  await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', fee: '13.125', paidFrom: 'BCA Tahapan (IDR)' });
+  await expect(page.getByLabel('Total')).toHaveValue(/8\.750\.000$/); // 10 lots × 100 × 8.750
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
-  await expect(await balanceOf(page, 'BCA Tahapan')).toContainText('41.236.875');
+  await expectBalance(page, 'BCA Tahapan', '41.236.875'); // 50.000.000 − 8.750.000 − 13.125
 
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Mandiri Sekuritas' }, quantity: '5', price: '9.400', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await expect(await balanceOf(page, 'BCA Tahapan')).toContainText('41.236.875');
+  await expectBalance(page, 'BCA Tahapan', '41.236.875');
 
-  await addHoldingFlow(page, { search: 'BBCA', broker: 'Stockbit', quantity: '5', price: '9.000', paidFrom: 'BCA Tahapan' });
+  // BBCA is held now, so it is picked from You hold, and Stockbit says what it holds.
+  await addHoldingFlow(page, { search: 'BBCA', broker: 'Stockbit · you hold 1.000', quantity: '5', price: '9.000', paidFrom: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await expect(await balanceOf(page, 'BCA Tahapan')).toContainText('36.736.875');
+  await expectBalance(page, 'BCA Tahapan', '36.736.875'); // − 500 × 9.000
 
   await page.goto('/net-worth/investments');
   const bbca = page.getByTestId('stock-row').filter({ hasText: 'BBCA' });
@@ -3635,23 +4170,23 @@ test('1–4: BBCA at two brokers is one stock, one price values both, and the ba
   await bbca.click();
   await page.getByRole('link', { name: /Price today/ }).click();
   await page.getByLabel('Price (IDR)').pressSequentially('9.775');
-  await expect(page.getByText('Rp 14.662.500')).toBeVisible(); // Stockbit 1.500 × 9.775
-  await expect(page.getByText('Rp 4.887.500')).toBeVisible(); // Mandiri 500 × 9.775
+  await expect(page.getByText('14.662.500')).toBeVisible(); // Stockbit 1.500 × 9.775
+  await expect(page.getByText('4.887.500')).toBeVisible(); // Mandiri 500 × 9.775
   await page.getByRole('button', { name: 'Save price' }).click();
   await page.goto('/net-worth/investments');
   await expect(page.getByTestId('stock-row').filter({ hasText: 'BBCA' })).toContainText('19.550.000'); // 2.000 × 9.775
 });
 
 test('5: a free user names AAPL, pays in rupiah, and the rupiah cost is exactly what left', async ({ page }) => {
-  await addBank(page, 'BCA Tahapan', '50000000');
+  await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
   await addHoldingFlow(page, {
     search: 'AAPL', nameIt: { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ', currency: 'USD' },
-    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182.50', paidFrom: 'BCA Tahapan', charged: '28.835.000',
+    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182,50', paidFrom: 'BCA Tahapan (IDR)', charged: '28.835.000',
   });
-  await expect(page.getByText('Rp 15.800 / $')).toBeVisible();
-  await expect(page.getByText('Rp 28.835.000')).toBeVisible();
+  await expect(page.getByLabel('Rate that day')).toHaveValue('15.800 IDR per 1 USD');
+  await expect(page.getByLabel('Cost in IDR')).toHaveValue(/28\.835\.000$/);
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await expect(await balanceOf(page, 'BCA Tahapan')).toContainText('21.165.000');
+  await expectBalance(page, 'BCA Tahapan', '21.165.000');
 });
 
 test('9: a free user’s search for AAPL finds nothing on IDX and offers Name it myself', async ({ page }) => {
@@ -3659,31 +4194,39 @@ test('9: a free user’s search for AAPL finds nothing on IDX and offers Name it
   await page.getByLabel('Ticker or name').pressSequentially('AAPL');
   await expect(page.getByText('Nothing on IDX matches AAPL')).toBeVisible();
   await expect(page.getByRole('button', { name: /Name it myself/ })).toBeVisible();
+  // The same search finds BBCA, so the list is loaded and the empty answer is about the market, not a failure.
+  await page.getByLabel('Ticker or name').fill('');
+  await page.getByLabel('Ticker or name').pressSequentially('BBCA');
+  await expect(page.getByRole('button', { name: /^BBCA\b/ }).first()).toBeVisible();
 });
 
-test('6 & 10: the paid list fills AAPL in; a missing day rate is asked for and read back; after a lapse AAPL still counts', async ({ page }) => {
-  await grantForeignList(page);
-  await addHoldingFlow(page, { search: 'AAPL', pick: 'AAPL', broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182.50', paidFrom: 'Owned before this app' });
+test('6 & 10: the switched-on list fills AAPL in; a missing day rate is asked for and read back; after the switch goes off AAPL still counts', async ({ page }) => {
+  await setForeignList(page, true);
+  await addMoneyAccount(page, 'Interactive Brokers', 'fund', '0', 'USD');
+  await addHoldingFlow(page, { search: 'AAPL', pick: 'AAPL', broker: 'Interactive Brokers', quantity: '10', price: '182,50', paidFrom: 'Interactive Brokers (USD)' });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  // No USD rate is stored and the rate server is unreachable: the form asks, and keeps everything typed.
+  // No USD rate is stored for today and the rate server is unreachable: the form asks, and keeps everything typed.
   await expect(page.getByRole('alert')).toContainText('Rate that day');
   await page.getByLabel('Rate that day').pressSequentially('16250');
   await expect(page.getByText('Reads as 1 USD = 16.250 IDR')).toBeVisible();
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'AAPL' })).toBeVisible();
-  // No price yet, so the value is the cost: $1.825,00 at 16.250.
+  // No price yet, so the value is the cost: $1.825,00 at the 16.250 just stored for today.
   await expect(page.getByText(/29\.656\.250/).first()).toBeVisible();
 
-  await page.evaluate(() => localStorage.removeItem('expanses.entitlements'));
+  await setForeignList(page, false); // a lapse
   await page.goto('/net-worth/investments');
   await expect(page.getByTestId('stock-row').filter({ hasText: 'AAPL' })).toContainText('10 shares');
   await page.goto('/net-worth/investments/new');
   await page.getByLabel('Ticker or name').pressSequentially('AAP');
   await expect(page.getByText('You hold')).toBeVisible();
+  await page.getByLabel('Ticker or name').fill('');
+  await page.getByLabel('Ticker or name').pressSequentially('MSFT');
+  await expect(page.getByText('Nothing on IDX matches MSFT')).toBeVisible(); // the US list is no longer searched
 });
 
-test('11: a holding recorded before is given its ticker and broker, and its price moves to the security', async ({ page }) => {
-  await addBank(page, 'Stockbit', '0', 'fund');
+test('11: a holding recorded before is given its ticker and broker; its lot setting goes to the security', async ({ page }) => {
+  await addMoneyAccount(page, 'Stockbit', 'fund', '0');
   await page.goto('/net-worth/assets');
   await page.getByRole('button', { name: 'Add asset' }).click();
   await page.getByLabel('What is it?').selectOption('stock');
@@ -3693,80 +4236,99 @@ test('11: a holding recorded before is given its ticker and broker, and its pric
   await page.getByLabel('Total cost (IDR)').pressSequentially('875.000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
   await page.getByRole('link', { name: /BBCA old/ }).click();
+  await expect(page.getByLabel('Shares in a lot')).toHaveCount(1); // shown while it has no security
   await page.getByRole('link', { name: /Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
   await page.getByRole('button', { name: /^BBCA\b/ }).first().click();
   await page.getByLabel('Kept at').selectOption({ label: 'Stockbit' });
   await expect(page.getByText(/The price is BBCA’s/)).toBeVisible();
+  await expect(page.getByLabel('Shares in a lot')).toHaveCount(0); // set by BBCA now
   await page.goto('/net-worth/investments');
-  await expect(page.getByTestId('broker-row').filter({ hasText: 'Stockbit' })).toContainText('Rp 875.000');
+  await expect(page.getByTestId('broker-row').filter({ hasText: 'Stockbit' })).toContainText('875.000');
 });
 
 test('12: the tax report names the broker and files AAPL at the rupiah it cost', async ({ page }) => {
-  await addBank(page, 'BCA Tahapan', '50000000');
+  await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
   await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await addHoldingFlow(page, {
     search: 'AAPL', nameIt: { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ', currency: 'USD' },
-    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182.50', paidFrom: 'BCA Tahapan', charged: '28.835.000',
+    broker: { new: 'Interactive Brokers', currency: 'USD' }, quantity: '10', price: '182,50', paidFrom: 'BCA Tahapan (IDR)', charged: '28.835.000',
   });
   await page.getByRole('button', { name: 'Add holding' }).click();
-  await page.goto('/tax-report');
+  // Both were bought today, so they are this year's report — the browser's own year, not Node's.
+  await startReport(page, Number((await todayIn(page)).slice(0, 4)));
   await expect(page.getByText('Saham BBCA — Stockbit')).toBeVisible();
   const aapl = page.getByRole('row').filter({ hasText: 'Saham AAPL — Interactive Brokers' });
   await expect(aapl).toContainText('28.835.000');
   await expect(aapl).not.toContainText('182.500');
 });
+
+test('the Add a holding form is a set-aside door: a buy that takes promised money asks which goal paid', async ({ page }) => {
+  await jeniusWithTwoGoals(page); // Jenius Rp 42.500.000, Rp 37.500.000 promised: Rp 5.000.000 free
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '6.800', paidFrom: 'Jenius (IDR)' });
+  await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+  const add = page.getByRole('button', { name: 'Add holding' });
+  await expect(add).toBeDisabled();
+  await page.getByRole('button', { name: 'Take from Emergency fund' }).click();
+  await page.getByRole('button', { name: 'No — borrowing from it' }).click();
+  await add.click();
+  await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
+  await page.goto('/goals');
+  await expect(goalCard(page, 'Emergency fund').getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
+});
 ```
 
-Rows 7 and 8 are `foreign-trades.spec.ts` (Task 8). The tax report opens on the current year's draft; if it needs a year chosen or a report started, follow `coretax.spec.ts`'s own steps to get there.
+Rows 7 and 8 are `foreign-trades.spec.ts` (Task 8). If the tax report's own steps differ from `startReport`'s, follow `coretax.spec.ts`.
 
 - [ ] **Step 3: The phone** (row 13)
 
 ```ts
 // apps/web/e2e/phone-securities.spec.ts
 import { expect, test } from '@playwright/test';
-import { addBank, addHoldingFlow } from './securities';
-
-/** `tokenColour` is moved (not copied) out of phone-dark-shell.spec.ts into ./securities.ts, exported, and imported by both specs. */
-import { tokenColour } from './securities';
+import { addMoneyAccount } from './set-aside';
+import { addHoldingFlow, tokenColour } from './securities';
 
 const noSideScroll = async (page: import('@playwright/test').Page) =>
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 
 test('every securities screen fits a 390 px phone and is reached by thumb', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await addBank(page, 'BCA Tahapan', '50000000');
-  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', paidFrom: 'BCA Tahapan' });
+  await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', paidFrom: 'BCA Tahapan (IDR)' });
+  await expect(page.getByLabel('Total')).toHaveValue(/8\.750\.000$/);
   await noSideScroll(page);
-  await page.getByRole('button', { name: 'Add holding' }).click();
+  await page.getByRole('button', { name: 'Add holding' }).tap();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await noSideScroll(page);
   await page.getByRole('link', { name: /Price today/ }).tap();
+  await expect(page.getByLabel('Price (IDR)')).toBeVisible();
   await noSideScroll(page);
   await page.goto('/net-worth/investments');
+  await expect(page.getByTestId('stock-row').filter({ hasText: 'BBCA' })).toContainText('8.750.000');
   await noSideScroll(page);
   await page.getByTestId('broker-row').filter({ hasText: 'Stockbit' }).tap();
-  await expect(page.getByText('Rp 8.750.000').first()).toBeVisible();
+  await expect(page.getByText('8.750.000').first()).toBeVisible();
   await noSideScroll(page);
 });
 
 test('the investments screens follow dark mode through the kit’s tokens', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
-  for (const path of ['/net-worth/investments', '/net-worth/investments/new']) {
+  for (const path of ['/net-worth/investments', '/net-worth/investments/new', '/settings/developer']) {
     await page.goto(path);
     // The same comparison phone-dark-shell.spec.ts makes: the page ground is the dark token's colour, resolved.
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(await tokenColour(page, '--ph-ground'));
+    expect(await tokenColour(page, '--ph-ground')).toBe('rgb(0, 0, 0)');
   }
 });
 ```
 
-- [ ] **Step 4: Run** `npx playwright test securities.spec.ts phone-securities.spec.ts foreign-trades.spec.ts --workers=2` → every test passes. A test that fails is fixed in the code, never by loosening a figure.
+- [ ] **Step 4: Run** `cd apps/web && npx playwright test -c playwright.se.config.ts --workers=2 '/securities\.spec\.ts$' '/phone-securities\.spec\.ts$' '/foreign-trades\.spec\.ts$' '/phone-dark-shell\.spec\.ts$'` → every test passes. A test that fails is fixed in the code, never by loosening a figure.
 - [ ] **Step 5: Commit** `test(securities): walk every combination by keystroke, on a desktop and a phone`
 
 ### Task 15: The full gate, and the spec walked section by section
 
-- [ ] **Step 1:** From the root: `npm run typecheck`, `npm test`, `npm run build` (read the bundle check's lines: the entry chunk contains neither list; IDX and US each in one chunk under budget). Then `cd apps/web && npx playwright test --workers=2` — the **whole** suite, both projects.
+- [ ] **Step 1:** From the root: `npm run typecheck`, `npm test`, `npm run build` (read the bundle check's lines: the entry chunk contains neither list; IDX and US each in one chunk under budget). Then `cd apps/web && npx playwright test -c playwright.se.config.ts --workers=2` — the **whole** suite, both projects, on port 4185. The two add-transaction specs that computed today in UTC were fixed on main (`e2e/today.ts`); any failure is this branch's to fix. `git status` must still show `apps/web/playwright.se.config.ts` as untracked.
 - [ ] **Step 2:** Walk the spec with the mapping below; for each line, open the file named and confirm it is there. Anything missing is a new commit before this task closes.
 - [ ] **Step 3: Commit** anything the walk found (`fix(securities): …`). Do not merge or push.
 
@@ -3781,29 +4343,29 @@ test('the investments screens follow dark mode through the kit’s tokens', asyn
 | §2.1 | three side tables, unique ticker index, owner-level, migration 0051 | 4 |
 | §2.2 | the guard; older databases behave as today | 4, 5 (older-db tests) |
 | §2.3 | a security's facts; copied rows survive a lapse | 4, 12, 14 (row 10) |
-| §2.4 | a broker is a money account; Another broker opens a `fund` account; one holding per security per broker | 4, 6 |
+| §2.4 | a broker is a `fund` account that is not a pocket (owner's ruling); Another broker opens a `fund` account; one holding per security per broker | 4, 6, 12 (`brokerChoices`), 13 |
 | §3.1–3.4 | one price per security; routing; carrying prices; price in the security's currency | 4, 5, 11 |
 | §4.1–4.2 | cost pinned at the day's rate; `baseCosts` | 1, 6, 7 |
-| §4.3 | portfolio total in base, exchange-rate movement, missing rates | 1, 10 |
+| §4.3 | portfolio total in base through `sumToBase`, exchange-rate movement, a missing rate refuses the total | 1, 10 |
 | §4.4 | broker shares floor + remainder to the largest | 1, 10 |
 | §5.1 | holding currency = security currency | 4 |
-| §5.2 | the three cases; derived rate; typed day rate checked and stored | 2, 8, 12 |
-| §5.3 | `TradeForm` and the Buy / sell tab gain the rows | 8 |
+| §5.2 | the three cases; derived rate; typed day rate through `openingRateFor`; the charged amount on the input so the set-aside door reads it | 2, 8, 12 |
+| §5.3 | `TradeForm` and the Buy / sell tab gain the rows; a later sell reworked by an edit keeps its own rates | 7A, 8 |
 | §6.1–6.2 | two lists, MARKETS, generators, search ranking | 3, 12 |
 | §6.3 | lists in chunks of their own; `check-bundle.mjs` in `npm run build`; offline behaviour | 3, 9, 12 |
 | §6.4 | a new list never rewrites an owner's security | 4 (`ensureSecurityTx` returns the existing row) |
-| §6.5 | free: Name it myself; paid: the US list; lapse; the entitlement seam | 9, 12, 14 |
-| §7.1 | Investments: summary, By stock, Where they are kept, Add, entry rows | 10 |
+| §6.5 | free: Name it myself; paid: the US list; lapse; the entitlement seam and its hidden preview switch | 9, 12, 14 |
+| §7.1 | Investments: summary, By stock, Where they are kept (R1 via `ApproxFigure`, two currencies via `GroupedRow`), Add, entry rows; the Assets page's Investments group regrouped | 10 |
 | §7.2 | stock page, R1, read-only Recent | 11 |
 | §7.3 | price page, This changes | 10 (`priceChangeLines`), 11 |
-| §7.4 | broker page, Put in, Cash idle | 11 |
-| §7.5 | Add a holding: search, Name it myself, the form, Fee, reuse of an existing holding, one transaction, Add asset route | 6, 12 |
+| §7.4 | broker page, Put in, Cash idle (each pocket in its own currency) | 11 |
+| §7.5 | Add a holding: search, Name it myself, the form (Option B), Fee, For goal and the set-aside question, reuse of an existing holding, one transaction, Add asset route | 6, 12, 14 |
 | §7.6 | linking an old holding; lot size hidden; the price note | 4, 13 |
 | §8.1 | C2 names | 2, 7, 14 (row 12) |
 | §8.2 | foreign cost at the day's rate; the purchase note; frozen reports show a difference | 2, 7 |
-| §9 | no new surface edits or deletes a trade; workspace checks; opening positions; oversell; cards | 4, 6, 11 (read-only rows), 8 |
-| §10 | combinations 1–13 | 8 (7, 8), 14 (the rest) |
+| §9 | no new surface edits or deletes a trade; Buy & sell keeps Edit/Delete; workspace checks; opening positions; oversell; cards | 4, 6, 7A, 11 (read-only rows), 8 |
+| §10 | combinations 1–13, and the set-aside door on both new ways in | 8 (7, 8), 14 (the rest) |
 | §11 | the three readings that differ from the mockup | 1, 10 |
-| §12 | open questions | not built; for the owner |
+| §12 | open questions — all four answered by the owner (2026-09-21/22) | 4, 6, 9, 10 |
 | §13 | findings | reported; 7 and 8 fix findings 3 and 4 |
 ---
