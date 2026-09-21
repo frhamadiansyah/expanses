@@ -62,10 +62,14 @@ export interface NewAssetPlan {
   trades: { occurredOn: string; unitsMicro: number; grossMinor: number }[];
   valuation: { asOf: string; valueMinor: number; basis: ValuationBasis } | null;
   /**
-   * The rate that prices the opening entry in the ledger. Undefined when the asset is already in the
-   * base currency. This is not the tax report's rate: that one is the KMK figure, entered per year.
+   * What will post in the asset's own currency and so needs a rate to base: the purchases' total cost when there
+   * are purchases, else the opening balance; 0 when nothing posts. The rate itself is not read here — the form
+   * hands `draft.openingRate` to `openingRateFor`, the one reader every form that opens money uses. (This is not
+   * the tax report's rate: that one is the KMK figure, entered per year.)
    */
-  openingRateToBase?: number;
+  rateNeededMinor: number;
+  /** The day that rate is for: the earliest purchase, else the day the balance opens. */
+  rateDate: string;
 }
 
 /**
@@ -153,10 +157,6 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
     years = [Number(draft.purchasedOn.slice(0, 4))];
   }
 
-  const typedRate = draft.openingRate.trim();
-  const openingRateToBase = typedRate === '' ? undefined : Number(typedRate.replace(/\./g, '').replace(',', '.'));
-  if (openingRateToBase !== undefined && !(openingRateToBase > 0)) throw new Error('The rate must be more than zero');
-
   let valuation: NewAssetPlan['valuation'] = null;
   if (needsEstimate(draft.itemId, draft.typedInstead) && draft.estimate.trim() !== '') {
     valuation = { asOf: today, valueMinor: parseMajor(draft.estimate, draft.currency), basis: draft.estimateBasis };
@@ -184,6 +184,7 @@ export function planNewAsset(draft: NewAssetDraft, today: string): NewAssetPlan 
     person: behaviour.opens === 'person' ? { direction: behaviour.direction, personName, coretaxCode: item.code, balanceMinor: openingBalanceMinor } : null,
     trades,
     valuation,
-    openingRateToBase,
+    rateNeededMinor: trades.length ? trades.reduce((sum, trade) => sum + trade.grossMinor, 0) : openingBalanceMinor,
+    rateDate: trades.length ? trades.reduce((earliest, trade) => (trade.occurredOn < earliest ? trade.occurredOn : earliest), trades[0]!.occurredOn) : openedOn,
   };
 }

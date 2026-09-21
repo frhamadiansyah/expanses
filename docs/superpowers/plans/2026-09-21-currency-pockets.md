@@ -4,7 +4,7 @@
 
 **Goal:** Let one bank account hold several currencies: a parent row in Accounts (P1) that adds its pockets up at the day's rates, one ordinary money account per currency underneath, a way to open such an account with an optional rate per opening balance, a way to add a pocket, and a Move between pockets screen that records the exchange as a two-legged transfer so the bank's spread is visible and kept. A single-currency account does not change at all.
 
-**Architecture:** No migration. A pocket is an ordinary `accounts` row (`kind: 'asset'`, its own currency) whose `parent_id` names the parent; the parent is an `accounts` row that never holds an entry. That rule is enforced once, in `postTransactionTx`, the only place entries are written. A parent is recognised by one function (`pocketParentIds`) from the account list; `assetValuesAt` drops parents, which covers net worth, the tax report, idle cash, goal funding and health ratios; pickers use a new `moneyHolders` in place of `accounts.filter(isMoneyAccount)`. Pure arithmetic (`sumToBase`, `exchangeCost`, `impliedRate`) lives in `packages/core/src/money/exchange.ts`. The Move screen holds an ordinary transfer `FormDraft` and saves through the Transfer tab's own `formToPost` → `ratesForSave` → `postTransaction`; its second figure's currency comes from a new `receivedField` beside `amountFields`, which the Transfer tab's Received row and `transferPostingLines` are changed to read as well.
+**Architecture:** No migration. A pocket is an ordinary `accounts` row (`kind: 'asset'`, its own currency) whose `parent_id` names the parent; the parent is an `accounts` row that never holds an entry. That rule is enforced once, in `postTransactionTx`, the only place entries are written. A parent is recognised by one function (`pocketParentIds`) from the account list; `assetValuesAt` drops parents, which covers net worth, the tax report, idle cash, goal funding and health ratios; pickers use a new `moneyHolders` in place of `accounts.filter(isMoneyAccount)`. Pure arithmetic (`sumToBase`, `exchangeCost`, `impliedRate`) lives in `packages/core/src/money/exchange.ts`. The two display parts securities will reuse — the R1 figure (`approxLine`, `ApproxFigure`: a native figure with its `≈` converted value beneath) and the grouped row (`groupedFigure`, `GroupedRow`: a parent that sums its children and holds nothing itself) — live in the kit, `apps/web/src/ui/native/approx.ts` and `Grouped.tsx`. The Accounts page gains a Money summary tile, and the net-worth Assets list shows an account with pockets as one grouped row, with its group totals converted rather than added raw (user decisions 7 and 8, 2026-09-21). The Move screen holds an ordinary transfer `FormDraft` and saves through the Transfer tab's own `formToPost` → `ratesForSave` → `postTransaction`; its second figure's currency comes from a new `receivedField` beside `amountFields`, which the Transfer tab's Received row and `transferPostingLines` are changed to read as well.
 
 **Tech Stack:** TypeScript monorepo — `packages/core` (pure), `packages/db` (Drizzle over sqlite-proxy, `better-sqlite3` in tests), `apps/web` (React 19, TanStack Router/Query, Tailwind 4, native kit in `apps/web/src/ui/native/`); Vitest; Playwright (`chromium`, `phone`).
 
@@ -22,11 +22,26 @@
 - **Every screen is built from the native kit** (`InsetGroup`, `InsetRow`, `Hero`, `LargeTitle`, `SelectRow`, `TextRow`, `ReadOnlyRow`, `SwitchRow`, `RecordTable`, `Figure`, `SCREEN`). Colours only through `var(--ph-*)` tokens — dark mode must work. No literal colours, no `slate-`, no `bg-white` in any file this plan creates. Corner actions are glyphs. No new visual treatment.
 - **Desktop is never weakened.** The Accounts page keeps all five `RecordTable` columns on desktop, Rename and Archive included, for parents too.
 - **Country-neutral.** No bank names in copy (the mockup's BCA/OCBC/Livin Mandiri lines are not shipped). Only the tax report is Indonesia-specific.
-- **Securities (0051) builds first.** Its decisions require a grouped row and R1 figure "designed for both subjects". Tasks 1, 4 and 5 open with a pre-flight step that checks what securities landed and uses it instead of writing a second copy.
+- **Build order (binding ruling, 2026-09-21): currency pockets builds BEFORE securities.** Securities is not built and nothing here waits for it or looks for its helpers. This plan writes the shared parts, and securities reuses them later: `sumToBase` in core (no multi-currency sum that refuses a missing rate exists today; core's `netWorth` returns a partial total beside `missingRates` and is not a substitute), and in the kit `approxLine` / `rateLine` / `groupedFigure` (`ui/native/approx.ts`) with `ApproxFigure` / `GroupedRow` (`ui/native/Grouped.tsx`), exported from `ui/native/index.ts`. Keep them free of pocket words so securities can call them unchanged.
+- **Branches from main, not from set-aside.** `feat/set-aside` (not merged) also edits: `packages/db/src/repos/ledger.ts` (`postTransactionTx` — set-aside adds `setAside` after `writeExtrasTx`; this plan adds the parent refusal after the `found` select), `packages/db/src/index.ts`, `packages/core/src/index.ts`, `TransactionCard.tsx`, `EditSheet.tsx`, `TransactionsPage.tsx`, `ReviewPage.tsx`, `EventDetailPage.tsx`, `CardHero.tsx`, `StatementPanel.tsx`, `LoanDetailPage.tsx`, `DebtForm.tsx`, `PersonCard.tsx`, `PaySheet.tsx`, `AssetDetailPage.tsx`, and reads `assetValuesAt` in `idle-cash.ts` / `goal-funding.ts` (this plan changes what `assetValuesAt` returns, not those files). Whichever merges second resolves those hunks; every picker edit here is the one-line `moneyHolders(...)` swap, so re-apply it on top of set-aside's version rather than taking either side whole.
 - Inside `database.transaction((tx) => …)` use `tx` only — `database.db` there deadlocks.
 - Snippets name real functions with signatures read on 2026-09-21. If the compiler disagrees, re-read the type and match it; do not change the called function.
 - Branch `feat/currency-pockets`. Commit per task; every message ends with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
-- **Gate before every commit:** from root `npm run typecheck`, `npm test`, `npm run build`; then the task's targeted Playwright specs (`cd apps/web && npx playwright test <files> --workers=2`). Task 8 runs the full suite.
+- **Gate before every commit:** from root `npm run typecheck`, `npm test`, `npm run build`; then the task's targeted Playwright specs. Task 10 runs the full suite.
+- **Playwright runs on its own port, from an untracked config.** Before the first e2e run, create `apps/web/playwright.cu.config.ts` (already listed in `.git/info/exclude`; never commit it):
+
+  ```ts
+  import { defineConfig } from '@playwright/test';
+  import base from './playwright.config';
+
+  export default defineConfig({
+    ...base,
+    use: { ...base.use, baseURL: 'http://localhost:4179' },
+    webServer: { command: 'npm run build && npx vite preview --port 4179 --strictPort', url: 'http://localhost:4179', reuseExistingServer: false, timeout: 180_000 },
+  });
+  ```
+
+  Every command is `cd apps/web && npx playwright test -c playwright.cu.config.ts '<regex>' --workers=2`, where the regex is anchored on the spec's file name — `'e2e/currency-pockets\.spec\.ts$'`, never a bare word: `currency-pockets` alone matches the worktree's own path (`.worktrees/currency-pockets/…`) and so runs every spec.
 - **E2E types figures keystroke by keystroke** (`pressSequentially`), never `fill()`, for every money field this feature adds.
 
 ---
@@ -38,8 +53,9 @@
 | `packages/core/src/money/exchange.ts` | `sumToBase`, `exchangeCost`, `impliedRate` (Task 1) |
 | `packages/core/src/index.ts` | export them |
 | `packages/core/test/exchange.test.ts` | Task 1 |
-| `packages/db/src/repos/accounts.ts` | `pocketName`, `pocketParentIds`; pocket rules in `createAccountTx`; `renameAccount` carries to pockets; `archiveAccount` refuses a parent with open pockets (Tasks 2, 3) |
-| `packages/db/src/repos/cash-accounts.ts` | `openCashAccountTx` extracted; `parentId` on `OpenCashAccountInput` (Task 2) |
+| `packages/db/src/repos/accounts.ts` | `pocketName`, `pocketParentIds`; pocket rules in `createAccountTx`; `sortOrder?` on `CreateAccountInput` (existing column); `renameAccount` carries to pockets; `archiveAccount` refuses a parent with open pockets (Tasks 2, 3) |
+| `packages/db/src/repos/cash-accounts.ts` | `openCashAccountTx` extracted; `parentId`, `sortOrder` on `OpenCashAccountInput` (Task 2) |
+| `packages/db/src/repos/assets.ts` | `getAssetProfileTx` — `getAssetProfile` inside a caller's transaction, so `addPocket` reads the bank without a second JSON reader (Task 2) |
 | `packages/db/src/repos/pockets.ts` | `openPocketedAccount`, `addPocket`, `openingsOf` (Task 2) |
 | `packages/db/src/repos/ledger.ts` | `POCKET_PARENT` refusal in `postTransactionTx` (Task 3) |
 | `packages/db/src/repos/asset-values.ts` | `assetValuesAt` leaves parents out (Task 3) |
@@ -50,9 +66,12 @@
 | `apps/web/src/lib/queries.test.ts`, `apps/web/src/lib/rates.test.ts` | Task 4 |
 | `apps/web/src/features/transactions/tx-form.ts` (+ `.test.ts`) | `receivedField`; `transferPostingLines` and the goal branch read it (Task 4) |
 | `apps/web/src/features/transactions/TransactionCard.tsx` | Received row from `receivedField`; pickers from `moneyHolders` (Task 4) |
-| `EditSheet.tsx`, `QuickRowEditor.tsx`, `TransactionsPage.tsx`, `ReviewPage.tsx`, `EventDetailPage.tsx`, `ImportPage.tsx`, `GoalForm.tsx`, `CardHero.tsx`, `StatementPanel.tsx` | pickers from `moneyHolders` (Task 4) |
-| `apps/web/src/features/ownables/CashAccountForm.tsx`, `apps/web/src/features/accounts/AccountsPage.tsx` | `openingRateFor` (Task 4); the switch and pockets group (Task 5); the parent row (Task 5) |
-| `apps/web/src/features/accounts/pockets.ts` (+ `.test.ts`) | `pocketsOf`, `parentTotal`, `approxLine`, `rateLine`, `readPockets`, `nextPocketCurrency`, `moveDraft`, `withPockets`, `moveView`, `bankRateText`, `spreadLine`, `moveDescription` (Task 4) |
+| `EditSheet.tsx`, `QuickRowEditor.tsx`, `TransactionsPage.tsx`, `ReviewPage.tsx`, `EventDetailPage.tsx`, `ImportPage.tsx`, `GoalForm.tsx`, `CardHero.tsx`, `StatementPanel.tsx`, `LoanDetailPage.tsx`, `DebtForm.tsx`, `PersonCard.tsx`, `BusinessSection.tsx`, `BillFormPage.tsx`, `PaySheet.tsx`, `TradesPage.tsx`, `CardsPage.tsx` | pickers from `moneyHolders` (Task 4) |
+| `apps/web/src/features/networth/add-asset.ts` (+ `.test.ts`), `AddAssetForm.tsx` | Add asset's rate goes through `openingRateFor`: `16.500` no longer read as 16500, a blank foreign rate resolved (Task 4) |
+| `apps/web/src/ui/native/approx.ts` (+ `.test.ts`), `apps/web/src/ui/native/Grouped.tsx`, `ui/native/index.ts` | the shared parts: `approxLine`, `rateLine`, `groupedFigure`; `ApproxFigure`, `GroupedRow` (Task 4) |
+| `apps/web/src/features/ownables/CashAccountForm.tsx`, `apps/web/src/features/accounts/AccountsPage.tsx` | `openingRateFor` (Task 4); the switch and pockets group (Task 5); the parent row (Task 5); the Money tile (Task 8) |
+| `apps/web/src/features/accounts/pockets.ts` (+ `.test.ts`) | `pocketsOf`, `parentTotal`, `readPockets`, `nextPocketCurrency`, `moveDraft`, `withPockets`, `moveView`, `bankRateText`, `spreadLine`, `moveDescription` (Task 4); `moneySummary` (Task 8) |
+| `apps/web/src/features/networth/asset-rows.ts` (+ `.test.ts`), `AssetsPage.tsx` | pockets grouped under their account; group and page totals converted, refusing a missing rate (Task 9) |
 | `apps/web/src/features/accounts/queries.ts` | `useHeldRates`, `useOpenings` (Task 5) |
 | `apps/web/src/features/accounts/PocketsPage.tsx` | `/accounts/$accountId` (Task 5) |
 | `apps/web/src/features/networth/AssetDetailPage.tsx` | ≈ line, Opened at, back to parent (Task 5) |
@@ -60,8 +79,9 @@
 | `apps/web/src/features/accounts/MovePage.tsx` | `/accounts/$accountId/move` (Task 7) |
 | `apps/web/src/app/router.tsx` | three routes (Tasks 5, 6, 7) |
 | `apps/web/e2e/pockets.ts` | `openWithPockets`, `mockRates` helpers (Task 5) |
-| `apps/web/e2e/currency-pockets.spec.ts` | chromium (Tasks 5–8) |
-| `apps/web/e2e/phone-currency-pockets.spec.ts` | phone (Task 8) |
+| `apps/web/e2e/currency-pockets.spec.ts` | chromium (Tasks 5–10) |
+| `apps/web/e2e/phone-currency-pockets.spec.ts` | phone (Task 10) |
+| `apps/web/playwright.cu.config.ts` | **untracked**, port 4179 (Global Constraints) |
 
 ---
 
@@ -75,7 +95,7 @@
 - Consumes: `convertMinor(amountMinor, from, to, rate)` and `currencyInfo(code)` (`packages/core/src/money/money.ts`, `currencies.ts`).
 - Produces: `sumToBase({ amounts, baseCurrency, ratesToBase }): { totalMinor: number | null; missing: string[] }`; `exchangeCost({ fromMinor, fromCurrency, toMinor, toCurrency, baseCurrency, ratesToBase }): ExchangeCost | null` with `ExchangeCost = { fromBaseMinor; toBaseMinor; costMinor }`; `impliedRate({ fromMinor, fromCurrency, toMinor, toCurrency }): number | null`.
 
-- [ ] **Step 0: Pre-flight — what securities landed.** Run `grep -rn "export function" packages/core/src | grep -iE "toBase|sum|convert"` and read the securities plan (`docs/superpowers/plans/*securities*.md`). If securities added a function that adds amounts in several currencies into one base figure **and returns no total when a rate is missing**, do not write `sumToBase`: delete it from Step 1/3 and call that function wherever this plan says `sumToBase` (Tasks 4, 5). If its function returns a total that silently skips a missing rate, it is not a substitute — write `sumToBase` and note the difference in the commit message.
+`sumToBase` is written here, for pockets and for securities after it (build-order ruling). Checked 2026-09-21: core has no sum that refuses a missing rate — `netWorth` (`ledger/balances.ts`) adds what it can and lists `missingRates`, and `toBase` (`asset-values.ts:138`) answers 0. Neither is called or copied.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -167,7 +187,7 @@ describe('the bank’s rate', () => {
   it('is what arrived per unit that left, in major units', () => {
     expect(impliedRate({ fromMinor: 50_000, fromCurrency: 'USD', toMinor: 63_800, toCurrency: 'SGD' })).toBeCloseTo(1.276, 10);
     expect(impliedRate({ fromMinor: 10_050, fromCurrency: 'USD', toMinor: 1_630_000, toCurrency: 'IDR' })).toBeCloseTo(16_218.905472, 5);
-    // Ignoring KWD's three decimals would give 52,67.
+    // Reading KWD at two decimals would give 5.267,42 — ten times too small.
     expect(impliedRate({ fromMinor: 1_234, fromCurrency: 'KWD', toMinor: 65_000, toCurrency: 'IDR' })).toBeCloseTo(52_674.230146, 5);
   });
 
@@ -275,11 +295,11 @@ export { exchangeCost, type ExchangeCost, impliedRate, sumToBase } from './money
 
 **Files:**
 - Create: `packages/db/src/repos/pockets.ts`, `packages/db/test/pockets.test.ts`
-- Modify: `packages/db/src/repos/accounts.ts`, `packages/db/src/repos/cash-accounts.ts`, `packages/db/src/index.ts`
+- Modify: `packages/db/src/repos/accounts.ts`, `packages/db/src/repos/cash-accounts.ts`, `packages/db/src/repos/assets.ts`, `packages/db/src/index.ts`
 
 **Interfaces:**
-- Consumes: `createAccountTx`, `systemAccountId`, `AccountError` (`accounts.ts`); `saveAssetProfileTx` (`assets.ts`); `saveDepositTermsTx`; `cashItem` (core).
-- Produces: `pocketName(parentName: string, currency: string): string`; `pocketParentIds(rows: readonly Pick<AccountRow, 'id' | 'parentId' | 'kind'>[]): Set<string>`; `openCashAccountTx(tx, ws, input)`; `OpenCashAccountInput.parentId?: string`; `openPocketedAccount(database, ws, OpenPocketedAccountInput): Promise<{ parent: AccountRow; pockets: AccountRow[] }>`; `addPocket(database, ws, AddPocketInput): Promise<AccountRow>`; `openingsOf(database, ws, accountIds): Promise<Record<string, Opening>>` with `Opening = { occurredOn; amountMinor; currency; fxRateToBase }`.
+- Consumes: `createAccountTx`, `systemAccountId`, `AccountError` (`accounts.ts`); `saveAssetProfileTx`, `toProfile` (`assets.ts`); `saveDepositTermsTx`; `cashItem` (core).
+- Produces: `CreateAccountInput.sortOrder?: number`; `getAssetProfileTx(tx, ws, accountId)`; `pocketName(parentName: string, currency: string): string`; `pocketParentIds(rows: readonly Pick<AccountRow, 'id' | 'parentId' | 'kind'>[]): Set<string>`; `openCashAccountTx(tx, ws, input)`; `OpenCashAccountInput.parentId?: string`; `openPocketedAccount(database, ws, OpenPocketedAccountInput): Promise<{ parent: AccountRow; pockets: AccountRow[] }>`; `addPocket(database, ws, AddPocketInput): Promise<AccountRow>`; `openingsOf(database, ws, accountIds): Promise<Record<string, Opening>>` with `Opening = { occurredOn; amountMinor; currency; fxRateToBase }`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -339,6 +359,9 @@ describe('opening an account with pockets', () => {
     expect(profile).toMatchObject({ coretaxSection: 'kas', coretaxCode: '0102' });
     expect(profile!.coretaxFields).toEqual({ inst: 'BCA' });
     expect(pocketParentIds(await listAccounts(database, ws))).toEqual(new Set([parent.id]));
+    // The order they were given is kept in sort_order: ids made in the same millisecond are not ordered (uuidv7
+    // here has no counter), so "the order they were added" cannot be read off the id.
+    expect(pockets.map((p) => p.sortOrder)).toEqual([0, 1, 2]);
   });
 
   it('keeps the rate each opening balance was posted at', async () => {
@@ -374,7 +397,7 @@ describe('adding a pocket', () => {
   it('files it under the parent’s kind, with the bank its first pocket has', async () => {
     const { parent } = await valas();
     const jpy = await addPocket(database, ws, { parentId: parent.id, currency: 'JPY', openingBalanceMinor: 30_000, openedOn: '2026-09-21', openingRateToBase: 108.3 });
-    expect(jpy).toMatchObject({ name: 'BCA Pocket Valas · JPY', currency: 'JPY', subtype: 'savings', parentId: parent.id });
+    expect(jpy).toMatchObject({ name: 'BCA Pocket Valas · JPY', currency: 'JPY', subtype: 'savings', parentId: parent.id, sortOrder: 3 });
     expect((await getAssetProfile(database, ws, jpy.id))!.coretaxFields).toEqual({ inst: 'BCA' });
     expect((await nativeBalances(database, ws))[jpy.id]).toBe(30_000);
   });
@@ -441,6 +464,8 @@ async function checkPocketTx(tx: Db, ws: WorkspaceContext, pocket: AccountRow, p
 }
 ```
 
+`CreateAccountInput` gains `sortOrder?: number` (the column exists; nothing new in the schema), and the row literal in `createAccountTx` takes `sortOrder: input.sortOrder ?? 0` in place of `sortOrder: 0`. Every existing caller passes nothing and keeps 0.
+
 In `createAccountTx`, the existing parent block becomes:
 
 ```ts
@@ -470,6 +495,8 @@ export interface OpenCashAccountInput {
   // … every existing field, unchanged …
   /** The account this is a pocket of. Only `openPocketedAccount` and `addPocket` pass it. */
   parentId?: string;
+  /** A pocket's place among its account's pockets. Only `openPocketedAccount` and `addPocket` pass it. */
+  sortOrder?: number;
 }
 
 /** Opens a money account with the code and the behaviour its catalogue item fixes. */
@@ -491,6 +518,7 @@ export async function openCashAccountTx(tx: Db, ws: WorkspaceContext, input: Ope
     openedOn: input.openedOn,
     openingRateToBase: input.openingRateToBase,
     parentId: input.parentId ?? null,
+    sortOrder: input.sortOrder,
   });
   await saveAssetProfileTx(tx, ws, {
     accountId: account.id,
@@ -509,6 +537,8 @@ export async function openCashAccountTx(tx: Db, ws: WorkspaceContext, input: Ope
 
 Keep the two explanatory comments the old body had, on the same lines.
 
+`assets.ts`: `getAssetProfile` becomes a one-line call of a new `getAssetProfileTx(tx: Db, ws, accountId)` holding today's body (`database.db` → `tx`), so the bank is read through `toProfile` — the one reader of `coretax_fields_json` — and never by a second `JSON.parse`.
+
 - [ ] **Step 5: `pockets.ts`**
 
 ```ts
@@ -517,8 +547,8 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { assetProfiles } from '../schema-assets';
 import { AccountError, type AccountRow, createAccountTx, pocketName, systemAccountId } from './accounts';
+import { getAssetProfileTx } from './assets';
 import { openCashAccountTx } from './cash-accounts';
 
 export interface PocketInput {
@@ -556,7 +586,7 @@ export async function openPocketedAccount(
     // The table requires a currency on every asset; the parent's is never read as money (spec §3.1).
     const parent = await createAccountTx(tx, ws, { name: input.name, kind: 'asset', subtype: item.behaviour.subtype, currency: ws.baseCurrency });
     const pockets: AccountRow[] = [];
-    for (const pocket of input.pockets) {
+    for (const [sortOrder, pocket] of input.pockets.entries()) {
       pockets.push(
         await openCashAccountTx(tx, ws, {
           item: input.item,
@@ -567,6 +597,7 @@ export async function openPocketedAccount(
           openingRateToBase: pocket.openingRateToBase,
           bank: input.bank,
           parentId: parent.id,
+          sortOrder,
         }),
       );
     }
@@ -587,21 +618,15 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
   return database.transaction(async (tx) => {
     const [parent] = await tx.select().from(accounts).where(and(eq(accounts.id, input.parentId), eq(accounts.workspaceId, ws.workspaceId)));
     if (!parent) throw new AccountError('Account not found');
-    const [first] = await tx
-      .select({ id: accounts.id })
+    const siblings = await tx
+      .select({ id: accounts.id, sortOrder: accounts.sortOrder })
       .from(accounts)
       .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, parent.id), eq(accounts.kind, 'asset')))
-      .orderBy(asc(accounts.id))
-      .limit(1);
+      .orderBy(asc(accounts.sortOrder), asc(accounts.id));
+    const first = siblings[0];
     if (!first) throw new AccountError(`${parent.name} has no pockets. Open a new account with pockets instead.`);
-    const [profile] = await tx.select({ json: assetProfiles.coretaxFieldsJson }).from(assetProfiles).where(eq(assetProfiles.accountId, first.id));
-    let bank: string | undefined;
-    try {
-      const inst = profile ? (JSON.parse(profile.json) as Record<string, unknown>).inst : undefined;
-      bank = typeof inst === 'string' && inst ? inst : undefined;
-    } catch {
-      bank = undefined;
-    }
+    const inst = (await getAssetProfileTx(tx, ws, first.id))?.coretaxFields.inst;
+    const bank = inst?.trim() ? inst : undefined;
     return openCashAccountTx(tx, ws, {
       item: parent.subtype as MoneyAccountSubtype,
       name: pocketName(parent.name, input.currency),
@@ -611,6 +636,8 @@ export async function addPocket(database: Database, ws: WorkspaceContext, input:
       openingRateToBase: input.openingRateToBase,
       bank,
       parentId: parent.id,
+      // After every pocket it has, archived ones included, so a re-added currency does not jump the queue.
+      sortOrder: Math.max(...siblings.map((row) => row.sortOrder)) + 1,
     });
   });
 }
@@ -658,7 +685,7 @@ export async function openingsOf(database: Database, ws: WorkspaceContext, accou
 
 `packages/db/src/index.ts`: add `export * from './repos/pockets';` after `./repos/cash-accounts`.
 
-- [ ] **Step 6: Run** — `cd packages/db && npx vitest run test/pockets.test.ts test/deposits.test.ts test/accounts.test.ts` → pass (deposits proves the extraction changed nothing). Then the root gate.
+- [ ] **Step 6: Run** — `cd packages/db && npx vitest run test/pockets.test.ts test/deposits.test.ts test/accounts.test.ts test/assets.test.ts` → pass (deposits proves the extraction changed nothing; assets proves `getAssetProfile` still reads the same). Then the root gate.
 - [ ] **Step 7: Commit** — `feat(db): an account can hold a pocket per currency, opened in one transaction`
 
 ---
@@ -715,7 +742,12 @@ describe('what the parent is worth to every reader', () => {
   it('is nothing: net worth and the asset list see each pocket once and the parent never', async () => {
     const { parent, pockets } = await valas();
     const values = await assetValuesAt(database, ws, '2026-09-21');
+    // THE assertion that fails before Step 5: today the parent is returned as a 0-valued row, which idle cash and
+    // goal funding would list. The net-worth and daftar-harta checks below pass today too (a parent holds 0, and
+    // the kas table skips a balance ≤ 0); they guard the figures, they do not prove the filter.
     expect(values.some((row) => row.accountId === parent.id)).toBe(false);
+    // Rows come in (sort_order, name) order; the pockets' sort_order 0,1,2 is what makes this USD, SGD, IDR — by name
+    // alone it would be IDR, SGD, USD.
     expect(values.filter((row) => pockets.some((p) => p.id === row.accountId)).map((row) => [row.currency, row.valueMinor])).toEqual([
       ['USD', 240_000],
       ['SGD', 115_000],
@@ -808,7 +840,7 @@ In `archiveAccount`, after the system-account check and before the balance check
         .select({ currency: accounts.currency })
         .from(accounts)
         .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), isNull(accounts.archivedAt)))
-        .orderBy(asc(accounts.id));
+        .orderBy(asc(accounts.sortOrder), asc(accounts.id));
       if (open.length > 0) {
         throw new AccountError(`${account.name} still has pockets: ${open.map((row) => row.currency).join(', ')}. Archive each pocket first.`);
       }
@@ -856,9 +888,9 @@ In `assetValuesAt`, read archived rows too so a parent whose pockets are all arc
   const assetsAccounts = rows.filter((row) => row.archivedAt === null && assetSubtypes.includes(row.subtype) && !parents.has(row.id));
 ```
 
-Import `pocketParentIds` from `./accounts`; `isNull` may become unused in this function — remove it from the import only if nothing else in the file uses it.
+Import `pocketParentIds` from `./accounts`. Keep `isNull` in the import: `netWorthAt` in the same file still uses it.
 
-- [ ] **Step 6: Run** — `cd packages/db && npx vitest run test/pockets.test.ts test/asset-values.test.ts test/ledger.test.ts test/accounts.test.ts test/flows.test.ts`, then the root gate.
+- [ ] **Step 6: Run** — `cd packages/db && npx vitest run test/pockets.test.ts test/asset-values.test.ts test/ledger.test.ts test/accounts.test.ts test/flows.test.ts test/flows-putaway.test.ts`, then the root gate.
 - [ ] **Step 7: Commit** — `feat(db): a pocket parent holds nothing — refused by the ledger, absent from every value reader`
 
 ---
@@ -866,15 +898,13 @@ Import `pocketParentIds` from `./accounts`; `isNull` may become unused in this f
 ### Task 4: The web kit — who can pay, the opening rate, the second figure, and the pocket model
 
 **Files:**
-- Modify: `apps/web/src/lib/queries.ts`, `apps/web/src/lib/rates.ts`, `apps/web/src/features/transactions/tx-form.ts`, `TransactionCard.tsx`, `EditSheet.tsx`, `QuickRowEditor.tsx`, `TransactionsPage.tsx`, `apps/web/src/features/review/ReviewPage.tsx`, `apps/web/src/features/events/EventDetailPage.tsx`, `apps/web/src/features/import/ImportPage.tsx`, `apps/web/src/features/goals/GoalForm.tsx`, `apps/web/src/features/cards/CardHero.tsx`, `apps/web/src/features/cards/StatementPanel.tsx`, `apps/web/src/features/ownables/CashAccountForm.tsx`, `apps/web/src/features/accounts/AccountsPage.tsx`
-- Create: `apps/web/src/features/accounts/pockets.ts`, `pockets.test.ts`, `apps/web/src/lib/queries.test.ts`, `apps/web/src/lib/rates.test.ts`
-- Test: `apps/web/src/features/transactions/tx-form.test.ts` (append)
+- Modify: `apps/web/src/lib/queries.ts`, `apps/web/src/lib/rates.ts`, `apps/web/src/features/transactions/tx-form.ts`, `TransactionCard.tsx`, `EditSheet.tsx`, `QuickRowEditor.tsx`, `TransactionsPage.tsx`, `apps/web/src/features/review/ReviewPage.tsx`, `apps/web/src/features/events/EventDetailPage.tsx`, `apps/web/src/features/import/ImportPage.tsx`, `apps/web/src/features/goals/GoalForm.tsx`, `apps/web/src/features/cards/CardHero.tsx`, `apps/web/src/features/cards/StatementPanel.tsx`, `apps/web/src/features/loans/LoanDetailPage.tsx`, `apps/web/src/features/debts/DebtForm.tsx`, `apps/web/src/features/debts/PersonCard.tsx`, `apps/web/src/features/coretax/BusinessSection.tsx`, `apps/web/src/features/bills/BillFormPage.tsx`, `apps/web/src/features/bills/PaySheet.tsx`, `apps/web/src/features/networth/TradesPage.tsx`, `apps/web/src/features/cards/CardsPage.tsx`, `apps/web/src/features/ownables/CashAccountForm.tsx`, `apps/web/src/features/accounts/AccountsPage.tsx`, `apps/web/src/features/networth/add-asset.ts`, `apps/web/src/features/networth/AddAssetForm.tsx`, `apps/web/src/ui/native/index.ts`
+- Create: `apps/web/src/features/accounts/pockets.ts`, `pockets.test.ts`, `apps/web/src/lib/queries.test.ts`, `apps/web/src/lib/rates.test.ts`, `apps/web/src/ui/native/approx.ts`, `apps/web/src/ui/native/approx.test.ts`, `apps/web/src/ui/native/Grouped.tsx`
+- Test: `apps/web/src/features/transactions/tx-form.test.ts` (append), `apps/web/src/features/networth/add-asset.test.ts` (append)
 
 **Interfaces:**
-- Consumes: `pocketParentIds` (Task 2); `sumToBase`, `exchangeCost`, `impliedRate` (Task 1); `amountFields`, `emptyForm`, `formToPost`, `settledAmount`, `MoneyFieldSpec` (tx-form); `evaluateAmount`, `parseMajor`, `parseRate`, `convertMinor`, `formatMinor`, `currencyInfo`, `CURRENCIES` (core); `checkManualRate` (lib/rates); `upsertRate` (db).
-- Produces: `moneyHolders(accounts): AccountRow[]`; `openingRateFor({...}): Promise<number | undefined>`; `receivedField(draft, accounts): MoneyFieldSpec | null` (`which: 'received'`); pockets model (see file structure).
-
-- [ ] **Step 0: Pre-flight — R1.** `grep -rn "≈" apps/web/src --include=*.ts* -l` and read the securities plan. If securities landed a formatter or component for "native figure, `≈` converted beneath", `approxLine` below is replaced by a call to it (same inputs: minor, currency, base, rates) and not written.
+- Consumes: `pocketParentIds` (Task 2); `sumToBase`, `exchangeCost`, `impliedRate` (Task 1); `amountFields`, `emptyForm`, `formToPost`, `settledAmount`, `MoneyFieldSpec` (tx-form); `evaluateAmount`, `parseMajor`, `parseRate`, `convertMinor`, `formatMinor`, `currencyInfo`, `CURRENCIES` (core); `checkManualRate` (lib/rates); `upsertRate` (db); `InsetRow`, `Figure`, `toneClass`, `GroupChild` (kit).
+- Produces: `moneyHolders(accounts): AccountRow[]`; `openingRateFor({...}): Promise<number | undefined>`; `receivedField(draft, accounts): MoneyFieldSpec | null` (`which: 'received'`); in the kit `approxLine`, `rateLine`, `groupedFigure`, `ApproxFigure`, `GroupedRow`; pockets model (see file structure). `NewAssetPlan` loses `openingRateToBase` and gains `rateNeededMinor` / `rateDate` (Step 5b).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -977,11 +1007,13 @@ describe('the second figure of a transfer', () => {
     expect(receivedField({ ...move, mode: 'expense' }, pockets)).toBeNull();
   });
 
-  it('is the figure the posting moves — at KWD’s three decimals, not IDR’s none', () => {
-    const post = formToPost({ ...move, toId: 'kwd', toAmount: '1.500' }, pockets);
+  it('is the figure the posting moves — at KWD’s three decimals, not the From account’s two', () => {
+    // `1.5` tells all three apart: KWD 1.500 minor, USD (the From pocket) 150, IDR refuses it. (`1.500` would not:
+    // parseMajor reads it as 1500 minor in KWD and in IDR alike.)
+    const post = formToPost({ ...move, toId: 'kwd', toAmount: '1.5' }, pockets);
     if (post.kind !== 'post') throw new Error('expected a plain posting');
     const into = post.input.lines.find((line) => line.accountId === 'kwd')!;
-    const field = receivedField({ ...move, toId: 'kwd', toAmount: '1.500' }, pockets)!;
+    const field = receivedField({ ...move, toId: 'kwd', toAmount: '1.5' }, pockets)!;
     expect(into).toMatchObject({ currency: field.currency, amountMinor: evaluateAmount(field.value, field.currency) });
     expect(into.amountMinor).toBe(1_500);
   });
@@ -1015,15 +1047,16 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { approxLine, bankRateText, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketsOf, rateLine, readPockets, spreadLine, withPockets } from './pockets';
+import { bankRateText, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
 
+// Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
-  { id: '01-valas', name: 'Valas', parentId: null, kind: 'asset', subtype: 'savings', currency: 'IDR', archivedAt: null },
-  { id: '02-usd', name: 'Valas · USD', parentId: '01-valas', kind: 'asset', subtype: 'savings', currency: 'USD', archivedAt: null },
-  { id: '03-sgd', name: 'Valas · SGD', parentId: '01-valas', kind: 'asset', subtype: 'savings', currency: 'SGD', archivedAt: null },
-  { id: '04-idr', name: 'Valas · IDR', parentId: '01-valas', kind: 'asset', subtype: 'savings', currency: 'IDR', archivedAt: null },
-  { id: '05-jpy', name: 'Valas · JPY', parentId: '01-valas', kind: 'asset', subtype: 'savings', currency: 'JPY', archivedAt: '2026-01-01' },
-  { id: 'fx', name: 'Currency exchange', parentId: null, kind: 'equity', subtype: 'equity', currency: null, systemKey: 'currency_exchange', archivedAt: null },
+  { id: 'v', name: 'Valas', parentId: null, kind: 'asset', subtype: 'savings', currency: 'IDR', archivedAt: null, sortOrder: 0 },
+  { id: 'c-usd', name: 'Valas · USD', parentId: 'v', kind: 'asset', subtype: 'savings', currency: 'USD', archivedAt: null, sortOrder: 0 },
+  { id: 'a-sgd', name: 'Valas · SGD', parentId: 'v', kind: 'asset', subtype: 'savings', currency: 'SGD', archivedAt: null, sortOrder: 1 },
+  { id: 'b-idr', name: 'Valas · IDR', parentId: 'v', kind: 'asset', subtype: 'savings', currency: 'IDR', archivedAt: null, sortOrder: 2 },
+  { id: 'd-jpy', name: 'Valas · JPY', parentId: 'v', kind: 'asset', subtype: 'savings', currency: 'JPY', archivedAt: '2026-01-01', sortOrder: 3 },
+  { id: 'fx', name: 'Currency exchange', parentId: null, kind: 'equity', subtype: 'equity', currency: null, systemKey: 'currency_exchange', archivedAt: null, sortOrder: 0 },
 ] as AccountRow[];
 const [, usd, sgd, idr] = accounts as [AccountRow, AccountRow, AccountRow, AccountRow];
 const rates = { USD: 16_250, SGD: 12_680 };
@@ -1031,24 +1064,13 @@ const typing = (text: string) => [...text].map((_, i) => text.slice(0, i + 1));
 
 describe('the pockets of an account', () => {
   it('are its open children in the order they were added', () => {
-    expect(pocketsOf('01-valas', accounts).map((a) => a.currency)).toEqual(['USD', 'SGD', 'IDR']);
+    expect(pocketsOf('v', accounts).map((a) => a.currency)).toEqual(['USD', 'SGD', 'IDR']);
   });
 
   it('add up to the mockup’s total, or to none when a rate is missing', () => {
-    const balances = { '02-usd': 240_000, '03-sgd': 115_000, '04-idr': 5_400_000 };
-    expect(parentTotal(pocketsOf('01-valas', accounts), balances, 'IDR', rates)).toEqual({ totalMinor: 58_982_000, missing: [] });
-    expect(parentTotal(pocketsOf('01-valas', accounts), balances, 'IDR', { USD: 16_250 })).toEqual({ totalMinor: null, missing: ['SGD'] });
-  });
-
-  it('show a foreign balance converted beneath it, and nothing under the base currency', () => {
-    expect(approxLine(240_000, 'USD', 'IDR', rates)).toBe(`≈ ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(39_000_000)}`);
-    expect(approxLine(5_400_000, 'IDR', 'IDR', rates)).toBeNull();
-    expect(approxLine(115_000, 'SGD', 'IDR', {})).toBe('No SGD rate yet');
-  });
-
-  it('say a rate the way the rest of the app does', () => {
-    expect(rateLine(16_250, 'USD', 'IDR')).toBe('16.250 IDR per 1 USD');
-    expect(rateLine(12_110.5, 'SGD', 'IDR')).toBe('12.110,5 IDR per 1 SGD');
+    const balances = { 'c-usd': 240_000, 'a-sgd': 115_000, 'b-idr': 5_400_000 };
+    expect(parentTotal(pocketsOf('v', accounts), balances, 'IDR', rates)).toEqual({ totalMinor: 58_982_000, missing: [] });
+    expect(parentTotal(pocketsOf('v', accounts), balances, 'IDR', { USD: 16_250 })).toEqual({ totalMinor: null, missing: ['SGD'] });
   });
 });
 
@@ -1105,6 +1127,30 @@ describe('moving between pockets', () => {
     }
   });
 
+  it('reads USD → IDR at each side’s own exponent, at every keystroke of 100.50 and 1.630.000', () => {
+    // USD and SGD share an exponent, so the case above cannot catch a figure read in the other pocket’s currency.
+    const toIdr = moveDraft('book', usd, idr, '2026-09-21');
+    for (const out of typing('100.50')) {
+      for (const into of typing('1.630.000')) {
+        const draft = { ...toIdr, amount: out, toAmount: into };
+        const view = moveView(draft, accounts, 'IDR', rates);
+        const outMinor = evaluateAmount(view.leaves.value, view.leaves.currency);
+        const intoMinor = evaluateAmount(view.arrives!.value, view.arrives!.currency);
+        if (outMinor === null || intoMinor === null) {
+          expect(view.cost).toBeNull();
+          expect(() => formToPost(draft, accounts)).toThrow();
+          continue;
+        }
+        const post = formToPost(draft, accounts);
+        if (post.kind !== 'post') throw new Error('expected a plain posting');
+        expect(post.input.lines.find((line) => line.accountId === usd.id)).toMatchObject({ currency: 'USD', amountMinor: -outMinor });
+        expect(post.input.lines.find((line) => line.accountId === idr.id)).toMatchObject({ currency: 'IDR', amountMinor: intoMinor });
+      }
+    }
+    const done = moveView({ ...toIdr, amount: '100.50', toAmount: '1.630.000' }, accounts, 'IDR', rates);
+    expect(done.cost).toEqual({ fromBaseMinor: 1_633_125, toBaseMinor: 1_630_000, costMinor: 3_125 });
+  });
+
   it('clears both figures when a pocket changes, and swaps when the other side is chosen', () => {
     const typed = { ...start, amount: '500', toAmount: '638' };
     expect(withPockets(typed, { toId: idr.id })).toMatchObject({ moneyId: usd.id, toId: idr.id, amount: '', toAmount: '' });
@@ -1126,7 +1172,78 @@ describe('moving between pockets', () => {
 });
 ```
 
-- [ ] **Step 2: Run to see them fail** — `cd apps/web && npx vitest run src/lib src/features/accounts src/features/transactions/tx-form.test.ts`.
+```ts
+// apps/web/src/ui/native/approx.test.ts — the shared parts, in the kit's own words (no pocket or holding here)
+import { describe, expect, it } from 'vitest';
+import { approxLine, groupedFigure, rateLine } from './approx';
+
+const rupiah = (minor: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(minor);
+
+describe('a foreign figure with its converted value beneath', () => {
+  it('converts at the held rate, rounding half away from zero', () => {
+    expect(approxLine(240_000, 'USD', 'IDR', { USD: 16_250 })).toBe(`≈ ${rupiah(39_000_000)}`);
+    // $1.03 at 15.940,37 = 16.418,58 → 16.419; flooring would print 16.418.
+    expect(approxLine(103, 'USD', 'IDR', { USD: 15_940.37 })).toBe(`≈ ${rupiah(16_419)}`);
+  });
+
+  it('keeps an overdrawn figure’s sign', () => {
+    expect(approxLine(-1_000, 'USD', 'IDR', { USD: 16_000 })).toBe(`≈ ${rupiah(-160_000)}`);
+  });
+
+  it('says nothing under the base currency, and names a missing rate', () => {
+    expect(approxLine(5_400_000, 'IDR', 'IDR', {})).toBeNull();
+    expect(approxLine(115_000, 'SGD', 'IDR', {})).toBe('No SGD rate yet');
+  });
+});
+
+describe('a rate in words', () => {
+  it('reads the way the rest of the app does', () => {
+    expect(rateLine(16_250, 'USD', 'IDR')).toBe('16.250 IDR per 1 USD');
+    expect(rateLine(12_110.5, 'SGD', 'IDR')).toBe('12.110,5 IDR per 1 SGD');
+  });
+});
+
+describe('a grouped row’s figure', () => {
+  it('is the ≈ total, or the missing rates named — never a partial sum', () => {
+    expect(groupedFigure({ totalMinor: 58_982_000, missing: [] }, 'IDR')).toEqual({ text: `≈ ${rupiah(58_982_000)}`, complete: true });
+    expect(groupedFigure({ totalMinor: null, missing: ['JPY', 'SGD'] }, 'IDR')).toEqual({ text: 'No JPY, SGD rate yet', complete: false });
+  });
+});
+```
+
+Append to `apps/web/src/features/networth/add-asset.test.ts` (use the file's existing draft builder; the names below are what it must set):
+
+```ts
+describe('the rate an asset opens at', () => {
+  it('is no longer read by a parser of its own: planNewAsset hands the typed text on untouched', () => {
+    // A motorcycle is valued by a figure you type, so its cost is the opening balance (the `draft.cost` branch).
+    const plan = planNewAsset({ ...emptyDraft('motorcycle', 'IDR', '2026-09-21'), name: 'Bike bought abroad', currency: 'USD', cost: '1000.00', purchasedOn: '2026-09-01', openingRate: '16.500' }, '2026-09-21');
+    // `openingRateFor` reads it with parseRate (16,5, which ratePreview shows before saving) — not 16500 as before.
+    expect(plan).not.toHaveProperty('openingRateToBase');
+    expect([plan.rateNeededMinor, plan.rateDate]).toEqual([100_000, '2026-09-01']);
+  });
+
+  it('needs a rate for the purchases, dated at the earliest one', () => {
+    const plan = planNewAsset(
+      {
+        ...emptyDraft('stock', 'IDR', '2026-09-21'),
+        name: 'US shares',
+        currency: 'USD',
+        purchases: [
+          { occurredOn: '2026-05-02', units: '10', cost: '150.25' },
+          { occurredOn: '2026-03-01', units: '5', cost: '70.10' },
+        ],
+      },
+      '2026-09-21',
+    );
+    expect([plan.rateNeededMinor, plan.rateDate]).toEqual([22_035, '2026-03-01']);
+  });
+});
+```
+
+(If `emptyDraft`'s purchase rows or the stock item id differ, match the file's own fixtures; the assertions stay.)
+
+- [ ] **Step 2: Run to see them fail** — `cd apps/web && npx vitest run src/lib src/ui/native/approx.test.ts src/features/accounts src/features/transactions/tx-form.test.ts src/features/networth/add-asset.test.ts`.
 
 - [ ] **Step 3: `lib/queries.ts` — `moneyHolders`**
 
@@ -1160,7 +1277,22 @@ export function moneyHolders(accounts: readonly AccountRow[]): AccountRow[] {
 | `CardHero.tsx:49` | `accounts.filter((a) => isMoneyAccount(a) && SPENDABLE_SUBTYPES.includes(a.subtype) && a.currency === currency)` | `moneyHolders(accounts).filter((a) => SPENDABLE_SUBTYPES.includes(a.subtype) && a.currency === currency)` |
 | `StatementPanel.tsx:56` | `accounts.filter((a) => isMoneyAccount(a) && canPayWith(a) && a.kind === 'asset' && a.currency === card.currency)` | `moneyHolders(accounts).filter((a) => canPayWith(a) && a.kind === 'asset' && a.currency === card.currency)` |
 
-Update each file's import; drop `isMoneyAccount` from an import only where no other use remains (`TransactionsPage.tsx:227` keeps it). A parent's currency is the base currency, so without this CardHero and StatementPanel would offer it to pay an IDR card. Do **not** change `DashboardPage`, `BackupBanner`, `networth/queries.ts`: they count or list currencies, and a parent's zero balance changes nothing there.
+These pickers do not go through `isMoneyAccount` but offer a parent all the same (it is an active savings/current/fund account). Each becomes `moneyHolders(<list>).filter(<the same subtype test, without the archivedAt test>)` — `moneyHolders` already drops archived rows and every one of these subtypes is an asset or liability:
+
+| File | Was |
+|---|---|
+| `LoanDetailPage.tsx:71` and `:215` | `accounts.filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null)` |
+| `DebtForm.tsx:34` | `accounts.filter((account) => WALLET_SUBTYPES.includes(account.subtype) && account.archivedAt === null)` |
+| `PersonCard.tsx:102` | `accounts.filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null)` |
+| `BusinessSection.tsx:41` | the same `SPENDABLE_SUBTYPES` filter |
+| `BillFormPage.tsx:48` | `(accounts.data ?? []).filter((account) => WALLET_SUBTYPES.includes(account.subtype) && account.archivedAt === null)` |
+| `PaySheet.tsx:40` | `accounts.filter((account) => WALLET_SUBTYPES.includes(account.subtype) && account.archivedAt === null)` |
+| `TradesPage.tsx:41` | `(accounts.data ?? []).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null)` |
+| `CardsPage.tsx:47` | `all.filter((a) => a.archivedAt === null && ['bank', 'savings'].includes(a.subtype) && !earning.has(a.id))` — a parent is no bank account a debit card could sit on |
+
+Four of these (`LoanDetailPage`, `DebtForm`, `PersonCard`, `PaySheet`) are also edited by `feat/set-aside`; keep the swap to one expression so the merge is a re-apply (Global Constraints).
+
+Update each file's import; drop `isMoneyAccount` from an import only where no other use remains (`TransactionsPage.tsx:227` keeps it). A parent's currency is the base currency, so without this CardHero and StatementPanel would offer it to pay an IDR card. Do **not** change `DashboardPage`, `BackupBanner`, `networth/queries.ts`: they count or list currencies, and a parent's zero balance changes nothing there. Before committing, `grep -rn "archivedAt === null" apps/web/src/features | grep -E "SPENDABLE|WALLET|'bank'"` must print nothing — a picker left out is a place a parent can be chosen, and only the ledger's refusal would catch it.
 
 - [ ] **Step 5: `lib/rates.ts` — `openingRateFor`, and both old copies call it**
 
@@ -1210,6 +1342,23 @@ In `CashAccountForm.tsx` and `AccountsPage.tsx`'s `AddAccountForm`, the whole `l
 ```
 
 and their now-unused imports (`parseRate` in AccountsPage only if unused, `upsertRate`, `checkManualRate`) are removed. `CashAccountForm` still uses `parseRate` for the interest rate — keep it there.
+
+- [ ] **Step 5b: Add asset calls `openingRateFor` too — its own rate reader goes**
+
+`add-asset.ts:156-158` reads a typed rate with `Number(typed.replace(/\./g, '').replace(',', '.'))` — `16.500` becomes 16500 where `parseRate` (and every other form) reads 16,5 — and a blank foreign rate posts with no rate, which `planPosting` refuses. Both go by routing it through the one function:
+
+- `planNewAsset` stops reading the rate. `NewAssetPlan` loses `openingRateToBase` and gains `rateNeededMinor: number` (the sum of the purchases' `grossMinor` when there are purchases, else the opening balance — the figure that will post in the asset's currency; 0 when nothing posts) and `rateDate: string` (the earliest purchase date, else `openedOn`). Delete lines 156-158.
+- `AddAssetForm.submit`, right after `planNewAsset`:
+
+  ```ts
+  // One rate for the whole opening, as before: typed (parseRate, checked, stored for that day) or resolved for the day.
+  const openingRateToBase = await openingRateFor({ database, ws, currency: plan.account.currency, openedOn: plan.rateDate, openingBalanceMinor: plan.rateNeededMinor, typed: draft.openingRate, resolveRates });
+  ```
+
+  and every `plan.openingRateToBase` below it reads `openingRateToBase`. Add `const resolveRates = useResolveRates();` and the imports.
+- The Rate row's hint gains the preview every other rate row has: `hint={ratePreview(draft.openingRate, draft.currency, ws.baseCurrency) ?? '<today's sentence>'}`, so `16.500` visibly reads as 16,5 before it is saved; its placeholder `16000` stays.
+
+No new behaviour beyond the two bugs: one rate for all purchases is what the form already did.
 
 - [ ] **Step 6: `tx-form.ts` — `receivedField`, read by the screen and the save**
 
@@ -1279,32 +1428,25 @@ The label text is unchanged (`Received amount (USD)`), so `add-transaction.spec.
 - [ ] **Step 8: `features/accounts/pockets.ts` — the model**
 
 ```ts
-import { convertMinor, CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, type ExchangeCost, formatMinor, impliedRate, isoDate, parseMajor, sumToBase } from '@expanses/core';
+import { CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, type ExchangeCost, formatMinor, impliedRate, isoDate, parseMajor, sumToBase } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { amountFields, emptyForm, type FormDraft, type MoneyFieldSpec, receivedField } from '../transactions/tx-form';
 
 type Rates = Readonly<Record<string, number>>;
 
-/** An account's open pockets, in the order they were added (ids are time-ordered). */
+/**
+ * An account's open pockets, in the order they were added: sort_order, then id. Not id alone — pockets opened
+ * together share a millisecond, and uuidv7 here has no counter to order them within it.
+ */
 export const pocketsOf = (parentId: string, accounts: readonly AccountRow[]): AccountRow[] =>
-  accounts.filter((a) => a.parentId === parentId && a.kind === 'asset' && a.archivedAt === null).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  accounts
+    .filter((a) => a.parentId === parentId && a.kind === 'asset' && a.archivedAt === null)
+    .sort((a, b) => a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
 /** The parent's figure: its pockets added up in the base currency, or none, naming what is missing. */
 export function parentTotal(pockets: readonly AccountRow[], balances: Readonly<Record<string, number>>, baseCurrency: string, ratesToBase: Rates) {
   return sumToBase({ amounts: pockets.map((p) => ({ minor: balances[p.id] ?? 0, currency: p.currency! })), baseCurrency, ratesToBase });
 }
-
-/** R1's second line: a foreign figure converted, marked ≈. Null for the base currency. */
-export function approxLine(minor: number, currency: string, baseCurrency: string, ratesToBase: Rates): string | null {
-  if (currency === baseCurrency) return null;
-  const rate = ratesToBase[currency];
-  if (rate === undefined || !(rate > 0)) return `No ${currency} rate yet`;
-  return `≈ ${formatMinor(convertMinor(minor, currency, baseCurrency, rate), baseCurrency)}`;
-}
-
-/** "16.250 IDR per 1 USD" — the wording `chargedHint` already uses for a rate. */
-export const rateLine = (rate: number, currency: string, baseCurrency: string, locale = 'id-ID') =>
-  `${rate.toLocaleString(locale, { maximumFractionDigits: 4 })} ${baseCurrency} per 1 ${currency}`;
 
 export interface PocketDraft {
   currency: string;
@@ -1378,7 +1520,69 @@ export const moveDescription = (parent: AccountRow, from: AccountRow, to: Accoun
 export const currencyName = (code: string) => currencyInfo(code).name;
 ```
 
-- [ ] **Step 9: Run** — `cd apps/web && npx vitest run src/lib src/features/accounts src/features/transactions`; then the root gate; then `npx playwright test e2e/add-transaction.spec.ts e2e/card-statements.spec.ts e2e/goals.spec.ts e2e/coretax-pickers.spec.ts --workers=2` (the Received row, card payers, goal accounts and the account forms all moved).
+- [ ] **Step 8b: The shared parts, in the kit**
+
+`apps/web/src/ui/native/approx.ts` — pure, no pocket words, so securities calls it unchanged:
+
+```ts
+import { convertMinor, formatMinor } from '@expanses/core';
+
+type Rates = Readonly<Record<string, number>>;
+
+/** The line under a foreign figure: it converted at the held rate, marked ≈. Null in the base currency. */
+export function approxLine(minor: number, currency: string, baseCurrency: string, ratesToBase: Rates): string | null {
+  if (currency === baseCurrency) return null;
+  const rate = ratesToBase[currency];
+  if (rate === undefined || !(rate > 0)) return `No ${currency} rate yet`;
+  return `≈ ${formatMinor(convertMinor(minor, currency, baseCurrency, rate), baseCurrency)}`;
+}
+
+/** "16.250 IDR per 1 USD" — the wording `chargedHint` already uses for a rate. */
+export const rateLine = (rate: number, currency: string, baseCurrency: string, locale = 'id-ID') =>
+  `${rate.toLocaleString(locale, { maximumFractionDigits: 4 })} ${baseCurrency} per 1 ${currency}`;
+
+/**
+ * A grouped row's figure — a parent that adds its children up and holds nothing itself. The total when every rate
+ * is held, else the missing rates named: never the sum of the rest (`sumToBase` already refused it).
+ */
+export function groupedFigure(total: { totalMinor: number | null; missing: readonly string[] }, baseCurrency: string): { text: string; complete: boolean } {
+  if (total.totalMinor === null) return { text: `No ${total.missing.join(', ')} rate yet`, complete: false };
+  return { text: `≈ ${formatMinor(total.totalMinor, baseCurrency)}`, complete: true };
+}
+```
+
+`apps/web/src/ui/native/Grouped.tsx` — built from `InsetRow` and `Figure`, tokens only:
+
+```tsx
+import type { ReactNode } from 'react';
+import { type GroupChild, InsetRow, type InsetRowProps } from './InsetList';
+import { Figure } from './RecordTable';
+
+/** R1: the figure in its own currency, leading; the ≈ line beneath it (nothing beneath in the base currency). */
+export function ApproxFigure({ figure, beneath }: { figure: ReactNode; beneath: string | null }) {
+  return (
+    <span className="block text-right">
+      <Figure>{figure}</Figure>
+      {beneath && <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{beneath}</span>}
+    </span>
+  );
+}
+
+/**
+ * A parent that sums its children and holds nothing itself: one row, its ≈ total (or the missing rate named, in
+ * the warning tone), opening to wherever its children are listed. Pockets use it now; securities after them.
+ */
+export function GroupedRow({
+  figure,
+  ...row
+}: GroupChild & Omit<InsetRowProps, 'value' | 'valueTone'> & { figure: { text: string; complete: boolean } }) {
+  return <InsetRow {...row} value={<Figure tone={figure.complete ? 'ink' : 'warn'}>{figure.text}</Figure>} valueTone={figure.complete ? 'ink' : 'warn'} />;
+}
+```
+
+If `InsetRowProps` already includes `GroupChild`, drop the intersection. Export from `ui/native/index.ts`: `export { ApproxFigure, GroupedRow } from './Grouped';` and `export { approxLine, groupedFigure, rateLine } from './approx';`.
+
+- [ ] **Step 9: Run** — `cd apps/web && npx vitest run src/lib src/ui/native src/features/accounts src/features/transactions src/features/networth`; then the root gate; then `npx playwright test -c playwright.cu.config.ts 'e2e/(add-transaction|card-statements|goals|coretax-pickers|loans|lend-borrow|recurring-bills|business-income|buy-flow)\.spec\.ts$' --workers=2` (the Received row, card payers, goal accounts, the account forms and every picker swapped in Step 4 moved).
 - [ ] **Step 10: Commit** — `feat(web): one list of who can hold money, one opening rate, one reading of a transfer's second figure`
 
 ---
@@ -1393,7 +1597,7 @@ export const currencyName = (code: string) => currencyInfo(code).name;
 - Consumes: `openPocketedAccount`, `openingsOf`, `pocketParentIds` (db); Task 4's model and `openingRateFor`; `useStoredRates`, `useAccounts`, `useBalances`, `useResolveRates`, `useInvalidateAll`.
 - Produces: `useHeldRates(currencies, onDate?)`, `useOpenings(accountIds)`; route `/accounts/$accountId`; e2e helpers `openWithPockets(page, …)`, `mockRates(page, rates)`.
 
-- [ ] **Step 0: Pre-flight — the grouped row.** `ls apps/web/src/ui/native/` and grep the securities plan for the grouped row. If a shared grouped-row component landed, the pocket rows in Step 5 use it (map title/subtitle/figure/`to` onto its props) instead of `InsetRow`. If none landed, **stop and ask the user** — the decisions forbid building it twice, and a second one here would be that. (The Accounts page's parent row stays a `RecordTable` record either way; see spec §13.3.)
+The pocket rows use the kit's `ApproxFigure` (Task 4 Step 8b); the Accounts page's parent row stays a `RecordTable` record (it carries Rename and Archive) and takes its figure from `groupedFigure`. Nothing here waits for securities.
 
 - [ ] **Step 1: Write the failing e2e**
 
@@ -1492,7 +1696,7 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
 });
 ```
 
-- [ ] **Step 2: Run to see it fail** — `cd apps/web && npx playwright test e2e/currency-pockets.spec.ts --project=chromium`.
+- [ ] **Step 2: Run to see it fail** — `cd apps/web && npx playwright test -c playwright.cu.config.ts 'e2e/currency-pockets\.spec\.ts$' --project=chromium`.
 
 - [ ] **Step 3: `features/accounts/queries.ts`**
 
@@ -1570,51 +1774,51 @@ In the first `InsetGroup`, after the Bank row:
         )}
 ```
 
-Wrap today's Balance now, Currency and Rate rows in `{!pocketed && (…)}`. After the group, when `pocketed`:
+Put `!pocketed &&` on each of today's Balance now, Currency and Rate rows **separately** — `{asks.includes('balance') && !pocketed && (<TextRow …/>)}` and so on — never one `<>…</>` around the three: `InsetGroup` reads its children with `Children.toArray` and `cloneElement`s each with its `position`, which does not look inside a fragment, so the three rows would lose their separators and React would warn about `position` on a Fragment. After the group, when `pocketed` (a flat array of rows, for the same reason):
 
 ```tsx
       {pocketed && (
         <InsetGroup header="Pockets" footer="Leave a rate blank and the rate for the opening date is used. Fill it in only when you want your own figure.">
-          {pockets.map((pocket, i) => (
-            <Fragment key={i}>
-              <SelectRow label={`Pocket ${i + 1}`} value={pocket.currency} onChange={(e) => setPocket(i, { currency: e.target.value })}>
-                {CURRENCIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} — {c.name}
-                  </option>
-                ))}
-              </SelectRow>
-              <TextRow label={`Opening ${pocket.currency}`} value={pocket.balance} onChange={(e) => setPocket(i, { balance: e.target.value })} inputMode="decimal" placeholder="0" />
-              {pocket.currency !== ws.baseCurrency && (
-                <TextRow
-                  label={`Rate: ${ws.baseCurrency} per 1 ${pocket.currency}`}
-                  hint={ratePreview(pocket.rate, pocket.currency, ws.baseCurrency) ?? 'Optional.'}
-                  value={pocket.rate}
-                  onChange={(e) => setPocket(i, { rate: e.target.value })}
-                  inputMode="decimal"
-                />
-              )}
-            </Fragment>
-          ))}
+          {pockets.flatMap((pocket, i) => [
+            <SelectRow key={`c${i}`} label={`Pocket ${i + 1}`} value={pocket.currency} onChange={(e) => setPocket(i, { currency: e.target.value })}>
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} — {c.name}
+                </option>
+              ))}
+            </SelectRow>,
+            <TextRow key={`b${i}`} label={`Opening ${pocket.currency}`} value={pocket.balance} onChange={(e) => setPocket(i, { balance: e.target.value })} inputMode="decimal" placeholder="0" />,
+            ...(pocket.currency !== ws.baseCurrency
+              ? [
+                  <TextRow
+                    key={`r${i}`}
+                    label={`Rate: ${ws.baseCurrency} per 1 ${pocket.currency}`}
+                    hint={ratePreview(pocket.rate, pocket.currency, ws.baseCurrency) ?? 'Optional.'}
+                    value={pocket.rate}
+                    onChange={(e) => setPocket(i, { rate: e.target.value })}
+                    inputMode="decimal"
+                  />,
+                ]
+              : []),
+          ])}
           <InsetRow title="Add another currency" onClick={() => setPockets((rows) => [...rows, { currency: nextPocketCurrency(rows), balance: '', rate: '' }])} />
           {pockets.length > 2 && <InsetRow title="Remove the last pocket" onClick={() => setPockets((rows) => rows.slice(0, -1))} />}
         </InsetGroup>
       )}
 ```
 
-Imports: `Fragment` from react; `SwitchRow` from the kit; `openPocketedAccount` from db; `openingRateFor` from lib/rates; `nextPocketCurrency`, `readPockets`, `type PocketDraft` from `../accounts/pockets`.
+Imports: `SwitchRow` from the kit; `openPocketedAccount` from db; `openingRateFor` from lib/rates; `nextPocketCurrency`, `readPockets`, `type PocketDraft` from `../accounts/pockets`.
 
 - [ ] **Step 5: `PocketsPage.tsx` — `/accounts/$accountId`**
 
 ```tsx
-import { formatMinor } from '@expanses/core';
 import { SPENDABLE_SUBTYPES } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { Hero, InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
-import { approxLine, currencyName, parentTotal, pocketsOf, rateLine } from './pockets';
+import { ApproxFigure, approxLine, Hero, InsetGroup, InsetRow, LargeTitle, rateLine, SCREEN } from '../../ui/native';
+import { currencyName, parentTotal, pocketsOf } from './pockets';
 import { useHeldRates, useOpenings } from './queries';
 
 /** An account with pockets: what it adds up to, each pocket in its own currency, and the ways to move or add one. */
@@ -1669,12 +1873,7 @@ export function PocketsPage() {
               testId={`pocket-${pocket.currency}`}
               title={currencyName(pocket.currency!)}
               subtitle={opened ? `Opened ${opened.occurredOn}` : undefined}
-              value={
-                <span className="block text-right">
-                  <Money minor={minor} currency={pocket.currency!} className="block" />
-                  {beneath && <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{beneath}</span>}
-                </span>
-              }
+              value={<ApproxFigure figure={<Money minor={minor} currency={pocket.currency!} />} beneath={beneath} />}
               valueTone="ink"
               to="/net-worth/assets/$accountId"
               params={{ accountId: pocket.id }}
@@ -1692,7 +1891,7 @@ export function PocketsPage() {
 }
 ```
 
-The two `to=` routes to `/move` and `/pocket` are registered in Tasks 6 and 7; register them now in `router.tsx` pointing at a placeholder `() => null` **only if** the router's types refuse an unregistered path, and replace them in those tasks. `formatMinor` is imported for the stale caption only if used; otherwise drop it.
+The two `to=` routes to `/move` and `/pocket` are registered in Tasks 6 and 7; register them now in `router.tsx` pointing at a placeholder `() => null` **only if** the router's types refuse an unregistered path, and replace them in those tasks.
 
 Router: import `PocketsPage` and add, after `/accounts`:
 
@@ -1718,11 +1917,8 @@ In `AccountsPage`, pass the whole list and the rates:
 
 ```tsx
   const { ws } = useApp(); // already destructured with database
-  const pocketTotal = (account: AccountRow) => parentTotal(pocketsOf(account.id, everything), balances, ws.baseCurrency, rates);
-  const totalText = (account: AccountRow) => {
-    const total = pocketTotal(account);
-    return total.totalMinor === null ? `No ${total.missing.join(', ')} rate yet` : `≈ ${formatMinor(total.totalMinor, ws.baseCurrency)}`;
-  };
+  // The kit's grouped figure: the ≈ total, or the missing rate named — never a partial sum.
+  const totalText = (account: AccountRow) => groupedFigure(parentTotal(pocketsOf(account.id, everything), balances, ws.baseCurrency, rates), ws.baseCurrency).text;
   const kindLine = (account: AccountRow) =>
     parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketsOf(account.id, everything).length} pockets` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`;
 ```
@@ -1733,12 +1929,13 @@ In `AccountsPage`, pass the whole list and the rates:
 - `balance` cell: parents → `<Figure>{totalText(account)}</Figure>`.
 - `points`, `actions`: unchanged (Rename carries to pockets in the repository; Archive's refusal arrives through the existing `window.alert(errorMessage(e))`).
 
-Imports: `formatMinor` (core), `pocketParentIds` (db), `parentTotal`, `pocketsOf` (./pockets), `useHeldRates` (./queries).
+Imports: `groupedFigure` (kit), `pocketParentIds` (db), `parentTotal`, `pocketsOf` (./pockets), `useHeldRates` (./queries).
 
 - [ ] **Step 7: `AssetDetailPage.tsx` — ≈, Opened at, back to the account**
 
 ```tsx
-  const { database, ws } = useApp(); // ws is new here
+  // `ws` is already destructured here (AssetDetailPage.tsx:23). The hooks below go beside the existing ones, before
+  // any early return. Imports: `approxLine`, `rateLine` (kit); `useHeldRates`, `useOpenings` (../accounts/queries).
   const parent = account?.parentId ? (accounts.data ?? []).find((row) => row.id === account.parentId) : undefined;
   const foreignMoney = value?.mode === 'derived' && value.currency !== ws.baseCurrency;
   const held = useHeldRates(foreignMoney && value ? [value.currency] : []);
@@ -1761,7 +1958,7 @@ Inside the hero caption's `<span className="mt-[2px] block">`, before `{METHOD_L
                 {foreignMoney && opened && <span className="block">Opened at {rateLine(opened.fxRateToBase, value.currency, ws.baseCurrency)}</span>}
 ```
 
-- [ ] **Step 8: Run** — `cd apps/web && npx playwright test e2e/currency-pockets.spec.ts e2e/coretax-pickers.spec.ts e2e/account-types.spec.ts e2e/assets.spec.ts --workers=2`; `grep -nE "#[0-9a-fA-F]{3,6}|slate-|bg-white" apps/web/src/features/accounts/PocketsPage.tsx` must print nothing; root gate.
+- [ ] **Step 8: Run** — `cd apps/web && npx playwright test -c playwright.cu.config.ts 'e2e/(currency-pockets|coretax-pickers|account-types|assets)\.spec\.ts$' --workers=2`; `grep -nE "#[0-9a-fA-F]{3,6}|slate-|bg-white" apps/web/src/features/accounts/PocketsPage.tsx apps/web/src/ui/native/Grouped.tsx` must print nothing; root gate.
 - [ ] **Step 9: Commit** — `feat(accounts): an account with pockets is one row that adds them up and opens to each`
 
 ---
@@ -1883,7 +2080,7 @@ export function AddPocketPage() {
 
 Router: `createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/pocket', component: AddPocketPage })`.
 
-- [ ] **Step 3: Run** — `npx playwright test e2e/currency-pockets.spec.ts --workers=2`; root gate.
+- [ ] **Step 3: Run** — `cd apps/web && npx playwright test -c playwright.cu.config.ts 'e2e/currency-pockets\.spec\.ts$' --workers=2`; root gate.
 - [ ] **Step 4: Commit** — `feat(accounts): add a pocket to an account that has them`
 
 ---
@@ -1907,8 +2104,9 @@ test('moving between pockets moves what the screen shows and says what the bank�
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
   await page.getByRole('link', { name: /Move between pockets/ }).click();
 
-  await page.getByLabel('From').selectOption({ label: /US Dollar/ });
-  await page.getByLabel('To').selectOption({ label: /Singapore Dollar/ });
+  // Options are valued by currency code (one open pocket per currency); `selectOption({ label })` takes no RegExp.
+  await page.getByLabel('From').selectOption('USD');
+  await page.getByLabel('To').selectOption('SGD');
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
   await expect(page.getByText('1 USD = 1,2760 SGD')).toBeVisible();
@@ -1993,21 +2191,24 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
     }
   }
 
+  // Valued by currency code: an account has one open pocket per currency, so the code names the pocket and a test
+  // can choose it without knowing an id. `idOf` turns it back into the pocket the draft holds.
   const option = (p: AccountRow) => (
-    <option key={p.id} value={p.id}>
-      {`${currencyName(p.currency!)} · ${formatMinor(balances[p.id] ?? 0, p.currency!)}`}
+    <option key={p.id} value={p.currency!}>
+      {`${currencyName(p.currency!)} · ${formatMinor(balances[p.id] ?? 0, p.currency!)} available`}
     </option>
   );
+  const idOf = (code: string) => pockets.find((p) => p.currency === code)!.id;
 
   return (
     <div className={SCREEN}>
       <LargeTitle title="Move between pockets" back={parent.name} backTo="/accounts/$accountId" backParams={{ accountId: parent.id }} />
       <ErrorBox error={error} />
       <InsetGroup>
-        <SelectRow label="From" value={draft.moneyId} onChange={(e) => setDraft((d) => withPockets(d, { moneyId: e.target.value }))}>
+        <SelectRow label="From" value={from.currency!} onChange={(e) => setDraft((d) => withPockets(d, { moneyId: idOf(e.target.value) }))}>
           {pockets.map(option)}
         </SelectRow>
-        <SelectRow label="To" value={draft.toId} onChange={(e) => setDraft((d) => withPockets(d, { toId: e.target.value }))}>
+        <SelectRow label="To" value={to.currency!} onChange={(e) => setDraft((d) => withPockets(d, { toId: idOf(e.target.value) }))}>
           {pockets.map(option)}
         </SelectRow>
         <TextRow
@@ -2054,12 +2255,203 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
 
 Router: `createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/move', component: MovePage })`.
 
-- [ ] **Step 3: Run** — `npx playwright test e2e/currency-pockets.spec.ts --workers=2`; colour grep on `MovePage.tsx` and `AddPocketPage.tsx` prints nothing; root gate.
+- [ ] **Step 3: Run** — `cd apps/web && npx playwright test -c playwright.cu.config.ts 'e2e/currency-pockets\.spec\.ts$' --workers=2`; colour grep on `MovePage.tsx` and `AddPocketPage.tsx` prints nothing; root gate.
 - [ ] **Step 4: Commit** — `feat(accounts): move between pockets as a two-legged transfer, with the bank's spread shown and recorded`
 
 ---
 
-### Task 8: Walk the combinations, on a desktop and on a phone
+### Task 8: The Money tile over the Accounts list (user decision 7)
+
+**Files:**
+- Modify: `apps/web/src/features/accounts/pockets.ts`, `pockets.test.ts`, `AccountsPage.tsx`, `apps/web/e2e/currency-pockets.spec.ts`
+
+**Interfaces:**
+- Consumes: `sumToBase` (Task 1); `pocketParentIds` (Task 2); `pocketsOf`, `useHeldRates` (Tasks 4, 5); `CASH_ITEMS` (core); `Hero`, `Panel` (kit).
+- Produces: `moneySummary(accounts, balances, baseCurrency, ratesToBase): { totalMinor: number | null; missing: string[]; accounts: number; currencies: number }`.
+
+The mockup's "Money ≈ Rp 103.882.000 · across 4 accounts · 3 currencies". **Money** is the kinds of account that hold money (`CASH_ITEMS`: cash, current, saving, time deposit, wallet, fund, other cash) — not a holding, whose figure is a valuation, and not a debt. An account with pockets counts as **one** account, its pockets as the amounts. A missing rate gives no figure and names the rate, as every total in this feature does.
+
+- [ ] **Step 1: Failing test** (append to `pockets.test.ts`; add `moneySummary` to the import)
+
+```ts
+describe('the Money tile', () => {
+  const book = [
+    ...accounts,
+    { id: 'm', name: 'Dollar Saver', parentId: null, kind: 'asset', subtype: 'savings', currency: 'USD', archivedAt: null, sortOrder: 0 },
+    { id: 'k', name: 'Cash', parentId: null, kind: 'asset', subtype: 'cash', currency: 'IDR', archivedAt: null, sortOrder: 0 },
+    { id: 'o', name: 'Overdrawn', parentId: null, kind: 'asset', subtype: 'bank', currency: 'IDR', archivedAt: null, sortOrder: 0 },
+    { id: 'shares', name: 'US shares', parentId: null, kind: 'asset', subtype: 'investment', currency: 'USD', archivedAt: null, sortOrder: 0 },
+    { id: 'visa', name: 'Visa', parentId: null, kind: 'liability', subtype: 'credit_card', currency: 'IDR', archivedAt: null, sortOrder: 0 },
+    { id: 'gone', name: 'Old', parentId: null, kind: 'asset', subtype: 'bank', currency: 'EUR', archivedAt: '2026-01-01', sortOrder: 0 },
+  ] as AccountRow[];
+  const balances = {
+    'c-usd': 240_000, // $2.400,00 → 39.000.000
+    'a-sgd': 115_000, // S$1.150,00 → 14.582.000
+    'b-idr': 5_400_000,
+    'd-jpy': 999_999, // archived pocket: not counted
+    m: 180_000, // $1.800,00 → 29.250.000 (rounding is pinned in sumToBase's and approxLine's own tests, off .5)
+    k: 15_750_000,
+    o: -100_000, // overdrawn: lowers the figure
+    shares: 1_000_000, // a holding: not money
+    visa: -2_000_000, // a debt: not money
+  };
+
+  it('adds every money account and every pocket at today’s rates — an account with pockets is one account', () => {
+    // 39.000.000 + 14.582.000 + 5.400.000 + 29.250.000 + 15.750.000 − 100.000 — the mockup's Rp 103.882.000.
+    // Wrong answers it rules out: Math.abs on the overdrawn account (104.082.000), the holding counted (+16.250.000),
+    // the card counted, the archived JPY pocket counted, the parent's own zero counted as an account of its own.
+    expect(moneySummary(book, balances, 'IDR', rates)).toEqual({ totalMinor: 103_882_000, missing: [], accounts: 4, currencies: 3 });
+  });
+
+  it('gives no figure when a rate is missing, and names it — not the sum of the rest, not raw minor units', () => {
+    expect(moneySummary(book, balances, 'IDR', { USD: 16_250 })).toEqual({ totalMinor: null, missing: ['SGD'], accounts: 4, currencies: 3 });
+  });
+});
+```
+
+(Four accounts: Valas, Dollar Saver, Cash, Overdrawn. Three currencies: USD, SGD, IDR.)
+
+- [ ] **Step 2: Implement** in `pockets.ts`:
+
+```ts
+const MONEY_KINDS = new Set<string>(CASH_ITEMS.map((item) => item.id));
+
+/**
+ * The Money tile: every money account and every pocket in the base currency, or no figure with the missing rate
+ * named. An account with pockets is one account; its pockets are the amounts. Holdings and debts are not money here.
+ */
+export function moneySummary(accounts: readonly AccountRow[], balances: Readonly<Record<string, number>>, baseCurrency: string, ratesToBase: Rates) {
+  const parents = pocketParentIds(accounts);
+  const tops = accounts.filter((a) => a.kind === 'asset' && a.archivedAt === null && a.parentId === null && MONEY_KINDS.has(a.subtype));
+  const held = tops.flatMap((a) => (parents.has(a.id) ? pocketsOf(a.id, accounts) : [a]));
+  const amounts = held.map((a) => ({ minor: balances[a.id] ?? 0, currency: a.currency! }));
+  return { ...sumToBase({ amounts, baseCurrency, ratesToBase }), accounts: tops.length, currencies: new Set(amounts.map((a) => a.currency)).size };
+}
+```
+
+Imports: `CASH_ITEMS` (core), `pocketParentIds` (db).
+
+- [ ] **Step 3: Draw it** — in `AccountsPage`, above the Money `AccountList`, only when `summary.accounts > 0`:
+
+```tsx
+  const summary = moneySummary(everything, all, ws.baseCurrency, rates.data?.rates ?? {});
+  // …
+      {summary.accounts > 0 &&
+        (summary.totalMinor !== null ? (
+          <Hero minor={summary.totalMinor} currency={ws.baseCurrency} caption={`Money ≈ at today's rates · across ${plural(summary.accounts, 'account')} · ${plural(summary.currencies, 'currency', 'currencies')}`} />
+        ) : (
+          <Panel header="Money">
+            <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
+              No {summary.missing.join(', ')} rate yet, so {plural(summary.accounts, 'account')} in {plural(summary.currencies, 'currency', 'currencies')} cannot be added up. Each balance below is exact.
+            </p>
+          </Panel>
+        ))}
+```
+
+with `const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;` beside it. `useHeldRates` in `AccountsPage` now asks for every money account's currency, not only the pockets': `useHeldRates(everything.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!))`. `AccountsPage` needs `const { ws } = useApp();`.
+
+- [ ] **Step 4: e2e** (append to `currency-pockets.spec.ts`):
+
+```ts
+test('the Money tile adds every account and pocket at today’s rates', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  await expect(page.getByText(/across 1 account · 3 currencies/)).toBeVisible();
+  // Twice: the tile and the account's own row. Without the tile it is once.
+  await expect(page.getByText(/58\.982\.000/)).toHaveCount(2);
+});
+```
+
+- [ ] **Step 5: Run** — `cd apps/web && npx vitest run src/features/accounts`; `npx playwright test -c playwright.cu.config.ts 'e2e/(currency-pockets|account-types)\.spec\.ts$' --workers=2`; root gate.
+- [ ] **Step 6: Commit** — `feat(accounts): a Money tile adds every account and pocket at today's rates, or names the rate it lacks`
+
+---
+
+### Task 9: The net-worth Assets list — an account with pockets is one row, and totals are converted (user decision 8)
+
+**Files:**
+- Modify: `apps/web/src/features/networth/asset-rows.ts`, `asset-rows.test.ts`, `AssetsPage.tsx`, `apps/web/e2e/currency-pockets.spec.ts`
+
+**Interfaces:**
+- Consumes: `sumToBase` (Task 1); `pocketParentIds` (Task 2); `groupedFigure`, `GroupedRow` (Task 4); `useHeldRates` (Task 5).
+- Produces: `groupAssets(values, profiles, grouping: { accounts; baseCurrency; ratesToBase })`; `AssetGroup.totalMinor: number | null` and `AssetGroup.missing: string[]`; `AssetRow.pockets: number | null` and `AssetRow.missing: string[]`; `totalOf(groups): { totalMinor: number | null; missing: string[] }`.
+
+**Why the totals change too.** Today `groupAssets` adds `valueMinor` across currencies as if every row were in the first row's currency (`asset-rows.ts:49`, and `AssetsPage` takes `baseCurrency` from `values.data[0].currency`). A USD fund beside rupiah already reads wrong; pockets make it the rule — the Cash group would add $2.400,00, S$1.150,00 and Rp 5.400.000 as 5.755.000. Grouping pockets under a ≈ figure beside a raw group total would show two contradictory numbers, so the group totals and the hero go through `sumToBase` in the same task.
+
+- [ ] **Step 1: Failing tests** — every existing `groupAssets(values, profiles)` in `asset-rows.test.ts` becomes `groupAssets(values, profiles, idrOnly)` with `const idrOnly = { accounts: [], baseCurrency: 'IDR', ratesToBase: {} };`, and `expect(totalOf(...)).toBe(n)` becomes `.toEqual({ totalMinor: n, missing: [] })`. Append:
+
+```ts
+describe('an account with pockets, and totals across currencies', () => {
+  const liquid = (accountId: string, name: string, currency: string, valueMinor: number) =>
+    ({ ...values[0]!, accountId, name, currency, valueMinor, planGroup: 'liquid', mode: 'derived', stale: false, unitsMicro: null }) as AssetValueRow;
+  const rows = [liquid('usd', 'Valas · USD', 'USD', 240_000), liquid('sgd', 'Valas · SGD', 'SGD', 115_000), liquid('idr', 'Valas · IDR', 'IDR', 5_400_000), liquid('cash', 'Cash', 'IDR', 1_000_000)];
+  const accounts = [
+    { id: 'valas', name: 'Valas', parentId: null, kind: 'asset', subtype: 'savings', archivedAt: null },
+    { id: 'usd', name: 'Valas · USD', parentId: 'valas', kind: 'asset', subtype: 'savings', archivedAt: null },
+    { id: 'sgd', name: 'Valas · SGD', parentId: 'valas', kind: 'asset', subtype: 'savings', archivedAt: null },
+    { id: 'idr', name: 'Valas · IDR', parentId: 'valas', kind: 'asset', subtype: 'savings', archivedAt: null },
+    { id: 'cash', name: 'Cash', parentId: null, kind: 'asset', subtype: 'cash', archivedAt: null },
+  ] as AccountRow[];
+  const grouping = { accounts, baseCurrency: 'IDR', ratesToBase: { USD: 16_250, SGD: 12_680 } };
+
+  it('shows the pockets as one row for their account, at the ≈ total', () => {
+    const [cash] = groupAssets(rows, [], grouping);
+    expect(cash!.rows.map((row) => [row.accountId, row.name, row.valueMinor, row.currency, row.pockets])).toEqual([
+      ['valas', 'Valas', 58_982_000, 'IDR', 3],
+      ['cash', 'Cash', 1_000_000, 'IDR', null],
+    ]);
+  });
+
+  it('converts the group total instead of adding minor units of three currencies', () => {
+    // Raw addition would say 6.755.000.
+    expect(groupAssets(rows, [], grouping)[0]).toMatchObject({ totalMinor: 59_982_000, missing: [] });
+    expect(totalOf(groupAssets(rows, [], grouping))).toEqual({ totalMinor: 59_982_000, missing: [] });
+  });
+
+  it('gives no total when a rate is missing, and names it', () => {
+    const groups = groupAssets(rows, [], { ...grouping, ratesToBase: { USD: 16_250 } });
+    expect(groups[0]).toMatchObject({ totalMinor: null, missing: ['SGD'] });
+    expect(groups[0]!.rows[0]).toMatchObject({ accountId: 'valas', pockets: 3, missing: ['SGD'] });
+    expect(totalOf(groups)).toEqual({ totalMinor: null, missing: ['SGD'] });
+  });
+});
+```
+
+(Import `AccountRow`, `AssetValueRow` types from `@expanses/db`; if the file's `values[0]` is not liquid, the spread still works — every field the test reads is overridden.)
+
+- [ ] **Step 2: Implement** in `asset-rows.ts`:
+  - `AssetRow` gains `pockets: number | null` (null for an ordinary asset) and `missing: string[]`; `toRow` sets `pockets: null, missing: []`.
+  - `groupAssets(values, profiles, { accounts, baseCurrency, ratesToBase })`: `const parents = pocketParentIds(accounts)`, `const parentOf = new Map(accounts.filter((a) => a.parentId && parents.has(a.parentId)).map((a) => [a.id, a.parentId!]))`. Walking `values` in order, a value whose account is in `parentOf` is gathered under its parent; the parent's row is emitted once, where its first pocket stood: `{ accountId: parentId, name: parent.name, planGroup: firstPocket.planGroup, valueMinor: total.totalMinor ?? 0, currency: baseCurrency, method: 'Pockets', coretax: 'Each pocket files its own row', stale: false, sold: false, pockets: n, missing: total.missing }` with `total = sumToBase({ amounts: its pockets' (valueMinor, currency), baseCurrency, ratesToBase })`. `valueMinor` is display only on this row; nothing sums it.
+  - A group's total is `sumToBase` over the group's **underlying** values (pockets individually, sold holdings left out), so the group total never re-adds a rounded parent figure: `totalMinor` and `missing` from that call.
+  - `totalOf(groups)`: null with every group's `missing` merged (sorted, unique) when any group has none; else the sum of the group totals.
+- [ ] **Step 3: Draw it** in `AssetsPage.tsx`:
+  - `const { ws } = useApp();` — `baseCurrency` is `ws.baseCurrency`, no longer the first row's currency.
+  - `const accounts = useAccounts(); const held = useHeldRates((values.data ?? []).map((row) => row.currency));` and `groupAssets(values.data, profiles.data, { accounts: accounts.data ?? [], baseCurrency: ws.baseCurrency, ratesToBase: held.data?.rates ?? {} })`, waiting for `accounts.data` as it waits for the other two.
+  - `Row`: a row with `pockets !== null` is `<GroupedRow to="/accounts/$accountId" params={{ accountId: row.accountId }} title={row.name} subtitle={`${row.pockets} pockets · each files its own row`} figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency)} />`; every other row is today's.
+  - `Group`'s trailing figure: `group.totalMinor === null ? <Figure tone="warn">{`No ${group.missing.join(', ')} rate yet`}</Figure> : <Money minor={group.totalMinor} currency={baseCurrency} />`.
+  - The hero: `totalOf(groups)` with a total → today's `Hero` in `baseCurrency`; without → `<Empty>No {missing} rate yet, so your assets cannot be added up. Each figure below is exact.</Empty>`.
+- [ ] **Step 4: e2e** (append to `currency-pockets.spec.ts`):
+
+```ts
+test('net worth’s Assets list shows the account once, at the ≈ total, and opens to its pockets', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  await page.goto('/net-worth/assets');
+  await expect(page.getByRole('link', { name: /Valas Plus · USD/ })).toHaveCount(0);
+  const row = page.getByRole('link', { name: /^Valas Plus/ });
+  await expect(row).toContainText('3 pockets');
+  await expect(row).toContainText('58.982.000');
+  await row.click();
+  await expect(page.getByTestId('pocket-USD')).toBeVisible();
+});
+```
+
+- [ ] **Step 5: Run** — `cd apps/web && npx vitest run src/features/networth`; `npx playwright test -c playwright.cu.config.ts 'e2e/(currency-pockets|assets|net-worth|asset-reporting)\.spec\.ts$' --workers=2`; colour grep on `AssetsPage.tsx`; root gate.
+- [ ] **Step 6: Commit** — `feat(net-worth): an account with pockets is one row on Assets, and every total there is converted`
+
+---
+
+### Task 10: Walk the combinations, on a desktop and on a phone
 
 **Files:**
 - Modify: `apps/web/e2e/currency-pockets.spec.ts`
@@ -2116,7 +2508,7 @@ test('USD → IDR between pockets reads each side at its own exponent, keystroke
   await openWithPockets(page, VALAS);
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
   await page.getByRole('link', { name: /Move between pockets/ }).click();
-  await page.getByLabel('To').selectOption({ label: /Indonesian Rupiah/ });
+  await page.getByLabel('To').selectOption('IDR');
   await page.getByLabel('Leaves USD').pressSequentially('100.50');
   await page.getByLabel('Arrives IDR').pressSequentially('1.630.000');
   await expect(page.getByTestId('spread')).toContainText('3.125');
@@ -2132,10 +2524,10 @@ test('changing a pocket clears both figures, and choosing the same pocket swaps'
   await page.getByRole('link', { name: /Move between pockets/ }).click();
   await page.getByLabel('Leaves USD').pressSequentially('500');
   await page.getByLabel('Arrives SGD').pressSequentially('638');
-  await page.getByLabel('To').selectOption({ label: /Indonesian Rupiah/ });
+  await page.getByLabel('To').selectOption('IDR');
   await expect(page.getByLabel('Leaves USD')).toHaveValue('');
   await expect(page.getByLabel('Arrives IDR')).toHaveValue('');
-  await page.getByLabel('From').selectOption({ label: /Indonesian Rupiah/ });
+  await page.getByLabel('From').selectOption('IDR');
   await expect(page.getByLabel('Leaves IDR')).toBeVisible();
   await expect(page.getByLabel('Arrives USD')).toBeVisible();
 });
@@ -2144,7 +2536,17 @@ test('the Transfer tab between two pockets posts what the Move screen posts', as
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   await page.goto('/transactions');
-  await addTransfer(page, { from: 'Valas Plus · USD', to: 'Valas Plus · SGD (SGD)', amount: '500', receivedAmount: '638', note: 'By the tab' });
+  // Driven here rather than through `addTransfer`, which `fill()`s the Received row — the row Task 4 rewired.
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
+  await form.getByRole('button', { name: 'From' }).click();
+  await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Valas Plus · USD', exact: true }).click();
+  await form.getByLabel('Amount', { exact: true }).pressSequentially('500');
+  await form.getByLabel('To', { exact: true }).selectOption({ label: 'Valas Plus · SGD (SGD)' });
+  await form.getByLabel('Received amount (SGD)').pressSequentially('638');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(form).toHaveCount(0);
   await page.goto('/accounts');
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
@@ -2170,7 +2572,7 @@ test('the parent archives only after its pockets, and renaming it renames them',
 });
 ```
 
-Import `addTransfer` from `./add-transaction`. If `addTransfer`'s phone path is needed later, it already handles the keypad.
+The desktop amount input's label is whatever `openAmount`/`fillAmount` in `e2e/add-transaction.ts` target on chromium — read them and use the same locator if it is not `Amount`; keep `pressSequentially`.
 
 - [ ] **Step 2: Phone**
 
@@ -2211,7 +2613,7 @@ test('the account page reads in the dark', async ({ page }) => {
 });
 ```
 
-- [ ] **Step 3: Run the full gate** — root `npm run typecheck && npm test && npm run build`; `cd apps/web && npx playwright test --workers=2` (both projects, whole suite).
+- [ ] **Step 3: Run the full gate** — root `npm run typecheck && npm test && npm run build`; `cd apps/web && npx playwright test -c playwright.cu.config.ts --workers=2` (both projects, whole suite — the one run with no filter).
 - [ ] **Step 4: Walk the spec** — reread spec §1–§12 against the running app and the table below; any line with no passing test is a failing task, not a note.
 - [ ] **Step 5: Commit** — `test(pockets): walk every combination of pockets, rates and moves on desktop and phone`
 
@@ -2225,26 +2627,28 @@ test('the account page reads in the dark', async ({ page }) => {
 | §2 One account, one currency at the ledger | 3 (refusal), 2 (pocket rules) |
 | §3.1 No migration; parent/pocket rows | 2; Global Constraints (0052 unused) |
 | §3.2 What makes a parent | 2 (`pocketParentIds`) |
-| §3.3 Names, rename carries | 2 (`pocketName`), 3 (`renameAccount`), 8 (e2e) |
+| §3.3 Names, rename carries | 2 (`pocketName`), 3 (`renameAccount`), 10 (e2e) |
 | §3.4 Repository rules | 2 (create rules, count, deposit, duplicate), 3 (posting, archive) |
-| §4 Every reader | 3 (`assetValuesAt`, net worth, tax, flows), 4 (`moneyHolders` at every picker) |
-| §5 Opening with pockets, optional rate, atomic | 4 (`openingRateFor`, `readPockets`), 5 (form), 8 (unresolvable, duplicate) |
+| §4 Every reader | 3 (`assetValuesAt`, net worth, tax, flows), 4 (`moneyHolders` at every picker, the non-`isMoneyAccount` ones included) |
+| §5 Opening with pockets, optional rate, atomic | 4 (`openingRateFor`, `readPockets`), 5 (form), 10 (unresolvable, duplicate) |
 | §6 Add a pocket | 2 (`addPocket`), 6 |
-| §7 Accounts list P1, missing-rate rule, stored rates | 4 (`parentTotal`), 5 |
+| §7 Accounts list P1, missing-rate rule, stored rates, Money tile | 4 (`parentTotal`, `groupedFigure`), 5, 8 (tile) |
 | §8 Account page | 5 |
-| §9 Pocket page (≈, Opened at, back) | 2 (`openingsOf`), 5 |
-| §10.1–10.2 Move rows and currency handling | 4 (`receivedField`, `moveView`, `withPockets`, keystroke tests), 7, 8 |
+| §9 Pocket page (≈, Opened at, back) | 2 (`openingsOf`), 4 (`ApproxFigure`, `approxLine`), 5 |
+| §10.1–10.2 Move rows and currency handling | 4 (`receivedField`, `moveView`, `withPockets`, keystroke tests), 7, 10 |
 | §10.3 Bank's rate and spread, recorded | 1, 3 (recorded = shown), 4 (`spreadLine`), 7 |
 | §10.4 Saving through the Transfer tab's path | 7 |
-| §11 Transfer tab and other pickers | 4, 8 |
-| §12 Tax report and net worth | 3 |
-| §13 Securities dependencies | Pre-flights in 1, 4, 5 |
-| §14 Testing | 1–8 |
+| §11 Transfer tab and other pickers | 4, 10 |
+| §12 Tax report and net worth; Assets list grouped | 3, 9 |
+| §13 Shared parts securities reuses (build-order ruling) | 1 (`sumToBase`), 4 (kit: `approxLine`, `rateLine`, `groupedFigure`, `ApproxFigure`, `GroupedRow`) |
+| §14 Testing | 1–10 |
 | §16 Decisions taken here | 2 (1, 2, 4), 5 (3, 6), 4 (7, 8), 7 (5) |
+| §18 Add asset's rate reader | 4 (Step 5b) |
 
 ## Open questions carried from the spec (§17)
 
-1. Converting an existing single-currency account into one with pockets — not offered; `addPocket` refuses it.
-2. The Accounts summary tile from the mockup — not built.
-3. Grouping pockets on the net-worth Assets list — not built; pockets show individually.
+1. Converting an existing single-currency account into one with pockets — **out of scope (user, 2026-09-21)**; `addPocket` refuses it.
+2. The Accounts summary tile — **built (user decision 7)**, Task 8.
+3. Grouping pockets on the net-worth Assets list — **built (user decision 8)**, Task 9, with that page's totals converted.
 4. `periodFlows` counts a costly spread between savings pockets against put-away but ignores a gainful one — kept and pinned by Task 3's test, not changed.
+5. Still reading raw or partial sums, not touched here: `/net-worth/loans` (mixed-currency loans added as rupiah) and `netWorthAt`/`toBase` (a missing rate counts as 0 on the Overview).

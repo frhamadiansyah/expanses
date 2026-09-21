@@ -137,7 +137,10 @@ describe('a promise is not a balance', () => {
     await laptop(6_800_000, { accountId: jenius.id, goalId: umrahId, intent: 'spend', overMinor: 1_800_000 });
     await postTransaction(database, ws, { occurredOn: DAY, description: 'Move', lines: transferLines({ fromAccountId: jenius.id, toAccountId: bca.id, amountMinor: 20_000_000, currency: 'IDR' }), setAside: { accountId: jenius.id, goalId: efId, intent: 'move', overMinor: 15_000_000, toAccountId: bca.id } });
 
-    expect((await netWorthAt(database, ws, DAY, {})).netWorthMinor).toBe((await netWorthAt(twin.database, twin.ws, DAY, {})).netWorthMinor);
+    // Since currency pockets it can be null (a rate missing): two nulls must not pass as equal figures.
+    const mine = (await netWorthAt(database, ws, DAY, {})).netWorthMinor;
+    expect(mine).not.toBeNull();
+    expect(mine).toBe((await netWorthAt(twin.database, twin.ws, DAY, {})).netWorthMinor);
     expect(Object.values(await nativeBalances(database, ws)).sort()).toEqual(Object.values(await nativeBalances(twin.database, twin.ws)).sort());
   });
 });

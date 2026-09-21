@@ -8,9 +8,11 @@ does not bend.
 Chosen: list shape **P1** (a parent row, tap to open). The opening balance of each pocket takes an **optional rate**,
 resolved for the opening date when left blank.
 
-Assumed landed before this: **securities (branch `feat/securities`, migration 0051)**, whose spec is required by
-the decisions to build the grouped row "for both subjects from the start" (§13). Also data safety, event RAB and
-the Add Transaction rebuild (the `tx-form.ts` kit, `ratesForSave`, `settledAmount`, `evaluateAmount`).
+**Build order (ruling, 2026-09-21): this feature builds before securities**, which is not built. Pockets therefore
+writes the parts the decisions say must serve both subjects — the multi-currency sum, the R1 figure and the grouped
+row — as shared parts, and securities reuses them (§13). Assumed landed: data safety, event RAB and the Add
+Transaction rebuild (the `tx-form.ts` kit, `ratesForSave`, `settledAmount`, `evaluateAmount`). Branches from `main`;
+`feat/set-aside` (not merged) touches several of the same files (plan, Global Constraints).
 
 ## 1. What we are building
 
@@ -147,6 +149,11 @@ sideways scroller on a phone. A pocket never appears as a row of its own. A pare
 does not add raw minor units — it says which rate is missing. (`/net-worth/loans` still adds mixed-currency loans as
 if they were rupiah; that is the defect this rule exists to avoid, and it is not copied.)
 
+**The Money tile** (user decision 7, 2026-09-21) sits over the list: "Money ≈ Rp 103.882.000 · across 4 accounts ·
+3 currencies" — every money account (the cash kinds of the catalogue, not holdings, not debts) and every pocket at
+today's held rates, an account with pockets counting as one account. With a missing rate it gives no figure and
+names the rate.
+
 Rates for display come from `useStoredRates` — what this device already holds, the last known rate when today's is
 not stored — so opening a screen never reaches the network.
 
@@ -240,27 +247,27 @@ what the Move screen posts; the two differ only in layout.
   ("BCA Pocket Valas · USD"), its balance in its currency, converted as every foreign kas row already is. **The
   parent never appears**: `assetValuesAt` leaves it out, so `coretaxInputsFor` never sees it. No double counting.
 - **Net worth** counts each pocket once at its value; the parent contributes nothing.
-- The net-worth **Assets** list shows pockets as the individual money accounts they are (§17).
+- The net-worth **Assets** list shows an account with pockets as **one grouped row** — its name, "3 pockets", the ≈
+  total — opening to the account's page (user decision 8, 2026-09-21). Because a ≈ row beside a raw group total would
+  contradict itself, that page's group totals and its hero are converted by `sumToBase` too, refusing a missing rate;
+  today they add minor units of every currency as if they were the first row's.
 
-## 13. What this depends on from securities (0051)
+## 13. The parts securities will reuse
 
 The decisions say the grouped row — "a parent that sums its children, opens to reveal them, and holds nothing
-itself" — is designed for both subjects in the securities build, and must not be built twice. This feature
-therefore depends on securities for:
+itself" — is designed for both subjects and must not be built twice. Securities was meant to land first; the order
+is now reversed (ruling, 2026-09-21), so this feature builds the shared parts, free of pocket words:
 
-1. **The summing model** — whatever function securities uses to add children in several currencies into one
-   figure with a missing-rate refusal. If it exists, the pocket total calls it and this feature's `sumToBase` is not
-   written. If securities added children only in one currency and left no such function, `sumToBase` is written here
-   in `packages/core/src/money/exchange.ts`, where securities can adopt it.
-2. **The R1 figure** — a native figure leading with `≈` and the converted figure beneath. If securities landed a
-   component or a pure formatter for it, the pocket rows and the pocket page use it. If not, the plan's `approxLine`
-   (a pure string function, no new visual treatment) is the implementation.
-3. **The grouped row** — if securities landed a shared grouped-row component in `apps/web/src/ui/native/`, the
-   parent page's pocket rows use it. The Accounts page stays a `RecordTable` in any case: its rows carry Rename and
-   Archive, which is why it is a table (`AccountsPage.tsx`'s own comment).
+1. **The summing model** — `sumToBase` in `packages/core/src/money/exchange.ts`: amounts in several currencies as one
+   base figure, or none with the missing rates named. (Core's `netWorth` returns a partial total beside
+   `missingRates`, and `asset-values.ts`'s `toBase` answers 0; neither is a substitute.)
+2. **The R1 figure** — in the kit, `approxLine` / `rateLine` (`ui/native/approx.ts`) and `ApproxFigure`
+   (`ui/native/Grouped.tsx`): the native figure leading, `≈` the converted figure beneath.
+3. **The grouped row** — in the kit, `groupedFigure` and `GroupedRow`: one row, the ≈ total or the missing rate named,
+   opening to where the children are listed. The Accounts page stays a `RecordTable` (its rows carry Rename and
+   Archive) and takes the same `groupedFigure` text; the net-worth Assets list uses `GroupedRow`.
 
-Nothing in the database depends on 0051. The plan's first step in each affected task checks what securities
-actually landed before writing anything, and uses it.
+Nothing in the database depends on 0051.
 
 ## 14. Testing
 
@@ -282,17 +289,16 @@ between two savings pockets lowers put-away by exactly the spread and reaches ne
 screen's figures and `formToPost`'s lines agreeing **at every keystroke** of `500` and `638`, of `100.50` and
 `1.630.000`; changing a pocket clearing both figures; the pocket form reading each balance in its own currency.
 
-**End to end** — a combination walk (§ plan Task 8), driving every figure keystroke by keystroke
+**End to end** — a combination walk (§ plan Task 10), driving every figure keystroke by keystroke
 (`pressSequentially`, never `fill`) on both `chromium` and `phone`.
 
 ## 15. Out of scope
 
 - Turning an existing single-currency account into one with pockets (§17).
-- Grouping pockets on the net-worth Assets list or the Overview.
-- The mockup's "Money ≈ Rp 103.882.000 · across 4 accounts" summary tile over the Accounts list (§17).
+- Grouping pockets on the Overview (the Assets list groups them, §12).
 - A recent-transactions list on the pocket page; its transactions stay one tap away, as for every account.
 - Pockets for credit cards or loans, and for time deposits.
-- Fixing `/net-worth/loans`'s mixed-currency sum, or Add asset's separate rate reader (§18).
+- Fixing `/net-worth/loans`'s mixed-currency sum, or `netWorthAt` counting a missing rate as 0.
 
 ## 16. Decisions taken here that the decisions file did not cover
 
@@ -305,19 +311,19 @@ screen's figures and `formToPost`'s lines agreeing **at every keystroke** of `50
 5. **No pre-fill of Arrives**, and changing a pocket clears both figures (§10.2).
 6. **Display rates are the stored ones** (`useStoredRates`), so opening a screen never fetches.
 7. **`isMoneyAccount` is not changed**; `moneyHolders` is added beside it for pickers (§4).
-8. **One `openingRateFor`** replaces the two copies of the opening-rate block.
+8. **One `openingRateFor`** replaces the two copies of the opening-rate block, and Add asset's third reader.
+9. **Pockets keep the order they were given** in `accounts.sort_order` (an existing column), because ids made in one
+   millisecond are not ordered. In pickers sorted by (sort order, name) a pocket after the first lists after the
+   other money accounts.
 
 ## 17. Open questions
 
-1. **Converting an existing account.** A user who already recorded "BCA Valas USD" as a plain account and now wants
+1. **Converting an existing account — out of scope (user, 2026-09-21).** A user who already recorded "BCA Valas USD" as a plain account and now wants
    an SGD pocket beside it cannot attach one: `addPocket` refuses an account with no pockets, and a plain account
    that has held money cannot become a parent. Today's answer is to open a new account with pockets and transfer the
-   balance across. Whether to offer "Move this account under a new parent" (a re-parenting, no money moving) is not
-   decided.
-2. **The Accounts summary tile** in the mockup's list screen ("Money ≈ … across 4 accounts · 3 currencies") is not
-   in the decisions and is not built.
-3. **Net-worth Assets list**: P1 was decided for the Accounts list. Whether pockets group under their parent on
-   `/net-worth/assets` too is not decided; they show as individual rows.
+   balance across. "Move this account under a new parent" is not built.
+2. **The Accounts summary tile — decided: built** (user decision 7, §7).
+3. **Net-worth Assets list — decided: pockets group under their account** (user decision 8, §12).
 4. **The spread in "put away".** `periodFlows` counts a cross-currency transfer between two savings accounts
    asymmetrically: a spread that costs lowers put-away, a spread that gains is ignored. Pockets make such transfers
    common. Whether the gain should count too (or neither) is not decided; the build keeps today's rule and pins it.
@@ -333,4 +339,7 @@ screen's figures and `formToPost`'s lines agreeing **at every keystroke** of `50
   and implemented twice (`AccountsPage.tsx` and `CashAccountForm.tsx`, identical blocks). **Add asset does not**:
   `add-asset.ts:156-158` reads a typed rate with its own parser (`Number(typed.replace(/\./g, '').replace(',', '.'))`,
   so `16.500` is 16500 there and 16,5 under `parseRate`) and, when the rate is blank, posts with no rate, which
-  `planPosting` refuses for a foreign currency. Not in this feature's scope; reported.
+  `planPosting` refuses for a foreign currency. **Fixed here** (plan Task 4 Step 5b): Add asset calls the same
+  `openingRateFor` the money forms use, so a typed rate is read by `parseRate` (and previewed) and a blank one is
+  resolved for the opening date — one rate for all the opening's purchases, dated at the earliest, as the form
+  already applied one rate to them all.

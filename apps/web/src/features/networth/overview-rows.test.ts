@@ -29,7 +29,7 @@ const template = (id: string, accountId: string): TradeTemplateRow => ({
   createdAt: '2026-01-01T00:00:00Z',
 });
 
-const point = (month: string, netWorthMinor: number): NetWorthPoint => ({ month, onDate: `${month}-28`, assetsMinor: netWorthMinor, liabilitiesMinor: 0, netWorthMinor });
+const point = (month: string, netWorthMinor: number): NetWorthPoint => ({ month, onDate: `${month}-28`, assetsMinor: netWorthMinor, liabilitiesMinor: 0, netWorthMinor, missing: [] });
 
 describe('attentionItems', () => {
   it('says nothing when every value is fresh', () => {
@@ -282,6 +282,12 @@ describe('deltaSince', () => {
   it('is null when the series does not reach back that far', () => {
     expect(deltaSince(points, 12)).toBeNull();
     expect(deltaSince([], 1)).toBeNull();
+  });
+
+  it('is nothing when either end has no figure for want of a rate — not a change measured from 0', () => {
+    const unpriced: NetWorthPoint = { ...point('2026-08', 0), assetsMinor: null, netWorthMinor: null, missing: ['USD'] };
+    expect(deltaSince([point('2026-07', 1_100_000_000), unpriced], 1)).toBeNull();
+    expect(deltaSince([unpriced, point('2026-09', 1_200_000_000)], 1)).toBeNull();
   });
 });
 

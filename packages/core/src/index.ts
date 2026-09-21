@@ -30,6 +30,7 @@ export {
   roundHalfAwayFromZero,
 } from './money/money';
 export { evaluateAmount } from './money/keypad';
+export { exchangeCost, type ExchangeCost, impliedRate, sumToBase } from './money/exchange';
 export { zipStore, unzipStore } from './backup/zip';
 export {
   type AccountKind,

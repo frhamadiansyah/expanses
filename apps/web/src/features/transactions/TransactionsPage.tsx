@@ -21,7 +21,7 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { loadPurchasePoints } from '../../lib/purchase-points';
-import { isMoneyAccount, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
@@ -278,7 +278,7 @@ export function TransactionsPage() {
   const sum = totals(shown);
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
-  const money = accounts.filter(isMoneyAccount);
+  const money = moneyHolders(accounts);
   const cardsOf = (accountId: string) => cards.filter((card) => card.accountId === accountId);
   const paidOptions: ChipOption[] = [
     { value: '', label: 'Any account' },

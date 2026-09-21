@@ -3,7 +3,7 @@ import { archiveIncomeSource, saveIncomeSource } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
 import { DestructiveRow, Figure, InsetGroup, InsetRow, Panel, RecordTable, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { useBusinessReport } from './queries';
@@ -37,9 +37,7 @@ export function BusinessSection({ taxYear }: { taxYear: number }) {
   const [kluCode, setKluCode] = useState('');
   const [thresholdApplies, setThresholdApplies] = useState(true);
 
-  const wallets = (accounts.data ?? []).filter(
-    (account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null,
-  );
+  const wallets = moneyHolders(accounts.data ?? []).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
   const data = report.data;
   const nothingYet = (data?.umkm.length ?? 0) === 0 && (data?.nppn.length ?? 0) === 0;
 

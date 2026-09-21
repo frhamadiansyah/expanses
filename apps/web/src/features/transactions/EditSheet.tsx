@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
-import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, ErrorBox, InputRow, RowGroup } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -93,7 +93,7 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
   // The same list the card offers, built the same way: every money account this one could be paid from, one row
   // per card on it. `canPayWith` keeps the account already chosen even when it is no longer spendable.
   const payable: PaymentOption[] = paymentOptions(
-    accounts.filter((a) => isMoneyAccount(a) && canPayWith(a, draft.moneyId)),
+    moneyHolders(accounts).filter((a) => canPayWith(a, draft.moneyId)),
     allCards as CardRow[],
   );
   const categoryName = draft.categoryId ? (accounts.find((a) => a.id === draft.categoryId)?.name ?? '') : '';

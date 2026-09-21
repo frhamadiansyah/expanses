@@ -143,7 +143,7 @@ export function chargedInNeeded(draft: FormDraft, accounts: readonly AccountRow[
 
 /** One money field of the amount row: what it is called, what is in it, and the currency it is read in. */
 export interface MoneyFieldSpec {
-  which: 'amount' | 'charged';
+  which: 'amount' | 'charged' | 'received';
   label: string;
   value: string;
   /** Never empty: the workspace's own currency stands in until an account is chosen. */
@@ -183,6 +183,22 @@ export function amountFields(draft: FormDraft, accounts: readonly AccountRow[], 
 export function postingCurrency(draft: FormDraft, accounts: readonly AccountRow[], baseCurrency: string): string {
   const { amount, charged } = amountFields(draft, accounts, baseCurrency);
   return (charged ?? amount).currency;
+}
+
+/**
+ * A transfer's second figure — what arrived in the To account — with its label and the currency it is read in:
+ * always the To account's. Null unless this is a transfer between two different currencies.
+ *
+ * Decided once, beside `amountFields`, for the same reason: the Transfer tab's Received row, the Move between
+ * pockets screen and `transferPostingLines` all read this record, so the figure a screen draws and the figure the
+ * ledger moves cannot be read at two different scales.
+ */
+export function receivedField(draft: FormDraft, accounts: readonly AccountRow[]): MoneyFieldSpec | null {
+  if (draft.mode !== 'transfer') return null;
+  const from = accountOf(draft, accounts);
+  const to = accounts.find((a) => a.id === draft.toId);
+  if (!from?.currency || !to?.currency || from.currency === to.currency) return null;
+  return { which: 'received', label: `Received amount (${to.currency})`, value: draft.toAmount, currency: to.currency };
 }
 
 export type ExtraRow = 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos' | 'exclude' | 'rate';
@@ -428,13 +444,15 @@ function transferPostingLines(draft: FormDraft, account: AccountRow, accounts: r
   if (to.currency === currency) return transferLines({ fromAccountId: account.id, toAccountId: to.id, amountMinor, currency });
   const exchange = accounts.find((a) => a.systemKey === 'currency_exchange');
   if (!exchange) throw new Error('Currency exchange account missing');
+  // Non-null: both accounts have a currency and they differ, which is exactly when `receivedField` answers.
+  const received = receivedField(draft, accounts)!;
   return exchangeLines({
     fromAccountId: account.id,
     fromAmountMinor: amountMinor,
     fromCurrency: currency,
     toAccountId: to.id,
-    toAmountMinor: positive(draft.toAmount, to.currency, 'Received amount'),
-    toCurrency: to.currency,
+    toAmountMinor: positive(received.value, received.currency, 'Received amount'),
+    toCurrency: received.currency,
     exchangeAccountId: exchange.id,
   });
 }
@@ -547,7 +565,10 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
           // walk past: the goal was taken and `draft.toAmount` — a field the screen marks required — was
           // ignored, so both legs posted the source figure and the user met `Lines in USD sum to …` after
           // pressing Save. The row the screen asked for is the row that posts.
-          toAmountMinor: to.currency === account.currency ? null : positive(draft.toAmount, to.currency, 'Received amount'),
+          toAmountMinor: (() => {
+            const received = receivedField(draft, accounts);
+            return received ? positive(received.value, received.currency, 'Received amount') : null;
+          })(),
           goalId: draft.goalId,
           // §4: Photos and Exclude from report appear "always". Tagging the transfer to a goal cannot be what
           // throws them away — the untagged branch below carries the same three facts.

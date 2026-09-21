@@ -15,7 +15,7 @@ import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
-import { isMoneyAccount, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, Card, ErrorBox, InputRow, RowGroup, Select, SelectRow } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
@@ -34,7 +34,7 @@ import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
-import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost } from './tx-form';
+import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, receivedField } from './tx-form';
 import { ratesForSave } from './tx-save';
 
 /**
@@ -42,7 +42,7 @@ import { ratesForSave } from './tx-save';
  * into sheets of their own (a transfer's To, and what a purchase was paid with).
  */
 function MoneyAccountOptions({ accounts, spendableOnly, keep }: { accounts: AccountRow[]; spendableOnly?: boolean; keep?: string }) {
-  const money = accounts.filter((a) => isMoneyAccount(a) && (!spendableOnly || canPayWith(a, keep)));
+  const money = moneyHolders(accounts).filter((a) => !spendableOnly || canPayWith(a, keep));
   return (
     <>
       <option value="">Choose…</option>
@@ -128,14 +128,16 @@ function CardBody({
 
   const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const choices = useMemo(() => buyChoices(assetValues.data ?? [], assetProfiles.data ?? []), [assetValues.data, assetProfiles.data]);
-  const money = accounts.filter(isMoneyAccount);
+  const money = moneyHolders(accounts);
   const account = byId.get(draft.moneyId);
   const purchase = draft.purchase;
   const chosen = [...choices.buys, ...choices.sells].find((option) => option.value === `${purchase.mode}:${purchase.accountId}`);
   const purchaseMoney = byId.get(purchase.moneyId);
   const purchaseCurrency = byId.get(purchase.accountId)?.currency ?? ws.baseCurrency;
   const toAccount = byId.get(draft.toId);
-  const crossCurrency = draft.mode === 'transfer' && !!account && !!toAccount && account.currency !== toAccount.currency;
+  // The Received row reads the same record the save reads (`receivedField`), so the two cannot disagree on its currency.
+  const received = receivedField(draft, accounts);
+  const crossCurrency = received !== null;
   const canHold = useCanHold();
   // What Save would send, read by the function that builds it (a category not chosen yet does not hide the door).
   const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
@@ -469,14 +471,8 @@ function CardBody({
                   ))}
                 </SelectRow>
               )}
-              {crossCurrency && (
-                <InputRow
-                  label={`Received amount (${toAccount!.currency})`}
-                  value={draft.toAmount}
-                  onChange={(e) => set({ toAmount: e.target.value })}
-                  inputMode="decimal"
-                  required
-                />
+              {received && (
+                <InputRow label={received.label} value={received.value} onChange={(e) => set({ toAmount: e.target.value })} inputMode="decimal" required />
               )}
             </RowGroup>
           )}
