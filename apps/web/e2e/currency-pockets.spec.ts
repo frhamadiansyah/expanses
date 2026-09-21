@@ -91,3 +91,11 @@ test('moving between pockets moves what the screen shows and says what the bank�
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
 });
+
+test('the Money tile adds every account and pocket at today’s rates', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  await expect(page.getByText(/across 1 account · 3 currencies/)).toBeVisible();
+  // Twice: the tile and the account's own row. Without the tile it is once.
+  await expect(page.getByText(/58\.982\.000/)).toHaveCount(2);
+});

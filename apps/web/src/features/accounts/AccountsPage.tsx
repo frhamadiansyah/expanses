@@ -11,8 +11,8 @@ import { depositLine } from '../networth/deposit-terms';
 import { useAssetProfiles, useAssetValues, useDepositTerms } from '../networth/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { Empty, ErrorBox, errorMessage, Money } from '../../ui';
-import { type CornerAction, Figure, groupedFigure, InsetGroup, InsetRow, LargeTitle, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
-import { parentTotal, pocketsOf } from './pockets';
+import { type CornerAction, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, Panel, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { moneySummary, parentTotal, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
 
 /** Sentinel for a bank the catalogue has never heard of. */
@@ -346,16 +346,20 @@ function AccountList({
   );
 }
 
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 export function AccountsPage() {
+  const { ws } = useApp();
   const accounts = useAccounts();
   const balances = useBalances();
   const everything = accounts.data ?? [];
   const money = everything.filter(isMoneyAccount);
   const all = balances.data ?? {};
   const parents = pocketParentIds(everything);
-  const pocketCurrencies = everything.filter((a) => a.parentId && a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!);
-  const rates = useHeldRates(pocketCurrencies);
+  // Every money account's currency, not only the pockets': the Money tile converts them all.
+  const rates = useHeldRates(everything.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!));
   const held = rates.data?.rates ?? {};
+  const summary = moneySummary(everything, all, ws.baseCurrency, held);
   /* Three journeys, two corners: the `…` keeps Import CSV and Backup reachable and named in words. */
   const actions: CornerAction[] = [
     { key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={20} aria-hidden /> },
@@ -366,6 +370,22 @@ export function AccountsPage() {
     <div className={SCREEN}>
       <LargeTitle title="Accounts" actions={actions} />
       {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add a bank account or credit card below.</Empty>}
+      {/* The Money tile: every money account and pocket at today's rates, or the rate it lacks named — never a partial sum. */}
+      {accounts.isSuccess && balances.isSuccess && rates.isSuccess && summary.accounts > 0 &&
+        (summary.totalMinor !== null ? (
+          <Hero
+            minor={summary.totalMinor}
+            currency={ws.baseCurrency}
+            caption={`Money ≈ at today's rates · across ${plural(summary.accounts, 'account')} · ${plural(summary.currencies, 'currency', 'currencies')}`}
+          />
+        ) : (
+          <Panel header="Money">
+            <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
+              No {summary.missing.join(', ')} rate yet, so {plural(summary.accounts, 'account')} in {plural(summary.currencies, 'currency', 'currencies')} cannot be added up. Each balance below is
+              exact.
+            </p>
+          </Panel>
+        ))}
       {/* A pocket is never a row of its own: its account's row adds it up (P1). */}
       <AccountList title="Money" accounts={money.filter((a) => a.kind === 'asset' && a.parentId === null)} balances={all} everything={everything} parents={parents} rates={held} />
       <AccountList title="Credit cards & debts" accounts={money.filter((a) => a.kind === 'liability')} balances={all} everything={everything} parents={parents} rates={held} />

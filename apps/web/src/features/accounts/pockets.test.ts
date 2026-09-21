@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { bankRateText, choosePocketCurrency, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
+import { bankRateText, choosePocketCurrency, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -134,5 +134,39 @@ describe('moving between pockets', () => {
   it('writes the bank’s rate to four places', () => {
     expect(bankRateText(1.276, 'USD', 'SGD')).toBe('1 USD = 1,2760 SGD');
     expect(bankRateText(null, 'USD', 'SGD')).toBe('—');
+  });
+});
+
+describe('the Money tile', () => {
+  const book = [
+    ...accounts,
+    { id: 'm', name: 'Dollar Saver', parentId: null, kind: 'asset', subtype: 'savings', currency: 'USD', archivedAt: null, sortOrder: 0 },
+    { id: 'k', name: 'Cash', parentId: null, kind: 'asset', subtype: 'cash', currency: 'IDR', archivedAt: null, sortOrder: 0 },
+    { id: 'o', name: 'Overdrawn', parentId: null, kind: 'asset', subtype: 'bank', currency: 'IDR', archivedAt: null, sortOrder: 0 },
+    { id: 'shares', name: 'US shares', parentId: null, kind: 'asset', subtype: 'investment', currency: 'USD', archivedAt: null, sortOrder: 0 },
+    { id: 'visa', name: 'Visa', parentId: null, kind: 'liability', subtype: 'credit_card', currency: 'IDR', archivedAt: null, sortOrder: 0 },
+    { id: 'gone', name: 'Old', parentId: null, kind: 'asset', subtype: 'bank', currency: 'EUR', archivedAt: '2026-01-01', sortOrder: 0 },
+  ] as AccountRow[];
+  const balances = {
+    'c-usd': 240_000, // $2.400,00 → 39.000.000
+    'a-sgd': 115_000, // S$1.150,00 → 14.582.000
+    'b-idr': 5_400_000,
+    'd-jpy': 999_999, // archived pocket: not counted
+    m: 180_000, // $1.800,00 → 29.250.000 (rounding is pinned in sumToBase's and approxLine's own tests, off .5)
+    k: 15_750_000,
+    o: -100_000, // overdrawn: lowers the figure
+    shares: 1_000_000, // a holding: not money
+    visa: -2_000_000, // a debt: not money
+  };
+
+  it('adds every money account and every pocket at today’s rates — an account with pockets is one account', () => {
+    // 39.000.000 + 14.582.000 + 5.400.000 + 29.250.000 + 15.750.000 − 100.000 — the mockup's Rp 103.882.000.
+    // Wrong answers it rules out: Math.abs on the overdrawn account (104.082.000), the holding counted (+16.250.000),
+    // the card counted, the archived JPY pocket counted, the parent's own zero counted as an account of its own.
+    expect(moneySummary(book, balances, 'IDR', rates)).toEqual({ totalMinor: 103_882_000, missing: [], accounts: 4, currencies: 3 });
+  });
+
+  it('gives no figure when a rate is missing, and names it — not the sum of the rest, not raw minor units', () => {
+    expect(moneySummary(book, balances, 'IDR', { USD: 16_250 })).toEqual({ totalMinor: null, missing: ['SGD'], accounts: 4, currencies: 3 });
   });
 });

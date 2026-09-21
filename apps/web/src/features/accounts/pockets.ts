@@ -1,5 +1,5 @@
-import { CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, type ExchangeCost, formatMinor, impliedRate, isoDate, parseMajor, sumToBase } from '@expanses/core';
-import type { AccountRow } from '@expanses/db';
+import { CASH_ITEMS, CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, type ExchangeCost, formatMinor, impliedRate, isoDate, parseMajor, sumToBase } from '@expanses/core';
+import { type AccountRow, pocketParentIds } from '@expanses/db';
 import { amountFields, emptyForm, type FormDraft, type MoneyFieldSpec, receivedField } from '../transactions/tx-form';
 
 type Rates = Readonly<Record<string, number>>;
@@ -99,3 +99,17 @@ export function spreadLine(cost: ExchangeCost | null, baseCurrency: string): { t
 export const moveDescription = (parent: AccountRow, from: AccountRow, to: AccountRow) => `${parent.name}: ${from.currency} → ${to.currency}`;
 
 export const currencyName = (code: string) => currencyInfo(code).name;
+
+const MONEY_KINDS = new Set<string>(CASH_ITEMS.map((item) => item.id));
+
+/**
+ * The Money tile: every money account and every pocket in the base currency, or no figure with the missing rate
+ * named. An account with pockets is one account; its pockets are the amounts. Holdings and debts are not money here.
+ */
+export function moneySummary(accounts: readonly AccountRow[], balances: Readonly<Record<string, number>>, baseCurrency: string, ratesToBase: Rates) {
+  const parents = pocketParentIds(accounts);
+  const tops = accounts.filter((a) => a.kind === 'asset' && a.archivedAt === null && a.parentId === null && MONEY_KINDS.has(a.subtype));
+  const held = tops.flatMap((a) => (parents.has(a.id) ? pocketsOf(a.id, accounts) : [a]));
+  const amounts = held.map((a) => ({ minor: balances[a.id] ?? 0, currency: a.currency! }));
+  return { ...sumToBase({ amounts, baseCurrency, ratesToBase }), accounts: tops.length, currencies: new Set(amounts.map((a) => a.currency)).size };
+}
