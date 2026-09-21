@@ -55,3 +55,19 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
   await expect(row).toContainText('1.800,00');
   await expect(row).not.toContainText('pockets');
 });
+
+test('a pocket can be added, in a currency with no decimals, at a typed rate', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await page.getByRole('link', { name: /Add a pocket/ }).click();
+  // Currencies it already has are not offered.
+  await expect(page.getByLabel('Currency').locator('option[value="USD"]')).toHaveCount(0);
+  await page.getByLabel('Currency').selectOption('JPY');
+  await page.getByLabel('Opening JPY').pressSequentially('30000');
+  await page.getByLabel('Rate: IDR per 1 JPY').pressSequentially('108,3');
+  await page.getByRole('button', { name: 'Add pocket' }).click();
+  // ¥30.000, not ¥300: JPY has no decimals.
+  await expect(page.getByTestId('pocket-JPY')).toContainText('30.000');
+  await expect(page.getByTestId('pocket-JPY')).toContainText('3.249.000');
+});

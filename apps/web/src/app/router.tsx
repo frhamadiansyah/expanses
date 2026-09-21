@@ -1,6 +1,7 @@
 import { parsePeriod } from '@expanses/core';
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router';
 import { AccountsPage } from '../features/accounts/AccountsPage';
+import { AddPocketPage } from '../features/accounts/AddPocketPage';
 import { PocketsPage } from '../features/accounts/PocketsPage';
 import { BackupPage } from '../features/backup/BackupPage';
 import { CoverPage } from '../features/events/CoverPage';
@@ -127,6 +128,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', component: PocketsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/pocket', component: AddPocketPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
