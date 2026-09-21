@@ -326,6 +326,18 @@ export { CATEGORY_NEEDS, type CategoryNeed, type NeedNode, needOf, type Resolved
 export { emergencyMonthsFor, type Household, HOUSEHOLDS, INCOME_STABILITIES, type IncomeStability } from './budget/emergency-months';
 export { COMPULSORY_KINDS, type GoalClass, fundingOrder, goalClass } from './goals/classes';
 export {
+  assumedReturnBps,
+  bandHint,
+  DEFAULT_INFLATION_BPS,
+  DRAWDOWN_RETURN_BPS,
+  EDUCATION_INFLATION_BPS,
+  EMERGENCY_RETURN_BPS,
+  RETIREMENT_RETURN_BPS,
+  type ReturnBand,
+  RETURN_BANDS,
+  returnBandFor,
+} from './goals/assumptions';
+export {
   CalculatorError,
   type CalculatedStage,
   educationStages,
