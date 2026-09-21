@@ -1,11 +1,12 @@
 import { isoDate } from '@expanses/core';
 import { type MonthlyBill, skipBill, undoBillPayments, unskipBill } from '@expanses/db';
-import { Link, useNavigate } from '@tanstack/react-router';
-import { ListChecks, Plus } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
+import { Check, ListChecks, Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, Money, PageHeader, RoundButton } from '../../ui';
+import { cx, ErrorBox, Money } from '../../ui';
+import { type CornerAction, Hero, GROUP_GAP, GROUP_RADIUS, InsetGroup, InsetRow, LargeTitle, PanelHeader, SCREEN, type Tone, toneClass } from '../../ui/native';
 import { BillRow } from './BillRow';
 import { amountOf, billsInReadCurrency, isSettled, paidText, sectionsOf, skippedText, summaryOf } from './bill-view';
 import { PaySeveralSheet } from './PaySeveralSheet';
@@ -15,9 +16,8 @@ import { useBookMoney } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
 import { UndoToast } from '../../ui/UndoToast';
 
-const SECONDARY_LINK = 'inline-flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-900 ring-1 ring-slate-300 hover:bg-slate-100';
-
-const LINE_TONE = { overdue: 'text-red-700', dueSoon: 'text-amber-700', later: 'text-slate-500' } as const;
+const LINE_TONE: Record<'overdue' | 'dueSoon' | 'later', Tone> = { overdue: 'alarm', dueSoon: 'warn', later: 'ink-3' };
+const SECTION_TONE: Record<string, Tone> = { overdue: 'alarm', dueSoon: 'warn' };
 
 /**
  * The month's bills, most urgent first: what is still to pay, what is late, and what is done. A row pays or skips with a
@@ -98,110 +98,90 @@ export function RecurringPage() {
 
   const summary = summaryOf(readRows, today);
 
+  const title = selecting ? `${picked.size} selected` : 'Recurring';
+  // Glyphs at every width, with the names they always had: a screen reader and a test still hear "New bill".
+  const actions: CornerAction[] = selecting
+    ? [{ key: 'done', label: 'Done', glyph: <Check size={20} aria-hidden />, run: doneSelecting }]
+    : [
+        { key: 'select', label: 'Select bills to pay', glyph: <ListChecks size={20} aria-hidden />, run: () => setSelecting(true) },
+        { key: 'new', label: 'New bill', glyph: <Plus size={22} aria-hidden />, to: '/bills/new' },
+      ];
+
   return (
-    <div className="space-y-3">
-      <PageHeader
-        title={selecting ? `${picked.size} selected` : 'Recurring'}
-        controls={
-          selecting ? (
-            <Button variant="secondary" onClick={doneSelecting}>
-              Done
-            </Button>
-          ) : (
-            <>
-              <RoundButton label="Select bills to pay" onClick={() => setSelecting(true)}>
-                <ListChecks size={18} aria-hidden />
-              </RoundButton>
-              <RoundButton label="New bill" onClick={() => void navigate({ to: '/bills/new' })}>
-                <Plus size={18} aria-hidden />
-              </RoundButton>
-            </>
-          )
-        }
-        action={
-          selecting ? (
-            <Button variant="secondary" onClick={doneSelecting}>
-              Done
-            </Button>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Button variant="secondary" aria-label="Select bills to pay" onClick={() => setSelecting(true)}>
-                Select
-              </Button>
-              <Link to="/bills/new" aria-label="New bill" className={SECONDARY_LINK}>
-                + New bill
-              </Link>
-            </span>
-          )
-        }
-      />
+    <div className={SCREEN}>
+      <LargeTitle title={title} actions={actions} />
 
       <ErrorBox error={error ?? bills.error} />
 
       {bills.isSuccess && rows.length === 0 && (
-        <div className="flex flex-col items-center">
-          <Empty>No bills set up. The phone, the water, the gas — whatever comes round.</Empty>
-          <Link to="/bills/new" className={SECONDARY_LINK}>
-            New bill
-          </Link>
-        </div>
+        <InsetGroup footer="No bills set up. The phone, the water, the gas — whatever comes round.">
+          <InsetRow title={<span className="text-[var(--ph-tint)]">New bill</span>} label="New bill" to="/bills/new" />
+        </InsetGroup>
       )}
 
       {rows.length > 0 && (
-        <div data-testid="bills-summary" className="space-y-2">
+        <div data-testid="bills-summary" className="md:max-w-2xl">
           <Unconverted missing={unconverted} currency={readCurrency} />
-          <Card className="space-y-1">
-            <span className="block text-xs text-slate-500">Still to pay in {summary.monthLabel}</span>
-            <span className="block text-3xl font-semibold tabular">
-              {summary.approximate && '~'}
-              <Money minor={summary.totalMinor} currency={readCurrency} />
-              {summary.variesText && <span className="text-sm font-normal text-slate-500"> · {summary.variesText}</span>}
-            </span>
-            {summary.lines.map((line) => (
-              <div key={line.key} className="flex justify-between text-sm">
-                <span className={LINE_TONE[line.key]}>{line.label}</span>
-                <span>
-                  {line.approximate && '~'}
-                  <Money minor={line.minor} currency={readCurrency} />
-                </span>
-              </div>
-            ))}
-            {summary.allSettled && (
-              <div className="flex justify-between text-sm text-emerald-700">
-                <span>All paid for {summary.monthLabel}</span>
-                <span aria-hidden>✓</span>
-              </div>
-            )}
-          </Card>
+          {/* The month's figure is the point of the page, so it is the hero; what it is made of is the group below. */}
+          <Hero
+            className="pt-[6px]"
+            minor={summary.totalMinor}
+            currency={readCurrency}
+            approximate={summary.approximate}
+            caption={
+              <>
+                Still to pay in {summary.monthLabel}
+                {summary.variesText && <> · {summary.variesText}</>}
+              </>
+            }
+          />
+          {(summary.lines.length > 0 || summary.allSettled) && (
+            <InsetGroup>
+              {[
+                ...summary.lines.map((line) => (
+                  <InsetRow
+                    key={line.key}
+                    title={<span className={toneClass(LINE_TONE[line.key])}>{line.label}</span>}
+                    label={line.label}
+                    value={
+                      <>
+                        {line.approximate && '~'}
+                        <Money minor={line.minor} currency={readCurrency} />
+                      </>
+                    }
+                    valueTone="ink"
+                  />
+                )),
+                ...(summary.allSettled
+                  ? [<InsetRow key="settled" title={<span className="text-[var(--ph-tint)]">All paid for {summary.monthLabel}</span>} value={<span aria-hidden>✓</span>} valueTone="tint" />]
+                  : []),
+              ]}
+            </InsetGroup>
+          )}
         </div>
       )}
 
       {sectionsOf(rows).map((section) => (
-        <section key={section.key}>
-          <h2
-            className={cx(
-              'mt-4 mb-1 px-1 text-[11px] font-semibold tracking-wide uppercase',
-              section.key === 'overdue' ? 'text-red-700' : section.key === 'dueSoon' ? 'text-amber-700' : 'text-slate-500',
-            )}
-          >
-            {section.title}
-          </h2>
-          {/* Card's look without its padding or clipping: rows run edge to edge, and a row's menu may hang below it. */}
-          <div className={cx('rounded-xl bg-white shadow-sm ring-1 ring-slate-200', section.key === 'settled' && 'opacity-60')}>
-            {section.rows.map((bill) => (
-              <BillRow
-                key={bill.id}
-                bill={bill}
-                accounts={accounts}
-                today={today}
-                currency={currencyOf(bill)}
-                onPay={pay}
-                onSkip={(b) => void skip(b)}
-                selecting={selecting}
-                picked={picked.has(bill.id)}
-                onToggle={toggle}
-              />
-            ))}
+        /* A header in the section's own tone — overdue in alarm, due soon in warning — outside and above its group. */
+        <section key={section.key} className="md:max-w-2xl" style={{ marginBottom: GROUP_GAP }}>
+          <PanelHeader title={<span className={toneClass(SECTION_TONE[section.key] ?? 'ink-3')}>{section.title}</span>} />
+          {/* The group's surface without its clipping: a row's ⋯ menu may hang below it. */}
+          <div className={cx('bg-[var(--ph-surface)]', section.key === 'settled' && 'opacity-60')} style={{ borderRadius: GROUP_RADIUS }}>
+          {section.rows.map((bill, index) => (
+            <BillRow
+              key={bill.id}
+              bill={bill}
+              accounts={accounts}
+              today={today}
+              currency={currencyOf(bill)}
+              onPay={pay}
+              onSkip={(b) => void skip(b)}
+              selecting={selecting}
+              picked={picked.has(bill.id)}
+              onToggle={toggle}
+              separator={index > 0}
+            />
+          ))}
           </div>
         </section>
       ))}
@@ -213,10 +193,10 @@ export function RecurringPage() {
           <button
             type="button"
             onClick={() => setPayingSeveral(true)}
-            className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex min-h-12 max-w-md items-center justify-between rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white shadow-lg md:sticky md:bottom-6 md:mt-4 md:w-full"
+            className="ph-focus fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex min-h-12 max-w-md items-center justify-between rounded-[14px] bg-[var(--ph-tint)] px-4 text-[15px] font-semibold text-white shadow-lg md:sticky md:bottom-6 md:mt-4 md:w-full"
           >
             <span>Pay {picked.size} selected</span>
-            <span>
+            <span className="tabular">
               {approximate && '~'}
               <Money minor={chosen.reduce((s, b) => s + amountOf(b), 0)} currency={readCurrency} /> ›
             </span>

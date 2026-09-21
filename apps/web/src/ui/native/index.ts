@@ -12,7 +12,7 @@ export { InsetGroup, InsetRow, toneClass, useWide, WideColumn, type GroupChild, 
 export { CornerButton, LargeTitle, OverflowMenu } from './NavTitle';
 export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
-export { DestructiveRow, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
+export { DestructiveRow, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, type WalletCard } from './CardStack';
 export { useWalletSlot, type WalletSlot } from './wallet-slot';
 export { Panel, PanelHeader, SCREEN } from './Panel';

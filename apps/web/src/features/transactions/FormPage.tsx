@@ -2,9 +2,10 @@ import { listTransactions, ownerScope } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
-import { BackButton } from '../../app/BackHeader';
+import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Card } from '../../ui';
+import { LargeTitle, SCREEN } from '../../ui/native';
 import { isEditable } from './draft';
 import { useChangeable } from './queries';
 import { TransactionCard } from './TransactionCard';
@@ -17,13 +18,12 @@ import { TransactionCard } from './TransactionCard';
  */
 export function NewTransactionRoute() {
   const navigate = useNavigate();
+  const back = useBack('/transactions');
   const done = () => void navigate({ to: '/transactions' });
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <BackButton fallback="/transactions" />
-        <h1 className="text-lg font-semibold">Add a transaction</h1>
-      </div>
+    <div className={SCREEN}>
+      {/* Back goes wherever the form was opened from, so it is named for what it does rather than a destination. */}
+      <LargeTitle title="Add a transaction" back="Back" onBack={back} />
       <TransactionCard full onDone={done} />
     </div>
   );
@@ -47,6 +47,7 @@ export function EditTransactionRoute() {
   const { transactionId } = route.useParams();
   const { database, ws } = useApp();
   const navigate = useNavigate();
+  const back = useBack('/transactions');
   // The receipt's own key and the receipt's own read: owner-wide, because an account's history is the owner's
   // and a deep link may name a transaction filed in another workspace.
   const receipt = useQuery({
@@ -65,11 +66,8 @@ export function EditTransactionRoute() {
 
   if (!tx || !changeable) return <Card>Loading…</Card>;
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <BackButton fallback="/transactions" />
-        <h1 className="text-lg font-semibold">Edit transaction</h1>
-      </div>
+    <div className={SCREEN}>
+      <LargeTitle title="Edit transaction" back="Back" onBack={back} />
       {/* An edit voids the original and posts a new id, so the transaction this URL names is gone once it
           saves. The list is where to land — this address would only 404 into its own redirect. */}
       <TransactionCard full initial={tx} onDone={() => void navigate({ to: '/transactions' })} />

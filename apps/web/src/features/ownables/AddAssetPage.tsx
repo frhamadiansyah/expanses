@@ -29,13 +29,8 @@ export function AddAssetPage() {
       onChoose={setChosen}
       handOver={handOverRows('asset')}
     >
-      {/* The form is the kit's groups, which are laid on the kit's grey — the picker's own shell is shared with
-          `/accounts/new` and `/debts/new`, so the ground is given to the form alone rather than to that shell. */}
-      {chosen && (
-        <div className="ph-screen -mx-3 rounded-xl px-3 pt-3">
-          <AddAssetForm key={chosen} itemId={chosen} onDone={() => void navigate({ to: '/net-worth/assets' })} />
-        </div>
-      )}
+      {/* The picker lays its whole screen on the kit's ground, so the form's groups sit on it as they are. */}
+      {chosen && <AddAssetForm key={chosen} itemId={chosen} onDone={() => void navigate({ to: '/net-worth/assets' })} />}
     </OwnablePicker>
   );
 }

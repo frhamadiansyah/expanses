@@ -100,12 +100,13 @@ export function sublineOf(bill: MonthlyBill, accountName: string, today: string)
   return bill.billMonth < today.slice(0, 7) ? `${monthName(bill.billMonth, 'short')} bill · ${accountName}` : accountName;
 }
 
+/** Each tone as a capsule on its own tinted ground, from the kit's panel tokens so a dark screen gets a dark pill. */
 export const PILL_CLASS: Record<BillTone, string> = {
-  grey: 'bg-slate-100 text-slate-600',
-  blue: 'bg-blue-50 text-blue-700',
-  amber: 'bg-amber-50 text-amber-800',
-  red: 'bg-red-50 text-red-700',
-  green: 'bg-emerald-50 text-emerald-700',
+  grey: 'bg-[var(--ph-fill)] text-[var(--ph-ink-3)]',
+  blue: 'bg-[var(--ph-info-panel)] text-[var(--ph-info-ink)]',
+  amber: 'bg-[var(--ph-warn-panel)] text-[var(--ph-warn-ink)]',
+  red: 'bg-[var(--ph-alarm-panel)] text-[var(--ph-alarm-ink)]',
+  green: 'bg-[var(--ph-tint-panel)] text-[var(--ph-tint-ink)]',
 };
 
 export function pillOf(bill: Pick<MonthlyBill, 'state' | 'days' | 'window' | 'paidOn'>): { text: string; className: string } {
