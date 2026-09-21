@@ -1,5 +1,6 @@
 import {
   goalUnitsOf,
+  inflowTo,
   outflowFrom,
   type Position,
   positionAfter,
@@ -165,6 +166,22 @@ async function postedBasis(tx: Db, transactionId: string, holdingAccountId: stri
 }
 
 /**
+ * What a posted trade moved through a cash account in another currency, and the rates it posted at — read back from
+ * its own lines before it is voided, so a sell reworked by an edit keeps its own day. The trade row has no column for
+ * either, and none is added: the ledger already holds both.
+ */
+async function postedMoneyTx(tx: Db, transactionId: string, accounts: TradeAccounts): Promise<{ cashMinor?: number; ratesToBase: Record<string, number> }> {
+  const lines = await tx
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, fxRateToBase: entries.fxRateToBase })
+    .from(entries)
+    .where(eq(entries.transactionId, transactionId));
+  const ratesToBase = Object.fromEntries(lines.map((line) => [line.currency, line.fxRateToBase]));
+  if (accounts.cashCurrency === accounts.holdingCurrency) return { ratesToBase };
+  // A sell's cash line is what reached the account: its signed lines summed, then clamped (`inflowTo`).
+  return { cashMinor: inflowTo(lines, accounts.cashAccountId), ratesToBase };
+}
+
+/**
  * Reposts sells on or after `fromDate` whose average cost moved. The ledger stays immutable:
  * each changed sell is voided and posted again in the same database transaction.
  */
@@ -186,14 +203,16 @@ async function recalculateSells(
     const oldBasisMinor = await postedBasis(tx, sell.transactionId!, accountId);
     if (oldBasisMinor === newBasisMinor) continue;
     const withCash = sell.cashAccountId === later[0]!.cashAccountId ? tradeAccounts : (await tradeAccountsFor(tx, ws, accountId, sell.cashAccountId)).accounts;
-    const input = toInput({ ...sell, cashAccountId: sell.cashAccountId });
+    const posted = await postedMoneyTx(tx, sell.transactionId!, withCash);
+    const input = toInput({ ...sell, cashAccountId: sell.cashAccountId, cashMinor: posted.cashMinor });
     const lines = tradePostings(input, position, withCash);
     await voidTransactionTx(tx, ws, sell.transactionId!);
     const replacement = await postTransactionTx(tx, ws, {
       occurredOn: sell.occurredOn,
       description: tradeDescription(input, holdingName),
       lines,
-      ratesToBase,
+      // The sell's own day. The edited trade's rates are only a fallback for a currency the sell never posted.
+      ratesToBase: { ...ratesToBase, ...posted.ratesToBase },
       replacesTransactionId: sell.transactionId,
     });
     await tx.update(investmentTrades).set({ transactionId: replacement }).where(eq(investmentTrades.id, sell.id));
