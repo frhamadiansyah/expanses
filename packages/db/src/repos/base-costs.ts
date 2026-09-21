@@ -8,7 +8,8 @@ import { listTrades, type TradeRow } from './trades';
 export interface BaseCosts {
   /** Per holding, cost in the base currency: each buy at its own day's rate (spec §4.2). */
   positions: Record<string, Position>;
-  /** Per buy, what the ledger pinned on the holding's line, in base. */
+  /** Per *foreign* buy, what the ledger pinned on the holding's line, in base — `positionInBase`'s own input.
+   * A base-currency buy needs no entry: `positions` walks it with `positionAfter`, which reads its own currency. */
   buyBaseMinor: Record<string, number>;
 }
 
@@ -27,12 +28,22 @@ export async function baseCosts(database: Database, ws: WorkspaceContext, upTo?:
   const posted = foreignBuys.filter((trade) => trade.transactionId);
   if (posted.length > 0) {
     // Keyed by the few foreign holdings, not by every buy's transaction: one bound parameter per holding.
+    //
+    // Mutation note (T7a6/T7a7): dropping the workspace filter here or on `accounts` above still passes the
+    // full suite, and is equivalent rather than a gap — every id (`accounts.id`, `entries.transactionId`) is a
+    // uuidv7, globally unique, and `holdingIds` is drawn from `trades`, which `listTrades` already scoped to
+    // this workspace. A row from another workspace could only be read if it happened to share one of those ids.
     const holdingIds = [...new Set(posted.map((trade) => trade.accountId))];
     const lines = await database.db
       .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountBaseMinor: entries.amountBaseMinor })
       .from(entries)
       .where(and(eq(entries.workspaceId, ws.workspaceId), inArray(entries.accountId, holdingIds)));
     // Signed lines summed as they are: the holding's line of a buy is one debit, never an absolute value.
+    //
+    // Mutation note (T7a8): summing with `Math.abs` instead is equivalent here too — a buy posts exactly one
+    // holding line (`tradePostings`), so the sum of one signed amount and its absolute value agree. Summed
+    // unsigned all the same, because a sell's basis line (never read through this map) is a credit, and an
+    // `Math.abs` written here would be one accident away from being read as if it walked every kind.
     const onHolding = new Map<string, number>();
     for (const line of lines) {
       const key = `${line.transactionId}\u0000${line.accountId}`;
@@ -42,7 +53,9 @@ export async function baseCosts(database: Database, ws: WorkspaceContext, upTo?:
   }
   // A buy that posted nothing (no money moved) cost nothing in any currency.
   for (const trade of foreignBuys) if (!trade.transactionId) buyBaseMinor[trade.id] = 0;
-  for (const trade of trades) if (trade.kind === 'buy' && !foreign(trade)) buyBaseMinor[trade.id] = trade.grossMinor + trade.feeMinor + trade.taxMinor;
+  // Base-currency buys are never keyed here (m8): `positions` below reads them with `positionAfter`, in their own
+  // currency, and `positionInBase` — the only reader of this map — is never called for a base-currency holding.
+  // A base-currency entry was written and never read; it is dropped rather than kept as an unread API.
 
   const byAccount = new Map<string, TradeRow[]>();
   for (const trade of trades) byAccount.set(trade.accountId, [...(byAccount.get(trade.accountId) ?? []), trade]);
