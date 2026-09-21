@@ -1,7 +1,7 @@
 import { categoryPath, matchCategory, matchPayment, type PaymentOption } from '@expanses/core';
 import type { AccountRow, CardRow } from '@expanses/db';
 import type { ReactNode } from 'react';
-import { isMoneyAccount } from '../../lib/queries';
+import { moneyHolders } from '../../lib/queries';
 import { offeredCategories } from '../categories/offered';
 import { cx } from '../../ui';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -28,7 +28,7 @@ export function buildRowOptions(
   /** Which categories belong to a category set. They belong to an event (§6), so no picker offers them. */
   membership: Record<string, unknown> = {},
 ) {
-  const money = accounts.filter(isMoneyAccount);
+  const money = moneyHolders(accounts);
   const toCombo = (option: PaymentOption): ComboOption => ({
     value: paymentKey(option.accountId, option.cardId),
     label: option.accountName,

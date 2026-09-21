@@ -1,10 +1,10 @@
 import { cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
-import { openCashAccount, upsertRate } from '@expanses/db';
+import { openCashAccount } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { checkManualRate, ratePreview } from '../../lib/rates';
+import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { fieldsFor } from './catalogue-view';
@@ -49,18 +49,7 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
     setBusy(true);
     try {
       const openingBalanceMinor = balance.trim() ? parseMajor(balance, currency) : 0;
-      let openingRateToBase: number | undefined;
-      if (foreign && openingBalanceMinor !== 0) {
-        if (manualRate.trim()) {
-          openingRateToBase = parseRate(manualRate);
-          await checkManualRate(database, currency, ws.baseCurrency, openedOn, openingRateToBase);
-          await upsertRate(database, { fromCurrency: currency, toCurrency: ws.baseCurrency, onDate: openedOn, rate: openingRateToBase, source: 'manual', sourceDate: openedOn });
-        } else {
-          const resolved = await resolveRates([currency], openedOn);
-          openingRateToBase = resolved.rates[currency];
-          if (openingRateToBase === undefined) throw new Error(`No ${currency}→${ws.baseCurrency} rate available. Enter it manually.`);
-        }
-      }
+      const openingRateToBase = await openingRateFor({ database, ws, currency, openedOn, openingBalanceMinor, typed: manualRate, resolveRates });
       await openCashAccount(database, ws, {
         item,
         name,

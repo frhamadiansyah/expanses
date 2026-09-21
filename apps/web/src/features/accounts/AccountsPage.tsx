@@ -1,5 +1,5 @@
-import { CASH_ITEMS, cashCodeForSubtype, CURRENCIES, displayAmount, hartaLabel, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
-import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, createCardAccount, openCashAccount, renameAccount, upsertRate } from '@expanses/db';
+import { CASH_ITEMS, cashCodeForSubtype, CURRENCIES, displayAmount, hartaLabel, isoDate, type MoneyAccountSubtype, parseMajor } from '@expanses/core';
+import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, createCardAccount, openCashAccount, renameAccount } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
@@ -9,7 +9,7 @@ import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll, useResolveR
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { depositLine } from '../networth/deposit-terms';
 import { useAssetProfiles, useAssetValues, useDepositTerms } from '../networth/queries';
-import { checkManualRate, ratePreview } from '../../lib/rates';
+import { openingRateFor, ratePreview } from '../../lib/rates';
 import { Empty, ErrorBox, errorMessage, Money } from '../../ui';
 import { type CornerAction, Figure, InsetGroup, InsetRow, LargeTitle, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
 
@@ -53,18 +53,7 @@ function AddAccountForm() {
     setBusy(true);
     try {
       const openingBalanceMinor = balance.trim() ? parseMajor(balance, currency) : 0;
-      let openingRateToBase: number | undefined;
-      if (foreign && openingBalanceMinor !== 0) {
-        if (manualRate.trim()) {
-          openingRateToBase = parseRate(manualRate);
-          await checkManualRate(database, currency, ws.baseCurrency, openedOn, openingRateToBase);
-          await upsertRate(database, { fromCurrency: currency, toCurrency: ws.baseCurrency, onDate: openedOn, rate: openingRateToBase, source: 'manual', sourceDate: openedOn });
-        } else {
-          const resolved = await resolveRates([currency], openedOn);
-          openingRateToBase = resolved.rates[currency];
-          if (openingRateToBase === undefined) throw new Error(`No ${currency}→${ws.baseCurrency} rate available. Enter it manually.`);
-        }
-      }
+      const openingRateToBase = await openingRateFor({ database, ws, currency, openedOn, openingBalanceMinor, typed: manualRate, resolveRates });
       if (isCard) {
         await createCardAccount(database, ws, { name, subtype: 'credit_card', currency, issuer: chosenIssuer, last4, openingBalanceMinor, openedOn, openingRateToBase });
       } else if (isCashSubtype(subtype)) {
