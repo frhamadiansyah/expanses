@@ -23,6 +23,15 @@ describe('the bundled lists', () => {
     expect((usFile as ListFile).rows.length).toBeGreaterThan(3_000);
     expect((usFile as ListFile).rows.length).toBeLessThan(13_000);
   });
+  it('leave out what is not an ordinary holding: test issues, warrants, rights and units', () => {
+    const rows = (usFile as ListFile).rows;
+    // Nasdaq's own flags: a fifth letter W, R or U is a warrant, a right or a unit; CQS's .WS / .W / .RT / .R / .U the same.
+    expect(rows.filter(([ticker, , market]) => market === 'NASDAQ' && /^[A-Z]{4}[WRU]$/.test(ticker))).toEqual([]);
+    expect(rows.filter(([ticker]) => /\.(WS|W|RT|R|U)$/.test(ticker))).toEqual([]);
+    expect(rows.filter(([, name]) => /\b(tick pilot|test (stock|issue))\b/i.test(name) || /\b(warrants?|rights?|units?)\b/i.test(name))).toEqual([]);
+    // Real stocks and ETFs stay: a 4-letter Nasdaq ticker ending in W, R or U is an ordinary share.
+    expect(rows.some(([ticker]) => ticker === 'ROKU')).toBe(true);
+  });
   it.skipIf(idxPending)('carry the IDX names the owner holds, on the right market', async () => {
     const idx = (await loadSecurityList('idx')).securities;
     for (const ticker of ['BBCA', 'TLKM', 'BBRI']) expect(idx.find((s) => s.ticker === ticker)).toMatchObject({ market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share' });

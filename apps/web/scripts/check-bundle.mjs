@@ -16,7 +16,10 @@ const entry = [...html.matchAll(/<script\b[^>]*>/g)]
 // Sentinels: a name each list carries and no line of the app's own code may contain.
 const LISTS = [
   { name: 'IDX list', sentinel: 'Bank Central Asia', budget: 25_000 },
-  { name: 'US list', sentinel: 'Apple Inc', budget: 150_000 },
+  // 160 KB, not the first 150 KB (the owner's ruling, 2026-09-22): 11,746 ordinary US stocks and ETFs are ~150.2 KB
+  // gzipped even after test issues, warrants, rights and units are dropped by the exchanges' flags. The list is never
+  // cut below its real stocks and ETFs to fit; the budget moved instead. It still fails a list that doubles.
+  { name: 'US list', sentinel: 'Apple Inc', budget: 160_000 },
 ];
 const problems = [];
 if (entry.length !== 1) problems.push(`expected one entry chunk in index.html, found ${entry.join(', ') || 'none'}`);
