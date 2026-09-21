@@ -657,6 +657,21 @@ describe('confirm refusals', () => {
     expect(await logged()).toEqual([]);
   });
 
+  it('refuses a close recorded by hand that says nothing came back, and keeps the deposit as it was', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    const p = await next('2026-10-15');
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { principalMinor: 0, byHand: true }))).rejects.toMatchObject({
+      code: 'BAD_FIGURE',
+      message: 'Say how much came back',
+    });
+    expect(await logged()).toEqual([]);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(true);
+    expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'maturity', dueOn: '2026-10-15' } });
+    // The same close, saying what came back, is recorded.
+    await confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { byHand: true }));
+    expect(await logged()).toMatchObject([{ principalMinor: 50_000_000, recordedByHand: 1 }]);
+  });
+
   it('lets an unexpected failure of the archive fail the whole close, and keeps nothing of it', async () => {
     await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
     // Fault injection: the archive's audit write fails with an error that is not the archive's own refusal.

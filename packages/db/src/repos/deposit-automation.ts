@@ -331,7 +331,8 @@ export async function confirmDepositEvent(database: Database, ws: WorkspaceConte
       if (settings.payoutAccountId === null) throw new DepositAutomationError('NO_PAYOUT', 'Choose the account the money lands in first');
       await checkPayoutTx(tx, ws, settings.payoutAccountId, deposit.currency, deposit.id);
     }
-    if (closing && !byHand && input.principalMinor <= 0) throw new DepositAutomationError('BAD_FIGURE', 'Say how much came back');
+    // By hand too: the log's principal is what the owner says came back, and a close of nothing is no close.
+    if (closing && input.principalMinor <= 0) throw new DepositAutomationError('BAD_FIGURE', 'Say how much came back');
     // Proposed from the due day's balance (spec §5); money that left since then cannot come back twice. A close never
     // drives the deposit below zero: it is refused, and the owner types what it holds now.
     if (closing && !byHand && input.principalMinor > (await postedBalanceTx(tx, deposit.id))) {

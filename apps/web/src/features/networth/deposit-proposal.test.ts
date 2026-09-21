@@ -106,3 +106,16 @@ describe('the card once the editor is closed', () => {
     expect(cardFigures(idr, { ...draftFrom(idr), rate: '' }).gross).toBe(formatMinor(535_616, 'IDR'));
   });
 });
+
+describe('the draft guards', () => {
+  it('refuses a figure below zero in words, before the database would', () => {
+    expect(() => readDraft(idr, { ...draftFrom(idr), gross: '-5' })).toThrow('Interest cannot be below zero');
+    expect(() => readDraft(idr, { ...draftFrom(idr), tax: '-5' })).toThrow('Interest cannot be below zero');
+  });
+
+  it('refuses a close that says nothing, or less than nothing, came back', () => {
+    const closing: DepositProposal = { ...idr, settings: { ...idr.settings, atMaturity: 'close' } };
+    expect(() => readDraft(closing, { ...draftFrom(closing), principal: '0' })).toThrow('Say how much came back');
+    expect(() => readDraft(closing, { ...draftFrom(closing), principal: '-1' })).toThrow('Say how much came back');
+  });
+});
