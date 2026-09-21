@@ -73,8 +73,8 @@ export function CardStack({
     { lifted: phone ? lifted : null, fan },
   );
 
-  const front = cards[cards.length - 1];
-  const described = (phone && lifted !== null ? cards[lifted] : undefined) ?? front;
+  // The facts describe the card in front — the lifted one, once a covered card has been brought forward.
+  const described = cards[layout.front];
 
   return (
     <div className={className}>
@@ -83,28 +83,32 @@ export function CardStack({
         const card = cards[index]!;
         // A card this stack clips to its strip is drawn `behind`: its own rows would print in the same pixels as
         // the band below, so the face is colour alone and the strip is the only text in that edge.
-        const covered = faceIsBehind(placed, fan);
-        // A tap on a covered card lifts it; on the front card, on a lifted card, or on a desktop it opens it.
-        const opens = !phone || placed.lifted || index === cards.length - 1;
+        const covered = faceIsBehind(placed);
+        // A tap on a covered card brings it to the front; on the front card, or on a desktop, it opens it.
+        const opens = !phone || index === layout.front;
         const label = card.label ?? `${card.name}${card.last4 ? ` ending ${card.last4}` : ''} · ${card.figureLabel} ${card.figure}`;
         const shell = 'ph-focus absolute overflow-hidden rounded-[0.9rem] text-left transition-[top,left] duration-200';
         /*
          * The box is the band this card actually shows, not the whole card.
          *
-         * A card whose box was the full 240 × 151 would put its own middle under the card in front of it, and a
-         * tap aimed at the middle of what you can see would open the neighbour instead. So the box is the strip —
-         * the art is drawn at full size inside it and clipped, which is exactly what the overlap did anyway.
+         * A card whose box was its whole face would put its own top under the card in front of it, and a tap aimed
+         * at what you can see would open the neighbour instead. So the box is the band left showing — below the
+         * card in front, so the bottom of this card — and the art is drawn whole inside it, shifted up by `clip`
+         * and clipped, which is exactly what the overlap did anyway.
          */
         const box = {
-          top: placed.top,
+          top: placed.top + placed.clip,
           left: placed.left,
           zIndex: placed.zIndex,
-          width: fan ? placed.visible : CARD_W,
+          width: fan ? placed.visible : layout.cardWidth,
           height: fan ? CARD_H : placed.visible,
         } as const;
         const face = (
           <>
-            <span className="pointer-events-none block" style={{ width: CARD_W, height: CARD_H }}>
+            <span
+              className="pointer-events-none block"
+              style={{ width: CARD_W, height: CARD_H, marginTop: -placed.clip }}
+            >
               <CardFace
                 issuer={card.issuer}
                 name={card.name}
@@ -121,8 +125,8 @@ export function CardStack({
              * card still answers for itself — which is the whole reason the stack survives its own weakness.
              * The second line is what a wall of cards would otherwise lose: the digits, the cycle, the worth.
              *
-             * Overlapping downwards the strip is a band across the top; fanned sideways it is a column down the
-             * leading edge, because that is the shape of what is left showing in each geometry.
+             * Overlapping downwards the strip is a band across the card's foot, under the card in front; fanned
+             * sideways it is a column down the leading edge — the shape of what is left showing in each geometry.
              */}
             {covered && (
               <span
@@ -133,7 +137,7 @@ export function CardStack({
                 style={{
                   background: fan
                     ? 'linear-gradient(rgb(0 0 0 / 0), rgb(0 0 0 / 0.62))'
-                    : 'linear-gradient(rgb(0 0 0 / 0.52), rgb(0 0 0 / 0))',
+                    : 'linear-gradient(rgb(0 0 0 / 0.3), rgb(0 0 0 / 0.55))',
                 }}
               >
                 <span className={cx('flex gap-2', fan ? 'flex-col items-start' : 'items-baseline justify-between')}>
@@ -154,7 +158,7 @@ export function CardStack({
           <button
             key={card.key}
             type="button"
-            onClick={() => (opens ? onOpen?.(card.key) : setLifted(index))}
+            onClick={() => (opens ? onOpen?.(card.key) : setLifted(index === 0 ? null : index))}
             aria-label={label}
             className={shell}
             style={box}

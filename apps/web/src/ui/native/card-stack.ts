@@ -4,7 +4,7 @@ import { formatMinor } from '@expanses/core';
  * Where each card sits in the Wallet stack.
  *
  * The seventh primitive, added deliberately when `/cards` was settled on the C3 wallet stack: cards overlap,
- * every card is visible at once, and tapping one lifts it while the rest slide down.
+ * every card is visible at once, and tapping one brings it to the front.
  *
  * C3's known weakness is that only the front card's figures show. The answer built in here is the **strip** —
  * the band of each card the one above it does not cover. Apple Wallet uses that band for identity; this uses it
@@ -14,7 +14,7 @@ import { formatMinor } from '@expanses/core';
  * height and no width, and a 1440 px window has the opposite problem. Same primitive, two geometries.
  */
 
-/** A `CardFace` at `size="md"` is 240 px wide on a 1.586 aspect. */
+/** A `CardFace` at `size="md"` is 240 px wide on a 1.586 aspect: a desktop's card, and a phone's before it is measured. */
 export const CARD_W = 240;
 export const CARD_H = Math.round(CARD_W / 1.586);
 
@@ -26,20 +26,32 @@ export const FAN_X = 96;
 
 export interface StackedCard {
   key: string;
-  /** Offset from the stack's top-left, in px. */
+  /** Offset of the card's whole face from the stack's top-left, in px. */
   top: number;
   left: number;
   zIndex: number;
-  /** How much of this card is showing: its strip, or the whole face when it is the last or the lifted one. */
+  /** How much of this card is showing: its strip, or the whole face when it is the front one. */
   visible: number;
+  /**
+   * Where, inside the card's own face, the part left showing begins. A card peeking out below the one in front
+   * of it shows its **bottom** band, so this is the face's height less the strip; a whole card shows from 0.
+   */
+  clip: number;
+  /** Whether another card covers all but this card's strip — so its face is colour alone (`faceIsBehind`). */
+  covered: boolean;
   lifted: boolean;
 }
 
 export interface StackLayout {
   cards: StackedCard[];
+  /** Index (into the keys given) of the card drawn whole in front — the one a tap opens and the facts describe. */
+  front: number;
   /** The box the stack needs. A caller sets it so the absolutely-positioned faces are not clipped. */
   width: number;
   height: number;
+  /** The width and height each face is drawn at: a phone's cards fill its column, a desktop's are 240 wide. */
+  cardWidth: number;
+  cardHeight: number;
 }
 
 export interface StackOptions {
@@ -47,14 +59,27 @@ export interface StackOptions {
   lifted?: number | null;
   /** Fan sideways rather than overlap downwards. */
   fan?: boolean;
+  /**
+   * How wide a card is drawn when the stack overlaps downwards — the phone's column inside its gutter, so a card
+   * is as wide as the screen lets it be, as in Wallet. The aspect is a card's own, 1.586. A fan ignores it.
+   */
+  cardWidth?: number;
+}
+
+/** A card's height at a given width: the ISO/IEC 7810 ID-1 shape every bank card is printed on. */
+export function cardHeightFor(width: number): number {
+  return Math.round(width / 1.586);
 }
 
 /**
  * Lay out `keys` as a stack.
  *
- * Lifting card *n* moves everything **below** it down by the rest of a card's height, and nothing above it at
- * all — so the lifted card grows into space that opens beneath it and the cards already read stay where the
- * eye left them. Moving the whole stack instead would make every tap feel like a page change.
+ * Overlapping downwards, the **front card sits at the top**, whole, and every other card peeks out below it by
+ * its strip — the bottom band of each card the one in front leaves showing, in the order given. The first key is
+ * the front card at rest. Lifting a covered card brings it to the front: it moves to the top, whole, and the rest
+ * keep their order beneath it, so the stack is the same height whichever card is in front.
+ *
+ * Fanned sideways on a wide screen, the cards run left to right with the last one whole on the right.
  */
 export function stackLayout(keys: readonly string[], options: StackOptions = {}): StackLayout {
   const { lifted = null, fan = false } = options;
@@ -68,44 +93,60 @@ export function stackLayout(keys: readonly string[], options: StackOptions = {})
         left: index * FAN_X,
         zIndex: index,
         visible: index === last ? CARD_W : FAN_X,
+        clip: 0,
+        covered: index !== last,
         lifted: index === lifted,
       })),
+      front: last,
       width: keys.length === 0 ? 0 : last * FAN_X + CARD_W,
       height: keys.length === 0 ? 0 : CARD_H,
+      cardWidth: CARD_W,
+      cardHeight: CARD_H,
     };
   }
 
-  const spread = CARD_H - STRIP;
-  const cards = keys.map((key, index) => ({
-    key,
-    top: index * STRIP + (lifted !== null && index > lifted ? spread : 0),
-    left: 0,
-    zIndex: index,
-    visible: index === last || index === lifted ? CARD_H : STRIP,
-    lifted: index === lifted,
-  }));
+  const width = options.cardWidth ?? CARD_W;
+  const height = cardHeightFor(width);
+  const front = keys.length === 0 ? -1 : lifted !== null && lifted >= 0 && lifted <= last ? lifted : 0;
+  // How deep each card sits: the front card at 0, then the others in the order they were given.
+  const order = front < 0 ? [] : [front, ...keys.map((_, index) => index).filter((index) => index !== front)];
+  const depth = new Map(order.map((index, at) => [index, at]));
+  const cards = keys.map((key, index) => {
+    const d = depth.get(index)!;
+    return {
+      key,
+      top: d * STRIP,
+      left: 0,
+      zIndex: last - d,
+      visible: d === 0 ? height : STRIP,
+      clip: d === 0 ? 0 : height - STRIP,
+      covered: d !== 0,
+      lifted: index === lifted,
+    };
+  });
   return {
     cards,
-    width: keys.length === 0 ? 0 : CARD_W,
-    height: keys.length === 0 ? 0 : last * STRIP + CARD_H + (lifted !== null && lifted < last ? spread : 0),
+    front,
+    width: keys.length === 0 ? 0 : width,
+    height: keys.length === 0 ? 0 : last * STRIP + height,
+    cardWidth: width,
+    cardHeight: height,
   };
 }
 
 /**
- * Whether a card's face is drawn *behind* the cards above it, so only its colour shows.
+ * Whether a card's face is drawn *behind* the cards in front of it, so only its colour shows.
  *
  * A card showing less than its whole face is a band — its strip — and the face's own printed rows land in the
- * very pixels the strip draws its two lines in: the bank mark and the wordmark on the one row, the digits over
- * the figure. So a covered card is handed to `CardFace` as `behind`, which keeps the colour, the finish and the
- * motif and prints none of the text. A card the stack leaves whole — the front one, or the one the user lifted
- * — prints in full, because nothing is in front of it to hide it.
+ * very pixels the strip draws its two lines in. So a covered card is handed to `CardFace` as `behind`, which
+ * keeps the colour, the finish and the motif and prints none of the text. The front card prints in full, because
+ * nothing is in front of it to hide it.
  *
  * Recorded as a function rather than as a comparison inside the component so the strip and the face read the
- * same answer: a band carrying the strip's two lines *and* the card's own rows is two texts in one band, which
- * is what the wall drew before this existed.
+ * same answer: a band carrying the strip's two lines *and* the card's own rows is two texts in one band.
  */
-export function faceIsBehind(card: StackedCard, fan: boolean): boolean {
-  return card.visible < (fan ? CARD_W : CARD_H);
+export function faceIsBehind(card: StackedCard): boolean {
+  return card.covered;
 }
 
 /**
@@ -114,9 +155,9 @@ export function faceIsBehind(card: StackedCard, fan: boolean): boolean {
  * Six or seven, at a phone's height — recorded as a function rather than as a comment so `/cards` can say so
  * out loud when a wallet outgrows the screen.
  */
-export function cardsBeforeScrolling(available: number): number {
-  if (available < CARD_H) return 0;
-  return 1 + Math.floor((available - CARD_H) / STRIP);
+export function cardsBeforeScrolling(available: number, cardHeight = CARD_H): number {
+  if (available < cardHeight) return 0;
+  return 1 + Math.floor((available - cardHeight) / STRIP);
 }
 
 /**

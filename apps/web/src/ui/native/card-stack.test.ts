@@ -5,18 +5,25 @@ const WALLET = ['bca-krisflyer', 'mandiri-skyz', 'bni-bonvoy'];
 
 describe('stackLayout', () => {
   it('lays out an empty wallet as a box of nothing', () => {
-    expect(stackLayout([])).toEqual({ cards: [], width: 0, height: 0 });
+    expect(stackLayout([])).toEqual({ cards: [], front: -1, width: 0, height: 0, cardWidth: CARD_W, cardHeight: CARD_H });
   });
 
-  it('overlaps the cards a strip apart, front card last so it sits on top', () => {
-    const { cards } = stackLayout(WALLET);
+  it('puts the front card at the top, whole, with the others peeking out below it a strip apart', () => {
+    const { cards, front } = stackLayout(WALLET);
+    expect(front).toBe(0);
     expect(cards.map((card) => card.top)).toEqual([0, STRIP, STRIP * 2]);
-    expect(cards.map((card) => card.zIndex)).toEqual([0, 1, 2]);
+    // The front card is on top of the pile, and each card below it is under the one above.
+    expect(cards.map((card) => card.zIndex)).toEqual([2, 1, 0]);
   });
 
-  it('leaves each covered card its strip and the last card its whole face, so every figure reads without a tap', () => {
+  it('leaves each covered card its bottom strip and the front card its whole face, so every figure reads without a tap', () => {
     const { cards } = stackLayout(WALLET);
-    expect(cards.map((card) => card.visible)).toEqual([STRIP, STRIP, CARD_H]);
+    expect(cards.map((card) => card.visible)).toEqual([CARD_H, STRIP, STRIP]);
+    // What shows of a covered card is its foot: the band below the card in front of it.
+    expect(cards.map((card) => card.clip)).toEqual([0, CARD_H - STRIP, CARD_H - STRIP]);
+    // So the band a covered card shows starts exactly where the card in front of it ends.
+    expect(cards[1]!.top + cards[1]!.clip).toBe(cards[0]!.top + CARD_H);
+    expect(cards[2]!.top + cards[2]!.clip).toBe(cards[1]!.top + CARD_H);
   });
 
   it('needs exactly the room the overlap asks for', () => {
@@ -24,26 +31,26 @@ describe('stackLayout', () => {
     expect(stackLayout(WALLET).width).toBe(CARD_W);
   });
 
-  it('lifts a card by moving what is below it down, and nothing above it at all', () => {
-    const { cards } = stackLayout(WALLET, { lifted: 0 });
-    expect(cards[0]!.top).toBe(0);
-    expect(cards[0]!.visible).toBe(CARD_H);
-    expect(cards[1]!.top).toBe(STRIP + (CARD_H - STRIP));
-    expect(cards[2]!.top).toBe(STRIP * 2 + (CARD_H - STRIP));
+  it('brings a lifted card to the front, at the top, and keeps the rest in their order below it', () => {
+    const { cards, front } = stackLayout(WALLET, { lifted: 2 });
+    expect(front).toBe(2);
+    expect(cards[2]!.top).toBe(0);
+    expect(cards[2]!.visible).toBe(CARD_H);
+    expect(cards[2]!.zIndex).toBe(2);
+    expect(cards[0]!.top).toBe(STRIP);
+    expect(cards[1]!.top).toBe(STRIP * 2);
+    expect(cards.map((card) => card.lifted)).toEqual([false, false, true]);
   });
 
-  it('grows the box by the space the lift opened', () => {
-    expect(stackLayout(WALLET, { lifted: 0 }).height).toBe(STRIP * 2 + CARD_H + (CARD_H - STRIP));
-  });
-
-  it('asks for no extra room when the card lifted is already the front one', () => {
-    expect(stackLayout(WALLET, { lifted: 2 }).height).toBe(stackLayout(WALLET).height);
+  it('is the same height whichever card is in front', () => {
+    expect(stackLayout(WALLET, { lifted: 1 }).height).toBe(stackLayout(WALLET).height);
   });
 
   it('fans sideways on a wide screen instead of overlapping downwards', () => {
-    const { cards, width, height } = stackLayout(WALLET, { fan: true });
+    const { cards, width, height, front } = stackLayout(WALLET, { fan: true });
     expect(cards.map((card) => card.top)).toEqual([0, 0, 0]);
     expect(cards.map((card) => card.left)).toEqual([0, FAN_X, FAN_X * 2]);
+    expect(front).toBe(2);
     expect(width).toBe(FAN_X * 2 + CARD_W);
     expect(height).toBe(CARD_H);
   });
@@ -57,19 +64,17 @@ describe('stackLayout', () => {
 describe('faceIsBehind', () => {
   it('leaves every covered card to its strip and prints the front card whole', () => {
     const { cards } = stackLayout(WALLET);
-    expect(cards.map((card) => faceIsBehind(card, false))).toEqual([true, true, false]);
+    expect(cards.map((card) => faceIsBehind(card))).toEqual([false, true, true]);
   });
 
-  it('opens the lifted card whole and leaves the band below it as it was', () => {
-    const { cards } = stackLayout(WALLET, { lifted: 0 });
-    // The front card is whole whether or not anything is lifted; the lift opens the card itself and slides the
-    // rest down, so the band under it is still a band.
-    expect(cards.map((card) => faceIsBehind(card, false))).toEqual([false, true, false]);
+  it('prints the lifted card whole, now it is in front, and the one it replaced goes behind', () => {
+    const { cards } = stackLayout(WALLET, { lifted: 1 });
+    expect(cards.map((card) => faceIsBehind(card))).toEqual([true, false, true]);
   });
 
   it('counts a fanned card as covered whenever only its leading edge shows', () => {
     const { cards } = stackLayout(WALLET, { fan: true });
-    expect(cards.map((card) => faceIsBehind(card, true))).toEqual([true, true, false]);
+    expect(cards.map((card) => faceIsBehind(card))).toEqual([true, true, false]);
   });
 });
 
