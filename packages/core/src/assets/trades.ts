@@ -45,6 +45,18 @@ function cashLines(accounts: TradeAccounts, amountMinor: number, cashMinor: numb
 }
 
 /**
+ * The cash side of money coming back (a sell, an income), `net` in the holding's currency. When the fees and tax take
+ * all of it nothing reaches the account, so there is no cash line at all (a zero line is no line) and no amount in the
+ * cash currency is asked for. When they take more, the shortfall leaves the account as a buy's cost does, and
+ * `cashMinor` is what left it. `cashMinor` is always the amount that moved, never signed.
+ */
+function sellCashLines(accounts: TradeAccounts, net: number, cashMinor: number | undefined): PostingLine[] {
+  if (net === 0) return [];
+  if (net > 0) return cashLines(accounts, -net, cashMinor === undefined ? undefined : -cashMinor);
+  return cashLines(accounts, -net, cashMinor);
+}
+
+/**
  * Ledger lines for one trade. Positive is a debit, negative a credit.
  * Buy: cost includes fees and tax (Pasal 10). Sell: the holding gives up average cost and the rest is the realized gain.
  */
@@ -67,7 +79,7 @@ export function tradePostings(input: TradeInput, position: Position, accounts: T
     const basis = sellBasisMinor(position, input.unitsMicro);
     const net = input.grossMinor - input.feeMinor - input.taxMinor;
     const gain = input.grossMinor - input.feeMinor - basis;
-    const lines: PostingLine[] = [...cashLines(accounts, -net, input.cashMinor === undefined ? undefined : -input.cashMinor)];
+    const lines: PostingLine[] = sellCashLines(accounts, net, input.cashMinor);
     if (input.taxMinor > 0) lines.push(line(accounts.finalTaxCategoryId, input.taxMinor, holdingCurrency));
     lines.push(line(accounts.holdingAccountId, -basis, holdingCurrency));
     if (gain !== 0) lines.push(line(accounts.realizedGainsCategoryId, -gain, holdingCurrency));
@@ -77,7 +89,7 @@ export function tradePostings(input: TradeInput, position: Position, accounts: T
   if (input.kind === 'income') {
     if (input.grossMinor <= 0) throw new TradeError('INVALID_AMOUNT', 'Income needs an amount greater than zero');
     const net = input.grossMinor - input.taxMinor;
-    const lines: PostingLine[] = [...cashLines(accounts, -net, input.cashMinor === undefined ? undefined : -input.cashMinor)];
+    const lines: PostingLine[] = sellCashLines(accounts, net, input.cashMinor);
     if (input.taxMinor > 0) lines.push(line(accounts.finalTaxCategoryId, input.taxMinor, holdingCurrency));
     lines.push(line(accounts.investmentIncomeCategoryId, -input.grossMinor, holdingCurrency));
     return lines;

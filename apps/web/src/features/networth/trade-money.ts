@@ -1,8 +1,19 @@
-import { convertMinor, isoDate, parseMajor, rateFromAmounts, tradeCashMinor, tradeRateNeeds } from '@expanses/core';
+import { convertMinor, isoDate, parseMajor, rateFromAmounts, tradeCashMinor, tradeCashMovedMinor, tradeRateNeeds } from '@expanses/core';
 import type { Database, RecordTradeInput, WorkspaceContext } from '@expanses/db';
 import { openingRateFor } from '../../lib/rates';
 
 const chargedHere = (currency: string) => `Enter the amount in ${currency} under “Charged in ${currency}”`;
+
+/** A sell (or income) whose fees and tax took exactly what it brought: no money moves through the cash account. */
+const nothingMoves = (input: RecordTradeInput) => input.kind !== 'buy' && input.kind !== 'unit_change' && tradeCashMovedMinor(input) === 0;
+
+const isZero = (typed: string, currency: string) => {
+  try {
+    return parseMajor(typed, currency) === 0;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * What left (or reached) a paying account in another currency, put on the trade itself as `cashMinor` — so the
@@ -11,6 +22,12 @@ const chargedHere = (currency: string) => `Enter the amount in ${currency} under
  */
 export function withCharged(input: RecordTradeInput, charged: string, holdingCurrency: string, cashCurrency: string): RecordTradeInput {
   if (input.kind === 'unit_change' || holdingCurrency === cashCurrency) return input;
+  if (nothingMoves(input)) {
+    // A sell whose fees ate the proceeds: nothing reaches the account, so there is no amount to ask — the fees still post.
+    const { cashMinor: _none, ...rest } = input;
+    if (charged.trim() !== '' && !isZero(charged, cashCurrency)) throw new Error(`Nothing reaches the account — the fees take all of the sale — so leave Charged in ${cashCurrency} empty`);
+    return rest;
+  }
   if (charged.trim() === '') throw new Error(chargedHere(cashCurrency));
   let cashMinor: number;
   try {
@@ -44,12 +61,14 @@ export async function tradeRatesForSave(p: {
 }): Promise<Record<string, number>> {
   if (p.input.kind === 'unit_change') return {};
   const base = p.ws.baseCurrency;
-  const needs = tradeRateNeeds(p.holdingCurrency, p.cashCurrency, base);
+  // Nothing reaching the account posts no cash line, so only the holding's own lines need a rate: its day rate.
+  const needs = tradeRateNeeds(p.holdingCurrency, nothingMoves(p.input) ? p.holdingCurrency : p.cashCurrency, base);
   if (needs.charged && p.input.cashMinor === undefined) throw new Error(chargedHere(p.cashCurrency));
   const ratesToBase: Record<string, number> = {};
 
   if (needs.derived) {
-    const moved = tradeCashMinor(p.input);
+    // What moved either way — a sell whose fees passed its proceeds moved the shortfall out.
+    const moved = tradeCashMovedMinor(p.input);
     ratesToBase[needs.derived] =
       needs.derived === p.holdingCurrency
         ? rateFromAmounts(moved, p.holdingCurrency, p.input.cashMinor!, base)

@@ -165,6 +165,7 @@ export {
   type SecurityKind,
   taxHoldingName,
   tradeCashMinor,
+  tradeCashMovedMinor,
   type TradeRateNeeds,
   tradeRateNeeds,
 } from './assets/securities';

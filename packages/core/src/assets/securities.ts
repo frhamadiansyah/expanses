@@ -152,6 +152,18 @@ export function tradeCashMinor(input: TradeInput): number {
   return input.kind === 'buy' ? outflowFrom(lines, CASH) : inflowTo(lines, CASH);
 }
 
+/**
+ * What moved through the cash account either way, in the holding's currency: what left for a buy, what reached it for a
+ * sell or an income — or, for a sell whose fees and tax passed its proceeds, the shortfall that left it. Zero when the
+ * fees ate the proceeds exactly: nothing moved, so there is no amount in the cash currency and no rate to work out.
+ */
+export function tradeCashMovedMinor(input: TradeInput): number {
+  if (input.kind === 'unit_change') return 0;
+  const held = { unitsMicro: input.unitsMicro, costMinor: 0, realizedMinor: 0, incomeMinor: 0, byYear: {} };
+  const lines = tradePostings({ ...input, cashMinor: undefined }, held, ONE_CURRENCY);
+  return outflowFrom(lines, CASH) + inflowTo(lines, CASH);
+}
+
 /** One major unit of `currency` in base minor units — "Rp 15.800" per dollar. */
 export function perUnitInBase(rate: number, currency: string, base: string): number {
   return convertMinor(10 ** currencyInfo(currency).exponent, currency, base, rate);

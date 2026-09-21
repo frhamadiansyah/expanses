@@ -132,4 +132,29 @@ describe('a holding in another currency', () => {
     expect(() => tradePostings(input({ kind: 'buy', unitsMicro: 1_000_000, grossMinor: 98_700 }), empty, crossCurrency)).toThrow(TradeError);
     expect(() => tradePostings(input({ kind: 'buy', unitsMicro: 1_000_000, grossMinor: 98_700 }), empty, crossCurrency)).toThrow(/IDR/);
   });
+
+  it('records a sell whose fees ate all the proceeds: no cash line, no amount asked, and the fees still post', () => {
+    // 10 held at $1,00 each; 3 sold for $2,50 gross with a $2,50 fee — nothing reaches the rupiah account.
+    const lines = tradePostings(input({ kind: 'sell', unitsMicro: 3_000_000, grossMinor: 250, feeMinor: 250 }), heldTen, crossCurrency);
+    expect(lines.some((l) => l.accountId === 'bca' || l.accountId === 'exchange')).toBe(false);
+    expect(lines.every((l) => l.amountMinor !== 0)).toBe(true);
+    expect(amountFor(lines, 'us-fund')).toBe(-3_000_000);
+    expect(amountFor(lines, 'gains')).toBe(3_000_000); // the whole basis is a loss: the fee took the proceeds
+    expect(sum(lines.filter((l) => l.currency === 'USD'))).toBe(0);
+  });
+
+  it('pays the shortfall from the account when the fees and tax are more than the proceeds', () => {
+    // $2,50 gross, $2,50 fee and $1,00 tax: $1,00 more than the sale brought, and Rp 16.231 left the account for it.
+    const lines = tradePostings(input({ kind: 'sell', unitsMicro: 3_000_000, grossMinor: 250, feeMinor: 250, taxMinor: 100, cashMinor: 16_231 }), heldTen, crossCurrency);
+    expect(amountFor(lines, 'bca')).toBe(-16_231);
+    expect(amountFor(lines, 'final-tax')).toBe(100);
+    expect(sum(lines.filter((l) => l.currency === 'USD'))).toBe(0);
+    expect(sum(lines.filter((l) => l.currency === 'IDR'))).toBe(0);
+  });
+
+  it('posts no zero cash line for a sell in one currency whose fees ate the proceeds', () => {
+    const lines = tradePostings(input({ kind: 'sell', unitsMicro: 3_000_000, grossMinor: 50_000, feeMinor: 50_000 }), heldTen, accounts);
+    expect(lines.some((l) => l.accountId === 'bca')).toBe(false);
+    expect(sum(lines)).toBe(0);
+  });
 });

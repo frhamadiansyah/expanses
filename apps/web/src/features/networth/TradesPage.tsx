@@ -1,4 +1,4 @@
-import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, minorToMajorString, positionAfter, presetFor } from '@expanses/core';
+import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, positionAfter, presetFor } from '@expanses/core';
 import { declareReinvestment, deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -12,7 +12,7 @@ import { useAssetProfiles, useAssetValues, usePositions, useTradeTemplates, useT
 import { useGoals } from '../goals/queries';
 import { TemplateList } from './TemplateList';
 import { TradeForm } from './TradeForm';
-import type { TradeDraft } from './trade-form';
+import { draftFromTrade, type TradeDraft, typedAmount } from './trade-form';
 
 const KIND_LABELS: Record<string, string> = { buy: 'Buy', sell: 'Sell', income: 'Income', unit_change: 'Unit change' };
 
@@ -108,7 +108,7 @@ export function TradesPage() {
       kind: 'buy',
       accountId,
       cashAccountId,
-      gross: amountMinor === null ? '' : minorToMajorString(amountMinor, currencyOf(accountId)),
+      gross: amountMinor === null ? '' : typedAmount(amountMinor, currencyOf(accountId)),
       goalId: goalId ?? '',
       occurredOn: isoDate(),
     });
@@ -294,17 +294,7 @@ export function TradesPage() {
                     onClick={() => {
                       setTemplateId(null);
                       setEditing(trade);
-                      setInitial({
-                        kind: trade.kind,
-                        accountId: trade.accountId,
-                        occurredOn: trade.occurredOn,
-                        units: trade.unitsMicro === 0 ? '' : formatUnits(trade.unitsMicro),
-                        gross: minorToMajorString(trade.grossMinor, currencyOf(trade.accountId)),
-                        fee: minorToMajorString(trade.feeMinor, currencyOf(trade.accountId)),
-                        tax: minorToMajorString(trade.taxMinor, currencyOf(trade.accountId)),
-                        cashAccountId: trade.cashAccountId ?? '',
-                        goalId: trade.goalId ?? '',
-                      });
+                      setInitial(draftFromTrade(trade, currencyOf(trade.accountId)));
                     }}
                   >
                     Edit

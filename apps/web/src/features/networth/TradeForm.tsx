@@ -1,4 +1,4 @@
-import { formatPriceMicro, isoDate, minorToMajorString, type Position, type TradeKind, tradeRateNeeds } from '@expanses/core';
+import { formatPriceMicro, isoDate, type Position, tradeCashMovedMinor, type TradeKind, tradeRateNeeds } from '@expanses/core';
 import { type AccountRow, type RecordTradeInput, recordTrade, replaceTrade, type TradeRow } from '@expanses/db';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -11,7 +11,7 @@ import { useSetAside } from '../goals/SetAsideQuestion';
 import { FormRows, ROW_BODY_FLUSH, RowLead } from '../transactions/FormRow';
 import { currencyFlag } from '../transactions/tx-form';
 import { usePostedTradeMoney } from './queries';
-import { draftToInput, emptyTradeDraft, pricePreview, sellPreview, type TradeDraft } from './trade-form';
+import { draftToInput, emptyTradeDraft, pricePreview, sellPreview, type TradeDraft, typedAmount } from './trade-form';
 import { tradeRatesForSave, withCharged } from './trade-money';
 
 const KINDS: { value: TradeKind; label: string }[] = [
@@ -103,6 +103,15 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   const cashCurrency = cashAccount ? (cashAccount.currency ?? ws.baseCurrency) : currency;
   const needs = tradeRateNeeds(currency, cashCurrency, ws.baseCurrency);
   const asksCharged = needs.charged && draft.kind !== 'unit_change';
+  // A sell whose fees took all of it moves nothing through the account: no charged amount is needed, and the row says so.
+  const nothingReaches = (() => {
+    if (draft.kind === 'buy' || draft.kind === 'unit_change') return false;
+    try {
+      return tradeCashMovedMinor(draftToInput(draft, currency, today)) === 0;
+    } catch {
+      return false;
+    }
+  })();
   /** What `submit` sends, before its rates: the one input the door, the question and the save all read. */
   const typedInput = (): RecordTradeInput => withCharged(draftToInput(draft, currency, today), charged, currency, cashCurrency);
 
@@ -117,7 +126,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   useEffect(() => {
     if (prefilled.current || !editing || postedCash === undefined) return;
     prefilled.current = true;
-    if ((editing.cashAccountId ?? '') === draft.cashAccountId) setCharged((typed) => (typed === '' ? minorToMajorString(postedCash, cashCurrency) : typed));
+    if ((editing.cashAccountId ?? '') === draft.cashAccountId) setCharged((typed) => (typed === '' ? typedAmount(postedCash, cashCurrency) : typed));
   }, [editing, postedCash, draft.cashAccountId, cashCurrency]);
   const waitingForPosted = !!editing && posted.isPending;
 
@@ -234,7 +243,11 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
               divided
             />
             <p className="pr-[13px] pb-2 pl-[54px] text-[12px] leading-4 text-[var(--ph-ink-3)]">
-              {draft.kind === 'buy' ? `What left ${where}, in ${cashCurrency}.` : `What reached ${where}, in ${cashCurrency}.`}
+              {draft.kind === 'buy'
+                ? `What left ${where}, in ${cashCurrency}.`
+                : nothingReaches
+                  ? `Nothing reaches ${where}: the fees take all of the sale, so leave this empty.`
+                  : `What reached ${where}, in ${cashCurrency}.`}
             </p>
           </div>
         )}

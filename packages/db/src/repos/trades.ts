@@ -184,8 +184,11 @@ async function postedMoneyTx(tx: Db, transactionId: string, accounts: TradeAccou
     .where(eq(entries.transactionId, transactionId));
   const ratesToBase = Object.fromEntries(lines.map((line) => [line.currency, line.fxRateToBase]));
   if (accounts.cashCurrency === accounts.holdingCurrency) return { ratesToBase };
-  // The cash line's signed lines summed, then clamped: what left for a buy (`outflowFrom`), what reached it otherwise.
-  return { cashMinor: kind === 'buy' ? outflowFrom(lines, accounts.cashAccountId) : inflowTo(lines, accounts.cashAccountId), ratesToBase };
+  // The cash line's signed lines summed, then clamped: what left for a buy (`outflowFrom`); otherwise what reached it —
+  // or, for a sell whose fees passed its proceeds, the shortfall that left it (one of the two is always zero). Nothing
+  // moved (the fees ate the proceeds exactly) is no charged figure at all.
+  const moved = kind === 'buy' ? outflowFrom(lines, accounts.cashAccountId) : inflowTo(lines, accounts.cashAccountId) + outflowFrom(lines, accounts.cashAccountId);
+  return { cashMinor: moved === 0 ? undefined : moved, ratesToBase };
 }
 
 /**

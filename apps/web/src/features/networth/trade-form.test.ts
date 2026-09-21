@@ -1,6 +1,6 @@
 import { positionAfter, type TradeRecord } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { draftToInput, emptyTradeDraft, pricePreview, sellPreview, type TradeDraft } from './trade-form';
+import { draftFromTrade, draftToInput, emptyTradeDraft, pricePreview, sellPreview, type TradeDraft, typedAmount } from './trade-form';
 
 const TODAY = '2026-09-12';
 const draft = (overrides: Partial<TradeDraft> = {}): TradeDraft => ({ ...emptyTradeDraft('gold', 'bca', TODAY), ...overrides });
@@ -81,5 +81,21 @@ describe('sellPreview', () => {
     expect(sellPreview(draft({ kind: 'sell', units: '11', gross: '9.000.000' }), held, 'IDR')).toBeNull();
     expect(sellPreview(draft({ kind: 'buy', units: '5', gross: '9.000.000' }), held, 'IDR')).toBeNull();
     expect(sellPreview(draft({ kind: 'sell', units: '5', gross: '9.000.000' }), undefined, 'IDR')).toBeNull();
+  });
+});
+
+describe('pre-filled amounts', () => {
+  it('are written in the app’s number format, as the owner types them — and read back to the same figure', () => {
+    expect(typedAmount(10_447_125, 'IDR')).toBe('10.447.125');
+    expect(typedAmount(182_500, 'USD')).toBe('1.825,00');
+    expect(typedAmount(0, 'USD')).toBe('0,00');
+    const draft = { ...emptyTradeDraft('aapl', 'bca', '2026-03-08'), units: '10', gross: typedAmount(182_525, 'USD'), fee: typedAmount(1_000, 'USD') };
+    expect(draftToInput(draft, 'USD', '2026-03-08')).toMatchObject({ grossMinor: 182_525, feeMinor: 1_000 });
+  });
+  it('fill an edit from the trade in that format, never raw', () => {
+    const trade = { kind: 'sell' as const, accountId: 'bbca', occurredOn: '2026-03-08', unitsMicro: 1_500_000_000, grossMinor: 14_662_500, feeMinor: 21_994, taxMinor: 14_663, cashAccountId: 'bca', goalId: null };
+    expect(draftFromTrade(trade, 'IDR')).toEqual({
+      kind: 'sell', accountId: 'bbca', occurredOn: '2026-03-08', units: '1.500', gross: '14.662.500', fee: '21.994', tax: '14.663', cashAccountId: 'bca', goalId: '',
+    });
   });
 });

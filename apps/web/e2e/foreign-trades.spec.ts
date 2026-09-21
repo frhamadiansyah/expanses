@@ -82,10 +82,42 @@ test('editing a sell into a rupiah account opens with what arrived, and saves wi
   const sold = page.getByText(/Sell AAPL/).locator('xpath=ancestor::div[1]');
   await sold.getByRole('button', { name: 'Edit' }).click();
   // Read back from the sell's own transaction: the edit never starts from an empty figure.
-  await expect(page.getByLabel('Charged in IDR')).toHaveValue('10447125');
+  await expect(page.getByLabel('Charged in IDR')).toHaveValue('10.447.125');
   await page.getByLabel('Units, shares or grams').fill('');
   await page.getByLabel('Units, shares or grams').pressSequentially('2');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByTestId('trade-notice')).toContainText('Recorded');
   await expectBalance(page, 'BCA Tahapan', '11.447.125'); // the same rupiah arrived: only the units changed
+});
+
+test('a USD sell whose fee took all of it records with nothing reaching the rupiah account, and its edit opens in the app’s number format', async ({ page }) => {
+  await addMoneyAccount(page, 'BCA Tahapan', 'bank', '1000000');
+  await addUsdStock(page);
+  await page.goto('/net-worth/trades');
+  await page.getByLabel('What happened').selectOption('sell');
+  await page.getByLabel('Holding').selectOption({ label: 'AAPL' });
+  await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
+  await page.getByLabel('Units, shares or grams').pressSequentially('1');
+  await page.getByLabel(/Proceeds, before fees/).pressSequentially('1.500,00');
+  await page.getByLabel('Fee (USD)').fill('');
+  await page.getByLabel('Fee (USD)').pressSequentially('1.500,00');
+  await expect(page.getByText(/Nothing reaches BCA Tahapan/)).toBeVisible();
+  await page.getByRole('button', { name: 'Record' }).click();
+  // The fee still posts in dollars, so the dollar lines need the day's rate: typed when this device holds none.
+  const rate = page.getByLabel('Rate that day');
+  const notice = page.getByTestId('trade-notice');
+  await expect(rate.or(notice)).toBeVisible();
+  if (await rate.isVisible()) {
+    await rate.pressSequentially('16300');
+    await page.getByRole('button', { name: 'Record' }).click();
+  }
+  await expect(notice).toContainText('Recorded');
+  await expectBalance(page, 'BCA Tahapan', '1.000.000'); // nothing reached it
+
+  await page.goto('/net-worth/trades');
+  const sold = page.getByText(/Sell AAPL/).locator('xpath=ancestor::div[1]');
+  await sold.getByRole('button', { name: 'Edit' }).click();
+  await expect(page.getByLabel(/Proceeds, before fees/)).toHaveValue('1.500,00');
+  await expect(page.getByLabel('Fee (USD)')).toHaveValue('1.500,00');
+  await expect(page.getByLabel('Charged in IDR')).toHaveValue('');
 });

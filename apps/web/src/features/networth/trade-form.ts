@@ -1,5 +1,6 @@
-import { type Position, parseMajor, parseUnits, priceMicroFrom, sellBasisMinor, type TradeKind } from '@expanses/core';
-import type { RecordTradeInput } from '@expanses/db';
+import { formatUnits, type Position, parseMajor, parseUnits, priceMicroFrom, sellBasisMinor, type TradeKind } from '@expanses/core';
+import type { RecordTradeInput, TradeRow } from '@expanses/db';
+import { bareFigure } from './debt-rows';
 
 export interface TradeDraft {
   kind: TradeKind;
@@ -27,6 +28,30 @@ export const emptyTradeDraft = (accountId: string, cashAccountId: string, today:
   cashAccountId,
   goalId: '',
 });
+
+/**
+ * A pre-filled amount, written the way the app writes money and the owner types it — `10.447.125`, `1.825,00` — never
+ * the raw `10447125`. `parseMajor` reads it back to the same figure.
+ */
+export const typedAmount = (minor: number, currency: string): string => bareFigure(minor, currency);
+
+/** An edit opens with the trade's own figures, each in the app's number format. */
+export function draftFromTrade(
+  trade: Pick<TradeRow, 'kind' | 'accountId' | 'occurredOn' | 'unitsMicro' | 'grossMinor' | 'feeMinor' | 'taxMinor' | 'cashAccountId' | 'goalId'>,
+  currency: string,
+): Partial<TradeDraft> {
+  return {
+    kind: trade.kind,
+    accountId: trade.accountId,
+    occurredOn: trade.occurredOn,
+    units: trade.unitsMicro === 0 ? '' : formatUnits(trade.unitsMicro),
+    gross: typedAmount(trade.grossMinor, currency),
+    fee: typedAmount(trade.feeMinor, currency),
+    tax: typedAmount(trade.taxMinor, currency),
+    cashAccountId: trade.cashAccountId ?? '',
+    goalId: trade.goalId ?? '',
+  };
+}
 
 const amount = (text: string, currency: string, label: string): number => {
   if (text.trim() === '') return 0;

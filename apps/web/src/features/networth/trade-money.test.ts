@@ -26,6 +26,30 @@ describe('withCharged', () => {
   });
 });
 
+describe('a sell whose fees ate the proceeds', () => {
+  const eaten = (extra: Partial<RecordTradeInput> = {}) => buy(15_000, { kind: 'sell', feeMinor: 15_000, unitsMicro: 1_000_000, ...extra });
+  it('asks no charged amount, since nothing reaches the account — and refuses one typed', () => {
+    expect(withCharged(eaten(), '', 'USD', 'IDR').cashMinor).toBeUndefined();
+    expect(withCharged(eaten(), '0', 'USD', 'IDR').cashMinor).toBeUndefined();
+    expect(() => withCharged(eaten(), '150.000', 'USD', 'IDR')).toThrow(/Nothing reaches the account/);
+  });
+  it('asks the charged amount for the shortfall when the fees and tax passed the proceeds', () => {
+    expect(withCharged(eaten({ taxMinor: 100 }), '16.231', 'USD', 'IDR').cashMinor).toBe(16_231);
+    expect(() => withCharged(eaten({ taxMinor: 100 }), '', 'USD', 'IDR')).toThrow(/Charged in IDR/);
+  });
+  it('saves with the holding’s own day rate only — no rate worked out of nothing', async () => {
+    const resolveRates = vi.fn().mockResolvedValue({ rates: { USD: 16_300 } });
+    const input = withCharged(eaten(), '', 'USD', 'IDR');
+    expect(await tradeRatesForSave({ ...common, input, holdingCurrency: 'USD', cashCurrency: 'IDR', resolveRates, onMissing: vi.fn() })).toEqual({ USD: 16_300 });
+    expect(await tradeRatesForSave({ ...common, input: withCharged(eaten(), '', 'IDR', 'USD'), holdingCurrency: 'IDR', cashCurrency: 'USD', resolveRates, onMissing: vi.fn() })).toEqual({});
+  });
+  it('works the shortfall’s rate out from what left', async () => {
+    const input = withCharged(eaten({ taxMinor: 100 }), '16.231', 'USD', 'IDR');
+    const rates = await tradeRatesForSave({ ...common, input, holdingCurrency: 'USD', cashCurrency: 'IDR', resolveRates: vi.fn(), onMissing: vi.fn() });
+    expect(convertMinor(100, 'USD', 'IDR', rates.USD!)).toBe(16_231);
+  });
+});
+
 describe('tradeRatesForSave', () => {
   it('works the rate out from the two amounts and asks no day rate', async () => {
     const resolveRates = vi.fn();

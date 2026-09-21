@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { convertMinor, perUnitInBase, rateFromAmounts, taxHoldingName, tradeCashMinor, type TradeInput, tradeRateNeeds } from '../src/index';
+import { convertMinor, perUnitInBase, rateFromAmounts, taxHoldingName, tradeCashMinor, tradeCashMovedMinor, type TradeInput, tradeRateNeeds } from '../src/index';
 
 describe('tradeRateNeeds', () => {
   it('asks nothing when all of it is base', () => {
@@ -47,6 +47,19 @@ describe('tradeCashMinor', () => {
   });
   it('is nothing for a sell whose fees ate the proceeds, never a negative amount to derive a rate from', () => {
     expect(tradeCashMinor(trade('sell', 1_000, 900, 200))).toBe(0);
+  });
+});
+
+describe('tradeCashMovedMinor', () => {
+  const trade = (kind: TradeInput['kind'], grossMinor: number, feeMinor: number, taxMinor: number): TradeInput => ({ kind, occurredOn: '2026-03-08', unitsMicro: 3_000_000, grossMinor, feeMinor, taxMinor });
+  it('is what moved through the cash account either way: in for a sell, out for a buy, the shortfall out for a sell whose fees passed its proceeds', () => {
+    expect(tradeCashMovedMinor(trade('buy', 1_000, 15, 3))).toBe(1_018);
+    expect(tradeCashMovedMinor(trade('sell', 1_000, 15, 3))).toBe(982);
+    expect(tradeCashMovedMinor(trade('sell', 1_000, 900, 200))).toBe(100);
+  });
+  it('is nothing when the fees ate the proceeds exactly, and for a unit change', () => {
+    expect(tradeCashMovedMinor(trade('sell', 1_000, 1_000, 0))).toBe(0);
+    expect(tradeCashMovedMinor(trade('unit_change', 0, 0, 0))).toBe(0);
   });
 });
 

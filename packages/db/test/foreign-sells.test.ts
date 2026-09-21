@@ -70,3 +70,34 @@ describe('what a posted trade moved through its cash account, read back for an e
     await expect(postedTradeMoney(database, { ...ws, workspaceId: 'elsewhere' }, secondBuy)).rejects.toThrow(/not found/i);
   });
 });
+
+describe('a sell whose fees ate the proceeds, into a rupiah account', () => {
+  it('records with nothing reaching the account, no amount in rupiah and no worked-out rate — the fees still post', async () => {
+    // 1 share sold for $150,00 with a $150,00 fee: the whole sale went on the fee.
+    const sold = await recordTrade(database, ws, {
+      accountId: aapl.id, kind: 'sell', occurredOn: '2026-07-01', unitsMicro: shares(1), grossMinor: 15_000, feeMinor: 15_000, taxMinor: 0, cashAccountId: bca.id,
+      ratesToBase: { USD: 16_300 },
+    });
+    expect((await nativeBalances(database, ws))[bca.id]).toBe(1_000_000 + 14_588_501);
+    const lines = await database.db.select().from(schema.entries).where(eq(schema.entries.transactionId, sold.transactionId!));
+    expect(lines.some((l) => l.accountId === bca.id)).toBe(false);
+    expect(lines.every((l) => l.currency === 'USD' && l.fxRateToBase === 16_300)).toBe(true);
+    expect((await postedTradeMoney(database, ws, sold.tradeId)).cashMinor).toBeUndefined();
+    // An earlier buy deleted reworks it on its own day, still with nothing reaching the account.
+    await deleteTrade(database, ws, secondBuy);
+    expect((await nativeBalances(database, ws))[bca.id]).toBe(1_000_000 + 14_588_501);
+    await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
+  });
+
+  it('pays the shortfall from the account when the fees and tax passed the proceeds, and reads it back as what left', async () => {
+    const sold = await recordTrade(database, ws, {
+      accountId: aapl.id, kind: 'sell', occurredOn: '2026-07-01', unitsMicro: shares(1), grossMinor: 15_000, feeMinor: 15_000, taxMinor: 100, cashAccountId: bca.id,
+      cashMinor: 16_231, ratesToBase: { USD: rateFromAmounts(100, 'USD', 16_231, 'IDR') },
+    });
+    expect((await nativeBalances(database, ws))[bca.id]).toBe(1_000_000 + 14_588_501 - 16_231);
+    expect((await postedTradeMoney(database, ws, sold.tradeId)).cashMinor).toBe(16_231);
+    await deleteTrade(database, ws, secondBuy);
+    expect((await nativeBalances(database, ws))[bca.id]).toBe(1_000_000 + 14_588_501 - 16_231);
+    await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
+  });
+});
