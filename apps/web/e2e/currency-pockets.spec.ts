@@ -71,3 +71,23 @@ test('a pocket can be added, in a currency with no decimals, at a typed rate', a
   await expect(page.getByTestId('pocket-JPY')).toContainText('30.000');
   await expect(page.getByTestId('pocket-JPY')).toContainText('3.249.000');
 });
+
+test('moving between pockets moves what the screen shows and says what the bank’s rate cost', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
+  await page.getByRole('link', { name: /Move between pockets/ }).click();
+
+  // Options are valued by currency code (one open pocket per currency); `selectOption({ label })` takes no RegExp.
+  await page.getByLabel('From').selectOption('USD');
+  await page.getByLabel('To').selectOption('SGD');
+  await page.getByLabel('Leaves USD').pressSequentially('500');
+  await page.getByLabel('Arrives SGD').pressSequentially('638');
+  await expect(page.getByText('1 USD = 1,2760 SGD')).toBeVisible();
+  await expect(page.getByText('The bank’s rate cost you')).toBeVisible();
+  await expect(page.getByTestId('spread')).toContainText('35.160');
+  await page.getByRole('button', { name: 'Move it' }).click();
+
+  await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
+  await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
+});
