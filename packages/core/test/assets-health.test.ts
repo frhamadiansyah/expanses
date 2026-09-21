@@ -143,6 +143,11 @@ describe('emergency fund', () => {
     expect(statusOf('emergency_fund', {}, { liquidMinor: 110_000_000 })).toBe('watch');
     expect(statusOf('emergency_fund', {}, { liquidMinor: 100_000_000 })).toBe('act');
   });
+
+  it('is good at exactly the target months: the benchmark itself grades good (health.ts higherIsBetter, value >= benchmark)', () => {
+    // 200 jt spending → 41,773 jt outgoing/month; 125_319_000 ÷ 41,773,000 = 3 exactly.
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 125_319_000 })).toBe('good');
+  });
 });
 
 describe('emergencyOutgoingMinor', () => {
@@ -165,6 +170,11 @@ describe('debt servicing', () => {
     expect(statusOf('debt_payments', { debtPaymentsMinor: monthsOf(29) })).toBe('good');
     expect(statusOf('debt_payments', { debtPaymentsMinor: monthsOf(37) })).toBe('act');
     expect(by(healthRatios(flows(), totals()), 'debt_payments').target).toBe(30);
+  });
+
+  it('is good at exactly 30%: the guide itself is inclusive (health.ts lowerIsBetter, value <= benchmark)', () => {
+    // 220_320_000 ÷ 12 = 18,360,000/month; ÷ 61,200,000 income × 100 = 30 exactly (checked in node first).
+    expect(statusOf('debt_payments', { debtPaymentsMinor: 220_320_000 })).toBe('good');
   });
 
   it('moves with the looser 35% setting', () => {
@@ -202,6 +212,19 @@ describe('the emergency card grades against the household’s own months', () =>
     expect(statusOf('emergency_fund', {}, { liquidMinor: 440_000_000 }, { emergencyTargetMonths: 12 })).toBe('watch');
     expect(statusOf('emergency_fund', {}, { liquidMinor: 502_000_000 }, { emergencyTargetMonths: 12 })).toBe('good');
   });
+
+  it('is good at exactly the household’s own 12 months, not just above it', () => {
+    // 501_276_000 ÷ 41,773,000 = 12 exactly.
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 501_276_000 }, { emergencyTargetMonths: 12 })).toBe('good');
+  });
+
+  it('falls back to the guide’s 3 months when the household’s own figure is zero or negative, and the label still says 3', () => {
+    for (const bad of [0, -5]) {
+      const ratio = by(healthRatios(flows(), totals(), { emergencyTargetMonths: bad }), 'emergency_fund');
+      expect(ratio.target).toBe(3);
+      expect(ratio.benchmarkText).toContain('3');
+    }
+  });
 });
 
 describe('householdEmergencyMonths', () => {
@@ -211,9 +234,11 @@ describe('householdEmergencyMonths', () => {
   });
 
   it('reads the months on the emergency goal, the largest when there are several, ignoring other kinds and paid stages', () => {
-    expect(householdEmergencyMonths([g('holiday', [null]), g('emergency', [6]), g('emergency', [12])])).toBe(12);
+    // The holiday goal carries months of its own (24) that are larger than either emergency goal's — dropping the
+    // kind filter would let them win Math.max and return 24 instead of 12.
+    expect(householdEmergencyMonths([g('holiday', [24]), g('emergency', [6]), g('emergency', [12])])).toBe(12);
     expect(householdEmergencyMonths([g('emergency', [24], true), g('emergency', [6])])).toBe(6);
-    expect(householdEmergencyMonths([g('holiday', [null])])).toBeNull();
+    expect(householdEmergencyMonths([g('holiday', [24])])).toBeNull();
   });
 });
 

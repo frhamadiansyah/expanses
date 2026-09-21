@@ -49,4 +49,9 @@ describe('a budget line in a month', () => {
   it('refuses an amount that is not a whole number of minor units', () => {
     expect(() => perMonthMinor(10.5, 'weekly')).toThrow(RangeError);
   });
+
+  it('refuses an integer beyond what a double can hold safely — distinct from BigInt(10.5), which throws anyway for the case above', () => {
+    // 2**53 + 2 is a whole number, so BigInt() alone would accept it; only the safe-integer guard catches this one.
+    expect(() => perMonthMinor(2 ** 53 + 2, 'weekly')).toThrow(RangeError);
+  });
 });
