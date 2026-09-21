@@ -301,6 +301,7 @@ export function GoalsPage() {
             plan.links.map((link) => (
               <InsetRow
                 key={`${plan.goalId}-${link.accountId}-${link.kind}`}
+                testId="goal-asset"
                 title={link.name}
                 subtitle={`${link.kind === 'tagged' && link.unitsMicro !== null ? `${formatUnits(link.unitsMicro)} tagged` : 'set aside'} for ${plan.goal.name}`}
                 value={<LinkAmount link={link} />}

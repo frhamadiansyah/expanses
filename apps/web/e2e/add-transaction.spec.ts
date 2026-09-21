@@ -71,7 +71,9 @@ test('income lands in the account it was received into', async ({ page }) => {
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Freelance' })).toContainText('7.500.000');
   // Received, not spent: the account is 7.500.000 richer, which is what tells income from an expense.
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('7.500.000');
+  // An account is a row of the table now, not a list item: the same five columns, scrolling sideways at 390 px
+  // rather than wrapping the name into the balance. Every assertion below is the same fact, on the row that has it.
+  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('7.500.000');
 });
 
 test('Paid with names each card by its digits, and choosing one sets the account and the card together', async ({ page }) => {
@@ -185,8 +187,8 @@ test('a transfer moves money between two accounts and is filed in no workspace',
 
   // Out of one, into the other, to the rupiah.
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.500.000');
-  await expect(page.getByRole('listitem').filter({ hasText: 'Jenius' }).first()).toContainText('500.000');
+  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.500.000');
+  await expect(page.getByRole('row').filter({ hasText: 'Jenius' }).first()).toContainText('500.000');
 });
 
 /**
@@ -249,8 +251,8 @@ test('a transfer offers no currency of its own, and moves the figure its row sho
   await expect(moved).toContainText('Rp 100');
   await expect(moved).not.toContainText('1.600.000');
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.999.900');
-  await expect(page.getByRole('listitem').filter({ hasText: 'Jago' }).first()).toContainText('100');
+  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.999.900');
+  await expect(page.getByRole('row').filter({ hasText: 'Jago' }).first()).toContainText('100');
 });
 
 test('a transfer into a USD account asks for the received amount, and will not save without it', async ({ page }) => {
@@ -282,8 +284,8 @@ test('a transfer into a USD account asks for the received amount, and will not s
   // USD 100 landed as USD 100 on top of the opening 10 — not 10.000, which is what reading the second figure in
   // the wrong currency does.
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'Wise USD' }).first()).toContainText('110,00');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
+  await expect(page.getByRole('row').filter({ hasText: 'Wise USD' }).first()).toContainText('110,00');
+  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
 });
 
 test('a transfer tagged For goal parks the money against the goal', async ({ page }) => {
@@ -500,8 +502,8 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
 
   // What left and what landed, each in its own account's own money.
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'Wise USD' }).first()).toContainText('110,03');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
+  await expect(page.getByRole('row').filter({ hasText: 'Wise USD' }).first()).toContainText('110,03');
+  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
 
   // And the goal is funded out of the account the money landed in, for what that set-aside *is*: US$100,03,
   // not the Rp 1.600.000 that left, and not the `Rp 10.003` this page used to paint by printing the account's
@@ -624,7 +626,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   // …and still on the card: the statement, the balance and the points all still hold both of them, which is the
   // whole asymmetry exclusion exists for. 85.000 at MCC 5411, typed here rather than guessed from the category.
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
+  await expect(page.getByRole('row').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
   await page.goto('/cards');
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
   await page.getByRole('radio', { name: 'Points' }).click();
@@ -703,7 +705,7 @@ test('a split by category posts one line per category, each with its own figure'
 
   // The whole bill left the account, once.
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('49.915.000');
+  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('49.915.000');
 
   // And the month knows which 40.000 was groceries and which 45.000 was a restaurant: Groceries sits under
   // Household and Restaurants under Food and beverage, so the two figures cannot hide in one row.
@@ -869,7 +871,7 @@ test('a bill split equally between three people leaves each of them owing their 
 
   // The card was charged the whole 400.000 — what the restaurant took, not what the dinner cost the owner.
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Visa' }).first()).toContainText('400.000');
+  await expect(page.getByRole('row').filter({ hasText: 'BCA Visa' }).first()).toContainText('400.000');
 
   // …and only the owner's own quarter is spending. The month's total is the figure the ring is drawn from, so
   // a split that posted the whole bill to Restaurants would read 400.000 here.
@@ -1313,7 +1315,7 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
   // …while the balance, the statement and the points all still hold both. This is the half the switch must not
   // touch, and the half a "leave it out of everything" reading of the switch would break.
   await page.goto('/accounts');
-  await expect(page.getByRole('listitem').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
+  await expect(page.getByRole('row').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
   await page.goto('/cards');
   await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
   await page.getByRole('radio', { name: 'Points' }).click();
