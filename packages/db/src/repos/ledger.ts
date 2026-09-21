@@ -11,7 +11,7 @@ import { BILL_MONTH, billTablesExist } from './bill-months';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { carryEventItemTx } from './event-items';
-import { applySetAsideTx, carryable, type SetAsideChoice, setAsideChoiceOfTx, setAsideTablesExist, stillPromisedTx, undoSetAsideTx } from './set-aside-tx';
+import { applySetAsideTx, carryable, type SetAsideChoice, setAsideChoiceOfTx, setAsideTablesExist, stillPromisedTx, takeBackTaggedArrivalTx, undoSetAsideTx } from './set-aside-tx';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
@@ -197,12 +197,14 @@ export function postTransaction(database: Database, ws: WorkspaceContext, input:
 /** Voids inside an open transaction, so a caller can void and repost several transactions atomically. */
 export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
   const [row] = await tx
-    .select({ status: transactions.status })
+    .select({ status: transactions.status, goalId: transactions.goalId })
     .from(transactions)
     .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
   if (!row) throw new LedgerError('NOT_FOUND', `Transaction ${id} not found`);
   if (row.status === 'void') throw new LedgerError('ALREADY_VOID', `Transaction ${id} is already void`);
   await tx.update(transactions).set({ status: 'void' }).where(eq(transactions.id, id));
+  // A transfer tagged to a goal parked what it landed: that comes back out, whichever door deletes or edits it.
+  if (row.goalId) await takeBackTaggedArrivalTx(tx, ws, id, row.goalId);
   // What an answer did to a goal is a fact about the same money: it goes when the money goes.
   if (await setAsideTablesExist(tx)) await undoSetAsideTx(tx, ws, id);
   await audit(tx, ws, 'void', id, {});

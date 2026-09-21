@@ -13,12 +13,14 @@ import {
   nativeBalances,
   recordTaggedTransfer,
   recordTrade,
+  replaceTransaction,
   saveAssetProfile,
   saveEarmark,
   saveEvent,
   saveGoal,
   upsertPrice,
   voidTaggedTransfer,
+  voidTransaction,
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -302,5 +304,110 @@ describe('a transfer that crosses currencies and is tagged to a goal', () => {
     });
     await voidTaggedTransfer(database, ws, result.transactionId);
     expect(await setAsideFor(hajjId, wise.id)).toBe(0);
+  });
+});
+
+/*
+ * The web deletes through `voidTransaction` and edits through `replaceTransaction`; neither is `voidTaggedTransfer`.
+ * Since a tagged transfer moves the goal's own promise off the source, a door that gave the source back without
+ * taking the destination back would leave the goal counting the same money in two accounts. Every figure is chosen
+ * so that a door that forgets either side reads differently: the destination already held a promise of its own
+ * before the transfer, so "cleared to nothing" and "taken back" differ too.
+ */
+describe('deleting or editing a tagged transfer through the ledger\'s own doors', () => {
+  const snapshot = async () => (await listEarmarks(database, ws)).filter((row) => row.goalId === hajjId).map((row) => [row.accountId, row.amountMinor]).sort();
+
+  describe('in rupiah', () => {
+    beforeEach(async () => {
+      await saveEarmark(database, ws, { goalId: hajjId, accountId: bca.id, amountMinor: 7_500_000 });
+      await saveEarmark(database, ws, { goalId: hajjId, accountId: rdn.id, amountMinor: 2_000_000 });
+    });
+
+    it('a delete leaves the goal\'s set-asides exactly as before the transfer', async () => {
+      const before = await snapshot();
+      const result = await park(3_000_000, hajjId);
+      await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(4_500_000);
+      await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(5_000_000);
+
+      await voidTransaction(database, ws, result.transactionId);
+
+      await expect(snapshot()).resolves.toEqual(before);
+      await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
+      await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(2_000_000);
+    });
+
+    it('an edit leaves them as before the transfer too: the replacement is a plain transfer', async () => {
+      const before = await snapshot();
+      const result = await park(3_000_000, hajjId);
+
+      await replaceTransaction(database, ws, result.transactionId, {
+        occurredOn: '2026-09-05',
+        description: 'Transfer to RDN',
+        lines: [
+          { accountId: rdn.id, amountMinor: 2_500_000, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: -2_500_000, currency: 'IDR' },
+        ],
+      });
+
+      await expect(snapshot()).resolves.toEqual(before);
+      await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(2_000_000);
+    });
+
+    it('voidTaggedTransfer still does the same, once', async () => {
+      const before = await snapshot();
+      const result = await park(3_000_000, hajjId);
+      await voidTaggedTransfer(database, ws, result.transactionId);
+      await expect(snapshot()).resolves.toEqual(before);
+    });
+  });
+
+  describe('across currencies', () => {
+    let wise: AccountRow;
+    const toWise = () =>
+      recordTaggedTransfer(database, ws, {
+        occurredOn: '2026-09-05',
+        description: 'To the Wise account',
+        amountMinor: 1_600_000,
+        toAmountMinor: 10_003,
+        fromAccountId: bca.id,
+        toAccountId: wise.id,
+        goalId: hajjId,
+        ratesToBase: { USD: 16_000 },
+      });
+
+    beforeEach(async () => {
+      wise = await createAccount(database, ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
+      await saveEarmark(database, ws, { goalId: hajjId, accountId: bca.id, amountMinor: 7_500_000 });
+      await saveEarmark(database, ws, { goalId: hajjId, accountId: wise.id, amountMinor: 5_001 });
+    });
+
+    it('a delete takes the US$100,03 back off Wise and gives the Rp 1.600.000 back to BCA', async () => {
+      const before = await snapshot();
+      const result = await toWise();
+      await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(5_900_000);
+      await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(15_004);
+
+      await voidTransaction(database, ws, result.transactionId);
+
+      await expect(snapshot()).resolves.toEqual(before);
+      await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(5_001);
+      await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
+    });
+
+    it('an edit that reposts the same money leaves them as before the transfer', async () => {
+      const before = await snapshot();
+      const result = await toWise();
+      const original = (await listTransactions(database, ws, { id: result.transactionId }))[0]!;
+
+      await replaceTransaction(database, ws, result.transactionId, {
+        occurredOn: original.occurredOn,
+        description: original.description,
+        lines: original.entries.map((entry) => ({ accountId: entry.accountId, amountMinor: entry.amountMinor, currency: entry.currency })),
+        ratesToBase: { USD: 16_000 },
+      });
+
+      await expect(snapshot()).resolves.toEqual(before);
+      await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(5_001);
+    });
   });
 });

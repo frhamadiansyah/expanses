@@ -2,7 +2,7 @@ import { inflowTo, type MoneyLine, movedAmount, outflowFrom, uuidv7 } from '@exp
 import { and, asc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
-import { accounts } from '../schema';
+import { accounts, entries } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalDraws, goalEarmarks, goalStages, goals } from '../schema-goals';
 import { SPENDABLE_SUBTYPES } from './accounts';
@@ -94,6 +94,21 @@ export async function adjustSetAsideTx(tx: Db, ws: WorkspaceContext, goalId: str
   }
   await tx.insert(goalEarmarks).values({ goalId, accountId, workspaceId: ws.workspaceId, amountMinor: next });
   return next;
+}
+
+/**
+ * Takes back what a transfer tagged to a goal parked: whatever it put into an account comes back out of the goal's
+ * set-aside there. Called by every void (`voidTransactionTx`), so a delete or an edit from any door — not only
+ * `voidTaggedTransfer` — leaves the goal as it stood before the transfer; the source side is `undoSetAsideTx`'s.
+ */
+export async function takeBackTaggedArrivalTx(tx: Db, ws: WorkspaceContext, transactionId: string, goalId: string): Promise<void> {
+  const lines = await tx
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor })
+    .from(entries)
+    .where(and(eq(entries.transactionId, transactionId), eq(entries.workspaceId, ws.workspaceId)));
+  for (const line of lines) {
+    if (line.amountMinor > 0) await adjustSetAsideTx(tx, ws, goalId, line.accountId, -line.amountMinor);
+  }
 }
 
 /** Whether a carried answer still fits a replacement's lines: it still pays from the account, and a move still reaches its destination. */

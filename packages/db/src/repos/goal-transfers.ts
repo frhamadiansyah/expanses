@@ -2,7 +2,7 @@ import { exchangeLines, uuidv7 } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
-import { accounts, entries, transactions } from '../schema';
+import { accounts, transactions } from '../schema';
 import { goalDraws, goalEarmarks, goals } from '../schema-goals';
 import { systemAccountId } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
@@ -125,7 +125,7 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
       await recordContributionTx(tx, ws, input.goalId, input.fromAccountId, -moved, input.occurredOn);
     }
     if (moved > 0 && (await setAsideTablesExist(tx))) {
-      // A move with no destination: the destination's own adjustment is voidTaggedTransfer's, as it always was.
+      // A move with no destination: the destination's own adjustment is taken back by voidTransactionTx.
       await tx.insert(goalDraws).values({
         id: uuidv7(),
         workspaceId: ws.workspaceId,
@@ -150,25 +150,17 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
   });
 }
 
-/** Voids a tagged transfer and takes the money back out of the goal's set-aside. */
+/**
+ * Voids a tagged transfer and takes the money back out of the goal's set-aside. The taking back is
+ * `voidTransactionTx`'s own, so the plain delete and an edit do exactly the same.
+ */
 export async function voidTaggedTransfer(database: Database, ws: WorkspaceContext, transactionId: string): Promise<void> {
   await database.transaction(async (tx) => {
     const [row] = await tx
-      .select({ goalId: transactions.goalId })
+      .select({ id: transactions.id })
       .from(transactions)
       .where(and(eq(transactions.id, transactionId), eq(transactions.workspaceId, ws.workspaceId)));
     if (!row) throw new AssetError('That transfer is not in this workspace');
-
-    if (row.goalId) {
-      // Whatever this transfer put into an account comes back out of the goal's set-aside.
-      const lines = await tx
-        .select({ accountId: entries.accountId, amountMinor: entries.amountMinor })
-        .from(entries)
-        .where(and(eq(entries.transactionId, transactionId), eq(entries.workspaceId, ws.workspaceId)));
-      for (const line of lines) {
-        if (line.amountMinor > 0) await adjustSetAsideTx(tx, ws, row.goalId, line.accountId, -line.amountMinor);
-      }
-    }
     await voidTransactionTx(tx, ws, transactionId);
   });
 }
