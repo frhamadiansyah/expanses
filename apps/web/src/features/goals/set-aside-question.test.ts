@@ -32,6 +32,15 @@ describe('doorOfForm', () => {
     expect(doorOfForm(draft({ mode: 'transfer' }), tagged('card'), ACCOUNTS, holds)).toMatchObject({ ownGoalId: null });
   });
 
+  it('an edit of a tagged transfer is the tagged door again: the tag is kept, so its own goal\'s money is room', () => {
+    const lines = (to: string) => post([{ accountId: to, amountMinor: 7_000_000, currency: 'IDR' }, { accountId: 'jenius', amountMinor: -7_000_000, currency: 'IDR' }]);
+    const editing = (to: string) => draft({ mode: 'transfer', moneyId: 'jenius', toId: to, goalId: 'umrah', editing: true });
+    expect(doorOfForm(editing('bca'), lines('bca'), ACCOUNTS, holds)).toEqual({ accountId: 'jenius', outflowMinor: 7_000_000, ownGoalId: 'umrah', intents: BORROW_ONLY, toAccountId: 'bca' });
+    expect(doorOfForm(editing('card'), lines('card'), ACCOUNTS, holds)).toMatchObject({ ownGoalId: null, intents: BORROW_ONLY });
+    // An untagged edit still offers the move.
+    expect(doorOfForm({ ...editing('bca'), goalId: '' }, lines('bca'), ACCOUNTS, holds)).toMatchObject({ ownGoalId: null, intents: MOVING });
+  });
+
   it('reads a cross-currency buy\'s outflow in the cash account\'s money', () => {
     const buy = (goalId: string | null): FormPost => ({ kind: 'trade', input: { accountId: 'usd', kind: 'buy', occurredOn: '2026-09-19', unitsMicro: 1, grossMinor: 10_000, feeMinor: 0, taxMinor: 0, cashAccountId: 'jenius', cashMinor: 1_600_000, goalId } });
     // 1.600.000 rupiah left Jenius, not 10.000 cents.

@@ -1,14 +1,14 @@
-import { exchangeLines, uuidv7 } from '@expanses/core';
+import { exchangeLines } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, transactions } from '../schema';
-import { goalDraws, goalEarmarks, goals } from '../schema-goals';
+import { goals } from '../schema-goals';
 import { systemAccountId } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { GoalDbError } from './goals';
 import { postTransactionTx, voidTransactionTx } from './ledger';
-import { adjustSetAsideTx, canHoldSetAside, type SetAsideChoice, setAsideTablesExist } from './set-aside-tx';
+import { parkForGoalTx, type SetAsideChoice } from './set-aside-tx';
 
 export interface TaggedTransferInput {
   occurredOn: string;
@@ -111,40 +111,13 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
     });
 
     if (!input.goalId) return { transactionId, setAsideMinor: 0 };
-    await tx.update(transactions).set({ goalId: input.goalId }).where(eq(transactions.id, transactionId));
-    if (!(await canHoldSetAside(tx, ws, input.toAccountId))) return { transactionId, setAsideMinor: 0 };
-    // The goal's own promise on the source follows its money, so the goal does not count it in both places (spec §4.6).
-    const [own] = await tx
-      .select({ amountMinor: goalEarmarks.amountMinor })
-      .from(goalEarmarks)
-      .where(and(eq(goalEarmarks.goalId, input.goalId), eq(goalEarmarks.accountId, input.fromAccountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
-    const moved = Math.min(input.amountMinor, own?.amountMinor ?? 0);
-    // Only where the draw that undoes it can be written: a database stopped at 49 parks exactly as it did before, the
-    // source promise untouched, so a void cannot leave the goal with no promise anywhere.
-    if (moved > 0 && (await setAsideTablesExist(tx))) {
-      await adjustSetAsideTx(tx, ws, input.goalId, input.fromAccountId, -moved);
-      // A move with no destination: the destination's own adjustment is taken back by voidTransactionTx. The draw is
-      // also what the monthly figure reads the move from, valued in base as the arrival is (goalContributionEvents).
-      await tx.insert(goalDraws).values({
-        id: uuidv7(),
-        workspaceId: ws.workspaceId,
-        transactionId,
-        goalId: input.goalId,
-        accountId: input.fromAccountId,
-        intent: 'move',
-        amountMinor: moved,
-        toAccountId: null,
-        toAmountMinor: null,
-        stageId: null,
-        wasWhole: 0,
-        wholeSince: null,
-        occurredOn: input.occurredOn,
-        createdAt: new Date().toISOString(),
-      });
-    }
-    // The set-aside sits on the destination account, so it is counted in the destination account's own money —
-    // parking US$100 against a goal sets US$100 aside, never Rp 1.600.000 of a USD balance.
-    const setAsideMinor = await adjustSetAsideTx(tx, ws, input.goalId, input.toAccountId, landedMinor);
+    const setAsideMinor = await parkForGoalTx(tx, ws, transactionId, input.goalId, {
+      occurredOn: input.occurredOn,
+      fromAccountId: input.fromAccountId,
+      toAccountId: input.toAccountId,
+      amountMinor: input.amountMinor,
+      landedMinor,
+    });
     return { transactionId, setAsideMinor };
   });
 }

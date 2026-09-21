@@ -95,7 +95,15 @@ export function doorOfForm(draft: FormDraft, post: FormPost, accounts: readonly 
       if (draft.mode !== 'transfer') return spendingDoor(draft.moneyId, outflowMinor);
       const to = byId(draft.toId);
       const moves = !!to && to.kind === 'asset' && canHold(to.id);
-      return open({ accountId: draft.moneyId, outflowMinor, ownGoalId: null, intents: moves ? MOVING : SPENDING, toAccountId: moves ? to.id : null });
+      // An edit of a tagged transfer posts plainly and keeps its tag (replaceTransaction): it is the tagged door again.
+      const tagged = draft.editing && !!draft.goalId;
+      return open({
+        accountId: draft.moneyId,
+        outflowMinor,
+        ownGoalId: tagged && moves ? draft.goalId : null,
+        intents: tagged ? BORROW_ONLY : moves ? MOVING : SPENDING,
+        toAccountId: moves ? to.id : null,
+      });
     }
   }
 }

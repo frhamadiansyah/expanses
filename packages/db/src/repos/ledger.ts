@@ -5,13 +5,25 @@ import type { Database, Db } from '../database';
 import { accounts, auditLog, entries, transactions } from '../schema';
 import { bookTransactions } from '../schema-books';
 import { cardPostings, cardSettlements } from '../schema-cards';
+import { goals } from '../schema-goals';
 import { transactionPointActuals } from '../schema-points';
 import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
 import { carryEventItemTx } from './event-items';
-import { applySetAsideTx, carryable, type SetAsideChoice, setAsideChoiceOfTx, setAsideTablesExist, stillPromisedTx, takeBackTaggedArrivalTx, undoSetAsideTx } from './set-aside-tx';
+import {
+  applySetAsideTx,
+  carryable,
+  parkForGoalTx,
+  type SetAsideChoice,
+  setAsideChoiceOfTx,
+  setAsideTablesExist,
+  stillPromisedTx,
+  taggedMoveOfTx,
+  takeBackTaggedArrivalTx,
+  undoSetAsideTx,
+} from './set-aside-tx';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
@@ -232,6 +244,7 @@ export function replaceTransaction(
         cardId: transactions.cardId,
         eventId: transactions.eventId,
         templateId: transactions.templateId,
+        goalId: transactions.goalId,
       })
       .from(transactions)
       .where(and(eq(transactions.id, id), eq(transactions.workspaceId, ws.workspaceId)));
@@ -296,6 +309,13 @@ export function replaceTransaction(
       ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
       setAside,
     });
+    // A transfer tagged to a goal stays tagged when it is corrected: the void took back what it parked, and the edited
+    // amount is parked again, so the goal ends exactly where a new tagged transfer of that amount would leave it.
+    if (original?.goalId) {
+      const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, original.goalId), eq(goals.workspaceId, ws.workspaceId)));
+      const move = goal ? await taggedMoveOfTx(tx, ws, input.occurredOn, input.lines) : null;
+      if (move) await parkForGoalTx(tx, ws, replacement, original.goalId, move);
+    }
     // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
     // facts about the same money: they follow the correction.
     await tx.update(cardPostings).set({ transactionId: replacement }).where(and(eq(cardPostings.transactionId, id), eq(cardPostings.workspaceId, ws.workspaceId)));

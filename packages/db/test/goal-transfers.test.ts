@@ -343,11 +343,11 @@ describe('deleting or editing a tagged transfer through the ledger\'s own doors'
       await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(2_000_000);
     });
 
-    it('an edit leaves them as before the transfer too: the replacement is a plain transfer', async () => {
+    it('an edit keeps the tag: the goal ends where a tagged transfer of the edited amount would leave it', async () => {
       const before = await snapshot();
       const result = await park(3_000_000, hajjId);
 
-      await replaceTransaction(database, ws, result.transactionId, {
+      const replacement = await replaceTransaction(database, ws, result.transactionId, {
         occurredOn: '2026-09-05',
         description: 'Transfer to RDN',
         lines: [
@@ -356,8 +356,32 @@ describe('deleting or editing a tagged transfer through the ledger\'s own doors'
         ],
       });
 
+      // 7.500.000 − 2.500.000 on BCA, 2.000.000 + 2.500.000 on RDN. Dropping the tag read 7.500.000 / 2.000.000;
+      // parking the old 3.000.000 again read 4.500.000 / 5.000.000.
+      await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(5_000_000);
+      await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(4_500_000);
+      expect((await listTransactions(database, ws, { id: replacement }))[0]!.goalId).toBe(hajjId);
+      // …and deleting the edited transfer still leaves the goal as it was before any of it.
+      await voidTransaction(database, ws, replacement);
       await expect(snapshot()).resolves.toEqual(before);
-      await expect(setAsideFor(hajjId, rdn.id)).resolves.toBe(2_000_000);
+    });
+
+    it('an edit that is no longer a transfer drops the tag and leaves the goal as before the transfer', async () => {
+      const before = await snapshot();
+      const food = await createAccount(database, ws, { name: 'Food', kind: 'expense', subtype: 'category', currency: null });
+      const result = await park(3_000_000, hajjId);
+
+      const replacement = await replaceTransaction(database, ws, result.transactionId, {
+        occurredOn: '2026-09-05',
+        description: 'Dinner',
+        lines: [
+          { accountId: food.id, amountMinor: 300_000, currency: 'IDR' },
+          { accountId: bca.id, amountMinor: -300_000, currency: 'IDR' },
+        ],
+      });
+
+      await expect(snapshot()).resolves.toEqual(before);
+      expect((await listTransactions(database, ws, { id: replacement }))[0]!.goalId).toBeNull();
     });
 
     it('voidTaggedTransfer still does the same, once', async () => {
@@ -401,20 +425,23 @@ describe('deleting or editing a tagged transfer through the ledger\'s own doors'
       await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(7_500_000);
     });
 
-    it('an edit that reposts the same money leaves them as before the transfer', async () => {
+    it('an edit that reposts the same money keeps the tag and parks the same money again', async () => {
       const before = await snapshot();
       const result = await toWise();
       const original = (await listTransactions(database, ws, { id: result.transactionId }))[0]!;
 
-      await replaceTransaction(database, ws, result.transactionId, {
+      const replacement = await replaceTransaction(database, ws, result.transactionId, {
         occurredOn: original.occurredOn,
         description: original.description,
         lines: original.entries.map((entry) => ({ accountId: entry.accountId, amountMinor: entry.amountMinor, currency: entry.currency })),
         ratesToBase: { USD: 16_000 },
       });
 
+      // Exactly as right after the transfer: US$100,03 more on Wise, Rp 1.600.000 less on BCA.
+      await expect(setAsideFor(hajjId, bca.id)).resolves.toBe(5_900_000);
+      await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(15_004);
+      await voidTransaction(database, ws, replacement);
       await expect(snapshot()).resolves.toEqual(before);
-      await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(5_001);
     });
   });
 });

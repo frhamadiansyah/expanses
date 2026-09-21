@@ -1,8 +1,8 @@
 import { inflowTo, type MoneyLine, movedAmount, outflowFrom, uuidv7 } from '@expanses/core';
-import { and, asc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
-import { accounts, entries } from '../schema';
+import { accounts, entries, transactions } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalDraws, goalEarmarks, goalStages, goals } from '../schema-goals';
 import { SPENDABLE_SUBTYPES } from './accounts';
@@ -113,6 +113,79 @@ export async function takeBackTaggedArrivalTx(tx: Db, ws: WorkspaceContext, tran
   for (const line of lines) {
     if (line.amountMinor > 0) await adjustSetAsideTx(tx, ws, goalId, line.accountId, -line.amountMinor);
   }
+}
+
+/** What a transfer tagged to a goal moved: in the source's currency, and what landed in the destination's. */
+export interface TaggedMove {
+  occurredOn: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amountMinor: number;
+  landedMinor: number;
+}
+
+/**
+ * Parks a posted transfer for a goal: tags the transaction, moves the goal's own promise off the source (spec §4.6) and
+ * sets what landed aside on the destination. `recordTaggedTransfer` and an edit of a tagged transfer
+ * (`replaceTransaction`) both call it, so an edited transfer leaves the goal exactly where a new one of that amount would.
+ * Returns what the goal now has set aside on the destination (0 when it cannot hold a set-aside).
+ */
+export async function parkForGoalTx(tx: Db, ws: WorkspaceContext, transactionId: string, goalId: string, move: TaggedMove): Promise<number> {
+  await tx.update(transactions).set({ goalId }).where(eq(transactions.id, transactionId));
+  if (!(await canHoldSetAside(tx, ws, move.toAccountId))) return 0;
+  // The goal's own promise on the source follows its money, so the goal does not count it in both places.
+  const [own] = await tx
+    .select({ amountMinor: goalEarmarks.amountMinor })
+    .from(goalEarmarks)
+    .where(and(eq(goalEarmarks.goalId, goalId), eq(goalEarmarks.accountId, move.fromAccountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
+  const moved = Math.min(move.amountMinor, own?.amountMinor ?? 0);
+  // Only where the draw that undoes it can be written: a database stopped at 49 parks exactly as it did before, the
+  // source promise untouched, so a void cannot leave the goal with no promise anywhere.
+  if (moved > 0 && (await setAsideTablesExist(tx))) {
+    await adjustSetAsideTx(tx, ws, goalId, move.fromAccountId, -moved);
+    // A move with no destination: the destination's own adjustment is taken back by voidTransactionTx. The draw is
+    // also what the monthly figure reads the move from, valued in base as the arrival is (goalContributionEvents).
+    await tx.insert(goalDraws).values({
+      id: uuidv7(),
+      workspaceId: ws.workspaceId,
+      transactionId,
+      goalId,
+      accountId: move.fromAccountId,
+      intent: 'move',
+      amountMinor: moved,
+      toAccountId: null,
+      toAmountMinor: null,
+      stageId: null,
+      wasWhole: 0,
+      wholeSince: null,
+      occurredOn: move.occurredOn,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  // The set-aside sits on the destination account, so it is counted in the destination account's own money —
+  // parking US$100 against a goal sets US$100 aside, never Rp 1.600.000 of a USD balance.
+  return adjustSetAsideTx(tx, ws, goalId, move.toAccountId, move.landedMinor);
+}
+
+/**
+ * The tagged move an edit's lines still make, or null when the edit is no longer a transfer between two of your own
+ * accounts (it spends, earns, or splits): then the tag has nothing left to follow. The exchange account's legs are not
+ * yours and are skipped.
+ */
+export async function taggedMoveOfTx(tx: Db, ws: WorkspaceContext, occurredOn: string, lines: readonly MoneyLine[]): Promise<TaggedMove | null> {
+  const ids = [...new Set(lines.map((line) => line.accountId))];
+  if (ids.length === 0) return null;
+  const rows = await tx
+    .select({ id: accounts.id, kind: accounts.kind, systemKey: accounts.systemKey })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids)));
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const own = lines.filter((line) => byId.get(line.accountId)?.systemKey == null);
+  if (own.some((line) => { const kind = byId.get(line.accountId)?.kind; return kind !== 'asset' && kind !== 'liability'; })) return null;
+  const out = own.filter((line) => line.amountMinor < 0);
+  const into = own.filter((line) => line.amountMinor > 0);
+  if (out.length !== 1 || into.length !== 1 || out[0]!.accountId === into[0]!.accountId) return null;
+  return { occurredOn, fromAccountId: out[0]!.accountId, toAccountId: into[0]!.accountId, amountMinor: -out[0]!.amountMinor, landedMinor: into[0]!.amountMinor };
 }
 
 /** Whether a carried answer still fits a replacement's lines: it still pays from the account, and a move still reaches its destination. */
