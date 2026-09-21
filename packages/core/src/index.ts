@@ -315,6 +315,10 @@ export {
 } from './coretax/converter';
 
 export { budgetSheet, type BudgetCap, type BudgetLine, type BudgetSheet, type BudgetSheetInput, type SavingsRow } from './budget/sheet';
+export { BUDGET_FREQUENCIES, type BudgetFrequency, perMonthMinor } from './budget/frequency';
+export { CATEGORY_NEEDS, type CategoryNeed, type NeedNode, needOf, type ResolvedNeed, resolveNeeds } from './budget/needs';
+export { emergencyMonthsFor, type Household, HOUSEHOLDS, INCOME_STABILITIES, type IncomeStability } from './budget/emergency-months';
+export { COMPULSORY_KINDS, type GoalClass, fundingOrder, goalClass } from './goals/classes';
 export {
   CalculatorError,
   type CalculatedStage,
