@@ -118,8 +118,9 @@ export async function securityOfHolding(db: Db, ws: WorkspaceContext, accountId:
 
 /**
  * Points a holding at a security, a broker, or both. An argument left undefined keeps what the link had; null
- * clears it. Linking a security carries the holding's own prices to it (the security's own price on a date stands)
- * and sets the holding's lot size to the security's.
+ * clears it. Linking a security moves the holding's own prices to it (the security's own price on a date stands),
+ * removes the holding's own rows and sets the holding's lot size to the security's. Unlinking gives the holding the
+ * security's latest price as its own (ruling m12).
  */
 export async function linkHoldingTx(
   tx: Db,
@@ -187,6 +188,8 @@ export async function linkHoldingTx(
     .onConflictDoUpdate({ target: holdingLinks.accountId, set: { securityId, brokerAccountId } });
 
   if (security && security.id !== existing?.securityId) {
+    // Ruling m12: the holding's own prices move to the security — the security's own price stands on any day it has
+    // one — and then the holding's rows are removed, so no stale series is left to come back on an unlink.
     const own = await tx.select().from(prices).where(and(eq(prices.accountId, input.accountId), eq(prices.workspaceId, ws.workspaceId)));
     for (const row of own) {
       await tx
@@ -194,10 +197,25 @@ export async function linkHoldingTx(
         .values({ securityId: security.id, workspaceId: ws.workspaceId, onDate: row.onDate, priceMicro: row.priceMicro, source: 'manual', createdAt: now })
         .onConflictDoNothing();
     }
+    await tx.delete(prices).where(and(eq(prices.accountId, input.accountId), eq(prices.workspaceId, ws.workspaceId)));
     await tx
       .update(assetProfiles)
       .set({ lotSize: security.lotSize, updatedAt: now })
       .where(and(eq(assetProfiles.accountId, input.accountId), eq(assetProfiles.workspaceId, ws.workspaceId)));
+  }
+  if (!security && existing?.securityId) {
+    // Unlinked: the holding is priced by its own rows again, and it has none (m12), so it takes the security's latest
+    // price as its own — the value it showed a moment ago, never an old series of its own.
+    const [latest] = await tx
+      .select({ onDate: securityPrices.onDate, priceMicro: securityPrices.priceMicro })
+      .from(securityPrices)
+      .where(and(eq(securityPrices.securityId, existing.securityId), eq(securityPrices.workspaceId, ws.workspaceId)))
+      .orderBy(desc(securityPrices.onDate))
+      .limit(1);
+    if (latest) {
+      const row = { accountId: input.accountId, workspaceId: ws.workspaceId, onDate: latest.onDate, priceMicro: latest.priceMicro, source: 'manual' as const, createdAt: now };
+      await tx.insert(prices).values(row).onConflictDoUpdate({ target: [prices.accountId, prices.onDate], set: row });
+    }
   }
 }
 

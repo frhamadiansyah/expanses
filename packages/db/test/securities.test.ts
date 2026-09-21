@@ -175,8 +175,43 @@ describe('linkHolding', () => {
       { onDate: '2026-09-05', priceMicro: 9_400_000_000 },
     ]);
     expect((await getAssetProfile(database, ws, b.id))!.lotSize).toBe(100);
-    // The holding's own rows are left where they were.
-    expect(await database.db.values(sql`SELECT count(*) FROM prices WHERE account_id = ${b.id}`)).toEqual([[2]]);
+    // Ruling m12: once moved, the holding's own rows are removed — no stale series is left to come back.
+    expect(await database.db.values(sql`SELECT count(*) FROM prices WHERE account_id = ${b.id}`)).toEqual([[0]]);
+    expect(await database.db.values(sql`SELECT count(*) FROM prices WHERE account_id = ${a.id}`)).toEqual([[0]]);
+  });
+
+  it('gives an unlinked holding the security’s latest price as its own, never its old series (m12)', async () => {
+    const a = await holding('A');
+    await upsertPrice(database, ws, { accountId: a.id, onDate: '2026-01-05', priceMicro: 8_750_000_000 });
+    await linkHolding(database, ws, { accountId: a.id, security: bbca });
+    const [security] = await listSecurities(database, ws);
+    await upsertSecurityPrice(database, ws, { securityId: security!.id, onDate: '2026-09-19', priceMicro: 9_775_000_000 });
+    await upsertSecurityPrice(database, ws, { securityId: security!.id, onDate: '2026-06-01', priceMicro: 9_100_000_000 });
+    await linkHolding(database, ws, { accountId: a.id, security: null });
+    expect(await listPrices(database, ws, a.id)).toEqual([{ onDate: '2026-09-19', priceMicro: 9_775_000_000 }]);
+    // The security keeps its whole series for every other holding of it.
+    expect(await listSecurityPrices(database, ws, security!.id)).toHaveLength(3);
+  });
+
+  it('unlinks a security with no price to nothing, and a broker change alone moves no price (m12)', async () => {
+    const a = await holding('A');
+    await linkHolding(database, ws, { accountId: a.id, security: bbca });
+    await linkHolding(database, ws, { accountId: a.id, brokerAccountId: stockbit.id });
+    await linkHolding(database, ws, { accountId: a.id, brokerAccountId: null });
+    expect(await database.db.values(sql`SELECT count(*) FROM prices WHERE account_id = ${a.id}`)).toEqual([[0]]);
+    await linkHolding(database, ws, { accountId: a.id, security: null });
+    expect(await listPrices(database, ws, a.id)).toEqual([]);
+  });
+
+  it('re-points a holding to another security with no stale own price to bring back (m12)', async () => {
+    const a = await holding('A');
+    await upsertPrice(database, ws, { accountId: a.id, onDate: '2026-01-05', priceMicro: 8_750_000_000 });
+    await linkHolding(database, ws, { accountId: a.id, security: bbca });
+    await linkHolding(database, ws, { accountId: a.id, security: { ...bbca, ticker: 'BBRI', name: 'BBRI name' } });
+    const bbri = (await listSecurities(database, ws)).find((s) => s.ticker === 'BBRI')!;
+    // Priced by BBRI alone: BBCA's series stays BBCA's, and the holding's old row was removed on the first link.
+    expect(await listSecurityPrices(database, ws, bbri.id)).toEqual([]);
+    expect(await listPrices(database, ws, a.id)).toEqual([]);
   });
 
   it('refuses a broker the owner closed (m10)', async () => {
