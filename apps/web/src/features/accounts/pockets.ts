@@ -32,6 +32,17 @@ export function readPockets(rows: readonly PocketDraft[]): { currency: string; o
   return rows.map((row) => ({ currency: row.currency, openingBalanceMinor: row.balance.trim() ? parseMajor(row.balance, row.currency) : 0, typedRate: row.rate }));
 }
 
+/**
+ * Pocket `index` given `currency`. When another pocket already holds it the two rows swap places, each keeping its
+ * own balance and rate, so a balance is never re-read at another currency's scale and no currency is listed twice.
+ * Otherwise the row takes the currency and keeps its text, re-read in the new currency when saved (spec §5).
+ */
+export function choosePocketCurrency(rows: readonly PocketDraft[], index: number, currency: string): PocketDraft[] {
+  const other = rows.findIndex((row, j) => j !== index && row.currency === currency);
+  if (other === -1) return rows.map((row, j) => (j === index ? { ...row, currency } : row));
+  return rows.map((row, j) => (j === index ? rows[other]! : j === other ? rows[index]! : row));
+}
+
 export const nextPocketCurrency = (rows: readonly PocketDraft[]): string => CURRENCIES.find((c) => !rows.some((row) => row.currency === c.code))?.code ?? CURRENCIES[0]!.code;
 
 /** An ordinary transfer draft: the Move screen saves through `formToPost` like the Transfer tab. */

@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { bankRateText, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
+import { bankRateText, choosePocketCurrency, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -48,6 +48,17 @@ describe('the pockets form', () => {
 
   it('refuses a figure the pocket’s currency cannot hold, rather than rounding it', () => {
     expect(() => readPockets([{ currency: 'IDR', balance: '5400000,50', rate: '' }])).toThrow();
+  });
+
+  it('swaps two pockets when one is given a currency the other holds, each balance staying with its currency', () => {
+    const rows = [
+      { currency: 'IDR', balance: '5.400.000', rate: '' },
+      { currency: 'USD', balance: '2400.00', rate: '16250' },
+      { currency: 'SGD', balance: '', rate: '' },
+    ];
+    expect(choosePocketCurrency(rows, 0, 'USD')).toEqual([rows[1], rows[0], rows[2]]);
+    // A currency no other pocket holds is taken as it is; the typed text is kept and re-read in it.
+    expect(choosePocketCurrency(rows, 2, 'JPY')).toEqual([rows[0], rows[1], { currency: 'JPY', balance: '', rate: '' }]);
   });
 
   it('offers the first currency not yet used', () => {
