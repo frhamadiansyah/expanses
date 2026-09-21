@@ -61,6 +61,24 @@ describe('portfolioView', () => {
     ]);
   });
 
+  it('orders brokers by their total, not by the order the holdings came in', () => {
+    const mandiriFirst = { ...withoutFund, values: [...withoutFund.values].sort((a, b) => Number(b.accountId.endsWith('-ms')) - Number(a.accountId.endsWith('-ms'))) };
+    expect(mandiriFirst.values[0]!.accountId).toMatch(/-ms$/);
+    expect(portfolioView(mandiriFirst).brokers.map((b) => b.name)).toEqual(['Interactive Brokers', 'Stockbit', 'Mandiri Sekuritas']);
+  });
+
+  it('lists market-valued holdings only: a fund valued by hand (a snapshot) stays on Assets', () => {
+    const manual = { ...value('manual', 'IDR', 100, 2_000_000, 1_800_000), mode: 'snapshot' } as AssetValueRow;
+    const view = portfolioView({ ...inputs, values: [...inputs.values, manual], profiles: [...inputs.profiles, profile('manual', 'fund')] });
+    expect(view.stocks.some((s) => s.accountId === 'manual')).toBe(false);
+  });
+
+  it('calls a broker it cannot find "Broker", and the no-broker row has no account', () => {
+    const view = portfolioView({ ...withoutFund, links: withoutFund.links.map((l) => (l.accountId === 'aapl-ib' ? { ...l, brokerAccountId: 'gone' } : l)) });
+    expect(view.brokers.find((b) => b.key === 'gone')).toMatchObject({ name: 'Broker', accountId: 'gone' });
+    expect(portfolioView(inputs).brokers.find((b) => b.key === NO_BROKER)!.accountId).toBeNull();
+  });
+
   it('keeps an unlinked fund as its own row under No broker named, and leaves gold and sold holdings out', () => {
     const view = portfolioView(inputs);
     expect(view.stocks.find((s) => s.accountId === 'fund')).toMatchObject({ securityId: null, title: 'fund' });
@@ -90,6 +108,9 @@ describe('portfolioView', () => {
   it('refuses every total it has no rate for, naming the currency, and shares nothing out of a whole it cannot add up', () => {
     const view = portfolioView({ ...withoutFund, ratesToBase: {} });
     expect(view.summary).toMatchObject({ valueBaseMinor: null, missingRates: ['USD'] });
+    // A stock with no rate has no base value — never 0, which would read as a −100% gain — while a rupiah one is exact.
+    expect(view.stocks.find((s) => s.title === 'AAPL')!.valueBaseMinor).toBeNull();
+    expect(view.stocks.find((s) => s.title === 'BBCA')!.valueBaseMinor).toBe(14_662_500);
     expect(view.brokers.find((b) => b.name === 'Interactive Brokers')!.total).toEqual({ totalMinor: null, missing: ['USD'] });
     // Stockbit's own figure is exact in rupiah; only its share of a total nobody can add up is withheld.
     expect(view.brokers.map((b) => b.sharePercent)).toEqual([null, null, null]);
@@ -102,6 +123,8 @@ describe('priceChangeLines', () => {
     const bbca = portfolioView(inputs).stocks.find((s) => s.title === 'BBCA')!;
     expect(priceChangeLines(bbca.holdings, 9_550_000_000, 9_775_000_000).map((l) => [l.valueMinor, l.changeMinor])).toEqual([[9_775_000, 225_000], [4_887_500, 112_500]]);
     expect(priceChangeLines(bbca.holdings, null, 9_775_000_000)[0]!.changeMinor).toBeNull();
+    // At a price the fixture's values do not already reflect, each line is worked out from its units, not its old value.
+    expect(priceChangeLines(bbca.holdings, 9_550_000_000, 10_000_000_000).map((l) => [l.valueMinor, l.changeMinor])).toEqual([[10_000_000, 450_000], [5_000_000, 225_000]]);
   });
 });
 

@@ -45,6 +45,14 @@ describe('the bundled lists', () => {
     const idx = await loadSecurityList('idx');
     expect(idx.asOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(Array.isArray(idx.securities)).toBe(true);
+    if (idxPending) expect(idx.securities).toEqual([]);
+  });
+  it('never hands out the US list as the IDX one — every row it loads is on an IDX market', async () => {
+    const idx = (await loadSecurityList('idx')).securities;
+    expect(idx.filter((s) => MARKETS[s.market]?.list !== 'idx')).toEqual([]);
+    expect(idx).toHaveLength((idxFile as ListFile).rows.length);
+    const us = (await loadSecurityList('us')).securities;
+    expect(us.filter((s) => MARKETS[s.market]?.list !== 'us')).toEqual([]);
   });
 });
 
@@ -61,6 +69,9 @@ describe('validateSecurityList', () => {
       'Row 5: unknown market "NASDAQ"', // a US market is not the IDX list's, although AAPL has an IDX ticker's shape
     ]);
     expect(validateSecurityList({ rows: [] }, 'idx')).toEqual(['asOf must be YYYY-MM-DD']);
+    // An IDX ticker is exactly four letters.
+    const shapes = { asOf: '2026-09-21', rows: [['BBC', 'Three', 'IDX', 's'], ['BBCAX', 'Five', 'IDX', 's'], ['BB1A', 'Digit', 'IDX', 's'], ['BMRI', 'Four', 'IDX', 's']] };
+    expect(validateSecurityList(shapes, 'idx')).toEqual(['Row 1: "BBC" is not a IDX ticker', 'Row 2: "BBCAX" is not a IDX ticker', 'Row 3: "BB1A" is not a IDX ticker']);
   });
 });
 
@@ -85,6 +96,20 @@ describe('searchSecurities', () => {
   it('ranks exact ticker, ticker prefix, a word of the name, then the name containing it', () => {
     expect(searchSecurities(rows, 'app').map((r) => r.ticker)).toEqual(['APPF', 'AAPL', 'AMAT', 'PAPL']);
     expect(searchSecurities(rows, ' aap ').map((r) => r.ticker)).toEqual(['AAP', 'AAPL']);
+  });
+  it('puts a word of the name starting with the query before a name that only contains it, whatever the tickers', () => {
+    const words = [
+      { ticker: 'AAAA', name: 'Pineapple', market: 'NYSE' },
+      { ticker: 'ZZZZ', name: 'Apple Hospitality', market: 'NYSE' },
+    ];
+    expect(searchSecurities(words, 'apple').map((r) => r.ticker)).toEqual(['ZZZZ', 'AAAA']);
+  });
+  it('breaks a tie between one ticker on two markets by the market', () => {
+    const twice = [
+      { ticker: 'SHEL', name: 'Shell', market: 'NYSE' },
+      { ticker: 'SHEL', name: 'Shell', market: 'NASDAQ' },
+    ];
+    expect(searchSecurities(twice, 'shel').map((r) => r.market)).toEqual(['NASDAQ', 'NYSE']);
   });
   it('finds a security with no ticker by name, and nothing for an empty query', () => {
     expect(searchSecurities(rows, 'private').map((r) => r.name)).toEqual(['Private fund']);
