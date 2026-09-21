@@ -152,6 +152,26 @@ describe('a holding in another currency', () => {
     expect(sum(lines.filter((l) => l.currency === 'IDR'))).toBe(0);
   });
 
+  it('records an income whose tax took all of it: no cash line and no amount asked (m1)', () => {
+    // $5,40 of dividend, $5,40 withheld: nothing reaches the rupiah account, and no rupiah figure is needed.
+    const lines = tradePostings(input({ kind: 'income', grossMinor: 540, taxMinor: 540 }), heldTen, crossCurrency);
+    expect(lines.some((l) => l.accountId === 'bca' || l.accountId === 'exchange')).toBe(false);
+    expect(lines.every((l) => l.amountMinor !== 0)).toBe(true);
+    expect(amountFor(lines, 'final-tax')).toBe(540);
+    expect(amountFor(lines, 'investment-income')).toBe(-540);
+    expect(sum(lines.filter((l) => l.currency === 'USD'))).toBe(0);
+  });
+
+  it('pays the shortfall from the account when an income’s tax is more than the income (m1)', () => {
+    // $5,40 of dividend, $6,40 withheld: $1,00 more than it brought, and Rp 16.231 left the account for it.
+    const lines = tradePostings(input({ kind: 'income', grossMinor: 540, taxMinor: 640, cashMinor: 16_231 }), heldTen, crossCurrency);
+    expect(amountFor(lines, 'bca')).toBe(-16_231);
+    expect(amountFor(lines, 'final-tax')).toBe(640);
+    expect(amountFor(lines, 'investment-income')).toBe(-540);
+    expect(sum(lines.filter((l) => l.currency === 'USD'))).toBe(0);
+    expect(sum(lines.filter((l) => l.currency === 'IDR'))).toBe(0);
+  });
+
   it('posts no zero cash line for a sell in one currency whose fees ate the proceeds', () => {
     const lines = tradePostings(input({ kind: 'sell', unitsMicro: 3_000_000, grossMinor: 50_000, feeMinor: 50_000 }), heldTen, accounts);
     expect(lines.some((l) => l.accountId === 'bca')).toBe(false);
