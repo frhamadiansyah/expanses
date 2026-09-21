@@ -1,4 +1,4 @@
-import { exchangeCost, exchangeLines, transferLines } from '@expanses/core';
+import { exchangeCost, exchangeLines, openingBalanceLines, transferLines } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -6,6 +6,7 @@ import {
   archiveAccount,
   assetValuesAt,
   coretaxInputsFor,
+  createAccount,
   type Database,
   getAssetProfile,
   listAccounts,
@@ -18,9 +19,12 @@ import {
   pocketName,
   pocketParentIds,
   postTransaction,
+  recordValuation,
   renameAccount,
+  saveAssetProfile,
   schema,
   systemAccountId,
+  voidTransaction,
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -189,6 +193,94 @@ describe('what the parent is worth to every reader', () => {
       [pockets[1]!.id, 'BCA Pocket Valas · SGD', '0102', 'SGD', 115_000],
       [pockets[2]!.id, 'BCA Pocket Valas · IDR', '0102', 'IDR', 5_400_000],
     ]);
+  });
+});
+
+describe('openingsOf: filters and order (M-3, b12/b13)', () => {
+  it('finds the earliest posted opening for an account, ignoring a voided one and a later one', async () => {
+    const { parent, pockets } = await valas();
+    const equityId = await systemAccountId(database.db, ws, 'opening_balance');
+    const jpy = await addPocket(database, ws, { parentId: parent.id, currency: 'JPY' });
+    // A typo'd opening, voided — b12: must not be read even though it is chronologically earliest of all three.
+    const voidedId = await postTransaction(database, ws, {
+      occurredOn: '2025-05-01',
+      description: 'Opening balance: JPY (typo)',
+      lines: openingBalanceLines({ accountId: jpy.id, kind: 'asset', balanceMinor: 10_000, currency: 'JPY', equityAccountId: equityId }),
+      ratesToBase: { JPY: 999 },
+    });
+    await voidTransaction(database, ws, voidedId);
+    // The earliest of the two posted openings — b13: must not be the later one.
+    await postTransaction(database, ws, {
+      occurredOn: '2025-06-01',
+      description: 'Opening balance: JPY',
+      lines: openingBalanceLines({ accountId: jpy.id, kind: 'asset', balanceMinor: 30_000, currency: 'JPY', equityAccountId: equityId }),
+      ratesToBase: { JPY: 108.3 },
+    });
+    await postTransaction(database, ws, {
+      occurredOn: '2025-07-01',
+      description: 'Opening balance: JPY (again)',
+      lines: openingBalanceLines({ accountId: jpy.id, kind: 'asset', balanceMinor: 30_000, currency: 'JPY', equityAccountId: equityId }),
+      ratesToBase: { JPY: 200 },
+    });
+    const openings = await openingsOf(database, ws, [jpy.id, pockets[0]!.id]);
+    expect(openings[jpy.id]).toEqual({ occurredOn: '2025-06-01', amountMinor: 30_000, currency: 'JPY', fxRateToBase: 108.3 });
+    // Untouched account still reads its own single opening correctly.
+    expect(openings[pockets[0]!.id]!.fxRateToBase).toBe(15_940);
+  });
+});
+
+describe('archived pockets: the one-per-currency rule, the archive guard, and every reader (I-3, M-4: c7/c10)', () => {
+  /** Two pockets, both opened with nothing in them, so either can be archived without a transfer first. */
+  const emptyPockets = () =>
+    openPocketedAccount(database, ws, { item: 'savings', name: 'Empty Multi', openedOn: '2026-01-01', pockets: [{ currency: 'USD' }, { currency: 'SGD' }] });
+
+  it('c7 — archiving a pocket frees its currency for addPocket to reuse', async () => {
+    const { parent, pockets } = await emptyPockets();
+    await archiveAccount(database, ws, pockets[0]!.id); // USD
+    const usd2 = await addPocket(database, ws, { parentId: parent.id, currency: 'USD' });
+    expect(usd2.currency).toBe('USD');
+  });
+
+  it('c10 — a parent can be archived once every one of its pockets is archived, not before', async () => {
+    const { parent, pockets } = await emptyPockets();
+    await archiveAccount(database, ws, pockets[0]!.id);
+    await expect(archiveAccount(database, ws, parent.id)).rejects.toThrow('still has pockets: SGD');
+    await archiveAccount(database, ws, pockets[1]!.id);
+    await archiveAccount(database, ws, parent.id); // now succeeds
+    expect((await listAccounts(database, ws)).some((a) => a.id === parent.id)).toBe(false);
+  });
+
+  it('e3/d2 — with all pockets archived but the parent left open, the parent stays invisible and still refuses postings', async () => {
+    const { parent, pockets } = await emptyPockets();
+    await archiveAccount(database, ws, pockets[0]!.id);
+    await archiveAccount(database, ws, pockets[1]!.id);
+    // e3: pocketParentIds (and so assetValuesAt) still recognises it as a parent from the archived rows —
+    // an empty parent must not reappear as a 0-valued row in net worth, idle cash or goal funding.
+    const values = await assetValuesAt(database, ws, '2026-09-21');
+    expect(values.some((row) => row.accountId === parent.id)).toBe(false);
+    // d2: the ledger's refusal is not limited to a parent with open pockets. The parent's own currency is always
+    // the workspace base (IDR), so the other leg is an ordinary IDR account — not one of the (now archived) pockets,
+    // which would confound the refusal with a currency mismatch.
+    const sink = await createAccount(database, ws, { name: 'Sink', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    await expect(
+      postTransaction(database, ws, {
+        occurredOn: '2026-09-21',
+        description: 'Into the emptied parent',
+        lines: transferLines({ fromAccountId: sink.id, toAccountId: parent.id, amountMinor: 1_000, currency: 'IDR' }),
+      }),
+    ).rejects.toMatchObject({ code: 'POCKET_PARENT' });
+  });
+
+  it('e2 — an archived non-pocket asset with a manual valuation leaves assetValuesAt and netWorthAt entirely', async () => {
+    const house = await createAccount(database, ws, { name: 'Empty Land', kind: 'asset', subtype: 'property', currency: 'IDR' });
+    await saveAssetProfile(database, ws, { accountId: house.id, assetKind: 'property' });
+    await recordValuation(database, ws, { accountId: house.id, asOf: '2026-01-01', valueMinor: 500_000_000, basis: 'appraisal' });
+    expect((await assetValuesAt(database, ws, '2026-09-21')).some((row) => row.accountId === house.id)).toBe(true);
+    expect((await netWorthAt(database, ws, '2026-09-21', {})).assetsMinor).toBe(500_000_000);
+
+    await archiveAccount(database, ws, house.id);
+    expect((await assetValuesAt(database, ws, '2026-09-21')).some((row) => row.accountId === house.id)).toBe(false);
+    expect((await netWorthAt(database, ws, '2026-09-21', {})).assetsMinor).toBe(0);
   });
 });
 

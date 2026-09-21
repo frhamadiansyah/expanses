@@ -1,4 +1,4 @@
-import { expenseLines } from '@expanses/core';
+import { expenseLines, transferLines } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   AccountError,
@@ -8,9 +8,11 @@ import {
   listAccounts,
   listEarmarks,
   nativeBalances,
+  openCashAccount,
   postTransaction,
   saveEarmark,
   saveGoal,
+  voidTransaction,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -93,6 +95,80 @@ describe('review fixes: archiving with a balance', () => {
     expect((await nativeBalances(database, ws))[equity.id]).toBe(2_000_000);
     const other = (await listAccounts(database, ws)).find((a) => a.name === 'Miscellaneous')!;
     await archiveAccount(database, ws, other.id);
+  });
+});
+
+describe('checkPocketTx: every refusal of spec §3.4 (I-2)', () => {
+  // addPocket and openPocketedAccount never reach c2 or c5 (they only ever create the first generation of pockets,
+  // and openCashAccountTx's own guards keep them from a currency the parent already has). createAccount and
+  // openCashAccount take parentId directly from any caller, so every rule must hold through them too.
+
+  it('c1 — only a money (asset) account holds pockets, even when the parent and child are the same kind', async () => {
+    const { database, ws } = await setupDb();
+    const card = await createAccount(database, ws, { name: 'Visa', kind: 'liability', subtype: 'credit_card', currency: 'IDR' });
+    // Same kind (liability/liability) passes the earlier "parent must be the same kind" check; c1 is what refuses it.
+    await expect(
+      createAccount(database, ws, { name: 'Visa · USD', kind: 'liability', subtype: 'credit_card', currency: 'USD', parentId: card.id }),
+    ).rejects.toThrow('Only a money account holds pockets');
+  });
+
+  it('c2 — a pocket cannot hold pockets of its own', async () => {
+    const { database, ws } = await setupDb();
+    const parent = await createAccount(database, ws, { name: 'Multi', kind: 'asset', subtype: 'savings', currency: 'IDR' });
+    const pocket = await openCashAccount(database, ws, { item: 'savings', name: 'Multi · USD', currency: 'USD', parentId: parent.id });
+    await expect(
+      openCashAccount(database, ws, { item: 'savings', name: 'Nested', currency: 'SGD', parentId: pocket.id }),
+    ).rejects.toThrow('A pocket cannot hold pockets of its own');
+  });
+
+  it('c3 — an archived parent refuses a new pocket', async () => {
+    const { database, ws } = await setupDb();
+    const parent = await createAccount(database, ws, { name: 'Old Multi', kind: 'asset', subtype: 'savings', currency: 'IDR' });
+    await archiveAccount(database, ws, parent.id);
+    await expect(
+      openCashAccount(database, ws, { item: 'savings', name: 'Old Multi · USD', currency: 'USD', parentId: parent.id }),
+    ).rejects.toThrow('Old Multi is archived');
+  });
+
+  it('c4 — a pocket is the same kind of account as its parent (a bank child of a savings parent)', async () => {
+    const { database, ws } = await setupDb();
+    const parent = await createAccount(database, ws, { name: 'Savings Multi', kind: 'asset', subtype: 'savings', currency: 'IDR' });
+    await expect(
+      openCashAccount(database, ws, { item: 'bank', name: 'Savings Multi · USD', currency: 'USD', parentId: parent.id }),
+    ).rejects.toThrow('A pocket is the same kind of account as Savings Multi');
+  });
+
+  it('c5 — an account already holding money cannot become a parent, through createAccount', async () => {
+    const { database, ws } = await setupDb();
+    const usd = await createAccount(database, ws, {
+      name: 'Mandiri USD',
+      kind: 'asset',
+      subtype: 'savings',
+      currency: 'USD',
+      openingBalanceMinor: 180_000,
+      openingRateToBase: 15_720,
+      openedOn: '2026-01-01',
+    });
+    await expect(
+      createAccount(database, ws, { name: 'Mandiri USD · SGD', kind: 'asset', subtype: 'savings', currency: 'SGD', parentId: usd.id }),
+    ).rejects.toThrow('already holds money of its own, so it cannot hold pockets');
+  });
+
+  it('c5 — an entry that was later voided still counts ("posted or void", spec §3.4), through openCashAccount', async () => {
+    const { database, ws } = await setupDb();
+    const bank = await createAccount(database, ws, { name: 'Jenius', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const sink = await createAccount(database, ws, { name: 'Sink', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    const txId = await postTransaction(database, ws, {
+      occurredOn: '2026-01-01',
+      description: 'Deposit',
+      lines: transferLines({ fromAccountId: sink.id, toAccountId: bank.id, amountMinor: 500_000, currency: 'IDR' }),
+    });
+    await voidTransaction(database, ws, txId);
+    // Its posted balance is back to zero, but it has held money — the void does not erase that.
+    expect((await nativeBalances(database, ws))[bank.id] ?? 0).toBe(0);
+    await expect(
+      openCashAccount(database, ws, { item: 'bank', name: 'Jenius · USD', currency: 'USD', parentId: bank.id }),
+    ).rejects.toThrow('already holds money of its own, so it cannot hold pockets');
   });
 });
 
