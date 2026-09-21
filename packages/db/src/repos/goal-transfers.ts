@@ -120,11 +120,11 @@ export async function recordTaggedTransfer(database: Database, ws: WorkspaceCont
       .from(goalEarmarks)
       .where(and(eq(goalEarmarks.goalId, input.goalId), eq(goalEarmarks.accountId, input.fromAccountId), eq(goalEarmarks.workspaceId, ws.workspaceId)));
     const moved = Math.min(input.amountMinor, own?.amountMinor ?? 0);
-    if (moved > 0) {
+    // Only where the draw that undoes it can be written: a database stopped at 49 parks exactly as it did before, the
+    // source promise untouched, so a void cannot leave the goal with no promise anywhere.
+    if (moved > 0 && (await setAsideTablesExist(tx))) {
       await adjustSetAsideTx(tx, ws, input.goalId, input.fromAccountId, -moved);
       await recordContributionTx(tx, ws, input.goalId, input.fromAccountId, -moved, input.occurredOn);
-    }
-    if (moved > 0 && (await setAsideTablesExist(tx))) {
       // A move with no destination: the destination's own adjustment is taken back by voidTransactionTx.
       await tx.insert(goalDraws).values({
         id: uuidv7(),

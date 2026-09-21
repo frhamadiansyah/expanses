@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   type AccountRow,
   addPhoto,
   createAccount,
+  createDatabase,
   createWorkspace,
   type Database,
   goalContributionsFor,
@@ -10,6 +11,8 @@ import {
   listEarmarks,
   listPhotos,
   listTransactions,
+  migrate,
+  MIGRATIONS,
   nativeBalances,
   recordTaggedTransfer,
   recordTrade,
@@ -23,6 +26,7 @@ import {
   voidTransaction,
   type WorkspaceContext,
 } from '../src/index';
+import { createNodeExecutor, type NodeExecutor } from '../src/node';
 import { setupDb } from './helpers';
 
 const TODAY = '2026-09-12';
@@ -409,5 +413,39 @@ describe('deleting or editing a tagged transfer through the ledger\'s own doors'
       await expect(snapshot()).resolves.toEqual(before);
       await expect(setAsideFor(hajjId, wise.id)).resolves.toBe(5_001);
     });
+  });
+});
+
+/*
+ * Before 0050 there is no draw to undo a moved promise with, so the tagged transfer must not move one: the source keeps
+ * its promise exactly as it did before the feature, and a void takes only the arrival back.
+ */
+describe('a tagged transfer on a database stopped at 49', () => {
+  let executor: NodeExecutor | undefined;
+  afterEach(() => executor?.close());
+
+  it('parks exactly as before, and a void leaves the goal its source promise', async () => {
+    executor = createNodeExecutor();
+    const older = createDatabase(executor);
+    await migrate(older, MIGRATIONS.filter((m) => m.version <= 49));
+    const oldWs = await createWorkspace(older, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    const jenius = await createAccount(older, oldWs, { name: 'Jenius', kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 42_500_000, openedOn: '2026-01-01' });
+    const bank = await createAccount(older, oldWs, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    const umrah = await saveGoal(older, oldWs, { name: 'Umrah', kind: 'umrah', growthBps: 0, returnBps: 0, stages: [{ name: 'Tickets', targetMinor: 7_500_000, targetMonths: null, dueOn: '2027-03-31' }] });
+    await saveEarmark(older, oldWs, { goalId: umrah, accountId: jenius.id, amountMinor: 7_500_000 });
+    const held = async (accountId: string) => (await listEarmarks(older, oldWs)).find((row) => row.accountId === accountId)?.amountMinor ?? 0;
+    const month = async () => (await goalContributionsFor(older, oldWs, '2026-07'))[umrah] ?? 0;
+
+    const result = await recordTaggedTransfer(older, oldWs, { occurredOn: '2026-07-15', description: 'To BCA', amountMinor: 7_500_000, fromAccountId: jenius.id, toAccountId: bank.id, goalId: umrah });
+    expect(await held(jenius.id)).toBe(7_500_000);
+    expect(await held(bank.id)).toBe(7_500_000);
+    // The arrival only: no own move was logged against it.
+    expect(await month()).toBe(7_500_000);
+
+    await voidTaggedTransfer(older, oldWs, result.transactionId);
+    // Moving the source promise here left nothing anywhere after the void (and the month at −7.500.000).
+    expect(await held(jenius.id)).toBe(7_500_000);
+    expect(await held(bank.id)).toBe(0);
+    expect(await month()).toBe(0);
   });
 });
