@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { cx } from '../index';
+import { useWide } from './InsetList';
 import { planPanel } from './surface';
 
 /**
@@ -36,7 +37,7 @@ export function Panel({
   pad?: boolean;
   testId?: string;
 }) {
-  const plan = planPanel({ wide, pad });
+  const plan = planPanel({ wide: useWide(wide), pad });
   return (
     <section className={cx('w-full', plan.column && 'md:max-w-2xl')} style={{ marginBottom: plan.gap }}>
       {header && <PanelHeader title={header} trailing={trailing} />}

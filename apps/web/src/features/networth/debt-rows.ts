@@ -130,13 +130,22 @@ function cardDetail(facts: CardFacts | undefined, owedMinor: number, currency: s
 }
 
 /**
+ * What a loan or a card owes: the ledger's balance, billed and unbilled, instalments included, and never below
+ * nothing (a card paid past its bill owes nothing). The card's own page reads its Unpaid tile and its current
+ * balance from here, so the Debts page and the card can never disagree.
+ */
+export function owedMinor(balances: Readonly<Record<string, number>>, accountId: string): number {
+  return Math.max(0, displayAmount('liability', balances[accountId] ?? 0));
+}
+
+/**
  * Everything owed, in three groups. `today` picks each loan's current rate; it defaults to the real today.
  */
 export function groupDebts(input: DebtInputs, today: string = new Date().toISOString().slice(0, 10)): DebtSheet {
   const { accounts, balances, loans, cards, people, baseCurrency, ratesToBase } = input;
   const termsOf = new Map(loans.map((terms) => [terms.accountId, terms]));
   const byId = new Map(accounts.map((a) => [a.id, a]));
-  const owed = (id: string) => Math.max(0, displayAmount('liability', balances[id] ?? 0));
+  const owed = (id: string) => owedMinor(balances, id);
   const live = accounts.filter((a) => a.kind === 'liability' && a.archivedAt === null);
 
   const rows: DebtRow[] = [];

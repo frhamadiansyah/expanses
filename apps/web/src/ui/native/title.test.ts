@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { backLabel, type CornerAction, planCornerActions } from './title';
+import { backLabel, type CornerAction, LARGE_TITLE_FITS, planCornerActions, titleSteps } from './title';
 
 const search: CornerAction = { key: 'search', label: 'Search' };
 const add: CornerAction = { key: 'add', label: 'Add a transaction' };
@@ -35,5 +35,17 @@ describe('planCornerActions', () => {
 describe('backLabel', () => {
   it('names where back goes, not the word “Back”, and keeps the chevron with the name', () => {
     expect(backLabel('All cards')).toBe('‹ All cards');
+  });
+});
+
+describe('titleSteps', () => {
+  it('keeps a short title at the large size', () => {
+    expect(titleSteps('Cards & points')).toBe(false);
+    expect(titleSteps('x'.repeat(LARGE_TITLE_FITS))).toBe(false);
+  });
+
+  it('steps a name longer than a phone line down a size', () => {
+    expect(titleSteps('BCA KrisFlyer Visa Signature')).toBe(true);
+    expect(titleSteps('x'.repeat(LARGE_TITLE_FITS + 1))).toBe(true);
   });
 });

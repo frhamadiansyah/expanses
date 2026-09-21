@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith } from './add-transaction';
 import { addEvent } from './event-plan';
+import { cardSection } from './card-section';
 import { todayIn } from './today';
 
 /** The directory `photos/store.ts` keeps pictures in, a sibling of the database's `.expanses/` and never inside it. */
@@ -82,7 +83,7 @@ test('Paid with names each card by its digits, and choosing one sets the account
   });
   // A second card on the same account: one statement, two sets of digits.
   await page.goto('/cards');
-  await page.getByRole('link', { name: 'BCA KrisFlyer', exact: true }).click();
+  await page.getByRole('link', { name: /^BCA KrisFlyer(,|$)/ }).click();
   await page.getByLabel('Last 4 digits').fill('8802');
   await page.getByLabel('Whose card').fill('Spouse');
   await page.getByRole('button', { name: 'Add card' }).click();
@@ -453,7 +454,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
   });
   // A second card on the same account, so "which card" has a wrong answer available to be caught at.
   await page.goto('/cards');
-  await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
+  await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await page.getByLabel('Last 4 digits').fill('8802');
   await page.getByLabel('Whose card').fill('Spouse');
   await page.getByRole('button', { name: 'Add card' }).click();
@@ -544,7 +545,7 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
 /** A card with real terms, so the points engine has a scheme to measure a purchase against. */
 async function catalogueCard(page: Page, name: string, search: string, entryName: string) {
   await page.goto('/cards');
-  await page.getByRole('link', { name, exact: true }).click();
+  await page.getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -652,9 +653,9 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await page.goto('/accounts');
   await expect(page.getByRole('row').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
   await page.goto('/cards');
-  await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
-  await page.getByRole('radio', { name: 'Points' }).click();
-  const row = page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' });
+  await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await cardSection(page, 'Points');
+  const row = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
   await expect(row).toContainText('MCC 5411 · typed');
 });
 
@@ -1126,7 +1127,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   });
   // A second card on the same account, so "which card" is a real question with a wrong answer available.
   await page.goto('/cards');
-  await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
+  await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await page.getByLabel('Last 4 digits').fill('8802');
   await page.getByLabel('Whose card').fill('Spouse');
   await page.getByRole('button', { name: 'Add card' }).click();
@@ -1213,9 +1214,9 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   // The MCC: remembered for the merchant rather than typed onto this purchase, which is what the checkbox
   // promised. The points engine reads it back through `resolveMcc`, and says where it came from.
   await page.goto('/cards');
-  await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
-  await page.getByRole('radio', { name: 'Points' }).click();
-  const purchase = page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' });
+  await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await cardSection(page, 'Points');
+  const purchase = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
   await expect(purchase).toContainText('MCC 5411 · yours');
 });
 
@@ -1342,10 +1343,10 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
   await page.goto('/accounts');
   await expect(page.getByRole('row').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
   await page.goto('/cards');
-  await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
-  await page.getByRole('radio', { name: 'Points' }).click();
-  await expect(page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' })).toContainText('85.000');
-  await expect(page.locator('li:not([data-testid="statement-line"])', { hasText: 'Ranch Market' })).toContainText('50.000');
+  await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await cardSection(page, 'Points');
+  await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('85.000');
+  await expect(page.getByTestId('purchase').filter({ hasText: 'Ranch Market' })).toContainText('50.000');
 });
 
 /**
@@ -1497,9 +1498,9 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
 
   // It really is a card purchase with an MCC first, or the drop below proves nothing.
   await page.goto('/cards');
-  await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
-  await page.getByRole('radio', { name: 'Points' }).click();
-  await expect(page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' })).toContainText('MCC 5411 · typed');
+  await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await cardSection(page, 'Points');
+  await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toContainText('MCC 5411 · typed');
 
   // The refund, made from the receipt the purchase already has.
   await page.goto('/transactions');
@@ -1515,9 +1516,9 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
 
   // The card's own facts are gone with the purchase: no MCC, and no card on the row.
   await page.goto('/cards');
-  await page.getByRole('link', { name: 'KF Signature', exact: true }).click();
-  await page.getByRole('radio', { name: 'Points' }).click();
-  await expect(page.locator('li:not([data-testid="statement-line"])', { hasText: 'Superindo' })).toHaveCount(0);
+  await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
+  await cardSection(page, 'Points');
+  await expect(page.getByTestId('purchase').filter({ hasText: 'Superindo' })).toHaveCount(0);
 
   // Everything that was never a card's fact came across to the new id, all four at once.
   await page.goto('/transactions');

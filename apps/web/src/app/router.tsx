@@ -87,6 +87,8 @@ const linkSearch = (search: Record<string, unknown>): EventLinkSearch => ({ ws: 
 
 const rootRoute = createRootRoute({ component: Layout });
 
+const cardsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage });
+
 const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/', component: DashboardPage }),
   createRoute({
@@ -140,16 +142,21 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/pocket', component: AddPocketPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/move', component: MovePage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/cards/$cardId',
-    component: CardDetailPage,
-    validateSearch: (search: Record<string, unknown>): CardSearch => ({
-      tab: typeof search.tab === 'string' && ['statement', 'points', 'rules', 'card'].includes(search.tab) ? (search.tab as CardSearch['tab']) : undefined,
+  // The wallet and an open card are one screen: a card's page is a child of the wallet, so the stack stays mounted
+  // and the card itself can rise out of it to the top, as in Apple Wallet. A deep link opens straight into it.
+  cardsRoute.addChildren([
+    createRoute({ getParentRoute: () => cardsRoute, path: '/', component: () => null }),
+    createRoute({
+      getParentRoute: () => cardsRoute,
+      path: '$cardId',
+      component: CardDetailPage,
+      validateSearch: (search: Record<string, unknown>): CardSearch => ({
+        tab: typeof search.tab === 'string' && ['statement', 'points', 'rules', 'card'].includes(search.tab) ? (search.tab as CardSearch['tab']) : undefined,
+      }),
     }),
-  }),
+  ]),
+  // A static segment, so it outranks the wallet's `$cardId` however the two are nested.
+  createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
   // "new" is a static segment, which outranks the `$accountId` below it however they are ordered here.

@@ -1,12 +1,14 @@
 import { formatMinor, installmentSplit, minorToMajorString, parseMajor, transferLines } from '@expanses/core';
+import type { SpendLine } from '@expanses/core';
 import { type AccountRow, cardStatement, type CardRow, postTransaction } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { type ReactNode, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useInvalidateAll } from '../../lib/queries';
 import { cx, ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, ProgressBar, type Segment, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, ProgressBar, type Segment, SegmentedControl, SelectRow, TextRow, useWalletSlot } from '../../ui/native';
+import { categoryMark } from '../categories/CategoryIcon';
 import { CardFace } from './CardFace';
 import { bonusStanding, activeDuring } from './catalog-panel';
 import { cycleBack, dueDateAfter, dueIn } from './statement-dates';
@@ -39,6 +41,104 @@ function TileFigure({ children, testId }: { children: ReactNode; testId?: string
     <span data-testid={testId} className="tabular text-[22px] leading-[28px] font-extrabold tracking-[-0.02em] text-[var(--ph-ink)]">
       {children}
     </span>
+  );
+}
+
+/**
+ * One of Wallet's tiles under an open pass — "Balance JP¥584 [Add Money]": a small label, the figure large, and the
+ * one thing to do about it as a pill on the right. What the pill opens is drawn inside the tile, under the figure.
+ */
+function WalletTile({
+  label,
+  figure,
+  figureTestId,
+  caption,
+  action,
+  onAction,
+  testId,
+  children,
+}: {
+  label: string;
+  figure: ReactNode;
+  figureTestId?: string;
+  caption?: ReactNode;
+  action?: string;
+  onAction?: () => void;
+  testId?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div data-testid={testId} className="rounded-[14px] bg-[var(--ph-surface)] px-[16px] py-[12px]">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] leading-[18px] font-medium text-[var(--ph-ink-3)]">{label}</div>
+          <div data-testid={figureTestId} className="tabular truncate text-[28px] leading-[34px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">
+            {figure}
+          </div>
+          {caption && <div className="mt-[2px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{caption}</div>}
+        </div>
+        {action && (
+          <button
+            type="button"
+            onClick={onAction}
+            className="ph-focus min-h-[44px] shrink-0 rounded-full bg-[var(--ph-tint)] px-[18px] text-[15px] leading-[20px] font-semibold text-[var(--ph-surface)]"
+          >
+            {action}
+          </button>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Wallet's "Latest Transactions" under an open pass: the card's most recent purchases, each opening its receipt, and
+ * a last row that opens the whole statement.
+ */
+function LatestTransactions({
+  lines,
+  accounts,
+  currency,
+  onSeeAll,
+}: {
+  lines: readonly SpendLine[];
+  accounts: readonly AccountRow[];
+  currency: string;
+  onSeeAll: () => void;
+}) {
+  // One row per purchase, however many lines its split made, newest first.
+  const purchases = new Map<string, { id: string; on: string; description: string; categoryId: string; amountMinor: number }>();
+  for (const line of lines) {
+    const seen = purchases.get(line.transactionId);
+    if (seen) seen.amountMinor += line.amountMinor;
+    else purchases.set(line.transactionId, { id: line.transactionId, on: line.occurredOn, description: line.description, categoryId: line.categoryId, amountMinor: line.amountMinor });
+  }
+  const latest = [...purchases.values()].sort((a, b) => (a.on < b.on ? 1 : a.on > b.on ? -1 : 0)).slice(0, 5);
+  return (
+    <section data-testid="latest-transactions" className="mt-[8px]">
+      <h2 className="mb-[8px] px-[4px] text-[22px] leading-[28px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">Latest transactions</h2>
+      <InsetGroup>
+        {latest.length === 0 && <InsetRow title="No purchases this cycle" subtitle="What this card pays for shows here." />}
+        {latest.map((purchase) => {
+          const mark = categoryMark(purchase.categoryId, accounts);
+          return (
+            <InsetRow
+              key={purchase.id}
+              icon={<mark.Glyph size={16} strokeWidth={2.2} />}
+              iconColour={mark.colour}
+              title={purchase.description || mark.name || 'Purchase'}
+              subtitle={[mark.name, shortDate(purchase.on)].filter(Boolean).join(' · ')}
+              value={formatMinor(purchase.amountMinor, currency)}
+              valueTone="ink"
+              to="/transactions/$transactionId"
+              params={{ transactionId: purchase.id }}
+            />
+          );
+        })}
+        <InsetRow title={<span className="text-[var(--ph-tint)]">See all</span>} onClick={onSeeAll} />
+      </InsetGroup>
+    </section>
   );
 }
 
@@ -134,7 +234,7 @@ export function CardHero({
   pointsBalance,
   today,
   onTab,
-  tabs,
+  lines = [],
 }: {
   cp: CardPoints;
   accounts: readonly AccountRow[];
@@ -146,8 +246,8 @@ export function CardHero({
   pointsBalance: { total: number; posted: number; estimated: number } | null;
   today: string;
   onTab: (tab: CardTab, focusId?: string) => void;
-  /** The page's tabs, drawn under the two tiles. */
-  tabs: ReactNode;
+  /** The purchases the page has read for this card, newest cycle first: the latest of them are the summary's list. */
+  lines?: readonly SpendLine[];
 }) {
   const { database, ws } = useApp();
   const card = cp.card;
@@ -157,6 +257,16 @@ export function CardHero({
   const [shownIndex, setShownIndex] = useState(0);
   const [showHeld, setShowHeld] = useState(false);
   const shown = cards[Math.min(shownIndex, Math.max(0, cards.length - 1))];
+  /*
+   * Opened from the Wallet stack, the card is the stack's own element, raised over this spot at the width it had
+   * in the stack: the hero leaves it a slot of that size and draws no card of its own. The dots still choose which
+   * plastic card it shows.
+   */
+  const slot = useWalletSlot();
+  const setSlotShown = slot?.setShown;
+  useEffect(() => {
+    setSlotShown?.(shown ? { last4: shown.last4, holderName: shown.holderName } : null);
+  }, [setSlotShown, shown?.last4, shown?.holderName]);
   const limit = cp.terms?.creditLimitMinor ?? null;
   const plans = useInstallments(card.id);
   const holding = (plans.data ?? []).map((plan) => ({ plan, split: installmentSplit(plan, today) })).filter(({ split }) => split.unbilledMinor > 0);
@@ -199,37 +309,8 @@ export function CardHero({
     );
   };
 
-  return (
-    <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <div className="min-w-0">
-        <CardFace
-          issuer={issuer}
-          name={card.name}
-          last4={shown?.last4 ?? null}
-          holderName={shown?.holderName}
-          network={cp.catalog.entry?.network}
-          look={cp.catalog.entry?.look}
-          className="!w-[17rem] max-w-full"
-        />
-        {/* One statement can carry several cards; the dots show each one's face in turn. */}
-        {cards.length > 1 && (
-          <div className="mt-2 flex items-center justify-center gap-1.5" role="group" aria-label="Cards on this account">
-            {cards.map((piece, index) => (
-              <button
-                key={piece.id}
-                type="button"
-                aria-label={`Show card ending ${piece.last4 ?? 'unknown'}${piece.holderName ? `, ${piece.holderName}` : ''}`}
-                aria-pressed={index === shownIndex}
-                title={`···· ${piece.last4 ?? '????'}${piece.holderName ? ` ${piece.holderName}` : ''}`}
-                onClick={() => setShownIndex(index)}
-                className={cx(
-                  'ph-focus h-2 rounded-full transition-all',
-                  index === shownIndex ? 'w-5 bg-[var(--ph-ink)]' : 'w-2 bg-[var(--ph-chevron)]',
-                )}
-              />
-            ))}
-          </div>
-        )}
+  const limitBlock = (
+    <>
         {/*
          * The limit bar. Two fills, not one: what is owed outright, and the part of it an instalment plan has not
          * billed yet — which is why `ProgressBar` cannot draw it. The tokens are the kit's all the same.
@@ -269,11 +350,11 @@ export function CardHero({
             </span>
             {/* Each plan and what it still holds, on hover or keyboard focus. */}
             {showHeld && (
-              <div id="held-by-plans" role="tooltip" className="absolute top-full left-0 z-20 mt-1 w-80 rounded-[11px] bg-[var(--ph-ink)] p-2.5 text-xs text-white shadow-lg">
+              <div id="held-by-plans" role="tooltip" className="absolute top-full left-0 z-20 mt-1 w-80 rounded-[11px] bg-[var(--ph-ink)] p-2.5 text-xs text-[var(--ph-surface)] shadow-lg">
                 {holding.map(({ plan, split }) => (
                   <div key={plan.id} className="flex justify-between gap-3 py-0.5">
                     <span className="min-w-0">{plan.description}</span>
-                    <span className="shrink-0 tabular text-white/70">
+                    <span className="shrink-0 tabular opacity-70">
                       {formatMinor(split.unbilledMinor, currency)} · {split.monthsLeft} of {plan.months} left
                     </span>
                   </div>
@@ -290,9 +371,88 @@ export function CardHero({
             {usage.availableMinor < 0 ? `Over the limit by ${formatMinor(-usage.availableMinor, currency)}` : `Available ${formatMinor(usage.availableMinor, currency)} of ${formatMinor(limit, currency)}`}
           </div>
         )}
+    </>
+  );
+
+  return (
+    <div
+      className="grid gap-5 lg:grid-cols-[var(--hero-face)_minmax(0,1fr)]"
+      style={{ '--hero-face': slot ? `${slot.width}px` : '17rem' } as CSSProperties}
+    >
+      <div className="min-w-0">
+        {slot ? (
+          <div data-testid="wallet-slot" aria-hidden style={{ width: slot.width, height: slot.height, maxWidth: '100%' }} />
+        ) : (
+          <CardFace
+            issuer={issuer}
+            name={card.name}
+            last4={shown?.last4 ?? null}
+            holderName={shown?.holderName}
+            network={cp.catalog.entry?.network}
+            look={cp.catalog.entry?.look}
+            className="!w-[17rem] max-w-full"
+          />
+        )}
+        {/* One statement can carry several cards; the dots show each one's face in turn. */}
+        {cards.length > 1 && (
+          <div className="mt-2 flex items-center justify-center gap-1.5" role="group" aria-label="Cards on this account">
+            {cards.map((piece, index) => (
+              <button
+                key={piece.id}
+                type="button"
+                aria-label={`Show card ending ${piece.last4 ?? 'unknown'}${piece.holderName ? `, ${piece.holderName}` : ''}`}
+                aria-pressed={index === shownIndex}
+                title={`···· ${piece.last4 ?? '????'}${piece.holderName ? ` ${piece.holderName}` : ''}`}
+                onClick={() => setShownIndex(index)}
+                className={cx(
+                  'ph-focus h-2 rounded-full transition-all',
+                  index === shownIndex ? 'w-5 bg-[var(--ph-ink)]' : 'w-2 bg-[var(--ph-chevron)]',
+                )}
+              />
+            ))}
+          </div>
+        )}
+        {/* Under the card on its own page; inside the Unpaid tile when the card is Wallet's raised pass. */}
+        {!slot && limitBlock}
       </div>
 
-      {/* The bill and the points as equals, then the sections directly under them. */}
+      {slot ? (
+        /*
+         * Opened from the Wallet stack: Wallet's tiles under the pass — what is unpaid, with Pay, and the points,
+         * with Use — and the latest transactions. The sections are behind ⋯.
+         */
+        <div className="flex min-w-0 flex-col gap-[10px]">
+          {!debit && (
+            <WalletTile
+              testId="tile-left-to-pay"
+              label="Unpaid"
+              figure={formatMinor(owedMinor, currency)}
+              figureTestId="tile-unpaid-balance"
+              caption={billCaption()}
+              action={paying ? undefined : 'Pay'}
+              onAction={() => setPaying(true)}
+            >
+              <div className="mt-[4px]">{limitBlock}</div>
+              {paying && <PayForm card={card} accounts={accounts} amountMinor={leftToPayMinor || owedMinor} today={today} onDone={() => setPaying(false)} />}
+            </WalletTile>
+          )}
+          <WalletTile
+            testId="tile-points"
+            label={unitLabel}
+            figure={cp.program ? `${formatPoints(pointsBalance?.total ?? 0)} ${unit}` : '—'}
+            figureTestId="tile-points-balance"
+            caption={
+              cp.program
+                ? pointsSummary(pointsBalance?.posted ?? 0, pointsBalance?.estimated ?? 0, result ? result.earn.totalPoints : null)
+                : 'Rewards are not set up for this card.'
+            }
+            action={cp.program ? 'Use' : 'Set up'}
+            onAction={() => (cp.program ? onTab('points', 'spend-points') : onTab(cp.terms ? 'rules' : 'card'))}
+          />
+          <LatestTransactions lines={lines} accounts={accounts} currency={currency} onSeeAll={() => onTab(debit ? 'points' : 'statement')} />
+        </div>
+      ) : (
+      /* The bill and the points as equals. The sections follow the whole hero, in a column of their own. */
       <div className="flex min-w-0 flex-col">
         {!debit && (
           <div data-testid="tile-left-to-pay">
@@ -356,8 +516,8 @@ export function CardHero({
             )}
           </InsetGroup>
         </div>
-        <div className="md:max-w-2xl">{tabs}</div>
       </div>
+      )}
     </div>
   );
 }
@@ -365,5 +525,5 @@ export function CardHero({
 export function CardTabs({ active, onChange, debit = false }: { active: CardTab; onChange: (tab: CardTab) => void; debit?: boolean }) {
   // A debit card has no statement: its spending settles against the account as it happens.
   const shown = debit ? CARD_TABS.filter((tab) => tab.key !== 'statement') : CARD_TABS;
-  return <SegmentedControl segments={shown} value={active} onChange={(key) => onChange(key as CardTab)} label="Card sections" className="mb-[14px]" />;
+  return <SegmentedControl segments={shown} value={active} onChange={(key) => onChange(key as CardTab)} label="Card sections" className="mb-[18px]" />;
 }

@@ -65,6 +65,26 @@
 
   /* Focus is drawn in the tint, so it reads as the app's own rather than the browser's. */
   --ph-focus: #248a3d;
+
+  /*
+   * Ink printed on a card's own art: the bank, the wordmark, the digits, and the strip a covered card carries.
+   *
+   * These two are the one pair the dark block below never redefines, on purpose. A card is a printed object whose
+   * colour is its bank's, not the reader's theme — navy stays navy at midnight — so what is printed on it must stay
+   * the colour it was printed in. Reaching for `text-white` here was the bug: Tailwind's white *is* the surface
+   * token, so in the dark the print on a navy card turned near-black and the print on a silver one turned white.
+   */
+  --ph-print-light: #ffffff;
+  --ph-print-dark: #0f172a;
+  /* Light falling on a glossy card: a physical highlight, so it too is left alone in the dark. */
+  --ph-sheen: rgb(255 255 255 / 0.2);
+
+  /*
+   * A card laid over another in the Wallet stack: a soft shadow cast up along its top edge onto the card beneath,
+   * which is what makes a pile of bands read as a pile of cards. And the front card's own lift off the page.
+   */
+  --ph-card-edge: 0 -3px 8px -2px rgb(0 0 0 / 0.28), 0 -0.5px 0 rgb(0 0 0 / 0.12);
+  --ph-card-lift: 0 10px 24px -10px rgb(0 0 0 / 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -102,6 +122,10 @@
     --ph-scrim: rgb(0 0 0 / 0.6);
 
     --ph-focus: #30d158;
+
+    /* On black a shadow alone vanishes, so the edge also catches a hairline of light, as a card does at night. */
+    --ph-card-edge: 0 -3px 10px -2px rgb(0 0 0 / 0.7), 0 -0.5px 0 rgb(255 255 255 / 0.14);
+    --ph-card-lift: 0 10px 24px -10px rgb(0 0 0 / 0.9);
   }
 }
 
@@ -146,4 +170,18 @@
   content: '';
   position: absolute;
   inset: calc(-1 * var(--ph-tap-y, 0px)) calc(-1 * var(--ph-tap-x, 0px));
+}
+
+/* A page appearing under a raised card: a fade, which a reader who asked for less motion still gets as a cross-fade. */
+@keyframes ph-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.ph-fade-in {
+  animation: ph-fade-in 320ms ease-out both;
 }

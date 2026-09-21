@@ -21,7 +21,7 @@ test('a card carries its bank and its last four digits', async ({ page }) => {
   // own face in the wallet stack, and on the line under it that names the card.
   await page.goto('/cards');
   await expect(page.getByTestId('card-face')).toContainText('1467');
-  await expect(page.locator('section', { has: page.getByRole('link', { name: 'Mandiri Bonvoy', exact: true }) })).toContainText('···· 1467');
+  await expect(page.locator('section', { has: page.getByRole('link', { name: /^Mandiri Bonvoy(,|$)/ }) })).toContainText('···· 1467');
 });
 
 test('the same digits are refused at the same bank, and allowed at another', async ({ page }) => {

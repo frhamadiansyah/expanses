@@ -14,7 +14,7 @@ test('card setup guides billing date, then rewards, then a suggested base rule',
   await expect(page.getByRole('button', { name: 'Set up rewards' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Add rule' })).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'Cards', exact: true }).click();
+  await page.getByRole('navigation').getByRole('link', { name: 'Cards', exact: true }).click();
   const cardRow = page.locator('section', { has: page.getByRole('link', { name: 'Step Card', exact: true }) });
   await expect(cardRow).toContainText('Add billing date to see points');
   await cardRow.getByRole('link', { name: 'Step Card', exact: true }).click();

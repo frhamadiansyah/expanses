@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
+import { cardSection } from './card-section';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -32,7 +33,7 @@ async function cardWithAPurchase(page: Page, on?: string) {
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'CIMB Octo' }).click();
-  await page.getByRole('radio', { name: 'Points' }).click();
+  await cardSection(page, 'Points');
 }
 
 test('a balance says how much of it the app only worked out', async ({ page }) => {
@@ -50,7 +51,7 @@ test('typing what the bank gave moves points from estimated to posted', async ({
   // Per-purchase figures only exist for a card that credits that way — Jenius and Mandiri do.
   await expect(page.getByTestId('points-balance')).toBeVisible();
   await page.getByLabel('Bank credits points').selectOption('per_transaction');
-  const row = page.locator('li', { hasText: 'Superindo' });
+  const row = page.getByTestId('purchase').filter({ hasText: 'Superindo' });
   await row.getByLabel('Actual points for Superindo').fill('120');
   await row.getByRole('button', { name: 'Save actual for Superindo' }).click();
 

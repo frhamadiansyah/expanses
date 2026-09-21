@@ -727,7 +727,7 @@ function Surface({ finish, id }: { finish: CatalogCardLook['finish'] | 'plain'; 
         </>
       )}
       {(finish === 'glossy' || finish === 'plain') && (
-        <span aria-hidden className="pointer-events-none absolute -top-1/2 -left-1/4 h-[120%] w-[90%] -rotate-12 rounded-full bg-gradient-to-b from-white/20 to-transparent blur-md" />
+        <span aria-hidden className="pointer-events-none absolute -top-1/2 -left-1/4 h-[120%] w-[90%] -rotate-12 rounded-full bg-gradient-to-b from-[var(--ph-sheen)] to-transparent blur-md" />
       )}
       <span aria-hidden className="pointer-events-none absolute inset-0 rounded-[inherit]" style={{ boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.28), inset 0 -1px 0 rgb(0 0 0 / 0.3)' }} />
     </>
@@ -750,6 +750,7 @@ export function CardFace({
   look,
   size = 'md',
   behind = false,
+  band,
   className,
 }: {
   issuer: string | null;
@@ -761,6 +762,12 @@ export function CardFace({
   size?: 'sm' | 'md';
   /** Drawn behind another card: only its colour shows, so its edge carries no half-hidden text. */
   behind?: boolean;
+  /**
+   * Drawn as a covered card in a Wallet stack: the card laid over it hides all but its top band, so the face prints
+   * that band alone — the bank's mark and the card's name on the left, this figure on the right — in the card's own
+   * print, and nothing further down. Implies `behind` for everything below the band.
+   */
+  band?: string;
   className?: string;
 }) {
   // SVG ids must be unique on the page and plain enough for url(#…).
@@ -782,16 +789,18 @@ export function CardFace({
   const cardName = look?.wordmark ?? product;
   const emboss = dark ? '0 1px 0 rgb(255 255 255 / 0.45), 0 -1px 0 rgb(0 0 0 / 0.2)' : '0 1px 0 rgb(0 0 0 / 0.55), 0 -1px 0 rgb(255 255 255 / 0.18)';
   const inset = md ? (portrait ? 12 : 16) : 9;
+  const hidden = behind || band !== undefined;
 
   return (
     <div
-      role={behind ? undefined : 'img'}
-      aria-hidden={behind || undefined}
-      aria-label={behind ? undefined : `${name}${last4 ? ` ending ${last4}` : ''}${holderName ? `, ${holderName}` : ''}`}
+      role={hidden ? undefined : 'img'}
+      aria-hidden={hidden || undefined}
+      aria-label={hidden ? undefined : `${name}${last4 ? ` ending ${last4}` : ''}${holderName ? `, ${holderName}` : ''}`}
       data-testid="card-face"
       className={cx(
         'relative shrink-0 overflow-hidden rounded-[0.9rem] shadow-[0_8px_20px_-6px_rgb(0_0_0/0.45)] select-none',
-        dark ? 'text-slate-900' : 'text-white',
+        // Fixed print, never Tailwind's white or slate: those are theme tokens now, and a card does not change colour at night.
+        dark ? 'text-[var(--ph-print-dark)]' : 'text-[var(--ph-print-light)]',
         portrait ? 'aspect-[0.6305]' : 'aspect-[1.586]',
         portrait ? (md ? 'w-[9.5rem] text-[10px]' : 'w-24 text-[7px]') : md ? 'w-60 text-xs' : 'w-36 text-[8px]',
         className,
@@ -800,7 +809,16 @@ export function CardFace({
     >
       {look?.motif ? <Motif look={look} id={id} /> : look ? <Pattern look={look} /> : null}
       <Surface finish={look?.finish ?? 'plain'} id={id} />
-      {!behind && (
+      {band !== undefined && (
+        <div data-testid="card-band" className="absolute flex items-baseline justify-between gap-3" style={{ top: inset - 3, left: inset - 2, right: inset - 2 }}>
+          <div className="flex min-w-0 items-baseline gap-[0.45em] truncate">
+            {bank && <span className="shrink-0 font-bold tracking-wide">{bank}</span>}
+            <span className="min-w-0 truncate text-[10.5px] font-semibold tracking-tight opacity-90">{cardName}</span>
+          </div>
+          <div className="tabular shrink-0 text-[11px] font-bold whitespace-nowrap">{band}</div>
+        </div>
+      )}
+      {!hidden && (
         <>
           <div className="absolute flex items-start justify-between gap-2" style={{ top: inset - 2, left: inset, right: inset }}>
             <div className="min-w-0 truncate font-bold tracking-wide">{bank}</div>
