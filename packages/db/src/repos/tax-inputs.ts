@@ -1,14 +1,16 @@
-import { cashCodeForSubtype, type CoretaxInputs, priceMicroFrom } from '@expanses/core';
+import { cashCodeForSubtype, type CoretaxInputs, priceMicroFrom, taxHoldingName } from '@expanses/core';
 import { eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { assetValuesAt } from './asset-values';
 import { listAssetProfiles } from './assets';
+import { baseCosts } from './base-costs';
 import { listDebtProfiles } from './debts';
 import { nativeBalances } from './ledger';
 import { listLoans } from './loans';
-import { positionsFor } from './trades';
+import { listHoldingLinks, listSecurities } from './securities';
+import { listTrades, positionsFor } from './trades';
 
 /** The report reads the year as it stood at the end of it. */
 const endOf = (taxYear: number) => `${taxYear}-12-31`;
@@ -37,6 +39,11 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
     .from(accounts)
     .where(eq(accounts.workspaceId, ws.workspaceId));
   const subtypeOf = new Map(accountRows.map((account) => [account.id, account.subtype]));
+  const costs = await baseCosts(database, ws, onDate);
+  const linkOf = new Map((await listHoldingLinks(database, ws)).map((link) => [link.accountId, link]));
+  const securityOf = new Map((await listSecurities(database, ws)).map((security) => [security.id, security]));
+  const nameOf = new Map(accountRows.map((account) => [account.id, account.name]));
+  const trades = await listTrades(database, ws);
 
   const inputs: CoretaxInputs = { cash: [], holdings: [], estimated: [], receivables: [], debts: [] };
 
@@ -83,7 +90,28 @@ export async function coretaxInputsFor(database: Database, ws: WorkspaceContext,
       // assetValuesAt already picked the last price on or before the date; the price per unit
       // follows from the value it worked out, so no second price lookup can disagree with it.
       const priceMicro = priceMicroFrom(value.valueMinor, position.unitsMicro);
-      inputs.holdings.push({ accountId: value.accountId, name: value.name, code: code ?? '0399', currency: value.currency, priceMicro, byYear: position.byYear, fields });
+      const foreign = value.currency !== ws.baseCurrency;
+      const link = linkOf.get(value.accountId);
+      const security = link?.securityId ? (securityOf.get(link.securityId) ?? null) : null;
+      const brokerName = link?.brokerAccountId ? (nameOf.get(link.brokerAccountId) ?? null) : null;
+      inputs.holdings.push({
+        accountId: value.accountId,
+        name: taxHoldingName(security, brokerName, value.name),
+        code: code ?? '0399',
+        currency: value.currency,
+        priceMicro,
+        // Harga perolehan is historical rupiah (Pasal 10): a foreign holding's buys at their own days' rates, never today's.
+        byYear: foreign ? (costs.positions[value.accountId]?.byYear ?? {}) : position.byYear,
+        fields,
+        ...(foreign
+          ? {
+              // Only buys on or before 31 December of the report year: the note counts what the year's figure holds.
+              purchases: trades
+                .filter((trade) => trade.accountId === value.accountId && trade.kind === 'buy' && trade.occurredOn <= onDate)
+                .map((trade) => ({ occurredOn: trade.occurredOn, nativeMinor: trade.grossMinor + trade.feeMinor + trade.taxMinor, baseMinor: costs.buyBaseMinor[trade.id]! })),
+            }
+          : {}),
+      });
       continue;
     }
 
