@@ -95,6 +95,19 @@ describe('a level’s years', () => {
   it('refuses a working with no level at all', () => {
     expect(() => educationPlanStages(plan([]), '2026-01-01')).toThrow(CalculatorError);
   });
+
+  it('refuses a birthday that does not parse, as a CalculatorError rather than a raw RangeError', () => {
+    const byAge = primary({ startAge: 5, untilAge: 6, startYear: null, untilYear: null });
+    expect(() => educationPlanStages(plan([byAge], 'not-a-date'), '2026-01-01')).toThrow(CalculatorError);
+    expect(() => educationPlanStages(plan([byAge], '2021-02-30'), '2026-01-01')).toThrow(CalculatorError); // February has no 30th.
+  });
+
+  it('rolls a 29 February birthday to 1 March when the year it falls due is not a leap year', () => {
+    // 2020 is a leap year; the child turns 10 in 2030, which is not — documented here, not silently rolled.
+    const byAge = primary({ startAge: 10, untilAge: 11, startYear: null, untilYear: null });
+    const stages = educationPlanStages(plan([byAge], '2020-02-29'), '2026-01-01');
+    expect(stages[0]!.dueOn).toBe('2030-03-01');
+  });
 });
 
 describe('a working from before levels', () => {
