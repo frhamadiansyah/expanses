@@ -205,7 +205,13 @@ export {
 } from './assets/balance-sheet';
 export {
   DEFAULT_DEBT_SERVICE_BPS,
+  DEFAULT_EMERGENCY_BASE,
+  DEFAULT_EMERGENCY_TARGET_MONTHS,
+  EMERGENCY_BASES,
+  type EmergencyBase,
+  emergencyOutgoingMinor,
   type HealthRatio,
+  householdEmergencyMonths,
   healthRatios,
   monthly,
   type PeriodFlows,

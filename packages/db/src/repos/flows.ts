@@ -7,6 +7,7 @@ import { assetProfiles, investmentTrades } from '../schema-assets';
 import { bookMoneyFor, type Unconverted } from './book-currency';
 import { categoryIdsOfBook, hasBooks } from './books';
 import { categoryIdsByKeyAll } from './categories';
+import { resolvedCategoryNeeds } from './category-needs';
 import { listInstallments } from './installments';
 import { homeLoanAccountIds } from './loans';
 import { extrasTablesExist } from './transaction-extras';
@@ -75,6 +76,13 @@ export async function periodFlows(
   // accounts, which no workspace owns. So only the two category sides are narrowed to the open book.
   const ofBook = ws.bookId && (await hasBooks(database.db)) ? new Set(await categoryIdsOfBook(database, ws.bookId)) : null;
   const counts = (accountId: string) => ofBook === null || ofBook.has(accountId);
+  // Which spending is a choice rather than a need, read for the owner's whole tree as the keys above are.
+  const lifestyle = new Set(
+    Object.entries(await resolvedCategoryNeeds(database.db, ws))
+      .filter(([, need]) => need === 'lifestyle')
+      .map(([id]) => id),
+  );
+  let lifestyleSpendingMinor = 0;
 
   // Each figure is read in the workspace's own currency: an entry from the currency it was paid in, on its own day;
   // anything already kept in the owner's currency (an instalment, a trade) from there, on the day it falls.
@@ -141,7 +149,11 @@ export async function periodFlows(
     if (counted && row.kind === 'income' && !realizedGains.has(row.accountId) && counts(row.accountId)) {
       if (bucket) bucket.incomeMinor += displayAmount('income', read);
     } else if (counted && row.kind === 'expense' && !finalTax.has(row.accountId) && counts(row.accountId)) {
-      if (bucket) bucket.spendingMinor += displayAmount('expense', read);
+      if (bucket) {
+        const spent = displayAmount('expense', read);
+        bucket.spendingMinor += spent;
+        if (lifestyle.has(row.accountId)) lifestyleSpendingMinor += spent;
+      }
     }
     // The rolls below are a separate statement, not an `else` on this chain, so they are unreachable from it and
     // go on counting an excluded row — which is what §15.5 asks for: they are facts about balances, not spending.
@@ -245,6 +257,7 @@ export async function periodFlows(
     months: Math.min(monthsWithFlows, MAX_MONTHS),
     incomeMinor: totals.incomeMinor,
     spendingMinor: totals.spendingMinor,
+    lifestyleSpendingMinor,
     debtPaymentsMinor,
     nonMortgageDebtPaymentsMinor,
     debtPrincipalMinor,

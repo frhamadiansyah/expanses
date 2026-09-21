@@ -1,7 +1,18 @@
-import { DEFAULT_DEBT_SERVICE_BPS, healthRatios, type PeriodFlows, type RatioSettings, type RatioStatus, type SheetTotals } from '@expanses/core';
+import {
+  DEFAULT_DEBT_SERVICE_BPS,
+  DEFAULT_EMERGENCY_BASE,
+  type EmergencyBase,
+  healthRatios,
+  householdEmergencyMonths,
+  type PeriodFlows,
+  type RatioSettings,
+  type RatioStatus,
+  type SheetTotals,
+} from '@expanses/core';
 import { useState } from 'react';
 import { usePhone } from '../../app/use-phone';
-import { InsetGroup, Panel, PanelHeader, type Segment, SegmentedControl, SelectRow, SwitchRow } from '../../ui/native';
+import { InsetGroup, Panel, PanelHeader, type Segment, SegmentedControl, SelectRow } from '../../ui/native';
+import { useGoals } from '../goals/queries';
 import { periodChoices, periodRange, type RatioPeriod, ratioDisplay } from './health-cards';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */
@@ -18,7 +29,13 @@ const STATUS_BAR: Record<RatioStatus, string> = {
   unknown: 'bg-[var(--ph-chevron)]',
 };
 
-const EMPTY_FLOWS: PeriodFlows = { months: 0, incomeMinor: 0, spendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, debtPrincipalMinor: 0, putAwayMinor: 0 };
+const EMPTY_FLOWS: PeriodFlows = { months: 0, incomeMinor: 0, spendingMinor: 0, lifestyleSpendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, debtPrincipalMinor: 0, putAwayMinor: 0 };
+
+/** What the emergency fund's months multiply — the spec's segmented switch, essential by default. */
+const EMERGENCY_BASE_SEGMENTS: Segment[] = [
+  { key: 'essential', label: 'Essential spending', short: 'Essential' },
+  { key: 'all', label: 'All spending', short: 'All' },
+];
 
 /** How wide the period track is on a desktop, where every year worth offering can be shown at once. */
 const DESKTOP_TRACK = 640;
@@ -40,9 +57,12 @@ export function HealthRatios({
   earliestYear: number;
   monthsNote: string;
 }) {
-  const [settings, setSettings] = useState<RatioSettings>({ emergencyIncludesDebtPayments: true, debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
+  const [settings, setSettings] = useState<RatioSettings>({ emergencyBase: DEFAULT_EMERGENCY_BASE, debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
   const phone = usePhone();
-  const ratios = healthRatios(flows ?? EMPTY_FLOWS, totals, settings);
+  // Q5: the card grades against the household's own months, read from its emergency goal — never a copy of them.
+  const goals = useGoals();
+  const emergencyTargetMonths = householdEmergencyMonths(goals.data ?? []) ?? undefined;
+  const ratios = healthRatios(flows ?? EMPTY_FLOWS, totals, { ...settings, emergencyTargetMonths });
   const choices = periodChoices(today, earliestYear);
 
   /*
@@ -98,22 +118,25 @@ export function HealthRatios({
         })}
       </div>
 
+      <p className="px-[4px] pb-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Emergency fund counts</p>
+      <SegmentedControl
+        className="mb-[18px] md:max-w-2xl"
+        label="Emergency fund counts"
+        segments={EMERGENCY_BASE_SEGMENTS}
+        value={settings.emergencyBase ?? DEFAULT_EMERGENCY_BASE}
+        onChange={(key) => setSettings((current) => ({ ...current, emergencyBase: key as EmergencyBase }))}
+      />
       <InsetGroup
         header="How the ratios are worked out"
-        footer="Take-home pay is what actually landed in your accounts, so tax and contributions withheld at source are already out. Employer pension contributions are not counted yet."
+        footer="Take-home pay is what actually landed in your accounts, so tax and contributions withheld at source are already out. Employer pension contributions are not counted yet. Loan principal counts toward the emergency fund either way; the interest is already spending."
       >
-        <SwitchRow
-          label="Count loan principal in the emergency fund"
-          checked={!!settings.emergencyIncludesDebtPayments}
-          onChange={(checked) => setSettings((current) => ({ ...current, emergencyIncludesDebtPayments: checked }))}
-        />
         <SelectRow
           label="Debt servicing guide"
           value={settings.debtServiceBenchmarkBps ?? DEFAULT_DEBT_SERVICE_BPS}
           onChange={(e) => setSettings((current) => ({ ...current, debtServiceBenchmarkBps: Number(e.target.value) }))}
         >
-          <option value={3500}>35% · the planning guide</option>
-          <option value={3000}>30% · what Indonesian lenders quote</option>
+          <option value={3000}>30% · the planning guide</option>
+          <option value={3500}>35% · a looser guide</option>
         </SelectRow>
       </InsetGroup>
     </section>
