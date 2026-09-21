@@ -14,7 +14,7 @@
 
 **User decisions (2026-09-21), built here:**
 - **Part 2 Q1 — yes:** on open, a level whose return was never typed re-reads its band for the months left until it starts (Task 7, `refreshBandReturns` inside `upgradeCalculatorGoals`). A typed return is never touched.
-- **Part 2 Q2 — yes:** the life-cover inputs are remembered in `goal_calculators.inputs_json` with **no schema change** (Task 10). Because 0017's `kind` CHECK allows only emergency/education/retirement and its `goal_id` is the key, the row is a reserved one — `goal_id = 'life-cover:' || workspace_id`, `kind = 'retirement'`, `inputs_json = { "calculator": "life_cover", "version": 2, … }` — which every goal reader skips (`isLifeCoverRow`). The clean alternative (widen the CHECK) is a table rebuild in 0055; not taken.
+- **Part 2 Q2 — yes:** the life-cover inputs are remembered in `goal_calculators.inputs_json` with **no schema change** (Task 10). Because 0017's `kind` CHECK allows only emergency/education/retirement and its `goal_id` is the key, the row is a reserved one — `goal_id = 'life-cover:' || workspace_id`, `kind = 'retirement'`, `inputs_json = { "calculator": "life_cover", "version": 2, … }` — which every goal reader skips (`isLifeCoverRow`). The clean alternative (widen the CHECK) is a table rebuild in 0055; not taken. **Superseded by the ruling (2026-09-21):** the inputs live in 0053's own `calculator_inputs` table (`packages/db/src/repos/calculator-inputs.ts`); there is no reserved `life-cover:` row and no `isLifeCoverRow`.
 - **Part 2 Q3 — accepted:** `computed_minor` for retirement now holds the pot in today's money, not on the day you stop. Nothing outside the repo reads it (local-first, no server).
 
 ## Global Constraints
@@ -1622,6 +1622,8 @@ describe('the life-cover figures', () => {
   });
 });
 ```
+
+> **Superseded by the ruling (2026-09-21):** the sketch below was not built. Life-cover inputs are stored in 0053's `calculator_inputs` table through `repos/calculator-inputs.ts`, not a reserved `goal_calculators` row.
 
 In `goal-calculators.ts`:
 

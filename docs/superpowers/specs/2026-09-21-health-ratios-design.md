@@ -52,7 +52,8 @@ changes; the first one is already on main. What is left:
 10% (the top of the long band's range and the retirement accumulation figure). A test asserts it (Part 2, Task 1).
 
 Band boundaries, in whole months until the money is needed: **≤ 12 → 4%**, **13–36 → 5%**, **37–60 → 6%**, **> 60 → 8%**.
-The bands are nominal and on a reksadana basis (net of fund fee, before the investor's own tax); the hint says so.
+The bands are nominal, net of fund fees, before the investor's own tax; the hint says so, in country-neutral words (C1
+ruling: instrument kinds, never a country's product names).
 
 ## 3. The emergency fund
 
@@ -92,7 +93,7 @@ user sees today changes until they mark a category lifestyle.
 
 ### 3.3 What does not change
 
-**The ratio card grades against the household's own months** (user decision, 2026-09-21 — Q5 flipped): the months on its emergency goal, derived from the two answers or typed. A household with no emergency goal is graded against the guide's 3–6 months as today. Accelerated debt paydown is never in the base. The
+**The ratio card grades against the household's own months** (user decision, 2026-09-21 — Q5 flipped): the months on its emergency goal, derived from the two answers or typed. A household with no emergency goal is graded as before: at least 3 months for good, with the bar's guide mark at 6 and the text "3–6 months". Accelerated debt paydown is never in the base. The
 income-based emergency route from the workbook is not built — no source was found for it.
 
 ## 4. Essential vs lifestyle
@@ -169,8 +170,9 @@ order on screen is the funding order.
 - each **education level's** return, from the months until the level starts (§10);
 - nothing that already exists — a goal's saved return is the user's and is never rewritten.
 
-The hint beside a prefilled return names the band and its range: "6% · 3–5 years · typically 5–7% · reksadana basis;
-a deposit earns about 0.8 of this after its final tax".
+The hint beside a prefilled return names the band and its range (`bandHint`): "6% · 3 to 5 years · typically 5–7%,
+net of fund fees; a deposit taxed at source earns less". Country-neutral by ruling (C1): no country's fund type or tax
+rate is named.
 
 ## 9. Calculators — today's money
 
@@ -215,12 +217,20 @@ figure changes** (provisional ruling, 2026-09-21): a goal whose stages and growt
 is never touched:
 
 - **education v1** (`feeTodayMinor`, `startsInYears`, `yearsOfStudy`, `feeInflationBps`) becomes one level named
-  "Course" in calendar years, with one yearly fee, its due dates falling on 1 January per §10; its stages keep their
-  ids and paid marks by position;
+  "Course" in calendar years, with one yearly fee, its due dates falling on 1 January per §10. The goal's own return
+  becomes the course's **typed** return (§8: a saved return is never rewritten), so no band replaces it. Its stages
+  keep their ids and paid marks by matching: by `derived_key` where the goal has keys; without keys, the same name and
+  day first, then the same name, then date-order position only when the counts are equal. A paid or drawn stage the
+  working no longer asks for is kept (§10);
 - **retirement v1** keeps the goal's own return as the return while saving;
 - **education v2** (user decision, Q8): re-read on every open from that day, only to move the band of a level whose
-  return was never typed;
-- **emergency v1** gets growth 0%.
+  return was never typed. A level's band is always read from **today** (months left from today), never from the day
+  the working was first done — so the upgrade is idempotent: running it twice changes nothing;
+- **emergency v1** gets growth 0%;
+- **retirement v2 and emergency v2 are never revisited**: their dates count from the day they were worked out.
+
+The upgrade runs over **every workspace**, not only the one open (ruling, 2026-09-21); one workspace failing stops
+neither the others nor the app.
 
 Nothing else about the goal — name, rank, standing amount, set-asides, tags — is touched.
 
@@ -244,6 +254,9 @@ Nothing else about the goal — name, rank, standing amount, set-asides, tags �
   (`goal_stage_terms.return_bps`); `goalPlan` uses a stage's own return where it has one, else the goal's.
 - **Adding a level raises the target and never resets progress.** Progress is what funds the goal (tags and
   set-asides), which a level does not touch; a stage that was already there keeps its id and its paid mark.
+- **A paid or drawn stage the working no longer asks for is kept** (set-aside merge ruling): a re-work never deletes a
+  stage with a paid mark or a `goal_draws` row naming it, and a hand edit that removes a drawn stage is refused, so
+  `goal_draws.stage_id` never dangles.
 - **Monthly tuition stays out.** The editor's footer says it: monthly fees belong in the budget, not a fund.
 
 Worked example (mockup): uang pangkal Rp 45 juta once and Rp 20 juta a year for 6 years, starting in 6 years, 12%
@@ -278,20 +291,21 @@ cover = PV(yearly family need, years of support, inflation, return)
 
 | Workbook bug | How this design avoids it |
 |---|---|
-| Gold outside total assets (`G22 = SUM(G24:G26)`) | Totals come from `balanceSheet`, which sums every account; the life-cover prefill reads it through `sheetTotals`, the one helper the net-worth page also uses |
+| Gold outside total assets (`G22 = SUM(G24:G26)`) | Totals come from `balanceSheet`, which sums every account; the life-cover prefill and the net-worth page both read it through `ratioTotals`, whose five totals come from `sheetTotals` alone, and both take the currencies with no rate from the balance sheet's own `missing` |
 | Jewellery outside the gold total (`G66 = SUM(G63)`) | No hand-listed rows anywhere; every total is a fold over accounts |
 | Weekly ×4 in one column, ×52/12 in another | One conversion table (`perMonthMinor`), 52/12 and 365/12; tests fail on ×4 and ×30 |
 | Retirement PMT with −1 outside the power | Every monthly figure goes through `monthlyNeededMinor` (`r·gap / ((1+r)^n − 1)`); nothing new writes its own annuity |
 
 ## 13. Storage — migration 0053 (`health_ratios`)
 
-Three side tables, all `CREATE TABLE`, no backfill, no change to an existing table:
+Four side tables, all `CREATE TABLE`, no backfill, no change to an existing table:
 
 | Table | Row | Absent means |
 |---|---|---|
 | `category_needs` | `category_account_id` PK, `workspace_id`, `need` ∈ {essential, lifestyle} | no mark of its own |
 | `budget_frequencies` | `budget_id` PK, `workspace_id`, `frequency` ∈ {daily, weekly, quarterly, yearly}, `amount_as_set_minor` > 0 | monthly |
 | `goal_stage_terms` | `stage_id` PK, `workspace_id`, `goal_id`, `return_bps` (nullable, ≥ 0), `derived_key` (nullable) | the goal's return; not derived |
+| `calculator_inputs` | (`workspace_id`, `kind`) PK, `kind` (`life_cover`), `inputs_json`, `updated_at` | nothing remembered; every box prefilled (§11) |
 
 Every read and write goes through `healthTablesExist(db)`, a `WeakMap<Db, boolean>` guard like `extrasTablesExist`. On
 a database without them: no marks (everything essential), every budget monthly, no stage returns — which is today's
@@ -339,9 +353,8 @@ cover with resources above / below needs.
 7. ~~The calendar-year fallback~~ — provisional ruling 2026-09-21: 1 January, and the level's row subtitle says so.
 8. ~~A level's band on open~~ — **user decision 2026-09-21:** yes; on open, a level whose return was never typed
    re-reads its band for the months left until it starts. A typed return is never touched.
-9. ~~Remembering life-cover inputs~~ — **user decision 2026-09-21:** yes, in `goal_calculators.inputs_json`, no schema
-   change (§11).
+9. ~~Remembering life-cover inputs~~ — **user decision 2026-09-21:** yes; storage ruled the same day: 0053's own
+   `calculator_inputs` table, not a reserved `goal_calculators` row (§11, §13).
 10. ~~`computed_minor` for retirement now in today's money~~ — accepted: nothing outside the repo reads it.
-11. **Open:** a v1 education working upgraded to v2 becomes calendar years, so its years move to 1 January (a
-    September-dated year moves up to 8 months earlier). §9.4's "due dates do not move" holds for the *year*, not the
-    day. Accept, or keep the old day some other way?
+11. ~~v1 education's years move to 1 January~~ — **ruled 2026-09-21: accepted** (the user has no real data yet); §9.4
+    amended to say so.
