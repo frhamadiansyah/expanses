@@ -355,6 +355,18 @@ export {
   type SavingPlanInput,
 } from './budget/calculators';
 export {
+  DEFAULT_FEES,
+  type EducationFee,
+  type EducationLevel,
+  educationFromV1,
+  type EducationPlanInputs,
+  educationPlanStages,
+  type EducationStage,
+  type FeeCharge,
+  levelStartsOn,
+  OFFERED_LEVELS,
+} from './budget/education';
+export {
   balanceOf,
   type Balance,
   consumeFifo,
