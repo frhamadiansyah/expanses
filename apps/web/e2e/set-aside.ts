@@ -72,6 +72,19 @@ export async function jeniusWithTwoGoals(page: Page) {
   await setAside(page, 'Umrah 2027', 'Jenius (IDR)', '7500000');
 }
 
+/** A fixed monthly bill paid from Jenius, out on the 1st. */
+export async function addBill(page: Page, name: string, amount: string) {
+  await page.goto('/bills/new');
+  await page.getByLabel('Name', { exact: true }).pressSequentially(name);
+  await page.getByLabel('Amount', { exact: true }).pressSequentially(amount);
+  await page.getByLabel('Category').selectOption({ index: 1 });
+  await page.getByLabel('Paid from').selectOption({ label: 'Jenius' });
+  await page.getByLabel('Bill is out on').selectOption('1');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page).toHaveURL(/\/bills$/);
+  await expect(page.getByTestId('bill-row').filter({ hasText: name })).toBeVisible();
+}
+
 export async function openExpense(page: Page, paidWith: string) {
   // The add button lives on the transactions page; the setup helpers leave the browser on /goals.
   await page.goto('/transactions');

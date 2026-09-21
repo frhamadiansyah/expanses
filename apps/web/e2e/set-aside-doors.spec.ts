@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
+import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
 
 /*
  * Every door that pays money out of an account with money set aside, on the laptop's figures: Jenius holds
@@ -118,18 +118,6 @@ async function expectRecordedOnce(page: Page, text: RegExp) {
 }
 
 // ── Bills ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-async function addBill(page: Page, name: string, amount: string) {
-  await page.goto('/bills/new');
-  await page.getByLabel('Name', { exact: true }).pressSequentially(name);
-  await page.getByLabel('Amount', { exact: true }).pressSequentially(amount);
-  await page.getByLabel('Category').selectOption({ index: 1 });
-  await page.getByLabel('Paid from').selectOption({ label: 'Jenius' });
-  await page.getByLabel('Bill is out on').selectOption('1');
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page).toHaveURL(/\/bills$/);
-  await expect(page.getByTestId('bill-row').filter({ hasText: name })).toBeVisible();
-}
 
 test('paying a bill from Jenius asks, and Record waits for the answer', async ({ page }) => {
   await jeniusWithTwoGoals(page);
