@@ -1,4 +1,4 @@
-import { type Position, parseMajor, parseUnits, priceMicroFrom, sellBasisMinor, type TradeKind } from '@expanses/core';
+import { minorToMajorString, type Position, parseMajor, parseUnits, priceMicroFrom, sellBasisMinor, type TradeKind } from '@expanses/core';
 import type { RecordTradeInput } from '@expanses/db';
 
 export interface TradeDraft {
@@ -107,4 +107,42 @@ export function sellPreview(draft: TradeDraft, position: Position | undefined, c
   } catch {
     return null;
   }
+}
+
+/**
+ * §m3's edit pre-fill, worked out once so the "same account" condition it turns on is something a test can call
+ * directly rather than only ever seeing through a mount: an edit opens "Charged in" from what its own transaction
+ * posted (`postedTradeMoney`), but only while the trade still pays from the account it was posted through — the
+ * owner switching the account first must not fill in a figure that belonged to the old one.
+ *
+ * Null leaves the row exactly as it is: a row already typed into is never overwritten (the caller only calls this
+ * once, guarded by its own ref), and a switched account waits for the owner's own figure.
+ */
+export function prefillCharged({
+  editingCashAccountId,
+  cashAccountId,
+  postedCash,
+  cashCurrency,
+  typed,
+}: {
+  /** The trade being edited pays from this account (null is Opening Balances) — `TradeRow.cashAccountId`. */
+  editingCashAccountId: string | null;
+  /** The account chosen on the form right now. */
+  cashAccountId: string;
+  postedCash: number;
+  cashCurrency: string;
+  typed: string;
+}): string | null {
+  if ((editingCashAccountId ?? '') !== cashAccountId) return null;
+  return typed === '' ? minorToMajorString(postedCash, cashCurrency) : null;
+}
+
+/** Whether editing a trade is still waiting on its posted money to come back, so Save has nothing to send yet. */
+export function waitingForPostedMoney(editing: boolean, postedPending: boolean): boolean {
+  return editing && postedPending;
+}
+
+/** Whether the form may submit right now: the set-aside question is answered, and no read it depends on is still pending. */
+export function tradeFormReady(setAsideReady: boolean, waitingForPosted: boolean): boolean {
+  return setAsideReady && !waitingForPosted;
 }

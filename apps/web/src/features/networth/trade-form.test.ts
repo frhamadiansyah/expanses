@@ -1,6 +1,6 @@
 import { positionAfter, type TradeRecord } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { draftToInput, emptyTradeDraft, pricePreview, sellPreview, type TradeDraft } from './trade-form';
+import { draftToInput, emptyTradeDraft, prefillCharged, pricePreview, sellPreview, tradeFormReady, type TradeDraft, waitingForPostedMoney } from './trade-form';
 
 const TODAY = '2026-09-12';
 const draft = (overrides: Partial<TradeDraft> = {}): TradeDraft => ({ ...emptyTradeDraft('gold', 'bca', TODAY), ...overrides });
@@ -81,5 +81,42 @@ describe('sellPreview', () => {
     expect(sellPreview(draft({ kind: 'sell', units: '11', gross: '9.000.000' }), held, 'IDR')).toBeNull();
     expect(sellPreview(draft({ kind: 'buy', units: '5', gross: '9.000.000' }), held, 'IDR')).toBeNull();
     expect(sellPreview(draft({ kind: 'sell', units: '5', gross: '9.000.000' }), undefined, 'IDR')).toBeNull();
+  });
+});
+
+// m3 (8e6): the edit pre-fill only while the trade still pays from the account it was posted through.
+describe('prefillCharged', () => {
+  const p = { editingCashAccountId: 'bca', cashAccountId: 'bca', postedCash: 14_588_501, cashCurrency: 'IDR', typed: '' };
+
+  it('fills the empty row with what the trade posted, on the same account', () => {
+    expect(prefillCharged(p)).toBe('14588501');
+  });
+
+  it('leaves it alone once the owner has switched to a different account', () => {
+    expect(prefillCharged({ ...p, cashAccountId: 'ibkr' })).toBeNull();
+  });
+
+  it('treats Opening Balances (null) as its own account, not as "any account"', () => {
+    expect(prefillCharged({ ...p, editingCashAccountId: null, cashAccountId: '' })).toBe('14588501');
+    expect(prefillCharged({ ...p, editingCashAccountId: null })).toBeNull();
+  });
+
+  it('never overwrites a row the owner has already typed into', () => {
+    expect(prefillCharged({ ...p, typed: '1' })).toBeNull();
+  });
+});
+
+// m3 (8e7): Save must not race the read of what a reworked trade posted.
+describe('waitingForPostedMoney and tradeFormReady', () => {
+  it('is only waiting while editing a trade whose posted money is still pending', () => {
+    expect(waitingForPostedMoney(true, true)).toBe(true);
+    expect(waitingForPostedMoney(true, false)).toBe(false);
+    expect(waitingForPostedMoney(false, true)).toBe(false);
+  });
+
+  it('is ready only when the question is answered and nothing is still pending', () => {
+    expect(tradeFormReady(true, false)).toBe(true);
+    expect(tradeFormReady(true, true)).toBe(false);
+    expect(tradeFormReady(false, false)).toBe(false);
   });
 });

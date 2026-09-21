@@ -1,4 +1,4 @@
-import { formatPriceMicro, isoDate, minorToMajorString, type Position, type TradeKind, tradeRateNeeds } from '@expanses/core';
+import { formatPriceMicro, isoDate, type Position, type TradeKind, tradeRateNeeds } from '@expanses/core';
 import { type AccountRow, type RecordTradeInput, recordTrade, replaceTrade, type TradeRow } from '@expanses/db';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -11,7 +11,7 @@ import { useSetAside } from '../goals/SetAsideQuestion';
 import { FormRows, ROW_BODY_FLUSH, RowLead } from '../transactions/FormRow';
 import { currencyFlag } from '../transactions/tx-form';
 import { usePostedTradeMoney } from './queries';
-import { draftToInput, emptyTradeDraft, pricePreview, sellPreview, type TradeDraft } from './trade-form';
+import { draftToInput, emptyTradeDraft, prefillCharged, pricePreview, sellPreview, tradeFormReady, type TradeDraft, waitingForPostedMoney } from './trade-form';
 import { tradeRatesForSave, withCharged } from './trade-money';
 
 const KINDS: { value: TradeKind; label: string }[] = [
@@ -117,9 +117,9 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   useEffect(() => {
     if (prefilled.current || !editing || postedCash === undefined) return;
     prefilled.current = true;
-    if ((editing.cashAccountId ?? '') === draft.cashAccountId) setCharged((typed) => (typed === '' ? minorToMajorString(postedCash, cashCurrency) : typed));
+    setCharged((typed) => prefillCharged({ editingCashAccountId: editing.cashAccountId, cashAccountId: draft.cashAccountId, postedCash, cashCurrency, typed }) ?? typed);
   }, [editing, postedCash, draft.cashAccountId, cashCurrency]);
-  const waitingForPosted = !!editing && posted.isPending;
+  const waitingForPosted = waitingForPostedMoney(!!editing, posted.isPending);
 
   // The one buy rule (`tradeDoor`), read off the input `submit` sends; an incomplete draft asks nothing yet. An edit
   // asks about the cash account as if the old trade's payment were not there, and opens on its saved answer.
@@ -137,7 +137,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   async function submit(event: FormEvent) {
     event.preventDefault();
     // Enter submits too: the question is a condition on it.
-    if (!setAside.ready || waitingForPosted) return;
+    if (!tradeFormReady(setAside.ready, waitingForPosted)) return;
     setError(null);
     setBusy(true);
     try {
@@ -299,7 +299,7 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
           )}
           <button
             type="submit"
-            disabled={busy || !setAside.ready || waitingForPosted}
+            disabled={busy || !tradeFormReady(setAside.ready, waitingForPosted)}
             className="ph-focus min-h-11 flex-1 rounded-full bg-[var(--ph-tint)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-50"
           >
             {editing ? 'Save changes' : 'Record'}
