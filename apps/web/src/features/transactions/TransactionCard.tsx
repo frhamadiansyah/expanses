@@ -17,6 +17,7 @@ import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, Card, ErrorBox, InputRow, RowGroup, Select, SelectRow } from '../../ui';
+import { InsetGroup, InsetRow, SegmentedControl, SubmitRow } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -203,40 +204,42 @@ function CardBody({
   const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
 
+  const modes = [
+    ['expense', 'Expense'],
+    ['income', 'Income'],
+    ['transfer', 'Transfer'],
+    ...(choices.buys.length > 0 ? ([['trade', 'Buy or sell']] as const) : []),
+  ] as const;
+  const chooseMode = (value: FormMode) => {
+    if (value !== 'trade') {
+      // A tab that offers no flag must not carry one. The currency and the "Charged in …" row belong
+      // to the tab they were chosen on: leaving USD on the draft while moving to Transfer left the
+      // save reading a figure in a currency the screen no longer showed. `currencyChoosable` is the
+      // one question about that, asked here too rather than restated.
+      const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
+      return set({ mode: value, categoryId: '', splits: [], ...flag });
+    }
+    const first = choices.buys[0]!;
+    set({
+      mode: 'trade',
+      purchase: { ...emptyPurchaseDraft(first.accountId, draft.moneyId, isoDate()), lotSize: first.lotSize, useLots: (first.lotSize ?? 1) > 1 },
+    });
+  };
+
   const body = (
     <form onSubmit={submit} className="space-y-3">
-      <div role="radiogroup" aria-label="What this is" className="flex flex-wrap gap-2">
-        {([
-          ['expense', 'Expense'],
-          ['income', 'Income'],
-          ['transfer', 'Transfer'],
-          ...(choices.buys.length > 0 ? ([['trade', 'Buy or sell']] as const) : []),
-        ] as const).map(([value, label]) => (
-          <Button
-            key={value}
-            role="radio"
-            aria-checked={draft.mode === value}
-            variant={draft.mode === value ? 'primary' : 'secondary'}
-            onClick={() => {
-              if (value !== 'trade') {
-                // A tab that offers no flag must not carry one. The currency and the "Charged in …" row belong
-                // to the tab they were chosen on: leaving USD on the draft while moving to Transfer left the
-                // save reading a figure in a currency the screen no longer showed. `currencyChoosable` is the
-                // one question about that, asked here too rather than restated.
-                const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
-                return set({ mode: value, categoryId: '', splits: [], ...flag });
-              }
-              const first = choices.buys[0]!;
-              set({
-                mode: 'trade',
-                purchase: { ...emptyPurchaseDraft(first.accountId, draft.moneyId, isoDate()), lotSize: first.lotSize, useLots: (first.lotSize ?? 1) > 1 },
-              });
-            }}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
+      {full ? (
+        /* The page's own form: the four kinds as the kit's segmented control, a radio group under the same name. */
+        <SegmentedControl label="What this is" segments={modes.map(([key, label]) => ({ key, label }))} value={draft.mode} onChange={(key) => chooseMode(key as FormMode)} />
+      ) : (
+        <div role="radiogroup" aria-label="What this is" className="flex flex-wrap gap-2">
+          {modes.map(([value, label]) => (
+            <Button key={value} role="radio" aria-checked={draft.mode === value} variant={draft.mode === value ? 'primary' : 'secondary'} onClick={() => chooseMode(value)}>
+              {label}
+            </Button>
+          ))}
+        </div>
+      )}
 
       {draft.mode === 'trade' ? (
         /*
@@ -495,20 +498,30 @@ function CardBody({
 
       {setAside.node}
       <ErrorBox error={error} />
-      <div className="flex gap-2">
-        <Button type="submit" disabled={busy || !setAside.ready}>
-          Save
-        </Button>
-        <Button variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
+      {full ? (
+        /* The page's primary action is a row of its own, and still a real submit: Enter and `required` hold. */
+        <InsetGroup wide>
+          <SubmitRow label="Save" disabled={busy || !setAside.ready} />
+          <InsetRow title={<span className="font-normal text-[var(--ph-ink-2)]">Cancel</span>} label="Cancel" onClick={onDone} chevron={false} />
+        </InsetGroup>
+      ) : (
+        <div className="flex gap-2">
+          <Button type="submit" disabled={busy || !setAside.ready}>
+            Save
+          </Button>
+          <Button variant="ghost" onClick={onDone}>
+            Cancel
+          </Button>
+        </div>
+      )}
     </form>
   );
 
   return (
     <>
-      {full ? <div className="space-y-3">{body}</div> : <Card>{body}</Card>}
+      {/* On its own page the card's groups lie flat on the kit's ground, as a group does: the ring is a sheet's
+          edge, drawn so the rows read against the card they float on, and a page has no card under them. */}
+      {full ? <div className="space-y-3 [&_.ring-1]:ring-0">{body}</div> : <Card>{body}</Card>}
 
       {sheet === 'workspace' && <WorkspaceSheet onClose={() => setSheet(null)} />}
       {sheet === 'money' && (
