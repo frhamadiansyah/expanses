@@ -49,6 +49,7 @@ import cashEquivalents from '../migrations/0047_cash_equivalents.sql?raw';
 import transactionExtras from '../migrations/0048_transaction_extras.sql?raw';
 import eventPlanItems from '../migrations/0049_event_plan_items.sql?raw';
 import goalDrawTables from '../migrations/0050_goal_draws.sql?raw';
+import healthRatios from '../migrations/0053_health_ratios.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -108,6 +109,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 48, name: 'transaction_extras', sql: transactionExtras },
   { version: 49, name: 'event_plan_items', sql: eventPlanItems },
   { version: 50, name: 'goal_draws', sql: goalDrawTables },
+  { version: 53, name: 'health_ratios', sql: healthRatios },
 ];
 
 /** The highest version this build of the app knows how to produce. */

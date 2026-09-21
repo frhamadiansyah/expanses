@@ -13,6 +13,7 @@ import {
   migrate,
   type Migration,
   syncLinkedPrograms,
+  upgradeCalculatorGoals,
   type WorkspaceContext,
 } from '@expanses/db';
 import { type OpenResult, type OpenStage, openSafely, type RecoveryReason, type Safety, say } from './open';
@@ -76,6 +77,15 @@ export async function openAppDb(database: Database, migrations?: Migration[]): P
   await ensureCategoryKeys(database, ws);
   // Then the sets, which a workspace of any age can be missing: they arrive with the feature, not with the workspace.
   await ensureDefaultCategorySets(database, ws);
+  // Goals worked out before stages were kept in today's money are stated again once, in every workspace — a workspace
+  // switched to later must not keep its double-inflated figures. One workspace failing stops neither the others nor the app.
+  for (const each of await listWorkspaces(database)) {
+    try {
+      await upgradeCalculatorGoals(database, contextOf(each), isoDate());
+    } catch (error) {
+      console.warn(`Upgrading worked-out goals in ${each.name} failed`, error);
+    }
+  }
   try {
     await syncLinkedPrograms(database, ws, CATALOG, isoDate());
   } catch (error) {

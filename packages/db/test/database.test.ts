@@ -17,10 +17,12 @@ describe('database', () => {
   it('migrates once and is idempotent', async () => {
     executor = createNodeExecutor();
     const database = createDatabase(executor);
-    // Derived from the list, so branches that each add a migration merge without editing this line; 50 is this one's.
-    const applied = await migrate(database);
-    expect(applied).toEqual(MIGRATIONS.map((m) => m.version));
-    expect(applied).toEqual(expect.arrayContaining([49, 50]));
+    // Derived from MIGRATIONS, so a branch adding one (50, 53, 54…) does not have to merge a literal; the list is still
+    // checked to be every version, once, in ascending order, with 0053 among them.
+    const versions = MIGRATIONS.map((migration) => migration.version);
+    expect([...new Set(versions)].sort((a, b) => a - b)).toEqual(versions);
+    expect(versions).toEqual(expect.arrayContaining([50, 53]));
+    expect(await migrate(database)).toEqual(versions);
     expect(await migrate(database)).toEqual([]);
   });
 
