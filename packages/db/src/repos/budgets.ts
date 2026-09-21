@@ -1,7 +1,7 @@
 import { uuidv7 } from '@expanses/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { budgetOverrides, budgets } from '../schema-budget';
 import { bookOfCategory, hasBooks } from './books';
@@ -48,27 +48,46 @@ function assertWholeMinor(amountMinor: number): void {
 }
 
 /**
+ * Why a category cannot carry a budget or a need mark, or null when it can: a spending category of this workspace,
+ * filed in the open book. One reader for both entry points (`saveBudget`, `saveCategoryNeed`).
+ */
+export async function spendingCategoryRefusal(db: Db, ws: WorkspaceContext, categoryAccountId: string): Promise<'NOT_FOUND' | 'NOT_A_CATEGORY' | 'OTHER_BOOK' | null> {
+  const [account] = await db
+    .select({ kind: accounts.kind, subtype: accounts.subtype })
+    .from(accounts)
+    .where(and(eq(accounts.id, categoryAccountId), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!account) return 'NOT_FOUND';
+  if (account.subtype !== 'category' || account.kind !== 'expense') return 'NOT_A_CATEGORY';
+  return (await otherBook(db, ws, categoryAccountId)) ? 'OTHER_BOOK' : null;
+}
+
+/**
  * A cap is read back by the workspace that set it, so it may only be set on a category that workspace holds:
- * one filed elsewhere would be saved and then never shown again. Skipped when no workspace is open (the whole
+ * one filed elsewhere would be saved and then never shown again. False when no workspace is open (the whole
  * workspace is being read) and on a database from before books existed.
  */
-async function assertInOpenBook(database: Database, ws: WorkspaceContext, categoryAccountId: string): Promise<void> {
-  if (!ws.bookId || !(await hasBooks(database.db))) return;
-  const owner = await bookOfCategory(database.db, categoryAccountId);
-  if (owner && owner !== ws.bookId) throw new BudgetError('OTHER_BOOK', 'That category belongs to another workspace');
+async function otherBook(db: Db, ws: WorkspaceContext, categoryAccountId: string): Promise<boolean> {
+  if (!ws.bookId || !(await hasBooks(db))) return false;
+  const owner = await bookOfCategory(db, categoryAccountId);
+  return owner !== null && owner !== ws.bookId;
 }
+
+const OTHER_BOOK_MESSAGE = 'That category belongs to another workspace';
+
+async function assertInOpenBook(database: Database, ws: WorkspaceContext, categoryAccountId: string): Promise<void> {
+  if (await otherBook(database.db, ws, categoryAccountId)) throw new BudgetError('OTHER_BOOK', OTHER_BOOK_MESSAGE);
+}
+
+const REFUSED: Record<'NOT_FOUND' | 'NOT_A_CATEGORY' | 'OTHER_BOOK', string> = {
+  NOT_FOUND: 'That category does not exist in this workspace',
+  NOT_A_CATEGORY: 'A budget belongs on a spending category',
+  OTHER_BOOK: OTHER_BOOK_MESSAGE,
+};
 
 /** A budget belongs on a spending category, never on an account money sits in. */
 async function assertCategory(database: Database, ws: WorkspaceContext, accountId: string): Promise<void> {
-  const [account] = await database.db
-    .select({ kind: accounts.kind, subtype: accounts.subtype })
-    .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
-  if (!account) throw new BudgetError('NOT_FOUND', 'That category does not exist in this workspace');
-  if (account.subtype !== 'category' || account.kind !== 'expense') {
-    throw new BudgetError('NOT_A_CATEGORY', 'A budget belongs on a spending category');
-  }
-  await assertInOpenBook(database, ws, accountId);
+  const refusal = await spendingCategoryRefusal(database.db, ws, accountId);
+  if (refusal) throw new BudgetError(refusal, REFUSED[refusal]);
 }
 
 export async function saveBudget(database: Database, ws: WorkspaceContext, input: SaveBudgetInput): Promise<string> {

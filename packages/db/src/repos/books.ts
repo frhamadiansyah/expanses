@@ -7,7 +7,9 @@ import { bookBudgetSettings, bookCategories, bookIncomeOverrides, books, bookTra
 import { budgetIncomeOverrides, budgetOverrides, budgets, budgetSettings } from '../schema-budget';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { categoryMccs } from '../schema-points';
+import { categoryNeeds } from '../schema-health';
 import { findRate } from './fx';
+import { healthTablesExist } from './health-tables';
 // Making a workspace is where three things meet: the book itself, the categories it starts with, and the card
 // rules that name them. The other two live where they belong and are called from here.
 import { replanCatalogProgramsTx } from './catalog';
@@ -221,6 +223,17 @@ async function copyCategoriesTx(tx: Db, ws: WorkspaceContext, fromBookId: string
     .where(and(eq(categoryMccs.workspaceId, ws.workspaceId), inArray(categoryMccs.categoryId, [...sourceIds])));
   for (const row of typed) {
     await tx.insert(categoryMccs).values({ categoryId: newIds.get(row.categoryId)!, workspaceId: ws.workspaceId, mcc: row.mcc });
+  }
+
+  // Essential or lifestyle is, like the MCC, a property of what the category means — so it travels with the copy.
+  if (await healthTablesExist(tx)) {
+    const marks = await tx
+      .select({ categoryId: categoryNeeds.categoryAccountId, need: categoryNeeds.need })
+      .from(categoryNeeds)
+      .where(and(eq(categoryNeeds.workspaceId, ws.workspaceId), inArray(categoryNeeds.categoryAccountId, [...sourceIds])));
+    for (const row of marks) {
+      await tx.insert(categoryNeeds).values({ categoryAccountId: newIds.get(row.categoryId)!, workspaceId: ws.workspaceId, need: row.need });
+    }
   }
 }
 

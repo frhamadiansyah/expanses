@@ -83,3 +83,4 @@ export * as extrasSchema from './schema-extras';
 export * from './repos/transaction-extras';
 export * as healthSchema from './schema-health';
 export * from './repos/health-tables';
+export * from './repos/category-needs';
