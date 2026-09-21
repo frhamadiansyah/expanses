@@ -1,11 +1,11 @@
-import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type ScheduleRow, type SheetGroup, type SheetTotals } from '@expanses/core';
+import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type ScheduleRow, type SheetGroup } from '@expanses/core';
 import { scheduleFor } from '@expanses/db';
 import { useQueries } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { HealthRatios } from './HealthRatios';
-import { periodRange, type RatioPeriod } from './health-cards';
+import { periodRange, type RatioPeriod, ratioTotals } from './health-cards';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
 import { NetWorthTabs } from './NetWorthTabs';
@@ -149,22 +149,16 @@ export function OverviewPage() {
   const sinceLastMonth = deltaSince(points, 1);
   const januaryMonths = monthsSinceJanuary(points);
   const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);
-  const periodSheet = balanceSheet(periodSheetInputs.data?.assets ?? [], periodSheetInputs.data?.liabilities ?? []);
-  const groupTotal = (key: string) => periodSheet.assetGroups.find((group) => group.key === key)?.totalMinor ?? 0;
-  const totals: SheetTotals = {
-    liquidMinor: groupTotal('liquid'),
-    investMinor: groupTotal('invest'),
-    assetsMinor: periodSheet.assetsTotalMinor,
-    liabilitiesMinor: periodSheet.liabilitiesTotalMinor,
-    netWorthMinor: periodSheet.netWorthMinor,
-  };
+  // The ratios read the balance sheet on the period's balance date: every rate on that date, or no ratios.
+  const periodTotals = ratioTotals(periodSheetInputs.data);
+  const sheetMissing = sheetInputs.data?.missing ?? [];
   const monthsWithData = flows.data?.months ?? 0;
   const monthsNote =
     monthsWithData === 0
       ? 'No transactions in this period yet, so the ratios that need cash flow stay empty.'
       : `${range.label}: ${monthsWithData === 1 ? '1 month' : `${monthsWithData} months`} of transactions, with balances as of ${range.balanceDate}.`;
 
-  const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
+  const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
 
   return (
     <div className={SCREEN}>
@@ -241,6 +235,13 @@ export function OverviewPage() {
       <section className="mb-[18px]">
         <PanelHeader title="Balance sheet" />
         <p className="px-[4px] pb-[10px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Assets at today's value · debts at what you still owe</p>
+        {/* A row with no rate reads 0 here, so its totals would be short: the missing rate is named instead. */}
+        {sheetMissing.length > 0 ? (
+          <Panel wide>
+            <p data-testid="balance-sheet-missing" className="text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so the balance sheet cannot be added up.</p>
+          </Panel>
+        ) : (
+        <>
         <div className="grid gap-6 md:grid-cols-2">
           <SheetColumn title="What you own" groups={sheet.assetGroups} totalMinor={sheet.assetsTotalMinor} currency={ws.baseCurrency} />
           <SheetColumn
@@ -258,11 +259,14 @@ export function OverviewPage() {
             <Money minor={sheet.netWorthMinor} currency={ws.baseCurrency} />
           </div>
         </Panel>
+        </>
+        )}
       </section>
 
       <HealthRatios
         flows={flows.data}
-        totals={totals}
+        totals={periodTotals.totals}
+        missing={periodTotals.missing}
         period={period}
         onPeriod={setPeriod}
         today={today}

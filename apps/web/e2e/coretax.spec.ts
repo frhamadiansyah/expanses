@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { forgetRates } from './pockets';
 
 /** Accounts created by these tests are opened today, so this year is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -210,4 +211,26 @@ test('downloads the converter file once the sheet has everything it needs', asyn
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Converter file (.tsv)' }).first().click();
   expect((await download).suggestedFilename()).toContain(`coretax-${YEAR}-kas`);
+});
+
+test('the report is not compared with a balance sheet that lacks a rate: the currency is named instead', async ({ page }, testInfo) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await addBankAsset(page);
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
+  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+  await page.getByLabel('Current balance').pressSequentially('1000');
+  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Dollar Saver', exact: true })).toBeVisible();
+  await startReport(page);
+  await expect(page.getByText(/your balance sheet on 31 December/)).toBeVisible();
+
+  // No USD rate anywhere on the device: the balance sheet would count the $1.000 as 0.
+  await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
+  await page.goto('/tax-report');
+  await page.getByLabel('Tax year').selectOption(String(YEAR));
+  await expect(page.getByTestId('reconciliation-missing')).toContainText(`No USD rate yet for 31 December ${YEAR}`);
+  await expect(page.getByText(/your balance sheet on 31 December \d{4} says/)).toHaveCount(0);
+  await expect(page.getByText(/The gap is/)).toHaveCount(0);
 });

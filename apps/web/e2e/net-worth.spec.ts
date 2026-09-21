@@ -45,6 +45,7 @@ test('says it does not know the cash-flow ratios until there are transactions', 
   await expect(page.getByRole('heading', { name: 'Savings ratio' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Surplus' })).toBeVisible();
   await expect(page.getByText('Not enough data').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Debt to assets' })).toBeVisible();
 });
 
 test('switches the ratios between the rolling year and a calendar year', async ({ page }) => {
@@ -121,10 +122,11 @@ test('an empty account in a currency with no rate does not stop net worth: zero 
 
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('50.000.000');
+  await expect(page.getByTestId('ratios-missing')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Debt to assets' })).toBeVisible();
 });
 
-test('a currency with no rate stops the net worth figure and is named, instead of counting as 0', async ({ page }, testInfo) => {
+test('a currency with no rate stops net worth, the balance sheet and the ratios, and is named — never counted as 0', async ({ page }, testInfo) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await page.goto('/accounts');
   await page.getByLabel('Name', { exact: true }).pressSequentially('Rupiah Saver');
@@ -148,4 +150,9 @@ test('a currency with no rate stops the net worth figure and is named, instead o
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('No USD rate yet');
   await expect(page.getByTestId('net-worth')).not.toContainText('50.000.000');
+  // The balance sheet and the ratios read the same rows, with USD at 0: they name the rate instead of a figure.
+  await expect(page.getByTestId('balance-sheet-missing')).toContainText('No USD rate yet');
+  await expect(page.getByText(/Net worth =/)).toHaveCount(0);
+  await expect(page.getByTestId('ratios-missing')).toContainText('No USD rate yet, so the ratios cannot be worked out.');
+  await expect(page.getByRole('heading', { name: 'Debt to assets' })).toHaveCount(0);
 });
