@@ -25,7 +25,8 @@ async function addKpr(page: Page, { asset }: { asset?: string } = {}) {
   await page.getByLabel('Payment day').fill('25');
   if (asset) await page.getByLabel('What it bought').selectOption({ label: asset });
   await page.getByRole('button', { name: 'Save terms' }).click();
-  await expect(page.getByRole('link', { name: 'KPR Bintaro' })).toBeVisible();
+  // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
+  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('Bank BTN');
 }
 
 test('onboards a loan already running and reads its next twelve months', async ({ page }) => {
@@ -33,15 +34,14 @@ test('onboards a loan already running and reads its next twelve months', async (
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '700000000');
   await addKpr(page);
 
-  // The list's own figure, before clicking through. `addKpr` never fills "Payment each month" — the form
-  // invites you to leave it blank — and the list used to read that stored blank back as `Rp 0`. It is the
-  // instalment, the same one the detail screen shows, worked out from what the ledger says is owed.
-  // The header sits *outside* the group now, so the group is the heading's grandparent, not its parent.
-  const stillPaying = page.getByRole('heading', { name: 'Still being paid' }).locator('xpath=ancestor::section[1]');
-  await expect(stillPaying).toContainText(/7\.\d{3}\.\d{3}/);
-  await expect(stillPaying).not.toContainText(/Rp\s0(?!\d)/);
-  // And the summary card above it, which is gated on that same figure being greater than zero.
-  await expect(page.getByText('The instalments the banks ask for each month')).toBeVisible();
+  // Debts lists the loan at what is still owed, the ledger's figure, under Loans.
+  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('700.000.000');
+  // The instalments the banks ask for each month moved under the Loans group. `addKpr` never fills "Payment each
+  // month" — the form invites you to leave it blank — and the list used to read that stored blank back as `Rp 0`.
+  // It is the instalment, worked out from what the ledger says is owed, gated on being greater than zero.
+  const instalments = page.getByText('The instalments the banks ask for each month');
+  await expect(instalments).toContainText(/7\.\d{3}\.\d{3}/);
+  await expect(instalments).not.toContainText(/Rp\s0(?!\d)/);
 
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await expect(page.getByText('Still owed')).toBeVisible();
@@ -176,11 +176,14 @@ test('a loan in another currency is printed in its own currency, and the monthly
   await page.getByLabel('Payment each month (USD)').pressSequentially('500.00');
   await page.getByRole('button', { name: 'Save terms' }).click();
 
-  const row = page.getByRole('link', { name: /Dollar car loan/ });
-  // US$500,00 — not "Rp 50.000", which is how the list used to print 50.000 cents.
-  await expect(row).toContainText('US$');
-  await expect(row).not.toContainText('Rp');
-  // Converted at the rate held for the day: 500 × 16.250.
-  await expect(page.getByText('The instalments the banks ask for each month')).toBeVisible();
-  await expect(page.getByText(/8\.125\.000/)).toBeVisible();
+  // The balance in the loan's own currency — US$20.000,00, not "Rp 2.000.000", which is how 2.000.000 cents
+  // would read — and beside it the same in rupiah at the held rate, which says the rate it used.
+  const row = page.getByRole('row', { name: /Dollar car loan/ });
+  const balance = row.getByRole('cell').nth(2);
+  await expect(balance).toContainText('US$');
+  await expect(balance).not.toContainText('Rp');
+  await expect(row.getByRole('cell').nth(3)).toContainText('325.000.000');
+  await expect(row.getByRole('cell').nth(3)).toContainText('at 16.250');
+  // The instalments converted at the rate held for the day: 500 × 16.250.
+  await expect(page.getByText('The instalments the banks ask for each month')).toContainText('8.125.000');
 });

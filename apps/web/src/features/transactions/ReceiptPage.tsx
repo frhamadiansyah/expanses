@@ -264,7 +264,7 @@ export function ReceiptPage({ transactionId }: { transactionId: string }) {
         (phone && canEditInSheet(tx) ? (
           <EditSheet tx={tx} onClose={() => void afterEdit()} />
         ) : (
-          <Sheet title="Edit transaction" onClose={() => void afterEdit()}>
+          <Sheet grouped title="Edit transaction" onClose={() => void afterEdit()}>
             <TransactionCard initial={tx} onDone={() => void afterEdit()} />
           </Sheet>
         ))}

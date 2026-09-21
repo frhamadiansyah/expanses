@@ -206,7 +206,8 @@ async function addKpr(page: Page) {
   await retype(page, 'Tenor in months', '180');
   await retype(page, 'Payment day', '25');
   await page.getByRole('button', { name: 'Save terms' }).click();
-  await expect(page.getByRole('link', { name: 'KPR Bintaro' })).toBeVisible();
+  // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
+  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('Bank BTN');
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
 }
 
@@ -254,7 +255,7 @@ test('an extra payment asks about the extra and the bank\'s penalty together', a
 
 test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
   await jeniusWithTwoGoals(page);
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   await page.getByRole('button', { name: 'Add a loan' }).click();
   await page.getByLabel('Person').pressSequentially('Andi');
   await page.getByLabel(/^Amount/).pressSequentially('6800000');
@@ -276,7 +277,7 @@ test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
 test('paying Budi back from Jenius asks; the loan came into another account', async ({ page }) => {
   await jeniusWithTwoGoals(page);
   await addMoneyAccount(page, 'BCA', 'bank', '0');
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   await page.getByRole('button', { name: 'Add a loan' }).click();
   await page.getByRole('radio', { name: 'I borrowed money' }).click();
   await page.getByLabel('Person').pressSequentially('Budi');

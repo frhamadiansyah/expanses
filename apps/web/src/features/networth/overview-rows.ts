@@ -19,7 +19,7 @@ export interface AttentionItem {
   tone: 'warn' | 'info';
   text: string;
   action: string;
-  to: '/net-worth/assets' | '/net-worth/trades' | '/goals' | '/net-worth/debts' | '/net-worth/loans' | '/net-worth/assets/$accountId';
+  to: '/net-worth/assets' | '/net-worth/trades' | '/goals' | '/net-worth/lend-borrow' | '/net-worth/loans' | '/net-worth/assets/$accountId';
   params?: { accountId: string };
 }
 
@@ -88,7 +88,7 @@ export function attentionItems(
         tone: 'warn',
         text: `${who} ${formatMinor(loan.balanceMinor, loan.currency)} · ${loan.dueLabel}`,
         action: person.direction === 'lent' ? 'Chase' : 'Pay',
-        to: '/net-worth/debts',
+        to: '/net-worth/lend-borrow',
       });
     }
   }

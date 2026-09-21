@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { figure, firstLevel, neededAMonth, planTotal, row1, row5, row8, todayFigures } from './calculator-walk';
 import { addEducationGoal, stageLines, typeInto } from './education-walk';
+import { localIsoDate } from './today';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -17,9 +18,9 @@ async function addAccount(page: Page, name: string, type: string, balanceLabel: 
 
 const yearsAhead = (years: number, months = 0) => {
   const date = new Date();
-  date.setUTCFullYear(date.getUTCFullYear() + years);
-  date.setUTCMonth(date.getUTCMonth() + months);
-  return date.toISOString().slice(0, 10);
+  date.setFullYear(date.getFullYear() + years);
+  date.setMonth(date.getMonth() + months);
+  return localIsoDate(date);
 };
 
 test('row 1 — no birthday: 65 jt, then 20 jt five times, each due on 1 January', async ({ page }) => {

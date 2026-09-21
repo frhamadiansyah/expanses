@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { localIsoDate } from './today';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -128,8 +129,8 @@ test('a template button opens that template, not the first one', async ({ page }
 test('a new goal’s return follows when it is needed, until one is typed', async ({ page }) => {
   const yearsAhead = (years: number) => {
     const date = new Date();
-    date.setUTCFullYear(date.getUTCFullYear() + years);
-    return date.toISOString().slice(0, 10);
+    date.setFullYear(date.getFullYear() + years);
+    return localIsoDate(date);
   };
   await page.goto('/goals');
   await page.getByRole('button', { name: 'Holiday', exact: true }).click();
@@ -149,8 +150,8 @@ test('a new goal’s return follows when it is needed, until one is typed', asyn
 test('only a new goal’s first payment moves its return: not a later payment, not a saved goal’s dates', async ({ page }) => {
   const yearsAhead = (years: number) => {
     const date = new Date();
-    date.setUTCFullYear(date.getUTCFullYear() + years);
-    return date.toISOString().slice(0, 10);
+    date.setFullYear(date.getFullYear() + years);
+    return localIsoDate(date);
   };
   await page.goto('/goals');
   await page.getByRole('button', { name: 'Holiday', exact: true }).click();

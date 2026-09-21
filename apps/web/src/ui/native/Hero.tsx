@@ -59,6 +59,7 @@ export function Hero({
   empty = '—',
   caption,
   progress,
+  align = 'center',
   className,
 }: {
   icon?: ReactNode;
@@ -73,12 +74,14 @@ export function Hero({
   caption?: ReactNode;
   /** The bar under the figure, when the figure is part of the way to something. */
   progress?: { targetMinor: number; label: string };
+  /** Centred, as a phone's hero is; `start` for a desktop column that reads from the left. */
+  align?: 'center' | 'start';
   className?: string;
 }) {
   const figure = minor === null ? ({ text: empty, tone: 'ink-3' } as const) : heroFigure(minor, currency, direction);
   const tint = icon && iconColour ? iconTint(iconColour) : null;
   return (
-    <div className={cx('flex flex-col items-center text-center', className)} style={{ marginBottom: 18 }}>
+    <div className={cx('flex flex-col', align === 'start' ? 'items-start text-left' : 'items-center text-center', className)} style={{ marginBottom: 18 }}>
       {icon && (
         <span
           aria-hidden

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { MoneyAccountSubtype } from '@expanses/core';
 import {
   assetValuesAt,
+  createWorkspace,
   type Database,
   getAssetProfile,
   getDebtProfile,
@@ -70,6 +71,18 @@ describe('a time deposit', () => {
       rateBps: 625,
     });
     expect(await getDepositTerms(database, ws, deposito.id)).toMatchObject({ maturesOn: '2027-03-01', rateBps: 625 });
+  });
+
+  it('is never read across a workspace boundary', async () => {
+    const deposito = await openCashAccount(database, ws, {
+      item: 'time_deposit',
+      name: 'Deposito BCA 6 bulan',
+      currency: 'IDR',
+      maturesOn: '2027-03-01',
+      rateBps: 625,
+    });
+    const other = await createWorkspace(database, { name: 'Business', type: 'business', baseCurrency: 'IDR' });
+    expect(await getDepositTerms(database, other, deposito.id)).toBeUndefined();
   });
 
   it('counts as cash you hold, and the money leaves by a transfer when it matures', async () => {

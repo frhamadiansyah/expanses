@@ -1,12 +1,14 @@
 import { allPhotoRows, addPhoto, deletePhoto, type TransactionPhotoRow } from '@expanses/db';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Camera, Image as ImageIcon } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { photos } from '../../photos/store';
 import { sweepPhotosAtStart } from '../../photos/sweep-at-start';
 import { usePhotoUrls } from '../../photos/use-photo-urls';
-import { Button, ErrorBox } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { FormRow, FormRows, RowGlyph } from './FormRow';
 import type { FormDraft } from './tx-form';
 
 /** "None", or "2 photos" — what the Photos row says without being opened. */
@@ -128,7 +130,7 @@ export function PhotosSheet({ draft, onChange, onClose }: { draft: FormDraft; on
   };
 
   return (
-    <Sheet title="Photos" onClose={close}>
+    <Sheet grouped title="Photos" onClose={close}>
       <div className="space-y-3">
         <div
           onDragOver={(e) => {
@@ -142,16 +144,16 @@ export function PhotosSheet({ draft, onChange, onClose }: { draft: FormDraft; on
             setDragging(false);
             void attach([...e.dataTransfer.files]);
           }}
-          className={dragging ? 'rounded-xl ring-2 ring-emerald-500' : ''}
+          className={dragging ? 'rounded-xl ring-2 ring-[var(--ph-tint)]' : ''}
         >
-          <ul data-testid="photo-grid" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          <ul data-testid="photo-grid" className="grid grid-cols-3 gap-[6px] sm:grid-cols-4">
             {mine.map((row, i) => (
               <li key={row.id} className="relative">
                 <button
                   type="button"
                   aria-label={`Photo ${i + 1}`}
                   onClick={() => setViewing(row)}
-                  className="block aspect-square w-full overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
+                  className="ph-focus-inset block aspect-[3/4] w-full overflow-hidden rounded-[10px] bg-[var(--ph-surface)] ring-[0.5px] ring-[var(--ph-hair)]"
                 >
                   {urls[row.fileName] && <img src={urls[row.fileName]} alt="" className="h-full w-full object-cover" />}
                 </button>
@@ -160,7 +162,7 @@ export function PhotosSheet({ draft, onChange, onClose }: { draft: FormDraft; on
                   aria-label={`Remove photo ${i + 1}`}
                   disabled={busy}
                   onClick={() => void drop(row)}
-                  className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80 text-xs text-white"
+                  className="ph-focus absolute top-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-scrim)] text-xs text-[var(--ph-selected)]"
                 >
                   ✕
                 </button>
@@ -172,7 +174,7 @@ export function PhotosSheet({ draft, onChange, onClose }: { draft: FormDraft; on
                 aria-label="Add a photo"
                 disabled={busy}
                 onClick={() => pick(library.current)}
-                className="flex aspect-square w-full items-center justify-center rounded-xl text-2xl text-slate-400 ring-1 ring-dashed ring-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
+                className="ph-focus-inset flex aspect-[3/4] w-full items-center justify-center rounded-[10px] border border-dashed border-[var(--ph-chevron)] bg-[var(--ph-surface)] text-2xl text-[var(--ph-tint)]"
               >
                 +
               </button>
@@ -180,14 +182,25 @@ export function PhotosSheet({ draft, onChange, onClose }: { draft: FormDraft; on
           </ul>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" disabled={busy} onClick={() => pick(camera.current)}>
-            📷 Take photo
-          </Button>
-          <Button variant="secondary" disabled={busy} onClick={() => pick(library.current)}>
-            🖼 Choose from library
-          </Button>
-        </div>
+        {/* D2's two rows, in the tint: the camera itself, or the library. */}
+        <FormRows>
+          <FormRow
+            icon={<RowGlyph tone="plain"><Camera size={16} className="text-[var(--ph-tint)]" /></RowGlyph>}
+            label="Take photo"
+            tone="tint"
+            chevron={false}
+            disabled={busy}
+            onClick={() => pick(camera.current)}
+          />
+          <FormRow
+            icon={<RowGlyph tone="plain"><ImageIcon size={16} className="text-[var(--ph-tint)]" /></RowGlyph>}
+            label="Choose from library"
+            tone="tint"
+            chevron={false}
+            disabled={busy}
+            onClick={() => pick(library.current)}
+          />
+        </FormRows>
 
         {/*
           Two inputs rather than one: `capture` asks a phone for the camera itself, and an input carrying it
@@ -220,7 +233,7 @@ export function PhotosSheet({ draft, onChange, onClose }: { draft: FormDraft; on
           }}
         />
 
-        <p className="text-xs text-slate-500">Photos stay on this device with the transaction and go into your backups. Tap one to see it full size.</p>
+        <p className="px-1 text-[12px] leading-4 text-[var(--ph-ink-3)]">Photos stay on this device with the transaction and go into your backups. Tap one to see it full size.</p>
         <ErrorBox error={error} />
       </div>
 

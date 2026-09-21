@@ -46,7 +46,7 @@ test('records a purchase from the transaction window, and it never counts as spe
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy or sell' }).click();
+  await form.getByRole('radio', { name: 'Buy / sell' }).click();
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
@@ -73,7 +73,7 @@ test('pays for a purchase with the credit card, so the card owes more and the po
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy or sell' }).click();
+  await form.getByRole('radio', { name: 'Buy / sell' }).click();
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA KrisFlyer (IDR)' });
@@ -98,7 +98,7 @@ test('a transfer cannot land in a holding measured in units', async ({ page }) =
   await form.getByRole('radio', { name: 'Transfer' }).click();
   // Exactly "To": the chart above the form labels itself "… Total spent", which a loose match also catches.
   await expect(form.getByLabel('To', { exact: true })).not.toContainText('Antam gold bars');
-  await expect(form.getByText(/Use Buy or sell, so units are counted/)).toBeVisible();
+  await expect(form.getByText(/Use Buy \/ sell, so units are counted/)).toBeVisible();
 });
 
 test('turns an expense already recorded into the purchase it really was', async ({ page }) => {
@@ -163,7 +163,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const buying = page.getByRole('dialog', { name: 'Add a transaction' });
-  await buying.getByRole('radio', { name: 'Buy or sell' }).click();
+  await buying.getByRole('radio', { name: 'Buy / sell' }).click();
   await buying.getByLabel('What you bought or sold').selectOption({ label: 'Investments › BBRI shares' });
   await buying.getByLabel('Lots').fill('1');
   await buying.getByLabel(/What it cost, before fees/).fill('988981');
@@ -324,7 +324,7 @@ test('a purchase can keep its contract note and be left out of the report', asyn
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy or sell' }).click();
+  await form.getByRole('radio', { name: 'Buy / sell' }).click();
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });

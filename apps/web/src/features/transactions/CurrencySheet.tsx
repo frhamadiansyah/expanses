@@ -1,9 +1,13 @@
-import { Check } from 'lucide-react';
+import { Check, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { CURRENCIES } from '@expanses/core';
 import { Sheet } from '../../app/Sheet';
-import { cx, Input } from '../../ui';
+import { cx } from '../../ui';
 import { readRecentCurrencies, recentCurrencies, rememberCurrency } from './tx-form';
+
+/** C1's group header, outside and above its group, as the kit draws one. */
+const KICKER = 'px-1 pb-[6px] text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase';
+const GROUP = 'overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*>.ph-row-body]:border-t-[0.5px] [&>*+*>.ph-row-body]:border-[var(--ph-hair)]';
 
 /**
  * Which currency the figure was typed in.
@@ -48,31 +52,42 @@ export function CurrencySheet({
         onClick={() => choose(code)}
         aria-label={`${info.code} ${info.name}`}
         aria-current={code === value}
-        className="flex h-12 w-full items-center gap-3 px-3 text-left text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
+        className="ph-focus-inset flex w-full items-center gap-3 pl-[12px] text-left active:bg-[var(--ph-fill)]"
       >
-        <span className="text-lg" aria-hidden>
+        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[17px] leading-none" aria-hidden>
           {info.flag}
         </span>
-        <span className="min-w-0 truncate">{info.name}</span>
-        <span className="ml-auto tabular text-slate-500">{info.code}</span>
-        <Check size={16} className={cx('shrink-0', code === value ? 'text-emerald-600' : 'invisible')} aria-hidden />
+        <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 pr-[13px]">
+          <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">{info.name}</span>
+          <span className="tabular shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">{info.code}</span>
+          <Check size={16} className={cx('shrink-0', code === value ? 'text-[var(--ph-tint)]' : 'invisible')} aria-hidden />
+        </span>
       </button>
     );
   };
 
   return (
-    <Sheet title="Currency" onClose={onClose}>
-      <div className="space-y-3">
-        <Input aria-label="Search currencies" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" />
+    <Sheet grouped title="Currency" onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        <label className="flex h-10 items-center gap-2 rounded-[10px] bg-[var(--ph-track)] px-3">
+          <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+          <input
+            aria-label="Search currencies"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search currencies"
+            className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
+          />
+        </label>
         {!needle && recent.length > 0 && (
           <div>
-            <p className="mb-1 px-3 text-xs font-medium uppercase tracking-wide text-slate-500">Recent</p>
-            <div className="divide-y divide-slate-200 overflow-hidden rounded-xl ring-1 ring-slate-200">{recent.map(row)}</div>
+            <p className={KICKER}>Recent</p>
+            <div className={GROUP}>{recent.map(row)}</div>
           </div>
         )}
         <div>
-          <p className="mb-1 px-3 text-xs font-medium uppercase tracking-wide text-slate-500">All currencies</p>
-          <div className="divide-y divide-slate-200 overflow-hidden rounded-xl ring-1 ring-slate-200">{matches.map((c) => row(c.code))}</div>
+          <p className={KICKER}>All currencies</p>
+          <div className={GROUP}>{matches.map((c) => row(c.code))}</div>
         </div>
       </div>
     </Sheet>
