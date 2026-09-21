@@ -20,6 +20,7 @@ import {
 } from '../../ui/native';
 import { Calculator, calculatorKindOf } from './Calculator';
 import { GoalForm } from './GoalForm';
+import { movedOrder } from './goal-moves';
 import { type GoalCard, goalCard, GOAL_TEMPLATES } from './goal-cards';
 import { useEarmarks, useGoalCalculators, useGoalPlans, useGoals } from './queries';
 
@@ -100,13 +101,9 @@ export function GoalsPage() {
   async function move(goalId: string, by: number) {
     setError(null);
     try {
-      const order = ordered.map((plan) => plan.goalId);
-      const from = order.indexOf(goalId);
-      const to = from + by;
-      if (from < 0 || to < 0 || to >= order.length) return;
       // A move never crosses a section: an emergency fund cannot be ranked below a holiday it is funded before.
-      if (goalClass(ordered[from]!.goal.kind) !== goalClass(ordered[to]!.goal.kind)) return;
-      order.splice(to, 0, ...order.splice(from, 1));
+      const order = movedOrder(ordered, goalId, by);
+      if (!order) return;
       // Ranks written in page order, so the order on screen and the funding order are one order.
       await reorderGoals(database, ws, order);
       await invalidate();

@@ -1,17 +1,22 @@
 import {
   educationStages,
   emergencyTargetMinor,
+  HOUSEHOLDS,
+  type Household,
+  INCOME_STABILITIES,
+  type IncomeStability,
   isoDate,
   parseMajor,
   retirementTargetMinor,
   savingPlanFor,
 } from '@expanses/core';
-import { createGoalFromCalculator } from '@expanses/db';
+import { createGoalFromCalculator, type EmergencyInputs } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS, monthsNote, typedMonths, withAnswers } from '../goals/emergency-form';
 
 const bps = (percent: string) => Math.round(Number(percent.replace(',', '.')) * 100);
 const num = (value: string) => Number(value.replace(',', '.'));
@@ -97,7 +102,7 @@ export function CalculatorsPage() {
   const [error, setError] = useState<unknown>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
-  const [months, setMonths] = useState('6');
+  const [emergency, setEmergency] = useState(() => emergencyDraftFrom());
   const [monthlyOutgoing, setMonthlyOutgoing] = useState('');
 
   const [feeToday, setFeeToday] = useState('');
@@ -121,7 +126,15 @@ export function CalculatorsPage() {
     }
   };
 
-  const emergencyTarget = money(monthlyOutgoing) > 0 && num(months) > 0 ? emergencyTargetMinor(num(months), money(monthlyOutgoing)) : 0;
+  // The months are read by the one reader the goal's own working uses, which takes "9,5"; a figure it refuses shows no answer.
+  let emergencyInputs: EmergencyInputs | null = null;
+  try {
+    emergencyInputs = emergencyInputsOf(emergency);
+  } catch {
+    emergencyInputs = null;
+  }
+  const emergencyTarget =
+    emergencyInputs && money(monthlyOutgoing) > 0 ? emergencyTargetMinor(emergencyInputs.months, money(monthlyOutgoing)) : 0;
 
   const educationOk = money(feeToday) > 0 && num(yearsOfStudy) > 0 && num(startsIn) >= 0;
   const educationTarget = educationOk
@@ -143,7 +156,7 @@ export function CalculatorsPage() {
       })
     : 0;
 
-  async function save(name: string, kind: 'emergency' | 'education' | 'retirement', inputs: Record<string, number>) {
+  async function save(name: string, kind: 'emergency' | 'education' | 'retirement', inputs: EmergencyInputs | Record<string, number>) {
     setError(null);
     try {
       await createGoalFromCalculator(database, ws, { name, kind, inputs: inputs as never, today: isoDate() });
@@ -162,13 +175,41 @@ export function CalculatorsPage() {
 
       <Calculator
         title="Emergency fund"
-        blurb="Months of everything that goes out, spending and debt payments alike."
-        ready={emergencyTarget > 0}
+        blurb="Months of what goes out, loan principal included."
+        ready={emergencyTarget > 0 && emergencyInputs !== null}
         saveLabel="Save Emergency fund as a goal"
-        save={() => void save('Emergency fund', 'emergency', { months: num(months) })}
+        save={() => emergencyInputs && void save('Emergency fund', 'emergency', emergencyInputs)}
         answer={<Answer targetMinor={emergencyTarget} months={12} returnBps={200} alreadySavedMinor={0} testId="answer-emergency" />}
       >
-        <TextRow label="Months of outgoings" value={months} onChange={(e) => setMonths(e.target.value)} inputMode="numeric" />
+        <SelectRow
+          label="Household"
+          value={emergency.household}
+          onChange={(e) => setEmergency((d) => withAnswers(d, { household: e.target.value as Household }))}
+        >
+          {HOUSEHOLDS.map((key) => (
+            <option key={key} value={key}>
+              {HOUSEHOLD_LABELS[key]}
+            </option>
+          ))}
+        </SelectRow>
+        <SelectRow
+          label="Income"
+          value={emergency.income}
+          onChange={(e) => setEmergency((d) => withAnswers(d, { income: e.target.value as IncomeStability }))}
+        >
+          {INCOME_STABILITIES.map((key) => (
+            <option key={key} value={key}>
+              {INCOME_LABELS[key]}
+            </option>
+          ))}
+        </SelectRow>
+        <TextRow
+          label="Months of outgoings"
+          hint={monthsNote(emergency)}
+          value={emergency.months}
+          onChange={(e) => setEmergency((d) => typedMonths(d, e.target.value))}
+          inputMode="decimal"
+        />
         <TextRow
           label={`What goes out a month (${ws.baseCurrency})`}
           value={monthlyOutgoing}
