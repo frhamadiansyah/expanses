@@ -41,6 +41,7 @@ import { RecurringPage } from '../features/bills/RecurringPage';
 import { EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
+import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
 import { SettingsPage } from '../features/workspaces/SettingsPage';
 import { Layout } from './Layout';
 
@@ -187,6 +188,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/review', component: ReviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/backup', component: BackupPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: SettingsPage }),
+  // Linked from nowhere: the owner reaches it by its address, to switch on what the app cannot sell yet.
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/developer', component: DeveloperSettingsPage }),
   // The design kit's specimen sheet. Deliberately not in `nav.ts`: it is a place to look at the primitives
   // before the routes adopt them, not a screen anyone navigates to.
   createRoute({ getParentRoute: () => rootRoute, path: '/design-kit', component: KitPage }),
