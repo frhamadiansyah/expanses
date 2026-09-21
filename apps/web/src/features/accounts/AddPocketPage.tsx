@@ -1,13 +1,13 @@
-import { CURRENCIES, isoDate, parseMajor } from '@expanses/core';
+import { CURRENCIES, isoDate } from '@expanses/core';
 import { addPocket } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
-import { ErrorBox } from '../../ui';
+import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
-import { pocketsOf } from './pockets';
+import { pocketsOf, readPockets } from './pockets';
 
 export function AddPocketPage() {
   const { database, ws } = useApp();
@@ -33,8 +33,10 @@ export function AddPocketPage() {
     setError(null);
     setBusy(true);
     try {
-      const openingBalanceMinor = balance.trim() ? parseMajor(balance, code) : 0;
-      const openingRateToBase = await openingRateFor({ database, ws, currency: code, openedOn, openingBalanceMinor, typed: rate, resolveRates });
+      // The one pocket reader: the balance is read at this pocket's exponent, never the account's or the base's.
+      const [pocket] = readPockets([{ currency: code, balance, rate }]);
+      const { openingBalanceMinor } = pocket!;
+      const openingRateToBase = await openingRateFor({ database, ws, currency: code, openedOn, openingBalanceMinor, typed: pocket!.typedRate, resolveRates });
       await addPocket(database, ws, { parentId: accountId, currency: code, openingBalanceMinor, openedOn, openingRateToBase });
       await invalidate();
       await navigate({ to: '/accounts/$accountId', params: { accountId } });
@@ -48,6 +50,10 @@ export function AddPocketPage() {
   return (
     <div className={SCREEN}>
       <LargeTitle title="Add a pocket" back={parent?.name ?? 'Account'} backTo="/accounts/$accountId" backParams={{ accountId }} />
+      {/* Every currency taken: nothing to offer, so no form that would submit a pocket with no currency. */}
+      {offered.length === 0 ? (
+        <Empty>This account already holds every currency.</Empty>
+      ) : (
       <form ref={form} onSubmit={submit}>
         <ErrorBox error={error} />
         <InsetGroup footer="Leave the rate blank and the rate for the opening date is used.">
@@ -74,6 +80,7 @@ export function AddPocketPage() {
           <InsetRow title="Add pocket" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
         </InsetGroup>
       </form>
+      )}
     </div>
   );
 }

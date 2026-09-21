@@ -240,6 +240,37 @@ test('the Money tile names the rate it lacks instead of adding up the rest', asy
   await expect(row).toContainText('No USD rate yet');
 });
 
+test('a USD pocket added to an account reads its opening balance in dollars, not rupiah (P2-I2)', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, { name: 'Two Pocket', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '1150' }] });
+  await page.getByRole('link', { name: 'Two Pocket', exact: true }).click();
+  await page.getByRole('link', { name: /Add a pocket/ }).click();
+  await page.getByLabel('Currency').selectOption('USD');
+  await page.getByLabel('Opening USD').pressSequentially('2400');
+  await page.getByLabel('Rate: IDR per 1 USD').pressSequentially('16250');
+  await page.getByRole('button', { name: 'Add pocket' }).click();
+  // $2.400,00 — read at USD's two decimals. Read at the base's none, it would be $24,00 and ≈ Rp 390.000.
+  await expect(page.getByTestId('pocket-USD')).toContainText('2.400,00');
+  await expect(page.getByTestId('pocket-USD')).toContainText('39.000.000');
+});
+
+test('Add a pocket says so when the account already holds every currency (P2-M5)', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.goto('/accounts/new');
+  await page.getByRole('button', { name: 'Saving account' }).click();
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Every Currency');
+  await page.getByLabel('Holds more than one currency').check();
+  // Each added row takes the next currency not yet held; empty balances need no rate.
+  const all = await page.getByLabel('Pocket 1', { exact: true }).locator('option').count();
+  for (let i = 2; i < all; i += 1) await page.getByRole('button', { name: 'Add another currency' }).click();
+  await expect(page.getByLabel(`Pocket ${all}`, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await page.getByRole('link', { name: 'Every Currency', exact: true }).click();
+  await page.getByRole('link', { name: /Add a pocket/ }).click();
+  await expect(page.getByText('This account already holds every currency.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add pocket' })).toHaveCount(0);
+});
+
 test('Add asset reads a typed rate of 16.500 as 16,5, key by key (P2-I1)', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await page.goto('/net-worth/assets');
