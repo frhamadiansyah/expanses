@@ -1,259 +1,326 @@
-import { flatToEffectiveBps, isoDate, type LoanMethod, periodOn } from '@expanses/core';
-import { saveLoanTerms } from '@expanses/db';
-import { Link } from '@tanstack/react-router';
-import { HelpCircle, Plus } from 'lucide-react';
-import { type FormEvent, useRef, useState } from 'react';
+import { formatMinor, isoDate } from '@expanses/core';
+import { Link, type LinkProps, useNavigate } from '@tanstack/react-router';
+import { Car, CreditCard, House, Landmark, Plus } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Empty, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { usePhone } from '../../app/use-phone';
+import { useAccounts, useBalances } from '../../lib/queries';
+import { cx, Empty, ErrorBox, Money } from '../../ui';
+import { ApproxFigure, approxLine, type CornerAction, Figure, Hero, InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
 import { useHeldRates } from '../accounts/queries';
+import { usePeopleDebts } from '../debts/queries';
 import { NetWorthTabs } from '../networth/NetWorthTabs';
+import { bareFigure, type DebtGroup, type DebtIcon, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
+import { useSheet } from '../networth/queries';
 import { monthlyInstalments } from './instalments';
-import { emptyLoanTermsDraft, type LoanTermsDraft, loanTermsDraftToInput } from './loan-form';
-import { useLoans, useScheduledPayments } from './queries';
+import { useCardFacts, useLoans, useScheduledPayments } from './queries';
+import { TermsForm } from './TermsForm';
 
-const METHOD_LABELS: Record<LoanMethod, string> = {
-  annuity: 'Annuity — interest on what is left',
-  flat: 'Flat — interest on the original amount',
-  zero: 'No interest',
+/**
+ * Debts: everything owed, in one list, grouped the way Assets groups what is owned — Loans, Credit cards, and
+ * the people you owe. One converted total above, each group's own total in its header, and every debt in its own
+ * currency. What the Loans page did — terms, the instalments, the loans paid off — lives under the Loans group.
+ */
+
+const ICONS: Record<DebtIcon, { glyph: ReactNode; colour: string }> = {
+  home: { glyph: <House size={15} aria-hidden />, colour: '#2F6FEB' },
+  car: { glyph: <Car size={15} aria-hidden />, colour: '#4E8A3E' },
+  loan: { glyph: <Landmark size={15} aria-hidden />, colour: '#6B5BD2' },
+  card: { glyph: <CreditCard size={15} aria-hidden />, colour: '#5A6478' },
+  person: { glyph: null, colour: '#C2417A' },
 };
 
-/** Adds the terms of a loan already running, so its schedule can be worked out. */
-function TermsForm({ onDone }: { onDone: () => void }) {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const accounts = useAccounts().data ?? [];
-  const loans = useLoans();
-  const today = isoDate();
-  const known = new Set((loans.data ?? []).map((loan) => loan.accountId));
-  const loanAccounts = accounts.filter((account) => account.subtype === 'loan' && account.archivedAt === null && !known.has(account.id));
-  const assets = accounts.filter((account) => ['property', 'vehicle'].includes(account.subtype) && account.archivedAt === null);
-
-  const [draft, setDraft] = useState<LoanTermsDraft>(() => emptyLoanTermsDraft(loanAccounts[0]?.id ?? '', today));
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
-  const form = useRef<HTMLFormElement>(null);
-  const set = (patch: Partial<LoanTermsDraft>) => setDraft((current) => ({ ...current, ...patch }));
-
-  const currency = accounts.find((account) => account.id === draft.accountId)?.currency ?? ws.baseCurrency;
-  const tenor = Number(draft.tenorMonths) || 0;
-  const rateBps = Math.round((Number(draft.rate.replace(',', '.')) || 0) * 100);
-  const effective = draft.method === 'flat' && tenor > 1 && rateBps > 0 ? flatToEffectiveBps(rateBps, tenor) : null;
-
-  async function submit(event?: FormEvent) {
-    event?.preventDefault();
-    setError(null);
-    setBusy(true);
-    try {
-      await saveLoanTerms(database, ws, loanTermsDraftToInput(draft, currency));
-      await invalidate();
-      onDone();
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
+/** The currency's everyday name, from the platform rather than a list: "Rupiah", "Dollar", "Euro". */
+function currencyWord(code: string): string {
+  try {
+    const name = new Intl.DisplayNames(['en'], { type: 'currency' }).of(code) ?? code;
+    return name.split(' ').at(-1) ?? name;
+  } catch {
+    return code;
   }
+}
 
-  if (loanAccounts.length === 0) {
-    return (
-      <InsetGroup
-        footer={
-          <>
-            Every loan account already has its terms. Add another on{' '}
-            <Link to="/accounts" className="text-[var(--ph-tint)] underline">
-              Accounts
-            </Link>{' '}
-            first, with what you still owe as its balance.
-          </>
-        }
-      >
-        <InsetRow title="Close" chevron={false} onClick={onDone} />
-      </InsetGroup>
-    );
-  }
+const longDate = (iso: string) => {
+  const d = new Date(`${iso}T00:00:00`);
+  return `${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'short' })} ${d.getFullYear()}`;
+};
 
+/** Where a debt opens: a loan its terms and schedule, a card the card, a person Lend & borrow for them. */
+function destination(row: DebtRow): { to: LinkProps['to']; params?: LinkProps['params']; search?: LinkProps['search'] } {
+  if (row.kind === 'loan') return { to: '/net-worth/loans/$accountId', params: { accountId: row.accountId! } };
+  if (row.kind === 'card') return { to: '/cards/$cardId', params: { cardId: row.accountId! } };
+  return { to: '/net-worth/lend-borrow', search: row.personName ? { person: row.personName } : {} };
+}
+
+/** A header's figure, set as a figure: the kit's header shouts in capitals, a currency symbol must not. */
+function HeaderFigure({ group, baseCurrency }: { group: DebtGroup; baseCurrency: string }) {
   return (
-    <form ref={form} onSubmit={submit}>
-      <InsetGroup header="Which loan" footer="Its balance is what you still owe today.">
-        <SelectRow label="Which loan" value={draft.accountId} onChange={(e) => set({ accountId: e.target.value })}>
-          {loanAccounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </SelectRow>
-        <TextRow label="Lender" value={draft.lenderName} onChange={(e) => set({ lenderName: e.target.value })} placeholder="Bank BTN" required />
-        <TextRow
-          label={`Amount borrowed (${currency})`}
-          hint="The original amount, not what is left."
-          value={draft.originalAmount}
-          inputMode="decimal"
-          onChange={(e) => set({ originalAmount: e.target.value })}
-          placeholder="700.000.000"
-          required
-        />
-      </InsetGroup>
-
-      <InsetGroup header="The interest">
-        <SelectRow label="How interest is worked out" value={draft.method} onChange={(e) => set({ method: e.target.value as LoanMethod })}>
-          {Object.entries(METHOD_LABELS).map(([method, label]) => (
-            <option key={method} value={method}>
-              {label}
-            </option>
-          ))}
-        </SelectRow>
-        <TextRow
-          label="Rate a year (%)"
-          hint={effective ? `A flat ${draft.rate}% is about ${(effective / 100).toFixed(2)}% effective.` : 'Type 9 or 9,25.'}
-          value={draft.rate}
-          inputMode="decimal"
-          onChange={(e) => set({ rate: e.target.value })}
-          placeholder="9"
-        />
-        <SelectRow
-          label="Rate kind"
-          hint="A floating rate changes; you record each change as it comes."
-          value={draft.rateKind}
-          onChange={(e) => set({ rateKind: e.target.value as 'fixed' | 'floating' })}
-        >
-          <option value="fixed">Fixed</option>
-          <option value="floating">Floating</option>
-        </SelectRow>
-      </InsetGroup>
-
-      <InsetGroup header="The schedule">
-        <TextRow label="First payment on" type="date" value={draft.firstPaymentOn} onChange={(e) => set({ firstPaymentOn: e.target.value })} required />
-        <TextRow
-          label="Tenor in months"
-          hint="180 months is 15 years."
-          value={draft.tenorMonths}
-          inputMode="numeric"
-          onChange={(e) => set({ tenorMonths: e.target.value })}
-          placeholder="180"
-          required
-        />
-        <TextRow
-          label="Payment day"
-          hint="1 to 28, so every month has it."
-          value={draft.paymentDay}
-          inputMode="numeric"
-          onChange={(e) => set({ paymentDay: e.target.value })}
-        />
-        <TextRow
-          label={`Payment each month (${currency})`}
-          hint="Leave empty to work it out from the rate."
-          value={draft.payment}
-          inputMode="decimal"
-          onChange={(e) => set({ payment: e.target.value })}
-        />
-      </InsetGroup>
-
-      <InsetGroup header="What it is for">
-        <SelectRow
-          label="What it bought"
-          hint="A property makes this a mortgage, which the debt ratios treat apart."
-          value={draft.assetAccountId}
-          onChange={(e) => set({ assetAccountId: e.target.value })}
-        >
-          <option value="">Nothing in particular</option>
-          {assets.map((asset) => (
-            <option key={asset.id} value={asset.id}>
-              {asset.name}
-            </option>
-          ))}
-        </SelectRow>
-        <TextRow label="What it is for" value={draft.purpose} onChange={(e) => set({ purpose: e.target.value })} placeholder="House in Bintaro" />
-      </InsetGroup>
-
-      <ErrorBox error={error} />
-      <InsetGroup footer="The schedule is worked out from what the ledger says you owe, so the payments you record are always the truth. Nothing here is stored as a projection.">
-        <InsetRow title="Save terms" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
-        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
-      </InsetGroup>
-    </form>
+    <span className="tracking-normal normal-case" data-testid={`debts-group-total-${group.kind}`}>
+      {group.totalMinor === null ? '—' : <Money minor={group.totalMinor} currency={baseCurrency} />}
+    </span>
   );
 }
 
-export function LoansPage() {
+/** The phone's trailing figure: in the base currency bare, as the header names it; otherwise its own, with ≈ beneath. */
+function RowFigure({ row, baseCurrency, rates }: { row: DebtRow; baseCurrency: string; rates: Record<string, number> }) {
+  if (row.currency === baseCurrency) return <Figure>{bareFigure(row.minor, row.currency)}</Figure>;
+  return <ApproxFigure figure={formatMinor(row.minor, row.currency)} beneath={approxLine(row.minor, row.currency, baseCurrency, rates)} />;
+}
+
+function subtitleOf(row: DebtRow): string {
+  return [row.last4 ? `···· ${row.last4}` : null, row.detail || null].filter(Boolean).join(' · ');
+}
+
+function PhoneGroup({ group, baseCurrency, rates, footer }: { group: DebtGroup; baseCurrency: string; rates: Record<string, number>; footer?: ReactNode }) {
+  return (
+    <InsetGroup header={group.label} trailing={<HeaderFigure group={group} baseCurrency={baseCurrency} />} footer={footer}>
+      {group.rows.map((row) => {
+        const icon = ICONS[row.icon];
+        return (
+          <InsetRow
+            key={row.key}
+            {...destination(row)}
+            testId={`debt-row-${row.key}`}
+            icon={icon.glyph ?? <span className="text-[13px] font-semibold">{row.name.slice(0, 1).toUpperCase()}</span>}
+            iconColour={icon.colour}
+            title={row.name}
+            subtitle={subtitleOf(row) || undefined}
+            value={<RowFigure row={row} baseCurrency={baseCurrency} rates={rates} />}
+            valueTone="ink"
+          />
+        );
+      })}
+    </InsetGroup>
+  );
+}
+
+/** The desktop's table: the balance in the debt's own currency next to its value in the base currency. */
+function DebtTable({ groups, baseCurrency }: { groups: DebtGroup[]; baseCurrency: string }) {
+  const navigate = useNavigate();
+  const cell = 'border-t-[0.5px] border-[var(--ph-hair)] px-[14px] py-[10px] align-middle';
+  const head = 'border-b-[0.5px] border-[var(--ph-hair)] px-[14px] py-[10px] text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase';
+  return (
+    <div className="overflow-hidden bg-[var(--ph-surface)]" style={{ borderRadius: 11 }}>
+      <table className="w-full border-collapse text-[14px]" data-testid="debts-table">
+        <thead>
+          <tr>
+            <th scope="col" className={cx(head, 'text-left')}>Debt</th>
+            <th scope="col" className={cx(head, 'text-left')}>Details</th>
+            <th scope="col" className={cx(head, 'text-right')}>Balance</th>
+            <th scope="col" className={cx(head, 'text-right')}>In {currencyWord(baseCurrency)}</th>
+          </tr>
+        </thead>
+        {groups.map((group) => (
+          <tbody key={group.kind}>
+            <tr>
+              <th colSpan={4} scope="colgroup" className="bg-[var(--ph-ground)] px-[14px] pt-[14px] pb-[6px] text-left text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span>{group.label}</span>
+                  <HeaderFigure group={group} baseCurrency={baseCurrency} />
+                </span>
+              </th>
+            </tr>
+            {group.rows.map((row) => {
+              const to = destination(row);
+              return (
+                <tr
+                  key={row.key}
+                  data-testid={`debt-row-${row.key}`}
+                  className="cursor-pointer hover:bg-[var(--ph-fill)]"
+                  onClick={(event) => {
+                    // The name is a real link; a click anywhere else on the row goes to the same place.
+                    if ((event.target as HTMLElement).closest('a')) return;
+                    void navigate(to);
+                  }}
+                >
+                  <td className={cx(cell, 'text-[var(--ph-ink)]')}>
+                    <Link {...to} className="ph-focus font-medium text-[var(--ph-ink)]">
+                      {row.name}
+                    </Link>
+                    {row.last4 && <span className="text-[var(--ph-ink-3)]"> ···· {row.last4}</span>}
+                  </td>
+                  <td className={cx(cell, 'text-[var(--ph-ink-3)]')}>{row.detail}</td>
+                  <td className={cx(cell, 'tabular text-right whitespace-nowrap text-[var(--ph-ink)]')}>{formatMinor(row.minor, row.currency)}</td>
+                  <td className={cx(cell, 'tabular text-right whitespace-nowrap')}>
+                    {row.baseMinor === null ? (
+                      <Figure tone="warn">{`No ${row.missing} rate yet`}</Figure>
+                    ) : (
+                      <>
+                        <Figure>{bareFigure(row.baseMinor, baseCurrency)}</Figure>
+                        {row.rate !== null && (
+                          <span className="ml-[6px] rounded-full bg-[var(--ph-track)] px-[8px] py-[2px] text-[11px] font-semibold text-[var(--ph-ink-2)]">
+                            at {row.rate.toLocaleString('id-ID', { maximumFractionDigits: 4 })}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        ))}
+      </table>
+    </div>
+  );
+}
+
+/** The figure the page is for, or — when a rate is missing — the rate named instead of a wrong figure. */
+function Total({ debts, baseCurrency, today, left }: { debts: DebtSheet; baseCurrency: string; today: string; left: boolean }) {
+  const caption = `You owe, in ${currencyWord(baseCurrency)} · ${longDate(today)}`;
+  if (debts.total.totalMinor !== null)
+    return (
+      <div data-testid="debts-total">
+        <Hero minor={debts.total.totalMinor} currency={baseCurrency} direction="out" caption={caption} align={left ? 'start' : 'center'} />
+      </div>
+    );
+  return (
+    <div data-testid="debts-total" className={cx('flex flex-col', left ? 'items-start text-left' : 'items-center text-center')} style={{ marginBottom: 18 }}>
+      <p className="text-[22px] leading-[28px] font-extrabold tracking-[-0.03em] text-[var(--ph-warn)]">No {debts.total.missing.join(', ')} rate yet</p>
+      <p className="mt-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">so the total can't be added up</p>
+    </div>
+  );
+}
+
+/** The row figure in a totals group on the desktop: bare, as the hero above names the currency. */
+const sideFigure = (minor: number | null, missing: readonly string[], baseCurrency: string) =>
+  minor === null ? <Figure tone="warn">{missing.length ? `No ${missing.join(', ')} rate yet` : '—'}</Figure> : <Figure>{bareFigure(minor, baseCurrency)}</Figure>;
+
+export function DebtsPage() {
   const { ws } = useApp();
+  const phone = usePhone();
+  const today = isoDate();
+  const baseCurrency = ws.baseCurrency;
+  const accounts = useAccounts();
+  const balances = useBalances();
   const loans = useLoans();
   const payments = useScheduledPayments();
-  const accounts = useAccounts().data ?? [];
+  const people = usePeopleDebts(today);
+  const sheet = useSheet();
+  const all = accounts.data ?? [];
+  const cardIds = all.filter((a) => a.subtype === 'credit_card' && a.archivedAt === null).map((a) => a.id);
+  const cards = useCardFacts(cardIds, today);
+  const owedTo = people.data?.youOwe ?? [];
+  const held = useHeldRates([...all.filter((a) => a.kind === 'liability').map((a) => a.currency ?? baseCurrency), ...owedTo.map((p) => p.currency)]);
   const [adding, setAdding] = useState(false);
-  const today = isoDate();
+  const [showCleared, setShowCleared] = useState(false);
 
+  const rates = held.data?.rates ?? {};
+  const ready = accounts.data && balances.data && loans.data && people.data && cards.data && held.data;
+  const debts = ready
+    ? groupDebts(
+        { accounts: all, balances: balances.data!, loans: loans.data!, cards: cards.data!, people: owedTo, sheet: sheet.data ?? null, baseCurrency, ratesToBase: rates },
+        today,
+      )
+    : null;
+
+  // The instalments the banks ask for each month: the Loans page's own figure, now the Loans group's footer.
   const open = (loans.data ?? []).filter((loan) => loan.status === 'open');
-  const paidOff = (loans.data ?? []).filter((loan) => loan.status === 'paid_off');
-  const nameOf = (accountId: string) => accounts.find((account) => account.id === accountId)?.name ?? 'Loan';
-  // The instalment, worked out from what the ledger says is owed — not `periods[].paymentMinor`, which is
-  // the figure the bank named *if it named one* and is 0 for a loan onboarded without typing it.
-  // Each loan in its own currency; the total converted, or none with the missing rate named (`sumToBase`).
-  const held = useHeldRates(open.map((loan) => accounts.find((account) => account.id === loan.accountId)?.currency ?? ws.baseCurrency));
-  const instalments = monthlyInstalments(open, accounts, payments.data ?? {}, ws.baseCurrency, held.data?.rates ?? {});
-  const instalmentOf = (accountId: string) => instalments.rows.find((row) => row.accountId === accountId)!;
+  const instalments = monthlyInstalments(open, all, payments.data ?? {}, baseCurrency, rates);
+  const instalmentLine =
+    !payments.isSuccess || open.length === 0 ? null : instalments.total.totalMinor === null ? (
+      `No ${instalments.total.missing.join(', ')} rate yet, so the instalments cannot be added up. Each loan is in its own currency.`
+    ) : instalments.total.totalMinor > 0 ? (
+      <>
+        The instalments the banks ask for each month: <Money minor={instalments.total.totalMinor} currency={baseCurrency} />.
+      </>
+    ) : null;
 
-  // While the inline form is open there is no action to show, and an empty corner would still take its gap.
-  const actions: CornerAction[] = adding
-    ? []
-    : [
-        { key: 'terms', label: 'Add loan terms', glyph: <Plus size={20} aria-hidden />, run: () => setAdding(true) },
-        // Terms go on a loan account that already exists; the picker is for the loan that does not yet.
-        { key: 'pick', label: 'What do you owe?', glyph: <HelpCircle size={20} aria-hidden />, to: '/debts/new' },
-      ];
+  const actions: CornerAction[] = [{ key: 'add', label: 'Add a debt', glyph: <Plus size={20} aria-hidden />, to: '/debts/new' }];
+
+  const due = debts?.due;
+  const dueLine =
+    !due || !sheet.isSuccess ? null : due.withinYearMinor === null ? (
+      `No ${due.missing.join(', ')} rate yet, so what falls due within a year cannot be added up.`
+    ) : (
+      <>
+        Due within a year: <Money minor={due.withinYearMinor} currency={baseCurrency} /> · the rest is long term.
+      </>
+    );
+
+  /** Under the Loans group: add terms to a loan already running, and the loans paid off. */
+  const loanTools = (
+    <>
+      {adding && <TermsForm onDone={() => setAdding(false)} />}
+      {!adding && (
+        <InsetGroup>
+          <InsetRow title="Add loan terms" onClick={() => setAdding(true)} chevron={false} />
+          {(debts?.cleared.length ?? 0) > 0 && (
+            <InsetRow title={`${showCleared ? 'Hide' : 'Show'} paid-off loans (${debts!.cleared.length})`} onClick={() => setShowCleared((was) => !was)} chevron={false} />
+          )}
+        </InsetGroup>
+      )}
+      {showCleared && debts && debts.cleared.length > 0 && (
+        <InsetGroup header="Paid off">
+          {debts.cleared.map((loan) => (
+            <InsetRow key={loan.accountId} title={loan.name} subtitle={loan.clearedOn ? `cleared ${loan.clearedOn}` : 'cleared'} chevron={false} />
+          ))}
+        </InsetGroup>
+      )}
+    </>
+  );
+
+  const loansGroup = debts?.groups.find((group) => group.kind === 'loan');
+  const nothing = debts !== null && debts.groups.length === 0;
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Loans" actions={actions} />
+      <LargeTitle title="Debts" actions={actions} />
       <NetWorthTabs />
-      <ErrorBox error={loans.error ?? payments.error} />
+      <ErrorBox error={accounts.error ?? balances.error ?? loans.error ?? payments.error ?? people.error ?? cards.error ?? held.error ?? sheet.error} />
 
-      {adding && <TermsForm onDone={() => setAdding(false)} />}
-
-      {loans.isSuccess && open.length === 0 && paidOff.length === 0 && !adding && (
+      {nothing && (
         <Empty>
-          No loan terms yet. Add the loan account on{' '}
+          Nothing owed. Tap ＋ to add a loan, a card, or money you borrowed from someone; a loan already on{' '}
           <Link to="/accounts" className="font-medium underline">
             Accounts
           </Link>{' '}
-          with what you still owe, then add its terms here to see the schedule.
+          takes its terms below.
         </Empty>
       )}
 
-      {held.isSuccess && payments.isSuccess && instalments.total.totalMinor !== null && instalments.total.totalMinor > 0 && (
-        <Hero minor={instalments.total.totalMinor} currency={ws.baseCurrency} caption="The instalments the banks ask for each month" />
-      )}
-      {held.isSuccess && payments.isSuccess && instalments.total.totalMinor === null && (
-        <Panel header="Each month">
-          <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-            No {instalments.total.missing.join(', ')} rate yet, so the instalments cannot be added up. Each loan below is in its own currency.
-          </p>
-        </Panel>
+      {debts && phone && (
+        <>
+          {!nothing && <Total debts={debts} baseCurrency={baseCurrency} today={today} left={false} />}
+          {debts.groups.map((group) => (
+            <div key={group.kind}>
+              <PhoneGroup group={group} baseCurrency={baseCurrency} rates={rates} footer={group.kind === 'loan' ? instalmentLine : undefined} />
+              {group.kind === 'loan' && loanTools}
+            </div>
+          ))}
+          {!nothing && dueLine && (
+            <p data-testid="debts-due" className="px-[4px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]" style={{ marginTop: -10, marginBottom: 18 }}>
+              {dueLine}
+            </p>
+          )}
+          {!loansGroup && loanTools}
+        </>
       )}
 
-      {open.length > 0 && (
-        <InsetGroup header="Still being paid">
-          {open.map((loan) => (
-            <InsetRow
-              key={loan.accountId}
-              to="/net-worth/loans/$accountId"
-              params={{ accountId: loan.accountId }}
-              title={nameOf(loan.accountId)}
-              subtitle={`${loan.lenderName} · ${(periodOn(loan.periods, today)?.rateBps ?? 0) / 100}% · ${loan.tenorMonths} months from ${loan.firstPaymentOn}${loan.isHomeLoan ? ' · mortgage' : ''}`}
-              value={<Money minor={instalmentOf(loan.accountId).minor} currency={instalmentOf(loan.accountId).currency} />}
-              valueTone="ink"
-            />
-          ))}
-        </InsetGroup>
-      )}
-
-      {paidOff.length > 0 && (
-        <InsetGroup header="Paid off">
-          {paidOff.map((loan) => (
-            <InsetRow key={loan.accountId} title={nameOf(loan.accountId)} subtitle={`cleared ${loan.statusOn}`} chevron={false} />
-          ))}
-        </InsetGroup>
+      {debts && !phone && (
+        <div className="grid items-start gap-[28px] md:grid-cols-[260px_minmax(0,1fr)]">
+          <div>
+            {!nothing && <Total debts={debts} baseCurrency={baseCurrency} today={today} left />}
+            {!nothing && (
+              <InsetGroup>
+                {debts.groups.map((group) => (
+                  <InsetRow key={group.kind} title={group.label} value={sideFigure(group.totalMinor, group.missing, baseCurrency)} valueTone="ink" testId={`debts-side-${group.kind}`} />
+                ))}
+              </InsetGroup>
+            )}
+            {!nothing && due && sheet.isSuccess && (
+              <InsetGroup>
+                <InsetRow title="Due within a year" value={sideFigure(due.withinYearMinor, due.missing, baseCurrency)} valueTone="ink" testId="debts-side-within-year" />
+                <InsetRow title="Long term" value={sideFigure(due.longTermMinor, due.missing, baseCurrency)} valueTone="ink" testId="debts-side-long-term" />
+              </InsetGroup>
+            )}
+            {instalmentLine && <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{instalmentLine}</p>}
+          </div>
+          <div className="min-w-0">
+            {!nothing && <DebtTable groups={debts.groups} baseCurrency={baseCurrency} />}
+            <div className={nothing ? undefined : 'mt-[18px]'}>{loanTools}</div>
+          </div>
+        </div>
       )}
     </div>
   );

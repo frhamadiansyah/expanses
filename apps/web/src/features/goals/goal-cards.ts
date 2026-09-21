@@ -146,7 +146,7 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
   },
   { kind: 'home', label: 'Home down payment', growthBps: 700, returnBps: bandReturn(36), stage: { name: 'Down payment', targetMinor: null, targetMonths: null, monthsAway: 36 }, hint: 'Property prices move with the area, so check the growth yourself.' },
   { kind: 'wedding', label: 'Wedding', growthBps: 500, returnBps: bandReturn(24), stage: { name: 'Wedding', targetMinor: null, targetMonths: null, monthsAway: 24 }, hint: 'Add stages for the venue deposit and the balance if you pay in steps.' },
-  { kind: 'vehicle', label: 'Vehicle', growthBps: 300, returnBps: bandReturn(36), stage: { name: 'Vehicle', targetMinor: null, targetMonths: null, monthsAway: 36 }, hint: 'A down payment and the loan go on Loans; this is for paying cash.' },
+  { kind: 'vehicle', label: 'Vehicle', growthBps: 300, returnBps: bandReturn(36), stage: { name: 'Vehicle', targetMinor: null, targetMonths: null, monthsAway: 36 }, hint: 'A down payment and the loan go on Debts; this is for paying cash.' },
   { kind: 'holiday', label: 'Holiday', growthBps: 300, returnBps: bandReturn(9), stage: { name: 'Holiday', targetMinor: null, targetMonths: null, monthsAway: 9 }, hint: 'Short goals belong in savings or a money market fund, not shares.' },
 ];
 

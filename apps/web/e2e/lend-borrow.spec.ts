@@ -15,7 +15,7 @@ async function addAccount(page: Page, name: string, type: string, balanceLabel: 
 }
 
 async function lend(page: Page, person: string, amount: string, from: string) {
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   await page.getByRole('button', { name: 'Add a loan' }).click();
   await page.getByLabel('Person').fill(person);
   await page.getByLabel(/^Amount/).fill(amount);
@@ -28,7 +28,7 @@ test('lending on a credit card raises the card, earns points, and is never spend
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '0');
 
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   await page.getByRole('button', { name: 'Add a loan' }).click();
   await page.getByLabel('Person').fill('Andi');
   await page.getByLabel(/^Amount/).fill('4000000');
@@ -106,7 +106,7 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
   await expect(page.getByText('Dinner at Plataran')).toBeVisible();
 
   // Andi owes his part, and only your own share reached the category.
-  await page.goto('/net-worth/debts');
+  await page.goto('/net-worth/lend-borrow');
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
   await expect(page.getByText(/600\.000/).first()).toBeVisible();
 

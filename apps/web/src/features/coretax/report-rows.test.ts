@@ -76,7 +76,7 @@ describe('readinessLinks', () => {
   it('sends an issue about a debt to Lend & borrow', () => {
     const links = readinessLinks([issue({ key: 'andi:missing:name', rowKey: 'andi' })], [row({ key: 'andi', section: 'piutang', code: '0201', name: 'Andi' })]);
 
-    expect(links[0]!.to).toBe('/net-worth/debts');
+    expect(links[0]!.to).toBe('/net-worth/lend-borrow');
   });
 
   it('sends an issue about a loan to Loans', () => {

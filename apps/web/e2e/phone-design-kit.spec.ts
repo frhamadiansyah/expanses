@@ -61,12 +61,12 @@ test('five tabs do not wrap at phone width — the fifth moves behind a …', as
   await page.goto('/design-kit');
   const group = page.getByRole('radiogroup', { name: 'Net worth sections' });
   await expect(group.getByRole('radio')).toHaveCount(4);
-  await expect(group.getByRole('radio', { name: 'Loans' })).toHaveCount(0);
+  await expect(group.getByRole('radio', { name: 'Lend & borrow' })).toHaveCount(0);
 
   const more = page.getByRole('button', { name: 'More Net worth sections' });
   await expect(more).toBeVisible();
   await more.click();
-  await expect(page.getByRole('menu', { name: 'More Net worth sections' }).getByRole('menuitem', { name: 'Loans' })).toBeVisible();
+  await expect(page.getByRole('menu', { name: 'More Net worth sections' }).getByRole('menuitem', { name: 'Lend & borrow' })).toBeVisible();
 });
 
 test('the wallet stack shows every card’s figure without a tap', async ({ page }) => {

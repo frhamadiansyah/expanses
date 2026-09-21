@@ -93,13 +93,14 @@ test('every net-worth section tab is a real link, so it can be opened in a new t
     ['A', '/net-worth'],
     ['A', '/net-worth/assets'],
     ['A', '/net-worth/trades'],
-    ['A', '/net-worth/debts'],
     ['A', '/net-worth/loans'],
+    ['A', '/net-worth/lend-borrow'],
   ]);
+  await expect(tabs).toHaveText(['Overview', 'Assets', 'Buy & sell', 'Debts', 'Lend & borrow']);
 
   // Still a segmented control: clicking one selects it and takes the page with it, exactly as before.
   await page.getByRole('radio', { name: 'Lend & borrow' }).click();
-  await expect(page).toHaveURL(/\/net-worth\/debts$/);
+  await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
   await expect(page.getByRole('radio', { name: 'Lend & borrow' })).toHaveAttribute('aria-checked', 'true');
 });
 
