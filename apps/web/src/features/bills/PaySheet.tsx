@@ -6,6 +6,8 @@ import { Sheet } from '../../app/Sheet';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, InputRow, Money, RowGroup, SelectRow } from '../../ui';
+import { spendingDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 
 /**
  * What it came to, written big and bare in the middle of the sheet. No box around it: it is the one thing the sheet is
@@ -49,19 +51,31 @@ export function PaySheet({
   const [busy, setBusy] = useState(false);
   const currency = currencyOf(payer);
   const months = bill.payableMonths.length > 0 ? bill.payableMonths : [bill.billMonth];
+  /** The one reading of the typed figure: Save throws what it says, the question reads 0 until it parses. */
+  const readAmount = () => (amount.trim() ? parseMajor(amount.trim(), currency) : 0);
+  const typedMinor = (() => {
+    try {
+      return readAmount();
+    } catch {
+      return 0;
+    }
+  })();
+  const setAside = useSetAside(spendingDoor(payer, typedMinor));
 
   async function record(event: FormEvent) {
     event.preventDefault();
+    // Record is a submit button, so Enter records too: the question is a condition on both.
+    if (!setAside.ready) return;
     setError(null);
     setMissing(false);
     setBusy(true);
     try {
-      const amountMinor = amount.trim() ? parseMajor(amount.trim(), currency) : 0;
+      const amountMinor = readAmount();
       if (!(amountMinor > 0)) {
         setMissing(true);
         return;
       }
-      const ids = await recordBillPayments(database, ws, { paidOn, payments: [{ templateId: bill.id, billMonth: month, amountMinor, moneyAccountId: payer }] });
+      const ids = await recordBillPayments(database, ws, { paidOn, payments: [{ templateId: bill.id, billMonth: month, amountMinor, moneyAccountId: payer, setAside: setAside.choice }] });
       await invalidate();
       onPaid(ids, amountMinor, paidOn, month);
     } catch (e) {
@@ -133,9 +147,10 @@ export function PaySheet({
             Enter what it came to
           </p>
         )}
+        {setAside.node}
         <ErrorBox error={error} />
 
-        <Button type="submit" variant="success" className="w-full" disabled={busy}>
+        <Button type="submit" variant="success" className="w-full" disabled={busy || !setAside.ready}>
           Record payment
         </Button>
 
