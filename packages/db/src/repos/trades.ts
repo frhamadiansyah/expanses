@@ -1,5 +1,6 @@
 import {
   goalUnitsOf,
+  outflowFrom,
   type Position,
   positionAfter,
   sellBasisMinor,
@@ -11,14 +12,14 @@ import {
   tradePostings,
   uuidv7,
 } from '@expanses/core';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries } from '../schema';
 import { investmentTrades } from '../schema-assets';
-import { goals } from '../schema-goals';
+import { goalDraws, goals } from '../schema-goals';
 import { AssetError, assertAccountInWorkspace } from './assets';
-import { adjustSetAsideTx } from './goal-transfers';
+import { adjustSetAsideTx, carryable, lowerSetAsideTx, type SetAsideChoice, setAsideChoiceOfTx, setAsideTablesExist, stillPromisedTx, withSavedStage } from './set-aside-tx';
 import { categoryIdsByKeyTx } from './categories';
 import { systemAccountId } from './accounts';
 import { postTransactionTx, voidTransactionTx } from './ledger';
@@ -56,6 +57,8 @@ export interface RecordTradeInput {
   excludedFromReport?: boolean;
   /** Photo rows written before the trade had a transaction — the contract note for this purchase. */
   photoIds?: string[];
+  /** Which goal the money came out of, when it took more than was free (spec §4.4). */
+  setAside?: SetAsideChoice | null;
 }
 
 export interface RecalculatedSell {
@@ -200,7 +203,18 @@ async function recalculateSells(
 }
 
 /** Writes a trade and its ledger transaction inside an open database transaction. */
-export async function writeTradeTx(tx: Db, ws: WorkspaceContext, input: RecordTradeInput, replacesTradeId: string | null): Promise<TradeResult> {
+/**
+ * `saved` is an edit's original answer (replaceTrade): kept when `input.setAside` is undefined and it still pays from the
+ * same account, as replaceTransaction carries one; and its stage kept when the same spend is given again.
+ */
+export async function writeTradeTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  input: RecordTradeInput,
+  replacesTradeId: string | null,
+  saved: SetAsideChoice | null = null,
+  savedLowering: SavedLowering | null = null,
+): Promise<TradeResult> {
   await assertAccountInWorkspace(tx, ws, input.accountId, 'Asset');
   if (input.cashAccountId) await assertAccountInWorkspace(tx, ws, input.cashAccountId, 'Cash account');
   const { accounts: tradeAccounts, holdingName } = await tradeAccountsFor(tx, ws, input.accountId, input.cashAccountId);
@@ -233,6 +247,7 @@ export async function writeTradeTx(tx: Db, ws: WorkspaceContext, input: RecordTr
         // A trade carries the two facts §4 scopes to "always", the same way every other way in does.
         excludedFromReport: input.excludedFromReport,
         photoIds: input.photoIds,
+        setAside: withSavedStage(input.setAside !== undefined ? input.setAside : saved && carryable(saved, lines) ? saved : null, saved),
       })
     : null;
   const id = uuidv7();
@@ -254,9 +269,37 @@ export async function writeTradeTx(tx: Db, ws: WorkspaceContext, input: RecordTr
     replacesTradeId,
     createdAt: new Date().toISOString(),
   });
-  // Money parked for this goal in the account that paid is now units, so it stops counting as cash.
+  // Money parked for this goal in the account that paid is now units: lowered by what left that account, in its currency.
   if (input.kind === 'buy' && input.goalId && input.cashAccountId) {
-    await adjustSetAsideTx(tx, ws, input.goalId, input.cashAccountId, -(input.grossMinor + input.feeMinor + input.taxMinor));
+    const outflow = outflowFrom(lines, input.cashAccountId);
+    if (transactionId && (await setAsideTablesExist(tx))) {
+      // Recorded as a move with no destination, so a void gives it back through the sink every door uses (ruling I3). An
+      // edit of the same buy keeps what it took and takes only what the buy grew by, never more because the promise grew.
+      const same = savedLowering && savedLowering.goalId === input.goalId && savedLowering.accountId === input.cashAccountId;
+      const wanted = same ? Math.min(outflow, savedLowering.amountMinor + Math.max(0, outflow - savedLowering.outflowMinor)) : outflow;
+      const taken = await lowerSetAsideTx(tx, ws, input.goalId, input.cashAccountId, wanted);
+      if (taken > 0) {
+        await tx.insert(goalDraws).values({
+          id: uuidv7(),
+          workspaceId: ws.workspaceId,
+          transactionId,
+          goalId: input.goalId,
+          accountId: input.cashAccountId,
+          intent: 'move',
+          amountMinor: taken,
+          toAccountId: null,
+          toAmountMinor: null,
+          stageId: null,
+          wasWhole: 0,
+          wholeSince: null,
+          occurredOn: input.occurredOn,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } else {
+      // A database stopped at 49 lowers it as it always did, with nothing to give it back.
+      await adjustSetAsideTx(tx, ws, input.goalId, input.cashAccountId, -outflow);
+    }
   }
   const recalculatedSells = await recalculateSells(tx, ws, input.accountId, input.occurredOn, input.ratesToBase);
   return { tradeId: id, transactionId, recalculatedSells };
@@ -273,6 +316,36 @@ async function checkGoalUnits(tx: Db, ws: WorkspaceContext, trades: TradeRow[], 
     whose = goal ? goal.name : 'That goal';
   }
   throw new AssetError(`${whose} holds ${held / 1_000_000}; enter up to that`);
+}
+
+/** What a tagged buy took off its goal's cash promise: the goal, the cash account, what it took and what left then. */
+export interface SavedLowering {
+  goalId: string;
+  accountId: string;
+  amountMinor: number;
+  outflowMinor: number;
+}
+
+/** What the buy took off its goal's promise on the cash account — nought when the goal had nothing there then. */
+async function loweringOfTx(tx: Db, ws: WorkspaceContext, transactionId: string, goalId: string, accountId: string): Promise<SavedLowering> {
+  const [draw] = await tx
+    .select({ amountMinor: goalDraws.amountMinor })
+    .from(goalDraws)
+    .where(
+      and(
+        eq(goalDraws.transactionId, transactionId),
+        eq(goalDraws.workspaceId, ws.workspaceId),
+        eq(goalDraws.goalId, goalId),
+        eq(goalDraws.accountId, accountId),
+        eq(goalDraws.intent, 'move'),
+        isNull(goalDraws.toAccountId),
+      ),
+    );
+  const lines = await tx
+    .select({ accountId: entries.accountId, amountMinor: entries.amountMinor })
+    .from(entries)
+    .where(and(eq(entries.transactionId, transactionId), eq(entries.workspaceId, ws.workspaceId)));
+  return { goalId, accountId, amountMinor: draw?.amountMinor ?? 0, outflowMinor: outflowFrom(lines, accountId) };
 }
 
 async function retire(tx: Db, ws: WorkspaceContext, tradeId: string, status: 'replaced' | 'deleted'): Promise<TradeRow> {
@@ -294,8 +367,21 @@ export function recordTrade(database: Database, ws: WorkspaceContext, input: Rec
 /** Edits a trade: the old one and its transaction are retired and a fresh pair is written. */
 export function replaceTrade(database: Database, ws: WorkspaceContext, tradeId: string, input: RecordTradeInput): Promise<TradeResult> {
   return database.transaction(async (tx) => {
+    // The answer the old trade was saved with, read before the void reverses it, carried as an edit carries one.
+    const [prior] = await tx
+      .select({ transactionId: investmentTrades.transactionId, kind: investmentTrades.kind, goalId: investmentTrades.goalId, cashAccountId: investmentTrades.cashAccountId })
+      .from(investmentTrades)
+      .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId)));
+    const saved = prior?.transactionId && (await setAsideTablesExist(tx)) ? await setAsideChoiceOfTx(tx, ws, prior.transactionId) : null;
+    const savedLowering =
+      prior?.transactionId && prior.kind === 'buy' && prior.goalId && prior.cashAccountId && (await setAsideTablesExist(tx))
+        ? await loweringOfTx(tx, ws, prior.transactionId, prior.goalId, prior.cashAccountId)
+        : null;
     const old = await retire(tx, ws, tradeId, 'replaced');
-    const result = await writeTradeTx(tx, ws, input, tradeId);
+    // A borrow from the goal the buy is now for is its own money, and a goal archived or no longer set aside there
+    // is dropped rather than refused — the rules convertToPurchase and replaceTransaction follow.
+    const kept = saved && saved.goalId !== (input.goalId ?? null) && (await stillPromisedTx(tx, ws, saved)) ? saved : null;
+    const result = await writeTradeTx(tx, ws, input, tradeId, input.setAside === undefined ? kept : saved, savedLowering);
     const from = old.occurredOn < input.occurredOn ? old.occurredOn : input.occurredOn;
     const alreadyDone = new Set(result.recalculatedSells.map((sell) => sell.tradeId));
     const more = (await recalculateSells(tx, ws, input.accountId, from, input.ratesToBase)).filter((sell) => !alreadyDone.has(sell.tradeId));

@@ -4,6 +4,9 @@ import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, Field, Input, Money, Select } from '../../ui';
+import { useSetAsideChoiceOf } from '../goals/queries';
+import { tradeDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { draftToInput, emptyTradeDraft, pricePreview, sellPreview, type TradeDraft } from './trade-form';
 
 const KINDS: { value: TradeKind; label: string }[] = [
@@ -44,13 +47,27 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
   const price = pricePreview(draft, currency);
   const sell = sellPreview(draft, position, currency);
   const change = (patch: Partial<TradeDraft>) => setDraft((current) => ({ ...current, ...patch }));
+  // The one buy rule (`tradeDoor`), read off the input `submit` sends; an incomplete draft asks nothing yet. An edit
+  // asks about the cash account as if the old trade's payment were not there, and opens on its saved answer.
+  const door = (() => {
+    try {
+      return tradeDoor(draftToInput(draft, currency, today));
+    } catch {
+      return null;
+    }
+  })();
+  const editedTransactionId = editing?.transactionId ?? null;
+  const saved = useSetAsideChoiceOf(editedTransactionId);
+  const setAside = useSetAside(door, { excludeTransactionId: editedTransactionId, initial: saved.data ?? null });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // Enter submits too: the question is a condition on it.
+    if (!setAside.ready) return;
     setError(null);
     setBusy(true);
     try {
-      const input = { ...draftToInput(draft, currency, today), templateId: templateId ?? null };
+      const input = { ...draftToInput(draft, currency, today), templateId: templateId ?? null, setAside: setAside.choice };
       const result = editing ? await replaceTrade(database, ws, editing.id, input) : await recordTrade(database, ws, input);
       await invalidate();
       const changed = result.recalculatedSells.length;
@@ -143,9 +160,10 @@ export function TradeForm({ holdings, goals, cashAccounts, positions, editing, i
         </p>
       )}
 
+      {setAside.node}
       <ErrorBox error={error} />
       <div className="flex gap-2">
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" disabled={busy || !setAside.ready}>
           {editing ? 'Save changes' : 'Record'}
         </Button>
         {onCancel && (

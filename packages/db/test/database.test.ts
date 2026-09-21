@@ -21,7 +21,7 @@ describe('database', () => {
     // checked to be every version, once, in ascending order, with 0053 among them.
     const versions = MIGRATIONS.map((migration) => migration.version);
     expect([...new Set(versions)].sort((a, b) => a - b)).toEqual(versions);
-    expect(versions).toContain(53);
+    expect(versions).toEqual(expect.arrayContaining([50, 53]));
     expect(await migrate(database)).toEqual(versions);
     expect(await migrate(database)).toEqual([]);
   });

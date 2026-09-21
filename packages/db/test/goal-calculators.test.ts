@@ -336,8 +336,8 @@ describe('removing a level', () => {
     await saveGoalCalculator(database, ws, { goalId, kind: 'education', inputs: twoLevels(), today: '2026-01-01' });
     const drawn = (await stagesOf(database, ws, goalId)).find((stage) => stage.name === 'Preschool · year 2')!;
     // The set-aside branch's table, as its migration makes it: a draw names the stage it paid.
-    await database.execScript('CREATE TABLE goal_draws (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, goal_id TEXT NOT NULL, stage_id TEXT)');
-    await database.db.run(sql`INSERT INTO goal_draws (id, workspace_id, goal_id, stage_id) VALUES ('d1', ${ws.workspaceId}, ${goalId}, ${drawn.id})`);
+    // 0050's own table (set-aside): a spend's draw naming the stage it paid.
+    await database.db.run(sql`INSERT INTO goal_draws (id, workspace_id, transaction_id, goal_id, account_id, intent, amount_minor, stage_id, occurred_on, created_at) VALUES ('d1', ${ws.workspaceId}, 'tx', ${goalId}, 'account', 'spend', 1, ${drawn.id}, '2026-09-19', '2026-09-19T00:00:00.000Z')`);
 
     await saveGoalCalculator(database, ws, { goalId, kind: 'education', inputs: levels(), today: '2026-01-01' });
     const stages = await stagesOf(database, ws, goalId);

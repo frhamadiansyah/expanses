@@ -34,3 +34,20 @@ export const goalEarmarks = sqliteTable('goal_earmarks', {
   workspaceId: text('workspace_id').notNull(),
   amountMinor: integer('amount_minor').notNull(),
 });
+
+export const goalDraws = sqliteTable('goal_draws', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  transactionId: text('transaction_id').notNull(),
+  goalId: text('goal_id').notNull(),
+  accountId: text('account_id').notNull(),
+  intent: text('intent', { enum: ['borrow', 'spend', 'move'] }).notNull(),
+  amountMinor: integer('amount_minor').notNull(),
+  toAccountId: text('to_account_id'),
+  toAmountMinor: integer('to_amount_minor'),
+  stageId: text('stage_id'),
+  wasWhole: integer('was_whole').notNull(),
+  wholeSince: text('whole_since'),
+  occurredOn: text('occurred_on').notNull(),
+  createdAt: text('created_at').notNull(),
+});
