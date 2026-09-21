@@ -1,8 +1,9 @@
 import { MoreHorizontal } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { type CSSProperties, useRef, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { cx } from '../index';
-import { PHONE_MAX, type Segment, fitSegments } from './segments';
+import { tapReach } from './metrics';
+import { PHONE_MAX, SEGMENT_HEIGHT, SEGMENT_MORE, type Segment, fitSegments } from './segments';
 
 /**
  * Primitive 4: the segmented control. It replaces every underline tab row in the app.
@@ -13,6 +14,10 @@ import { PHONE_MAX, type Segment, fitSegments } from './segments';
  *
  * Keyboard: one tab stop for the whole control, arrows between the segments — a radio group, which is what a
  * segmented control is. Tabbing through four look-alike buttons is not navigation, it is an obstacle.
+ *
+ * Reach: iOS draws this control about 32 tall and still gives each segment a 44 pt target, so the drawn heights
+ * below stay iOS's and `ph-tap` grows the target around them. Nothing here is 44 to the eye; everything is to a
+ * thumb.
  */
 export function SegmentedControl({
   segments,
@@ -77,12 +82,17 @@ export function SegmentedControl({
               }}
               /* flex-1 + basis-0 + min-w-0 is what makes the segments equal width and stops any of them wrapping. */
               className={cx(
-                'ph-focus-inset min-w-0 flex-1 basis-0 truncate px-[9px] text-[12.5px] leading-[28px] font-semibold whitespace-nowrap',
+                'ph-focus-inset ph-tap min-w-0 flex-1 basis-0 px-[9px] text-[12.5px] leading-[28px] font-semibold whitespace-nowrap',
                 selected ? 'bg-[var(--ph-selected)] text-[var(--ph-ink)] shadow-[0_1px_3px_rgb(0_0_0/0.14)]' : 'text-[var(--ph-ink-2)]',
               )}
-              style={{ borderRadius: 7, minHeight: 28 }}
+              /* A segment is as wide as its share of the track, so only its height is short of the floor. */
+              style={{ borderRadius: 7, minHeight: SEGMENT_HEIGHT, '--ph-tap-y': `${tapReach(SEGMENT_HEIGHT)}px` } as CSSProperties}
             >
-              {segment.label}
+              {/*
+               * The clipping lives on the label rather than on the segment: `overflow: hidden` on the segment
+               * would cut `ph-tap`'s reach back to the drawn box, which is the whole of what it is for.
+               */}
+              <span className="block truncate">{segment.label}</span>
             </button>
           );
         })}
@@ -94,8 +104,16 @@ export function SegmentedControl({
             aria-label={`More ${label}`}
             aria-expanded={open}
             onClick={() => setOpen((was) => !was)}
-            className="ph-focus flex items-center justify-center rounded-full bg-[var(--ph-track)] text-[var(--ph-ink-2)]"
-            style={{ width: 32, height: 32 }}
+            className="ph-focus ph-tap flex items-center justify-center rounded-full bg-[var(--ph-track)] text-[var(--ph-ink-2)]"
+            /* The … is 32 square, so it is under the floor in both directions and reaches in both. */
+            style={
+              {
+                width: SEGMENT_MORE,
+                height: SEGMENT_MORE,
+                '--ph-tap-y': `${tapReach(SEGMENT_MORE)}px`,
+                '--ph-tap-x': `${tapReach(SEGMENT_MORE)}px`,
+              } as CSSProperties
+            }
           >
             <MoreHorizontal size={18} aria-hidden />
           </button>

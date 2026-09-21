@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { fitSegments, type Segment } from './segments';
+import { TAP, tapReach } from './metrics';
+import { fitSegments, SEGMENT_HEIGHT, SEGMENT_MORE, type Segment } from './segments';
 
 /** The four tabs `/cards/$cardId` carries today as an underline row that wraps at 390px. */
 const CARD_TABS: Segment[] = [
@@ -58,5 +59,25 @@ describe('fitSegments', () => {
     const plan = fitSegments([{ key: 'long', label: 'Outstanding statement balance' }], 90);
     expect(plan.shown.map((segment) => segment.key)).toEqual(['long']);
     expect(plan.overflow).toEqual([]);
+  });
+});
+
+/**
+ * The control is drawn as iOS draws it and reached as the kit demands. Both halves are asserted, because
+ * satisfying either one alone is the failure: 44 drawn is not native, and 28 reached is not tappable.
+ */
+describe('the segmented control against the tap floor', () => {
+  it('keeps iOS’s own 28px segment — it never grows to meet the floor', () => {
+    expect(SEGMENT_HEIGHT).toBeLessThan(TAP);
+    expect(SEGMENT_HEIGHT).toBe(28);
+  });
+
+  it('gives a segment a 44pt target anyway, by reaching past what it draws', () => {
+    expect(SEGMENT_HEIGHT + tapReach(SEGMENT_HEIGHT) * 2).toBeGreaterThanOrEqual(TAP);
+  });
+
+  it('reaches the … in both directions, since 32 square is under the floor on both', () => {
+    expect(SEGMENT_MORE).toBeLessThan(TAP);
+    expect(SEGMENT_MORE + tapReach(SEGMENT_MORE) * 2).toBeGreaterThanOrEqual(TAP);
   });
 });

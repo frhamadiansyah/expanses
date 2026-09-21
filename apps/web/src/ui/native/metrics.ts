@@ -9,6 +9,18 @@
 /** The smallest thing a finger may be asked to hit. Every tappable row, button and segment clears it. */
 export const TAP = 44;
 
+/**
+ * How far past what it draws a control's hit area has to reach, on each side, to clear the tap floor.
+ *
+ * Not everything native is 44 tall: iOS genuinely draws a segmented control at about 32, and drawing ours at 44
+ * to satisfy the floor would be a phone layout in a rule's clothing. The floor is about the *target*, which is a
+ * box around the control rather than the control itself — this is how much bigger that box is than the picture.
+ * The reach rounds up, because a control left a pixel under the floor has not met it.
+ */
+export function tapReach(drawn: number): number {
+  return Math.max(0, Math.ceil((TAP - drawn) / 2));
+}
+
 /** A phone's width in CSS pixels, and the width every phone-side decision is taken at unless told otherwise. */
 export const PHONE_WIDTH = 390;
 

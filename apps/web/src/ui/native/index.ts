@@ -17,10 +17,10 @@ export { CardStack, type WalletCard } from './CardStack';
 export { Figure, RecordTable, type RecordColumn, type RecordShape } from './RecordTable';
 
 /* The decisions, exported so a screen can ask the same questions the components ask. */
-export { CHEVRON, GROUP_GAP, GROUP_RADIUS, MIN_TEXT, PHONE_WIDTH, ROW_ICON, ROW_PAD_X, ROW_PAD_Y, TAP, rowHeight, textWidth } from './metrics';
+export { CHEVRON, GROUP_GAP, GROUP_RADIUS, MIN_TEXT, PHONE_WIDTH, ROW_ICON, ROW_PAD_X, ROW_PAD_Y, TAP, rowHeight, tapReach, textWidth } from './metrics';
 export { groupHeader, rowPositions, type GroupHeader, type HeaderProgress, type RowPosition } from './group';
 export { iconTint, moneyTone, planRow, type Direction, type RowLayout, type RowShape, type Tone } from './row';
-export { PHONE_MAX, fitSegments, type PlacedSegment, type Segment, type SegmentPlan } from './segments';
+export { PHONE_MAX, SEGMENT_HEIGHT, SEGMENT_MORE, fitSegments, type PlacedSegment, type Segment, type SegmentPlan } from './segments';
 export { CORNER_MAX, backLabel, planCornerActions, type CornerAction, type CornerPlan } from './title';
 export { heroFigure, progressFraction, progressPercent, progressTone, type HeroFigure } from './hero-figure';
 export { planFormRow, type FormKind, type FormRowPlan } from './form-row';

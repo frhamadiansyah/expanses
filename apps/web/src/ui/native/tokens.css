@@ -85,3 +85,26 @@
   outline: 2px solid var(--ph-focus);
   outline-offset: -2px;
 }
+
+/*
+ * A hit area bigger than the picture.
+ *
+ * The kit's floor is 44 pt, and some native controls are genuinely smaller than that — a segmented control is
+ * about 32 tall on iOS itself. Drawing them at 44 to satisfy the floor would be inventing a shape iOS does not
+ * ship, so the target grows instead of the control: `::after` is an invisible box around it, hit-tested like any
+ * child, which leaves the drawn height — and every layout and measurement taken from it — exactly where it was.
+ *
+ * The same idea as the back link above a large title, which takes a 44 pt height and gives it back to the layout
+ * with negative margins; here the element's own box is the picture, so the extra height cannot live on it.
+ *
+ * `--ph-tap-y` / `--ph-tap-x` are how far it reaches on each side, set from `tapReach`.
+ */
+.ph-tap {
+  position: relative;
+}
+
+.ph-tap::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--ph-tap-y, 0px)) calc(-1 * var(--ph-tap-x, 0px));
+}

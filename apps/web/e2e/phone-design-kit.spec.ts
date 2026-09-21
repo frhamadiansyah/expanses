@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, test } from '@playwright/test';
 
 /**
  * The specimen sheet at 390 px — the width the whole restyle is measured at.
@@ -90,4 +90,56 @@ test('the hero states how far through its budget it is, for a screen reader as w
   await page.goto('/design-kit');
   const bar = page.getByRole('progressbar', { name: 'Eating out against its budget' });
   await expect(bar).toHaveAttribute('aria-valuenow', '89');
+});
+
+/**
+ * The box a thumb actually hits: the drawn box, grown by whatever `ph-tap` reaches past it.
+ *
+ * Measured from `boundingBox` plus the pseudo-element's used offsets, and then hit-tested at the edge of the
+ * result — a reach that exists in the stylesheet but is covered, or drawn with no pointer events, would pass the
+ * arithmetic and fail the probe. Both are asserted, because only the probe is the thumb's own answer.
+ */
+async function hitBox(target: Locator): Promise<{ width: number; height: number; reachable: boolean }> {
+  const box = (await target.boundingBox())!;
+  const reach = await target.evaluate((node) => {
+    const after = getComputedStyle(node, '::after');
+    if (after.content === 'none') return null;
+    const px = (value: string) => (Number.isFinite(Number.parseFloat(value)) ? Number.parseFloat(value) : 0);
+    return { top: px(after.top), bottom: px(after.bottom), left: px(after.left), right: px(after.right) };
+  });
+  if (!reach) return { width: box.width, height: box.height, reachable: true };
+  const reachable = await target.evaluate(
+    (node, at) => {
+      const found = document.elementFromPoint(at.x, at.y);
+      return found === node || node.contains(found);
+    },
+    // Half a pixel inside the top edge of the grown box, above everything the control itself draws.
+    { x: box.x + box.width / 2, y: box.y + reach.top + 0.5 },
+  );
+  return { width: box.width - reach.left - reach.right, height: box.height - reach.top - reach.bottom, reachable };
+}
+
+test('a segment stays the height iOS draws, and is a tap target anyway', async ({ page }) => {
+  await page.goto('/design-kit');
+  const segments = page.getByRole('radiogroup', { name: 'Card sections' }).getByRole('radio');
+  await expect(segments).toHaveCount(4);
+  for (const segment of await segments.all()) {
+    // Not solved by making the control 44 tall: iOS ships this control at about 32, and so does the kit.
+    expect((await segment.boundingBox())!.height).toBeLessThan(TAP);
+    const hit = await hitBox(segment);
+    expect(hit.height).toBeGreaterThanOrEqual(TAP);
+    expect(hit.reachable).toBe(true);
+  }
+});
+
+test('the … beside the track is a tap target in both directions, at 32 square drawn', async ({ page }) => {
+  await page.goto('/design-kit');
+  const more = page.getByRole('button', { name: 'More Net worth sections' });
+  const drawn = (await more.boundingBox())!;
+  expect(drawn.width).toBeLessThan(TAP);
+  expect(drawn.height).toBeLessThan(TAP);
+  const hit = await hitBox(more);
+  expect(hit.width).toBeGreaterThanOrEqual(TAP);
+  expect(hit.height).toBeGreaterThanOrEqual(TAP);
+  expect(hit.reachable).toBe(true);
 });

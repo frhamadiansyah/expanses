@@ -12,6 +12,16 @@ import { PHONE_WIDTH, textWidth } from './metrics';
 /** Four is the most a 390 pt phone holds without the labels becoming initials. */
 export const PHONE_MAX = 4;
 
+/**
+ * What the control draws, which is not what a thumb hits.
+ *
+ * These are iOS's own figures — a segment 28 tall inside a 32 tall track, and a `…` 32 square beside it — and
+ * they stay that way. `tapReach` from `metrics` is what lifts each of them to the 44 pt floor, without any of
+ * them growing: the target is a box around the segment, not the segment.
+ */
+export const SEGMENT_HEIGHT = 28;
+export const SEGMENT_MORE = 32;
+
 /** The track's own padding, and the breathing room a label needs inside its segment. */
 const TRACK_PAD = 2;
 const SEGMENT_PAD = 9;
