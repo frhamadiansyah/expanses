@@ -51,7 +51,7 @@ test('a workspace is made from ⋯ and starts with none of the other’s categor
   // buttons reading "Interest" and file a repayment in whichever the user happened to hit.
   await expect(picker.getByRole('button', { name: 'Interest', exact: true })).toHaveCount(1);
 
-  await picker.getByRole('button', { name: 'Income', exact: true }).click();
+  await picker.getByRole('radio', { name: 'Income', exact: true }).click();
   // The same on the income side: Personal's Salary is not here, and the realised gain the app posts into is,
   // once. The other workspace's copy of it would make two.
   await expect(picker.getByRole('button', { name: 'Salary', exact: true })).toHaveCount(0);

@@ -101,7 +101,7 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
-  await form.getByRole('radio', { name: 'Buy or sell' }).click();
+  await form.getByRole('radio', { name: 'Buy / sell' }).click();
   await form.getByLabel('Grams').fill('2');
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });

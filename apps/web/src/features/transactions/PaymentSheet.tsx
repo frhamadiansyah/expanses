@@ -1,3 +1,4 @@
+import { CreditCard, Landmark } from 'lucide-react';
 import type { PaymentOption } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Sheet } from '../../app/Sheet';
@@ -43,26 +44,36 @@ export function PaymentSheet({
   onClose: () => void;
 }) {
   return (
-    <Sheet title={title} onClose={onClose}>
-      <ul className="-mx-1 divide-y divide-slate-100">
-        {options.map((option) => (
-          <li key={paymentKey(option.accountId, option.cardId)}>
-            <button
-              type="button"
-              aria-label={paymentLabel(option)}
-              onClick={() => {
-                onPick(option);
-                onClose();
-              }}
-              className="flex min-h-11 w-full items-center gap-3 px-1 text-left text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
-            >
-              <span className="min-w-0 flex-1 truncate">{paymentLabel(option)}</span>
-              <span aria-hidden className="shrink-0 text-xs text-slate-400">
-                {[option.holderName, accounts.find((a) => a.id === option.accountId)?.currency].filter(Boolean).join(' · ')}
-              </span>
-            </button>
-          </li>
-        ))}
+    <Sheet grouped title={title} onClose={onClose}>
+      {/* The Paid with list as B2 draws the row it fills: a glyph, the account or card, its holder and currency. */}
+      <ul className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>button>.ph-row-body]:border-t-[0.5px] [&>li+li>button>.ph-row-body]:border-[var(--ph-hair)]">
+        {options.map((option) => {
+          const account = accounts.find((a) => a.id === option.accountId);
+          const Glyph = option.cardId || account?.kind === 'liability' ? CreditCard : Landmark;
+          return (
+            <li key={paymentKey(option.accountId, option.cardId)}>
+              <button
+                type="button"
+                aria-label={paymentLabel(option)}
+                onClick={() => {
+                  onPick(option);
+                  onClose();
+                }}
+                className="ph-focus-inset flex w-full items-center gap-[10px] pl-[10px] text-left active:bg-[var(--ph-fill)]"
+              >
+                <span aria-hidden className="flex w-[34px] shrink-0 items-center justify-center text-[var(--ph-ink-2)]">
+                  <Glyph size={16} />
+                </span>
+                <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 pr-[13px]">
+                  <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">{paymentLabel(option)}</span>
+                  <span aria-hidden className="shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
+                    {[option.holderName, account?.currency].filter(Boolean).join(' · ')}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </Sheet>
   );

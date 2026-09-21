@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, cx, ErrorBox, InputRow, Row, RowGroup, SelectRow } from '../../ui';
+import { Tag } from 'lucide-react';
+import { cx, ErrorBox, InputRow, Row, SelectRow } from '../../ui';
+import { FormRows } from './FormRow';
 import { ICONS } from '../categories/CategoryIcon';
 
 /**
@@ -38,6 +40,8 @@ export function NewCategorySheet({
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
+  const Preview = (icon && ICONS[icon]) || Tag;
+
   async function save() {
     setError(null);
     setBusy(true);
@@ -62,9 +66,15 @@ export function NewCategorySheet({
   }
 
   return (
-    <Sheet title="New category" onClose={onClose}>
-      <div className="space-y-3">
-        <RowGroup>
+    <Sheet grouped title="New category" onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        {/* B7a's preview: the icon this category will draw, before it exists. */}
+        <div className="flex justify-center py-2">
+          <span aria-hidden className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]">
+            <Preview size={30} />
+          </span>
+        </div>
+        <FormRows>
           <InputRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Boba" />
           <SelectRow label="Inside" value={parentId} onChange={(e) => setParentId(e.target.value)}>
             <option value="">Top level</option>
@@ -76,10 +86,10 @@ export function NewCategorySheet({
           </SelectRow>
           {/* Shown, not asked: it is the tab the picker is on, and this is where it says so. */}
           <Row label="Kind" value={kind === 'expense' ? 'Expense' : 'Income'} />
-        </RowGroup>
+        </FormRows>
 
         {/* Every icon the app can draw. One without a pick keeps inheriting its parent's, exactly as today. */}
-        <div role="group" aria-label="Icon" className="grid max-h-56 grid-cols-6 gap-1 overflow-y-auto rounded-xl bg-white p-2 ring-1 ring-slate-200 sm:grid-cols-8">
+        <div role="group" aria-label="Icon" className="grid max-h-56 grid-cols-6 gap-1 overflow-y-auto rounded-[11px] bg-[var(--ph-surface)] p-2 sm:grid-cols-8">
           {Object.entries(ICONS).map(([key, Glyph]) => (
             <button
               key={key}
@@ -88,8 +98,8 @@ export function NewCategorySheet({
               aria-pressed={icon === key}
               onClick={() => setIcon(icon === key ? '' : key)}
               className={cx(
-                'flex h-10 w-full items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900',
-                icon === key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100',
+                'ph-focus-inset flex h-10 w-full items-center justify-center rounded-full',
+                icon === key ? 'bg-[var(--ph-tint)] text-[var(--ph-surface)]' : 'text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]',
               )}
             >
               <Glyph size={18} aria-hidden />
@@ -98,9 +108,14 @@ export function NewCategorySheet({
         </div>
 
         <ErrorBox error={error} />
-        <Button type="button" className="w-full justify-center" disabled={busy || !name.trim()} onClick={() => void save()}>
+        <button
+          type="button"
+          disabled={busy || !name.trim()}
+          onClick={() => void save()}
+          className="ph-focus min-h-11 w-full rounded-full bg-[var(--ph-tint)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-40"
+        >
           Save
-        </Button>
+        </button>
       </div>
     </Sheet>
   );

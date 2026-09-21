@@ -2,7 +2,8 @@ import { formatMinor } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
-import { Button, Input } from '../../ui';
+import { Search, Smile, X } from 'lucide-react';
+import { SegmentedControl } from '../../ui/native';
 import { useRecentPeople } from '../debts/queries';
 import { billMinor, type FormDraft, peopleOn, type WithRow, withShares } from './tx-form';
 
@@ -79,39 +80,49 @@ export function WithSheet({
   };
 
   return (
-    <Sheet title="With" onClose={onClose}>
-      <div className="space-y-3">
-        <div className="flex gap-2">
-          <Input
-            aria-label="Add a person"
-            value={search}
-            placeholder="Andi"
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter') return;
-              // Enter means Add here, and nothing else. `Sheet` is not a portal, so this input is not inside
-              // the card's `<form>` — but `Button` below defaults to `type="button"` for the same reason, and
-              // an Enter left to the browser in a box beside it would do nothing at all.
-              e.preventDefault();
-              addTyped();
-            }}
-          />
-          <Button variant="secondary" onClick={addTyped} disabled={!typed}>
+    <Sheet grouped title="With" onClose={onClose}>
+      <div className="flex flex-col gap-[10px]">
+        {/* D4's search field. Add stays beside it: a name nobody has met yet is added by it, not only by Enter. */}
+        <div className="flex items-center gap-2">
+          <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-[10px] bg-[var(--ph-track)] px-3">
+            <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+            <input
+              aria-label="Add a person"
+              value={search}
+              placeholder="Add a person"
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                // Enter means Add here, and nothing else. `Sheet` is not a portal, so this input is not inside
+                // the card's `<form>` — but the Add button is `type="button"` for the same reason, and an Enter
+                // left to the browser in a box beside it would do nothing at all.
+                e.preventDefault();
+                addTyped();
+              }}
+              className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={addTyped}
+            disabled={!typed}
+            className="ph-focus min-h-10 shrink-0 rounded-full px-3 text-[15px] font-medium text-[var(--ph-tint)] disabled:opacity-40"
+          >
             Add
-          </Button>
+          </button>
         </div>
 
         {offered.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-[6px]">
             {offered.map((person) => (
               <button
                 key={person.accountId}
                 type="button"
                 aria-label={person.personName}
                 onClick={() => add({ debtAccountId: person.accountId, name: person.personName, amount: '' })}
-                className="min-h-11 rounded-full bg-slate-100 px-3 text-sm text-slate-700 hover:bg-slate-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
+                className="ph-focus min-h-9 rounded-full bg-[var(--ph-surface)] px-3 text-[13px] text-[var(--ph-ink)] ring-[0.5px] ring-[var(--ph-hair)] active:bg-[var(--ph-fill)]"
               >
-                {person.personName}
+                + {person.personName}
               </button>
             ))}
           </div>
@@ -119,73 +130,80 @@ export function WithSheet({
 
         {people.length > 0 && (
           <>
-            <div role="radiogroup" aria-label="How the bill is divided" className="flex flex-wrap gap-2">
-              {([
-                [true, 'Split equally'],
-                [false, 'Custom amounts'],
-              ] as const).map(([equally, label]) => (
-                <Button
-                  key={label}
-                  role="radio"
-                  aria-checked={draft.withEqually === equally}
-                  variant={draft.withEqually === equally ? 'primary' : 'secondary'}
-                  onClick={() => onChange({ ...draft, withEqually: equally })}
-                >
-                  {label}
-                </Button>
-              ))}
-            </div>
+            <SegmentedControl
+              label="How the bill is divided"
+              segments={[
+                { key: 'equally', label: 'Split equally' },
+                { key: 'custom', label: 'Custom amounts' },
+              ]}
+              value={draft.withEqually ? 'equally' : 'custom'}
+              onChange={(key) => onChange({ ...draft, withEqually: key === 'equally' })}
+            />
 
-            <ul className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
-              <li className="flex min-h-12 items-center gap-3 px-3 py-2 text-sm">
-                <span className="min-w-0 flex-1">
-                  <span className="block">You</span>
-                  <span className="block text-xs text-slate-500">{['Your spending', categoryName].filter(Boolean).join(' · ')}</span>
+            <ul className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>.ph-row-body]:border-t-[0.5px] [&>li+li>.ph-row-body]:border-[var(--ph-hair)]">
+              <li className="flex items-center gap-[10px] pl-[12px]">
+                <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ph-tint-panel)] text-[var(--ph-tint)]">
+                  <Smile size={16} />
                 </span>
-                <span className="tabular shrink-0 text-right" data-testid="with-your-share">
-                  {ownShareMinor === null ? '—' : formatMinor(ownShareMinor, currency)}
+                <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-3 py-2 pr-[13px]">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] leading-5 text-[var(--ph-ink)]">You</span>
+                    <span className="block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{['Your spending', categoryName].filter(Boolean).join(' · ')}</span>
+                  </span>
+                  <span className="tabular shrink-0 text-right text-[15px] text-[var(--ph-ink-3)]" data-testid="with-your-share">
+                    {ownShareMinor === null ? '—' : formatMinor(ownShareMinor, currency)}
+                  </span>
                 </span>
               </li>
               {people.map((row, i) => (
-                <li key={i} className="flex min-h-12 items-center gap-3 px-3 py-2 text-sm">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{row.name || 'Someone'}</span>
-                    <span className="block text-xs text-slate-500">Owes you</span>
+                <li key={i} className="flex items-center gap-[10px] pl-[12px]">
+                  <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[13px] font-semibold text-[var(--ph-ink-2)]">
+                    {(row.name || '?').trim().charAt(0).toUpperCase()}
                   </span>
-                  {draft.withEqually ? (
-                    <span className="tabular shrink-0 text-right">{formatMinor(each[i] ?? 0, currency)}</span>
-                  ) : (
-                    <Input
-                      aria-label={`What ${row.name || 'they'} owe`}
-                      className="w-28 shrink-0"
-                      value={row.amount}
-                      inputMode="decimal"
-                      onChange={(e) => onChange({ ...draft, with: people.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)) })}
-                    />
-                  )}
-                  <Button
-                    variant="ghost"
-                    aria-label={`Remove ${row.name || `person ${i + 1}`}`}
-                    onClick={() => onChange({ ...draft, with: people.filter((_, j) => j !== i) })}
-                  >
-                    ✕
-                  </Button>
+                  <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-2 py-2">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] leading-5 text-[var(--ph-ink)]">{row.name || 'Someone'}</span>
+                      <span className="block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">Owes you</span>
+                    </span>
+                    {draft.withEqually ? (
+                      <span className="tabular shrink-0 text-right text-[15px] text-[var(--ph-ink-3)]">{formatMinor(each[i] ?? 0, currency)}</span>
+                    ) : (
+                      <input
+                        aria-label={`What ${row.name || 'they'} owe`}
+                        className="ph-focus-inset tabular w-28 shrink-0 rounded-lg bg-[var(--ph-fill)] px-2 py-1 text-right text-base text-[var(--ph-ink)] md:text-[15px]"
+                        value={row.amount}
+                        inputMode="decimal"
+                        onChange={(e) => onChange({ ...draft, with: people.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)) })}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${row.name || `person ${i + 1}`}`}
+                      onClick={() => onChange({ ...draft, with: people.filter((_, j) => j !== i) })}
+                      className="ph-focus-inset flex h-11 w-11 shrink-0 items-center justify-center text-[var(--ph-ink-3)]"
+                    >
+                      <X size={16} aria-hidden />
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>
 
-            <div data-testid="with-summary" className="space-y-1 rounded-xl bg-slate-50 px-3 py-2 text-sm">
-              <div className="flex justify-between gap-4">
-                <span className="text-slate-500">Bill</span>
-                <span className="tabular">{formatMinor(bill, currency)}</span>
+            <div
+              data-testid="with-summary"
+              className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] text-[15px] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]"
+            >
+              <div className="flex min-h-11 items-center justify-between gap-4 px-[13px]">
+                <span className="text-[var(--ph-ink)]">Bill</span>
+                <span className="tabular text-[var(--ph-ink-3)]">{formatMinor(bill, currency)}</span>
               </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-slate-500">They owe you</span>
-                <span className="tabular">{formatMinor(theirs, currency)}</span>
+              <div className="flex min-h-11 items-center justify-between gap-4 px-[13px]">
+                <span className="font-semibold text-[var(--ph-ink)]">They owe you</span>
+                <span className="tabular text-[var(--ph-ink-3)]">{formatMinor(theirs, currency)}</span>
               </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-slate-500">Your share</span>
-                <span className="tabular font-medium">
+              <div className="flex min-h-11 items-center justify-between gap-4 px-[13px]">
+                <span className="font-semibold text-[var(--ph-ink)]">Your share</span>
+                <span className="tabular text-[var(--ph-ink)]">
                   {ownShareMinor === null ? 'More than the bill' : formatMinor(ownShareMinor, currency)}
                 </span>
               </div>

@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react';
 import { Sheet } from '../../app/Sheet';
 import { useEvents } from '../events/queries';
 
@@ -20,8 +21,8 @@ export function EventSheet({ value, onPick, onClose }: { value: string; onPick: 
     onClose();
   };
   return (
-    <Sheet title="Event" onClose={onClose}>
-      <ul className="-mx-1 divide-y divide-slate-100">
+    <Sheet grouped title="Event" onClose={onClose}>
+      <ul className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>button>.ph-row-body]:border-t-[0.5px] [&>li+li>button>.ph-row-body]:border-[var(--ph-hair)]">
         {[{ id: '', name: 'No event', startsOn: '' }, ...newestFirst].map((event) => (
           <li key={event.id || 'none'}>
             <button
@@ -29,15 +30,17 @@ export function EventSheet({ value, onPick, onClose }: { value: string; onPick: 
               aria-label={event.name}
               aria-pressed={value === event.id}
               onClick={() => choose(event.id)}
-              className="flex min-h-11 w-full items-center gap-3 px-1 text-left text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
+              className="ph-focus-inset flex w-full items-center pl-[14px] text-left active:bg-[var(--ph-fill)]"
             >
-              <span className="min-w-0 flex-1 truncate">{event.name}</span>
-              {event.startsOn && (
-                <span aria-hidden className="shrink-0 text-xs text-slate-400">
-                  {event.startsOn}
-                </span>
-              )}
-              {value === event.id && <span className="shrink-0 text-xs font-semibold text-emerald-700">Chosen</span>}
+              <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-3 pr-[14px]">
+                <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">{event.name}</span>
+                {event.startsOn && (
+                  <span aria-hidden className="shrink-0 text-[12.5px] text-[var(--ph-ink-3)]">
+                    {event.startsOn}
+                  </span>
+                )}
+                {value === event.id && <Check size={18} aria-label="Chosen" className="shrink-0 text-[var(--ph-tint)]" />}
+              </span>
             </button>
           </li>
         ))}
