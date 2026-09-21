@@ -25,7 +25,8 @@ async function addKpr(page: Page, { asset }: { asset?: string } = {}) {
   await page.getByLabel('Payment day').fill('25');
   if (asset) await page.getByLabel('What it bought').selectOption({ label: asset });
   await page.getByRole('button', { name: 'Save terms' }).click();
-  await expect(page.getByRole('link', { name: 'KPR Bintaro' })).toBeVisible();
+  // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
+  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('Bank BTN');
 }
 
 test('onboards a loan already running and reads its next twelve months', async ({ page }) => {
