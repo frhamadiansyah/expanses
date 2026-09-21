@@ -1,11 +1,13 @@
 import { extraPaymentEffect, flatToEffectiveBps, formatMinor, isoDate, minorToMajorString, periodOn, utangLabel } from '@expanses/core';
 import { addRatePeriod, type LoanTermsRow, recordExtraPayment, recordLoanPayment, setLoanCode } from '@expanses/db';
-import { Link, useParams } from '@tanstack/react-router';
+import { useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { Empty, ErrorBox } from '../../ui';
+import { Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, RecordTable, SelectRow, TextRow } from '../../ui/native';
+import { Panel, SCREEN } from '../networth/Panel';
 import { CategoryOptions } from '../cards/options';
 import { UTANG_CHOICES } from '../ownables/catalogue-view';
 import { type PaymentDraft, paymentDraftFrom, paymentDraftToInput } from './loan-form';
@@ -35,18 +37,18 @@ function LoanCodeField({ terms }: { terms: LoanTermsRow }) {
   }
 
   return (
-    <div className="max-w-md space-y-1">
-      <Field label="Tax report code" hint={utangLabel(terms.coretaxCode) || 'Not a code the form knows.'}>
-        <Select value={terms.coretaxCode} onChange={(e) => void choose(e.target.value)}>
+    <>
+      <InsetGroup header="For the tax report" footer={utangLabel(terms.coretaxCode) || 'Not a code the form knows.'}>
+        <SelectRow label="Tax report code" value={terms.coretaxCode} onChange={(e) => void choose(e.target.value)}>
           {UTANG_CHOICES.map((choice) => (
             <option key={choice.code} value={choice.code}>
               {choice.label}
             </option>
           ))}
-        </Select>
-      </Field>
+        </SelectRow>
+      </InsetGroup>
       <ErrorBox error={error} />
-    </div>
+    </>
   );
 }
 
@@ -93,60 +95,49 @@ function PaymentForm({
   }
 
   return (
-    <Card className="space-y-3">
-      <h3 className="text-sm font-semibold">Record a payment</h3>
-      <div className="grid gap-3 md:grid-cols-4">
-        <Field label="Date">
-          <Input type="date" value={filled.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
-        </Field>
-        <Field label={`Principal (${currency})`}>
-          <Input value={filled.principal} inputMode="decimal" onChange={(e) => set({ principal: e.target.value })} />
-        </Field>
-        <Field label={`Interest (${currency})`}>
-          <Input value={filled.interest} inputMode="decimal" onChange={(e) => set({ interest: e.target.value })} />
-        </Field>
-        <Field label="Paid from">
-          <Select value={filled.moneyId} onChange={(e) => set({ moneyId: e.target.value })}>
-            {money.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </div>
-      <div className="space-y-2">
-        {filled.extras.map((extra, index) => (
-          <div key={index} className="grid grid-cols-[1fr_10rem] gap-2">
-            <Select
-              aria-label={`Extra ${index + 1} category`}
-              value={extra.categoryId}
-              onChange={(e) => set({ extras: filled.extras.map((row, i) => (i === index ? { ...row, categoryId: e.target.value } : row)) })}
-            >
-              <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
-            </Select>
-            <Input
-              aria-label={`Extra ${index + 1} amount`}
-              value={extra.amount}
-              inputMode="decimal"
-              onChange={(e) => set({ extras: filled.extras.map((row, i) => (i === index ? { ...row, amount: e.target.value } : row)) })}
-            />
-          </div>
-        ))}
-        <Button variant="secondary" onClick={() => set({ extras: [...filled.extras, { categoryId: '', amount: '' }] })}>
-          Add insurance or admin charge
-        </Button>
-      </div>
+    <>
+      <InsetGroup header="Record a payment">
+        <TextRow label="Date" type="date" value={filled.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
+        <TextRow label={`Principal (${currency})`} value={filled.principal} inputMode="decimal" onChange={(e) => set({ principal: e.target.value })} />
+        <TextRow label={`Interest (${currency})`} value={filled.interest} inputMode="decimal" onChange={(e) => set({ interest: e.target.value })} />
+        <SelectRow label="Paid from" value={filled.moneyId} onChange={(e) => set({ moneyId: e.target.value })}>
+          {money.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </SelectRow>
+      </InsetGroup>
+
+      <InsetGroup header="Riding along on it">
+        {filled.extras.flatMap((extra, index) => [
+          <SelectRow
+            key={`category-${index}`}
+            label="Category"
+            aria-label={`Extra ${index + 1} category`}
+            value={extra.categoryId}
+            onChange={(e) => set({ extras: filled.extras.map((row, i) => (i === index ? { ...row, categoryId: e.target.value } : row)) })}
+          >
+            <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
+          </SelectRow>,
+          <TextRow
+            key={`amount-${index}`}
+            label="Amount"
+            aria-label={`Extra ${index + 1} amount`}
+            value={extra.amount}
+            inputMode="decimal"
+            onChange={(e) => set({ extras: filled.extras.map((row, i) => (i === index ? { ...row, amount: e.target.value } : row)) })}
+          />,
+        ])}
+        <InsetRow title="Add insurance or admin charge" chevron={false} onClick={() => set({ extras: [...filled.extras, { categoryId: '', amount: '' }] })} />
+      </InsetGroup>
+
       <ErrorBox error={error} />
-      <div className="flex gap-2">
-        <Button onClick={save} disabled={busy}>
-          Save payment
-        </Button>
-        <Button variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
-    </Card>
+      <InsetGroup>
+        <InsetRow title="Save payment" chevron={false} onClick={() => !busy && void save()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
+      </InsetGroup>
+    </>
   );
 }
 
@@ -180,34 +171,28 @@ function RateChangeForm({ accountId, currency, onDone }: { accountId: string; cu
   }
 
   return (
-    <Card className="space-y-3">
-      <h3 className="text-sm font-semibold">Rate change</h3>
-      <p className="text-xs text-slate-500">The months before this keep the rate they had. Nothing is posted, because no money moved.</p>
-      <div className="grid gap-3 md:grid-cols-4">
-        <Field label="From">
-          <Input type="date" value={fromOn} onChange={(e) => setFromOn(e.target.value)} />
-        </Field>
-        <Field label="New rate a year (%)">
-          <Input value={rate} inputMode="decimal" onChange={(e) => setRate(e.target.value)} placeholder="11" />
-        </Field>
-        <Field label="Rate kind">
-          <Select value={kind} onChange={(e) => setKind(e.target.value as 'fixed' | 'floating')}>
-            <option value="fixed">Fixed</option>
-            <option value="floating">Floating</option>
-          </Select>
-        </Field>
-        <Field label={`New payment (${currency})`} hint="Leave empty to work it out.">
-          <Input value={payment} inputMode="decimal" onChange={(e) => setPayment(e.target.value)} />
-        </Field>
-      </div>
+    <>
+      <InsetGroup header="Rate change" footer="The months before this keep the rate they had. Nothing is posted, because no money moved.">
+        <TextRow label="From" type="date" value={fromOn} onChange={(e) => setFromOn(e.target.value)} />
+        <TextRow label="New rate a year (%)" value={rate} inputMode="decimal" onChange={(e) => setRate(e.target.value)} placeholder="11" />
+        <SelectRow label="Rate kind" value={kind} onChange={(e) => setKind(e.target.value as 'fixed' | 'floating')}>
+          <option value="fixed">Fixed</option>
+          <option value="floating">Floating</option>
+        </SelectRow>
+        <TextRow
+          label={`New payment (${currency})`}
+          hint="Leave empty to work it out."
+          value={payment}
+          inputMode="decimal"
+          onChange={(e) => setPayment(e.target.value)}
+        />
+      </InsetGroup>
       <ErrorBox error={error} />
-      <div className="flex gap-2">
-        <Button onClick={save}>Save rate change</Button>
-        <Button variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
-    </Card>
+      <InsetGroup>
+        <InsetRow title="Save rate change" chevron={false} onClick={() => void save()} />
+        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
+      </InsetGroup>
+    </>
   );
 }
 
@@ -273,40 +258,35 @@ function ExtraPaymentForm({
   }
 
   return (
-    <Card className="space-y-3">
-      <h3 className="text-sm font-semibold">Pay extra off the principal</h3>
-      <div className="grid gap-3 md:grid-cols-4">
-        <Field label={`How much (${currency})`}>
-          <Input value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} placeholder="50.000.000" />
-        </Field>
-        <Field label="Then" hint="Finish sooner, or pay less each month.">
-          <Select value={keep} onChange={(e) => setKeep(e.target.value as 'payment' | 'tenor')}>
-            <option value="payment">Keep paying the same, finish sooner</option>
-            <option value="tenor">Keep the tenor, pay less each month</option>
-          </Select>
-        </Field>
-        <Field label="How often" hint="Only the once, or every month from now.">
-          <Select value={repeat} onChange={(e) => setRepeat(e.target.value as 'once' | 'monthly')}>
-            <option value="once">Just this once</option>
-            <option value="monthly">Every month</option>
-          </Select>
-        </Field>
-        <Field label="Paid from">
-          <Select value={moneyId} onChange={(e) => setMoneyId(e.target.value)}>
-            {money.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={`Penalty the bank charges (${currency})`} hint="Leave empty when there is none.">
-          <Input value={penalty} inputMode="decimal" onChange={(e) => setPenalty(e.target.value)} />
-        </Field>
-      </div>
+    <>
+      <InsetGroup header="Pay extra off the principal">
+        <TextRow label={`How much (${currency})`} value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} placeholder="50.000.000" />
+        <SelectRow label="Then" hint="Finish sooner, or pay less each month." value={keep} onChange={(e) => setKeep(e.target.value as 'payment' | 'tenor')}>
+          <option value="payment">Keep paying the same, finish sooner</option>
+          <option value="tenor">Keep the tenor, pay less each month</option>
+        </SelectRow>
+        <SelectRow label="How often" hint="Only the once, or every month from now." value={repeat} onChange={(e) => setRepeat(e.target.value as 'once' | 'monthly')}>
+          <option value="once">Just this once</option>
+          <option value="monthly">Every month</option>
+        </SelectRow>
+        <SelectRow label="Paid from" value={moneyId} onChange={(e) => setMoneyId(e.target.value)}>
+          {money.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </SelectRow>
+        <TextRow
+          label={`Penalty the bank charges (${currency})`}
+          hint="Leave empty when there is none."
+          value={penalty}
+          inputMode="decimal"
+          onChange={(e) => setPenalty(e.target.value)}
+        />
+      </InsetGroup>
 
       {effect && (
-        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900" data-testid="what-if">
+        <Panel testId="what-if" className="text-[13px] leading-[17px] text-[var(--ph-tint)]">
           {keep === 'payment' ? (
             <>
               This pays off in {effect.payoffMonth}, {effect.monthsEarlier} months earlier, and saves {formatMinor(effect.interestSavedMinor, currency)} of interest.
@@ -317,19 +297,15 @@ function ExtraPaymentForm({
             </>
           )}
           {effect.penaltyMinor > 0 && <> The bank charges {formatMinor(effect.penaltyMinor, currency)} for it.</>}
-        </div>
+        </Panel>
       )}
 
       <ErrorBox error={error} />
-      <div className="flex gap-2">
-        <Button onClick={save} disabled={busy}>
-          Save extra payment
-        </Button>
-        <Button variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
-    </Card>
+      <InsetGroup>
+        <InsetRow title="Save extra payment" chevron={false} onClick={() => !busy && void save()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
+      </InsetGroup>
+    </>
   );
 }
 
@@ -357,69 +333,42 @@ export function LoanDetailPage() {
   const repaidMinor = terms ? terms.originalMinor - balanceMinor : 0;
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title={account?.name ?? 'Loan'}
-        action={
-          <Link to="/net-worth/loans" className="text-sm text-slate-600 hover:text-slate-900">
-            Back to loans
-          </Link>
-        }
-      />
+    <div className={SCREEN}>
+      <LargeTitle title={account?.name ?? 'Loan'} back="All loans" backTo="/net-worth/loans" />
       <ErrorBox error={loan.error ?? schedule.error} />
       {!terms && !loan.isPending && <Empty>This loan has no terms yet. Add them on the Loans tab to see its schedule.</Empty>}
 
       {terms && (
-        <Card className="space-y-3">
-          <div>
-            <div className="text-xs text-slate-500">Still owed</div>
-            <div className="text-3xl font-semibold">
-              <Money minor={balanceMinor} currency={currency} />
-            </div>
-            <div className="text-sm text-slate-600">
-              {terms.lenderName} · {rateBps / 100}% {current?.kind === 'floating' ? 'floating' : 'fixed'}
-              {effective && ` · about ${(effective / 100).toFixed(2)}% effective`}
-            </div>
-          </div>
-          <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <div className="text-xs text-slate-500">Payment</div>
-              <Money minor={rows[0]?.paymentMinor ?? 0} currency={currency} className="font-medium" />
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Next payment</div>
-              <div className="font-medium">{rows[0]?.onDate ?? '—'}</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Interest still to pay</div>
-              <Money minor={interestLeft} currency={currency} className="font-medium" />
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Pays off</div>
-              <div className="font-medium">
-                {rows.at(-1)?.onDate.slice(0, 7) ?? '—'} · {rows.length} months left
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Principal repaid</div>
-              <Money minor={repaidMinor} currency={currency} className="font-medium" />
-            </div>
-          </div>
+        <>
+          <Hero
+            minor={balanceMinor}
+            currency={currency}
+            caption={
+              <>
+                Still owed · {terms.lenderName} · {rateBps / 100}% {current?.kind === 'floating' ? 'floating' : 'fixed'}
+                {effective && ` · about ${(effective / 100).toFixed(2)}% effective`}
+              </>
+            }
+          />
+          {/* The five figures were a grid of tiles that collapsed into a column at 390 px; they are lines now. */}
+          <InsetGroup header="Where this loan stands">
+            <ReadOnlyRow label="Payment" value={formatMinor(rows[0]?.paymentMinor ?? 0, currency)} />
+            <ReadOnlyRow label="Next payment" value={rows[0]?.onDate ?? '—'} />
+            <ReadOnlyRow label="Interest still to pay" value={formatMinor(interestLeft, currency)} />
+            <ReadOnlyRow label="Pays off" value={`${rows.at(-1)?.onDate.slice(0, 7) ?? '—'} · ${rows.length} months left`} />
+            <ReadOnlyRow label="Principal repaid" value={formatMinor(repaidMinor, currency)} />
+          </InsetGroup>
 
           <LoanCodeField terms={terms} />
 
           {!open && (
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => setOpen('payment')}>Record payment</Button>
-              <Button variant="secondary" onClick={() => setOpen('rate')}>
-                Rate change
-              </Button>
-              <Button variant="secondary" onClick={() => setOpen('extra')}>
-                Extra payment
-              </Button>
-            </div>
+            <InsetGroup>
+              <InsetRow title="Record payment" chevron={false} onClick={() => setOpen('payment')} />
+              <InsetRow title="Rate change" chevron={false} onClick={() => setOpen('rate')} />
+              <InsetRow title="Extra payment" chevron={false} onClick={() => setOpen('extra')} />
+            </InsetGroup>
           )}
-        </Card>
+        </>
       )}
 
       {open === 'payment' && terms && (
@@ -431,41 +380,34 @@ export function LoanDetailPage() {
       )}
 
       {rows.length > 0 && (
-        <Card className="space-y-2">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 className="text-sm font-semibold">What is still to come</h2>
-            <button type="button" className="text-xs text-slate-600 underline" onClick={() => setShowRows((shown) => !shown)}>
-              {showRows ? 'Show the next twelve' : 'Show every month'}
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-slate-500">
-                  <th className="py-1">Due</th>
-                  <th className="py-1 text-right">Payment</th>
-                  <th className="py-1 text-right">Principal</th>
-                  <th className="py-1 text-right">Interest</th>
-                  <th className="py-1 text-right">Left after</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(showRows ? rows : rows.slice(0, 12)).map((row) => (
-                  <tr key={row.onDate}>
-                    <td className="py-1">{row.onDate}</td>
-                    <td className="tabular py-1 text-right">{minorToMajorString(row.paymentMinor, currency)}</td>
-                    <td className="tabular py-1 text-right">{minorToMajorString(row.principalMinor, currency)}</td>
-                    <td className="tabular py-1 text-right">{minorToMajorString(row.interestMinor, currency)}</td>
-                    <td className="tabular py-1 text-right">{minorToMajorString(row.balanceMinor, currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-xs text-slate-500">
-            Worked out from what you still owe today. The payments you record are the truth; these rows are only what the terms imply from here.
-          </p>
-        </Card>
+        <>
+          {/*
+           * Five numeric columns that overlapped illegibly at 390 px. The kit's rule: a real table on desktop,
+           * where every column stays, and one row a month on a phone — due date, what it costs, and the split
+           * of it under the date.
+           */}
+          <RecordTable
+            header="What is still to come"
+            records={showRows ? rows : rows.slice(0, 12)}
+            columns={[
+              { key: 'due', heading: 'Due', cell: (row) => row.onDate },
+              { key: 'payment', heading: 'Payment', numeric: true, cell: (row) => minorToMajorString(row.paymentMinor, currency) },
+              { key: 'principal', heading: 'Principal', numeric: true, cell: (row) => minorToMajorString(row.principalMinor, currency) },
+              { key: 'interest', heading: 'Interest', numeric: true, cell: (row) => minorToMajorString(row.interestMinor, currency) },
+              { key: 'left', heading: 'Left after', numeric: true, cell: (row) => minorToMajorString(row.balanceMinor, currency) },
+            ]}
+            shape={{
+              key: (row) => row.onDate,
+              title: (row) => row.onDate,
+              subtitle: (row) => `${minorToMajorString(row.principalMinor, currency)} principal · ${minorToMajorString(row.interestMinor, currency)} interest`,
+              value: (row) => minorToMajorString(row.paymentMinor, currency),
+              valueTone: () => 'ink',
+            }}
+          />
+          <InsetGroup footer="Worked out from what you still owe today. The payments you record are the truth; these rows are only what the terms imply from here.">
+            <InsetRow title={showRows ? 'Show the next twelve' : 'Show every month'} chevron={false} onClick={() => setShowRows((shown) => !shown)} />
+          </InsetGroup>
+        </>
       )}
     </div>
   );
