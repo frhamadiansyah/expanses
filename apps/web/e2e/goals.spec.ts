@@ -146,6 +146,59 @@ test('a new goal’s return follows when it is needed, until one is typed', asyn
   await expect(expectedReturn).toHaveValue('5');
 });
 
+test('only a new goal’s first payment moves its return: not a later payment, not a saved goal’s dates', async ({ page }) => {
+  const yearsAhead = (years: number) => {
+    const date = new Date();
+    date.setUTCFullYear(date.getUTCFullYear() + years);
+    return date.toISOString().slice(0, 10);
+  };
+  await page.goto('/goals');
+  await page.getByRole('button', { name: 'Holiday', exact: true }).click();
+  const expectedReturn = page.getByLabel('Expected return a year (%)');
+  await expect(expectedReturn).toHaveValue('4');
+  await page.getByLabel(/Cost in today's money/).first().fill('10000000');
+
+  await page.getByRole('button', { name: 'Add a payment' }).click();
+  await page.getByLabel('What this payment is').nth(1).fill('Balance');
+  await page.getByLabel(/Cost in today's money/).nth(1).fill('5000000');
+  await page.getByLabel('Needed by').nth(1).fill(yearsAhead(8));
+  await expect(expectedReturn).toHaveValue('4');
+  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await expect(page.getByRole('heading', { name: 'Holiday' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await expect(expectedReturn).toHaveValue('4');
+  await page.getByLabel('Needed by').first().fill(yearsAhead(4));
+  await expect(expectedReturn).toHaveValue('4');
+});
+
+test('working a retirement goal out keeps the return its owner typed', async ({ page }) => {
+  await page.goto('/goals');
+  await page.getByRole('button', { name: 'Add goal' }).first().click();
+  await page.getByLabel('What kind of goal').selectOption('retirement');
+  await page.getByLabel('Name', { exact: true }).fill('Retirement');
+  await page.getByLabel(/Cost in today's money/).first().fill('1000000000');
+  await page.getByLabel('Needed by').first().fill('2046-09-13');
+  await page.getByLabel('Expected return a year (%)').fill('9');
+  await page.getByRole('button', { name: 'Add goal' }).last().click();
+  await expect(page.getByRole('heading', { name: 'Retirement' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await expect(page.getByLabel('Return while saving (%)')).toHaveValue('9');
+  await page.getByLabel('Yearly spending in retirement (IDR)').fill('120000000');
+  await page.getByLabel('Years until retirement').fill('20');
+  await page.getByLabel('Years in retirement').fill('20');
+  await page.getByRole('button', { name: 'Use this amount' }).click();
+  await expect(page.getByText('Worked out from your figures')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await expect(page.getByLabel('Return while saving (%)')).toHaveValue('9');
+  await page.getByRole('button', { name: 'Use this amount' }).click();
+  await expect(page.getByText('Worked out from your figures')).toBeVisible();
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await expect(page.getByLabel('Expected return a year (%)')).toHaveValue('9');
+});
+
 test('works out a retirement target from your own figures', async ({ page }) => {
   await page.goto('/goals');
   await page.getByRole('button', { name: 'Add goal' }).first().click();

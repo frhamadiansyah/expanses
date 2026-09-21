@@ -127,6 +127,9 @@ describe('the return a goal opens with', () => {
     const returnOf = (kind: string) => GOAL_TEMPLATES.find((template) => template.kind === kind)!.returnBps;
     expect(returnOf('holiday')).toBe(400); // 9 months
     expect(returnOf('vehicle')).toBe(500); // 36 months
+    expect(returnOf('hajj')).toBe(400); // 12 months — at 24 it would be 5%
+    expect(returnOf('home')).toBe(500); // 36 months
+    expect(returnOf('wedding')).toBe(500); // 24 months
     expect(returnOf('education')).toBe(800); // 120 months — was 10%
     expect(returnOf('retirement')).toBe(1000);
     expect(returnOf('emergency')).toBe(200);
