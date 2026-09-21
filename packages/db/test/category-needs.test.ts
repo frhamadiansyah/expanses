@@ -66,6 +66,29 @@ describe('marking a category', () => {
     await expect(saveCategoryNeed(database, inBook(ws, personal.id), businessRestaurants, 'lifestyle')).rejects.toMatchObject({ code: 'OTHER_BOOK' });
   });
 
+  it('clearCategoryNeed refuses what is not a spending category, or belongs to another workspace’s book', async () => {
+    const { database, ws } = await setupDb();
+    const keys = await categoryIdsByKey(database, ws);
+    const bank = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' });
+    await expect(clearCategoryNeed(database, ws, keys['income.salary']!)).rejects.toMatchObject({ code: 'NOT_A_CATEGORY' });
+    await expect(clearCategoryNeed(database, ws, bank.id)).rejects.toMatchObject({ code: 'NOT_A_CATEGORY' });
+
+    const personal = (await listBooks(database, ws)).find((book) => book.kind === 'personal')!;
+    const businessId = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR', copyCategoriesFrom: personal.id });
+    const businessRestaurants = (await categoryIdsByKey(database, inBook(ws, businessId)))['food_beverage.restaurants']!;
+    await expect(clearCategoryNeed(database, inBook(ws, personal.id), businessRestaurants)).rejects.toMatchObject({ code: 'OTHER_BOOK' });
+  });
+
+  it('keeps another workspace’s marks out of listCategoryNeeds', async () => {
+    const { database, ws } = await setupDb();
+    const keys = await categoryIdsByKey(database, ws);
+    await saveCategoryNeed(database, ws, keys['food_beverage']!, 'lifestyle');
+
+    const other = await createWorkspace(database, { name: 'Other household', type: 'personal', baseCurrency: 'IDR' });
+    expect(await listCategoryNeeds(database, ws)).toEqual({ [keys['food_beverage']!]: 'lifestyle' });
+    expect(await listCategoryNeeds(database, other)).toEqual({});
+  });
+
   it('travels with a copied tree, onto the copy’s own ids', async () => {
     const { database, ws } = await setupDb();
     const personal = (await listBooks(database, ws)).find((book) => book.kind === 'personal')!;

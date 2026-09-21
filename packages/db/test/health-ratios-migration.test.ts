@@ -70,4 +70,26 @@ describe('migration 0053', () => {
       database.execScript(`INSERT INTO calculator_inputs (workspace_id, kind, inputs_json, updated_at) VALUES ('w', 'x', 'not json', '2026-09-21')`),
     ).rejects.toThrow();
   });
+
+  it('refuses a negative return on a goal stage term', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+    await expect(
+      database.execScript(`INSERT INTO goal_stage_terms (stage_id, workspace_id, goal_id, return_bps) VALUES ('s', 'w', 'g', -1)`),
+    ).rejects.toThrow();
+    // A null return (the goal's own, not derived) is still allowed.
+    await expect(
+      database.execScript(`INSERT INTO goal_stage_terms (stage_id, workspace_id, goal_id, return_bps) VALUES ('s2', 'w', 'g', NULL)`),
+    ).resolves.not.toThrow();
+  });
+
+  it('refuses a calculator inputs row with no updated_at', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database);
+    await expect(
+      database.execScript(`INSERT INTO calculator_inputs (workspace_id, kind, inputs_json, updated_at) VALUES ('w', 'life_cover', '{}', NULL)`),
+    ).rejects.toThrow();
+  });
 });
