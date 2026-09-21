@@ -15,6 +15,8 @@ export interface AssetRow {
   stale: boolean;
   /** A holding that has been sold: nothing left, but kept for gains and the tax report. */
   sold: boolean;
+  /** An automated deposit with a proposal waiting on its page. */
+  due: boolean;
   /**
    * How many pockets this row adds up, or null for an ordinary asset. A row with pockets is their account: its
    * `valueMinor` is their ≈ total in the base currency, for display only — no total ever re-adds it.
@@ -33,7 +35,7 @@ export interface AssetGroup {
   rows: AssetRow[];
 }
 
-function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined): AssetRow {
+function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: boolean): AssetRow {
   const section = profile?.coretaxSection;
   return {
     accountId: value.accountId,
@@ -45,6 +47,7 @@ function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined): Asse
     coretax: profile?.coretaxCode && section ? `${profile.coretaxCode} · ${CORETAX_SECTION_LABELS[section] ?? section}` : '',
     stale: value.stale,
     sold: value.mode === 'market' && value.unitsMicro === 0,
+    due,
     pockets: null,
     missing: [],
   };
@@ -54,6 +57,8 @@ export interface AssetGrouping {
   accounts: readonly Pick<AccountRow, 'id' | 'name' | 'parentId' | 'kind'>[];
   baseCurrency: string;
   ratesToBase: Readonly<Record<string, number>>;
+  /** The deposits with a proposal waiting (spec §7). Every other caller leaves it out, and nothing is due. */
+  due?: ReadonlySet<string>;
 }
 
 const isSold = (value: AssetValueRow) => value.mode === 'market' && value.unitsMicro === 0;
@@ -64,7 +69,7 @@ const isSold = (value: AssetValueRow) => value.mode === 'market' && value.unitsM
  * `sumToBase` over the underlying values — each pocket on its own, never the rounded parent figure — and is null,
  * naming the rate, when one is missing.
  */
-export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[], { accounts, baseCurrency, ratesToBase }: AssetGrouping): AssetGroup[] {
+export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[], { accounts, baseCurrency, ratesToBase, due = new Set() }: AssetGrouping): AssetGroup[] {
   const profileByAccount = new Map(profiles.map((profile) => [profile.accountId, profile]));
   const parents = pocketParentIds(accounts);
   const byId = new Map(accounts.map((a) => [a.id, a]));
@@ -79,7 +84,7 @@ export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[]
   for (const value of values) {
     const parentId = parentOf.get(value.accountId);
     if (!parentId) {
-      rows.push(toRow(value, profileByAccount.get(value.accountId)));
+      rows.push(toRow(value, profileByAccount.get(value.accountId), due.has(value.accountId)));
       continue;
     }
     if (rows.some((row) => row.accountId === parentId)) continue;
@@ -95,6 +100,8 @@ export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[]
       coretax: 'Each pocket files its own row',
       stale: false,
       sold: false,
+      // A deposit never holds pockets, so a row of pockets is never due.
+      due: false,
       pockets: pockets.length,
       missing: total.missing,
     });
@@ -124,3 +131,10 @@ export function totalOf(groups: AssetGroup[]): { totalMinor: number | null; miss
   return { totalMinor: groups.reduce((total, group) => total + group.totalMinor!, 0), missing: [] };
 }
 export const staleRows = (groups: AssetGroup[]): AssetRow[] => groups.flatMap((group) => group.rows.filter((row) => row.stale && !row.sold));
+
+/** What the row says under its name: how it is valued, its tax code, and whether it needs attention. */
+export function rowSubtitle(row: AssetRow): string {
+  return [row.method, row.coretax, row.stale && !row.sold ? 'Update price' : null, row.sold ? 'Sold' : null, row.due ? 'Due' : null]
+    .filter(Boolean)
+    .join(' · ');
+}

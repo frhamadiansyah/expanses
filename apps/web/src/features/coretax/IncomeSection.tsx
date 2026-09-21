@@ -9,6 +9,7 @@ const KIND_LABELS: Record<IncomeRow['kind'], string> = {
   dividend: 'dividend',
   coupon: 'coupon',
   distribution: 'distribution',
+  interest: 'interest',
   sale: 'sale',
   other: 'income',
 };

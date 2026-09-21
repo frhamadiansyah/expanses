@@ -9,13 +9,8 @@ import { useHeldRates } from '../accounts/queries';
 import { AddAssetForm } from './AddAssetForm';
 import { NetWorthTabs } from './NetWorthTabs';
 import { UpdatePricesSheet } from './UpdatePricesSheet';
-import { type AssetGroup, type AssetRow, groupAssets, liveGroups, soldRows, staleRows, totalOf } from './asset-rows';
-import { useAssetProfiles, useAssetValues } from './queries';
-
-/** What the row says under its name: how it is valued, its tax code, and whether it needs attention. */
-function subtitleOf(row: AssetRow): string {
-  return [row.method, row.coretax, row.stale && !row.sold ? 'Update price' : null, row.sold ? 'Sold' : null].filter(Boolean).join(' · ');
-}
+import { type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
+import { useAssetProfiles, useAssetValues, useDueDeposits } from './queries';
 
 /** The sentence naming what is out of date. The same words it has always been, in the group's own footer. */
 function staleNote(stale: AssetRow[]): string {
@@ -39,7 +34,7 @@ function Row({ row, baseCurrency }: { row: AssetRow; baseCurrency: string }) {
       to="/net-worth/assets/$accountId"
       params={{ accountId: row.accountId }}
       title={row.name}
-      subtitle={subtitleOf(row)}
+      subtitle={rowSubtitle(row)}
       value={<Money minor={row.valueMinor} currency={row.currency} />}
       valueTone={row.stale && !row.sold ? 'warn' : 'ink'}
     />
@@ -67,9 +62,13 @@ export function AssetsPage() {
   const [adding, setAdding] = useState(false);
   const [updatingPrices, setUpdatingPrices] = useState(false);
 
+  const due = useDueDeposits();
+  const dueIds = new Set((due.data ?? []).map((proposal) => proposal.accountId));
   const baseCurrency = ws.baseCurrency;
   const ready = values.data && profiles.data && accounts.data && held.data;
-  const groups = ready ? groupAssets(values.data!, profiles.data!, { accounts: accounts.data!, baseCurrency, ratesToBase: held.data!.rates }) : [];
+  const groups = ready
+    ? groupAssets(values.data!, profiles.data!, { accounts: accounts.data!, baseCurrency, ratesToBase: held.data!.rates, due: dueIds })
+    : [];
   const total = totalOf(groups);
   const live = liveGroups(groups);
   const sold = soldRows(groups);

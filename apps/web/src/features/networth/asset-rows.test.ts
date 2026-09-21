@@ -1,6 +1,6 @@
 import type { AccountRow, AssetProfileRow, AssetValueRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { groupAssets, liveGroups, soldRows, staleRows, totalOf } from './asset-rows';
+import { groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
 
 const value = (partial: Partial<AssetValueRow> & Pick<AssetValueRow, 'accountId' | 'name' | 'planGroup' | 'mode'>): AssetValueRow => ({
   valueMinor: 0,
@@ -130,5 +130,25 @@ describe('a foreign asset that is not a pocket', () => {
 
   it('without a rate leaves the total blank and names the currency', () => {
     expect(totalOf(groupAssets([fund, idr], [], { accounts: [], baseCurrency: 'IDR', ratesToBase: {} }))).toEqual({ totalMinor: null, missing: ['USD'] });
+  });
+});
+
+describe('a deposit with something due', () => {
+  it('says Due quietly in its subtitle, and nothing else changes', () => {
+    const due = groupAssets(values, profiles, { ...idrOnly, due: new Set(['bca']) }).flatMap((group) => group.rows);
+    const bca = due.find((row) => row.accountId === 'bca')!;
+    expect(bca.due).toBe(true);
+    expect(rowSubtitle(bca)).toBe('Ledger balance · 0102 · Kas dan Setara Kas · Due');
+    expect(rowSubtitle(due.find((row) => row.accountId === 'gold')!)).not.toContain('Due');
+    expect(due.find((row) => row.accountId === 'gold')!.due).toBe(false);
+    // Without the set, as every other caller passes it: nobody is due.
+    expect(groupAssets(values, profiles, idrOnly).flatMap((group) => group.rows).some((row) => row.due)).toBe(false);
+  });
+
+  it('keeps the other markers where they were', () => {
+    const rows = groupAssets(values, profiles, idrOnly).flatMap((group) => group.rows);
+    expect(rowSubtitle(rows.find((row) => row.accountId === 'tlkm')!)).toBe('Units × price · Sold');
+    const stale = groupAssets(values.map((row) => (row.accountId === 'gold' ? { ...row, stale: true } : row)), profiles, idrOnly).flatMap((group) => group.rows);
+    expect(rowSubtitle(stale.find((row) => row.accountId === 'gold')!)).toBe('Units × price · 0701 · Harta Lainnya · Update price');
   });
 });

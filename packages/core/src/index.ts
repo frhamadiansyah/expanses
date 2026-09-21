@@ -431,3 +431,19 @@ export {
   type EventPlanLine,
   type EventPlanUnplanned,
 } from './events/plan';
+export {
+  addMonthsToDate,
+  DEFAULT_TAX_BPS,
+  type DepositEvent,
+  type DepositSchedule,
+  depositInterest,
+  dueDepositEvents,
+  eventKey,
+  type InterestPaid,
+  type MaturityChoice,
+  needsPayout,
+  TERM_MONTHS,
+  type TermMonths,
+  termStart,
+  withholdTax,
+} from './deposits/maturity';

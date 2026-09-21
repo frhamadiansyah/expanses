@@ -11,6 +11,7 @@ import { billPayments, expenseTemplates } from '../schema-recurring';
 import { BILL_MONTH, billTablesExist } from './bill-months';
 import { type BookMoney, bookMoneyFor, type Unconverted } from './book-currency';
 import { bookOfCategory, hasBooks } from './books';
+import { followDepositEventTx, reopenDepositEventTx } from './deposit-event-log';
 import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
@@ -224,8 +225,12 @@ export function postTransaction(database: Database, ws: WorkspaceContext, input:
   return database.transaction((tx) => postTransactionTx(tx, ws, input));
 }
 
-/** Voids inside an open transaction, so a caller can void and repost several transactions atomically. */
-export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}): Promise<void> {
+/**
+ * Marks one transaction void, with what that means for the money itself: a tagged transfer's arrival and a set-aside
+ * answer are taken back, unless `keep` says an edit carries them on (set-aside rulings I1, I2, I4). What else a void
+ * means (a deposit event reopened) is `voidTransactionTx`'s; an edit keeps that (`replaceTransaction`).
+ */
+async function markVoidTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}): Promise<void> {
   const [row] = await tx
     .select({ status: transactions.status, goalId: transactions.goalId })
     .from(transactions)
@@ -239,6 +244,16 @@ export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string
   // What an answer did to a goal is a fact about the same money: it goes when the money goes.
   if (await setAsideTablesExist(tx)) await undoSetAsideTx(tx, ws, id, arrival, keep);
   await audit(tx, ws, 'void', id, {});
+}
+
+/** Voids inside an open transaction, so a caller can void and repost several transactions atomically. */
+export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}): Promise<void> {
+  await markVoidTx(tx, ws, id, keep);
+  // A deposit event this posted is reopened, and the rest of what that event posted is voided with it (whole: `{}`).
+  for (const other of await reopenDepositEventTx(tx, ws, id)) {
+    const [row] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, other));
+    if (row?.status === 'posted') await voidTransactionTx(tx, ws, other);
+  }
 }
 
 export function voidTransaction(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
@@ -318,7 +333,8 @@ export function replaceTransaction(
     const nextMove = taggedGoal ? await taggedMoveOfTx(tx, ws, input.occurredOn, input.lines) : null;
     const wasMove = nextMove ? await taggedMoveOfTx(tx, ws, input.occurredOn, oldLines) : null;
     const keepTagged = !!nextMove && !!wasMove && nextMove.fromAccountId === wasMove.fromAccountId && nextMove.toAccountId === wasMove.toAccountId;
-    await voidTransactionTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged });
+    // An edit voids without reopening a deposit event: the replacement carries on what the original was.
+    await markVoidTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged });
     // The same spend answered afresh (from another account) stays on the stage it paid: never the next one.
     const setAside = keepAnswer ? null : withSavedStage(answered, saved);
     // Keep import identity so re-importing the same statement still recognises the row.
@@ -361,6 +377,8 @@ export function replaceTransaction(
     // What this payment bought off the plan is a fact about the same money: it follows the correction, and is cut to
     // fit when the correction is smaller.
     await carryEventItemTx(tx, ws, id, replacement);
+    // A deposit event it posted stays done, and its log takes the edited figures.
+    await followDepositEventTx(tx, ws, id, replacement);
     return replacement;
   });
 }

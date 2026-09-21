@@ -209,37 +209,63 @@ export async function renameAccount(database: Database, ws: WorkspaceContext, id
   });
 }
 
-export async function archiveAccount(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  await database.transaction(async (tx) => {
-    const [account] = await tx
-      .select()
+/**
+ * What one account holds: every posted entry, whatever its date, in the account's own currency. The balance an
+ * archive checks is zero. The caller has already found the account in its workspace.
+ */
+export async function postedBalanceTx(tx: Db, id: string): Promise<number> {
+  const [row] = await tx
+    .select({ total: sql<number>`coalesce(sum(${entries.amountMinor}), 0)` })
+    .from(entries)
+    .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+    .where(and(eq(entries.accountId, id), eq(transactions.status, 'posted')));
+  return Number(row?.total ?? 0);
+}
+
+/** Archives inside a transaction already running. Refuses a system account, and a money account that still holds a balance. */
+export async function archiveAccountTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+  const [account] = await tx
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!account) throw new AccountError('Account not found');
+  // Default categories carry keys too; only the system equity accounts are protected.
+  if (SYSTEM_ACCOUNTS.some((s) => s.key === account.systemKey)) throw new AccountError('System accounts cannot be archived');
+  if (account.kind === 'asset') {
+    const open = await tx
+      .select({ currency: accounts.currency })
       .from(accounts)
-      .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
-    if (!account) throw new AccountError('Account not found');
-    // Default categories carry keys too; only the system equity accounts are protected.
-    if (SYSTEM_ACCOUNTS.some((s) => s.key === account.systemKey)) throw new AccountError('System accounts cannot be archived');
-    if (account.kind === 'asset') {
-      const open = await tx
-        .select({ currency: accounts.currency })
-        .from(accounts)
-        .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), isNull(accounts.archivedAt)))
-        .orderBy(asc(accounts.sortOrder), asc(accounts.id));
-      if (open.length > 0) {
-        throw new AccountError(`${account.name} still has pockets: ${open.map((row) => row.currency).join(', ')}. Archive each pocket first.`);
-      }
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), isNull(accounts.archivedAt)))
+      .orderBy(asc(accounts.sortOrder), asc(accounts.id));
+    if (open.length > 0) {
+      throw new AccountError(`${account.name} still has pockets: ${open.map((row) => row.currency).join(', ')}. Archive each pocket first.`);
     }
-    if (account.kind === 'asset' || account.kind === 'liability') {
-      // Archived money accounts leave net worth, so they must be empty first.
-      const [row] = await tx
-        .select({ total: sql<number>`coalesce(sum(${entries.amountMinor}), 0)` })
-        .from(entries)
-        .innerJoin(transactions, eq(entries.transactionId, transactions.id))
-        .where(and(eq(entries.accountId, id), eq(transactions.status, 'posted')));
-      if (Number(row?.total ?? 0) !== 0) {
-        throw new AccountError(`${account.name} still has a balance. Bring it to zero before archiving so net worth stays correct.`);
-      }
+  }
+  if (account.kind === 'asset' || account.kind === 'liability') {
+    // Archived money accounts leave net worth, so they must be empty first.
+    if ((await postedBalanceTx(tx, id)) !== 0) {
+      throw new AccountError(`${account.name} still has a balance. Bring it to zero before archiving so net worth stays correct.`);
     }
-    await tx.update(accounts).set({ archivedAt: new Date().toISOString() }).where(eq(accounts.id, id));
-    await writeAudit(tx, ws, 'archive', id, {});
-  });
+  }
+  await tx.update(accounts).set({ archivedAt: new Date().toISOString() }).where(eq(accounts.id, id));
+  await writeAudit(tx, ws, 'archive', id, {});
+}
+
+/**
+ * The reverse of `archiveAccountTx`, inside a running transaction: the account is live again, and the audit says so.
+ * Used when what archived it is taken back (a deposit's close, reopened by voiding what it posted).
+ */
+export async function unarchiveAccountTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+  const [account] = await tx
+    .select({ id: accounts.id, archivedAt: accounts.archivedAt })
+    .from(accounts)
+    .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!account) throw new AccountError('Account not found');
+  if (account.archivedAt === null) return;
+  await tx.update(accounts).set({ archivedAt: null }).where(eq(accounts.id, id));
+  await writeAudit(tx, ws, 'unarchive', id, {});
+}
+
+export async function archiveAccount(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
+  await database.transaction((tx) => archiveAccountTx(tx, ws, id));
 }
