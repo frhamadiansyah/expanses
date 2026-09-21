@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { at, automate, confirmEach, expectBalance, openDeposit, settingsSaved, setUp, startReport, typeInto } from './deposit-maturity';
+import { at, automate, COMBOS, comboName, confirmEach, expectBalance, HAND_COMBOS, openDeposit, settingsSaved, setUp, startReport, typeInto, walk } from './deposit-maturity';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -246,3 +246,34 @@ test('undoes a payout recorded by hand: nothing posts or is voided, it is propos
   await expect(card).toContainText('139.726');
   await expectBalance(page, s.payoutName, '1.288.768');
 });
+
+test('the tax report reads the confirmed interest: gross and withheld, not the net', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  // Nobody set how its income is taxed: a time deposit reads final, the one treatment its interest has.
+  await automate(page, { choice: 'principal', paid: 'at_maturity', exempt: false });
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  await page.getByTestId('deposit-proposal').getByRole('button', { name: 'Confirm' }).click();
+  await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
+  await startReport(page, 2026);
+  const row = page.getByTestId('income-row').filter({ hasText: s.depositName });
+  await expect(row).toContainText('interest');
+  await expect(row).toContainText('535.616');
+  await expect(row).not.toContainText('428.493');
+  const finalBand = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Final tax' }) }).last();
+  await expect(finalBand).toContainText(s.depositName);
+  await expect(finalBand).toContainText('107.123');
+});
+
+for (const combo of COMBOS) {
+  test(`walks ${comboName(combo)}`, async ({ page }) => {
+    await walk(page, combo);
+  });
+}
+
+for (const combo of HAND_COMBOS) {
+  test(`walks ${comboName(combo)} · first by hand`, async ({ page }) => {
+    await walk(page, combo, true);
+  });
+}
