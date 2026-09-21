@@ -1,6 +1,6 @@
 import { cashItem, type MoneyAccountSubtype } from '@expanses/core';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { AccountError, type AccountRow, createAccountTx } from './accounts';
 import { saveAssetProfileTx } from './assets';
 import { saveDepositTermsTx } from './deposit-terms';
@@ -18,37 +18,46 @@ export interface OpenCashAccountInput {
   /** Time deposit only. */
   maturesOn?: string;
   rateBps?: number;
+  /** The account this is a pocket of. Only `openPocketedAccount` and `addPocket` pass it. */
+  parentId?: string;
+  /** A pocket's place among its account's pockets. Only `openPocketedAccount` and `addPocket` pass it. */
+  sortOrder?: number;
 }
 
 /** Opens a money account with the code and the behaviour its catalogue item fixes. */
-export async function openCashAccount(database: Database, ws: WorkspaceContext, input: OpenCashAccountInput): Promise<AccountRow> {
+export function openCashAccount(database: Database, ws: WorkspaceContext, input: OpenCashAccountInput): Promise<AccountRow> {
+  return database.transaction((tx) => openCashAccountTx(tx, ws, input));
+}
+
+/** `openCashAccount` inside a transaction already running, so several accounts can open as one step. */
+export async function openCashAccountTx(tx: Db, ws: WorkspaceContext, input: OpenCashAccountInput): Promise<AccountRow> {
   const item = cashItem(input.item);
   const { behaviour } = item;
   // Every row of CASH_ITEMS opens money; saying so is what narrows the catalogue's union for the compiler.
   if (behaviour.opens !== 'money') throw new AccountError(`${item.label} is not a money account`);
   if (behaviour.valuedBy === 'deposit' && !input.maturesOn) throw new AccountError('Say when the deposit matures');
-  return database.transaction(async (tx) => {
-    const account = await createAccountTx(tx, ws, {
-      name: input.name,
-      kind: 'asset',
-      subtype: behaviour.subtype,
-      currency: input.currency,
-      openingBalanceMinor: input.openingBalanceMinor,
-      openedOn: input.openedOn,
-      openingRateToBase: input.openingRateToBase,
-    });
-    await saveAssetProfileTx(tx, ws, {
-      accountId: account.id,
-      assetKind: 'cash',
-      planGroup: 'liquid',
-      coretaxSection: 'kas',
-      coretaxCode: item.code,
-      // The one detail the form can answer while opening the account; the rest of the kas row is filled in later.
-      coretaxFields: input.bank ? { inst: input.bank } : undefined,
-    });
-    if (behaviour.valuedBy === 'deposit') {
-      await saveDepositTermsTx(tx, ws, { accountId: account.id, maturesOn: input.maturesOn!, rateBps: input.rateBps ?? 0 });
-    }
-    return account;
+  const account = await createAccountTx(tx, ws, {
+    name: input.name,
+    kind: 'asset',
+    subtype: behaviour.subtype,
+    currency: input.currency,
+    openingBalanceMinor: input.openingBalanceMinor,
+    openedOn: input.openedOn,
+    openingRateToBase: input.openingRateToBase,
+    parentId: input.parentId ?? null,
+    sortOrder: input.sortOrder,
   });
+  await saveAssetProfileTx(tx, ws, {
+    accountId: account.id,
+    assetKind: 'cash',
+    planGroup: 'liquid',
+    coretaxSection: 'kas',
+    coretaxCode: item.code,
+    // The one detail the form can answer while opening the account; the rest of the kas row is filled in later.
+    coretaxFields: input.bank ? { inst: input.bank } : undefined,
+  });
+  if (behaviour.valuedBy === 'deposit') {
+    await saveDepositTermsTx(tx, ws, { accountId: account.id, maturesOn: input.maturesOn!, rateBps: input.rateBps ?? 0 });
+  }
+  return account;
 }

@@ -33,6 +33,35 @@ export const BALANCE_SUBTYPES = {
  */
 export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['cash', 'bank', 'savings', 'fund', 'ewallet', 'other_cash'];
 
+/** A pocket's stored name: the bank and the currency, so every list that prints a name already says both. */
+export const pocketName = (parentName: string, currency: string) => `${parentName} · ${currency}`;
+
+/**
+ * The accounts that are pocket parents: every asset account some asset account names in `parent_id`, archived pockets
+ * included. Categories use `parent_id` too, but they are income or expense, so they never count here.
+ */
+export function pocketParentIds(rows: readonly Pick<AccountRow, 'id' | 'parentId' | 'kind'>[]): Set<string> {
+  const ids = new Set<string>();
+  for (const row of rows) if (row.kind === 'asset' && row.parentId) ids.add(row.parentId);
+  return ids;
+}
+
+/** A money account under a parent is a pocket; these are the rules for one (spec §3.4). */
+async function checkPocketTx(tx: Db, ws: WorkspaceContext, pocket: AccountRow, parent: AccountRow): Promise<void> {
+  if (pocket.kind !== 'asset') throw new AccountError('Only a money account holds pockets');
+  if (parent.parentId !== null) throw new AccountError('A pocket cannot hold pockets of its own');
+  if (parent.archivedAt !== null) throw new AccountError(`${parent.name} is archived`);
+  if (parent.subtype !== pocket.subtype) throw new AccountError(`A pocket is the same kind of account as ${parent.name}`);
+  // Any entry at all, posted or void: an account that has ever held money is not a parent.
+  const [held] = await tx.select({ n: sql<number>`count(*)` }).from(entries).where(eq(entries.accountId, parent.id));
+  if (Number(held?.n ?? 0) > 0) throw new AccountError(`${parent.name} already holds money of its own, so it cannot hold pockets`);
+  const open = await tx
+    .select({ currency: accounts.currency })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, parent.id), isNull(accounts.archivedAt)));
+  if (open.some((row) => row.currency === pocket.currency)) throw new AccountError(`${parent.name} already has a ${pocket.currency} pocket`);
+}
+
 export interface CreateAccountInput {
   name: string;
   kind: AccountKind;
@@ -45,6 +74,8 @@ export interface CreateAccountInput {
   openedOn?: string;
   /** Required when the account currency differs from the workspace base and an opening balance is given. */
   openingRateToBase?: number;
+  /** Place among its siblings (the existing `sort_order` column); a pocket's order in its account. Defaults to 0. */
+  sortOrder?: number;
 }
 
 async function writeAudit(tx: Db, ws: WorkspaceContext, action: string, entityId: string, payload: unknown) {
@@ -116,7 +147,7 @@ export async function createAccountTx(tx: Db, ws: WorkspaceContext, input: Creat
     currency: input.currency,
     valuationMode: 'derived',
     systemKey: null,
-    sortOrder: 0,
+    sortOrder: input.sortOrder ?? 0,
     archivedAt: null,
     createdAt: now,
   };
@@ -128,6 +159,7 @@ export async function createAccountTx(tx: Db, ws: WorkspaceContext, input: Creat
         .from(accounts)
         .where(and(eq(accounts.id, row.parentId), eq(accounts.workspaceId, ws.workspaceId)));
       if (!parent || parent.kind !== row.kind) throw new AccountError('Parent must be an account of the same kind');
+      if (row.kind === 'asset' || row.kind === 'liability') await checkPocketTx(tx, ws, row, parent);
     }
     await tx.insert(accounts).values(row);
     if ((row.kind === 'income' || row.kind === 'expense') && (await hasBooks(tx))) {
@@ -159,7 +191,20 @@ export async function renameAccount(database: Database, ws: WorkspaceContext, id
   const trimmed = name.trim();
   if (!trimmed) throw new AccountError('Name is required');
   await database.transaction(async (tx) => {
+    const [before] = await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
     await tx.update(accounts).set({ name: trimmed }).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+    if (before) {
+      // Pockets still named after the account follow it; one the owner renamed keeps its own name.
+      const pockets = await tx
+        .select({ id: accounts.id, name: accounts.name, currency: accounts.currency })
+        .from(accounts)
+        .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), eq(accounts.kind, 'asset')));
+      for (const pocket of pockets) {
+        if (pocket.currency && pocket.name === pocketName(before.name, pocket.currency)) {
+          await tx.update(accounts).set({ name: pocketName(trimmed, pocket.currency) }).where(eq(accounts.id, pocket.id));
+        }
+      }
+    }
     await writeAudit(tx, ws, 'rename', id, { name: trimmed });
   });
 }
@@ -186,6 +231,16 @@ export async function archiveAccountTx(tx: Db, ws: WorkspaceContext, id: string)
   if (!account) throw new AccountError('Account not found');
   // Default categories carry keys too; only the system equity accounts are protected.
   if (SYSTEM_ACCOUNTS.some((s) => s.key === account.systemKey)) throw new AccountError('System accounts cannot be archived');
+  if (account.kind === 'asset') {
+    const open = await tx
+      .select({ currency: accounts.currency })
+      .from(accounts)
+      .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), isNull(accounts.archivedAt)))
+      .orderBy(asc(accounts.sortOrder), asc(accounts.id));
+    if (open.length > 0) {
+      throw new AccountError(`${account.name} still has pockets: ${open.map((row) => row.currency).join(', ')}. Archive each pocket first.`);
+    }
+  }
   if (account.kind === 'asset' || account.kind === 'liability') {
     // Archived money accounts leave net worth, so they must be empty first.
     if ((await postedBalanceTx(tx, id)) !== 0) {

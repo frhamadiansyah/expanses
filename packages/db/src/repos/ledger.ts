@@ -16,7 +16,7 @@ import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx 
 
 export type TransactionSource = 'manual' | 'csv' | 'voice' | 'receipt' | 'email';
 
-export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH';
+export type LedgerErrorCode = 'INVALID_DATE' | 'NOT_FOUND' | 'ALREADY_VOID' | 'INVALID_ORIGINAL' | 'INVALID_MCC' | 'TWO_BOOKS' | 'OTHER_BOOK' | 'INVALID_BILL_MONTH' | 'POCKET_PARENT';
 
 export class LedgerError extends Error {
   readonly code: LedgerErrorCode;
@@ -113,10 +113,23 @@ export async function postTransactionTx(tx: Db, ws: WorkspaceContext, input: Pos
   const ids = [...new Set(input.lines.map((l) => l.accountId))];
   const found = ids.length
     ? await tx
-        .select({ id: accounts.id, currency: accounts.currency, kind: accounts.kind })
+        .select({ id: accounts.id, currency: accounts.currency, kind: accounts.kind, name: accounts.name })
         .from(accounts)
         .where(and(eq(accounts.workspaceId, ws.workspaceId), inArray(accounts.id, ids)))
     : [];
+  // A pocket parent holds no money: it only adds its pockets up (currency pockets spec §2). This is the one place
+  // every entry in the ledger is written, so no screen, import or repository function can get round it.
+  const parentOf = ids.length
+    ? await tx
+        .select({ parentId: accounts.parentId })
+        .from(accounts)
+        .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'asset'), inArray(accounts.parentId, ids)))
+        .limit(1)
+    : [];
+  if (parentOf.length > 0) {
+    const name = found.find((a) => a.id === parentOf[0]!.parentId)?.name ?? 'That account';
+    throw new LedgerError('POCKET_PARENT', `${name} holds no money of its own. Choose one of its pockets.`);
+  }
   const planned = planPosting({
     baseCurrency: ws.baseCurrency,
     lines: input.lines,

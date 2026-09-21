@@ -16,6 +16,9 @@ export { DestructiveRow, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow, 
 export { CardStack, type WalletCard } from './CardStack';
 export { Panel, PanelHeader, SCREEN } from './Panel';
 export { Figure, RecordTable, type RecordColumn, type RecordDetail, type RecordShape } from './RecordTable';
+/* The shared parts for a figure in another currency and a row that adds its children up (pockets, then securities). */
+export { ApproxFigure, GroupedRow } from './Grouped';
+export { approxLine, groupedFigure, rateLine } from './approx';
 
 /* The decisions, exported so a screen can ask the same questions the components ask. */
 export { CHEVRON, GROUP_GAP, GROUP_RADIUS, MIN_TEXT, PHONE_WIDTH, ROW_ICON, ROW_PAD_X, ROW_PAD_Y, TAP, rowHeight, tapReach, textWidth } from './metrics';

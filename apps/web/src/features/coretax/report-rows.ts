@@ -1,4 +1,4 @@
-import { type CarryStatus, CORETAX_SECTIONS, type CoretaxRow, type ReadinessIssue, type ReportSection } from '@expanses/core';
+import { balanceSheet, type CarryStatus, CORETAX_SECTIONS, type CoretaxRow, type ReadinessIssue, reconciliation, type Reconciliation, type ReportSection, type SheetAsset, type SheetLiability } from '@expanses/core';
 
 export interface ScreenSection {
   section: ReportSection;
@@ -64,4 +64,21 @@ const CARRY_LABELS: Record<CarryStatus, string> = {
 
 export function carryPillLabel(status: CarryStatus): string {
   return CARRY_LABELS[status];
+}
+
+/**
+ * The report against the balance sheet on 31 December — or, while a currency held that day has no rate, no
+ * comparison at all and the currencies named. `sheetInputsAt` gives such a row 0, so the balance sheet's net worth
+ * would be short by exactly that money and the gap shown would be wrong. The report's own harta and utang stand.
+ */
+export function reportCheck(
+  harta: CoretaxRow[],
+  utang: CoretaxRow[],
+  inputs: { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] } | undefined,
+): { report: Pick<Reconciliation, 'hartaMinor' | 'utangMinor' | 'reportNetMinor'>; check: Reconciliation | null; missing: string[] } {
+  const missing = [...(inputs?.missing ?? [])];
+  const sheet = balanceSheet(inputs?.assets ?? [], inputs?.liabilities ?? []);
+  const full = reconciliation(harta, utang, sheet.netWorthMinor);
+  const report = { hartaMinor: full.hartaMinor, utangMinor: full.utangMinor, reportNetMinor: full.reportNetMinor };
+  return missing.length > 0 ? { report, check: null, missing } : { report, check: full, missing: [] };
 }

@@ -16,6 +16,7 @@ export { DEFAULT_CATEGORIES, SYSTEM_ACCOUNTS, type SystemAccountKey } from './se
 export * from './repos/workspaces';
 export * from './repos/accounts';
 export * from './repos/cash-accounts';
+export * from './repos/pockets';
 export * from './repos/deposit-terms';
 export * from './repos/deposit-automation';
 export * from './repos/categories';

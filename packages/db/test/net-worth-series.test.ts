@@ -73,7 +73,7 @@ describe('netWorthSeries', () => {
     await upsertPrice(database, ws, { accountId: gold.id, onDate: '2026-03-31', priceMicro: 1_900_000_000_000 });
 
     const points = await netWorthSeries(database, ws, ['2026-02', '2026-03'], {}, TODAY);
-    expect(points[1]!.netWorthMinor - points[0]!.netWorthMinor).toBe(19_000_000 - 18_600_000);
+    expect(points[1]!.netWorthMinor! - points[0]!.netWorthMinor!).toBe(19_000_000 - 18_600_000);
   });
 
   it('does not let a price typed today change an earlier month', async () => {
@@ -82,6 +82,35 @@ describe('netWorthSeries', () => {
 
     const after = await netWorthSeries(database, ws, ['2026-03'], {}, TODAY);
     expect(after[0]!.netWorthMinor).toBe(before[0]!.netWorthMinor);
+  });
+});
+
+describe('netWorthSeries with a currency it has no rate for', () => {
+  it('flags every point instead of counting the foreign money as 0', async () => {
+    await createAccount(database, ws, { name: 'Jenius USD', kind: 'asset', subtype: 'bank', currency: 'USD', openingBalanceMinor: 100_000, openedOn: '2026-01-01', openingRateToBase: 16_000 });
+    const [point] = await netWorthSeries(database, ws, ['2026-03'], {}, TODAY);
+    expect(point).toMatchObject({ month: '2026-03', assetsMinor: null, netWorthMinor: null, missing: ['USD'] });
+    const [priced] = await netWorthSeries(database, ws, ['2026-03'], { USD: 16_250 }, TODAY);
+    expect(priced!.missing).toEqual([]);
+    expect(priced!.netWorthMinor).toBe(opening + 16_250_000);
+  });
+});
+
+describe('sheetInputsAt with a currency it has no rate for', () => {
+  it('names the missing rate beside the rows it could not convert', async () => {
+    await createAccount(database, ws, { name: 'Jenius USD', kind: 'asset', subtype: 'bank', currency: 'USD', openingBalanceMinor: 100_000, openedOn: '2026-01-01', openingRateToBase: 16_000 });
+    expect((await sheetInputsAt(database, ws, TODAY, {})).missing).toEqual(['USD']);
+    expect((await sheetInputsAt(database, ws, TODAY, { USD: 16_250 })).missing).toEqual([]);
+  });
+});
+
+describe('an empty account in a currency with no rate', () => {
+  it('stops neither net worth nor the balance sheet: zero is zero in any currency', async () => {
+    await createAccount(database, ws, { name: 'Empty USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
+    await createAccount(database, ws, { name: 'Empty yen card', kind: 'liability', subtype: 'credit_card', currency: 'JPY' });
+    const [point] = await netWorthSeries(database, ws, ['2026-03'], {}, TODAY);
+    expect(point).toMatchObject({ netWorthMinor: opening, missing: [] });
+    expect((await sheetInputsAt(database, ws, TODAY, {})).missing).toEqual([]);
   });
 });
 

@@ -1,7 +1,11 @@
 import { HelpCircle, Plus } from 'lucide-react';
 import { useState } from 'react';
+import { useApp } from '../../app/context';
+import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
+import { type CornerAction, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
+import { pocketCount } from '../accounts/pockets';
+import { useHeldRates } from '../accounts/queries';
 import { AddAssetForm } from './AddAssetForm';
 import { NetWorthTabs } from './NetWorthTabs';
 import { UpdatePricesSheet } from './UpdatePricesSheet';
@@ -13,7 +17,18 @@ function staleNote(stale: AssetRow[]): string {
   return `${stale.length === 1 ? '1 asset needs' : `${stale.length} assets need`} a fresh price or estimate: ${stale.map((row) => row.name).join(', ')}.`;
 }
 
-function Row({ row }: { row: AssetRow }) {
+function Row({ row, baseCurrency }: { row: AssetRow; baseCurrency: string }) {
+  // An account with pockets: one row at their ≈ total (or the missing rate named), opening to the pockets.
+  if (row.pockets !== null)
+    return (
+      <GroupedRow
+        to="/accounts/$accountId"
+        params={{ accountId: row.accountId }}
+        title={row.name}
+        subtitle={`${pocketCount(row.pockets)} · each files its own row`}
+        figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency)}
+      />
+    );
   return (
     <InsetRow
       to="/net-worth/assets/$accountId"
@@ -26,30 +41,38 @@ function Row({ row }: { row: AssetRow }) {
   );
 }
 
-function Group({ group }: { group: AssetGroup }) {
+function Group({ group, baseCurrency }: { group: AssetGroup; baseCurrency: string }) {
+  const trailing = group.totalMinor === null ? <Figure tone="warn">{`No ${group.missing.join(', ')} rate yet`}</Figure> : <Money minor={group.totalMinor} currency={baseCurrency} />;
   return (
-    <InsetGroup header={group.label} trailing={<Money minor={group.totalMinor} currency={group.rows[0]?.currency ?? 'IDR'} />}>
+    <InsetGroup header={group.label} trailing={trailing}>
       {group.rows.map((row) => (
-        <Row key={row.accountId} row={row} />
+        <Row key={row.accountId} row={row} baseCurrency={baseCurrency} />
       ))}
     </InsetGroup>
   );
 }
 
 export function AssetsPage() {
+  const { ws } = useApp();
   const values = useAssetValues();
   const profiles = useAssetProfiles();
+  const accounts = useAccounts();
+  const held = useHeldRates((values.data ?? []).map((row) => row.currency));
   const [showSold, setShowSold] = useState(false);
   const [adding, setAdding] = useState(false);
   const [updatingPrices, setUpdatingPrices] = useState(false);
 
   const due = useDueDeposits();
   const dueIds = new Set((due.data ?? []).map((proposal) => proposal.accountId));
-  const groups = values.data && profiles.data ? groupAssets(values.data, profiles.data, dueIds) : [];
+  const baseCurrency = ws.baseCurrency;
+  const ready = values.data && profiles.data && accounts.data && held.data;
+  const groups = ready
+    ? groupAssets(values.data!, profiles.data!, { accounts: accounts.data!, baseCurrency, ratesToBase: held.data!.rates, due: dueIds })
+    : [];
+  const total = totalOf(groups);
   const live = liveGroups(groups);
   const sold = soldRows(groups);
   const stale = staleRows(groups);
-  const baseCurrency = values.data?.[0]?.currency ?? 'IDR';
 
   /*
    * The title row used to carry the running total, a text link and a dark rectangle at once, which at 390 px was
@@ -67,9 +90,13 @@ export function AssetsPage() {
     <div className={SCREEN}>
       <LargeTitle title="Assets" actions={actions} />
       <NetWorthTabs />
-      <Hero minor={totalOf(groups)} currency={baseCurrency} caption="Everything you own" />
+      {total.totalMinor !== null ? (
+        <Hero minor={total.totalMinor} currency={baseCurrency} caption="Everything you own" />
+      ) : (
+        <Empty>No {total.missing.join(', ')} rate yet, so your assets cannot be added up. Each figure below is exact.</Empty>
+      )}
       {adding && <AddAssetForm onDone={() => setAdding(false)} />}
-      <ErrorBox error={values.error ?? profiles.error} />
+      <ErrorBox error={values.error ?? profiles.error ?? accounts.error ?? held.error} />
 
       {updatingPrices && (
         <UpdatePricesSheet
@@ -91,9 +118,9 @@ export function AssetsPage() {
           </Panel>
         ))}
 
-      {live.length === 0 && !values.isPending && <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>}
+      {live.length === 0 && ready && <Empty>No assets yet. Add a bank account, fund, gold or property to see it here.</Empty>}
       {live.map((group) => (
-        <Group key={group.group} group={group} />
+        <Group key={group.group} group={group} baseCurrency={baseCurrency} />
       ))}
 
       {sold.length > 0 && (
@@ -104,7 +131,7 @@ export function AssetsPage() {
           {showSold && (
             <InsetGroup header="Sold">
               {sold.map((row) => (
-                <Row key={row.accountId} row={row} />
+                <Row key={row.accountId} row={row} baseCurrency={baseCurrency} />
               ))}
             </InsetGroup>
           )}

@@ -3,7 +3,7 @@ import { forgiveRemainder, type PersonDebtRow, recordRepayment, saveDebtProfile 
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, cx, ErrorBox, Field, Input, Money, Select } from '../../ui';
 import { personCodeChoices } from '../ownables/catalogue-view';
 import { useDebtHistory, useDebtProfiles } from './queries';
@@ -99,7 +99,7 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
   // Somewhere money can actually sit: never another person's account.
-  const moneyAccounts = accounts.filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
+  const moneyAccounts = moneyHolders(accounts).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
   const today = isoDate();
   const [repayingId, setRepayingId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);

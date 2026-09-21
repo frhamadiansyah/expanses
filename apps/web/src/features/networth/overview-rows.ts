@@ -115,7 +115,10 @@ export function deltaSince(points: NetWorthPoint[], monthsBack: number): number 
   if (points.length === 0) return null;
   const index = points.length - 1 - monthsBack;
   if (index < 0) return null;
-  return points[points.length - 1]!.netWorthMinor - points[index]!.netWorthMinor;
+  const last = points[points.length - 1]!.netWorthMinor;
+  const then = points[index]!.netWorthMinor;
+  // A point without a figure (a rate missing) measures nothing: no change is better than a change from 0.
+  return last === null || then === null ? null : last - then;
 }
 
 /** Months from January of the last point's year, for the "since January" figure. */

@@ -2,7 +2,8 @@ import { ASSET_FAMILIES, ASSET_ITEMS, CORETAX_SECTIONS, CURRENCIES, isoDate, typ
 import { createAccount, openDebtBalance, recordTrade, recordValuation, saveAssetProfile } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll } from '../../lib/queries';
+import { useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { chosenItem, emptyDraft, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
@@ -24,6 +25,7 @@ const LEGACY_ITEMS = ASSET_ITEMS.filter((item) => !IN_A_FAMILY.has(item.id));
 export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: string }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const resolveRates = useResolveRates();
   const today = isoDate();
   const [draft, setDraft] = useState<NewAssetDraft>(() => emptyDraft(itemId ?? 'fund', ws.baseCurrency, today));
   const [error, setError] = useState<unknown>(null);
@@ -50,6 +52,8 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
     setBusy(true);
     try {
       const plan = planNewAsset(draft, today);
+      // One rate for the whole opening, as before: typed (parseRate, checked, stored for that day) or resolved for the day.
+      const openingRateToBase = await openingRateFor({ database, ws, currency: plan.account.currency, openedOn: plan.rateDate, openingBalanceMinor: plan.rateNeededMinor, typed: draft.openingRate, resolveRates });
       if (plan.person) {
         // Money owed is kept by the Lend & borrow ledger, which opens the account and its profile itself.
         await openDebtBalance(database, ws, {
@@ -59,7 +63,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
           balanceMinor: plan.person.balanceMinor,
           openedOn: plan.account.openedOn,
           coretaxCode: plan.person.coretaxCode,
-          openingRateToBase: plan.openingRateToBase,
+          openingRateToBase,
         });
       } else if (plan.profile) {
         const account = await createAccount(database, ws, {
@@ -69,7 +73,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
           currency: plan.account.currency,
           openingBalanceMinor: plan.account.openingBalanceMinor,
           openedOn: plan.account.openedOn,
-          openingRateToBase: plan.openingRateToBase,
+          openingRateToBase,
         });
         await saveAssetProfile(database, ws, {
           accountId: account.id,
@@ -92,7 +96,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
             feeMinor: 0,
             taxMinor: 0,
             cashAccountId: null,
-            ratesToBase: plan.openingRateToBase === undefined ? undefined : { [plan.account.currency]: plan.openingRateToBase },
+            ratesToBase: openingRateToBase === undefined ? undefined : { [plan.account.currency]: openingRateToBase },
           });
         }
         if (plan.valuation) {
@@ -148,7 +152,10 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
           <TextRow
             label={`Rate to ${ws.baseCurrency}`}
             aria-label="Opening rate"
-            hint={`What one ${draft.currency} was worth when you got this. Your ledger needs it to hold one running total; the tax report uses the KMK rate instead.`}
+            hint={
+              ratePreview(draft.openingRate, draft.currency, ws.baseCurrency) ??
+              `What one ${draft.currency} was worth when you got this. Your ledger needs it to hold one running total; the tax report uses the KMK rate instead.`
+            }
             value={draft.openingRate}
             onChange={(e) => change({ openingRate: e.target.value })}
             inputMode="decimal"

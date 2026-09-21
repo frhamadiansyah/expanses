@@ -1,6 +1,6 @@
 import type { HealthRatio } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { periodChoices, periodRange, ratioDisplay } from './health-cards';
+import { periodChoices, periodRange, ratioDisplay, ratioTotals } from './health-cards';
 
 const TODAY = '2026-09-12';
 
@@ -67,5 +67,26 @@ describe('ratioDisplay', () => {
   it('says it does not know instead of drawing a bar', () => {
     const display = ratioDisplay(ratio({ value: null, status: 'unknown' }));
     expect(display).toMatchObject({ value: '—', statusLabel: 'Not enough data', gaugePercent: 0 });
+  });
+});
+
+describe('ratioTotals', () => {
+  const assets = [
+    { accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid' as const, valueMinor: 50_000_000 },
+    { accountId: 'fund', name: 'Money market fund', planGroup: 'invest' as const, valueMinor: 20_000_000 },
+    // A USD account on a day with no USD rate: sheetInputsAt gives its row 0 and names USD.
+    { accountId: 'usd', name: 'Dollar Saver', planGroup: 'liquid' as const, valueMinor: 0 },
+  ];
+  const liabilities = [{ accountId: 'card', name: 'Card', subtype: 'credit_card' as const, balanceMinor: 10_000_000, dueWithinYearMinor: 10_000_000, note: null }];
+
+  it('are the balance sheet’s totals when every rate is there', () => {
+    expect(ratioTotals({ assets, liabilities, missing: [] })).toEqual({
+      totals: { liquidMinor: 50_000_000, investMinor: 20_000_000, assetsMinor: 70_000_000, liabilitiesMinor: 10_000_000, netWorthMinor: 60_000_000 },
+      missing: [],
+    });
+  });
+
+  it('are none, with the currency named, while a rate is missing — never totals that count that money as 0', () => {
+    expect(ratioTotals({ assets, liabilities, missing: ['USD'] })).toEqual({ totals: null, missing: ['USD'] });
   });
 });

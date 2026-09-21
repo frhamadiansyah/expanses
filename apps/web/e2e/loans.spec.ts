@@ -152,3 +152,35 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await held.getByText(/Instalments hold/).hover();
   await expect(held.getByRole('tooltip')).toContainText('iBox Grand Indonesia');
 });
+
+test('a loan in another currency is printed in its own currency, and the monthly total is converted', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar car loan');
+  await page.getByLabel('Type').selectOption('loan');
+  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+  await page.getByLabel('Amount owed now').pressSequentially('20000.00');
+  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Dollar car loan', exact: true })).toBeVisible();
+
+  await page.goto('/net-worth/loans');
+  await page.getByRole('button', { name: 'Add loan terms' }).click();
+  await page.getByLabel('Lender').pressSequentially('Car Finance');
+  await page.getByLabel('Amount borrowed (USD)').pressSequentially('24000.00');
+  await page.getByLabel('Rate a year (%)').pressSequentially('0');
+  await page.getByLabel('How interest is worked out').selectOption('zero');
+  await page.getByLabel('First payment on').fill('2026-01-25');
+  await page.getByLabel('Tenor in months').pressSequentially('48');
+  await page.getByLabel('Payment day').fill('25');
+  await page.getByLabel('Payment each month (USD)').pressSequentially('500.00');
+  await page.getByRole('button', { name: 'Save terms' }).click();
+
+  const row = page.getByRole('link', { name: /Dollar car loan/ });
+  // US$500,00 — not "Rp 50.000", which is how the list used to print 50.000 cents.
+  await expect(row).toContainText('US$');
+  await expect(row).not.toContainText('Rp');
+  // Converted at the rate held for the day: 500 × 16.250.
+  await expect(page.getByText('The instalments the banks ask for each month')).toBeVisible();
+  await expect(page.getByText(/8\.125\.000/)).toBeVisible();
+});

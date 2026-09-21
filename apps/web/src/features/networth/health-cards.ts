@@ -1,4 +1,4 @@
-import { addMonths, monthOf, type HealthRatio, type RatioStatus } from '@expanses/core';
+import { addMonths, balanceSheet, monthOf, type HealthRatio, type RatioStatus, type SheetAsset, type SheetLiability, type SheetTotals } from '@expanses/core';
 
 export type RatioPeriod = { key: 'ttm' } | { key: 'year'; year: number };
 
@@ -50,4 +50,28 @@ export function ratioDisplay(ratio: HealthRatio): RatioDisplay {
   const value = ratio.unit === 'months' ? `${oneDecimal(ratio.value)} months` : `${oneDecimal(ratio.value)}%`;
   const gaugePercent = Math.max(0, Math.min(100, (ratio.value / ratio.max) * 100));
   return { value, statusLabel: STATUS_LABELS[ratio.status], gaugePercent, targetPercent };
+}
+
+/**
+ * The balance-sheet totals the ratios read on the period's balance date — or none, with the currencies named, while
+ * any row there has no rate: `sheetInputsAt` gives such a row 0, so a ratio built from it would be wrong, not partial.
+ */
+export function ratioTotals(inputs: { assets: SheetAsset[]; liabilities: SheetLiability[]; missing: readonly string[] } | undefined): {
+  totals: SheetTotals | null;
+  missing: string[];
+} {
+  const missing = [...(inputs?.missing ?? [])];
+  if (missing.length > 0) return { totals: null, missing };
+  const sheet = balanceSheet(inputs?.assets ?? [], inputs?.liabilities ?? []);
+  const groupTotal = (key: string) => sheet.assetGroups.find((group) => group.key === key)?.totalMinor ?? 0;
+  return {
+    totals: {
+      liquidMinor: groupTotal('liquid'),
+      investMinor: groupTotal('invest'),
+      assetsMinor: sheet.assetsTotalMinor,
+      liabilitiesMinor: sheet.liabilitiesTotalMinor,
+      netWorthMinor: sheet.netWorthMinor,
+    },
+    missing: [],
+  };
 }

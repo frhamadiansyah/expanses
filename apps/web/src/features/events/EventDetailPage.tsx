@@ -6,7 +6,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
-import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { cx, Empty, ErrorBox, Money } from '../../ui';
 import {
   DestructiveRow,
@@ -92,7 +92,7 @@ export function EventDetailPage() {
   const history = useEventHistory(eventId, openTab);
   const accounts = useAccounts().data ?? [];
   // Spending recorded into an event is paid with something, so a locked deposit is no answer.
-  const money = accounts.filter((a) => isMoneyAccount(a) && canPayWith(a));
+  const money = moneyHolders(accounts).filter((a) => canPayWith(a));
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const setCategories = useSetCategories(event?.setId ?? null).data ?? [];
   const membership = useCategorySetMembership().data ?? {};
