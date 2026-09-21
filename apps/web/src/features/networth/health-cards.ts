@@ -1,4 +1,4 @@
-import { addMonths, monthOf, type HealthRatio, type RatioStatus } from '@expanses/core';
+import { addMonths, DEFAULT_EMERGENCY_BASE, type EmergencyBase, type Goal, type HealthRatio, householdEmergencyMonths, monthOf, type RatioStatus } from '@expanses/core';
 
 export type RatioPeriod = { key: 'ttm' } | { key: 'year'; year: number };
 
@@ -61,4 +61,20 @@ export function ratioDisplay(ratio: HealthRatio): RatioDisplay {
 export function withEmergencyLoading(ratios: HealthRatio[], goalsPending: boolean): HealthRatio[] {
   if (!goalsPending) return ratios;
   return ratios.map((ratio) => (ratio.key === 'emergency_fund' ? { ...ratio, value: null, status: 'unknown' } : ratio));
+}
+
+/**
+ * The base of the emergency goal the card grades against — the one asking the most months, as
+ * `householdEmergencyMonths` reads them — so the card opens counting what that goal counts. A goal with no working
+ * counts essential spending, as the goal's own figure does. Null with no emergency goal: the card's own default.
+ */
+export function emergencyGoalBase(
+  goals: readonly Pick<Goal, 'id' | 'kind' | 'stages'>[],
+  calculators: readonly { goalId: string; kind: string; inputs: unknown }[],
+): EmergencyBase | null {
+  const months = householdEmergencyMonths(goals);
+  if (months === null) return null;
+  const goal = goals.find((each) => each.kind === 'emergency' && each.stages.some((stage) => !stage.paidOn && stage.targetMonths === months));
+  const working = calculators.find((row) => row.kind === 'emergency' && row.goalId === goal?.id);
+  return (working?.inputs as { base?: EmergencyBase } | undefined)?.base ?? DEFAULT_EMERGENCY_BASE;
 }

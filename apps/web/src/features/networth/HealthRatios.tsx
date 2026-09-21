@@ -12,8 +12,8 @@ import {
 import { useState } from 'react';
 import { usePhone } from '../../app/use-phone';
 import { InsetGroup, Panel, PanelHeader, type Segment, SegmentedControl, SelectRow } from '../../ui/native';
-import { useGoals } from '../goals/queries';
-import { periodChoices, periodRange, type RatioPeriod, ratioDisplay, withEmergencyLoading } from './health-cards';
+import { useGoalCalculators, useGoals } from '../goals/queries';
+import { emergencyGoalBase, periodChoices, periodRange, type RatioPeriod, ratioDisplay, withEmergencyLoading } from './health-cards';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */
 const STATUS_INK: Record<RatioStatus, string> = {
@@ -57,12 +57,19 @@ export function HealthRatios({
   earliestYear: number;
   monthsNote: string;
 }) {
-  const [settings, setSettings] = useState<RatioSettings>({ emergencyBase: DEFAULT_EMERGENCY_BASE, debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
+  // The base stays unset until it is switched: until then it is the emergency goal's own.
+  const [settings, setSettings] = useState<RatioSettings>({ debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
   const phone = usePhone();
   // Q5: the card grades against the household's own months, read from its emergency goal — never a copy of them.
   const goals = useGoals();
+  const calculators = useGoalCalculators();
   const emergencyTargetMonths = householdEmergencyMonths(goals.data ?? []) ?? undefined;
-  const ratios = withEmergencyLoading(healthRatios(flows ?? EMPTY_FLOWS, totals, { ...settings, emergencyTargetMonths }), goals.isPending);
+  // It opens on the base that goal counts, so the card and the goal it grades against measure the same months.
+  const emergencyBase = settings.emergencyBase ?? emergencyGoalBase(goals.data ?? [], calculators.data ?? []) ?? DEFAULT_EMERGENCY_BASE;
+  const ratios = withEmergencyLoading(
+    healthRatios(flows ?? EMPTY_FLOWS, totals, { ...settings, emergencyBase, emergencyTargetMonths }),
+    goals.isPending || calculators.isPending,
+  );
   const choices = periodChoices(today, earliestYear);
 
   /*
@@ -123,7 +130,7 @@ export function HealthRatios({
         className="mb-[18px] md:max-w-2xl"
         label="Emergency fund counts"
         segments={EMERGENCY_BASE_SEGMENTS}
-        value={settings.emergencyBase ?? DEFAULT_EMERGENCY_BASE}
+        value={emergencyBase}
         onChange={(key) => setSettings((current) => ({ ...current, emergencyBase: key as EmergencyBase }))}
       />
       <InsetGroup

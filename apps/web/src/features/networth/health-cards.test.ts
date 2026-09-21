@@ -1,6 +1,6 @@
-import type { HealthRatio } from '@expanses/core';
+import type { Goal, HealthRatio } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { periodChoices, periodRange, ratioDisplay, withEmergencyLoading } from './health-cards';
+import { emergencyGoalBase, periodChoices, periodRange, ratioDisplay, withEmergencyLoading } from './health-cards';
 
 const TODAY = '2026-09-12';
 
@@ -81,5 +81,27 @@ describe('withEmergencyLoading', () => {
   it('leaves every row exactly as computed once goals have loaded', () => {
     const ratios = [ratio({ key: 'emergency_fund', status: 'act', value: 4.7 })];
     expect(withEmergencyLoading(ratios, false)).toEqual(ratios);
+  });
+});
+
+describe('the base the emergency card opens on', () => {
+  const stage = (targetMonths: number | null, paidOn: string | null = null) => ({ targetMonths, paidOn });
+  const goal = (id: string, kind: string, months: number[]) => ({ id, kind, stages: months.map((m) => stage(m)) }) as unknown as Pick<Goal, 'id' | 'kind' | 'stages'>;
+  const worked = (goalId: string, base?: 'essential' | 'all') => ({ goalId, kind: 'emergency' as const, inputs: base ? { months: 6, base } : { months: 6 } });
+
+  it('is the base of the emergency goal whose months it grades against', () => {
+    expect(emergencyGoalBase([goal('e', 'emergency', [6])], [worked('e', 'all')])).toBe('all');
+    // Two emergency goals: the one asking the most months is the one graded against.
+    expect(emergencyGoalBase([goal('a', 'emergency', [3]), goal('b', 'emergency', [9])], [worked('a', 'all'), worked('b', 'essential')])).toBe('essential');
+    expect(emergencyGoalBase([goal('a', 'emergency', [3]), goal('b', 'emergency', [9])], [worked('a', 'essential'), worked('b', 'all')])).toBe('all');
+  });
+
+  it('is essential for an emergency goal with no working, as the goal itself counts it', () => {
+    expect(emergencyGoalBase([goal('e', 'emergency', [6])], [])).toBe('essential');
+  });
+
+  it('is null with no emergency goal, so the card opens on its own default', () => {
+    expect(emergencyGoalBase([goal('h', 'holiday', [6])], [worked('h', 'all')])).toBeNull();
+    expect(emergencyGoalBase([], [])).toBeNull();
   });
 });
