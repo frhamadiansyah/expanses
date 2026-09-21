@@ -36,7 +36,7 @@ import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
-import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, receivedField } from './tx-form';
+import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
 import { ratesForSave } from './tx-save';
 
 /**
@@ -221,8 +221,7 @@ function CardBody({
   }
 
   // Rates are resolved no later than today, so the row asks for the rate under the date the save will store it.
-  const onDate = draft.mode === 'trade' ? draft.purchase.occurredOn : draft.occurredOn;
-  const rateDate = onDate > isoDate() ? isoDate() : onDate;
+  const rateDate = rateDateFor(draft);
   const missingRate = needsRate ? { from: needsRate, to: ws.baseCurrency, onDate: rateDate } : null;
 
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
