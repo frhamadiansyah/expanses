@@ -81,3 +81,5 @@ export * from './repos/book-currency';
 export { billTablesExist } from './repos/bill-months';
 export * as extrasSchema from './schema-extras';
 export * from './repos/transaction-extras';
+export * as healthSchema from './schema-health';
+export * from './repos/health-tables';

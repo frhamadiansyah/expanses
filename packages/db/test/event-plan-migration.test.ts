@@ -30,7 +30,7 @@ describe('migration 0049', () => {
       VALUES ('b1', ${ws.workspaceId}, ${eventId}, ${gear.id}, 26000000, '2026-09-01T00:00:00Z'),
              ('b2', ${ws.workspaceId}, ${eventId}, ${clothes.id}, NULL, '2026-09-02T00:00:00Z')`);
 
-    expect(await migrate(older)).toEqual([49]);
+    expect(await migrate(older)).toEqual([49, 53]);
 
     // One of the thing, at the price the cap named: a cap with no figure was never a plan, so it is dropped.
     expect(
@@ -64,7 +64,7 @@ describe('migration 0049', () => {
              ('x2', ${ws.workspaceId}, ${eventId}, ${hotels.id}, 3000000, ${written}),
              ('x3', ${ws.workspaceId}, ${eventId}, ${food.id}, 1500000, ${written})`);
 
-    expect(await migrate(older)).toEqual([49]);
+    expect(await migrate(older)).toEqual([49, 53]);
 
     expect(await older.db.values(sql`SELECT id, sort_order FROM event_items ORDER BY sort_order`)).toEqual([
       ['x1', 0],
