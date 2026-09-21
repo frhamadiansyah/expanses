@@ -10,10 +10,26 @@ import { createGoalFromCalculator } from '@expanses/db';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Money, PageHeader } from '../../ui';
+import { ErrorBox, Money } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle, TextRow } from '../../ui/native';
+import { Panel, SCREEN } from '../networth/Panel';
 
 const bps = (percent: string) => Math.round(Number(percent.replace(',', '.')) * 100);
 const num = (value: string) => Number(value.replace(',', '.'));
+
+/** A figure the calculator worked out. Tabular, so the three answers line up down the page. */
+function Figure({ caption, minor, note }: { caption: string; minor: number; note?: ReactNode }) {
+  const { ws } = useApp();
+  return (
+    <div>
+      <p className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{caption}</p>
+      <p className="tabular text-[22px] leading-[28px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">
+        <Money minor={minor} currency={ws.baseCurrency} />
+      </p>
+      {note}
+    </div>
+  );
+}
 
 /** Nothing is stored until you ask: a calculator is for the question you may not want to keep. */
 function Answer({
@@ -29,39 +45,50 @@ function Answer({
   alreadySavedMinor: number;
   testId: string;
 }) {
-  const { ws } = useApp();
   if (!Number.isFinite(targetMinor) || targetMinor <= 0 || !Number.isFinite(months) || months <= 0) {
-    return <p className="text-xs text-slate-500">Fill the figures in and the answer appears here.</p>;
+    return <p className="mb-[18px] px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Fill the figures in and the answer appears here.</p>;
   }
   const plan = savingPlanFor({ targetMinor, alreadySavedMinor, returnBps, months });
   return (
-    <div className="grid gap-3 sm:grid-cols-2" data-testid={testId}>
-      <div>
-        <div className="text-xs text-slate-500">You need</div>
-        <div className="text-xl font-semibold">
-          <Money minor={targetMinor} currency={ws.baseCurrency} />
-        </div>
+    <Panel wide testId={testId}>
+      {/* Two figures, side by side where there is room: the desktop keeps both columns. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Figure caption="You need" minor={targetMinor} />
+        <Figure
+          caption="Save each month"
+          minor={plan.monthlyMinor}
+          note={plan.gapMinor === 0 ? <p className="text-[12.5px] leading-[16px] text-[var(--ph-tint)]">What you hold already covers it.</p> : undefined}
+        />
       </div>
-      <div>
-        <div className="text-xs text-slate-500">Save each month</div>
-        <div className="text-xl font-semibold">
-          <Money minor={plan.monthlyMinor} currency={ws.baseCurrency} />
-        </div>
-        {plan.gapMinor === 0 && <div className="text-xs text-emerald-700">What you hold already covers it.</div>}
-      </div>
-    </div>
+    </Panel>
   );
 }
 
-function Panel({ title, blurb, children }: { title: string; blurb: string; children: ReactNode }) {
+/**
+ * One calculator: its questions as form rows, its answer, and the one thing it can save.
+ *
+ * The save action is a row of its own group rather than an outlined button under the fields — the same shape
+ * every adopted form on this branch uses, dimmed and refusing the tap while there is no answer to keep.
+ */
+function Calculator({
+  title,
+  blurb,
+  children,
+  answer,
+  save,
+  saveLabel,
+  ready,
+}: { title: string; blurb: string; children: ReactNode; answer: ReactNode; save: () => void; saveLabel: string; ready: boolean }) {
   return (
-    <Card className="space-y-3">
-      <div>
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <p className="text-xs text-slate-500">{blurb}</p>
-      </div>
-      {children}
-    </Card>
+    <>
+      <InsetGroup header={title} footer={blurb}>
+        {children}
+      </InsetGroup>
+      {answer}
+      <InsetGroup>
+        <InsetRow title={saveLabel} chevron={false} onClick={() => ready && save()} className={ready ? undefined : 'opacity-40'} />
+      </InsetGroup>
+    </>
   );
 }
 
@@ -129,114 +156,101 @@ export function CalculatorsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Calculators" />
-      <p className="text-xs text-slate-500">
-        Work out what something costs and what it takes a month. Nothing is saved unless you turn it into a goal.
-      </p>
+    <div className={SCREEN}>
+      <LargeTitle title="Calculators" subtitle="Work out what something costs and what it takes a month. Nothing is saved unless you turn it into a goal." />
       <ErrorBox error={error} />
-      {saved && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">Saved {saved} as a goal.</p>}
+      {saved && <p className="mb-[14px] px-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]">Saved {saved} as a goal.</p>}
 
-      <Panel title="Emergency fund" blurb="Months of everything that goes out, spending and debt payments alike.">
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Months of outgoings">
-            <Input value={months} onChange={(e) => setMonths(e.target.value)} inputMode="numeric" />
-          </Field>
-          <Field label={`What goes out a month (${ws.baseCurrency})`}>
-            <Input value={monthlyOutgoing} onChange={(e) => setMonthlyOutgoing(e.target.value)} inputMode="numeric" />
-          </Field>
-        </div>
-        <Answer targetMinor={emergencyTarget} months={12} returnBps={200} alreadySavedMinor={0} testId="answer-emergency" />
-        <Button variant="secondary" onClick={() => save('Emergency fund', 'emergency', { months: num(months) })} disabled={emergencyTarget <= 0}>
-          Save Emergency fund as a goal
-        </Button>
-      </Panel>
-
-      <Panel title="Education fund" blurb="Each year of study at the price it will cost in the year you pay it.">
-        <div className="grid gap-3 md:grid-cols-4">
-          <Field label={`Fee a year today (${ws.baseCurrency})`}>
-            <Input value={feeToday} onChange={(e) => setFeeToday(e.target.value)} inputMode="numeric" />
-          </Field>
-          <Field label="Years until it starts">
-            <Input value={startsIn} onChange={(e) => setStartsIn(e.target.value)} inputMode="numeric" />
-          </Field>
-          <Field label="Years of study">
-            <Input value={yearsOfStudy} onChange={(e) => setYearsOfStudy(e.target.value)} inputMode="numeric" />
-          </Field>
-          <Field label="Fee inflation a year (%)">
-            <Input value={feeInflation} onChange={(e) => setFeeInflation(e.target.value)} inputMode="decimal" />
-          </Field>
-        </div>
-        <Answer
-          targetMinor={educationTarget}
-          months={Math.max(1, Math.round(num(startsIn) * 12))}
-          returnBps={1000}
-          alreadySavedMinor={0}
-          testId="answer-education"
+      <Calculator
+        title="Emergency fund"
+        blurb="Months of everything that goes out, spending and debt payments alike."
+        ready={emergencyTarget > 0}
+        saveLabel="Save Emergency fund as a goal"
+        save={() => void save('Emergency fund', 'emergency', { months: num(months) })}
+        answer={<Answer targetMinor={emergencyTarget} months={12} returnBps={200} alreadySavedMinor={0} testId="answer-emergency" />}
+      >
+        <TextRow label="Months of outgoings" value={months} onChange={(e) => setMonths(e.target.value)} inputMode="numeric" />
+        <TextRow
+          label={`What goes out a month (${ws.baseCurrency})`}
+          value={monthlyOutgoing}
+          onChange={(e) => setMonthlyOutgoing(e.target.value)}
+          inputMode="numeric"
         />
-        <Button
-          variant="secondary"
-          disabled={educationTarget <= 0}
-          onClick={() =>
-            save('Education fund', 'education', {
-              feeTodayMinor: money(feeToday),
-              startsInYears: num(startsIn),
-              yearsOfStudy: num(yearsOfStudy),
-              feeInflationBps: bps(feeInflation),
-            })
-          }
-        >
-          Save Education fund as a goal
-        </Button>
-      </Panel>
+      </Calculator>
 
-      <Panel title="Retirement fund" blurb="What the pot must hold the day you stop, drawn down while it keeps earning.">
-        <div className="grid gap-3 md:grid-cols-3">
-          <Field label={`Yearly spending in retirement (${ws.baseCurrency})`} hint="At today's prices.">
-            <Input value={annualSpend} onChange={(e) => setAnnualSpend(e.target.value)} inputMode="numeric" />
-          </Field>
-          <Field label="Your age now">
-            <Input value={ageNow} onChange={(e) => setAgeNow(e.target.value)} inputMode="numeric" />
-          </Field>
-          <Field label="Age you retire">
-            <Input value={retireAge} onChange={(e) => setRetireAge(e.target.value)} inputMode="numeric" />
-          </Field>
-          <Field label="Years in retirement">
-            <Input value={yearsInRetirement} onChange={(e) => setYearsInRetirement(e.target.value)} inputMode="numeric" />
-          </Field>
-          <Field label="Inflation a year (%)">
-            <Input value={inflation} onChange={(e) => setInflation(e.target.value)} inputMode="decimal" />
-          </Field>
-          <Field label="Return while retired (%)">
-            <Input value={returnInRetirement} onChange={(e) => setReturnInRetirement(e.target.value)} inputMode="decimal" />
-          </Field>
-          <Field label={`Already put aside (${ws.baseCurrency})`} hint="What you hold for this today; it keeps earning until you stop.">
-            <Input value={alreadySaved} onChange={(e) => setAlreadySaved(e.target.value)} inputMode="numeric" />
-          </Field>
-        </div>
-        <Answer
-          targetMinor={retirementTarget}
-          months={Math.max(1, Math.round(yearsToRetirement * 12))}
-          returnBps={bps(returnInRetirement)}
-          alreadySavedMinor={money(alreadySaved)}
-          testId="answer-retirement"
+      <Calculator
+        title="Education fund"
+        blurb="Each year of study at the price it will cost in the year you pay it."
+        ready={educationTarget > 0}
+        saveLabel="Save Education fund as a goal"
+        save={() =>
+          void save('Education fund', 'education', {
+            feeTodayMinor: money(feeToday),
+            startsInYears: num(startsIn),
+            yearsOfStudy: num(yearsOfStudy),
+            feeInflationBps: bps(feeInflation),
+          })
+        }
+        answer={
+          <Answer
+            targetMinor={educationTarget}
+            months={Math.max(1, Math.round(num(startsIn) * 12))}
+            returnBps={1000}
+            alreadySavedMinor={0}
+            testId="answer-education"
+          />
+        }
+      >
+        <TextRow label={`Fee a year today (${ws.baseCurrency})`} value={feeToday} onChange={(e) => setFeeToday(e.target.value)} inputMode="numeric" />
+        <TextRow label="Years until it starts" value={startsIn} onChange={(e) => setStartsIn(e.target.value)} inputMode="numeric" />
+        <TextRow label="Years of study" value={yearsOfStudy} onChange={(e) => setYearsOfStudy(e.target.value)} inputMode="numeric" />
+        <TextRow label="Fee inflation a year (%)" value={feeInflation} onChange={(e) => setFeeInflation(e.target.value)} inputMode="decimal" />
+      </Calculator>
+
+      <Calculator
+        title="Retirement fund"
+        blurb="What the pot must hold the day you stop, drawn down while it keeps earning."
+        ready={retirementTarget > 0}
+        saveLabel="Save Retirement fund as a goal"
+        save={() =>
+          void save('Retirement fund', 'retirement', {
+            annualSpendTodayMinor: money(annualSpend),
+            yearsToRetirement,
+            yearsInRetirement: num(yearsInRetirement),
+            inflationBps: bps(inflation),
+            returnInRetirementBps: bps(returnInRetirement),
+          })
+        }
+        answer={
+          <Answer
+            targetMinor={retirementTarget}
+            months={Math.max(1, Math.round(yearsToRetirement * 12))}
+            returnBps={bps(returnInRetirement)}
+            alreadySavedMinor={money(alreadySaved)}
+            testId="answer-retirement"
+          />
+        }
+      >
+        <TextRow
+          label={`Yearly spending in retirement (${ws.baseCurrency})`}
+          hint="At today's prices."
+          value={annualSpend}
+          onChange={(e) => setAnnualSpend(e.target.value)}
+          inputMode="numeric"
         />
-        <Button
-          variant="secondary"
-          disabled={retirementTarget <= 0}
-          onClick={() =>
-            save('Retirement fund', 'retirement', {
-              annualSpendTodayMinor: money(annualSpend),
-              yearsToRetirement,
-              yearsInRetirement: num(yearsInRetirement),
-              inflationBps: bps(inflation),
-              returnInRetirementBps: bps(returnInRetirement),
-            })
-          }
-        >
-          Save Retirement fund as a goal
-        </Button>
-      </Panel>
+        <TextRow label="Your age now" value={ageNow} onChange={(e) => setAgeNow(e.target.value)} inputMode="numeric" />
+        <TextRow label="Age you retire" value={retireAge} onChange={(e) => setRetireAge(e.target.value)} inputMode="numeric" />
+        <TextRow label="Years in retirement" value={yearsInRetirement} onChange={(e) => setYearsInRetirement(e.target.value)} inputMode="numeric" />
+        <TextRow label="Inflation a year (%)" value={inflation} onChange={(e) => setInflation(e.target.value)} inputMode="decimal" />
+        <TextRow label="Return while retired (%)" value={returnInRetirement} onChange={(e) => setReturnInRetirement(e.target.value)} inputMode="decimal" />
+        <TextRow
+          label={`Already put aside (${ws.baseCurrency})`}
+          hint="What you hold for this today; it keeps earning until you stop."
+          value={alreadySaved}
+          onChange={(e) => setAlreadySaved(e.target.value)}
+          inputMode="numeric"
+        />
+      </Calculator>
     </div>
   );
 }

@@ -1,9 +1,22 @@
 import { addMonths, type BudgetLine, isoDate, monthOf, parseMajor } from '@expanses/core';
 import { clearBudgetOverride, removeBudget, saveBudget, saveExpectedIncome, setBudgetOverride, setIncomeOverride } from '@expanses/db';
-import { type FormEvent, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { ErrorBox, Money } from '../../ui';
+import {
+  type CornerAction,
+  DestructiveRow,
+  InsetGroup,
+  InsetRow,
+  type InsetRowProps,
+  LargeTitle,
+  SelectRow,
+  TextRow,
+} from '../../ui/native';
+import { Panel, SCREEN } from '../networth/Panel';
+import { SwitchRow } from '../networth/SwitchRow';
 import { useCategorySetMembership } from '../categories/set-queries';
 import { useBooks, useOpenBook } from '../workspaces/queries';
 import { Unconverted } from '../workspaces/Unconverted';
@@ -13,48 +26,66 @@ function monthLabel(month: string) {
   return new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
+/**
+ * A row of the sheet that a test can name.
+ *
+ * `InsetRow` has no test id of its own and the kit is not this batch's to change, so the id goes on a wrapper
+ * that forwards the place the group hands it. Nothing of the row is reimplemented — the wrapper draws nothing.
+ */
+function TaggedRow({ testId, position, ...props }: InsetRowProps & { testId: string }) {
+  return (
+    <div data-testid={testId}>
+      <InsetRow position={position} {...props} />
+    </div>
+  );
+}
+
 function Line({
   node,
   overridden,
   depth,
   committed,
   currency,
-}: { node: BudgetLine; overridden: Set<string>; depth: number; committed: Record<string, number>; currency: string }) {
+  first,
+}: { node: BudgetLine; overridden: Set<string>; depth: number; committed: Record<string, number>; currency: string; first: boolean }) {
   return (
-    <li data-testid={`line-${node.name}`}>
-      <div className="flex items-center gap-3 py-2" style={{ paddingLeft: depth * 20 }}>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium">{node.name}</div>
-          <div className="mt-0.5 text-xs text-slate-500">
-            {node.capMinor === null ? (
-              'No budget'
-            ) : (
-              <>
-                Cap <Money minor={node.capMinor} currency={currency} />
-                {overridden.has(node.id) && ' · just this month'}
-                {committed[node.id] !== undefined && (
-                  <>
-                    {' · '}
-                    <Money minor={committed[node.id]!} currency={currency} /> of it is bills
-                  </>
-                )}
-              </>
+    <li data-testid={`line-${node.name}`} style={{ paddingLeft: depth * 20 }}>
+      <InsetRow
+        position={{ first: first && depth === 0, last: false, separator: !(first && depth === 0) }}
+        title={node.name}
+        subtitle={
+          node.capMinor === null ? (
+            'No budget'
+          ) : (
+            <>
+              Cap <Money minor={node.capMinor} currency={currency} />
+              {overridden.has(node.id) && ' · just this month'}
+              {committed[node.id] !== undefined && (
+                <>
+                  {' · '}
+                  <Money minor={committed[node.id]!} currency={currency} /> of it is bills
+                </>
+              )}
+            </>
+          )
+        }
+        value={
+          <span className="block text-right">
+            <Money minor={node.totalMinor} currency={currency} />
+            {node.overMinor > 0 && (
+              <span className="block text-[12.5px] leading-[16px] font-medium text-[var(--ph-alarm)]">
+                Over by <Money minor={node.overMinor} currency={currency} />
+              </span>
             )}
-          </div>
-        </div>
-        <div className="text-right">
-          <Money minor={node.totalMinor} currency={currency} className="text-sm font-medium" />
-          {node.overMinor > 0 && (
-            <div className="text-xs font-medium text-rose-600">
-              Over by <Money minor={node.overMinor} currency={currency} />
-            </div>
-          )}
-        </div>
-      </div>
+          </span>
+        }
+        valueTone="ink"
+        chevron={false}
+      />
       {node.children.length > 0 && (
         <ul>
           {node.children.map((child) => (
-            <Line key={child.id} node={child} overridden={overridden} depth={depth + 1} committed={committed} currency={currency} />
+            <Line key={child.id} node={child} overridden={overridden} depth={depth + 1} committed={committed} currency={currency} first={false} />
           ))}
         </ul>
       )}
@@ -72,6 +103,8 @@ export function BudgetPage() {
   const [income, setIncome] = useState('');
   const [incomeThisMonthOnly, setIncomeThisMonthOnly] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const incomeForm = useRef<HTMLFormElement>(null);
+  const budgetForm = useRef<HTMLFormElement>(null);
 
   const accounts = useAccounts().data ?? [];
   const membership = useCategorySetMembership().data ?? {};
@@ -150,156 +183,183 @@ export function BudgetPage() {
     }
   }
 
+  /* The two square arrow buttons become the corner glyphs the kit draws at every width. */
+  const actions: CornerAction[] = [
+    { key: 'prev', label: 'Previous month', glyph: <ChevronLeft size={22} aria-hidden />, run: () => setMonth(addMonths(month, -1)) },
+    { key: 'next', label: 'Next month', glyph: <ChevronRight size={22} aria-hidden />, run: () => setMonth(addMonths(month, 1)) },
+  ];
+
   return (
-    <div className="space-y-4">
-      <PageHeader title="Budget" />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" onClick={() => setMonth(addMonths(month, -1))} aria-label="Previous month">
-          ‹
-        </Button>
-        <span className="min-w-40 text-center font-medium">{monthLabel(month)}</span>
-        <Button variant="secondary" onClick={() => setMonth(addMonths(month, 1))} aria-label="Next month">
-          ›
-        </Button>
-      </div>
+    <div className={SCREEN}>
+      <LargeTitle title="Budget" subtitle={monthLabel(month)} actions={actions} />
 
       <ErrorBox error={error} />
       <Unconverted missing={sheet?.unconverted ?? []} currency={currency} />
 
       {sheet && (
-        <Card className="space-y-3">
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div>
-              <div className="text-xs text-slate-500">Budgeted</div>
-              <div data-testid="caps-total" className="text-xl font-semibold">
+        <InsetGroup header="This month">
+          <InsetRow
+            title="Budgeted"
+            value={
+              <span data-testid="caps-total">
                 <Money minor={sheet.capsTotalMinor} currency={currency} />
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Spent</div>
-              <div data-testid="spent-total" className="text-xl font-semibold">
+              </span>
+            }
+            valueTone="ink"
+            chevron={false}
+          />
+          <InsetRow
+            title="Spent"
+            value={
+              <span data-testid="spent-total">
                 <Money minor={sheet.spendingActualMinor} currency={currency} />
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Left over, as planned</div>
-              <div data-testid="left-over-plan" className="text-xl font-semibold">
+              </span>
+            }
+            valueTone="ink"
+            chevron={false}
+          />
+          <InsetRow
+            title="Left over, as planned"
+            value={
+              <span data-testid="left-over-plan">
                 <Money minor={sheet.leftOverPlanMinor} currency={currency} />
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500">Left over, so far</div>
-              <div data-testid="left-over-actual" className="text-xl font-semibold">
+              </span>
+            }
+            valueTone="ink"
+            chevron={false}
+          />
+          <InsetRow
+            title="Left over, so far"
+            subtitle={`${sheet.overCount} over their cap`}
+            value={
+              <span data-testid="left-over-actual">
                 <Money minor={sheet.leftOverActualMinor} currency={currency} />
-              </div>
-              <div className="text-xs text-slate-500">{sheet.overCount} over their cap</div>
-            </div>
-          </div>
-        </Card>
+              </span>
+            }
+            valueTone="ink"
+            chevron={false}
+          />
+        </InsetGroup>
       )}
 
       {sheet && (
-        <Card className="space-y-2">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" data-testid="income-line">
-            <div>
-              <div className="text-sm font-medium">Take-home pay</div>
-              <div className="text-xs text-slate-500">
+        <InsetGroup
+          header="Where it goes"
+          footer={sheet.savings.length === 0 ? 'No goals yet, so nothing is being saved towards.' : undefined}
+        >
+          <TaggedRow
+            testId="income-line"
+            title="Take-home pay"
+            subtitle={
+              <>
                 Planned <Money minor={sheet.incomePlanMinor} currency={currency} />
                 {sheet.incomeOverridden && ' · just this month'}
-              </div>
-            </div>
-            <Money minor={sheet.incomeActualMinor} currency={currency} className="text-sm font-medium" />
-          </div>
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" data-testid="debt-line">
-            <div>
-              <div className="text-sm font-medium">Debt payments</div>
-              <div className="text-xs text-slate-500">Loans and instalments, which are committed before anything else.</div>
-            </div>
-            <Money minor={sheet.debtPaymentsActualMinor} currency={currency} className="text-sm font-medium" />
-          </div>
+              </>
+            }
+            value={<Money minor={sheet.incomeActualMinor} currency={currency} />}
+            valueTone="ink"
+            chevron={false}
+          />
+          <TaggedRow
+            testId="debt-line"
+            title="Debt payments"
+            subtitle="Loans and instalments, which are committed before anything else."
+            value={<Money minor={sheet.debtPaymentsActualMinor} currency={currency} />}
+            valueTone="ink"
+            chevron={false}
+          />
           {sheet.eventSpendingMinor > 0 && (
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2" data-testid="event-line">
-              <div>
-                <div className="text-sm font-medium">Events</div>
-                {/* Named either way, but it is only a separate subtraction when the caps above have not seen it. */}
-                <div className="text-xs text-slate-500">
-                  {sheet.eventsInCaps
-                    ? 'Included in the caps above, because this workspace counts what it means to spend.'
-                    : 'Outside the caps, because you meant to spend it. Still taken off what is left.'}
-                </div>
-              </div>
-              <Money minor={sheet.eventSpendingMinor} currency={currency} className="text-sm font-medium" />
-            </div>
+            <TaggedRow
+              testId="event-line"
+              title="Events"
+              /* Named either way, but it is only a separate subtraction when the caps above have not seen it. */
+              subtitle={
+                sheet.eventsInCaps
+                  ? 'Included in the caps above, because this workspace counts what it means to spend.'
+                  : 'Outside the caps, because you meant to spend it. Still taken off what is left.'
+              }
+              value={<Money minor={sheet.eventSpendingMinor} currency={currency} />}
+              valueTone="ink"
+              chevron={false}
+            />
           )}
           {sheet.savings.map((row) => (
-            <div key={row.goalId} className="flex items-center justify-between gap-3" data-testid={`savings-${row.name}`}>
-              <div>
-                <div className="text-sm font-medium">{row.name}</div>
-                <div className="text-xs text-slate-500">
+            <TaggedRow
+              key={row.goalId}
+              testId={`savings-${row.name}`}
+              title={row.name}
+              subtitle={
+                <>
                   Needs <Money minor={row.planMinor} currency={currency} /> a month
-                </div>
-              </div>
-              <Money minor={row.actualMinor} currency={currency} className="text-sm font-medium" />
-            </div>
+                </>
+              }
+              value={<Money minor={row.actualMinor} currency={currency} />}
+              valueTone="ink"
+              chevron={false}
+            />
           ))}
-          {sheet.savings.length === 0 && <p className="text-xs text-slate-500">No goals yet, so nothing is being saved towards.</p>}
-        </Card>
+        </InsetGroup>
       )}
 
-      <Card>
-        <form onSubmit={submitIncome} className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
-          <Field label={`Expected take-home (${planCurrency})`}>
-            <Input value={income} onChange={(e) => setIncome(e.target.value)} inputMode="numeric" />
-          </Field>
-          <label className="flex items-center gap-2 pb-2 text-xs text-slate-600">
-            <input type="checkbox" checked={incomeThisMonthOnly} onChange={(e) => setIncomeThisMonthOnly(e.target.checked)} />
-            Bonus month
-          </label>
-          <div className="pb-1">
-            <Button type="submit" disabled={!planReady}>
-              Set income
-            </Button>
-          </div>
-        </form>
-      </Card>
+      <form ref={incomeForm} onSubmit={submitIncome}>
+        <InsetGroup header="Expected take-home">
+          <TextRow
+            label={`Expected take-home (${planCurrency})`}
+            value={income}
+            onChange={(e) => setIncome(e.target.value)}
+            inputMode="numeric"
+          />
+          <SwitchRow label="Bonus month" checked={incomeThisMonthOnly} onChange={setIncomeThisMonthOnly} />
+          {/* `requestSubmit` rather than calling `submitIncome` straight: the browser still checks the form first. */}
+          <InsetRow
+            title="Set income"
+            chevron={false}
+            onClick={() => planReady && incomeForm.current?.requestSubmit()}
+            className={planReady ? undefined : 'opacity-40'}
+          />
+        </InsetGroup>
+      </form>
 
-      <Card>
-        <form onSubmit={submit} className="grid gap-3 md:grid-cols-[2fr_1fr_auto_auto] md:items-end">
-          <Field label="Category">
-            <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">Choose a category</option>
-              {options.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={`Monthly amount (${planCurrency})`}>
-            <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" />
-          </Field>
-          <label className="flex items-center gap-2 pb-2 text-xs text-slate-600">
-            <input type="checkbox" checked={thisMonthOnly} onChange={(e) => setThisMonthOnly(e.target.checked)} />
-            Just this month
-          </label>
-          <div className="flex gap-2 pb-1">
-            <Button type="submit" disabled={!planReady}>
-              Set budget
-            </Button>
-            <Button type="button" variant="secondary" onClick={remove}>
-              Remove
-            </Button>
-          </div>
-        </form>
-      </Card>
+      <form ref={budgetForm} onSubmit={submit}>
+        <InsetGroup header="Cap a category">
+          {/*
+           * The empty option stays first and stays selected until a category is chosen: falling through to
+           * whatever option sorted first silently capped Utilities, a category nobody had picked.
+           */}
+          <SelectRow label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="">Choose a category</option>
+            {options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </SelectRow>
+          <TextRow
+            label={`Monthly amount (${planCurrency})`}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="numeric"
+          />
+          <SwitchRow label="Just this month" checked={thisMonthOnly} onChange={setThisMonthOnly} />
+          <InsetRow
+            title="Set budget"
+            chevron={false}
+            onClick={() => planReady && budgetForm.current?.requestSubmit()}
+            className={planReady ? undefined : 'opacity-40'}
+          />
+        </InsetGroup>
+        <InsetGroup>
+          <DestructiveRow label="Remove" onClick={() => void remove()} />
+        </InsetGroup>
+      </form>
 
-      <Card>
-        <ul className="divide-y divide-slate-100">
-          {(sheet?.lines ?? []).map((node) => (
-            <Line key={node.id} node={node} overridden={overridden} depth={0} committed={committed} currency={currency} />
+      <Panel wide pad={false} header="Every category">
+        <ul>
+          {(sheet?.lines ?? []).map((node, index) => (
+            <Line key={node.id} node={node} overridden={overridden} depth={0} committed={committed} currency={currency} first={index === 0} />
           ))}
         </ul>
-      </Card>
+      </Panel>
     </div>
   );
 }

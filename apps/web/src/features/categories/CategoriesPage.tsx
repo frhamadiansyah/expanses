@@ -13,12 +13,83 @@ import {
   saveCategoryMcc,
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { Plus } from 'lucide-react';
+import { type CSSProperties, type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { isCategoryOf, useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, PageHeader } from '../../ui';
+import { cx, Empty, ErrorBox } from '../../ui';
+import { type CornerAction, InsetGroup, InsetRow, LargeTitle, ROW_PAD_X, ROW_PAD_Y, rowHeight, SegmentedControl, tapReach } from '../../ui/native';
+import { Panel, PanelHeader, SCREEN } from '../networth/Panel';
 import { categoryMcc } from './category-mcc';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
+
+/** The height a bare text action is drawn at, before `ph-tap` grows its target back to the kit's 44 pt floor. */
+const ACTION_HEIGHT = 20;
+
+/**
+ * One action on a line: the kit's tint, at the kit's reach, without the box the kit exists to remove.
+ *
+ * Drawn small because there are four to six of these on every line; hit at 44 pt because `ph-tap` grows the
+ * target around the picture rather than the picture itself, exactly as the segmented control does.
+ */
+function LineAction({ label, onClick, children }: { label?: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="ph-focus ph-tap shrink-0 rounded text-[13px] leading-[20px] font-medium whitespace-nowrap text-[var(--ph-tint)]"
+      style={{ '--ph-tap-y': `${tapReach(ACTION_HEIGHT)}px` } as CSSProperties}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * A line of the tree: what it is called, what card code it carries, and everything you can do to it.
+ *
+ * This is deliberately **not** an `InsetRow`. The kit's row is one tap target and forbids a button inside
+ * itself, and every node here carries four to six actions — so a row cannot hold this line without either
+ * losing actions or putting six targets inside one 44 pt box. It is instead a line on a `Panel`, the kit's
+ * surface for what is not rows, drawn on the kit's own `ROW_PAD_X/Y`, `rowHeight` and hairline. There is one
+ * of these for the whole screen: the monthly tree and the sets below it are the same shape.
+ */
+function ActionLine({
+  name,
+  depth = 0,
+  separator,
+  meta,
+  children,
+}: { name: ReactNode; depth?: number; separator: boolean; meta?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="relative" style={{ paddingLeft: depth * 20 }}>
+      {separator && (
+        <span aria-hidden className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X }} />
+      )}
+      {/* Name, code and four actions do not fit a phone in one line, so the actions wrap under the name. */}
+      <div
+        className="flex flex-wrap items-center gap-x-[12px] gap-y-[2px]"
+        style={{ minHeight: rowHeight(false), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
+      >
+        <span className={cx('min-w-0 flex-1 basis-full text-[15px] leading-[20px] text-[var(--ph-ink)] sm:basis-auto', depth === 0 && 'font-medium')}>
+          {name}
+        </span>
+        {meta}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** What card code a category carries, and where it came from. The quiet ink the kit gives a subtitle. */
+function MccNote({ mcc, source }: { mcc: string | null; source?: string | null }) {
+  return (
+    <span className="tabular shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]" title={mcc ? (mccName(mcc) ?? undefined) : undefined}>
+      {mcc ? `MCC ${mcc}${source === 'yours' ? ' (yours)' : source === 'parent' ? ' (from parent)' : ''}` : 'No card MCC'}
+    </span>
+  );
+}
 
 export function CategoriesPage() {
   const { database, ws } = useApp();
@@ -78,144 +149,135 @@ export function CategoriesPage() {
     if (category?.trim()) void run(() => addSetCategory(database, ws, id, category));
   };
 
-  const Row = ({ c, depth }: { c: AccountRow; depth: number }) => (
-    <li>
-      {/* Name, code and four buttons do not fit a phone in one line, so the buttons wrap under the name. */}
-      <div className={cx('flex flex-wrap items-center gap-2 py-1.5', depth > 0 && 'pl-6')}>
-        <span className={cx('min-w-0 flex-1 basis-full sm:basis-auto', depth === 0 && 'font-medium')}>{c.name}</span>
-        {kind === 'expense' && (() => {
-          const card = categoryMcc(c, allCategories, overrides.data ?? {});
-          return (
+  const Row = ({ c, depth, first }: { c: AccountRow; depth: number; first: boolean }) => {
+    const card = kind === 'expense' ? categoryMcc(c, allCategories, overrides.data ?? {}) : null;
+    return (
+      <li>
+        <ActionLine
+          name={c.name}
+          depth={depth}
+          separator={!first}
+          meta={card && <MccNote mcc={card.mcc} source={card.source} />}
+        >
+          {card && (
             <>
-              <span className="tabular text-xs text-slate-500" title={card.mcc ? (mccName(card.mcc) ?? undefined) : undefined}>
-                {card.mcc ? `MCC ${card.mcc}${card.source === 'yours' ? ' (yours)' : card.source === 'parent' ? ' (from parent)' : ''}` : 'No card MCC'}
-              </span>
-              <Button variant="ghost" onClick={() => changeMcc(c, card.mcc)} aria-label={`Card MCC for ${c.name}`}>
+              <LineAction label={`Card MCC for ${c.name}`} onClick={() => changeMcc(c, card.mcc)}>
                 MCC
-              </Button>
+              </LineAction>
               {card.source === 'yours' && (
-                <Button variant="ghost" onClick={() => void run(() => clearCategoryMcc(database, ws, c.id))} aria-label={`Reset card MCC for ${c.name}`}>
+                <LineAction label={`Reset card MCC for ${c.name}`} onClick={() => void run(() => clearCategoryMcc(database, ws, c.id))}>
                   Reset
-                </Button>
+                </LineAction>
               )}
             </>
-          );
-        })()}
-        {depth === 0 && (
-          <Button variant="ghost" onClick={() => add(c)}>
-            + Sub
-          </Button>
+          )}
+          {depth === 0 && <LineAction onClick={() => add(c)}>+ Sub</LineAction>}
+          <LineAction onClick={() => rename(c)}>Rename</LineAction>
+          <LineAction onClick={() => archive(c)}>Archive</LineAction>
+        </ActionLine>
+        {depth === 0 && childrenOf(c.id).length > 0 && (
+          <ul>
+            {childrenOf(c.id).map((child) => (
+              <Row key={child.id} c={child} depth={1} first={false} />
+            ))}
+          </ul>
         )}
-        <Button variant="ghost" onClick={() => rename(c)}>
-          Rename
-        </Button>
-        <Button variant="ghost" onClick={() => archive(c)}>
-          Archive
-        </Button>
-      </div>
-      {depth === 0 && childrenOf(c.id).length > 0 && (
-        <ul>
-          {childrenOf(c.id).map((child) => (
-            <Row key={child.id} c={child} depth={1} />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
+      </li>
+    );
+  };
+
+  /* The primary action is a corner glyph at every width, not a dark rectangle beside the title. */
+  const actions: CornerAction[] = [{ key: 'add', label: 'Add category', glyph: <Plus size={22} aria-hidden />, run: () => add(null) }];
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Categories" action={<Button onClick={() => add(null)}>Add category</Button>} />
-      <div className="flex gap-2">
-        {(['expense', 'income'] as const).map((k) => (
-          <Button key={k} variant={kind === k ? 'primary' : 'secondary'} aria-pressed={kind === k} onClick={() => setKind(k)}>
-            {k === 'expense' ? 'Expense' : 'Income'}
-          </Button>
-        ))}
-      </div>
+    <div className={SCREEN}>
+      <LargeTitle title="Categories" actions={actions} />
+      {/* Two tabs that could never wrap, in the one control that replaces every underline tab row in the app. */}
+      <SegmentedControl
+        className="mb-[18px] md:max-w-xs"
+        label="Which categories"
+        segments={[
+          { key: 'expense', label: 'Expense' },
+          { key: 'income', label: 'Income' },
+        ]}
+        value={kind}
+        onChange={(key) => setKind(key as 'expense' | 'income')}
+      />
       <ErrorBox error={error} />
-      <Card>
-        <ul className="divide-y divide-slate-100">
-          {roots.map((c) => (
-            <Row key={c.id} c={c} depth={0} />
+
+      <Panel wide pad={false} header="Every category">
+        <ul>
+          {roots.map((c, index) => (
+            <Row key={c.id} c={c} depth={0} first={index === 0} />
           ))}
         </ul>
-      </Card>
+      </Panel>
 
       {kind === 'expense' && (
-        <Card className="space-y-3">
-          <div data-testid="category-sets" className="space-y-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-semibold">Sets</h2>
-                <p className="text-xs text-slate-500">
-                  Categories an event draws on, kept out of the list above. A set is named once and used by any number of events.
-                </p>
-              </div>
-              <Button variant="secondary" onClick={addSet}>
-                Add a set
-              </Button>
-            </div>
+        <section className="w-full">
+          <PanelHeader title="Sets" />
+          <p className="px-[4px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+            Categories an event draws on, kept out of the list above. A set is named once and used by any number of events.
+          </p>
+          <div data-testid="category-sets">
+            {/* One action, so it is the kit's row: the line itself is the button, with nothing else inside it. */}
+            <InsetGroup wide>
+              <InsetRow title="Add a set" onClick={addSet} />
+            </InsetGroup>
 
             {sets.length === 0 && <Empty>No sets yet.</Empty>}
 
             {sets.map((set) => {
               const inSet = (accounts.data ?? []).filter((account) => membership[account.id] === set.id && account.archivedAt === null);
               return (
-                <div key={set.id} data-testid={`set-${set.name}`} className="border-t border-slate-100 pt-2 first:border-0 first:pt-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="flex-1 font-medium">{set.name}</span>
-                    <Button variant="ghost" onClick={() => addToSet(set.id, set.name)} aria-label={`Add a category to ${set.name}`}>
-                      + Category
-                    </Button>
-                    <Button variant="ghost" onClick={() => renameSet(set.id, set.name)} aria-label={`Rename ${set.name}`}>
-                      Rename
-                    </Button>
-                    <Button variant="ghost" onClick={() => removeSet(set.id, set.name)} aria-label={`Remove ${set.name}`}>
-                      Remove
-                    </Button>
-                  </div>
-                  <ul className="divide-y divide-slate-100">
-                    {inSet.map((category) => (
-                      <li key={category.id} className="flex flex-wrap items-center gap-2 py-1.5 pl-6">
-                        <span className="min-w-0 flex-1 basis-full sm:basis-auto">{category.name}</span>
-                        {(() => {
-                          // A set category has no key and no parent, so an MCC here is always one you set.
-                          const card = categoryMcc(category, allCategories, overrides.data ?? {});
-                          return (
-                            <>
-                              <span className="tabular text-xs text-slate-500" title={card.mcc ? (mccName(card.mcc) ?? undefined) : undefined}>
-                                {card.mcc ? `MCC ${card.mcc} (yours)` : 'No card MCC'}
-                              </span>
-                              <Button variant="ghost" onClick={() => changeMcc(category, card.mcc)} aria-label={`Card MCC for ${category.name}`}>
+                <div key={set.id} data-testid={`set-${set.name}`}>
+                  <Panel wide pad={false}>
+                    <ActionLine name={set.name} separator={false}>
+                      <LineAction label={`Add a category to ${set.name}`} onClick={() => addToSet(set.id, set.name)}>
+                        + Category
+                      </LineAction>
+                      <LineAction label={`Rename ${set.name}`} onClick={() => renameSet(set.id, set.name)}>
+                        Rename
+                      </LineAction>
+                      <LineAction label={`Remove ${set.name}`} onClick={() => removeSet(set.id, set.name)}>
+                        Remove
+                      </LineAction>
+                    </ActionLine>
+                    <ul>
+                      {inSet.map((category) => {
+                        // A set category has no key and no parent, so an MCC here is always one you set.
+                        const card = categoryMcc(category, allCategories, overrides.data ?? {});
+                        return (
+                          <li key={category.id}>
+                            <ActionLine name={category.name} depth={1} separator meta={<MccNote mcc={card.mcc} source="yours" />}>
+                              <LineAction label={`Card MCC for ${category.name}`} onClick={() => changeMcc(category, card.mcc)}>
                                 MCC
-                              </Button>
+                              </LineAction>
                               {card.mcc !== null && (
-                                <Button
-                                  variant="ghost"
+                                <LineAction
+                                  label={`Reset card MCC for ${category.name}`}
                                   onClick={() => void run(() => clearCategoryMcc(database, ws, category.id))}
-                                  aria-label={`Reset card MCC for ${category.name}`}
                                 >
                                   Reset
-                                </Button>
+                                </LineAction>
                               )}
-                            </>
-                          );
-                        })()}
-                        <Button variant="ghost" onClick={() => rename(category)} aria-label={`Rename ${category.name}`}>
-                          Rename
-                        </Button>
-                        <Button variant="ghost" onClick={() => archive(category)} aria-label={`Archive ${category.name}`}>
-                          Archive
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
+                              <LineAction label={`Rename ${category.name}`} onClick={() => rename(category)}>
+                                Rename
+                              </LineAction>
+                              <LineAction label={`Archive ${category.name}`} onClick={() => archive(category)}>
+                                Archive
+                              </LineAction>
+                            </ActionLine>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Panel>
                 </div>
               );
             })}
           </div>
-        </Card>
+        </section>
       )}
     </div>
   );
