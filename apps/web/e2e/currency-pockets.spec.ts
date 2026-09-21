@@ -239,3 +239,36 @@ test('the Money tile names the rate it lacks instead of adding up the rest', asy
   const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Unpriced Valas', exact: true }) });
   await expect(row).toContainText('No USD rate yet');
 });
+
+test('Add asset reads a typed rate of 16.500 as 16,5, key by key (P2-I1)', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.goto('/net-worth/assets');
+  await page.getByRole('button', { name: 'Add asset' }).click();
+  await page.getByLabel('What is it?').selectOption('cash');
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Broker Cash');
+  await page.getByLabel('Currency').selectOption('USD');
+  await page.getByLabel('Opening rate').pressSequentially('16.500');
+  await expect(page.getByText('Reads as 1 USD = 16,5 IDR')).toBeVisible();
+  await page.getByLabel(/Balance today/).pressSequentially('10000');
+  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await expect(page.getByRole('link', { name: /Broker Cash/ })).toBeVisible();
+  // $10.000 at 16,5 is Rp 165.000. The old reader took "16.500" as 16500: Rp 165.000.000.
+  await page.goto('/net-worth');
+  await expect(page.getByTestId('net-worth')).toContainText('165.000');
+  await expect(page.getByTestId('net-worth')).not.toContainText('165.000.000');
+});
+
+test('Add asset with a blank foreign rate takes the day’s rate', async ({ page }) => {
+  await mockRates(page, { USD: 16_250 });
+  await page.goto('/net-worth/assets');
+  await page.getByRole('button', { name: 'Add asset' }).click();
+  await page.getByLabel('What is it?').selectOption('cash');
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Broker Cash');
+  await page.getByLabel('Currency').selectOption('USD');
+  await page.getByLabel(/Balance today/).pressSequentially('10000');
+  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await expect(page.getByRole('link', { name: /Broker Cash/ })).toBeVisible();
+  // $10.000 at the mocked 16.250.
+  await page.goto('/net-worth');
+  await expect(page.getByTestId('net-worth')).toContainText('162.500.000');
+});
