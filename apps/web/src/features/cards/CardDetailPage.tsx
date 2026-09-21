@@ -453,7 +453,7 @@ export function CardDetailPage() {
 
   return (
     <Screen>
-      <LargeTitle title={card.name} back="All cards" backTo="/cards" />
+      <LargeTitle title={card.name} back="Cards" backTo="/cards" oneLine />
       <CardHero
         cp={cp}
         accounts={all}
@@ -464,8 +464,14 @@ export function CardDetailPage() {
         pointsBalance={ledger.data ? { total: ledger.data.balance.total, posted: ledger.data.balance.postedTotal, estimated: ledger.data.balance.projectedTotal } : null}
         today={today}
         onTab={openTab}
-        tabs={<CardTabs active={active} onChange={(tab) => setChosenTab(tab)} debit={isDebit} />}
       />
+      {/*
+       * The control and what it controls share one column at every width. On a desktop the hero is two columns,
+       * and a control drawn in the right one of them sat over a section spanning both — it did not line up with
+       * the thing it switches.
+       */}
+      <div className="mt-[4px] md:max-w-2xl">
+      <CardTabs active={active} onChange={(tab) => setChosenTab(tab)} debit={isDebit} />
       <ErrorBox error={error} />
       {on('rules') && cp.catalog.entryId && <CatalogPanel cp={cp} today={today} run={run} />}
 
@@ -984,6 +990,7 @@ export function CardDetailPage() {
       )}
 
       {on('card') && <InstallmentList cardAccountId={card.id} currency={currency} />}
+      </div>
     </Screen>
   );
 }

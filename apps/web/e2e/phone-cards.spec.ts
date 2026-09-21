@@ -17,7 +17,10 @@ test('the three card screens draw at 390px without scrolling sideways', async ({
   expect(wide).toBe(false);
 
   await card.click();
-  await expect(page.getByRole('heading', { name: 'BCA KrisFlyer Visa Signature' })).toBeVisible();
+  const title = page.getByRole('heading', { name: 'BCA KrisFlyer Visa Signature' });
+  await expect(title).toBeVisible();
+  // A name someone typed is read whole or not at all: one line, never broken over two at a phone's width.
+  expect((await title.boundingBox())!.height).toBeLessThanOrEqual(36);
   await expect(page.getByRole('radiogroup', { name: 'Card sections' }).getByRole('radio')).toHaveCount(4);
   await expect(page.getByRole('radio', { name: 'Rules' })).toBeVisible();
   const wideCard = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -79,6 +82,16 @@ test('a covered card prints only its strip, so no two lines of text share a band
   const band = wall.getByRole('button');
   await expect(band).toHaveCount(1);
   await expect(band).toContainText(/KrisFlyer Visa Signature|Marriott Bonvoy/);
+
+  // The facts under the stack are one grouped row for the card being looked at: the front one at rest, and the
+  // lifted one once a covered card is lifted — never the front card's figures under another card's art.
+  const covered = /KrisFlyer/.test((await band.textContent()) ?? '') ? 'BCA KrisFlyer Visa Signature' : 'Mandiri Marriott Bonvoy';
+  const inFront = covered === 'BCA KrisFlyer Visa Signature' ? 'Mandiri Marriott Bonvoy' : 'BCA KrisFlyer Visa Signature';
+  const facts = wall.getByTestId('wallet-facts');
+  await expect(facts).toContainText(inFront);
+  await band.click();
+  await expect(facts).toContainText(covered);
+  await expect(facts).not.toContainText(inFront);
 
   expect(crashes).toEqual([]);
 });

@@ -163,3 +163,14 @@ test('searching finds a purchase on an earlier statement and opens that statemen
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Hotel Mulia' })).toBeVisible();
   await expect(page.getByTestId('statement-line').filter({ hasText: 'Superindo' })).toHaveCount(0);
 });
+
+test('on a desktop the section control and the section it switches share one column', async ({ page }) => {
+  await setUp(page);
+  await openCard(page);
+  await page.getByRole('radio', { name: 'Card', exact: true }).click();
+  const control = await page.getByRole('radiogroup', { name: 'Card sections' }).boundingBox();
+  const section = await page.locator('section', { has: page.getByRole('heading', { name: 'Card terms' }) }).first().boundingBox();
+  expect(control && section).toBeTruthy();
+  expect(Math.round(control!.x)).toBe(Math.round(section!.x));
+  expect(Math.round(control!.width)).toBe(Math.round(section!.width));
+});

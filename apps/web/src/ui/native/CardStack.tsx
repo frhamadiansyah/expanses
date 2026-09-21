@@ -6,6 +6,7 @@ import { useEscape } from '../../app/use-escape';
 import { CardFace } from '../../features/cards/CardFace';
 import { cx } from '../index';
 import { CARD_H, CARD_W, faceIsBehind, stackLayout } from './card-stack';
+import { InsetGroup, InsetRow } from './InsetList';
 
 /**
  * Primitive 7: card art, in the Wallet stack the user chose for `/cards` (C3).
@@ -73,10 +74,11 @@ export function CardStack({
   );
 
   const front = cards[cards.length - 1];
+  const described = (phone && lifted !== null ? cards[lifted] : undefined) ?? front;
 
   return (
-    <div className={cx('mx-auto', className)} style={{ width: layout.width, maxWidth: '100%', marginBottom: 18 }}>
-      <div className="relative" style={{ width: layout.width, height: layout.height, maxWidth: '100%' }}>
+    <div className={className}>
+      <div className="relative mx-auto" style={{ width: layout.width, height: layout.height, maxWidth: '100%' }}>
       {layout.cards.map((placed, index) => {
         const card = cards[index]!;
         // A card this stack clips to its strip is drawn `behind`: its own rows would print in the same pixels as
@@ -164,19 +166,22 @@ export function CardStack({
       </div>
       {/*
        * The front card has no neighbour above it, so it has no strip to carry its figure — and it is the one
-       * card whose figure must not need a tap either. Its line goes under the stack, where it names the card
-       * as well, so a stack of three reads as three figures however the cards are sitting.
+       * card whose figure must not need a tap either. Its facts sit under the stack as a grouped row, the kit's
+       * own shape, so a stack of three reads as three figures however the cards are sitting.
+       *
+       * A lifted card is the one being looked at, so the row describes it instead: lifting a card and reading
+       * the front card's figures under it would put one card's name beside another card's art.
        */}
-      {front && (
-        <div className="mt-[10px]">
-          <p className="flex items-baseline justify-between gap-3">
-            <span className="min-w-0 truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-              {front.name} · {front.figureLabel}
-            </span>
-            <span className="tabular shrink-0 text-[15px] leading-[20px] font-semibold text-[var(--ph-ink)]">{front.figure}</span>
-          </p>
-          {front.subtitle && <p className="mt-[2px] truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{front.subtitle}</p>}
-        </div>
+      {described && (
+        <InsetGroup className="mx-auto mt-[10px]">
+          <InsetRow
+            testId="wallet-facts"
+            title={described.name}
+            subtitle={[described.figureLabel, described.subtitle].filter(Boolean).join(' · ')}
+            value={described.figure}
+            valueTone="ink"
+          />
+        </InsetGroup>
       )}
     </div>
   );

@@ -119,7 +119,6 @@ export function CardHero({
   pointsBalance,
   today,
   onTab,
-  tabs,
 }: {
   cp: CardPoints;
   accounts: readonly AccountRow[];
@@ -131,8 +130,6 @@ export function CardHero({
   pointsBalance: { total: number; posted: number; estimated: number } | null;
   today: string;
   onTab: (tab: CardTab, focusId?: string) => void;
-  /** The page's tabs, drawn under the two tiles. */
-  tabs: ReactNode;
 }) {
   const { database, ws } = useApp();
   const card = cp.card;
@@ -277,7 +274,7 @@ export function CardHero({
         )}
       </div>
 
-      {/* The bill and the points as equals, then the sections directly under them. */}
+      {/* The bill and the points as equals. The sections follow the whole hero, in a column of their own. */}
       <div className="flex min-w-0 flex-col">
         {!debit && (
           <div data-testid="tile-left-to-pay">
@@ -341,7 +338,6 @@ export function CardHero({
             )}
           </InsetGroup>
         </div>
-        <div className="md:max-w-2xl">{tabs}</div>
       </div>
     </div>
   );
@@ -350,5 +346,5 @@ export function CardHero({
 export function CardTabs({ active, onChange, debit = false }: { active: CardTab; onChange: (tab: CardTab) => void; debit?: boolean }) {
   // A debit card has no statement: its spending settles against the account as it happens.
   const shown = debit ? CARD_TABS.filter((tab) => tab.key !== 'statement') : CARD_TABS;
-  return <SegmentedControl segments={shown} value={active} onChange={(key) => onChange(key as CardTab)} label="Card sections" className="mb-[14px]" />;
+  return <SegmentedControl segments={shown} value={active} onChange={(key) => onChange(key as CardTab)} label="Card sections" className="mb-[18px]" />;
 }

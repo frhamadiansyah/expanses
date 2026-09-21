@@ -60,3 +60,22 @@ export function planCornerActions(actions: readonly CornerAction[], max = CORNER
 export function backLabel(destination: string): string {
   return `‹ ${destination}`;
 }
+
+/**
+ * How many characters a 30 px / 800 large title holds on one line of a 390 pt phone, gutters taken off.
+ *
+ * Measured, not guessed: the 358 px column holds about twenty of the app's own letters at that weight.
+ */
+export const LARGE_TITLE_FITS = 20;
+
+/**
+ * Whether a one-line large title steps down a size to keep its name whole.
+ *
+ * A name a person typed — "BCA KrisFlyer Visa Signature" — is the one thing on the screen that must be read whole,
+ * and at 30 px it breaks across two lines on a phone. iOS keeps a large title to one line, so a long one steps
+ * down to 22 px, which holds it; anything longer still is cut with an ellipsis rather than wrapped, and the whole
+ * name stays the heading's accessible name and its tooltip.
+ */
+export function titleSteps(title: string): boolean {
+  return title.length > LARGE_TITLE_FITS;
+}

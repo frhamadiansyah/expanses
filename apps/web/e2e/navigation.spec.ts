@@ -8,7 +8,8 @@ async function addCard(page: Page, name: string) {
   await expect(page.getByRole('link', { name })).toBeVisible();
 }
 
-const menu = (page: Page, name: string) => page.getByRole('link', { name, exact: true }).click();
+// The menu is the navigation landmark: a card page's own way back is also named "Cards", above its title.
+const menu = (page: Page, name: string) => page.getByRole('navigation').getByRole('link', { name, exact: true }).click();
 
 // Regression: with exactly one card, the card page and the cards list shared a query cache key
 // holding different data shapes, so returning to Cards through the menu crashed the page.
