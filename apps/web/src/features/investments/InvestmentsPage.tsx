@@ -9,11 +9,14 @@ import { usePortfolio } from './queries';
 
 type Rates = Readonly<Record<string, number>>;
 
-/** An unlinked holding opens the asset page it has always had. A stock's own page arrives with the next change. */
-const stockTo = (row: StockRow): Destination | null => (row.securityId ? null : { to: '/net-worth/assets/$accountId', params: { accountId: row.accountId! } });
+/** A stock opens its own page; a holding not linked to a security opens the asset page it has always had. */
+const stockTo = (row: StockRow): Destination =>
+  row.securityId
+    ? { to: '/net-worth/investments/security/$securityId', params: { securityId: row.securityId } }
+    : { to: '/net-worth/assets/$accountId', params: { accountId: row.accountId! } };
 
-/** A broker's own page arrives with the next change. */
-const brokerTo = (_row: BrokerRow): Destination | null => null;
+const brokerTo = (row: BrokerRow): Destination =>
+  row.accountId ? { to: '/net-worth/investments/broker/$accountId', params: { accountId: row.accountId } } : { to: '/net-worth/investments/broker/none' };
 
 /** The figure the page is for: the portfolio in base, ≈ when any of it is converted — or the missing rate named. */
 function PortfolioFigure({ view, base, left }: { view: PortfolioView; base: string; left: boolean }) {
@@ -74,7 +77,7 @@ function PhoneLists({ view, base, rates }: { view: PortfolioView; base: string; 
             subtitle={stockSubtitle(row)}
             value={<ApproxFigure figure={formatMinor(row.valueMinor, row.currency)} beneath={approxLine(row.valueMinor, row.currency, base, rates)} />}
             valueTone={row.stale ? 'warn' : 'ink'}
-            {...(stockTo(row) ?? {})}
+            {...stockTo(row)}
           />
         ))}
       </InsetGroup>
@@ -82,7 +85,7 @@ function PhoneLists({ view, base, rates }: { view: PortfolioView; base: string; 
         {view.brokers.map((row) =>
           // Two currencies at one broker: a parent that adds its children up, exactly as a row of pockets.
           row.currency === null ? (
-            <GroupedRow key={row.key} testId="broker-row" title={row.name} subtitle={brokerSubtitle(row)} figure={groupedFigure(row.total, base)} {...(brokerTo(row) ?? {})} />
+            <GroupedRow key={row.key} testId="broker-row" title={row.name} subtitle={brokerSubtitle(row)} figure={groupedFigure(row.total, base)} {...brokerTo(row)} />
           ) : (
             <InsetRow
               key={row.key}
@@ -91,7 +94,7 @@ function PhoneLists({ view, base, rates }: { view: PortfolioView; base: string; 
               subtitle={brokerSubtitle(row)}
               value={<ApproxFigure figure={formatMinor(row.valueMinor!, row.currency)} beneath={approxLine(row.valueMinor!, row.currency, base, rates)} />}
               valueTone="ink"
-              {...(brokerTo(row) ?? {})}
+              {...brokerTo(row)}
             />
           ),
         )}
