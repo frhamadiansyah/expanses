@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { usePhone } from '../../app/use-phone';
 import { InsetGroup, Panel, PanelHeader, type Segment, SegmentedControl, SelectRow } from '../../ui/native';
 import { useGoals } from '../goals/queries';
-import { periodChoices, periodRange, type RatioPeriod, ratioDisplay } from './health-cards';
+import { periodChoices, periodRange, type RatioPeriod, ratioDisplay, withEmergencyLoading } from './health-cards';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */
 const STATUS_INK: Record<RatioStatus, string> = {
@@ -62,7 +62,7 @@ export function HealthRatios({
   // Q5: the card grades against the household's own months, read from its emergency goal — never a copy of them.
   const goals = useGoals();
   const emergencyTargetMonths = householdEmergencyMonths(goals.data ?? []) ?? undefined;
-  const ratios = healthRatios(flows ?? EMPTY_FLOWS, totals, { ...settings, emergencyTargetMonths });
+  const ratios = withEmergencyLoading(healthRatios(flows ?? EMPTY_FLOWS, totals, { ...settings, emergencyTargetMonths }), goals.isPending);
   const choices = periodChoices(today, earliestYear);
 
   /*

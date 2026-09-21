@@ -51,3 +51,14 @@ export function ratioDisplay(ratio: HealthRatio): RatioDisplay {
   const gaugePercent = Math.max(0, Math.min(100, (ratio.value / ratio.max) * 100));
   return { value, statusLabel: STATUS_LABELS[ratio.status], gaugePercent, targetPercent };
 }
+
+/**
+ * While the household's goals have not loaded yet, `emergencyTargetMonths` is unset and the emergency fund would
+ * grade against the guide's flat 3-month fallback — a household asking 12 would flash "good" before flipping to
+ * its real grade once goals arrive. Blank that one row instead, the same "not enough data" shape `ratioDisplay`
+ * already draws for `value: null`.
+ */
+export function withEmergencyLoading(ratios: HealthRatio[], goalsPending: boolean): HealthRatio[] {
+  if (!goalsPending) return ratios;
+  return ratios.map((ratio) => (ratio.key === 'emergency_fund' ? { ...ratio, value: null, status: 'unknown' } : ratio));
+}
