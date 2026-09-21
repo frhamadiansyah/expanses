@@ -1,4 +1,4 @@
-import { installmentSplit, monthOf, type ScheduleRow } from '@expanses/core';
+import { installmentSplit, monthOf, periodOn, type ScheduleRow } from '@expanses/core';
 import type { CardInstallmentRow, LoanTermsRow } from '@expanses/db';
 import type { LoanAttention } from '../networth/overview-rows';
 
@@ -27,10 +27,11 @@ export function loanAttention(input: LoanAttentionInput, today: string): LoanAtt
   const dueDays = next ? daysBetween(today, next.onDate) : null;
   const paymentDue = loan.status === 'open' && next && dueDays !== null && dueDays >= 0 && dueDays <= PAYMENT_DUE_DAYS ? next : undefined;
 
-  // A fixed rate ends where the next period begins; the last period runs to the end of the loan.
-  const periods = [...loan.periods].sort((a, b) => a.fromOn.localeCompare(b.fromOn));
-  const current = periods.filter((period) => period.fromOn <= today).at(-1) ?? periods[0];
-  const following = periods.find((period) => period.fromOn > today);
+  // A fixed rate ends where the next period begins; the last period runs to the end of the loan. Which period is
+  // the one running today is `periodOn`'s question and is asked there, not answered a fourth time here.
+  const current = periodOn(loan.periods, today);
+  // Sorted, so the next period is the soonest one rather than whichever was recorded first.
+  const following = [...loan.periods].sort((a, b) => a.fromOn.localeCompare(b.fromOn)).find((period) => period.fromOn > today);
   const endingDays = following ? daysBetween(today, following.fromOn) : null;
   const fixedRateEndsOn =
     loan.status === 'open' && current?.kind === 'fixed' && following && endingDays !== null && endingDays >= 0 && endingDays <= RATE_ENDING_DAYS
