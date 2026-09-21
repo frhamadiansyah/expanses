@@ -1,7 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Sheet } from '../../app/Sheet';
-import { Button, Input, Select } from '../../ui';
+import { X } from 'lucide-react';
 import { CategoryOptions } from '../cards/options';
 import { type FormDraft, type SplitRow, splitTotalMinor } from './tx-form';
 
@@ -44,41 +44,51 @@ export function SplitSheet({
   const splits = draft.splits;
   const setSplits = (next: SplitRow[]) => onChange({ ...draft, splits: next });
   return (
-    <Sheet title="Split" onClose={onClose}>
-      <div className="space-y-2">
+    <Sheet grouped title="Split" onClose={onClose}>
+      {/* B3a: one card, a row per split — category, figure, ✕ — and + Split with the running total as its last row. */}
+      <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>*+*]:border-t-[0.5px] [&>*+*]:border-[var(--ph-hair)]">
         {splits.map((row, i) => (
-          <div key={i} className="grid grid-cols-[1fr_8rem_auto] gap-2">
-            <Select
+          <div key={i} className="flex min-h-12 items-center gap-2 pl-[13px]">
+            <select
               aria-label={`Split ${i + 1} category`}
               value={row.categoryId}
               onChange={(e) => setSplits(splits.map((r, j) => (j === i ? { ...r, categoryId: e.target.value } : r)))}
+              className="ph-focus-inset min-w-0 flex-1 appearance-none truncate bg-transparent py-2 text-base text-[var(--ph-ink)] md:text-[15px]"
             >
               <CategoryOptions accounts={accounts as AccountRow[]} kind="expense" parentSuffix="(general)" />
-            </Select>
-            <Input
+            </select>
+            <input
               aria-label={`Split ${i + 1} amount`}
               value={row.amount}
               inputMode="decimal"
+              placeholder="0"
               onChange={(e) => setSplits(splits.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))}
+              className="ph-focus-inset tabular w-28 shrink-0 bg-transparent py-2 text-right text-base text-[var(--ph-ink-3)] placeholder:text-[var(--ph-ink-3)] focus:text-[var(--ph-ink)] md:text-[15px]"
             />
-            <Button variant="ghost" onClick={() => setSplits(splits.filter((_, j) => j !== i))} aria-label={`Remove split ${i + 1}`}>
-              ✕
-            </Button>
+            <button
+              type="button"
+              onClick={() => setSplits(splits.filter((_, j) => j !== i))}
+              aria-label={`Remove split ${i + 1}`}
+              className="ph-focus-inset flex h-12 w-11 shrink-0 items-center justify-center text-[var(--ph-ink-3)]"
+            >
+              <X size={16} aria-hidden />
+            </button>
           </div>
         ))}
-        <div className="flex items-center gap-3">
-          <Button
-            variant="secondary"
+        <div className="flex min-h-12 items-center gap-3 pr-[13px]">
+          <button
+            type="button"
             onClick={() =>
               setSplits(
                 splits.length ? [...splits, { categoryId: '', amount: '' }] : [{ categoryId: draft.categoryId, amount: draft.amount }, { categoryId: '', amount: '' }],
               )
             }
+            className="ph-focus-inset min-h-12 px-[13px] text-[15px] font-medium text-[var(--ph-tint)]"
           >
             + Split
-          </Button>
+          </button>
           {splits.length > 0 && (
-            <span className="tabular text-sm text-slate-600">Total {formatMinor(splitTotalMinor(splits, currency), currency)}</span>
+            <span className="tabular ml-auto text-[12.5px] text-[var(--ph-ink-3)]">Total {formatMinor(splitTotalMinor(splits, currency), currency)}</span>
           )}
         </div>
       </div>

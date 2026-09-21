@@ -1048,8 +1048,8 @@ test('the category picker is a tree, it searches, and a new category is made wit
   // which is what tells a card's children from the cards themselves.
   const parent = picker.getByRole('button', { name: 'Food and beverage', exact: true });
   const child = picker.getByRole('button', { name: 'Restaurants', exact: true });
-  await expect(parent).toHaveCSS('padding-left', '12px');
-  await expect(child).toHaveCSS('padding-left', '36px');
+  await expect(parent).toHaveCSS('padding-left', '14px');
+  await expect(child).toHaveCSS('padding-left', '34px');
 
   // The search narrows on the whole path: a parent brings its children, and nothing else stays.
   const search = picker.getByLabel('Search categories');
@@ -1080,7 +1080,7 @@ test('the category picker is a tree, it searches, and a new category is made wit
   await form.getByRole('button', { name: /^Category/ }).click();
   const boba = picker.getByRole('button', { name: 'Boba', exact: true });
   // Filed under Food and beverage: indented like its siblings, and the whole path is its title.
-  await expect(boba).toHaveCSS('padding-left', '36px');
+  await expect(boba).toHaveCSS('padding-left', '34px');
   await expect(boba).toHaveAttribute('title', 'Food and beverage › Boba');
   // And it draws the icon that was picked for it, rather than inheriting its parent's.
   await expect(boba.locator('svg.lucide-coffee')).toHaveCount(1);

@@ -46,12 +46,14 @@ export function McSheet({
   const hint = guess?.mcc ? `Empty uses ${guess.mcc}${guessName ? ` ${guessName}` : ''} (${guessFrom}).` : 'Empty: no MCC is known for this merchant or category yet.';
 
   return (
-    <Sheet title="MCC" onClose={onClose}>
-      <div className="space-y-3">
+    <Sheet grouped title="MCC" onClose={onClose}>
+      {/* The same fields as before — the MCC picker is the merchants screen's own — gathered on one card. */}
+      <div className="space-y-3 rounded-[11px] bg-[var(--ph-surface)] p-[13px]">
         <MccPicker label="MCC" value={draft.mcc} onChange={(mcc) => set({ mcc })} hint={hint} />
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex min-h-11 items-center gap-2 text-[15px] text-[var(--ph-ink)]">
           <input
             type="checkbox"
+            className="h-5 w-5 shrink-0 accent-[var(--ph-tint)]"
             checked={!!draft.rememberPattern}
             onChange={(e) => set({ rememberPattern: e.target.checked ? suggestPattern(draft.description) || draft.description.trim().toLowerCase() : '' })}
           />

@@ -1,11 +1,12 @@
 import { categoryPath } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { Menu, Plus } from 'lucide-react';
+import { Check, Menu, Plus, Search } from 'lucide-react';
 import { useState } from 'react';
 import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
-import { cx, Input } from '../../ui';
+import { cx } from '../../ui';
+import { SegmentedControl } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { categoryGroups, offeredCategories } from '../categories/offered';
 import { useCategorySetMembership } from '../categories/set-queries';
@@ -64,15 +65,18 @@ function CategoryButton({
       onClick={onPick}
       title={categoryPath(accounts, category.id)}
       className={cx(
-        'relative flex min-h-11 w-full items-center gap-3 px-3 text-left text-sm hover:bg-slate-50',
-        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900',
+        'ph-focus-inset relative flex w-full items-center gap-3 text-left active:bg-[var(--ph-fill)]',
+        // B7's elbow: a child hangs off the root above it by a line that turns into the row.
         child
-          ? 'pl-9 before:absolute before:top-0 before:left-5 before:h-1/2 before:w-3 before:border-b before:border-l before:border-slate-200'
-          : 'font-medium',
+          ? 'pl-[34px] before:absolute before:top-0 before:bottom-1/2 before:left-5 before:w-[10px] before:rounded-bl-lg before:border-b-[1.5px] before:border-l-[1.5px] before:border-[var(--ph-hair)]'
+          : 'pl-[14px]',
       )}
     >
-      <CategoryIcon categoryId={category.id} accounts={accounts} size="xs" />
-      <span className="min-w-0 flex-1 truncate">{category.name}</span>
+      <CategoryIcon categoryId={category.id} accounts={accounts} size={child ? 'sm' : 'md'} />
+      <span className="ph-row-body flex min-h-[46px] min-w-0 flex-1 items-center gap-2 pr-[14px]">
+        <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]">{category.name}</span>
+        {chosen && <Check size={18} aria-hidden className="shrink-0 text-[var(--ph-tint)]" />}
+      </span>
     </button>
   );
 }
@@ -130,25 +134,20 @@ export function CategoryPicker({
   };
 
   return (
-    <Sheet title={title} onClose={onClose}>
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          {!lockKind ? (
-            <div role="group" aria-label="Kind" className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
-              {(['expense', 'income'] as const).map((which) => (
-                <button
-                  key={which}
-                  type="button"
-                  aria-pressed={showing === which}
-                  onClick={() => setShowing(which)}
-                  className={cx('rounded-md px-3 py-1 text-sm font-medium', showing === which ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600')}
-                >
-                  {which === 'expense' ? 'Expense' : 'Income'}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <span />
+    <Sheet grouped title={title} onClose={onClose}>
+      <div className="flex flex-col gap-[10px]">
+        <div className="flex items-center gap-2">
+          {!lockKind && (
+            <SegmentedControl
+              className="min-w-0 flex-1"
+              label="Kind"
+              segments={[
+                { key: 'expense', label: 'Expense' },
+                { key: 'income', label: 'Income' },
+              ]}
+              value={showing}
+              onChange={(key) => setShowing(key as 'expense' | 'income')}
+            />
           )}
           {/* The way to the whole tree, for what this sheet is deliberately too small for: renaming, archiving,
               a category's card MCC, the sets. It closes the sheet on its way, since it leaves the screen. */}
@@ -156,9 +155,11 @@ export function CategoryPicker({
             to="/categories"
             onClick={onClose}
             aria-label="Manage categories"
-            className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+            className="ph-focus ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ph-tint)]"
           >
-            <Menu size={18} aria-hidden />
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)]">
+              <Menu size={16} aria-hidden />
+            </span>
           </Link>
         </div>
 
@@ -166,14 +167,19 @@ export function CategoryPicker({
         <button
           type="button"
           onClick={() => setMaking(true)}
-          className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-medium text-emerald-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
+          className="ph-focus flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--ph-surface)] text-[15px] font-semibold text-[var(--ph-tint)] active:bg-[var(--ph-fill)]"
         >
-          <Plus size={18} aria-hidden className="shrink-0" />
+          <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]">
+            <Plus size={14} strokeWidth={3} />
+          </span>
           New category
         </button>
 
         {groups.map((group) => (
-          <div key={group.root.id} className="divide-y divide-slate-100 overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+          <div
+            key={group.root.id}
+            className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] py-1 [&>*+*>.ph-row-body]:border-t-[0.5px] [&>*+*>.ph-row-body]:border-[var(--ph-hair)]"
+          >
             <CategoryButton category={group.root} accounts={accounts} chosen={group.root.id === value} child={false} onPick={() => choose(group.root.id)} />
             {group.children.map((child) => (
               <CategoryButton key={child.id} category={child} accounts={accounts} chosen={child.id === value} child onPick={() => choose(child.id)} />
@@ -181,14 +187,24 @@ export function CategoryPicker({
           </div>
         ))}
         {groups.length === 0 && (
-          <p className="px-1 py-3 text-sm text-slate-500">
+          <p className="px-1 py-3 text-[15px] text-[var(--ph-ink-3)]">
             {search.trim() ? 'Nothing here by that name.' : 'No categories in this workspace yet.'}
           </p>
         )}
 
-        {/* The pill rides the foot of the sheet, so a long tree can be narrowed without scrolling back up. */}
-        <div className="sticky bottom-0 -mx-4 bg-white/90 px-4 pt-2 pb-1 backdrop-blur">
-          <Input aria-label="Search categories" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" className="rounded-full" />
+        {/* B7's floating search pill: it rides the foot of the sheet, so a long tree can be narrowed without
+            scrolling back up. */}
+        <div className="sticky bottom-0 px-1 pt-2 pb-1">
+          <label className="flex h-11 items-center gap-2 rounded-full bg-[var(--ph-surface)] px-4 shadow-[0_6px_20px_rgb(0_0_0/0.12)]">
+            <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+            <input
+              aria-label="Search categories"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search"
+              className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
+            />
+          </label>
         </div>
       </div>
 
