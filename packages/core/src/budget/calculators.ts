@@ -21,6 +21,12 @@ function assertAbove(value: number, zero: number, what: string): void {
   if (!Number.isFinite(value) || value <= zero) throw new CalculatorError(`${what} must be above ${zero}`);
 }
 
+/** A figure outside the safe-integer range has already lost precision — refuse it rather than show it. */
+function assertSafe(value: number, what: string): number {
+  if (!Number.isSafeInteger(value)) throw new CalculatorError(`${what} is too large to work out exactly`);
+  return value;
+}
+
 /** Months of everything that goes out, which is what the ratio card divides by. */
 export function emergencyTargetMinor(months: number, monthlyOutgoingMinor: number): number {
   assertAbove(months, 0, 'The number of months');
@@ -81,7 +87,7 @@ export function presentValueOfYearsMinor(annualTodayMinor: number, years: number
   const r = 10_000n + BigInt(returnBps);
   const amount = BigInt(annualTodayMinor);
   // Earning exactly what prices do: every year has to be there in full.
-  if (i === r) return Number(amount * BigInt(years));
+  if (i === r) return assertSafe(Number(amount * BigInt(years)), 'The pot');
   const n = BigInt(years);
   let numerator = amount * i * (r ** n - i ** n);
   let denominator = r ** n * (r - i);
@@ -90,7 +96,7 @@ export function presentValueOfYearsMinor(annualTodayMinor: number, years: number
     numerator = -numerator;
     denominator = -denominator;
   }
-  return Number(divRound(numerator, denominator));
+  return assertSafe(Number(divRound(numerator, denominator)), 'The pot');
 }
 
 export interface RetirementInputs {
@@ -172,8 +178,8 @@ export function lifeCoverMinor(inputs: LifeCoverInputs): LifeCover {
   if (amounts.some((amount) => !Number.isSafeInteger(amount) || amount < 0)) throw new CalculatorError('Amounts are whole minor units, not below nothing');
   if (!Number.isInteger(inputs.yearsOfSupport) || inputs.yearsOfSupport < 0) throw new CalculatorError('Years of support are whole years, not below nothing');
   const incomeNeedMinor = presentValueOfYearsMinor(inputs.annualNeedTodayMinor, inputs.yearsOfSupport, inputs.inflationBps, inputs.returnBps);
-  const needsMinor = incomeNeedMinor + inputs.debtsMinor + inputs.educationMinor + inputs.finalExpensesMinor;
-  const resourcesMinor = inputs.liquidAssetsMinor + inputs.inForceCoverMinor;
+  const needsMinor = assertSafe(incomeNeedMinor + inputs.debtsMinor + inputs.educationMinor + inputs.finalExpensesMinor, 'What is needed');
+  const resourcesMinor = assertSafe(inputs.liquidAssetsMinor + inputs.inForceCoverMinor, 'What is already there');
   const gap = needsMinor - resourcesMinor;
   return { incomeNeedMinor, needsMinor, resourcesMinor, coverMinor: Math.max(0, gap), surplusMinor: Math.max(0, -gap) };
 }

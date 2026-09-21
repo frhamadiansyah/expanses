@@ -149,6 +149,36 @@ describe('the one real-rate annuity', () => {
     // A negative real rate: both halves of the fraction are negative, and still rounded once.
     expect(presentValueOfYearsMinor(120_000_000, 10, 500, 350)).toBe(1_299_933_990);
   });
+
+  it('is exact at scale, not a naive float division of the same BigInt halves', () => {
+    // Verified independently with fractions.Fraction: the exact value is …157,51, so half away from
+    // zero rounds up to …158. A naive float formula, or float division of the exact numerator and
+    // denominator, agrees with every other case in this file but not this one.
+    expect(presentValueOfYearsMinor(1_000_000_000_000, 24, 350, 500)).toBe(20_148_904_416_158);
+  });
+
+  it('refuses an amount that is not a whole number of minor units', () => {
+    expect(() => presentValueOfYearsMinor(1.5, 10, 350, 500)).toThrow(CalculatorError);
+  });
+
+  it('refuses years below nothing, not just a part of one', () => {
+    expect(() => presentValueOfYearsMinor(120_000_000, -1, 350, 500)).toThrow(CalculatorError);
+  });
+
+  it('refuses a rate that is not a whole basis point', () => {
+    expect(() => presentValueOfYearsMinor(120_000_000, 10, 350.5, 500)).toThrow(CalculatorError);
+  });
+
+  it('refuses a rate that takes away everything or more, inflation or return', () => {
+    expect(() => presentValueOfYearsMinor(120_000_000, 10, -10_000, 500)).toThrow(CalculatorError);
+    expect(() => presentValueOfYearsMinor(120_000_000, 10, 350, -10_000)).toThrow(CalculatorError);
+  });
+
+  it('refuses a result too large to hold exactly', () => {
+    // Nominal equals real, so the pot is amount × years — 9 triliun for 2.000 years overruns
+    // Number.MAX_SAFE_INTEGER, and a silently imprecise figure is worse than a refusal.
+    expect(() => presentValueOfYearsMinor(9_000_000_000_000, 2_000, 500, 500)).toThrow(CalculatorError);
+  });
 });
 
 describe('retirement in today’s money', () => {
@@ -169,6 +199,26 @@ describe('retirement in today’s money', () => {
     const other = { ...inputs, inflationBps: 500, returnInRetirementBps: 800 };
     expect(retirementTargetMinor(other)).toBe(4_800_099_136);
     expect(retirementTargetMinor(other)).toBe(futureValueMinor(retirementTodayMinor(other), 500, 240));
+  });
+
+  it('ignores returnBeforeBps — the pot is drawn down at the retirement return, not what it earned while saving', () => {
+    const withSavingReturn = { ...inputs, returnBeforeBps: 1000 };
+    expect(retirementTodayMinor(withSavingReturn)).toBe(2_070_575_495);
+    expect(retirementTargetMinor(withSavingReturn)).toBe(4_120_008_061);
+  });
+
+  it('rounds a part-year yearsToRetirement to the nearest month, not the floor and not years rounded first', () => {
+    // 20,3 years is 243,6 months: rounding first gives 244; flooring gives 243; rounding the years to 20
+    // and then multiplying by 12 gives 240. All three disagree, so this discriminates every wrong neighbour.
+    const partYear = retirementTargetMinor({ ...inputs, yearsToRetirement: 20.3 });
+    expect(partYear).toBe(futureValueMinor(retirementTodayMinor(inputs), inputs.inflationBps, 244));
+    expect(partYear).not.toBe(futureValueMinor(retirementTodayMinor(inputs), inputs.inflationBps, 243));
+    expect(partYear).not.toBe(futureValueMinor(retirementTodayMinor(inputs), inputs.inflationBps, 240));
+  });
+
+  it('refuses retirement set in the past, even before the drawdown pot is worked out', () => {
+    expect(() => retirementTodayMinor({ ...inputs, yearsToRetirement: -1 })).toThrow(CalculatorError);
+    expect(() => retirementTargetMinor({ ...inputs, yearsToRetirement: -1 })).toThrow(CalculatorError);
   });
 });
 
@@ -205,5 +255,37 @@ describe('life cover — capital needs', () => {
 
   it('refuses part of a year of support', () => {
     expect(() => lifeCoverMinor({ ...base, yearsOfSupport: 2.5 })).toThrow(CalculatorError);
+  });
+
+  it('refuses a needs sum too large to hold exactly, even though every input on its own is safe', () => {
+    expect(() =>
+      lifeCoverMinor({
+        annualNeedTodayMinor: 0,
+        yearsOfSupport: 0,
+        inflationBps: 350,
+        returnBps: 500,
+        debtsMinor: 5_000_000_000_000_000,
+        educationMinor: 5_000_000_000_000_000,
+        finalExpensesMinor: 0,
+        liquidAssetsMinor: 0,
+        inForceCoverMinor: 0,
+      }),
+    ).toThrow(CalculatorError);
+  });
+
+  it('refuses a resources sum too large to hold exactly', () => {
+    expect(() =>
+      lifeCoverMinor({
+        annualNeedTodayMinor: 0,
+        yearsOfSupport: 0,
+        inflationBps: 350,
+        returnBps: 500,
+        debtsMinor: 0,
+        educationMinor: 0,
+        finalExpensesMinor: 0,
+        liquidAssetsMinor: 5_000_000_000_000_000,
+        inForceCoverMinor: 5_000_000_000_000_000,
+      }),
+    ).toThrow(CalculatorError);
   });
 });
