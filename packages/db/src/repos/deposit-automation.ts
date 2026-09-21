@@ -12,6 +12,7 @@ import {
   positionAfter,
   TERM_MONTHS,
   type TermMonths,
+  type TradeRecord,
   tradePostings,
   transferLines,
   uuidv7,
@@ -423,4 +424,26 @@ export async function confirmDepositEvent(database: Database, ws: WorkspaceConte
     }
     return { interestTransactionId, principalTransactionId, netMinor, archived };
   });
+}
+
+/**
+ * Every confirmed or hand-recorded event with interest, as the income payment the tax report already reads: gross and
+ * tax withheld, dated the due day. The report's reader filters the year; this passes every event of the workspace.
+ */
+export async function depositIncomePayments(database: Database, ws: WorkspaceContext): Promise<TradeRecord[]> {
+  if (!(await automationTablesExist(database.db))) return [];
+  const rows = await database.db.select().from(depositEvents).where(eq(depositEvents.workspaceId, ws.workspaceId));
+  return rows
+    .filter((row) => row.grossMinor > 0)
+    .map((row) => ({
+      id: row.id,
+      accountId: row.accountId,
+      kind: 'income' as const,
+      occurredOn: row.dueOn,
+      createdAt: row.confirmedAt,
+      unitsMicro: 0,
+      grossMinor: row.grossMinor,
+      feeMinor: 0,
+      taxMinor: row.taxMinor,
+    }));
 }

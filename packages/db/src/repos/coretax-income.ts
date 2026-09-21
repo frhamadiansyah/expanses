@@ -6,6 +6,7 @@ import { investmentTrades } from '../schema-assets';
 import { listAccounts } from './accounts';
 import { AssetError, assertAccountInWorkspace } from './assets';
 import { listAssetProfiles } from './assets';
+import { depositIncomePayments } from './deposit-automation';
 import { listTrades } from './trades';
 
 /**
@@ -16,10 +17,12 @@ import { listTrades } from './trades';
  * it is reported as property and whether it paid income are different questions.
  */
 export async function incomeInputsFor(database: Database, ws: WorkspaceContext, year: number): Promise<IncomeRow[]> {
-  const [trades, profiles, accounts] = await Promise.all([
+  const [trades, profiles, accounts, deposits] = await Promise.all([
     listTrades(database, ws),
     listAssetProfiles(database, ws),
     listAccounts(database, ws, { includeArchived: true }),
+    // A deposit's confirmed or hand-recorded events, shaped as the payments this reader already reads.
+    depositIncomePayments(database, ws),
   ]);
 
   const nameOf = new Map(accounts.map((account) => [account.id, account]));
@@ -35,7 +38,7 @@ export async function incomeInputsFor(database: Database, ws: WorkspaceContext, 
     };
   });
 
-  return investmentIncomeFor({ trades, holdings, year, baseCurrency: ws.baseCurrency });
+  return investmentIncomeFor({ trades: [...trades, ...deposits], holdings, year, baseCurrency: ws.baseCurrency });
 }
 
 export interface DeclareReinvestmentInput {

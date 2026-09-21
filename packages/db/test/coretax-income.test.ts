@@ -1,13 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
+  categoryIdsByKeyTx,
+  confirmDepositEvent,
   createAccount,
   declareReinvestment,
   incomeInputsFor,
+  listAccounts,
+  listDueDeposits,
+  openCashAccount,
   recordTrade,
+  replaceTransaction,
+  saveDepositAutomation,
   saveAssetProfile,
   setAssetReporting,
   replaceTrade,
   type Database,
+  voidTransaction,
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -157,5 +165,82 @@ describe('declaring a dividend reinvested', () => {
     });
 
     await expect(declareReinvestment(database, ws, sale.tradeId, { amountMinor: 6_000_000, intoAccountId: ori.id })).rejects.toThrow();
+  });
+});
+
+describe('deposit interest from the confirmed-event log', () => {
+  async function deposit(currency: 'IDR' | 'USD') {
+    const { database, ws } = await setupDb();
+    const fx = currency === 'USD' ? 16_350 : undefined;
+    const bank = await openCashAccount(database, ws, { item: 'bank', name: 'Bank', currency, openingBalanceMinor: 5_000, openedOn: '2026-07-15', openingRateToBase: fx });
+    const dep = await openCashAccount(database, ws, {
+      item: 'time_deposit', name: 'Deposito', currency, openingBalanceMinor: currency === 'IDR' ? 50_000_000 : 1_000_000,
+      openedOn: '2026-07-15', openingRateToBase: fx, maturesOn: '2026-10-15', rateBps: currency === 'IDR' ? 425 : 350,
+    });
+    await saveDepositAutomation(database, ws, {
+      accountId: dep.id, enabled: true, atMaturity: 'principal', interestPaid: 'at_maturity', payoutAccountId: bank.id,
+      termMonths: 3, keepRate: true, taxBps: 2_000, taxExempt: false, today: '2026-07-15',
+    });
+    const confirm = async (byHand: boolean, today: string, change: { grossMinor?: number; taxMinor?: number } = {}) => {
+      const [p] = await listDueDeposits(database, ws, today);
+      return confirmDepositEvent(database, ws, {
+        accountId: p!.accountId, kind: p!.event.kind, dueOn: p!.event.dueOn, today, principalMinor: p!.principalMinor,
+        grossMinor: p!.grossMinor, taxMinor: p!.taxMinor, newRateBps: p!.rateBps, newTermMonths: 3, rateToBase: fx, byHand,
+        ...change,
+      });
+    };
+    return { database, ws, dep, confirm };
+  }
+
+  it('reports the gross and the tax withheld, not the net that landed, under the treatment the owner set', async () => {
+    const { database, ws, dep, confirm } = await deposit('IDR');
+    // What the deposit page's "How its income is taxed" writes: only the treatment, nothing else of the profile.
+    await setAssetReporting(database, ws, dep.id, { taxTreatment: 'final' });
+    await confirm(false, '2026-10-15');
+    expect((await incomeInputsFor(database, ws, 2026)).filter((row) => row.accountId === dep.id)).toEqual([
+      { accountId: dep.id, name: 'Deposito', kind: 'interest', grossMinor: 535_616, taxMinor: 107_123, foreign: false, treatment: 'final', reinvestedInto: [] },
+    ]);
+  });
+
+  it('counts an event recorded by hand, sets nothing it was not told, and keeps each year to its own', async () => {
+    const { database, ws, dep, confirm } = await deposit('IDR');
+    await confirm(true, '2026-10-15');
+    // The second term: 15 Oct 2026 → 15 Jan 2027, 92 days again, due in 2027.
+    await confirm(false, '2027-01-15');
+    expect((await incomeInputsFor(database, ws, 2026)).find((row) => row.accountId === dep.id)).toMatchObject({ grossMinor: 535_616, taxMinor: 107_123, treatment: null });
+    expect((await incomeInputsFor(database, ws, 2027)).find((row) => row.accountId === dep.id)).toMatchObject({ grossMinor: 535_616, taxMinor: 107_123 });
+  });
+
+  it('marks a deposit in another currency as held abroad, in its own minor units', async () => {
+    const { database, ws, dep, confirm } = await deposit('USD');
+    await confirm(false, '2026-10-15');
+    // US$10,000.00 at 3,50% for 92 days: 8 821 cents gross, 1 764 tax (1 764,2).
+    expect((await incomeInputsFor(database, ws, 2026)).find((row) => row.accountId === dep.id)).toMatchObject({ kind: 'interest', grossMinor: 8_821, taxMinor: 1_764, foreign: true });
+  });
+
+  it('reads the figures the owner confirmed when recording by hand', async () => {
+    const { database, ws, dep, confirm } = await deposit('IDR');
+    await confirm(true, '2026-10-15', { grossMinor: 535_700, taxMinor: 107_141 });
+    expect((await incomeInputsFor(database, ws, 2026)).find((row) => row.accountId === dep.id)).toMatchObject({ kind: 'interest', grossMinor: 535_700, taxMinor: 107_141 });
+  });
+
+  it('drops an event whose interest was voided, and follows one whose interest was edited', async () => {
+    const { database, ws, dep, confirm } = await deposit('IDR');
+    const { interestTransactionId } = await confirm(false, '2026-10-15');
+    await voidTransaction(database, ws, interestTransactionId!);
+    expect((await incomeInputsFor(database, ws, 2026)).filter((row) => row.accountId === dep.id)).toEqual([]);
+    const again = await confirm(false, '2026-10-15');
+    const keys = await categoryIdsByKeyTx(database.db, ws);
+    const [bank] = (await listAccounts(database, ws)).filter((a) => a.name === 'Bank');
+    await replaceTransaction(database, ws, again.interestTransactionId!, {
+      occurredOn: '2026-10-15',
+      description: 'Interest: Deposito',
+      lines: [
+        { accountId: bank!.id, amountMinor: 428_559, currency: 'IDR' },
+        { accountId: keys['government_taxes.estimated_tax']!, amountMinor: 107_141, currency: 'IDR' },
+        { accountId: keys['income.investment']!, amountMinor: -535_700, currency: 'IDR' },
+      ],
+    });
+    expect((await incomeInputsFor(database, ws, 2026)).find((row) => row.accountId === dep.id)).toMatchObject({ grossMinor: 535_700, taxMinor: 107_141 });
   });
 });
