@@ -120,6 +120,11 @@ No column is added to any existing table. Every read and write goes through `set
 no draws, no question answered is written, and the check still works from earmarks and balances alone (it needs no new
 table to read).
 
+On a database stopped at 49 three things differ from the old code, each by ruling or as a §4.6 fix: a plain
+`voidTransaction` of a tagged transfer takes back what it landed on the destination; an edit of a tagged transfer keeps
+the tag and carries (or re-parks) it; and `writeTradeTx` lowers the cash promise by the cash-side figure. At 49 no draw
+is written: a tagged buy's lowering is not given back by a delete, and a tagged transfer's own promise is not moved.
+
 `was_whole` / `whole_since` are a **snapshot of the moment of a borrow** — a fact about the past, not a flag that decides
 anything now. They are what lets the goal say "Fully funded 3 Aug – 19 Sep" after the fact (§7.2).
 
@@ -140,26 +145,50 @@ into or that cannot hold a set-aside (`canHoldSetAside`, moved to its new home u
 
 **Voiding reverses it.** `voidTransactionTx` — the sink every delete and every edit goes through — calls
 `undoSetAsideTx`: a spend gives its amount back to the promise and clears the stage's `paid_on` if it still holds the
-draw's date; a move takes `to_amount_minor` back off the destination and gives `amount_minor` back to the source; then
-the transaction's draw rows are deleted. A borrow needs nothing reversed: with the row gone the shortage falls where
-§4.1 puts it.
+draw's date (never on an archived goal, which is history); a move takes `to_amount_minor` back off the destination **as
+far as it is still promised there**, and gives the source back the same share of `amount_minor` (`floor(amount × taken
+÷ to_amount)`, BigInt) — money spent from the destination since is never given back twice, whatever order things are
+deleted in (ruling I1). A tagged transfer's arrival and its own move are undone the same way. A buy's lowering (a move
+with no destination) is given back whole. Then the transaction's draw rows are deleted. A borrow needs nothing
+reversed: with the row gone the shortage falls where §4.1 puts it.
 
 **Editing carries it.** `replaceTransaction` reads the original's choice before voiding. `setAside: undefined` means
 "carry the original's" (clamped again against the new lines, and dropped if the replacement no longer takes from that
 account or, for a move, no longer pays into the destination); `null` means none; a value is obeyed. Every full edit
 form passes an explicit value (§6.1); the desktop's category-only re-file passes nothing and so carries it.
 
+"Carry" means **by the difference, never undo-then-redo** (rulings I1, I2). When the carried or re-given answer is the
+saved one (same goal, account, intent and destination), its draw is re-pointed to the replacement:
+- a borrow keeps its amount, clamped to the new payment;
+- a spend keeps what it drew and takes only what the payment grew by (`min(outflow, drawn + max(0, outflow − old
+  outflow), drawn + promise)`), so a promise that grew since is not taken again;
+- a move is re-worked only when what left or landed changed, and then shifted by the difference: the destination is
+  raised, or lowered as far as it is still there — the later draws that spent it are cut, newest first, as a fresh post
+  of the smaller figure would have drawn — and the source is given back only the share the destination returned.
+
+Undo-then-redo stays only when the answer or the accounts change. Further rules:
+- a same-goal spend keeps the stage its original paid, even when the edit moves it to another account
+  (`withSavedStage`); re-dated with the edit when the stage still carries the old date;
+- a carried answer is dropped when its goal is archived, or when the edit no longer pays from its account (or, a move,
+  into its destination); a carried spend or move from `replaceTrade` or `convertToPurchase` is also dropped when the goal
+  no longer promises anything on that account (`stillPromisedTx`), while a carried borrow stands as long as its goal is
+  active;
+- voiding never un-pays an archived goal's stage (G2-M1).
+
 ### 4.5 Readers (`packages/db`)
 
 - `setAsideViews(database, ws, { date, excludeTransactionId })` → `Record<accountId, AccountSetAsideRow>` for every
   account something is promised on. `excludeTransactionId` shows the account **as if that transaction had not been
   recorded**: its entries are taken off the balance, its borrows are left out, and its spend/move effects are reversed
-  on the promises. That is how an edit asks the right question about itself.
+  on the promises (a move only as far as it is still on its destination, as `undoSetAsideTx` does). An excluded
+transaction's draws are read whatever their date; its lines only when dated on or before `date`. That is how an edit
+asks the right question about itself.
 - `accountSetAside(database, ws, accountId, opts)` — one account, or `null`.
 - `setAsideChoiceOf(database, ws, transactionId)` — the choice a transaction was saved with, for an edit form to open on.
 - `goalWholeness(database, ws, date)` → per goal `{ whole, since }` (§7.2).
-- `goalHistory(database, ws, date)` → per goal, the newest six of: set aside / taken back, borrowed, spent, moved, and
-  "reached the target".
+- `goalHistory(database, ws, date, { limit })` → per goal, the newest six (by default; `null` for all) of: set aside /
+  taken back, borrowed, spent, moved, and "reached the target". The goal card's fully-funded window reads the full
+  history, not the six shown (M3).
 - `goalContributionEvents(database, ws, range)` — `goalContributionsFor` split into its dated events and a sum over them,
   so the history and the "whole since" walk read the same three sources the monthly figure reads, without a second copy.
 
@@ -171,13 +200,18 @@ form passes an explicit value (§6.1); the desktop's category-only re-file passe
 - `goalPlansFor`: the over-balance sentence names the account and the goal's shortfall in the account's currency; a new
   `unconvertedWarning` carries the no-rate sentence alone, so Net worth can take it without the over-balance one (§7.3).
 - `recordTaggedTransfer`: when the transfer is for goal G and leaves an account that holds G's own promise, **G's own
-  promise follows the money** first — the source promise is lowered by `min(amount, promised)` and the change logged
-  with `recordContributionTx`, so a goal moving its own money is not counted twice and the month's contributions for G
-  net to nought. Only when the destination can hold a set-aside.
+  promise follows the money** first — the source promise is lowered by `min(amount, promised)` and recorded as a `move`
+  draw with no destination, which `goalContributionEvents` reads (in base, as the arrival), so a goal moving its own
+  money is not counted twice and the month's contributions for G net to nought. Not through `recordContributionTx`.
+  Only when the destination can hold a set-aside, and only from migration 0050. Voiding and editing a tagged transfer
+  are handled by `voidTransactionTx` and `replaceTransaction` (every door), and an edit keeps the tag.
 - `writeTradeTx`: the cash account's set-aside for the buy's goal is lowered by what left **the cash account** —
-  `input.cashMinor ?? gross + fee + tax` — not by the holding's-currency figure it lowers it by today.
+  `input.cashMinor ?? gross + fee + tax` — not by the holding's-currency figure it lowers it by today. What it actually
+  took is recorded as a `move` draw with no destination (ruling I3), so a void gives it back and an edit of the same buy
+  keeps it, taking only what the buy grew by. `goalContributionEvents` reads only the no-destination moves of
+  transactions that carry a goal, so the lowering is never read as a tagged transfer. At 49 it lowers without a record.
 - `idleCash`: an account's idle amount is what is free on it (`max(0, free)`), not its balance — "an idle-cash sweep
-  should simply refuse to touch claimed money".
+  should simply refuse to touch claimed money". Unit holdings are never idle cash (G2-M8).
 
 ## 5. The question on screen (E2 + the extra question)
 
@@ -219,9 +253,10 @@ Changing the amount so it fits again removes the question and the answer. Changi
 | Desktop quick row, add and edit | `TransactionsPage` → `SetAsideSheet` | `postTransaction`, `replaceTransaction` | borrow · spend |
 | Confirming a draft | `ReviewPage`, `TransactionsPage` → `SetAsideSheet` | `confirmDraft` | borrow · spend |
 
-`PaySeveralSheet` asks once per paying account and spreads the overage across that account's payments in order
+`PaySeveralSheet` asks once per paying account. A borrow spreads the overage across that account's payments in order
 (`spreadOver`): the payment during which the running total crosses what is free takes the part over it, and every later
-one from that account is over in full.
+one from that account is over in full. "Yes" counts the whole paid total against the goal, up to the promise, across
+that account's payments (ruling M5), and only the first payment pays a stage; `spreadOver` applies to borrows only.
 
 ### 6.2 A transfer out — move the promise (rule 6)
 
@@ -236,7 +271,8 @@ amount over the amount that left — floored, in BigInt.
   is asked about, and the only answer is **borrow** (taking another goal's money for G is borrowing from it). One
   answer, so the second group is not shown.
 - The **goal form's set-aside box** (moving money between goals by hand) does not ask; beside each box it says what is
-  free on that account for this goal (`free + this goal's current promise there`), and in the warn tone how short the
+  free on that account for this goal (`free + this goal's current promise there`, from today's balance, as the question
+reads it — M4), and in the warn tone how short the
   account would be when the typed figure is more than that. The box keeps parsing in the account's currency.
 
 ### 6.4 Silent doors
@@ -323,10 +359,9 @@ action Review, to that account's page — instead of one per goal. Goal items ke
    the Emergency fund short and Umrah covered, which is the opposite whenever the Emergency fund is ranked first.
 2. **How much "Yes — this is what I saved for" takes.** [The whole payment, up to the goal's promise — the free money is
    left free.] The alternative is only the part over what was free.
-3. **"Yes" on a goal with several stages, and on an emergency fund.** [It marks the earliest unpaid stage paid; the goal
-   reads done when every stage is. For a one-stage goal — the Emergency fund included — that is exactly the record's
-   "done, offers to archive".] The mockup's "a standing level, not a finish line" note suggests an emergency fund spent
-   on an emergency should stay open to be rebuilt instead.
+3. **"Yes" on a goal with several stages, and on an emergency fund.** Ruled (ledger Q3, 2026-09-21): an emergency fund
+   is a standing level. "Yes" draws it down, marks no stage paid, and it never reads Done; it reopens to be rebuilt.
+   Every other goal pays its earliest unpaid stage, and reads Done when every stage is.
 4. **"Fully funded from" when the app has no record of the day.** [Shown as "Fully funded until 19 Sep".] Set-asides made
    before migration 0016, tagged units and foreign money have no dated trail the start can be read from.
 5. **Loudness at doors the record does not name.** [The full question at every outflow door in §6.1; borrow only for
@@ -350,3 +385,8 @@ action Review, to that account's page — instead of one per goal. Goal items ke
    (§6.2, §6.4).
 7. The record says only spendable accounts can be claimed. `saveEarmark` refuses the rest, but a tagged transfer also
    sets aside on an `invest`-grouped holding (`canHoldSetAside`). The design treats any account with a promise alike.
+8. A tagged buy's lowering of its goal's cash promise was never given back by a delete, and every edit lowered it again
+   (final review I3). **Fixed** in §4.6 (`writeTradeTx` records it as a draw).
+9. An undo gave the source back its whole move even when the destination's promise had been spent since, and an edit
+   undid and redid, so a note-only edit or a delete could give a goal promise it had already spent (final review I1, and
+   I2 for a re-filed spend). **Fixed** in §4.4 (carry by the difference; undo only what is still there).
