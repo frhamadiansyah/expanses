@@ -17,7 +17,8 @@ const rateOf = (code: string, baseCurrency: string, ratesToBase: Rates): number 
  *
  * A missing rate gives `totalMinor: null` and names the currency. It never adds the rest without it, and never adds
  * a foreign amount's minor units as if they were base: both are the mixed-currency defect `/net-worth/loans` has.
- * Signed amounts are added as they are, so an overdrawn pocket lowers the total.
+ * Signed amounts are added as they are, so an overdrawn pocket lowers the total. A zero amount is zero in any
+ * currency and needs no rate, so an empty foreign account never stops the total.
  */
 export function sumToBase({
   amounts,
@@ -28,12 +29,13 @@ export function sumToBase({
   baseCurrency: string;
   ratesToBase: Rates;
 }): { totalMinor: number | null; missing: string[] } {
-  const missing = [...new Set(amounts.filter((a) => rateOf(a.currency, baseCurrency, ratesToBase) === null).map((a) => a.currency))].sort();
+  const priced = amounts.filter((a) => a.minor !== 0);
+  const missing = [...new Set(priced.filter((a) => rateOf(a.currency, baseCurrency, ratesToBase) === null).map((a) => a.currency))].sort();
   if (missing.length > 0) return { totalMinor: null, missing };
   // Accumulated as BigInt, not float64: each term is a safe integer (convertMinor checks it), but a large positive
   // term followed by a large negative one can round past 2^53 and back down without the final total ever leaving
   // the safe range — a float64 running sum would lose units silently in that case. BigInt addition is exact.
-  const totalBig = amounts.reduce((sum, a) => sum + BigInt(convertMinor(a.minor, a.currency, baseCurrency, rateOf(a.currency, baseCurrency, ratesToBase)!)), 0n);
+  const totalBig = priced.reduce((sum, a) => sum + BigInt(convertMinor(a.minor, a.currency, baseCurrency, rateOf(a.currency, baseCurrency, ratesToBase)!)), 0n);
   if (totalBig > MAX_SAFE || totalBig < MIN_SAFE) throw new MoneyError(`total must be a safe integer of minor units, got ${totalBig}`);
   return { totalMinor: Number(totalBig), missing: [] };
 }

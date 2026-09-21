@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { forgetRates } from './pockets';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -44,7 +45,6 @@ test('says it does not know the cash-flow ratios until there are transactions', 
   await expect(page.getByRole('heading', { name: 'Savings ratio' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Surplus' })).toBeVisible();
   await expect(page.getByText('Not enough data').first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Debt to assets' })).toBeVisible();
 });
 
 test('switches the ratios between the rolling year and a calendar year', async ({ page }) => {
@@ -102,8 +102,8 @@ test('every net-worth section tab is a real link, so it can be opened in a new t
   await expect(page.getByRole('radio', { name: 'Lend & borrow' })).toHaveAttribute('aria-checked', 'true');
 });
 
-test('a currency with no rate stops the net worth figure and is named, instead of counting as 0', async ({ page }) => {
-  // Offline: no rate can be fetched, and none was ever typed for USD.
+test('an empty account in a currency with no rate does not stop net worth: zero needs no rate', async ({ page }) => {
+  // Offline: no rate can be fetched, and none was ever typed for USD — nor is one needed for an empty account.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await page.goto('/accounts');
   await page.getByLabel('Name', { exact: true }).pressSequentially('Rupiah Saver');
@@ -114,6 +114,31 @@ test('a currency with no rate stops the net worth figure and is named, instead o
   await page.getByLabel('Currency', { exact: true }).selectOption('USD');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'Dollar Saver', exact: true })).toBeVisible();
+
+  await page.goto('/');
+  await expect(page.getByTestId('net-worth')).toContainText('50.000.000');
+  await expect(page.getByTestId('net-worth')).not.toContainText('rate yet');
+
+  await page.goto('/net-worth');
+  await expect(page.getByTestId('net-worth')).toContainText('50.000.000');
+  await expect(page.getByRole('heading', { name: 'Debt to assets' })).toBeVisible();
+});
+
+test('a currency with no rate stops the net worth figure and is named, instead of counting as 0', async ({ page }, testInfo) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Rupiah Saver');
+  await page.getByLabel('Current balance').pressSequentially('50000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Rupiah Saver', exact: true })).toBeVisible();
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
+  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+  await page.getByLabel('Current balance').pressSequentially('1000');
+  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Dollar Saver', exact: true })).toBeVisible();
+  // $1.000 held, and then no USD rate anywhere on the device.
+  await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
 
   await page.goto('/');
   // Before, the dashboard printed Rp 50.000.000 as the net worth, the USD account silently at 0.

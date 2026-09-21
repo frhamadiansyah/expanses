@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mockRates, openWithPockets } from './pockets';
+import { forgetRates, mockRates, openWithPockets } from './pockets';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -229,10 +229,22 @@ test('the parent archives only after its pockets, and renaming it renames them',
   await expect(page.getByRole('heading', { name: 'Multi Plus · USD' })).toBeVisible();
 });
 
-test('the Money tile names the rate it lacks instead of adding up the rest', async ({ page }) => {
-  // Offline, and USD opened with nothing in it, so no USD rate is ever typed or fetched.
+test('an empty foreign pocket needs no rate: the Money tile still adds up', async ({ page }) => {
+  // Offline, and USD opened with nothing in it, so no USD rate is ever typed or fetched — and none is needed for 0.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openWithPockets(page, { name: 'Unpriced Valas', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'USD', balance: '' }] });
+  await expect(page.getByText(/across 1 account · 2 currencies/)).toBeVisible();
+  // Twice: the tile and the account's own row.
+  await expect(page.getByText(/5\.400\.000/)).toHaveCount(2);
+  await expect(page.getByText(/No USD rate yet/)).toHaveCount(0);
+});
+
+test('the Money tile names the rate it lacks instead of adding up the rest', async ({ page }, testInfo) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await openWithPockets(page, { name: 'Unpriced Valas', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'USD', balance: '2400', rate: '16250' }] });
+  // $2.400 held, and then no USD rate anywhere on the device.
+  await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
+  await page.goto('/accounts');
   await expect(page.getByText(/No USD rate yet, so 1 account in 2 currencies cannot be added up/)).toBeVisible();
   await expect(page.getByText(/Money ≈/)).toHaveCount(0);
   // The account's own row names it too, in place of a total.

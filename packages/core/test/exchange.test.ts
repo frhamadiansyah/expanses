@@ -48,6 +48,13 @@ describe('adding pockets up', () => {
     expect(() => sumToBase({ amounts: [{ minor: big, currency: 'IDR' }, { minor: big, currency: 'IDR' }], baseCurrency: 'IDR', ratesToBase: {} })).toThrow('safe integer');
   });
 
+  it('needs no rate for a zero amount, in any currency: an empty USD account never stops the total', () => {
+    expect(sumToBase({ amounts: [{ minor: 0, currency: 'USD' }, { minor: 5_400_000, currency: 'IDR' }], baseCurrency: 'IDR', ratesToBase: {} })).toEqual({ totalMinor: 5_400_000, missing: [] });
+    expect(sumToBase({ amounts: [{ minor: 0, currency: 'USD' }], baseCurrency: 'IDR', ratesToBase: { USD: 0 } })).toEqual({ totalMinor: 0, missing: [] });
+    // Only the empty one is excused: a funded USD beside it still needs its rate.
+    expect(sumToBase({ amounts: [{ minor: 0, currency: 'SGD' }, { minor: 100, currency: 'USD' }], baseCurrency: 'IDR', ratesToBase: {} })).toEqual({ totalMinor: null, missing: ['USD'] });
+  });
+
   it('needs no rate for the base currency itself', () => {
     expect(sumToBase({ amounts: [{ minor: 5_400_000, currency: 'IDR' }], baseCurrency: 'IDR', ratesToBase: {} })).toEqual({ totalMinor: 5_400_000, missing: [] });
   });

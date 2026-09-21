@@ -1,4 +1,6 @@
+import { readFileSync, writeFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
+import BetterSqlite3 from 'better-sqlite3';
 
 /** Frankfurter answers only for the codes given, at the rates given; everything else fails, as offline would. */
 export async function mockRates(page: Page, rates: Record<string, number>) {
@@ -29,4 +31,26 @@ export async function openWithPockets(
   }
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: account.name, exact: true })).toBeVisible();
+}
+
+/**
+ * Forgets every exchange rate the device holds, through the app's own backup and restore — the only way to leave a
+ * funded foreign account with no rate at all, since opening one with a balance always stores the rate it opened at.
+ * Pair it with an aborted rate route, so nothing can be fetched back.
+ */
+export async function forgetRates(page: Page, target: string) {
+  await page.goto('/backup');
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download backup' }).click();
+  writeFileSync(target, readFileSync((await (await downloaded).path())!));
+  const db = new BetterSqlite3(target);
+  db.prepare('DELETE FROM fx_rates').run();
+  db.close();
+
+  // The restore's confirm is accepted by the spec's own `dialog` handler (every spec using this has one).
+  const safety = page.waitForEvent('download');
+  await page.locator('input[accept*="sqlite3"]').setInputFiles(target);
+  await safety;
+  await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Replace my data with/ }).click()]);
+  await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
 }

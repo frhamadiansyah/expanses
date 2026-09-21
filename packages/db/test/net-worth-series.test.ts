@@ -104,6 +104,16 @@ describe('sheetInputsAt with a currency it has no rate for', () => {
   });
 });
 
+describe('an empty account in a currency with no rate', () => {
+  it('stops neither net worth nor the balance sheet: zero is zero in any currency', async () => {
+    await createAccount(database, ws, { name: 'Empty USD', kind: 'asset', subtype: 'bank', currency: 'USD' });
+    await createAccount(database, ws, { name: 'Empty yen card', kind: 'liability', subtype: 'credit_card', currency: 'JPY' });
+    const [point] = await netWorthSeries(database, ws, ['2026-03'], {}, TODAY);
+    expect(point).toMatchObject({ netWorthMinor: opening, missing: [] });
+    expect((await sheetInputsAt(database, ws, TODAY, {})).missing).toEqual([]);
+  });
+});
+
 describe('sheetInputsAt', () => {
   it('returns assets with their group and what they are worth', async () => {
     await recordValuation(database, ws, { accountId: house.id, asOf: '2026-01-15', valueMinor: 1_420_000_000, basis: 'appraisal' });

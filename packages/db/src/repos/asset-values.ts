@@ -148,10 +148,11 @@ export async function netWorthAt(database: Database, ws: WorkspaceContext, date:
 
 /**
  * One figure in the workspace currency for the balance sheet's rows. A currency without a rate is added to `missing`
- * and its row reads 0 — the caller must show `missing` rather than a total built from those rows.
+ * and its row reads 0 — the caller must show `missing` rather than a total built from those rows. A zero amount is
+ * zero in any currency and needs no rate, as in `sumToBase`.
  */
 function toBase(amountMinor: number, currency: string, ws: WorkspaceContext, ratesToBase: Record<string, number>, missing: Set<string>): number {
-  if (currency === ws.baseCurrency) return amountMinor;
+  if (currency === ws.baseCurrency || amountMinor === 0) return amountMinor;
   const rate = ratesToBase[currency];
   if (rate === undefined || !(rate > 0)) {
     missing.add(currency);
