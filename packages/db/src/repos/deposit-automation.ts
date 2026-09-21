@@ -1,10 +1,24 @@
-import { DEFAULT_TAX_BPS, type InterestPaid, type MaturityChoice, TERM_MONTHS, type TermMonths } from '@expanses/core';
-import { and, eq, sql } from 'drizzle-orm';
+import {
+  DEFAULT_TAX_BPS,
+  type DepositEvent,
+  type DepositSchedule,
+  depositInterest,
+  dueDepositEvents,
+  eventKey,
+  type InterestPaid,
+  type MaturityChoice,
+  TERM_MONTHS,
+  type TermMonths,
+  withholdTax,
+} from '@expanses/core';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
-import { depositAutomation } from '../schema-assets';
+import { depositAutomation, depositEvents, depositTerms } from '../schema-assets';
 import { type AccountRow, SPENDABLE_SUBTYPES } from './accounts';
+import type { DepositTermsRow } from './deposit-terms';
+import { nativeBalances } from './ledger';
 
 export type DepositAutomationErrorCode =
   | 'NOT_READY'
@@ -192,4 +206,84 @@ export async function saveDepositAutomation(database: Database, ws: WorkspaceCon
     const { accountId, workspaceId, ...changes } = values;
     await tx.insert(depositAutomation).values(values).onConflictDoUpdate({ target: depositAutomation.accountId, set: changes });
   });
+}
+
+function scheduleOf(settings: DepositAutomationRow, terms: Pick<DepositTermsRow, 'maturesOn'>): DepositSchedule {
+  return {
+    maturesOn: terms.maturesOn,
+    termMonths: settings.termMonths,
+    termStartedOn: settings.termStartedOn,
+    interestPaid: settings.interestPaid,
+    // Only read while enabled, when it is always set; the maturity is a harmless floor otherwise.
+    enabledOn: settings.enabledOn ?? terms.maturesOn,
+  };
+}
+
+async function doneKeysTx(db: Db, ws: WorkspaceContext, accountId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ kind: depositEvents.kind, dueOn: depositEvents.dueOn })
+    .from(depositEvents)
+    .where(and(eq(depositEvents.workspaceId, ws.workspaceId), eq(depositEvents.accountId, accountId)));
+  return new Set(rows.map((row) => eventKey(row.kind, row.dueOn)));
+}
+
+export interface DepositProposal {
+  accountId: string;
+  name: string;
+  currency: string;
+  /** The earliest due event: the only one proposed. */
+  event: DepositEvent;
+  /** How many more are due after it. Each is worked out once the one before it is confirmed. */
+  waiting: number;
+  /** The deposit's balance at the end of the due day. */
+  principalMinor: number;
+  rateBps: number;
+  grossMinor: number;
+  taxMinor: number;
+  netMinor: number;
+  settings: DepositAutomationRow;
+}
+
+/** Every automated deposit of the workspace with something due today or earlier, soonest first. */
+export async function listDueDeposits(database: Database, ws: WorkspaceContext, today: string): Promise<DepositProposal[]> {
+  if (!(await automationTablesExist(database.db))) return [];
+  const rows = await database.db
+    .select({ automation: depositAutomation, terms: depositTerms, name: accounts.name, currency: accounts.currency })
+    .from(depositAutomation)
+    .innerJoin(depositTerms, eq(depositTerms.accountId, depositAutomation.accountId))
+    .innerJoin(accounts, eq(accounts.id, depositAutomation.accountId))
+    .where(
+      and(
+        eq(depositAutomation.workspaceId, ws.workspaceId),
+        eq(accounts.workspaceId, ws.workspaceId),
+        eq(depositAutomation.enabled, 1),
+        isNull(accounts.archivedAt),
+      ),
+    );
+  const proposals: DepositProposal[] = [];
+  for (const row of rows) {
+    if (row.currency === null) continue;
+    const settings = fromRecord(row.automation);
+    const due = dueDepositEvents(scheduleOf(settings, row.terms), await doneKeysTx(database.db, ws, settings.accountId), today);
+    const [event] = due;
+    if (!event) continue;
+    // The existing balance reader, as of the due day: a payout posted into the deposit earlier in the term is in it.
+    const principalMinor = (await nativeBalances(database, ws, event.dueOn))[settings.accountId] ?? 0;
+    const grossMinor = depositInterest(principalMinor, row.terms.rateBps, event.days);
+    const { taxMinor, netMinor } = withholdTax(grossMinor, settings.taxBps, settings.taxExempt);
+    proposals.push({
+      accountId: settings.accountId,
+      name: row.name,
+      currency: row.currency,
+      event,
+      waiting: due.length - 1,
+      principalMinor,
+      rateBps: row.terms.rateBps,
+      grossMinor,
+      taxMinor,
+      netMinor,
+      settings,
+    });
+  }
+  return proposals.sort((a, b) => a.event.dueOn.localeCompare(b.event.dueOn));
 }

@@ -5,6 +5,7 @@ import {
   type Database,
   DepositAutomationError,
   getDepositAutomation,
+  listDueDeposits,
   openCashAccount,
   saveDepositAutomation,
   type SaveDepositAutomationInput,
@@ -104,5 +105,48 @@ describe('where the money may land', () => {
     await refused(on(depositoId, bcaId, { termMonths: 2 as never }));
     await refused(on(depositoId, bcaId, { taxBps: 10_001 }));
     await refused(on(depositoId, bcaId, { taxBps: 12.5 }));
+  });
+});
+
+describe('what is due', () => {
+  it('is nothing while the switch is off, even after the maturity', async () => {
+    expect(await listDueDeposits(database, ws, '2026-12-31')).toEqual([]);
+  });
+
+  it('proposes the maturity on its day, with the figures of the mockup', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    expect(await listDueDeposits(database, ws, '2026-10-14')).toEqual([]);
+    const [proposal] = await listDueDeposits(database, ws, '2026-10-15');
+    expect(proposal).toMatchObject({
+      accountId: depositoId,
+      name: 'BCA Deposito',
+      currency: 'IDR',
+      event: { kind: 'maturity', dueOn: '2026-10-15', periodFrom: '2026-07-15', days: 92 },
+      waiting: 0,
+      principalMinor: 50_000_000,
+      rateBps: 425,
+      grossMinor: 535_616,
+      taxMinor: 107_123,
+      netMinor: 428_493,
+    });
+  });
+
+  it('queues monthly payouts in date order and proposes only the earliest, counting the rest', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const [proposal] = await listDueDeposits(database, ws, '2026-10-15');
+    expect(proposal).toMatchObject({ event: { kind: 'monthly', dueOn: '2026-08-15', days: 31 }, waiting: 2, grossMinor: 180_479, taxMinor: 36_095, netMinor: 144_384 });
+  });
+
+  it('takes no tax from a tax-free deposit', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { taxExempt: true }));
+    const [proposal] = await listDueDeposits(database, ws, '2026-10-15');
+    expect(proposal).toMatchObject({ grossMinor: 535_616, taxMinor: 0, netMinor: 535_616 });
+  });
+
+  it('forgets an archived deposit', async () => {
+    const small = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Empty', currency: 'IDR', maturesOn: '2026-08-15', rateBps: 300 });
+    await saveDepositAutomation(database, ws, on(small.id, bcaId, { termMonths: 1 }));
+    await archiveAccount(database, ws, small.id);
+    expect((await listDueDeposits(database, ws, '2026-10-15')).map((p) => p.accountId)).not.toContain(small.id);
   });
 });
