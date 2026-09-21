@@ -414,6 +414,13 @@ Linking a ticker carries the holding's prices (§3.3) and sets the holding's lot
 setting is hidden for a linked holding ("Set by BBCA"). The price form on a linked holding's page says "This price is
 BBCA's, and values every broker that holds it."
 
+**Re-pointing a linked holding (accepted at the S5 review, concern 6).** Changing a linked holding's ticker from X to
+Y moves no price: X's prices are X's stock price, not the holding's, and carrying them into Y would put one stock's
+prices into another's series. The holding's own rows were already removed at the first link (ruling m12), so nothing
+stale comes back. From the moment it is re-pointed the holding is valued at Y's price, and its lot size becomes Y's,
+so lots typed afterwards count Y's shares. The ledger — units, cost and every balance — is untouched by a link, an
+unlink or a re-point; only where the price comes from changes.
+
 ## 8. The tax report
 
 ### 8.1 C2 — the row names the broker
