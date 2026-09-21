@@ -101,7 +101,7 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
     growthBps: 0,
     returnBps: 200,
     stage: { name: 'Emergency fund', targetMinor: null, targetMonths: 6, monthsAway: 24 },
-    hint: 'Months of spending and debt payments, kept in savings or a deposit.',
+    hint: 'Months of what you spend, with loan principal added, kept in savings or a deposit.',
   },
   {
     kind: 'hajj',

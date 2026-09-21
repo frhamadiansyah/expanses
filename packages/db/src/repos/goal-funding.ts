@@ -50,7 +50,7 @@ export interface GoalSummary {
   plans: GoalPlanRow[];
   neededMonthlyMinor: number;
   plannedMonthlyMinor: number;
-  /** Take-home pay minus spending and debt payments, as a monthly figure. */
+  /** Take-home pay minus spending and loan principal, as a monthly figure. */
   capacityMonthlyMinor: number;
   fits: RankFit[];
 }
