@@ -60,6 +60,8 @@ test('posts edited gross and tax as typed, lands their difference, and a new rat
   await openDeposit(page, s.depositName);
   await automate(page, { choice: 'principal', paid: 'at_maturity', exempt: false });
   await page.getByLabel('Keep the rate when it rolls over').uncheck();
+  // The reload must not overtake the save, or the rate comes back kept.
+  await settingsSaved(page);
   await page.clock.setSystemTime(at(s.matures));
   await page.reload();
   const card = page.getByTestId('deposit-proposal');
