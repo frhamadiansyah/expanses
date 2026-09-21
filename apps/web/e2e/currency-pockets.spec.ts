@@ -150,6 +150,39 @@ test('Lend & borrow adds each side in rupiah at the held rate, and names a rate 
   await expect(total).not.toContainText('500.000');
 });
 
+test('a rate missing only for an earlier month leaves today’s net worth standing (M1)', async ({ page }, testInfo) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  const earlier = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
+  await page.goto('/accounts/new');
+  await page.getByRole('button', { name: 'Saving account' }).click();
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Old Valas');
+  await page.getByLabel('Holds more than one currency').check();
+  await page.getByLabel('Balance as of').fill(earlier);
+  await page.getByLabel('Pocket 1', { exact: true }).selectOption('IDR');
+  await page.getByLabel('Opening IDR', { exact: true }).pressSequentially('5400000');
+  await page.getByLabel('Pocket 2', { exact: true }).selectOption('USD');
+  await page.getByLabel('Opening USD', { exact: true }).pressSequentially('100');
+  await page.getByLabel('Rate: IDR per 1 USD').pressSequentially('16250');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Old Valas', exact: true })).toBeVisible();
+
+  // Every dollar moved to rupiah today, at the last-known rate: today the account holds no USD at all.
+  await page.getByRole('link', { name: 'Old Valas', exact: true }).click();
+  await page.getByRole('link', { name: /Move between pockets/ }).click();
+  await page.getByLabel('From').selectOption('USD');
+  await page.getByLabel('To').selectOption('IDR');
+  await page.getByLabel('Leaves USD').pressSequentially('100');
+  await page.getByLabel('Arrives IDR').pressSequentially('1625000');
+  await page.getByRole('button', { name: 'Move it' }).click();
+  await expect(page.getByTestId('pocket-IDR')).toContainText('7.025.000');
+
+  await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
+  await page.goto('/net-worth');
+  // Earlier months held dollars and cannot be priced; today holds none, so today's figure stands.
+  await expect(page.getByTestId('net-worth')).toContainText('7.025.000');
+  await expect(page.getByTestId('chart-missing')).toContainText('No USD rate');
+});
+
 test('the Money tile adds every account and pocket at today’s rates', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);

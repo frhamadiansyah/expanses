@@ -125,7 +125,9 @@ export function OverviewPage() {
   const points = series.data ?? [];
   // Every rate or no figure: a point, or the balance sheet, that lacks one names it instead of counting that money as 0.
   const charted = points.flatMap((point) => (point.netWorthMinor === null ? [] : [point.netWorthMinor]));
-  const unpriced = [...new Set([...(sheetInputs.data?.missing ?? []), ...points.flatMap((point) => point.missing)])].sort();
+  // The hero is today's figure, so only today's missing rates hide it; an earlier month's hides that month's point.
+  const sheetMissing = sheetInputs.data?.missing ?? [];
+  const unchartable = [...new Set(points.flatMap((point) => point.missing))].sort();
   const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
   const attention = attentionItems(
     values.data ?? [],
@@ -151,7 +153,6 @@ export function OverviewPage() {
   const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);
   // The ratios read the balance sheet on the period's balance date: every rate on that date, or no ratios.
   const periodTotals = ratioTotals(periodSheetInputs.data);
-  const sheetMissing = sheetInputs.data?.missing ?? [];
   const monthsWithData = flows.data?.months ?? 0;
   const monthsNote =
     monthsWithData === 0
@@ -188,8 +189,8 @@ export function OverviewPage() {
           footer="Month-end snapshots. Home and vehicles use your latest estimate; funds, shares and gold use the last price you entered."
         >
           <div data-testid="net-worth">
-            {unpriced.length > 0 ? (
-              <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {unpriced.join(', ')} rate yet, so net worth cannot be added up.</p>
+            {sheetMissing.length > 0 ? (
+              <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
             ) : (
             <Hero
               minor={sheet.netWorthMinor}
@@ -205,6 +206,9 @@ export function OverviewPage() {
           </div>
           {points.length > 0 && charted.length === points.length && (
             <ValueChart values={charted} labels={points.map((point) => MONTH_LABEL(point.month))} currency={ws.baseCurrency} />
+          )}
+          {sheetMissing.length === 0 && unchartable.length > 0 && (
+            <p data-testid="chart-missing" className="text-[13px] leading-[17px] text-[var(--ph-warn)]">No {unchartable.join(', ')} rate for an earlier month, so the year cannot be charted.</p>
           )}
         </Panel>
 
