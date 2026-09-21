@@ -62,6 +62,9 @@ export function BillFormPage({ billId }: { billId?: string }) {
     setPayBy(String(bill.payByDay ?? ''));
     setLoaded(true);
   }, [billId, loaded, templates.data, accounts.data, ws.baseCurrency]);
+  // Until the bill has loaded there is nothing to type into: a field typed in first would be overwritten by the
+  // bill as it lands, and a Save would write the blank form over it. A bill that is no longer there opens blank.
+  const waiting = Boolean(billId) && !loaded && !templates.isError && !(templates.isSuccess && !(templates.data ?? []).some((t) => t.id === billId));
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -104,63 +107,67 @@ export function BillFormPage({ billId }: { billId?: string }) {
         backParams={backParams}
         actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, run: () => form.current?.requestSubmit() }]}
       />
-      <form ref={form} onSubmit={save}>
-        <ErrorBox error={error ?? templates.error} />
-        <InsetGroup>
-          <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Phone, water, gas" />
-          <TextRow
-            label="Amount"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            inputMode="decimal"
-            placeholder="150000"
-            aria-describedby={amountHint}
-            /* The sentence keeps its id, so the box still says out loud which line explains it. */
-            hint={<span id={amountHint}>Leave it empty when it changes every month, like electricity. You'll be asked each time.</span>}
-          />
-          <SelectRow label="Category" value={categoryAccountId} onChange={(e) => setCategoryAccountId(e.target.value)}>
-            <option value="">Choose a category</option>
-            {categories.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </SelectRow>
-          <SelectRow label="Paid from" value={moneyAccountId} onChange={(e) => setMoneyAccountId(e.target.value)}>
-            <option value="">Choose an account</option>
-            {wallets.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </SelectRow>
-        </InsetGroup>
+      {waiting ? (
+        <p className="text-sm text-[var(--ph-ink-3)]">Loading…</p>
+      ) : (
+        <form ref={form} onSubmit={save}>
+          <ErrorBox error={error ?? templates.error} />
+          <InsetGroup>
+            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Phone, water, gas" />
+            <TextRow
+              label="Amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              inputMode="decimal"
+              placeholder="150000"
+              aria-describedby={amountHint}
+              /* The sentence keeps its id, so the box still says out loud which line explains it. */
+              hint={<span id={amountHint}>Leave it empty when it changes every month, like electricity. You'll be asked each time.</span>}
+            />
+            <SelectRow label="Category" value={categoryAccountId} onChange={(e) => setCategoryAccountId(e.target.value)}>
+              <option value="">Choose a category</option>
+              {categories.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </SelectRow>
+            <SelectRow label="Paid from" value={moneyAccountId} onChange={(e) => setMoneyAccountId(e.target.value)}>
+              <option value="">Choose an account</option>
+              {wallets.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </SelectRow>
+          </InsetGroup>
 
-        <InsetGroup header="When" footer="Earlier than the out day means the next month: out on the 28th, pay by the 5th.">
-          <SelectRow label="Repeats" value="monthly" disabled>
-            <option value="monthly">Every month</option>
-          </SelectRow>
-          <SelectRow label="Bill is out on" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
-            {DAYS.map((day) => (
-              <option key={day} value={day}>
-                {ordinal(day)}
-              </option>
-            ))}
-          </SelectRow>
-          <SelectRow label="Pay by" value={payBy} onChange={(e) => setPayBy(e.target.value)}>
-            <option value="">No pay-by day</option>
-            {DAYS.map((day) => (
-              <option key={day} value={day}>
-                {ordinal(day)}
-              </option>
-            ))}
-          </SelectRow>
-        </InsetGroup>
+          <InsetGroup header="When" footer="Earlier than the out day means the next month: out on the 28th, pay by the 5th.">
+            <SelectRow label="Repeats" value="monthly" disabled>
+              <option value="monthly">Every month</option>
+            </SelectRow>
+            <SelectRow label="Bill is out on" value={outDay} onChange={(e) => setOutDay(e.target.value)}>
+              {DAYS.map((day) => (
+                <option key={day} value={day}>
+                  {ordinal(day)}
+                </option>
+              ))}
+            </SelectRow>
+            <SelectRow label="Pay by" value={payBy} onChange={(e) => setPayBy(e.target.value)}>
+              <option value="">No pay-by day</option>
+              {DAYS.map((day) => (
+                <option key={day} value={day}>
+                  {ordinal(day)}
+                </option>
+              ))}
+            </SelectRow>
+          </InsetGroup>
 
-        <InsetGroup>
-          <InsetRow title="Cancel" chevron={false} to={backTo} params={backParams} />
-        </InsetGroup>
-      </form>
+          <InsetGroup>
+            <InsetRow title="Cancel" chevron={false} to={backTo} params={backParams} />
+          </InsetGroup>
+        </form>
+      )}
     </div>
   );
 }
