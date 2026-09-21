@@ -25,6 +25,7 @@ import { BALANCE_SUBTYPES, pocketParentIds } from './accounts';
 import { installmentTotals } from './installments';
 import { nativeBalances } from './ledger';
 import { scheduleFor } from './loans';
+import { allSecurityPrices, listHoldingLinks } from './securities';
 import { listTrades } from './trades';
 
 export interface AssetValueRow extends AssetValue {
@@ -82,12 +83,18 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
   for (const trade of trades) tradesByAccount.set(trade.accountId, [...(tradesByAccount.get(trade.accountId) ?? []), trade]);
   const priceRows = await database.db.select().from(prices).where(eq(prices.workspaceId, ws.workspaceId));
   const valuationRows = await database.db.select().from(valuations).where(eq(valuations.workspaceId, ws.workspaceId));
+  // A holding with a security is valued from the security's prices alone (spec §3.1); the rest from its own.
+  const securityOf = new Map((await listHoldingLinks(database, ws)).filter((link) => link.securityId).map((link) => [link.accountId, link.securityId!]));
+  const securityPriceRows = securityOf.size > 0 ? await allSecurityPrices(database, ws) : [];
 
   return assetsAccounts.map((account) => {
     const profile = profileByAccount.get(account.id);
     const mode: ValuationMode = profile ? presetFor(profile.assetKind).valuationMode : account.valuationMode;
     const position: Position | undefined = mode === 'market' ? positionAfter(tradesByAccount.get(account.id) ?? [], date) : undefined;
-    const accountPrices: PriceRow[] = priceRows.filter((row) => row.accountId === account.id).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }));
+    const securityId = securityOf.get(account.id);
+    const accountPrices: PriceRow[] = securityId
+      ? securityPriceRows.filter((row) => row.securityId === securityId).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }))
+      : priceRows.filter((row) => row.accountId === account.id).map((row) => ({ onDate: row.onDate, priceMicro: row.priceMicro }));
     const accountValuations: ValuationRow[] = valuationRows
       .filter((row) => row.accountId === account.id)
       .map((row) => ({ asOf: row.asOf, valueMinor: row.valueMinor, basis: row.basis }));
