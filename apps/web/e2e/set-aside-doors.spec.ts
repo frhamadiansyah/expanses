@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { addMoneyAccount, goalCard, jeniusWithTwoGoals, openExpense, typeAmount } from './set-aside';
 
 /*
@@ -100,6 +100,22 @@ test('paying chosen purchases now from Jenius asks the same question', async ({ 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
 });
 
+/**
+ * An Enter that went round the question would have posted before the answer: the question is still up after a wait long
+ * enough for a write to land, and in the end exactly one row was recorded.
+ */
+async function enterWaitsForTheQuestion(page: Page, field: Locator) {
+  await field.press('Enter');
+  await page.waitForTimeout(1_000);
+  await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+}
+
+async function expectRecordedOnce(page: Page, text: RegExp) {
+  await page.goto('/transactions');
+  await expect(page.locator('li').filter({ hasText: text }).first()).toBeVisible();
+  await expect(page.locator('li').filter({ hasText: text })).toHaveCount(1);
+}
+
 // ── Bills ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 async function addBill(page: Page, name: string, amount: string) {
@@ -125,13 +141,14 @@ test('paying a bill from Jenius asks, and Record waits for the answer', async ({
   const record = sheet.getByRole('button', { name: 'Record payment' });
   await expect(record).toBeDisabled();
   // Enter in the amount is a submit too: it must not go round the question.
-  await sheet.getByLabel('What it came to').press('Enter');
+  await enterWaitsForTheQuestion(page, sheet.getByLabel('What it came to'));
   await expect(sheet).toBeVisible();
   await borrowFromEmergencyFund(sheet);
   await record.click();
   await expect(sheet).toHaveCount(0);
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
+  await expectRecordedOnce(page, /Rent/);
 });
 
 test('paying several bills asks once for what they take together, spread over the bills in order', async ({ page }) => {
@@ -231,13 +248,14 @@ test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
   const save = page.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
   // Enter in a field submits the form: it must not go round the question.
-  await page.getByLabel('Person').press('Enter');
+  await enterWaitsForTheQuestion(page, page.getByLabel('Person'));
   await expect(page.getByRole('heading', { name: 'Andi' })).toHaveCount(0);
   await borrowFromEmergencyFund(page.locator('body'));
   await save.click();
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
+  await expectRecordedOnce(page, /Andi/);
 });
 
 test('paying Budi back from Jenius asks; the loan came into another account', async ({ page }) => {
@@ -341,13 +359,14 @@ test('spending on an event from Jenius asks', async ({ page }) => {
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
-  await page.getByLabel('Amount', { exact: true }).press('Enter');
+  await enterWaitsForTheQuestion(page, page.getByLabel('Amount', { exact: true }));
   await expect(page.getByLabel('Description')).toHaveValue('Hampers');
   await borrowFromEmergencyFund(page.locator('body'));
   await save.click();
   await expect(page.getByLabel('Description')).toHaveValue('');
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
+  await expectRecordedOnce(page, /Hampers/);
 });
 
 // ── The desktop's quick rows and the review queue ─────────────────────────────────────────────────────────────────
