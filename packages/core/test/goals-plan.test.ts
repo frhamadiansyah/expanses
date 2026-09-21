@@ -238,6 +238,19 @@ describe('fitByRank', () => {
     const fits = fitByRank(plans, goals, 0);
     expect(fits.every((fit) => fit.fits === 'none')).toBe(true);
   });
+
+  it('clamps a negative capacity to zero rather than paying out of what is not there', () => {
+    const fits = fitByRank(plans, goals, -1);
+    expect(fits.every((fit) => fit.fits === 'none')).toBe(true);
+    expect(fits.every((fit) => fit.fundedMonthlyMinor === 0)).toBe(true);
+  });
+
+  it('treats a requirement at or below zero as already met, never adding it to what is left', () => {
+    const negative = { ...plans[0]!, goalId: 'ef', requiredMonthlyMinor: -1_000_000 };
+    const fits = fitByRank([negative, plans[1]!], goals, 600_000);
+    expect(fits.find((fit) => fit.goalId === 'ef')).toMatchObject({ fits: 'full', fundedMonthlyMinor: 0 });
+    expect(fits.find((fit) => fit.goalId === 'hajj')).toMatchObject({ fits: 'full', fundedMonthlyMinor: 600_000 });
+  });
 });
 
 describe('a stage with a return of its own', () => {

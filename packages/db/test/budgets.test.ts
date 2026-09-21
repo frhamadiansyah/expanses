@@ -1,5 +1,6 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { BudgetError, createAccount, listBudgets, removeBudget, saveBudget, clearBudgetOverride, setBudgetOverride } from '../src/index';
+import { BudgetError, createAccount, healthSchema, listBudgets, removeBudget, saveBudget, clearBudgetOverride, setBudgetOverride } from '../src/index';
 import { setupDb } from './helpers';
 
 async function withCategories() {
@@ -103,5 +104,17 @@ describe('removing a budget', () => {
     await removeBudget(database, ws, food.id);
 
     expect(await listBudgets(database, ws, '2026-12')).toEqual([]);
+  });
+
+  it('takes its frequency row with it too, leaving no orphan behind', async () => {
+    const { database, ws, food } = await withCategories();
+    await saveBudget(database, ws, { categoryAccountId: food.id, amountMinor: 500_000, frequency: 'weekly' });
+    const [before] = await database.db.select().from(healthSchema.budgetFrequencies).where(eq(healthSchema.budgetFrequencies.workspaceId, ws.workspaceId));
+    expect(before).toBeDefined();
+
+    await removeBudget(database, ws, food.id);
+
+    const rows = await database.db.select().from(healthSchema.budgetFrequencies).where(eq(healthSchema.budgetFrequencies.workspaceId, ws.workspaceId));
+    expect(rows).toEqual([]);
   });
 });

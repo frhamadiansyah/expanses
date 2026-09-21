@@ -26,6 +26,18 @@ describe('a budget typed in another unit', () => {
     expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 4_333, amountAsSetMinor: 1_000 });
   });
 
+  it('re-saving an existing monthly line as weekly stores the month worked out, not the figure as typed', async () => {
+    const { database, ws } = await setupDb();
+    const groceries = (await categoryIdsByKey(database, ws))['household.groceries']!;
+    await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 2_000_000 });
+    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 2_000_000, frequency: 'monthly' });
+
+    await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 500_000, frequency: 'weekly' });
+    // The update branch must write the worked-out month, not the Rp 500.000 as typed: that would leave
+    // every cap reader thinking groceries costs Rp 500.000 a month, not Rp 2.166.667.
+    expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 2_166_667, amountMinor: 2_166_667, frequency: 'weekly', amountAsSetMinor: 500_000 });
+  });
+
   it('drops the unit when set monthly again', async () => {
     const { database, ws } = await setupDb();
     const groceries = (await categoryIdsByKey(database, ws))['household.groceries']!;
@@ -79,6 +91,27 @@ describe('a budget typed in another unit', () => {
     expect((await listBudgets(database, book, MONTH)).find((row) => row.categoryAccountId === software.id)).toMatchObject({ frequency: 'weekly', amountAsSetMinor: 4_150, planMinor: 17_983 });
   });
 
+  it('converts the amount as typed and works the month out from it, even where the two routes disagree', async () => {
+    // At IDR→SGD 0,000083 above, converting the typed figure and converting the stored month happen to land on
+    // the same 17.983 cents, so that test alone cannot tell the two routes apart. USD→IDR at 16.000 can: this is
+    // the review's own discriminating fixture.
+    const { database, ws } = await setupDb();
+    const biz = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'USD' });
+    const book = inBook(ws, biz);
+    const software = await createAccount(database, book, { name: 'Software', kind: 'expense', subtype: 'category', currency: null });
+    // US$41,50 a week.
+    await saveBudget(database, book, { categoryAccountId: software.id, amountMinor: 4_150, frequency: 'weekly' });
+    await upsertRate(database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: isoDate(), rate: 16_000, source: 'manual', sourceDate: isoDate() });
+    await setBookBaseCurrency(database, ws, biz, 'IDR');
+    // US$41,50 at 16.000 converts once to Rp 664.000, then 52 ÷ 12 gives Rp 2.877.333 a month. Converting the old
+    // monthly figure (US$179,83 → 17.983 cents) directly instead would give Rp 2.877.280 — a different figure.
+    expect((await listBudgets(database, book, MONTH)).find((row) => row.categoryAccountId === software.id)).toMatchObject({
+      frequency: 'weekly',
+      amountAsSetMinor: 664_000,
+      planMinor: 2_877_333,
+    });
+  });
+
   it('turns a line monthly when the amount as typed would come to nothing in the new money', async () => {
     const { database, ws } = await setupDb();
     const biz = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
@@ -100,5 +133,23 @@ describe('a budget typed in another unit', () => {
     const groceries = (await listAccounts(database, ws)).find((a) => a.systemKey === 'household.groceries')!.id;
     await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 500_000, frequency: 'weekly' });
     expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ planMinor: 2_166_667, frequency: 'monthly', amountAsSetMinor: 2_166_667 });
+  });
+
+  it('removes a budget and changes a book’s currency on a database stopped before 0053, without the health tables', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database, MIGRATIONS.filter((m) => m.version <= 49));
+    const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    const biz = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const book = inBook(ws, biz);
+    const software = await createAccount(database, book, { name: 'Software', kind: 'expense', subtype: 'category', currency: null });
+    await saveBudget(database, book, { categoryAccountId: software.id, amountMinor: 500_000 });
+    await upsertRate(database, { fromCurrency: 'IDR', toCurrency: 'SGD', onDate: isoDate(), rate: 0.000083, source: 'manual', sourceDate: isoDate() });
+
+    // Neither call may throw "no such table: budget_frequencies" — the guard each one carries must hold
+    // on a database this old, exactly as it does for save and list.
+    await expect(setBookBaseCurrency(database, ws, biz, 'SGD')).resolves.toMatchObject({ rate: 0.000083 });
+    await expect(removeBudget(database, book, software.id)).resolves.toBeUndefined();
+    expect(await listBudgets(database, book, MONTH)).toEqual([]);
   });
 });
