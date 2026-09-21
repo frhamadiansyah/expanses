@@ -18,6 +18,27 @@ test('is off by default and changes nothing', async ({ page }) => {
   await expectBalance(page, s.payoutName, '1.000.000');
 });
 
+test('says Due on the assets row while a proposal waits, and not once it is settled', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'principal', paid: 'at_maturity', exempt: false });
+  const row = page.getByRole('link', { name: /^BCA Deposito/ });
+  await page.goto('/net-worth/assets');
+  await expect(row).toContainText('Ledger balance');
+  await expect(row).not.toContainText('Due');
+  await page.clock.setSystemTime(at(s.matures));
+  await page.goto('/net-worth/assets');
+  await expect(row).toContainText(/Ledger balance · .+ · Due/);
+  // Nothing else about the row changes, and the payout account is never marked.
+  await expect(page.getByRole('link', { name: /^BCA Tahapan/ })).not.toContainText('Due');
+  await row.click();
+  await page.getByTestId('deposit-proposal').getByRole('button', { name: 'Confirm' }).click();
+  await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
+  await page.goto('/net-worth/assets');
+  await expect(row).toContainText('Ledger balance');
+  await expect(row).not.toContainText('Due');
+});
+
 test('keeps its settings across a reload, and a typed withholding', async ({ page }) => {
   const s = await setUp(page, 'IDR');
   await openDeposit(page, s.depositName);

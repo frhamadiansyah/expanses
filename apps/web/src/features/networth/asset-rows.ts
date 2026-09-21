@@ -15,6 +15,8 @@ export interface AssetRow {
   stale: boolean;
   /** A holding that has been sold: nothing left, but kept for gains and the tax report. */
   sold: boolean;
+  /** An automated deposit with a proposal waiting on its page. */
+  due: boolean;
 }
 
 export interface AssetGroup {
@@ -24,7 +26,7 @@ export interface AssetGroup {
   rows: AssetRow[];
 }
 
-function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined): AssetRow {
+function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: boolean): AssetRow {
   const section = profile?.coretaxSection;
   return {
     accountId: value.accountId,
@@ -36,13 +38,17 @@ function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined): Asse
     coretax: profile?.coretaxCode && section ? `${profile.coretaxCode} · ${CORETAX_SECTION_LABELS[section] ?? section}` : '',
     stale: value.stale,
     sold: value.mode === 'market' && value.unitsMicro === 0,
+    due,
   };
 }
 
-/** Assets in balance-sheet order. Sold holdings are listed but never counted in a total. */
-export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[]): AssetGroup[] {
+/**
+ * Assets in balance-sheet order. Sold holdings are listed but never counted in a total. `due` holds the deposits
+ * with a proposal waiting (spec §7); every other caller leaves it out, and nothing is due.
+ */
+export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[], due: ReadonlySet<string> = new Set()): AssetGroup[] {
   const profileByAccount = new Map(profiles.map((profile) => [profile.accountId, profile]));
-  const rows = values.map((value) => toRow(value, profileByAccount.get(value.accountId)));
+  const rows = values.map((value) => toRow(value, profileByAccount.get(value.accountId), due.has(value.accountId)));
   return PLAN_GROUP_ORDER.map((group) => {
     const groupRows = rows.filter((row) => row.planGroup === group);
     return {
@@ -59,3 +65,10 @@ export const liveGroups = (groups: AssetGroup[]): AssetGroup[] =>
   groups.map((group) => ({ ...group, rows: group.rows.filter((row) => !row.sold) })).filter((group) => group.rows.length > 0);
 export const totalOf = (groups: AssetGroup[]): number => groups.reduce((total, group) => total + group.totalMinor, 0);
 export const staleRows = (groups: AssetGroup[]): AssetRow[] => groups.flatMap((group) => group.rows.filter((row) => row.stale && !row.sold));
+
+/** What the row says under its name: how it is valued, its tax code, and whether it needs attention. */
+export function rowSubtitle(row: AssetRow): string {
+  return [row.method, row.coretax, row.stale && !row.sold ? 'Update price' : null, row.sold ? 'Sold' : null, row.due ? 'Due' : null]
+    .filter(Boolean)
+    .join(' · ');
+}
