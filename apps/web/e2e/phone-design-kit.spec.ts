@@ -103,7 +103,8 @@ test('a table with nothing to open keeps every column at phone width, and scroll
   await expect(table.getByRole('cell', { name: 'SPBU 34-12907 Pondok Indah' })).toBeAttached();
 
   // The table scrolls inside its own box; the page body does not scroll sideways for it.
-  const scroller = group.locator('div').first();
+  // The scroller is the table's own parent: `group`'s first `div` is the header above the table, not the box.
+  const scroller = table.locator('..');
   const overflow = await scroller.evaluate((node) => ({
     wider: node.scrollWidth > node.clientWidth,
     body: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
