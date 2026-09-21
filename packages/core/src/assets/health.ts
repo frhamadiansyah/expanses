@@ -1,4 +1,5 @@
 import type { Goal } from '../goals/plan';
+import type { BalanceSheet } from './balance-sheet';
 
 /**
  * The personal financial ratios the planning guides use, with their benchmarks. Formulas and benchmarks live here and nowhere else; status bands are derived
@@ -33,6 +34,22 @@ export interface SheetTotals {
   assetsMinor: number;
   liabilitiesMinor: number;
   netWorthMinor: number;
+}
+
+/**
+ * The five totals the ratios read, from a balance sheet: every account is inside its group's total, so nothing listed
+ * by hand can fall outside one (the workbook's gold and jewellery). The net-worth page and the life cover prefill both
+ * call this, so the two cannot disagree.
+ */
+export function sheetTotals(sheet: BalanceSheet): SheetTotals {
+  const groupTotal = (key: string) => sheet.assetGroups.find((group) => group.key === key)?.totalMinor ?? 0;
+  return {
+    liquidMinor: groupTotal('liquid'),
+    investMinor: groupTotal('invest'),
+    assetsMinor: sheet.assetsTotalMinor,
+    liabilitiesMinor: sheet.liabilitiesTotalMinor,
+    netWorthMinor: sheet.netWorthMinor,
+  };
 }
 
 export type EmergencyBase = 'essential' | 'all';

@@ -59,6 +59,7 @@ export * from './repos/budget-settings';
 export * from './repos/budget-sheet';
 export * from './repos/goal-contributions';
 export * from './repos/goal-calculators';
+export * from './repos/calculator-inputs';
 export * from './repos/point-ledger';
 export * from './repos/coretax-income';
 export * from './repos/business-income';

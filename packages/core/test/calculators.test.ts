@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   CalculatorError,
-  educationStages,
   emergencyTargetMinor,
   futureValueMinor,
   lifeCoverMinor,
@@ -21,38 +20,6 @@ describe('the emergency fund', () => {
   it('refuses a number of months that is not one', () => {
     expect(() => emergencyTargetMinor(0, 15_000_000)).toThrow(CalculatorError);
     expect(() => emergencyTargetMinor(-1, 15_000_000)).toThrow(CalculatorError);
-  });
-});
-
-describe('education', () => {
-  const inputs = { feeTodayMinor: 100_000_000, startsInYears: 10, yearsOfStudy: 4, feeInflationBps: 1000 };
-
-  it('gives each year of study its own stage', () => {
-    expect(educationStages(inputs, TODAY)).toHaveLength(4);
-  });
-
-  it('inflates each year to the year it falls due, not to the first one', () => {
-    const stages = educationStages(inputs, TODAY);
-
-    expect(stages[0]!.targetMinor).toBe(Math.round(100_000_000 * 1.1 ** 10));
-    expect(stages[3]!.targetMinor).toBe(Math.round(100_000_000 * 1.1 ** 13));
-    expect(stages[3]!.targetMinor).toBeGreaterThan(stages[0]!.targetMinor);
-  });
-
-  it('dates the stages a year apart, from when the course starts', () => {
-    const stages = educationStages(inputs, TODAY);
-
-    expect(stages[0]!.dueOn).toBe('2036-09-13');
-    expect(stages[3]!.dueOn).toBe('2039-09-13');
-  });
-
-  it('leaves the fee alone when nothing is expected to inflate', () => {
-    expect(educationStages({ ...inputs, feeInflationBps: 0 }, TODAY)[0]!.targetMinor).toBe(100_000_000);
-  });
-
-  it('refuses a course that lasts no years, or a fee of nothing', () => {
-    expect(() => educationStages({ ...inputs, yearsOfStudy: 0 }, TODAY)).toThrow(CalculatorError);
-    expect(() => educationStages({ ...inputs, feeTodayMinor: 0 }, TODAY)).toThrow(CalculatorError);
   });
 });
 

@@ -1,4 +1,4 @@
-import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type ScheduleRow, type SheetGroup, type SheetTotals } from '@expanses/core';
+import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type ScheduleRow, type SheetGroup, sheetTotals } from '@expanses/core';
 import { scheduleFor } from '@expanses/db';
 import { useQueries } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -147,14 +147,8 @@ export function OverviewPage() {
   const januaryMonths = monthsSinceJanuary(points);
   const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);
   const periodSheet = balanceSheet(periodSheetInputs.data?.assets ?? [], periodSheetInputs.data?.liabilities ?? []);
-  const groupTotal = (key: string) => periodSheet.assetGroups.find((group) => group.key === key)?.totalMinor ?? 0;
-  const totals: SheetTotals = {
-    liquidMinor: groupTotal('liquid'),
-    investMinor: groupTotal('invest'),
-    assetsMinor: periodSheet.assetsTotalMinor,
-    liabilitiesMinor: periodSheet.liabilitiesTotalMinor,
-    netWorthMinor: periodSheet.netWorthMinor,
-  };
+  // The one reader of the sheet's totals; the life cover prefill on Calculators calls it too.
+  const totals = sheetTotals(periodSheet);
   const monthsWithData = flows.data?.months ?? 0;
   const monthsNote =
     monthsWithData === 0

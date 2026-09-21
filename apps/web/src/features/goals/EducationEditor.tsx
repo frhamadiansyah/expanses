@@ -1,6 +1,7 @@
 import { bandHint, levelStartsOn, monthsUntil, type ReturnBand, returnBandFor } from '@expanses/core';
 import type { ReactElement } from 'react';
 import { DestructiveRow, InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { readPercent, readWhole } from '../calculators/fields';
 import { addFee, addLevel, type EducationDraft, educationInputsOf, type FeeDraft, type LevelDraft, levelWhen } from './education-model';
 
 /**
@@ -20,6 +21,18 @@ export function EducationEditor({
   today: string;
 }) {
   const byAge = value.birthday.trim() !== '';
+  // A box that does not read says so on its own row; an empty one is only not filled in yet.
+  const percentProblem = (typed: string) => {
+    if (typed.trim() === '') return undefined;
+    const read = readPercent(typed);
+    if (!read.ok) return read.problem;
+    return read.value < 0 ? 'Not below nothing' : undefined;
+  };
+  const yearProblem = (typed: string) => {
+    if (typed.trim() === '') return undefined;
+    const read = readWhole(typed);
+    return read.ok ? undefined : read.problem.replace('years', byAge ? 'ages' : 'years').replace('like 10', byAge ? 'like 6' : 'like 2032');
+  };
   const setLevel = (id: string, next: LevelDraft) => onChange({ ...value, levels: value.levels.map((level) => (level.id === id ? next : level)) });
   const setFee = (level: LevelDraft, id: string, patch: Partial<FeeDraft>) =>
     setLevel(level.id, { ...level, fees: level.fees.map((fee) => (fee.id === id ? { ...fee, ...patch } : fee)) });
@@ -38,7 +51,13 @@ export function EducationEditor({
     <>
       <InsetGroup header="The child" footer="Levels are set by age once a birthday is given; without one, by calendar year.">
         <TextRow label="Birthday" type="date" value={value.birthday} onChange={(e) => onChange({ ...value, birthday: e.target.value })} />
-        <TextRow label="Fee inflation a year (%)" value={value.feeInflation} onChange={(e) => onChange({ ...value, feeInflation: e.target.value })} inputMode="decimal" />
+        <TextRow
+          label="Fee inflation a year (%)"
+          hint={value.feeInflation.trim() === '' ? 'Type a percentage, like 10' : percentProblem(value.feeInflation)}
+          value={value.feeInflation}
+          onChange={(e) => onChange({ ...value, feeInflation: e.target.value })}
+          inputMode="decimal"
+        />
       </InsetGroup>
 
       {value.levels.map((level) => {
@@ -71,17 +90,19 @@ export function EducationEditor({
           <div key={level.id}>
             <InsetGroup
               header={level.name.trim() || 'Level'}
-              footer={level.start.trim() && level.until.trim() ? levelWhen(level, value.birthday) : undefined}
+              footer={readWhole(level.start).ok && readWhole(level.until).ok ? levelWhen(level, value.birthday) : undefined}
             >
               <TextRow label="Level name" value={level.name} onChange={(e) => setLevel(level.id, { ...level, name: e.target.value })} />
               <TextRow
                 label={byAge ? 'Starts at age' : 'Starts in year'}
+                hint={yearProblem(level.start)}
                 value={level.start}
                 onChange={(e) => setLevel(level.id, { ...level, start: e.target.value })}
                 inputMode="numeric"
               />
               <TextRow
                 label={byAge ? 'Until age' : 'Until year'}
+                hint={yearProblem(level.until)}
                 value={level.until}
                 onChange={(e) => setLevel(level.id, { ...level, until: e.target.value })}
                 inputMode="numeric"
@@ -90,7 +111,7 @@ export function EducationEditor({
               <InsetRow title="Add a cost" label={`Add a cost to ${title}`} onClick={() => setLevel(level.id, addFee(level))} />
               <TextRow
                 label="Assumed return (%)"
-                hint={band ? bandHint(band) : 'Set when it starts to see its band.'}
+                hint={(level.returnTyped ? percentProblem(level.returnPercent) : undefined) ?? (band ? bandHint(band) : 'Set when it starts to see its band.')}
                 value={level.returnTyped ? level.returnPercent : band ? String(band.returnBps / 100) : ''}
                 onChange={(e) => setLevel(level.id, { ...level, returnPercent: e.target.value, returnTyped: true })}
                 inputMode="decimal"

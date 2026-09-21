@@ -218,6 +218,7 @@ export {
   type RatioKey,
   type RatioSettings,
   type RatioStatus,
+  sheetTotals,
   type SheetTotals,
   WATCH_BAND,
 } from './assets/health';
@@ -339,8 +340,6 @@ export {
 } from './goals/assumptions';
 export {
   CalculatorError,
-  type CalculatedStage,
-  educationStages,
   type EducationInputs,
   emergencyTargetMinor,
   type LifeCover,

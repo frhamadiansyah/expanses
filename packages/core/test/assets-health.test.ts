@@ -292,3 +292,31 @@ describe('bands', () => {
     }
   });
 });
+
+describe('sheetTotals', () => {
+  it('reads the five totals from the balance sheet, every account in them — gold and jewellery included', async () => {
+    const { balanceSheet, sheetTotals } = await import('../src/index');
+    const sheet = balanceSheet(
+      [
+        { accountId: 'bank', name: 'Bank', planGroup: 'liquid', valueMinor: 200_000_000 },
+        { accountId: 'mmf', name: 'Money market', planGroup: 'liquid', valueMinor: 50_000_000 },
+        { accountId: 'gold', name: 'Gold bars', planGroup: 'invest', valueMinor: 90_000_000 },
+        { accountId: 'jewel', name: 'Jewellery', planGroup: 'invest', valueMinor: 10_000_000 },
+        { accountId: 'house', name: 'House', planGroup: 'use', valueMinor: 550_000_000 },
+      ],
+      [{ accountId: 'loan', name: 'Mortgage', subtype: 'loan', balanceMinor: 300_000_000, dueWithinYearMinor: 24_000_000, note: null }],
+    );
+    expect(sheetTotals(sheet)).toEqual({
+      liquidMinor: 250_000_000,
+      investMinor: 100_000_000,
+      assetsMinor: 900_000_000,
+      liabilitiesMinor: 300_000_000,
+      netWorthMinor: 600_000_000,
+    });
+  });
+
+  it('is all zeros on an empty sheet', async () => {
+    const { balanceSheet, sheetTotals } = await import('../src/index');
+    expect(sheetTotals(balanceSheet([], []))).toEqual({ liquidMinor: 0, investMinor: 0, assetsMinor: 0, liabilitiesMinor: 0, netWorthMinor: 0 });
+  });
+});

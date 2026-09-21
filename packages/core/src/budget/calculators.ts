@@ -28,40 +28,13 @@ export function emergencyTargetMinor(months: number, monthlyOutgoingMinor: numbe
   return roundHalfAwayFromZero(months * monthlyOutgoingMinor);
 }
 
+/** A one-course education working from before levels existed (v1). Only `educationFromV1` reads it now. */
 export interface EducationInputs {
   /** What one year costs at today's prices. */
   feeTodayMinor: number;
   startsInYears: number;
   yearsOfStudy: number;
   feeInflationBps: number;
-}
-
-export interface CalculatedStage {
-  dueOn: string;
-  targetMinor: number;
-}
-
-/**
- * One stage per year of study, each inflated to the year it is actually paid — a fourth year costs
- * more than a first, and paying for all four at first-year prices is the usual way to come up short.
- */
-export function educationStages(inputs: EducationInputs, today: string): CalculatedStage[] {
-  assertAbove(inputs.feeTodayMinor, 0, 'The fee');
-  assertAbove(inputs.yearsOfStudy, 0, 'The number of years of study');
-  if (inputs.startsInYears < 0) throw new CalculatorError('A course cannot start in the past');
-  if (inputs.feeInflationBps < 0) throw new CalculatorError('Fees cannot inflate by less than nothing');
-
-  const inflation = 1 + inputs.feeInflationBps / 10_000;
-  const [year, month, day] = today.split('-').map(Number);
-
-  return Array.from({ length: inputs.yearsOfStudy }, (_, index) => {
-    const yearsAway = inputs.startsInYears + index;
-    const due = new Date(Date.UTC(year! + yearsAway, month! - 1, day!));
-    return {
-      dueOn: due.toISOString().slice(0, 10),
-      targetMinor: roundHalfAwayFromZero(inputs.feeTodayMinor * inflation ** yearsAway),
-    };
-  });
 }
 
 /**

@@ -266,7 +266,7 @@ cover = PV(yearly family need, years of support, inflation, return)
 - **Not built:** the workbook's lowest-of-four-methods and its after-the-fact "− assets + debts" (which double-counts on
   a needs-based result); any rounding down to a round number; a critical-illness or accident rider calculator — no
   published sizing rule exists; any income multiple; any country-specific benefit offset.
-- **The figures are remembered** (user decision, 2026-09-21): "Keep these figures" stores what was typed in `goal_calculators.inputs_json`, with no schema change — one reserved row per workspace (`goal_id` `life-cover:<workspace>`; `kind` retirement only because 0017's CHECK allows three kinds; the JSON says `calculator: life_cover`), which every goal reader skips. A prefilled box never typed in is not stored, so it keeps following the balance sheet. No goal is made.
+- **The figures are remembered** (user decision, 2026-09-21; storage ruled 2026-09-21): "Keep these figures" stores what was typed in 0053's own `calculator_inputs` table (`workspace_id`, `kind` = `life_cover`, `inputs_json`, `updated_at`), guarded by `healthTablesExist` — not a reserved `goal_calculators` row, so no goal reader has anything to skip. A prefilled box never typed in is not stored, so it keeps following the balance sheet. No goal is made. A prefill whose accounts include a currency with no rate yet is not offered: the row says which currency and asks for the figure, rather than counting those accounts as nothing.
 
 ## 12. The workbook's four bugs — none inherited
 
