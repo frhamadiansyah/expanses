@@ -72,6 +72,29 @@ describe('a level’s years', () => {
     expect(() => educationPlanStages(plan([primary({ fees: [fee('Academic', -1, 'yearly'), fee('Other', 5, 'once')] })]), '2026-01-01')).toThrow(CalculatorError);
     expect(() => educationPlanStages(plan([primary(), primary({ startYear: 2038, untilYear: 2041 })]), '2026-01-01')).toThrow(CalculatorError);
   });
+
+  it('refuses a level set by age that ends before it starts, rather than silently make no stages', () => {
+    const sameAge = primary({ startAge: 8, untilAge: 8, startYear: null, untilYear: null });
+    expect(() => educationPlanStages(plan([sameAge], '2020-07-15'), '2026-01-01')).toThrow(CalculatorError);
+  });
+
+  it('refuses a starting age below nothing', () => {
+    const negativeAge = primary({ startAge: -1, untilAge: 5, startYear: null, untilYear: null });
+    expect(() => educationPlanStages(plan([negativeAge], '2020-07-15'), '2026-01-01')).toThrow(CalculatorError);
+  });
+
+  it('refuses a level with no start and no end at all', () => {
+    const nothingSet = primary({ startAge: null, untilAge: null, startYear: null, untilYear: null });
+    expect(() => educationPlanStages(plan([nothingSet]), '2026-01-01')).toThrow(CalculatorError);
+  });
+
+  it('refuses fees that inflate by less than nothing', () => {
+    expect(() => educationPlanStages({ ...plan([primary()]), feeInflationBps: -1 }, '2026-01-01')).toThrow(CalculatorError);
+  });
+
+  it('refuses a working with no level at all', () => {
+    expect(() => educationPlanStages(plan([]), '2026-01-01')).toThrow(CalculatorError);
+  });
 });
 
 describe('a working from before levels', () => {
@@ -82,5 +105,13 @@ describe('a working from before levels', () => {
       feeInflationBps: 1000,
       levels: [{ id: 'course', name: 'Course', startAge: null, untilAge: null, startYear: 2036, untilYear: 2040, returnBps: null, fees: [{ id: 'fee', name: 'Fee', amountTodayMinor: 100_000_000, charged: 'yearly' }] }],
     });
+  });
+
+  it('rounds a part year, unlike v1’s own Date.UTC, which truncated it', () => {
+    // Math.round(2.5) = 3, so 2026 + 3 = 2029 — not the 2028 that Math.floor (v1's own Date.UTC coercion)
+    // would give. Math.round(3.5) = 4, so the course runs 2029..2033, not 2028..2032.
+    const plan = educationFromV1({ feeTodayMinor: 100_000_000, startsInYears: 2.5, yearsOfStudy: 3.5, feeInflationBps: 1000 }, '2026-09-13');
+    expect(plan.levels[0]!.startYear).toBe(2029);
+    expect(plan.levels[0]!.untilYear).toBe(2033);
   });
 });
