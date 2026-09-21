@@ -131,6 +131,8 @@ export async function followDepositEventTx(tx: Db, ws: WorkspaceContext, fromId:
     const grossMinor = Math.max(0, -sum((line) => line.kind === 'income'));
     // Only the tax line the confirm posted (tradeAccountsFor's category): a fee added on an edit is not tax withheld.
     const taxCategoryId = (await categoryIdsByKeyTx(tx, ws))['government_taxes.estimated_tax'];
+    // A credit on that line is a refund, not tax withheld: the log never holds a tax below zero (confirm refuses one
+    // too), so it reads as none, and the log keeps gross = net + tax.
     const taxMinor = Math.max(0, sum((line) => line.accountId === taxCategoryId));
     await tx
       .update(depositEvents)

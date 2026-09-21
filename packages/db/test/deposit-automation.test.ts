@@ -754,3 +754,23 @@ describe('recorded it myself, with the figures corrected', () => {
     expect(await incomeAndTax()).toEqual({ income: 0, tax: 0 });
   });
 });
+
+describe('editing the posted interest, beyond the tax the confirm posted', () => {
+  it('reads a credit on the tax line (a refund) as no tax withheld, never as a negative one', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const result = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    const keys = await categoryIdsByKeyTx(database.db, ws);
+    await replaceTransaction(database, ws, result.interestTransactionId!, {
+      occurredOn: '2026-08-15',
+      description: 'Interest: BCA Deposito',
+      lines: [
+        { accountId: bcaId, amountMinor: 185_479, currency: 'IDR' },
+        { accountId: keys['government_taxes.estimated_tax']!, amountMinor: -5_000, currency: 'IDR' },
+        { accountId: keys['income.investment']!, amountMinor: -180_479, currency: 'IDR' },
+      ],
+    });
+    // Tax withheld cannot be below zero (confirm refuses it too), so the log keeps gross = net + tax with tax 0.
+    expect(await logged()).toMatchObject([{ grossMinor: 180_479, taxMinor: 0, netMinor: 180_479 }]);
+    expect((await depositIncomePayments(database, ws))[0]).toMatchObject({ grossMinor: 180_479, taxMinor: 0 });
+  });
+});
