@@ -332,3 +332,30 @@ describe('removing a level', () => {
     expect(stages.filter((stage) => stage.name.startsWith('Preschool'))).toHaveLength(1);
   });
 });
+
+describe('matching a re-work to the stages already there', () => {
+  const level = (id: string, name: string, startYear: number) => ({
+    id, name, startAge: null, untilAge: null, startYear, untilYear: startYear + 2, returnBps: null,
+    fees: [{ id: 'a', name: 'Academic', amountTodayMinor: 20_000_000, charged: 'yearly' as const }],
+  });
+  const plan = (...levels: ReturnType<typeof level>[]) => ({ version: 2 as const, birthday: null, feeInflationBps: 1000, levels });
+
+  it('follows the level’s key, not the position, even when the count is the same', async () => {
+    const { database, ws } = await setupDb();
+    const goalId = await goal(database, ws, 'Aisha', 'education');
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs: plan(level('pre', 'Preschool', 2027), level('primary', 'Primary', 2032)) });
+    const before = await stagesOf(database, ws, goalId);
+    const paid = before.find((stage) => stage.name === 'Preschool · year 1')!;
+    const primaryYear1 = before.find((stage) => stage.name === 'Primary · year 1')!;
+    await setStagePaid(database, ws, paid.id, '2027-01-05');
+
+    // Both levels renamed, and the first moved past the second: four years before, four after, nothing in common
+    // but the keys. By position, Preschool's paid mark would land on 2032.
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs: plan(level('pre', 'Kindergarten', 2036), level('primary', 'Primary School', 2032)) });
+    const after = await stagesOf(database, ws, goalId);
+    expect(after).toHaveLength(4);
+    expect(after.find((stage) => stage.id === paid.id)).toMatchObject({ name: 'Kindergarten · year 1', dueOn: '2036-01-01', paidOn: '2027-01-05' });
+    expect(after.find((stage) => stage.id === primaryYear1.id)).toMatchObject({ name: 'Primary School · year 1', dueOn: '2032-01-01', paidOn: null });
+  });
+});
+

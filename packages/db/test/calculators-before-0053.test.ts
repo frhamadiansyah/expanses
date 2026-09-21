@@ -86,4 +86,88 @@ describe('a database stopped before 0053', () => {
     expect(await upgradeCalculatorGoals(database, ws, '2026-09-21')).toEqual([]);
     expect(await upgradeCalculatorGoals(database, ws, '2031-09-21')).toEqual([]);
   });
+
+  it('never moves a paid mark to another level’s year, with the levels listed out of date order', async () => {
+    const { database, ws } = await oldDb();
+    const inputs = plan(level('primary', 'Primary', 2032, 2034), level('pre', 'Preschool', 2027, 2029));
+    const goalId = await createGoalFromCalculator(database, ws, { name: 'Aisha', kind: 'education', today: '2026-01-01', inputs });
+    const paid = (await listGoals(database, ws))[0]!.stages.find((stage) => stage.name === 'Preschool · year 1')!;
+    await setStagePaid(database, ws, paid.id, '2027-01-05');
+
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs });
+    const stages = (await listGoals(database, ws))[0]!.stages;
+    expect(stages.filter((stage) => stage.paidOn !== null).map((stage) => [stage.id, stage.name, stage.dueOn])).toEqual([[paid.id, 'Preschool · year 1', '2027-01-01']]);
+  });
+
+  it('finds a paid year again when a level is added, rather than asking for it twice', async () => {
+    const { database, ws } = await oldDb();
+    const goalId = await createGoalFromCalculator(database, ws, { name: 'Aisha', kind: 'education', today: '2026-01-01', inputs: plan(level('pre', 'Preschool', 2027, 2029)) });
+    const paid = (await listGoals(database, ws))[0]!.stages[0]!;
+    await setStagePaid(database, ws, paid.id, '2027-01-05');
+
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs: plan(level('pre', 'Preschool', 2027, 2029), level('primary', 'Primary', 2032, 2034)) });
+    const stages = (await listGoals(database, ws))[0]!.stages;
+    expect(stages.map((stage) => [stage.name, stage.paidOn])).toEqual([
+      ['Preschool · year 1', '2027-01-05'], ['Preschool · year 2', null], ['Primary · year 1', null], ['Primary · year 2', null],
+    ]);
+    expect(stages[0]!.id).toBe(paid.id);
+  });
+
+  it('pairs renamed levels in date order on both sides, so a paid year stays in its year', async () => {
+    const { database, ws } = await oldDb();
+    const goalId = await createGoalFromCalculator(database, ws, {
+      name: 'Aisha', kind: 'education', today: '2026-01-01', inputs: plan(level('primary', 'Primary', 2032, 2034), level('pre', 'Preschool', 2027, 2029)),
+    });
+    const paid = (await listGoals(database, ws))[0]!.stages.find((stage) => stage.name === 'Preschool · year 1')!;
+    await setStagePaid(database, ws, paid.id, '2027-01-05');
+
+    await saveGoalCalculator(database, ws, {
+      goalId, kind: 'education', today: '2026-01-01', inputs: plan(level('primary', 'Primary School', 2032, 2034), level('pre', 'Kindergarten', 2027, 2029)),
+    });
+    const stages = (await listGoals(database, ws))[0]!.stages;
+    expect(stages.filter((stage) => stage.paidOn !== null).map((stage) => [stage.id, stage.name, stage.dueOn])).toEqual([[paid.id, 'Kindergarten · year 1', '2027-01-01']]);
+  });
+
+  it('finds a paid year by its name when its level moves and the count changes', async () => {
+    const { database, ws } = await oldDb();
+    const goalId = await createGoalFromCalculator(database, ws, { name: 'Aisha', kind: 'education', today: '2026-01-01', inputs: plan(level('pre', 'Preschool', 2027, 2029)) });
+    const paid = (await listGoals(database, ws))[0]!.stages[0]!;
+    await setStagePaid(database, ws, paid.id, '2027-01-05');
+
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs: plan(level('pre', 'Preschool', 2028, 2030), level('primary', 'Primary', 2032, 2034)) });
+    const stages = (await listGoals(database, ws))[0]!.stages;
+    expect(stages).toHaveLength(4);
+    expect(stages[0]).toMatchObject({ id: paid.id, name: 'Preschool · year 1', dueOn: '2028-01-01', paidOn: '2027-01-05' });
+  });
+
+  it('tells two levels of the same name apart by their dates', async () => {
+    const { database, ws } = await oldDb();
+    const inputs = plan(level('b', 'School', 2032, 2034), level('a', 'School', 2027, 2029));
+    const goalId = await createGoalFromCalculator(database, ws, { name: 'Aisha', kind: 'education', today: '2026-01-01', inputs });
+    const paid = (await listGoals(database, ws))[0]!.stages[0]!;
+    expect(paid.dueOn).toBe('2027-01-01');
+    await setStagePaid(database, ws, paid.id, '2027-01-05');
+
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs });
+    const stages = (await listGoals(database, ws))[0]!.stages;
+    expect(stages.filter((stage) => stage.paidOn !== null).map((stage) => [stage.id, stage.dueOn])).toEqual([[paid.id, '2027-01-01']]);
+  });
+
+  it('pairs by position only when the count is the same, so a removed level’s paid year stays its own', async () => {
+    const { database, ws } = await oldDb();
+    const goalId = await createGoalFromCalculator(database, ws, {
+      name: 'Aisha', kind: 'education', today: '2026-01-01', inputs: plan(level('pre', 'Preschool', 2027, 2029), level('primary', 'Primary', 2032, 2034)),
+    });
+    const paid = (await listGoals(database, ws))[0]!.stages[0]!;
+    await setStagePaid(database, ws, paid.id, '2027-01-05');
+
+    // Preschool removed, Primary renamed: nothing to find by name, and two years against four.
+    await saveGoalCalculator(database, ws, { goalId, kind: 'education', today: '2026-01-01', inputs: plan(level('primary', 'Primary School', 2032, 2034)) });
+    const stages = (await listGoals(database, ws))[0]!.stages;
+    expect(stages.map((stage) => [stage.name, stage.dueOn, stage.paidOn])).toEqual([
+      ['Preschool · year 1', '2027-01-01', '2027-01-05'], ['Primary School · year 1', '2032-01-01', null], ['Primary School · year 2', '2033-01-01', null],
+    ]);
+    expect(stages[0]!.id).toBe(paid.id);
+  });
 });
+

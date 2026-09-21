@@ -139,6 +139,40 @@ async function drawnStageIds(tx: Db, goalId: string): Promise<Set<string>> {
   return new Set(rows.map((row) => row[0]));
 }
 
+type StageRow = typeof goalStages.$inferSelect;
+
+/**
+ * A goal with no keys — worked out before them, or on a database without 0053 — pairs its stages by what they say.
+ * The same name on the same day first, then the same name (a level's year keeps its name when its dates move), and
+ * only then, when the count is the same, by position: both sides in date order, since the goal lists its stages by
+ * date and the working lists them by level. A paid year is never handed to another level's year, and a paid year
+ * the working still asks for is found again rather than kept beside a new unpaid copy.
+ */
+function matchWithoutKeys(current: StageRow[], wanted: DerivedStage[]): (StageRow | undefined)[] {
+  const matched: (StageRow | undefined)[] = wanted.map(() => undefined);
+  const taken = new Set<string>();
+  const pair = (same: (stage: StageRow, want: DerivedStage) => boolean) =>
+    wanted.forEach((want, index) => {
+      if (matched[index]) return;
+      const found = current.find((stage) => !taken.has(stage.id) && same(stage, want));
+      if (found) {
+        matched[index] = found;
+        taken.add(found.id);
+      }
+    });
+  pair((stage, want) => stage.name === want.name && stage.dueOn === want.dueOn);
+  pair((stage, want) => stage.name === want.name);
+  if (current.length === wanted.length) {
+    const left = current.filter((stage) => !taken.has(stage.id)); // already in date order
+    const byDate = wanted
+      .map((want, index) => ({ want, index }))
+      .filter(({ index }) => !matched[index])
+      .sort((a, b) => (a.want.dueOn < b.want.dueOn ? -1 : a.want.dueOn > b.want.dueOn ? 1 : a.index - b.index));
+    byDate.forEach(({ index }, at) => (matched[index] = left[at]));
+  }
+  return matched;
+}
+
 /**
  * Writes the working onto the goal inside the caller's transaction: the goal's growth (and return, where the working
  * names one), its stages — keeping each stage that was already there, and its paid mark, by the key the working gave
@@ -168,9 +202,8 @@ async function writeCalculatorTx(
     : [];
   const stageOfKey = new Map(terms.filter((term) => term.derivedKey !== null).map((term) => [term.derivedKey!, term.stageId]));
   const byId = new Map(current.map((stage) => [stage.id, stage]));
-  // A goal worked out before keys existed: match by position when the count is the same, so paid marks survive.
-  const byPosition = stageOfKey.size === 0 && current.length === derived.stages.length;
-  const matched = derived.stages.map((stage, index) => (byPosition ? current[index] : byId.get(stageOfKey.get(stage.key) ?? '')));
+  const matched =
+    stageOfKey.size > 0 ? derived.stages.map((stage) => byId.get(stageOfKey.get(stage.key) ?? '')) : matchWithoutKeys(current, derived.stages);
   const matchedIds = new Set(matched.flatMap((stage) => (stage ? [stage.id] : [])));
 
   const drawn = await drawnStageIds(tx, goal.id);
