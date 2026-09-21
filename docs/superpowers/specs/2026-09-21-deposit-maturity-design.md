@@ -88,7 +88,7 @@ On the deposit's page, below the terms card, one inset group headed **At maturit
 | Roll over principal + interest | `InsetRow` | subtitle "Nothing lands; the deposit grows" | |
 | Don't roll over | `InsetRow` | subtitle "Everything lands in *payout*" | |
 | Interest paid | `SelectRow` | Monthly · At maturity | At maturity |
-| Lands in | `SelectRow` | this workspace's spendable, unarchived accounts that hold **the deposit's currency** | the first one, or none |
+| Lands in | `SelectRow` | this workspace's spendable, unarchived accounts that hold **the deposit's currency**, and not an account with pockets (choose one of its pockets) | the first one, or none |
 | Term | `SelectRow` | 1 month · 3 months · 6 months · 12 months | 1 month |
 | Keep the rate when it rolls over | `SwitchRow` | | on |
 | Tax-free deposit | `SwitchRow` | hint below | off |
@@ -465,6 +465,7 @@ Confirming posts money, so it inherits every refusal that already guards posting
 | A tax percentage outside 0–100 or finer than two decimals, on save | `BAD_TAX` |
 | Reopening (void or *Undo recorded by hand*) an event while a later event is logged across a maturity | `NOT_LAST`, before anything is written (§6.4, §6.5) |
 | *Undo recorded by hand* on an event the app posted | `POSTED`: void its transaction instead (§6.5) |
+| An account with pockets as **Lands in** (a pocket parent holds no money of its own) | `BAD_PAYOUT` on save and on confirm ("Choose one of its pockets"), and never offered (`pocketParentIds`); its pockets are accepted. The ledger refuses it too (`POCKET_PARENT`) |
 
 The switch edits settings only. It does not edit or delete money, so none of the ledger's edit refusals apply to
 it.

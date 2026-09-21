@@ -7,6 +7,7 @@ import {
   categoryIdsByKeyTx,
   type ConfirmDepositEventInput,
   confirmDepositEvent,
+  createAccount,
   createBook,
   createWorkspace,
   depositIncomePayments,
@@ -21,6 +22,7 @@ import {
   listDueDeposits,
   nativeBalances,
   openCashAccount,
+  openPocketedAccount,
   personalBook,
   postTransactionTx,
   replaceTransaction,
@@ -188,6 +190,25 @@ describe('where the money may land', () => {
     const theirs = await openCashAccount(database, other, { item: 'bank', name: 'Their bank', currency: 'IDR' });
     await refused(on(depositoId, theirs.id));
     await expect(saveDepositAutomation(database, other, on(depositoId, null))).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('refuses an account with pockets, which holds no money of its own, and accepts one of its pockets', async () => {
+    const { parent, pockets } = await openPocketedAccount(database, ws, { item: 'bank', name: 'BCA Valas', pockets: [{ currency: 'IDR' }, { currency: 'USD' }] });
+    // The parent is an IDR bank account, open and spendable: only its pockets make it refused.
+    expect(parent).toMatchObject({ kind: 'asset', subtype: 'bank', currency: 'IDR', archivedAt: null });
+    await expect(saveDepositAutomation(database, ws, on(depositoId, parent.id))).rejects.toMatchObject({ code: 'BAD_PAYOUT', message: expect.stringContaining('one of its pockets') });
+    const idrPocket = pockets.find((pocket) => pocket.currency === 'IDR')!;
+    await saveDepositAutomation(database, ws, on(depositoId, idrPocket.id));
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    expect((await nativeBalances(database, ws))[idrPocket.id]).toBe(428_493);
+  });
+
+  it('refuses at confirm a payout that became an account with pockets after it was chosen, before anything posts', async () => {
+    const plain = await openCashAccount(database, ws, { item: 'bank', name: 'Mandiri', currency: 'IDR' });
+    await saveDepositAutomation(database, ws, on(depositoId, plain.id));
+    await createAccount(database, ws, { name: 'Mandiri · USD', kind: 'asset', subtype: 'bank', currency: 'USD', parentId: plain.id });
+    await expect(confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'))).rejects.toMatchObject({ code: 'BAD_PAYOUT' });
+    expect(await logged()).toEqual([]);
   });
 
   it('refuses a term or a tax the table could not hold', async () => {

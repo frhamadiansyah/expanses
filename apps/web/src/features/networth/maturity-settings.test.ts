@@ -21,6 +21,17 @@ describe('where the money may land', () => {
     expect(payoutChoices(all, 'IDR', 'deposito').map((a) => a.id)).toEqual(['bca', 'gopay']);
     expect(payoutChoices(all, 'USD', 'deposito').map((a) => a.id)).toEqual(['jenius-usd']);
   });
+
+  it('never offers an account with pockets, only its pockets', () => {
+    const all = [
+      account('valas', {}),
+      account('valas-idr', { parentId: 'valas' }),
+      account('valas-usd', { parentId: 'valas', currency: 'USD' }),
+      account('bca', {}),
+    ];
+    expect(payoutChoices(all, 'IDR', 'deposito').map((a) => a.id)).toEqual(['valas-idr', 'bca']);
+    expect(payoutChoices(all, 'USD', 'deposito').map((a) => a.id)).toEqual(['valas-usd']);
+  });
 });
 
 describe('the rest of the group', () => {

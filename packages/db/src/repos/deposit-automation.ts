@@ -117,20 +117,24 @@ async function liveDepositTx(tx: Db, ws: WorkspaceContext, accountId: string): P
 }
 
 /**
- * Where money may land: an open, spendable asset account holding the deposit's own currency, and not the deposit.
+ * Where money may land: an open, spendable asset account holding the deposit's own currency, not the deposit, and not
+ * an account with pockets (`parents`, from `pocketParentIds`): a parent holds no money of its own, and the ledger
+ * refuses to post to one. Its pockets are ordinary accounts and are accepted.
  * The one statement of the rule. The repo refuses by it and the web offers by it, so the list never offers a refusal.
  */
 export function payoutAccepts(
   account: Pick<AccountRow, 'id' | 'kind' | 'subtype' | 'currency' | 'archivedAt'>,
   currency: string,
   depositId: string,
+  parents: ReadonlySet<string>,
 ): boolean {
   return (
     account.id !== depositId &&
     account.kind === 'asset' &&
     account.archivedAt === null &&
     account.currency === currency &&
-    SPENDABLE_SUBTYPES.includes(account.subtype)
+    SPENDABLE_SUBTYPES.includes(account.subtype) &&
+    !parents.has(account.id)
   );
 }
 
@@ -139,7 +143,17 @@ async function checkPayoutTx(tx: Db, ws: WorkspaceContext, payoutAccountId: stri
     .select({ id: accounts.id, subtype: accounts.subtype, currency: accounts.currency, archivedAt: accounts.archivedAt, kind: accounts.kind })
     .from(accounts)
     .where(and(eq(accounts.id, payoutAccountId), eq(accounts.workspaceId, ws.workspaceId)));
-  if (!row || !payoutAccepts(row, currency, depositId)) {
+  // Any asset account under it, archived pockets included, makes it a parent: the rule `pocketParentIds` and the
+  // ledger's POCKET_PARENT refusal both use.
+  const child = await tx
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'asset'), eq(accounts.parentId, payoutAccountId)))
+    .limit(1);
+  if (row && child.length > 0) {
+    throw new DepositAutomationError('BAD_PAYOUT', 'That account holds no money of its own. Choose one of its pockets.');
+  }
+  if (!row || !payoutAccepts(row, currency, depositId, new Set())) {
     throw new DepositAutomationError('BAD_PAYOUT', `Choose an open account in this workspace that holds ${currency} and that money can land in`);
   }
 }

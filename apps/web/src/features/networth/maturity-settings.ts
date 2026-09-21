@@ -1,5 +1,5 @@
 import type { MaturityChoice } from '@expanses/core';
-import { type AccountRow, payoutAccepts } from '@expanses/db';
+import { type AccountRow, payoutAccepts, pocketParentIds } from '@expanses/db';
 import { rateBpsFrom } from './deposit-terms';
 
 export const MATURITY_CHOICES: readonly { id: MaturityChoice; title: string; subtitle: (payout: string | null) => string }[] = [
@@ -10,9 +10,14 @@ export const MATURITY_CHOICES: readonly { id: MaturityChoice; title: string; sub
 
 export const termLabel = (months: number): string => `${months} ${months === 1 ? 'month' : 'months'}`;
 
-/** Where the money may land: `payoutAccepts`, the rule `saveDepositAutomation` refuses by, so the list never offers a refusal. */
+/**
+ * Where the money may land: `payoutAccepts`, the rule `saveDepositAutomation` refuses by, so the list never offers a
+ * refusal. `accounts` is every account of the workspace, archived ones included, so an account whose pockets are all
+ * archived is still known to be a parent, as the repo and the ledger know it.
+ */
 export function payoutChoices(accounts: readonly AccountRow[], currency: string, depositId: string): AccountRow[] {
-  return accounts.filter((account) => payoutAccepts(account, currency, depositId));
+  const parents = pocketParentIds(accounts);
+  return accounts.filter((account) => payoutAccepts(account, currency, depositId, parents));
 }
 
 /**
