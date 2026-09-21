@@ -83,6 +83,73 @@ describe('setAsideOn', () => {
   it('says none when nothing is promised', () => {
     expect(setAsideOn(5_000_000, [], [])).toMatchObject({ state: 'none', setAsideMinor: 0, freeMinor: 5_000_000 });
   });
+
+  it('sums two borrows from the same goal, rather than keeping only the latest or the largest', () => {
+    // EF borrows Rp 1.000.000 on 1 Sep and Rp 2.000.000 on 5 Sep: 3.000.000 lent in total.
+    const view = setAsideOn(34_500_000, [EF, UMRAH], [
+      { goalId: 'ef', amountMinor: 1_000_000, occurredOn: '2026-09-01', createdAt: '2026-09-01T08:00:00Z' },
+      { goalId: 'ef', amountMinor: 2_000_000, occurredOn: '2026-09-05', createdAt: '2026-09-05T08:00:00Z' },
+    ]);
+    // 3.000.000 short, all of it explained by EF's own borrows; Umrah never borrowed and stays whole.
+    expect(view.goals.map((goal) => [goal.goalId, goal.shortMinor, goal.borrowedShortMinor])).toEqual([
+      ['ef', 3_000_000, 3_000_000],
+      ['umrah', 0, 0],
+    ]);
+  });
+
+  it('caps what a borrow explains at what the goal still promises, even though it borrowed more', () => {
+    // Umrah borrowed 9.000.000, but its promise since fell to 7.500.000.
+    const view = setAsideOn(20_000_000, [EF, UMRAH], [{ goalId: 'umrah', amountMinor: 9_000_000, occurredOn: '2026-09-05', createdAt: '2026-09-05T08:00:00Z' }]);
+    expect(view.goals.map((goal) => [goal.goalId, goal.coveredMinor, goal.shortMinor])).toEqual([
+      ['ef', 20_000_000, 10_000_000],
+      ['umrah', 0, 7_500_000],
+    ]);
+    for (const goal of view.goals) expect(goal.coveredMinor).toBeGreaterThanOrEqual(0);
+  });
+
+  it('subtracts a borrow already shared out before the rank pass adds to the same goal', () => {
+    // The balance is nought; Umrah borrowed 700.000, which the borrow pass gives it. The rank pass must not
+    // hand Umrah its full promise again on top of that.
+    const view = setAsideOn(0, [EF, UMRAH], [{ goalId: 'umrah', amountMinor: 700_000, occurredOn: '2026-09-05', createdAt: '2026-09-05T08:00:00Z' }]);
+    expect(view.goals.map((goal) => [goal.goalId, goal.coveredMinor, goal.shortMinor])).toEqual([
+      ['ef', 0, 30_000_000],
+      ['umrah', 0, 7_500_000],
+    ]);
+    expect(view.goals.reduce((total, goal) => total + goal.shortMinor, 0)).toBe(view.shortMinor);
+  });
+
+  it('ignores a borrow marked against a goal no longer promised on this account, rather than turning every figure to NaN', () => {
+    // The goal that borrowed was archived, or its earmark spent to nothing and the row deleted.
+    const view = setAsideOn(36_000_000, [EF, UMRAH], [{ goalId: 'gone', amountMinor: 500_000, occurredOn: '2026-09-05', createdAt: '2026-09-05T08:00:00Z' }]);
+    expect(view.goals.map((goal) => [goal.goalId, goal.shortMinor])).toEqual([
+      ['ef', 0],
+      ['umrah', 1_500_000],
+    ]);
+  });
+
+  it('takes recency as occurredOn first, then createdAt, not createdAt alone', () => {
+    // EF is dated later (09-05) but entered earlier (created 09-01); Umrah is dated earlier (09-02) but entered
+    // later (created 09-10). By occurredOn, EF is the most recent borrow and carries the shortfall first.
+    const view = setAsideOn(36_500_000, [EF, UMRAH], [
+      { goalId: 'ef', amountMinor: 600_000, occurredOn: '2026-09-05', createdAt: '2026-09-01T08:00:00Z' },
+      { goalId: 'umrah', amountMinor: 700_000, occurredOn: '2026-09-02', createdAt: '2026-09-10T08:00:00Z' },
+    ]);
+    expect(view.goals.map((goal) => [goal.goalId, goal.shortMinor])).toEqual([
+      ['ef', 600_000],
+      ['umrah', 400_000],
+    ]);
+  });
+
+  it('breaks a rank tie by goal id, whichever order the claims came in', () => {
+    const zeta = { goalId: 'zeta', name: 'Zeta', rank: 0, promisedMinor: 5_000_000 };
+    const alpha = { goalId: 'alpha', name: 'Alpha', rank: 0, promisedMinor: 3_000_000 };
+    // Given in reverse id order: alpha must still sort first, and so lose its share of the shortage last.
+    const view = setAsideOn(6_000_000, [zeta, alpha], []);
+    expect(view.goals.map((goal) => [goal.goalId, goal.shortMinor])).toEqual([
+      ['alpha', 0],
+      ['zeta', 2_000_000],
+    ]);
+  });
 });
 
 describe('checkOutflow', () => {
@@ -167,6 +234,11 @@ describe('movedAmount', () => {
     expect(movedAmount(0, 20_000_000, 123_463)).toBe(0);
     expect(movedAmount(1_800_000, 20_000_000, 0)).toBe(0);
   });
+
+  it('is nought rather than dividing by zero when nothing left the account, or when the amount moved is negative', () => {
+    expect(movedAmount(1, 0, 5)).toBe(0);
+    expect(movedAmount(-5, 10, 3)).toBe(0);
+  });
 });
 
 describe('spreadOver', () => {
@@ -202,5 +274,9 @@ describe('wholeSince', () => {
   it('stops at an earlier borrow, whose repayment date is not recorded', () => {
     expect(wholeSince(events, 31_000_000, 30_000_000, '2026-08-10')).toBeNull();
     expect(wholeSince(events, 31_000_000, 30_000_000, '2026-08-03')).toBe('2026-08-03');
+  });
+
+  it('reads a goal sitting at exactly its target as whole, not only one that overshot it', () => {
+    expect(wholeSince([{ occurredOn: '2026-08-03', amountMinor: 6_000_000 }], 30_000_000, 30_000_000, null)).toBe('2026-08-03');
   });
 });
