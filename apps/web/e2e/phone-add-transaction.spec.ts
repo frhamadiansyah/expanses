@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
+import { todayIn } from './today';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -134,8 +135,6 @@ test('a photograph attached by thumb is on the receipt', async ({ page }) => {
   expect(await picture.evaluate(async (img: HTMLImageElement) => (await fetch(img.src)).text())).toBe('a receipt');
 });
 
-const TODAY = new Date().toISOString().slice(0, 10);
-
 /** Below this a thumb misses; iOS' own guidance and the size every other phone spec here holds things to. */
 const TAP = 44;
 
@@ -195,6 +194,7 @@ test('the dock adds up what a thumb types, and has no Save key of its own', asyn
  * rather than obviously wrong, and only the *rate* can tell them apart.
  */
 test('the flag brings the charged row, pre-filled at the day’s rate, and takes it away again', async ({ page }) => {
+  const TODAY = await todayIn(page);
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addWallet(page);
   // A CNY account opened today stores today's CNY→IDR rate; that is the only rate this device will have.

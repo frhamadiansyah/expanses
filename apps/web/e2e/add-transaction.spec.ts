@@ -1,8 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith } from './add-transaction';
 import { addEvent } from './event-plan';
-
-const TODAY = new Date().toISOString().slice(0, 10);
+import { todayIn } from './today';
 
 /** The directory `photos/store.ts` keeps pictures in, a sibling of the database's `.expanses/` and never inside it. */
 const PHOTO_DIRECTORY = 'expanses-photos';
@@ -168,7 +167,7 @@ async function addForeignAccount(page: Page, name: string, currency: string, bal
   await page.getByLabel('Type').selectOption('bank');
   await page.getByLabel('Currency').selectOption(currency);
   await page.getByLabel('Current balance').fill(balance);
-  await page.getByLabel('Balance as of').fill(TODAY);
+  await page.getByLabel('Balance as of').fill(await todayIn(page));
   await page.getByLabel(`Rate: IDR per 1 ${currency}`).fill(rate);
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
@@ -328,6 +327,7 @@ test('a transfer tagged For goal parks the money against the goal', async ({ pag
 });
 
 test('"Charged in" opens filled in at the rate this device stored for the day', async ({ page }) => {
+  const TODAY = await todayIn(page);
   // No rate server: what is known is what this device has stored, which is the whole point of the estimate.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank');
@@ -1100,7 +1100,7 @@ test('the category picker is a tree, it searches, and a new category is made wit
 });
 
 /** A day inside the month on show that is never today, so a date the form ignored reads wrong rather than right. */
-const OTHER_DAY = `${TODAY.slice(0, 8)}${TODAY.endsWith('-01') ? '02' : '01'}`;
+const otherDay = (today: string) => `${today.slice(0, 8)}${today.endsWith('-01') ? '02' : '01'}`;
 
 /**
  * §2's field map, walked in one purchase: nothing the old form could record has been lost.
@@ -1116,6 +1116,7 @@ const OTHER_DAY = `${TODAY.slice(0, 8)}${TODAY.endsWith('-01') ? '02' : '01'}`;
  * charged. Both refusals have their own tests below.
  */
 test('nothing was lost: one purchase carries every field the old form had', async ({ page }) => {
+  const OTHER_DAY = otherDay(await todayIn(page));
   // No rate server: the figures below are the ones typed, never ones fetched behind the test's back.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'KF Signature', 'credit_card', async () => {

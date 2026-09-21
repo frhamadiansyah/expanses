@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
+import { todayIn } from './today';
 
 /** Today's form, from the phone's tab bar. Task 10 replaces this body with a call to `addTransaction`. */
 async function record(page: Page, description: string, category: string, amount: string) {
@@ -281,10 +282,10 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
 test('the rate typed into the edit sheet is the rate the edit sheet saves', async ({ page }) => {
   // No rate server: what this device has stored is all there is, which is what puts the row on screen at all.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await todayIn(page);
   // A day with no CNY→IDR rate stored for it — `findRate` only ever looks at dates on or before the one asked
   // for, and the account below stores its rate under today.
-  const earlier = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
+  const earlier = await todayIn(page, 3);
 
   await page.goto('/accounts');
   await page.getByLabel('Name', { exact: true }).fill('Alipay');
