@@ -16,13 +16,13 @@ import {
   type RetirementInputs,
   retirementTodayMinor,
 } from '@expanses/core';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { goalCalculators } from '../schema-budget';
 import { goalStages, goals as goalsTable } from '../schema-goals';
 import { goalStageTerms } from '../schema-health';
-import { GoalDbError, type GoalRow, listGoals, type SaveGoalStageInput, saveGoalTx } from './goals';
+import { drawnStageIds, GoalDbError, type GoalRow, listGoals, type SaveGoalStageInput, saveGoalTx } from './goals';
 import { healthTablesExist } from './health-tables';
 
 /**
@@ -130,17 +130,6 @@ function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goal
 function yearsFrom(today: string, years: number): string {
   const [year, month, day] = today.split('-').map(Number);
   return new Date(Date.UTC(year! + Math.max(0, Math.round(years)), month! - 1, day!)).toISOString().slice(0, 10);
-}
-
-/**
- * The stages of a goal that money was drawn against. The table is the set-aside work's (0050); on a database without
- * it nothing was ever drawn. Read with plain SQL so this file needs nothing from that schema.
- */
-async function drawnStageIds(tx: Db, goalId: string): Promise<Set<string>> {
-  const table = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_draws'`);
-  if (table.length === 0) return new Set();
-  const rows = await tx.values<[string]>(sql`SELECT DISTINCT stage_id FROM goal_draws WHERE goal_id = ${goalId} AND stage_id IS NOT NULL`);
-  return new Set(rows.map((row) => row[0]));
 }
 
 type StageRow = typeof goalStages.$inferSelect;

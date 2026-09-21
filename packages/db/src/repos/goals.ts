@@ -1,5 +1,5 @@
 import { type Goal, type GoalKind, type GoalStage, uuidv7 } from '@expanses/core';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
@@ -151,7 +151,12 @@ export async function saveGoalTx(tx: Db, ws: WorkspaceContext, input: SaveGoalIn
   await tx.insert(goals).values(row).onConflictDoUpdate({ target: goals.id, set: changes });
 
   const keptIds = input.stages.map((stage) => stage.id).filter((stageId): stageId is string => !!stageId);
-  const current = await tx.select({ id: goalStages.id }).from(goalStages).where(eq(goalStages.goalId, id));
+  const current = await tx.select({ id: goalStages.id, name: goalStages.name }).from(goalStages).where(eq(goalStages.goalId, id));
+  // A draw names the stage it paid, so that stage never goes (the set-aside ruling): a hand edit that drops it is
+  // refused, and a calculator's re-work keeps it (writeCalculatorTx passes it back).
+  const drawn = await drawnStageIds(tx, id);
+  const dropped = current.find((stage) => !keptIds.includes(stage.id) && drawn.has(stage.id));
+  if (dropped) throw new GoalDbError(`Money was drawn against "${dropped.name}", so it cannot be removed. Archive the goal instead.`);
   for (const stage of current) {
     if (!keptIds.includes(stage.id)) await tx.delete(goalStages).where(eq(goalStages.id, stage.id));
   }
@@ -189,6 +194,17 @@ export async function saveGoalTx(tx: Db, ws: WorkspaceContext, input: SaveGoalIn
     await tx.delete(goalCalculators).where(and(eq(goalCalculators.goalId, id), eq(goalCalculators.workspaceId, ws.workspaceId)));
   }
   return { goalId: id, stageIds };
+}
+
+/**
+ * The stages of a goal that money was drawn against. The table is the set-aside work's (0050); on a database without
+ * it nothing was ever drawn. Read with plain SQL so this file needs nothing from that schema.
+ */
+export async function drawnStageIds(tx: Db, goalId: string): Promise<Set<string>> {
+  const table = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_draws'`);
+  if (table.length === 0) return new Set();
+  const rows = await tx.values<[string]>(sql`SELECT DISTINCT stage_id FROM goal_draws WHERE goal_id = ${goalId} AND stage_id IS NOT NULL`);
+  return new Set(rows.map((row) => row[0]));
 }
 
 async function nextRank(tx: Db, ws: WorkspaceContext): Promise<number> {

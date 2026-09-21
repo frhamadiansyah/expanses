@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { sql } from 'drizzle-orm';
+import { uuidv7 } from '@expanses/core';
 import {
   type AccountRow,
   archiveGoal,
@@ -132,6 +134,38 @@ describe('saveGoal', () => {
     const goals = await listGoals(database, ws);
     expect(goals.find((goal) => goal.id === second)!.rank).toBe(1);
     expect(goals.map((goal) => goal.name)).toEqual(['Hajj for two', 'University']);
+  });
+});
+
+describe('a stage money was drawn against never dangles', () => {
+  // The set-aside branch's table, as its migration makes it: a draw names the stage it paid.
+  const drawAgainst = async (goalId: string, stageId: string) => {
+    await database.execScript('CREATE TABLE IF NOT EXISTS goal_draws (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, goal_id TEXT NOT NULL, stage_id TEXT)');
+    await database.db.run(sql`INSERT INTO goal_draws (id, workspace_id, goal_id, stage_id) VALUES (${uuidv7()}, ${ws.workspaceId}, ${goalId}, ${stageId})`);
+  };
+
+  it('refuses a hand edit that removes it, and leaves the goal as it was', async () => {
+    const id = await saveGoal(database, ws, hajj());
+    const [first, second] = (await listGoals(database, ws))[0]!.stages;
+    await drawAgainst(id, first!.id);
+    await expect(saveGoal(database, ws, { ...hajj(), id, stages: [{ ...hajj().stages[1]!, id: second!.id }] })).rejects.toThrow(/Setoran awal/);
+    expect((await listGoals(database, ws))[0]!.stages.map((stage) => stage.id)).toEqual([first!.id, second!.id]);
+  });
+
+  it('still lets a stage nothing was drawn against go', async () => {
+    const id = await saveGoal(database, ws, hajj());
+    const [first, second] = (await listGoals(database, ws))[0]!.stages;
+    await drawAgainst(id, first!.id);
+    await saveGoal(database, ws, { ...hajj(), id, stages: [{ ...hajj().stages[0]!, id: first!.id }] });
+    expect((await listGoals(database, ws))[0]!.stages.map((stage) => stage.id)).toEqual([first!.id]);
+    expect(second).toBeDefined();
+  });
+
+  it('removes freely on a database with no draws table', async () => {
+    const id = await saveGoal(database, ws, hajj());
+    const [, second] = (await listGoals(database, ws))[0]!.stages;
+    await saveGoal(database, ws, { ...hajj(), id, stages: [{ ...hajj().stages[1]!, id: second!.id }] });
+    expect((await listGoals(database, ws))[0]!.stages).toHaveLength(1);
   });
 });
 
