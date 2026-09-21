@@ -1,4 +1,4 @@
-import { expenseLines } from '@expanses/core';
+import { expenseLines, transferLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
@@ -6,6 +6,7 @@ import {
   archiveAccount,
   assetValuesAt,
   createAccount,
+  createWorkspace,
   listAccounts,
   listEarmarks,
   nativeBalances,
@@ -13,6 +14,7 @@ import {
   saveEarmark,
   saveGoal,
   unarchiveAccountTx,
+  voidTransaction,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -92,7 +94,7 @@ describe('unarchiving', () => {
     await archiveAccount(database, ws, wallet.id);
     await database.transaction((tx) => unarchiveAccountTx(tx, ws, wallet.id));
     expect((await listAccounts(database, ws)).some((a) => a.id === wallet.id)).toBe(true);
-    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${wallet.id} AND action LIKE '%archive' ORDER BY id`)).toEqual([['archive'], ['unarchive']]);
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${wallet.id} AND action LIKE '%archive' ORDER BY rowid`)).toEqual([['archive'], ['unarchive']]);
     await expect(database.transaction((tx) => unarchiveAccountTx(tx, { ...ws, workspaceId: 'elsewhere' }, wallet.id))).rejects.toThrow(AccountError);
   });
 });
@@ -107,6 +109,38 @@ describe('review fixes: archiving with a balance', () => {
     expect((await nativeBalances(database, ws))[equity.id]).toBe(2_000_000);
     const other = (await listAccounts(database, ws)).find((a) => a.name === 'Miscellaneous')!;
     await archiveAccount(database, ws, other.id);
+  });
+
+  it('never archives an account that belongs to another workspace', async () => {
+    const { database, ws } = await setupDb();
+    const wallet = await createAccount(database, ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    const other = await createWorkspace(database, { name: 'Business', type: 'business', baseCurrency: 'IDR' });
+    await expect(archiveAccount(database, other, wallet.id)).rejects.toThrow(AccountError);
+    expect((await listAccounts(database, ws)).some((a) => a.id === wallet.id)).toBe(true);
+  });
+
+  it('does not count a voided transaction toward the balance a fresh archive checks', async () => {
+    const { database, ws } = await setupDb();
+    const source = await createAccount(database, ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR', openingBalanceMinor: 5_000_000 });
+    const target = await createAccount(database, ws, { name: 'Temp wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    const txId = await postTransaction(database, ws, {
+      occurredOn: '2026-09-01',
+      description: 'Move some cash over',
+      lines: transferLines({ fromAccountId: source.id, toAccountId: target.id, amountMinor: 1_000_000, currency: 'IDR' }),
+    });
+    await voidTransaction(database, ws, txId);
+    // The voided entries are still in the table; only a status filter keeps them out of the balance check.
+    await archiveAccount(database, ws, target.id);
+    expect((await listAccounts(database, ws)).some((a) => a.id === target.id)).toBe(false);
+  });
+
+  it('writes an audit entry for the archive', async () => {
+    const { database, ws } = await setupDb();
+    const wallet = await createAccount(database, ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    await archiveAccount(database, ws, wallet.id);
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${wallet.id} AND entity = 'account' AND action = 'archive'`)).toEqual([
+      ['archive'],
+    ]);
   });
 });
 

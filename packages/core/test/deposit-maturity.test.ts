@@ -66,6 +66,17 @@ describe('interest: actual/365, floored, in BigInt', () => {
     expect(depositInterest(50_000_000, 0, 92)).toBe(0);
     expect(depositInterest(50_000_000, 425, 0)).toBe(0);
   });
+
+  it('is nothing rather than negative or fractional: every guard, one at a time', () => {
+    // A negative principal or day count would otherwise give negative interest; a fractional principal would throw
+    // from BigInt(); a non-integer rate or day count is refused the same way.
+    expect(depositInterest(-50_000_000, 425, 92)).toBe(0);
+    expect(depositInterest(0.5, 425, 92)).toBe(0);
+    expect(depositInterest(50_000_000, -425, 92)).toBe(0);
+    expect(depositInterest(50_000_000, 425.5, 92)).toBe(0);
+    expect(depositInterest(50_000_000, 425, -1)).toBe(0);
+    expect(depositInterest(50_000_000, 425, 92.5)).toBe(0);
+  });
 });
 
 describe('tax withheld', () => {
@@ -85,6 +96,16 @@ describe('tax withheld', () => {
   it('follows the percentage the user typed', () => {
     // 12,5% of 180 479 = 22 559,875 → 22 559 (rounding gives 22 560; 20% would give 36 095). Net 157 920.
     expect(withholdTax(180_479, 1_250, false)).toEqual({ taxMinor: 22_559, netMinor: 157_920 });
+  });
+
+  it('is exact in integer arithmetic, where a float multiply would drift', () => {
+    // 100 × 0,29 = 28,999999999999996 in float, which floors to 28. The exact answer, and the one BigInt gives, is 29.
+    expect(withholdTax(100, 2_900, false)).toEqual({ taxMinor: 29, netMinor: 71 });
+  });
+
+  it('is nothing on a gross that is zero or negative, taxed or not', () => {
+    expect(withholdTax(-5, 2_000, false)).toEqual({ taxMinor: 0, netMinor: -5 });
+    expect(withholdTax(0, 2_000, false)).toEqual({ taxMinor: 0, netMinor: 0 });
   });
 });
 
@@ -156,6 +177,11 @@ describe('what is due', () => {
       '2026-10-15',
     ]);
     expect(dueDepositEvents({ ...monthly, enabledOn: '2026-12-01' }, new Set(), '2026-12-01').map((e) => e.kind)).toEqual(['maturity']);
+  });
+
+  it('includes a monthly payout due on the very day automation was switched on', () => {
+    // Spec §4.3: dueOn ≥ enabledOn. A `>` in place of `>=` would drop this one, leaving only the maturity.
+    expect(dueDepositEvents({ ...monthly, enabledOn: '2026-09-15' }, new Set(), '2026-09-15').map((e) => e.kind)).toEqual(['monthly']);
   });
 
   it('has only the maturity for a one-month deposit paying monthly', () => {

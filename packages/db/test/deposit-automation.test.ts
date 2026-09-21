@@ -85,6 +85,71 @@ describe('the switch', () => {
     await saveDepositAutomation(database, ws, on(depositoId, bcaId, { today: '2026-08-03' }));
     expect((await getDepositAutomation(database, ws, depositoId)).enabledOn).toBe('2026-08-03');
   });
+
+  it('is off by default with keepRate on', async () => {
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ keepRate: true, taxExempt: false });
+  });
+
+  it('carries keepRate and taxExempt through, in both directions', async () => {
+    // The first save agrees with what the S2 defaults show (keepRate on, tax-free off).
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ keepRate: true, taxExempt: false });
+    // A second save flips both. A hardcoded write on either field would leave one of these stuck.
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { keepRate: false, taxExempt: true }));
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ keepRate: false, taxExempt: true });
+  });
+
+  it('updates every field on a second save — a changed choice is not silently kept', async () => {
+    const otherPayout = await openCashAccount(database, ws, { item: 'bank', name: 'Jenius', currency: 'IDR' });
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'principal' }));
+    await saveDepositAutomation(
+      database,
+      ws,
+      on(depositoId, otherPayout.id, { atMaturity: 'close', interestPaid: 'monthly', termMonths: 6, taxBps: 1_000, today: '2026-07-16' }),
+    );
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({
+      atMaturity: 'close',
+      interestPaid: 'monthly',
+      payoutAccountId: otherPayout.id,
+      termMonths: 6,
+      taxBps: 1_000,
+    });
+  });
+
+  it('never erases a term start a roll-over stored, on an ordinary settings save', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    // Stands in for a confirmed roll-over, which is the only writer of term_started_on before T5.
+    await database.db.run(sql`UPDATE deposit_automation SET term_started_on = '2026-07-15' WHERE account_id = ${depositoId}`);
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close', today: '2026-08-01' }));
+    expect((await getDepositAutomation(database, ws, depositoId)).termStartedOn).toBe('2026-07-15');
+  });
+});
+
+describe('a deposit that is not open', () => {
+  it('refuses to save automation on an account that is not a time deposit', async () => {
+    await expect(saveDepositAutomation(database, ws, on(bcaId, null))).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('refuses to save automation on a deposit that has been archived', async () => {
+    const empty = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Empty deposit', currency: 'IDR', maturesOn: '2027-01-01' });
+    await archiveAccount(database, ws, empty.id);
+    await expect(saveDepositAutomation(database, ws, on(empty.id, null))).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
+
+describe('workspace scoping on the settings read', () => {
+  it('never reads another workspace’s settings for the same account id', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    const other = await createWorkspace(database, { name: 'Business', type: 'business', baseCurrency: 'IDR' });
+    expect(await getDepositAutomation(database, other, depositoId)).toMatchObject({ enabled: false, payoutAccountId: null });
+  });
+});
+
+describe('the tax percentage bound', () => {
+  it('allows the full 100%, and refuses a negative one by name', async () => {
+    await expect(saveDepositAutomation(database, ws, on(depositoId, bcaId, { taxBps: 10_000 }))).resolves.toBeUndefined();
+    await expect(saveDepositAutomation(database, ws, on(depositoId, bcaId, { taxBps: -1 }))).rejects.toMatchObject({ code: 'BAD_TAX' });
+  });
 });
 
 describe('where the money may land', () => {
@@ -96,6 +161,10 @@ describe('where the money may land', () => {
   });
 
   it('refuses an account that is not spendable, and the deposit itself', async () => {
+    // Both refusals are also given by the subtype clause of `payoutAccepts` alone: every account that could equal
+    // `depositId` or hold a liability is a time_deposit or a credit_card/loan/payable, and none of those subtypes
+    // is in SPENDABLE_SUBTYPES. The `id !== depositId` and `kind === 'asset'` clauses cannot be discriminated
+    // through the public repo API — see the "d1-review" Minor 5 note, accepted here as defence in depth.
     const other = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Other deposit', currency: 'IDR', maturesOn: '2027-01-01' });
     await refused(on(depositoId, other.id));
     await refused(on(depositoId, depositoId));
@@ -365,7 +434,7 @@ describe('voiding what an event posted reopens it', () => {
     expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
     expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(true);
     // Un-archived through the accounts repo, so the audit has it.
-    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${depositoId} AND action LIKE '%archive' ORDER BY id`)).toEqual([['archive'], ['unarchive']]);
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${depositoId} AND action LIKE '%archive' ORDER BY rowid`)).toEqual([['archive'], ['unarchive']]);
     expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'maturity', dueOn: '2026-10-15' }, principalMinor: 50_000_000, grossMinor: 535_616 });
   });
 
