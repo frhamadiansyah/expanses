@@ -10,6 +10,7 @@ import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { AssetSettings } from './AssetSettings';
 import { DepositTermsCard } from './DepositTermsCard';
+import { MaturitySettings } from './MaturitySettings';
 import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
@@ -181,6 +182,7 @@ export function AssetDetailPage() {
       )}
 
       {value && <DepositTermsCard accountId={accountId} />}
+      {value && account?.subtype === 'time_deposit' && <MaturitySettings accountId={accountId} currency={value.currency} />}
 
       {/* Only once the profile is in: the form fills its boxes when it mounts, and an empty code reads as "type one". */}
       {value && !profile.isPending && (

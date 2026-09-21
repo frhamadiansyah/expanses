@@ -6,9 +6,11 @@ import {
   sheetInputsAt,
   dueTemplates,
   getAssetProfile,
+  getDepositAutomation,
   idleCash,
   listAssetProfiles,
   listDepositTerms,
+  listDueDeposits,
   listPrices,
   listTradeTemplates,
   listTrades,
@@ -127,4 +129,17 @@ export function usePeriodFlows(range: { from: string; to: string }) {
     // Net worth is the owner's whole picture: every workspace, in the owner's own currency.
     queryFn: () => periodFlows(database, ownerScope(ws), range),
   });
+}
+
+/** One deposit's automation settings; a deposit with none reads as off. */
+export function useDepositAutomation(accountId: string) {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['deposit-automation', ws.workspaceId, accountId], queryFn: () => getDepositAutomation(database, ws, accountId) });
+}
+
+/** What every automated deposit has due today or earlier: the proposal on its page, the marker on its row. */
+export function useDueDeposits() {
+  const { database, ws } = useApp();
+  const today = isoDate();
+  return useQuery({ queryKey: ['deposit-due', ws.workspaceId, today], queryFn: () => listDueDeposits(database, ws, today) });
 }
