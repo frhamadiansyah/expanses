@@ -155,6 +155,12 @@ describe('emergencyOutgoingMinor', () => {
   it('sums signed: a lifestyle refund larger than lifestyle spending raises the essential base', () => {
     expect(emergencyOutgoingMinor({ spendingMinor: 10_000_000, lifestyleSpendingMinor: -500_000, debtPrincipalMinor: 0 }, 'essential')).toBe(10_500_000);
   });
+
+  it('sums signed across the whole formula, never abs or clamping a term on its own', () => {
+    // A refund-heavy window: spending alone is negative. Summing signed with the principal gives -1 jt.
+    // Taking `Math.abs` of each term first would give 5 jt; clamping each term at 0 first would give 2 jt.
+    expect(emergencyOutgoingMinor({ spendingMinor: -3_000_000, lifestyleSpendingMinor: 0, debtPrincipalMinor: 2_000_000 }, 'essential')).toBe(-1_000_000);
+  });
 });
 
 describe('debt servicing', () => {
