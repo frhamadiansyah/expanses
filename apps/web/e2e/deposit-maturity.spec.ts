@@ -156,3 +156,25 @@ test('proposes queued payouts one after another, never on their own', async ({ p
   await openDeposit(page, s.depositName);
   await confirmEach(page, ['144.384', '144.384', '139.726']);
 });
+
+test('refuses on screen to void a payout from before a logged roll-over, and says which to void first', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'principal', paid: 'monthly', exempt: false });
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  await confirmEach(page, ['144.384', '144.384', '139.726']);
+  await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
+  // The oldest of the three interest postings: the August payout, logged before the October roll-over.
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Earlier period' }).click();
+  await page.getByRole('button', { name: 'Earlier period' }).click();
+  await expect(page.getByRole('button', { name: /^August 2026/ })).toBeVisible();
+  await page.getByRole('link', { name: 'Receipt for Interest: BCA Deposito' }).click();
+  await expect(page).toHaveURL(/\/transactions\/[0-9a-zA-Z-]{20,}$/);
+  await page.getByRole('button', { name: 'Delete this transaction' }).click();
+  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(page.getByText('A later payout of this deposit is recorded. Void that one first, then this one.')).toBeVisible();
+  // Refused whole: nothing moved.
+  await expectBalance(page, s.payoutName, '1.428.494');
+});
