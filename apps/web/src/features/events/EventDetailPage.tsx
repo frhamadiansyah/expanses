@@ -2,7 +2,7 @@ import { expenseLines, formatMinor, isoDate, minorToMajorString, parseMajor } fr
 import { deleteEvent, finishEvent, linkEventItem, postTransaction, tagTransaction } from '@expanses/db';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { canPayWith } from '../../lib/account-types';
@@ -145,15 +145,22 @@ export function EventDetailPage() {
    * answered. The item is found in the plan already on screen, so the two readings can never disagree.
    */
   const buying = (plan.data?.lines ?? []).flatMap((line) => line.items).find((item) => item.id === buy) ?? null;
+  // Filled once per item, the first time it arrives. The plan refetches as things are tagged or edited elsewhere, and
+  // a refetch — even one carrying a new estimate — must never overwrite an amount half typed.
+  const filledFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!buying) return;
+    if (!buying) {
+      // Gone from the address: asked for again, the same item fills the card afresh.
+      filledFor.current = null;
+      return;
+    }
+    if (filledFor.current === buying.id) return;
+    filledFor.current = buying.id;
     setAdding(true);
     setDescription(buying.name);
     setAmount(minorToMajorString(buying.estimateMinor, ws.baseCurrency));
     setCategoryId(buying.categoryId ?? '');
-    // Keyed on the item's own values rather than on the object: the plan refetches as things are tagged, and a new
-    // object carrying the same item would wipe out an amount half typed.
-  }, [buying?.id, buying?.name, buying?.estimateMinor, buying?.categoryId, ws.baseCurrency]);
+  }, [buying?.id]);
 
   // A choice with one option is not a choice: with one account to pay from, asking again is only a step to forget.
   // Derived rather than written into state, so the answer follows the accounts instead of a stale first render.

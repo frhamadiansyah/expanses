@@ -17,7 +17,7 @@ export const ROUND =
  * A deep link, a reload or a share has nothing behind it in this tab's history, and a back button that does
  * nothing on those is a screen with no way out.
  */
-function useBack(fallback: LinkProps['to']) {
+export function useBack(fallback: LinkProps['to']) {
   const navigate = useNavigate();
   const router = useRouter();
   return () => {

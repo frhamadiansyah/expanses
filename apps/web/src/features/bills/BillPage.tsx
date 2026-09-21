@@ -1,12 +1,12 @@
 import { billSchedule, dayMonth, isoDate, monthName } from '@expanses/core';
 import { deleteExpenseTemplate, RecurringError, skipBill, undoBillPayments } from '@expanses/db';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { ChevronLeft, Pencil } from 'lucide-react';
-import { useState } from 'react';
-import { ROUND } from '../../app/BackHeader';
+import { useNavigate, useParams } from '@tanstack/react-router';
+import { Pencil } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
+import { cx, ErrorBox, Money } from '../../ui';
+import { DestructiveRow, GROUP_RADIUS, type GroupChild, Hero, InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN } from '../../ui/native';
 import { CategoryIcon } from '../categories/CategoryIcon';
 import { isSettled, pillOf } from './bill-view';
 import { PaySheet } from './PaySheet';
@@ -43,11 +43,11 @@ export function BillPage({ billId }: { billId: string }) {
   // A stopped bill's own page turns into this: gone from the list, but its history is still there if anyone asks.
   if (detail.error instanceof RecurringError && detail.error.code === 'NOT_FOUND') {
     return (
-      <div className="flex flex-col items-center gap-2">
-        <Empty>This bill has been stopped.</Empty>
-        <Link to="/bills" className="text-sm font-medium text-emerald-800">
-          Back to Recurring
-        </Link>
+      <div className={SCREEN}>
+        <LargeTitle title="Bill stopped" back="Recurring" backTo="/bills" />
+        <InsetGroup footer="This bill has been stopped.">
+          <InsetRow title={<span className="text-[var(--ph-tint)]">Back to Recurring</span>} label="Back to Recurring" to="/bills" />
+        </InsetGroup>
       </div>
     );
   }
@@ -97,70 +97,75 @@ export function BillPage({ billId }: { billId: string }) {
     }
   }
 
+  const month = monthName(bill.billMonth, 'long');
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="mb-2 flex items-center justify-between">
-        <Link to="/bills" aria-label="Back" className={ROUND}>
-          <ChevronLeft size={18} aria-hidden />
-        </Link>
-        <Link to="/bills/$billId/edit" params={{ billId }} aria-label="Edit bill" className={ROUND}>
-          <Pencil size={16} aria-hidden />
-        </Link>
-      </div>
+    <div className={SCREEN}>
+      <LargeTitle
+        title={bill.name}
+        back="Recurring"
+        backTo="/bills"
+        actions={[{ key: 'edit', label: 'Edit bill', glyph: <Pencil size={18} aria-hidden />, to: '/bills/$billId/edit', params: { billId } }]}
+      />
 
       <ErrorBox error={error} />
 
-      <section data-testid="bill-hero" className="flex flex-col items-center gap-1 text-center">
-        <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="lg" />
-        <h1 className="text-lg font-semibold">{bill.name}</h1>
-        <span className="text-3xl font-semibold">{bill.amountMinor !== null ? <Money minor={bill.amountMinor} currency={currency} /> : 'Amount varies'}</span>
-        <span className="text-sm text-slate-500">{billSchedule(bill.dayOfMonth, bill.payByDay)}</span>
-        <span className={cx('rounded-full px-2 py-0.5 text-[11px] font-semibold', pill.className)}>{pill.text}</span>
-      </section>
+      <div data-testid="bill-hero" className="flex flex-col items-center md:max-w-2xl">
+        {/* The category's own mark, tinted in its family's colour — the hero's plain circle would lose the colour. */}
+        <span className="mb-[10px]">
+          <CategoryIcon categoryId={bill.categoryAccountId} accounts={accounts} size="lg" />
+        </span>
+        <Hero
+          minor={bill.amountMinor}
+          currency={currency}
+          empty="Amount varies"
+          caption={
+            <>
+              <span className="block">{billSchedule(bill.dayOfMonth, bill.payByDay)}</span>
+              <span className={cx('mt-[6px] inline-block rounded-full px-[7px] py-px text-[11px] leading-[15px] font-semibold', pill.className)}>{pill.text}</span>
+            </>
+          }
+        />
+      </div>
 
       {justPaid && paidMonth && (
-        <div data-testid="just-paid" role="status" className="flex items-center justify-between rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <span>
+        /* A confirmation with its own Undo beside it — a banner, not a row, so the two never share one tap target. */
+        <div
+          data-testid="just-paid"
+          role="status"
+          className="mb-[18px] flex items-center justify-between gap-3 bg-[var(--ph-tint-panel)] pl-[13px] text-[15px] leading-[20px] text-[var(--ph-tint-ink)] md:max-w-2xl"
+          style={{ borderRadius: GROUP_RADIUS }}
+        >
+          <span className="tabular py-[11px]">
             ✓ Paid <Money minor={justPaid.amountMinor} currency={currency} /> on {dayMonth(justPaid.paidOn)}
             {justPaid.month !== bill.billMonth && ` · ${monthName(justPaid.month, 'long')} bill`}
           </span>
-          <button type="button" onClick={() => void undo()} className="min-h-11 font-semibold">
+          <button type="button" onClick={() => void undo()} className="ph-focus-inset min-h-11 shrink-0 px-[13px] font-semibold">
             Undo
           </button>
         </div>
       )}
 
       {!isSettled(bill) && (
-        <Button className="w-full" onClick={() => setPaying(true)}>
-          Pay {monthName(bill.billMonth, 'long')} bill
-        </Button>
+        <InsetGroup>
+          <InsetRow title={<span className="text-[var(--ph-tint)]">Pay {month} bill</span>} label={`Pay ${month} bill`} onClick={() => setPaying(true)} chevron={false} />
+        </InsetGroup>
       )}
 
-      <Card className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-500">Paid from</span>
-          <span>{account?.name ?? ''}</span>
-        </div>
-        {bookName && (
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Workspace</span>
-            <span>{bookName}</span>
-          </div>
-        )}
-      </Card>
+      <InsetGroup>
+        <ReadOnlyRow label="Paid from" value={account?.name ?? ''} />
+        {bookName ? <ReadOnlyRow label="Workspace" value={bookName} /> : null}
+      </InsetGroup>
 
-      <h2 className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">History</h2>
       <div data-testid="bill-history">
-        <Card className="divide-y divide-slate-100">
+        <InsetGroup header="History">
           {history.map((row) => (
-            <div
+            <HistoryRow
               key={row.month}
-              data-new={paidMonth?.month === row.month}
-              className={cx('flex justify-between py-2 text-sm', paidMonth?.month === row.month && 'rounded-lg bg-emerald-50 px-2')}
-            >
-              <span>{monthName(row.month, 'long')} bill</span>
-              <span>
-                {row.state === 'paid' ? (
+              fresh={paidMonth?.month === row.month}
+              title={`${monthName(row.month, 'long')} bill`}
+              value={
+                row.state === 'paid' ? (
                   <>
                     <Money minor={row.paidMinor ?? 0} currency={currency} /> · paid {dayMonth(row.paidOn!)}
                   </>
@@ -168,22 +173,22 @@ export function BillPage({ billId }: { billId: string }) {
                   'Skipped'
                 ) : (
                   pillOf({ ...row, paidOn: null }).text
-                )}
-              </span>
-            </div>
+                )
+              }
+            />
           ))}
-        </Card>
+        </InsetGroup>
       </div>
 
       {!isSettled(bill) && (
-        <button type="button" onClick={() => void skip()} className="self-center text-sm font-medium text-slate-600">
-          Skip {monthName(bill.billMonth, 'long')} bill
-        </button>
+        <InsetGroup>
+          <InsetRow title={<span className="font-normal text-[var(--ph-ink-2)]">Skip {month} bill</span>} label={`Skip ${month} bill`} onClick={() => void skip()} chevron={false} />
+        </InsetGroup>
       )}
 
-      <button type="button" onClick={() => void stop()} className="self-center text-sm font-medium text-red-700">
-        Stop this bill
-      </button>
+      <InsetGroup>
+        <DestructiveRow label="Stop this bill" onClick={() => void stop()} />
+      </InsetGroup>
 
       {paying && (
         <PaySheet
@@ -197,6 +202,18 @@ export function BillPage({ billId }: { billId: string }) {
           onSkipped={() => setPaying(false)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * A month in the bill's history. The month just paid is washed in the tint and marked `data-new`, so the payment
+ * that just happened is the row the eye lands on — the row itself stays the kit's.
+ */
+function HistoryRow({ position, fresh, title, value }: GroupChild & { fresh: boolean; title: string; value: ReactNode }) {
+  return (
+    <div data-new={fresh}>
+      <InsetRow position={position} title={title} value={value} valueTone="ink-2" className={cx(fresh && 'bg-[var(--ph-tint-panel)]')} />
     </div>
   );
 }

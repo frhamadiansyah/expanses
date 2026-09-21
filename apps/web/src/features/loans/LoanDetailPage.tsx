@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
+import { useSuggestedDraft } from '../../lib/suggested-draft';
 import { Empty, ErrorBox } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, ReadOnlyRow, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
@@ -73,13 +74,17 @@ function PaymentForm({
   const money = moneyHolders(accounts).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
   const today = isoDate();
   const next = useNextPayment(accountId, today);
-  const [draft, setDraft] = useState<PaymentDraft | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  // The form fills itself in from the next scheduled row, once that row is known.
-  const filled = draft ?? paymentDraftFrom(next.data, today, money[0]?.id ?? '', currency);
-  const set = (patch: Partial<PaymentDraft>) => setDraft({ ...filled, ...patch });
+  // The form fills itself in from the next scheduled row and the first paying account, each once it is known, and
+  // only in the fields nobody has touched: a row landing while the principal is being typed must not join the keys.
+  const scheduled = next.isSuccess ? paymentDraftFrom(next.data, today, '', currency) : null;
+  const suggestion: Partial<PaymentDraft> = {
+    ...(scheduled && { occurredOn: scheduled.occurredOn, principal: scheduled.principal, interest: scheduled.interest }),
+    ...(money[0] && { moneyId: money[0].id }),
+  };
+  const { value: filled, set, touch } = useSuggestedDraft(paymentDraftFrom(undefined, today, '', currency), suggestion);
   // What leaves the paying account, read off the input `save()` sends: principal, interest and every extra riding
   // along. An incomplete draft throws there, and asks nothing yet.
   const outflowMinor = (() => {
@@ -109,10 +114,10 @@ function PaymentForm({
   return (
     <>
       <InsetGroup header="Record a payment">
-        <TextRow label="Date" type="date" value={filled.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
-        <TextRow label={`Principal (${currency})`} value={filled.principal} inputMode="decimal" onChange={(e) => set({ principal: e.target.value })} />
-        <TextRow label={`Interest (${currency})`} value={filled.interest} inputMode="decimal" onChange={(e) => set({ interest: e.target.value })} />
-        <SelectRow label="Paid from" value={filled.moneyId} onChange={(e) => set({ moneyId: e.target.value })}>
+        <TextRow label="Date" type="date" value={filled.occurredOn} onFocus={touch('occurredOn')} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
+        <TextRow label={`Principal (${currency})`} value={filled.principal} inputMode="decimal" onFocus={touch('principal')} onChange={(e) => set({ principal: e.target.value })} />
+        <TextRow label={`Interest (${currency})`} value={filled.interest} inputMode="decimal" onFocus={touch('interest')} onChange={(e) => set({ interest: e.target.value })} />
+        <SelectRow label="Paid from" value={filled.moneyId} onFocus={touch('moneyId')} onChange={(e) => set({ moneyId: e.target.value })}>
           {money.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
