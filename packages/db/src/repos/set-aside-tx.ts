@@ -46,6 +46,11 @@ export interface SetAsideChoice {
   /** A borrow only: whether the goal stood whole just before, and since when (null when not known). */
   wasWhole?: boolean;
   wholeSince?: string | null;
+  /**
+   * A spend an edit carries: the stage the original paid (null when it paid none). Omitted on a fresh answer, which
+   * pays the earliest unpaid stage. Carrying it keeps one payment on one stage — an edit never pays the next.
+   */
+  stageId?: string | null;
 }
 
 /** Money can wait for a goal wherever it can be set aside, or in a holding the owner groups as investments. */
@@ -189,16 +194,25 @@ export async function applySetAsideTx(
     // An emergency fund is a standing level, not a finish line (ledger Ruling Q3): spending it on an emergency draws
     // it down and it reopens to be rebuilt, so no stage is ever marked paid for it. Every other goal pays its
     // earliest unpaid stage, and reads Done when every stage is paid.
+    // An edit carries the stage its original paid: it is re-marked when the void un-paid it, and left as it is when the
+    // owner dated it by hand. Picking afresh would pay the next stage with the same money.
     const [stage] =
-      goal.kind === 'emergency'
-        ? []
-        : await tx
-            .select({ id: goalStages.id })
-            .from(goalStages)
-            .where(and(eq(goalStages.goalId, choice.goalId), eq(goalStages.workspaceId, ws.workspaceId), isNull(goalStages.paidOn)))
-            .orderBy(asc(goalStages.dueOn), asc(goalStages.sort))
-            .limit(1);
-    if (stage) await tx.update(goalStages).set({ paidOn: occurredOn }).where(eq(goalStages.id, stage.id));
+      choice.stageId !== undefined
+        ? choice.stageId === null
+          ? []
+          : await tx
+              .select({ id: goalStages.id, paidOn: goalStages.paidOn })
+              .from(goalStages)
+              .where(and(eq(goalStages.id, choice.stageId), eq(goalStages.goalId, choice.goalId), eq(goalStages.workspaceId, ws.workspaceId)))
+        : goal.kind === 'emergency'
+          ? []
+          : await tx
+              .select({ id: goalStages.id, paidOn: goalStages.paidOn })
+              .from(goalStages)
+              .where(and(eq(goalStages.goalId, choice.goalId), eq(goalStages.workspaceId, ws.workspaceId), isNull(goalStages.paidOn)))
+              .orderBy(asc(goalStages.dueOn), asc(goalStages.sort))
+              .limit(1);
+    if (stage && stage.paidOn === null) await tx.update(goalStages).set({ paidOn: occurredOn }).where(eq(goalStages.id, stage.id));
     await tx.insert(goalDraws).values({ ...row, intent: 'spend', amountMinor: amount, stageId: stage?.id ?? null });
     return;
   }
@@ -266,5 +280,6 @@ export async function setAsideChoiceOfTx(tx: Db, ws: WorkspaceContext, transacti
     toAccountId: draw.toAccountId,
     wasWhole: draw.wasWhole === 1,
     wholeSince: draw.wholeSince,
+    ...(draw.intent === 'spend' ? { stageId: draw.stageId } : {}),
   };
 }

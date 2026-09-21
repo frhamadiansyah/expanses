@@ -264,10 +264,16 @@ export function replaceTransaction(
     // mentions it — `channel: null` — clears it. Read before the void, written as part of the replacement.
     const extras = (await extrasTablesExist(tx)) ? await extrasForTx(tx, ws, id) : null;
     // Read before the void reverses it. An edit that does not mention the answer keeps it, clamped to what it now pays.
-    const carried = input.setAside === undefined && (await setAsideTablesExist(tx)) ? await setAsideChoiceOfTx(tx, ws, id) : null;
+    const saved = (await setAsideTablesExist(tx)) ? await setAsideChoiceOfTx(tx, ws, id) : null;
+    const carried = input.setAside === undefined ? saved : null;
     await voidTransactionTx(tx, ws, id);
-    const setAside =
+    const answered =
       input.setAside !== undefined ? input.setAside : carried && carryable(carried, input.lines) && (await stillPromisedTx(tx, ws, carried)) ? carried : null;
+    // The same spend, carried or answered again, stays on the stage it paid: never the next one.
+    const setAside =
+      answered?.intent === 'spend' && saved?.intent === 'spend' && answered.goalId === saved.goalId && answered.accountId === saved.accountId
+        ? { ...answered, stageId: saved.stageId ?? null }
+        : answered && { ...answered, stageId: undefined };
     // Keep import identity so re-importing the same statement still recognises the row.
     const replacement = await postTransactionTx(tx, ws, {
       ...input,
