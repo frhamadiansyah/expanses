@@ -1,27 +1,36 @@
 import {
+  assumedReturnBps,
   EMERGENCY_BASES,
+  EMERGENCY_RETURN_BPS,
   type EducationInputs,
+  educationFromV1,
+  type EducationPlanInputs,
+  educationPlanStages,
   type EmergencyBase,
-  educationStages,
   HOUSEHOLDS,
   type Household,
   INCOME_STABILITIES,
   type IncomeStability,
+  monthsUntil,
+  RETIREMENT_RETURN_BPS,
   type RetirementInputs,
-  retirementTargetMinor,
+  retirementTodayMinor,
 } from '@expanses/core';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
-import type { Database } from '../database';
+import type { Database, Db } from '../database';
 import { goalCalculators } from '../schema-budget';
-import { GoalDbError, type SaveGoalStageInput, saveGoal } from './goals';
-import { goals as goalsTable } from '../schema-goals';
+import { goalStages, goals as goalsTable } from '../schema-goals';
+import { goalStageTerms } from '../schema-health';
+import { GoalDbError, type SaveGoalStageInput, saveGoalTx } from './goals';
+import { healthTablesExist } from './health-tables';
 
 /**
  * An emergency fund counts months of outgoings, read from the flows when the sheet is built. The two answers are kept
  * so the screen can say which of them produced the months; `base` says what the months multiply.
  */
 export interface EmergencyInputs {
+  version?: 2;
   months: number;
   household?: Household;
   income?: IncomeStability;
@@ -29,7 +38,8 @@ export interface EmergencyInputs {
 }
 
 export type CalculatorKind = 'emergency' | 'education' | 'retirement';
-export type CalculatorInputs = EmergencyInputs | EducationInputs | RetirementInputs;
+/** A one-course education working (v1) is still accepted on the way in; it is always stored as levels (v2). */
+export type CalculatorInputs = EmergencyInputs | EducationPlanInputs | EducationInputs | RetirementInputs;
 
 export interface SaveGoalCalculatorInput {
   goalId: string;
@@ -47,31 +57,68 @@ export interface GoalCalculatorRow {
   computedAt: string;
 }
 
-/** The stages a calculator's inputs imply, in the shape saveGoal wants. */
-function stagesFor(input: SaveGoalCalculatorInput, goalName: string): { stages: SaveGoalStageInput[]; computedMinor: number } {
-  if (input.kind === 'emergency') {
-    const { months, household, income, base } = input.inputs as EmergencyInputs;
+interface DerivedStage extends SaveGoalStageInput {
+  /** Which part of the working this stage is, so a re-work finds the same stage — and its paid mark — again. */
+  key: string;
+  returnBps: number | null;
+}
+
+interface Derived {
+  inputs: CalculatorInputs;
+  stages: DerivedStage[];
+  growthBps: number;
+  /** Written as the goal's return only when the working names one (retirement's return while saving). */
+  returnBps: number | null;
+  computedMinor: number;
+}
+
+const isV1Education = (inputs: CalculatorInputs): inputs is EducationInputs => 'feeTodayMinor' in inputs;
+
+/** What a calculator's inputs imply, in today's money — the goal engine inflates once, at the growth given here. */
+function derive(kind: CalculatorKind, raw: CalculatorInputs, today: string, goalName: string): Derived {
+  if (kind === 'emergency') {
+    const inputs = raw as EmergencyInputs;
+    const { months, household, income, base } = inputs;
     if (!Number.isFinite(months) || months <= 0) throw new GoalDbError('An emergency fund needs a number of months above zero');
     if (household !== undefined && !HOUSEHOLDS.includes(household)) throw new GoalDbError('That household is not one this app knows');
     if (income !== undefined && !INCOME_STABILITIES.includes(income)) throw new GoalDbError('Income is salaried or irregular');
     if (base !== undefined && !EMERGENCY_BASES.includes(base)) throw new GoalDbError('An emergency fund counts essential or all spending');
-    // Months, not an amount: what it costs follows your spending, and is worked out when it is read.
-    const dueOn = yearsFrom(input.today, 2);
-    return { stages: [{ name: goalName, targetMinor: null, targetMonths: Math.round(months), dueOn }], computedMinor: 0 };
-  }
-
-  if (input.kind === 'education') {
-    const stages = educationStages(input.inputs as EducationInputs, input.today);
+    // Months, not an amount: what it costs follows your spending, and is worked out when it is read — so no growth.
     return {
-      stages: stages.map((stage, index) => ({ name: `Year ${index + 1}`, targetMinor: stage.targetMinor, targetMonths: null, dueOn: stage.dueOn })),
-      computedMinor: stages.reduce((total, stage) => total + stage.targetMinor, 0),
+      inputs: { ...inputs, version: 2 },
+      stages: [{ name: goalName, targetMinor: null, targetMonths: Math.round(months), dueOn: yearsFrom(today, 2), key: 'emergency', returnBps: null }],
+      growthBps: 0,
+      returnBps: null,
+      computedMinor: 0,
     };
   }
 
-  const inputs = input.inputs as RetirementInputs;
-  const targetMinor = retirementTargetMinor(inputs);
+  if (kind === 'education') {
+    const inputs = isV1Education(raw) ? educationFromV1(raw, today) : (raw as EducationPlanInputs);
+    const stages = educationPlanStages(inputs, today);
+    return {
+      inputs,
+      stages: stages.map((stage) => ({
+        name: stage.name,
+        targetMinor: stage.targetTodayMinor,
+        targetMonths: null,
+        dueOn: stage.dueOn,
+        key: stage.key,
+        returnBps: stage.returnBps,
+      })),
+      growthBps: inputs.feeInflationBps,
+      returnBps: null,
+      computedMinor: stages.reduce((total, stage) => total + stage.targetTodayMinor, 0),
+    };
+  }
+
+  const inputs: RetirementInputs = { ...(raw as RetirementInputs), version: 2 };
+  const targetMinor = retirementTodayMinor(inputs);
   return {
-    stages: [{ name: 'Retirement fund', targetMinor, targetMonths: null, dueOn: yearsFrom(input.today, inputs.yearsToRetirement) }],
+    inputs,
+    stages: [{ name: 'Retirement fund', targetMinor, targetMonths: null, dueOn: yearsFrom(today, inputs.yearsToRetirement), key: 'retirement', returnBps: null }],
+    growthBps: inputs.inflationBps,
+    returnBps: inputs.returnBeforeBps ?? RETIREMENT_RETURN_BPS,
     computedMinor: targetMinor,
   };
 }
@@ -82,77 +129,142 @@ function yearsFrom(today: string, years: number): string {
 }
 
 /**
- * Works the target out and writes it onto the goal, keeping the inputs so it can be worked out again.
- * The goal's own name, growth and return are left as they are: the calculator owns the amount, not the goal.
+ * The stages of a goal that money was drawn against. The table is the set-aside work's (0050); on a database without
+ * it nothing was ever drawn. Read with plain SQL so this file needs nothing from that schema.
  */
-export async function saveGoalCalculator(database: Database, ws: WorkspaceContext, input: SaveGoalCalculatorInput): Promise<number> {
-  const [goal] = await database.db
+async function drawnStageIds(tx: Db, goalId: string): Promise<Set<string>> {
+  const table = await tx.values<[number]>(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_draws'`);
+  if (table.length === 0) return new Set();
+  const rows = await tx.values<[string]>(sql`SELECT DISTINCT stage_id FROM goal_draws WHERE goal_id = ${goalId} AND stage_id IS NOT NULL`);
+  return new Set(rows.map((row) => row[0]));
+}
+
+/**
+ * Writes the working onto the goal inside the caller's transaction: the goal's growth (and return, where the working
+ * names one), its stages — keeping each stage that was already there, and its paid mark, by the key the working gave
+ * it — the stages' own returns, and the inputs. A stage the working no longer asks for goes, unless it was paid or
+ * money was drawn against it: that one stays as it is, and the working is laid around it. Name, rank, standing amount,
+ * set-asides and tags are left alone.
+ */
+async function writeCalculatorTx(
+  tx: Db,
+  ws: WorkspaceContext,
+  goal: typeof goalsTable.$inferSelect,
+  kind: CalculatorKind,
+  derived: Derived,
+  computedAt = new Date().toISOString(),
+): Promise<void> {
+  const current = await tx
     .select()
-    .from(goalsTable)
-    .where(and(eq(goalsTable.id, input.goalId), eq(goalsTable.workspaceId, ws.workspaceId)));
-  if (!goal) throw new GoalDbError('Goal not found in this workspace');
+    .from(goalStages)
+    .where(and(eq(goalStages.goalId, goal.id), eq(goalStages.workspaceId, ws.workspaceId)))
+    .orderBy(asc(goalStages.dueOn), asc(goalStages.sort));
+  const withTerms = await healthTablesExist(tx);
+  const terms = withTerms
+    ? await tx
+        .select()
+        .from(goalStageTerms)
+        .where(and(eq(goalStageTerms.goalId, goal.id), eq(goalStageTerms.workspaceId, ws.workspaceId)))
+    : [];
+  const stageOfKey = new Map(terms.filter((term) => term.derivedKey !== null).map((term) => [term.derivedKey!, term.stageId]));
+  const byId = new Map(current.map((stage) => [stage.id, stage]));
+  // A goal worked out before keys existed: match by position when the count is the same, so paid marks survive.
+  const byPosition = stageOfKey.size === 0 && current.length === derived.stages.length;
+  const matched = derived.stages.map((stage, index) => (byPosition ? current[index] : byId.get(stageOfKey.get(stage.key) ?? '')));
+  const matchedIds = new Set(matched.flatMap((stage) => (stage ? [stage.id] : [])));
 
-  const { stages, computedMinor } = stagesFor(input, goal.name);
+  const drawn = await drawnStageIds(tx, goal.id);
+  const kept = current.filter((stage) => !matchedIds.has(stage.id) && (stage.paidOn !== null || drawn.has(stage.id)));
 
-  await saveGoal(database, ws, {
+  const { stageIds } = await saveGoalTx(tx, ws, {
     id: goal.id,
     name: goal.name,
     kind: goal.kind,
     rank: goal.rank,
-    growthBps: goal.growthBps,
-    returnBps: goal.returnBps,
+    growthBps: derived.growthBps,
+    returnBps: derived.returnBps ?? goal.returnBps,
     standingMonthlyMinor: goal.standingMonthlyMinor,
     standingNote: goal.standingNote,
-    stages,
+    stages: [
+      ...derived.stages.map((stage, index) => ({
+        id: matched[index]?.id,
+        name: stage.name,
+        targetMinor: stage.targetMinor,
+        targetMonths: stage.targetMonths,
+        dueOn: stage.dueOn,
+        paidOn: matched[index]?.paidOn ?? null,
+      })),
+      ...kept.map((stage) => ({ id: stage.id, name: stage.name, targetMinor: stage.targetMinor, targetMonths: stage.targetMonths, dueOn: stage.dueOn, paidOn: stage.paidOn })),
+    ],
     derived: true,
   });
 
-  const now = new Date().toISOString();
-  const row = {
-    goalId: input.goalId,
-    workspaceId: ws.workspaceId,
-    kind: input.kind,
-    inputsJson: JSON.stringify(input.inputs),
-    computedMinor,
-    computedAt: now,
-  };
+  if (withTerms) {
+    await tx.delete(goalStageTerms).where(and(eq(goalStageTerms.goalId, goal.id), eq(goalStageTerms.workspaceId, ws.workspaceId)));
+    for (const [index, stage] of derived.stages.entries()) {
+      await tx
+        .insert(goalStageTerms)
+        .values({ stageId: stageIds[index]!, workspaceId: ws.workspaceId, goalId: goal.id, returnBps: stage.returnBps, derivedKey: stage.key });
+    }
+    // A kept stage keeps its own terms, key included, so the level coming back finds it again.
+    const termOf = new Map(terms.map((term) => [term.stageId, term]));
+    for (const stage of kept) {
+      const term = termOf.get(stage.id);
+      if (term) await tx.insert(goalStageTerms).values(term);
+    }
+  }
+
+  const row = { goalId: goal.id, workspaceId: ws.workspaceId, kind, inputsJson: JSON.stringify(derived.inputs), computedMinor: derived.computedMinor, computedAt };
   const { goalId: _goalId, workspaceId: _workspaceId, ...changes } = row;
-  await database.db.insert(goalCalculators).values(row).onConflictDoUpdate({ target: goalCalculators.goalId, set: changes });
-  return computedMinor;
+  await tx.insert(goalCalculators).values(row).onConflictDoUpdate({ target: goalCalculators.goalId, set: changes });
+}
+
+/**
+ * Works the target out and writes it onto the goal in today's money, with the growth the working assumed, keeping the
+ * inputs so it can be worked out again. One transaction: the goal, its stages, their returns and the working land
+ * together or not at all.
+ */
+export async function saveGoalCalculator(database: Database, ws: WorkspaceContext, input: SaveGoalCalculatorInput): Promise<number> {
+  return database.transaction(async (tx) => {
+    const [goal] = await tx.select().from(goalsTable).where(and(eq(goalsTable.id, input.goalId), eq(goalsTable.workspaceId, ws.workspaceId)));
+    if (!goal) throw new GoalDbError('Goal not found in this workspace');
+    const derived = derive(input.kind, input.inputs, input.today, goal.name);
+    await writeCalculatorTx(tx, ws, goal, input.kind, derived);
+    return derived.computedMinor;
+  });
 }
 
 export interface CreateGoalFromCalculatorInput extends Omit<SaveGoalCalculatorInput, 'goalId'> {
   name: string;
-  growthBps?: number;
   returnBps?: number;
 }
 
 /**
  * Starts a goal from a calculator's working, for someone who came to the answer before the goal.
  *
- * The figures are worked out before anything is written, so a refused input leaves no half-made goal
- * behind — the goal and its working arrive together or not at all.
+ * The figures are worked out before anything is written, and everything is written in one transaction, so a refused
+ * input leaves no half-made goal behind — the goal and its working arrive together or not at all.
  */
-export async function createGoalFromCalculator(
-  database: Database,
-  ws: WorkspaceContext,
-  input: CreateGoalFromCalculatorInput,
-): Promise<string> {
-  if (!input.name.trim()) throw new GoalDbError('Give this goal a name');
-  // Throws before the goal exists when the figures make no sense.
-  const { stages } = stagesFor({ ...input, goalId: 'unsaved' }, input.name.trim());
-
-  const goalId = await saveGoal(database, ws, {
-    name: input.name.trim(),
-    kind: input.kind === 'emergency' ? 'emergency' : input.kind === 'education' ? 'education' : 'retirement',
-    growthBps: input.growthBps ?? 400,
-    returnBps: input.returnBps ?? 900,
-    stages,
-    derived: true,
+export async function createGoalFromCalculator(database: Database, ws: WorkspaceContext, input: CreateGoalFromCalculatorInput): Promise<string> {
+  const name = input.name.trim();
+  if (!name) throw new GoalDbError('Give this goal a name');
+  const derived = derive(input.kind, input.inputs, input.today, name);
+  const firstDue = derived.stages.map((stage) => stage.dueOn).sort()[0]!;
+  const returnBps =
+    input.returnBps ?? derived.returnBps ?? (input.kind === 'emergency' ? EMERGENCY_RETURN_BPS : assumedReturnBps(monthsUntil(input.today, firstDue)));
+  return database.transaction(async (tx) => {
+    const { goalId } = await saveGoalTx(tx, ws, {
+      name,
+      kind: input.kind,
+      growthBps: derived.growthBps,
+      returnBps,
+      stages: derived.stages.map(({ key: _key, returnBps: _returnBps, ...stage }) => stage),
+      derived: true,
+    });
+    const [goal] = await tx.select().from(goalsTable).where(eq(goalsTable.id, goalId));
+    await writeCalculatorTx(tx, ws, goal!, input.kind, derived);
+    return goalId;
   });
-
-  await saveGoalCalculator(database, ws, { goalId, kind: input.kind, inputs: input.inputs, today: input.today });
-  return goalId;
 }
 
 export async function getGoalCalculator(database: Database, ws: WorkspaceContext, goalId: string): Promise<GoalCalculatorRow | null> {
