@@ -57,15 +57,32 @@ function whole(value: number, what: string): number {
   return value;
 }
 
+/**
+ * `Date.UTC` and `toISOString` are silent about a birthday that does not parse — the first gives `NaN`,
+ * which is only Invalid Date, and the second throws a bare `RangeError` no calculator caller catches.
+ * So the birthday is checked here, by round-trip: a real calendar date reads back exactly as typed.
+ */
+function parsedBirthday(birthday: string): { y: number; m: number; d: number } {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthday);
+  if (!match) throw new CalculatorError("The child's birthday is not a date");
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  if (new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10) !== birthday) {
+    throw new CalculatorError("The child's birthday is not a date");
+  }
+  return { y, m, d };
+}
+
 function span(level: EducationLevel, birthday: string | null): { first: string; years: number; dueOf: (i: number) => string } {
   if (level.startAge !== null && level.untilAge !== null) {
     if (!birthday) throw new CalculatorError(`${level.name} is set by age, which needs the child's birthday`);
-    const [y, m, d] = birthday.split('-').map(Number);
+    const { y, m, d } = parsedBirthday(birthday);
     const startAge = whole(level.startAge, `${level.name}'s starting age`);
     const years = whole(level.untilAge, `${level.name}'s last age`) - startAge;
     if (startAge < 0 || years < 1) throw new CalculatorError(`${level.name} has to end after it starts`);
     // Year i is due on the day the child turns start age + i.
-    const dueOf = (i: number) => iso(y! + startAge + i, m!, d!);
+    const dueOf = (i: number) => iso(y + startAge + i, m, d);
     return { first: dueOf(0), years, dueOf };
   }
   if (level.startYear === null || level.untilYear === null) throw new CalculatorError(`${level.name} needs a start and an end`);

@@ -204,13 +204,19 @@ page's monthly figure uses the return while saving, not the return while retired
 ### 9.4 Upgrading goals derived before this
 
 On open, every `goal_calculators` row without `version: 2` is worked out again under the rules above, in one
-transaction per goal, dated from its own `computed_at` so its due dates do not move. **Silently, and only if the figure
-changes** (provisional ruling, 2026-09-21): a goal whose stages and growth come out the same is only stamped `version: 2`.
-A goal whose target the user typed by hand has no `goal_calculators` row (typing breaks the link), so it is never
-touched:
+transaction per goal. The year each stage falls in still starts from the goal's own `computed_at` — a course "starting
+in 10 years" keeps counting from when it was first worked out, not from the day of the upgrade — but a v1 goal carries
+no birthday, and §10's rule for that case is not waived here: a level's year falls on **1 January**, so upgrading
+education v1 moves every stage's due date onto 1 January of its year, earlier than the day of the year `computed_at`
+itself fell on. That is the conservative direction — the goal is asked to save sooner, never later — and it is
+recorded in the upgrade's own ledger rather than left to surprise a reader of `dueOn`. **Silently, and only if the
+figure changes** (provisional ruling, 2026-09-21): a goal whose stages and growth come out the same is only stamped
+`version: 2`. A goal whose target the user typed by hand has no `goal_calculators` row (typing breaks the link), so it
+is never touched:
 
 - **education v1** (`feeTodayMinor`, `startsInYears`, `yearsOfStudy`, `feeInflationBps`) becomes one level named
-  "Course" in calendar years, with one yearly fee; its stages keep their ids and paid marks by position;
+  "Course" in calendar years, with one yearly fee, its due dates falling on 1 January per §10; its stages keep their
+  ids and paid marks by position;
 - **retirement v1** keeps the goal's own return as the return while saving;
 - **education v2** (user decision, Q8): re-read on every open from that day, only to move the band of a level whose
   return was never typed;

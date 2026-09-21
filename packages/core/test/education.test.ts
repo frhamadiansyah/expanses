@@ -72,6 +72,42 @@ describe('a level’s years', () => {
     expect(() => educationPlanStages(plan([primary({ fees: [fee('Academic', -1, 'yearly'), fee('Other', 5, 'once')] })]), '2026-01-01')).toThrow(CalculatorError);
     expect(() => educationPlanStages(plan([primary(), primary({ startYear: 2038, untilYear: 2041 })]), '2026-01-01')).toThrow(CalculatorError);
   });
+
+  it('refuses a level set by age that ends before it starts, rather than silently make no stages', () => {
+    const sameAge = primary({ startAge: 8, untilAge: 8, startYear: null, untilYear: null });
+    expect(() => educationPlanStages(plan([sameAge], '2020-07-15'), '2026-01-01')).toThrow(CalculatorError);
+  });
+
+  it('refuses a starting age below nothing', () => {
+    const negativeAge = primary({ startAge: -1, untilAge: 5, startYear: null, untilYear: null });
+    expect(() => educationPlanStages(plan([negativeAge], '2020-07-15'), '2026-01-01')).toThrow(CalculatorError);
+  });
+
+  it('refuses a level with no start and no end at all', () => {
+    const nothingSet = primary({ startAge: null, untilAge: null, startYear: null, untilYear: null });
+    expect(() => educationPlanStages(plan([nothingSet]), '2026-01-01')).toThrow(CalculatorError);
+  });
+
+  it('refuses fees that inflate by less than nothing', () => {
+    expect(() => educationPlanStages({ ...plan([primary()]), feeInflationBps: -1 }, '2026-01-01')).toThrow(CalculatorError);
+  });
+
+  it('refuses a working with no level at all', () => {
+    expect(() => educationPlanStages(plan([]), '2026-01-01')).toThrow(CalculatorError);
+  });
+
+  it('refuses a birthday that does not parse, as a CalculatorError rather than a raw RangeError', () => {
+    const byAge = primary({ startAge: 5, untilAge: 6, startYear: null, untilYear: null });
+    expect(() => educationPlanStages(plan([byAge], 'not-a-date'), '2026-01-01')).toThrow(CalculatorError);
+    expect(() => educationPlanStages(plan([byAge], '2021-02-30'), '2026-01-01')).toThrow(CalculatorError); // February has no 30th.
+  });
+
+  it('rolls a 29 February birthday to 1 March when the year it falls due is not a leap year', () => {
+    // 2020 is a leap year; the child turns 10 in 2030, which is not — documented here, not silently rolled.
+    const byAge = primary({ startAge: 10, untilAge: 11, startYear: null, untilYear: null });
+    const stages = educationPlanStages(plan([byAge], '2020-02-29'), '2026-01-01');
+    expect(stages[0]!.dueOn).toBe('2030-03-01');
+  });
 });
 
 describe('a working from before levels', () => {
@@ -82,5 +118,13 @@ describe('a working from before levels', () => {
       feeInflationBps: 1000,
       levels: [{ id: 'course', name: 'Course', startAge: null, untilAge: null, startYear: 2036, untilYear: 2040, returnBps: null, fees: [{ id: 'fee', name: 'Fee', amountTodayMinor: 100_000_000, charged: 'yearly' }] }],
     });
+  });
+
+  it('rounds a part year, unlike v1’s own Date.UTC, which truncated it', () => {
+    // Math.round(2.5) = 3, so 2026 + 3 = 2029 — not the 2028 that Math.floor (v1's own Date.UTC coercion)
+    // would give. Math.round(3.5) = 4, so the course runs 2029..2033, not 2028..2032.
+    const plan = educationFromV1({ feeTodayMinor: 100_000_000, startsInYears: 2.5, yearsOfStudy: 3.5, feeInflationBps: 1000 }, '2026-09-13');
+    expect(plan.levels[0]!.startYear).toBe(2029);
+    expect(plan.levels[0]!.untilYear).toBe(2033);
   });
 });

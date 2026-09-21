@@ -288,4 +288,11 @@ describe('a stage with a return of its own', () => {
     const stage = { id: 's1', name: 'Preschool', targetMinor: 12_000_000, targetMonths: null, dueOn: '2027-09-21', paidOn: null, returnBps: null };
     expect(goalPlan({ ...base, stages: [stage] }, [], 0, 0, TODAY).requiredMonthlyMinor).toBe(963_861);
   });
+
+  it('saves at a stage’s own 0%, not the goal’s return — 0 is a chosen rate, not an unset one', () => {
+    // null falls back to the goal's return; 0 must not. At 0% the gap is just spread evenly: 1.000.000
+    // a month, not the 963.861 the goal's 8% would ask for if `??` had been `||`.
+    const stage = { id: 's1', name: 'Preschool', targetMinor: 12_000_000, targetMonths: null, dueOn: '2027-09-21', paidOn: null, returnBps: 0 };
+    expect(goalPlan({ ...base, stages: [stage] }, [], 0, 0, TODAY).requiredMonthlyMinor).toBe(1_000_000);
+  });
 });
