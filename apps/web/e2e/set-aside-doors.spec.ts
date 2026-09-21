@@ -349,3 +349,103 @@ test('spending on an event from Jenius asks', async ({ page }) => {
 
   await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
 });
+
+// ── The desktop's quick rows and the review queue ─────────────────────────────────────────────────────────────────
+
+/** A recorded row of the table, by what its description cell holds (the opening balance is a row too). */
+const tableRow = (page: Page, description: string) =>
+  page.getByTestId('table-row').filter({ has: page.locator(`input[aria-label="Row description"][value="${description}"]`) });
+
+async function typeRow(page: Page, description: string, amount: string) {
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Table' }).click();
+  const typing = page.getByTestId('typing-row');
+  await typing.getByLabel('Row description').pressSequentially(description);
+  await typing.getByLabel('Row amount (IDR)').pressSequentially(amount);
+  for (const [label, text] of [['Row paid with', 'jenius'], ['Row category', 'groceries']] as const) {
+    const cell = typing.getByLabel(label);
+    await cell.pressSequentially(text);
+    await cell.press('Enter');
+  }
+  await typing.getByLabel('Row description').press('Enter');
+  return typing;
+}
+
+test('a quick row that takes promised money asks in a sheet, and saves from it', async ({ page }) => {
+  await jeniusWithTwoGoals(page);
+  await typeRow(page, 'Laptop', '6800000');
+  const sheet = page.getByRole('dialog', { name: 'Money set aside' });
+  await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+  const save = sheet.getByRole('button', { name: 'Save', exact: true });
+  await expect(save).toBeDisabled();
+  // Nothing is recorded while the question waits.
+  await expect(tableRow(page, 'Laptop')).toHaveCount(0);
+  await borrowFromEmergencyFund(sheet);
+  await save.click();
+  await expect(sheet).toHaveCount(0);
+  await expect(tableRow(page, 'Laptop')).toHaveCount(1);
+
+  await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
+});
+
+test('a quick row within what is free saves in place, with no sheet', async ({ page }) => {
+  await jeniusWithTwoGoals(page);
+  await typeRow(page, 'Groceries', '3000000');
+  await expect(tableRow(page, 'Groceries')).toHaveCount(1);
+  await expect(page.getByRole('dialog', { name: 'Money set aside' })).toHaveCount(0);
+});
+
+test('closing the sheet records nothing, and the typed row keeps what was typed', async ({ page }) => {
+  await jeniusWithTwoGoals(page);
+  const typing = await typeRow(page, 'Laptop', '6800000');
+  const sheet = page.getByRole('dialog', { name: 'Money set aside' });
+  await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(tableRow(page, 'Laptop')).toHaveCount(0);
+  await expect(typing.getByLabel('Row amount (IDR)')).toHaveValue('6800000');
+  await expect(typing.getByLabel('Row description')).toHaveValue('Laptop');
+});
+
+test('re-filing a borrowed row\'s category asks nothing and keeps the answer', async ({ page }) => {
+  await jeniusWithTwoGoals(page);
+  await typeRow(page, 'Laptop', '6800000');
+  const sheet = page.getByRole('dialog', { name: 'Money set aside' });
+  await borrowFromEmergencyFund(sheet);
+  await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'List' }).click();
+  await page.getByRole('button', { name: 'Category for Laptop' }).click();
+  await page.getByRole('dialog', { name: 'Category for Laptop' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
+  await expect(page.getByText('Moved to Restaurants')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Money set aside' })).toHaveCount(0);
+
+  // Carried by the ledger: the borrow is still there, the same 1.800.000.
+  await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
+});
+
+test('confirming a draft that takes promised money asks in the same sheet', async ({ page }) => {
+  await jeniusWithTwoGoals(page);
+  await page.goto('/import');
+  await page.getByLabel('Into account').selectOption({ label: 'Jenius (IDR)' });
+  const csv = ['Date,Description,Amount', '09/09/2026,LAPTOP STORE,-6800000'].join('\n');
+  await page.locator('input[type="file"]').setInputFiles({ name: 'statement.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await page.getByRole('button', { name: /Send \d+ to review/ }).click();
+  await expect(page.getByText(/Nothing is recorded until you confirm it there/)).toBeVisible();
+
+  await page.goto('/review');
+  await page.getByLabel('Category for LAPTOP STORE').selectOption({ label: 'Groceries' });
+  await page.getByRole('button', { name: 'Record LAPTOP STORE' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Money set aside' });
+  await expect(sheet.getByText(/1\.800\.000 more than is free/)).toBeVisible();
+  // Closing it records nothing: the draft still waits.
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Record LAPTOP STORE' }).click();
+  await borrowFromEmergencyFund(sheet);
+  await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
+
+  await expectShort(page, 'Emergency fund', /short by Rp.1\.800\.000/i);
+});

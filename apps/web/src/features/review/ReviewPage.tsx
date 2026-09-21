@@ -1,5 +1,5 @@
 import { formatMinor } from '@expanses/core';
-import { confirmDraft, dismissDraft, editDraft } from '@expanses/db';
+import { confirmDraft, type DraftRow, dismissDraft, editDraft } from '@expanses/db';
 import { Check, X } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -8,6 +8,8 @@ import { isMoneyAccount, useAccounts, useInvalidateAll } from '../../lib/queries
 import { cx, Empty, ErrorBox, Select } from '../../ui';
 import { Figure, LargeTitle, RecordTable, SCREEN } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
+import { type Door, spendingDoor } from '../goals/set-aside-question';
+import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
 import { useDrafts } from './queries';
 
 /**
@@ -44,6 +46,24 @@ export function ReviewPage() {
     } finally {
       setBusy(null);
     }
+  }
+
+  /** A draft whose payment takes promised money: confirmed from the question's sheet once it is answered. */
+  const [asking, setAsking] = useState<{ id: string; door: Door } | null>(null);
+
+  /** Confirms in place unless it would take money set aside; then the question comes first, in a sheet. */
+  async function record(draft: DraftRow) {
+    setError(null);
+    const door = spendingDoor(draft.accountId ?? '', Math.max(0, draft.amountMinor));
+    let asks = false;
+    try {
+      asks = await asksAboutSetAside(database, ws, door);
+    } catch (e) {
+      setError(e);
+      return;
+    }
+    if (asks) setAsking({ id: draft.id, door: door! });
+    else await run(draft.id, () => confirmDraft(database, ws, draft.id, { setAside: null }));
   }
 
   const list = drafts.data ?? [];
@@ -126,7 +146,7 @@ export function ReviewPage() {
                     type="button"
                     aria-label={`Record ${draft.description}`}
                     disabled={busy !== null}
-                    onClick={() => void run(draft.id, () => confirmDraft(database, ws, draft.id))}
+                    onClick={() => void record(draft)}
                     className="ph-focus flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-tint)] disabled:opacity-40"
                   >
                     <Check size={18} aria-hidden />
@@ -144,6 +164,16 @@ export function ReviewPage() {
               ),
             },
           ]}
+        />
+      )}
+      {asking && (
+        <SetAsideSheet
+          door={asking.door}
+          onSave={async (choice) => {
+            await confirmDraft(database, ws, asking.id, { setAside: choice });
+            await invalidate();
+          }}
+          onClose={() => setAsking(null)}
         />
       )}
     </div>
