@@ -206,7 +206,10 @@ export function KitPage() {
       <CardStack cards={WALLET} onOpen={() => {}} />
 
       <Note>A table becomes rows on a phone and stays a table on desktop. Narrow the window to see it change.</Note>
-      <RecordTable header="This week" records={PURCHASES} columns={COLUMNS} shape={SHAPE} />
+      <RecordTable header="This week" records={PURCHASES} columns={COLUMNS} shape={SHAPE} detail={{ kind: 'screen', open: () => {} }} />
+
+      <Note>Unless a row opens nothing: with no detail screen to hold them, the columns stay and the table scrolls.</Note>
+      <RecordTable header="Nothing to open" records={PURCHASES} columns={COLUMNS} shape={SHAPE} detail={{ kind: 'none' }} />
     </div>
   );
 }
@@ -217,7 +220,7 @@ const SHAPE = {
   subtitle: (row: Purchase) => `${row.occurredOn} · ${row.card}`,
   value: (row: Purchase) => rp(row.minor),
   valueTone: () => 'alarm' as const,
-  onOpen: () => {},
+  covers: ['date', 'merchant', 'card', 'amount'],
 };
 
 function iconFor(merchant: string) {

@@ -36,7 +36,7 @@ test('Escape closes the … menu through the app’s own stack, and nothing behi
 
 test('a table stays a table on a wide screen, with every column it has', async ({ page }) => {
   await page.goto('/design-kit');
-  const table = page.getByRole('table');
+  const table = page.locator('section', { has: page.getByRole('heading', { name: 'This week' }) }).first().getByRole('table');
   await expect(table).toBeVisible();
   await expect(table.getByRole('columnheader')).toHaveCount(6);
   await expect(table.getByRole('columnheader', { name: 'What it was' })).toBeVisible();

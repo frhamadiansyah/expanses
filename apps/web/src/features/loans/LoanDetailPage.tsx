@@ -396,6 +396,8 @@ export function LoanDetailPage() {
               { key: 'interest', heading: 'Interest', numeric: true, cell: (row) => minorToMajorString(row.interestMinor, currency) },
               { key: 'left', heading: 'Left after', numeric: true, cell: (row) => minorToMajorString(row.balanceMinor, currency) },
             ]}
+            /* A schedule line opens nothing, so "Left after" has nowhere to wait: the table stays a table here too. */
+            detail={{ kind: 'none' }}
             shape={{
               key: (row) => row.onDate,
               title: (row) => row.onDate,

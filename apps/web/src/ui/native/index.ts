@@ -14,7 +14,7 @@ export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
 export { DestructiveRow, PickerRow, ReadOnlyRow, SelectRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, type WalletCard } from './CardStack';
-export { Figure, RecordTable, type RecordColumn, type RecordShape } from './RecordTable';
+export { Figure, RecordTable, type RecordColumn, type RecordDetail, type RecordShape } from './RecordTable';
 
 /* The decisions, exported so a screen can ask the same questions the components ask. */
 export { CHEVRON, GROUP_GAP, GROUP_RADIUS, MIN_TEXT, PHONE_WIDTH, ROW_ICON, ROW_PAD_X, ROW_PAD_Y, TAP, rowHeight, tapReach, textWidth } from './metrics';
@@ -24,4 +24,5 @@ export { PHONE_MAX, SEGMENT_HEIGHT, SEGMENT_MORE, fitSegments, type PlacedSegmen
 export { CORNER_MAX, backLabel, planCornerActions, type CornerAction, type CornerPlan } from './title';
 export { heroFigure, progressFraction, progressPercent, progressTone, type HeroFigure } from './hero-figure';
 export { planFormRow, type FormKind, type FormRowPlan } from './form-row';
+export { planRecordTable, reachableColumns, type PhoneForm, type RecordDestination, type RecordTablePlan } from './record-table';
 export { CARD_H, CARD_W, FAN_X, STRIP, cardFigure, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';

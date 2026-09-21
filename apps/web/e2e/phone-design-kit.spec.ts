@@ -78,12 +78,38 @@ test('the wallet stack shows every card’s figure without a tap', async ({ page
 
 test('a table becomes rows on a phone, and the hidden columns are not on screen', async ({ page }) => {
   await page.goto('/design-kit');
-  await expect(page.getByRole('table')).toHaveCount(0);
   const group = page.locator('section', { has: page.getByRole('heading', { name: 'This week' }) }).first();
+  await expect(group.getByRole('table')).toHaveCount(0);
   await expect(group.getByRole('button', { name: /Superindo/ })).toBeVisible();
-  // The phone row keeps the title and the one figure; the other four columns wait behind the chevron.
+  // The phone row keeps the title and the one figure; the other columns wait behind the chevron.
   await expect(group.getByText('SPBU 34-12907 Pondok Indah')).toHaveCount(0);
   await expect(group.getByText('Paid with')).toHaveCount(0);
+});
+
+/**
+ * The other half of the rule, and the one a restyle loses columns by forgetting: behind the chevron is only a
+ * place when there is a chevron. A table whose rows open nothing keeps every column at 390 px and scrolls in
+ * its own container — so this fails the moment a column stops being drawn on a phone.
+ */
+test('a table with nothing to open keeps every column at phone width, and scrolls sideways for them', async ({ page }) => {
+  await page.goto('/design-kit');
+  const group = page.locator('section', { has: page.getByRole('heading', { name: 'Nothing to open' }) }).first();
+  const table = group.getByRole('table');
+  await expect(table).toBeVisible();
+  await expect(table.getByRole('columnheader')).toHaveCount(6);
+  for (const heading of ['Date', 'Merchant', 'What it was', 'Paid with', 'Points', 'Amount']) {
+    await expect(table.getByRole('columnheader', { name: heading })).toBeVisible();
+  }
+  await expect(table.getByRole('cell', { name: 'SPBU 34-12907 Pondok Indah' })).toBeAttached();
+
+  // The table scrolls inside its own box; the page body does not scroll sideways for it.
+  const scroller = group.locator('div').first();
+  const overflow = await scroller.evaluate((node) => ({
+    wider: node.scrollWidth > node.clientWidth,
+    body: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+  }));
+  expect(overflow.wider).toBe(true);
+  expect(overflow.body).toBe(true);
 });
 
 test('the hero states how far through its budget it is, for a screen reader as well as an eye', async ({ page }) => {

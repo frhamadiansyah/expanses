@@ -219,13 +219,15 @@ export function MerchantsPage() {
           header="Your merchants"
           records={mine}
           columns={mineColumns}
+          /* Tapping a merchant opens it in the form above, which is where "Change it" lives on a phone. */
+          detail={{ kind: 'screen', open: (row) => startEdit(row) }}
           shape={{
             key: (row) => row.id,
             title: (row) => row.pattern,
             subtitle: (row) => `${describeMcc(row.mcc)} · matches ${purchasesText(row.matches)}`,
             value: () => 'Edit',
             valueTone: () => 'tint',
-            onOpen: (row) => startEdit(row),
+            covers: ['pattern', 'mcc', 'matches'],
           }}
         />
       )}
@@ -240,13 +242,14 @@ export function MerchantsPage() {
           header="Typical merchant codes"
           records={rows}
           columns={bundledColumns}
+          detail={{ kind: 'screen', open: (row) => startEdit({ pattern: row.pattern, mcc: row.yourMcc ?? row.mcc }) }}
           shape={{
             key: (row) => row.pattern,
             title: (row) => row.name,
             subtitle: (row) => `“${row.pattern}” · ${describeMcc(row.mcc)} · ${row.basis}`,
             value: (row) => statusWord(row),
             valueTone: (row) => (row.status === 'yours' ? 'tint' : row.status === 'ignored' ? 'warn' : 'ink-3'),
-            onOpen: (row) => startEdit({ pattern: row.pattern, mcc: row.yourMcc ?? row.mcc }),
+            covers: ['name', 'status', 'pattern', 'mcc', 'basis'],
           }}
         />
       )}

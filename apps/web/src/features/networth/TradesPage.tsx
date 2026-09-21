@@ -183,6 +183,12 @@ export function TradesPage() {
           header="Holdings"
           records={holdings}
           columns={holdingColumns}
+          /*
+           * There is no holding detail screen anywhere in the app, so there is no behind-the-chevron for average
+           * cost, unrealized, realized this year and income this year to wait in. The table stays a table at
+           * phone width and scrolls sideways in its own container instead of losing four figures.
+           */
+          detail={{ kind: 'none' }}
           shape={{
             key: (holding) => holding.accountId,
             title: (holding) => holding.name,
