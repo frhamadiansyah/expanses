@@ -723,13 +723,9 @@ export function CardDetailPage() {
           {on('rules') && (
             <>
               {step === 3 && <Step>Step 3 of 3</Step>}
-              <InsetGroup header="Earn rules">
-                {cp.rules.length === 0 && editingRule === null && (
-                  <TextLine tone="ink-3">
-                    Add your card's base earn rate first. The form starts with a typical rate — change it to match your card. Then add bonus rules with a higher priority.
-                  </TextLine>
-                )}
-                {[...cp.rules].sort((a, b) => b.priority - a.priority).map((rule) => (
+              {(() => {
+                const sorted = [...cp.rules].sort((a, b) => b.priority - a.priority);
+                const row = (rule: EarnRule) => (
                   <RowWithActions
                     key={rule.id}
                     label={`Edit ${rule.name}`}
@@ -761,29 +757,51 @@ export function CardDetailPage() {
                       },
                     ]}
                   />
-                ))}
-                {editingRule === null && canUseCatalog && (
-                  <ActionRow label={browsingCatalog ? 'Close catalogue' : 'Choose from catalogue'} icon={<BookOpen size={15} aria-hidden />} onClick={() => setBrowsingCatalog(!browsingCatalog)} />
-                )}
-                {editingRule === null && <ActionRow label="Add rule" icon={<Plus size={16} aria-hidden />} onClick={() => setEditingRule('new')} />}
-              </InsetGroup>
+                );
+                /*
+                 * The rule being edited is replaced where it stands by its form, as it always was: the list splits
+                 * around it, so the form reads as that rule opened up rather than as a second copy under the list.
+                 */
+                const at = editingRule !== null && editingRule !== 'new' ? sorted.findIndex((rule) => rule.id === editingRule.id) : -1;
+                const before = at < 0 ? sorted : sorted.slice(0, at);
+                const after = at < 0 ? [] : sorted.slice(at + 1);
+                return (
+                  <>
+                    {/* A group with no row left in it would be an empty white bar, so only its header stays. */}
+                    {before.length === 0 && editingRule !== null ? (
+                      <PanelHeader title="Earn rules" />
+                    ) : (
+                      <InsetGroup header="Earn rules">
+                        {cp.rules.length === 0 && editingRule === null && (
+                          <TextLine tone="ink-3">
+                            Add your card's base earn rate first. The form starts with a typical rate — change it to match your card. Then add bonus rules with a higher priority.
+                          </TextLine>
+                        )}
+                        {before.map(row)}
+                        {editingRule === null && canUseCatalog && (
+                          <ActionRow label={browsingCatalog ? 'Close catalogue' : 'Choose from catalogue'} icon={<BookOpen size={15} aria-hidden />} onClick={() => setBrowsingCatalog(!browsingCatalog)} />
+                        )}
+                        {editingRule === null && <ActionRow label="Add rule" icon={<Plus size={16} aria-hidden />} onClick={() => setEditingRule('new')} />}
+                      </InsetGroup>
+                    )}
+                    {at >= 0 && editingRule !== null && editingRule !== 'new' && (
+                      <RuleForm key={editingRule.id} programId={cp.program!.id} currency={currency} accounts={all} initial={editingRule} beforeSave={confirmCustomise} onDone={() => setEditingRule(null)} />
+                    )}
+                    {after.length > 0 && <InsetGroup>{after.map(row)}</InsetGroup>}
+                  </>
+                );
+              })()}
               {browsingCatalog && canUseCatalog && <CatalogPicker today={today} selectedId={catalogId} onSelect={chooseEntry} onApply={applyEntry} debit={isDebit} />}
               {editingRule === 'new' && (
                 <RuleForm programId={cp.program.id} currency={currency} accounts={all} suggestBase={cp.rules.length === 0} beforeSave={confirmCustomise} onDone={() => setEditingRule(null)} />
-              )}
-              {editingRule !== null && editingRule !== 'new' && (
-                <RuleForm key={editingRule.id} programId={cp.program.id} currency={currency} accounts={all} initial={editingRule} beforeSave={confirmCustomise} onDone={() => setEditingRule(null)} />
               )}
             </>
           )}
 
           {on('rules') && cp.rules.length > 0 && (
             <>
-              <InsetGroup header="Spend bonuses">
-                {cp.bonuses.length === 0 && editingBonus === null && (
-                  <TextLine tone="ink-3">No spend bonuses. Add one for a card that pays a lump for reaching a spend in a cycle.</TextLine>
-                )}
-                {cp.bonuses.map((bonus) => (
+              {(() => {
+                const row = (bonus: CycleBonus) => (
                   <RowWithActions
                     key={bonus.id}
                     testId={`bonus-${bonus.id}`}
@@ -811,23 +829,42 @@ export function CardDetailPage() {
                       },
                     ]}
                   />
-                ))}
-                {editingBonus === null && <ActionRow label="Add bonus" icon={<Plus size={16} aria-hidden />} onClick={() => confirmCustomise() && setEditingBonus('new')} />}
-              </InsetGroup>
+                );
+                // As with rules: the bonus being edited opens where it stands.
+                const at = editingBonus !== null && editingBonus !== 'new' ? cp.bonuses.findIndex((bonus) => bonus.id === editingBonus.id) : -1;
+                const before = at < 0 ? cp.bonuses : cp.bonuses.slice(0, at);
+                const after = at < 0 ? [] : cp.bonuses.slice(at + 1);
+                return (
+                  <>
+                    {before.length === 0 && editingBonus !== null ? (
+                      <PanelHeader title="Spend bonuses" />
+                    ) : (
+                      <InsetGroup header="Spend bonuses">
+                        {cp.bonuses.length === 0 && editingBonus === null && (
+                          <TextLine tone="ink-3">No spend bonuses. Add one for a card that pays a lump for reaching a spend in a cycle.</TextLine>
+                        )}
+                        {before.map(row)}
+                        {editingBonus === null && <ActionRow label="Add bonus" icon={<Plus size={16} aria-hidden />} onClick={() => confirmCustomise() && setEditingBonus('new')} />}
+                      </InsetGroup>
+                    )}
+                    {at >= 0 && editingBonus !== null && editingBonus !== 'new' && (
+                      <BonusForm
+                        key={editingBonus.id}
+                        programId={cp.program!.id}
+                        currency={currency}
+                        unit={cp.program!.unit}
+                        accounts={all}
+                        initial={editingBonus}
+                        beforeSave={confirmCustomise}
+                        onDone={() => setEditingBonus(null)}
+                      />
+                    )}
+                    {after.length > 0 && <InsetGroup>{after.map(row)}</InsetGroup>}
+                  </>
+                );
+              })()}
               {editingBonus === 'new' && (
                 <BonusForm programId={cp.program.id} currency={currency} unit={cp.program.unit} accounts={all} beforeSave={confirmCustomise} onDone={() => setEditingBonus(null)} />
-              )}
-              {editingBonus !== null && editingBonus !== 'new' && (
-                <BonusForm
-                  key={editingBonus.id}
-                  programId={cp.program.id}
-                  currency={currency}
-                  unit={cp.program.unit}
-                  accounts={all}
-                  initial={editingBonus}
-                  beforeSave={confirmCustomise}
-                  onDone={() => setEditingBonus(null)}
-                />
               )}
             </>
           )}

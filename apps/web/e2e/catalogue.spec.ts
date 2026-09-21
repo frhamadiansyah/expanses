@@ -190,3 +190,36 @@ test('adds a second tier to a card that pays more for spending more', async ({ p
   await expect(live).toContainText('50.000.000');
   await expect(live).toContainText('2.000');
 });
+
+test('editing a rule or a bonus opens its form where its row stood, not below the list', async ({ page }) => {
+  await addCard(page, 'BCA KrisFlyer');
+  await applyCatalogue(page, 'BCA KrisFlyer', 'krisflyer', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+
+  // Every rule and bonus row on the tab, in reading order: the rules come first.
+  const rows = page.getByRole('button', { name: /^Edit / });
+  const rules = page.locator('section', { has: page.getByRole('heading', { name: 'Earn rules' }) });
+  const ruleCount = await rules.getByRole('button', { name: /^Edit / }).count();
+  expect(ruleCount).toBeGreaterThanOrEqual(2);
+  const total = await rows.count();
+  // The second rule, so a row stands above it and another below it.
+  const label = (await rows.nth(1).getAttribute('aria-label'))!;
+  await rows.nth(1).click();
+
+  // Its row is gone — replaced, not shown twice — and the form stands between its neighbours.
+  await expect(rows).toHaveCount(total - 1);
+  const form = page.getByRole('heading', { name: `Edit rule · ${label.replace(/^Edit /, '')}`, exact: true });
+  await expect(form).toHaveCount(1);
+  const opened = (await form.boundingBox())!;
+  expect((await rows.nth(0).boundingBox())!.y).toBeLessThan(opened.y);
+  expect(opened.y).toBeLessThan((await rows.nth(1).boundingBox())!.y);
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(rows).toHaveCount(total);
+
+  const bonuses = page.locator('section', { has: page.getByRole('heading', { name: 'Spend bonuses' }) });
+  const live = bonuses.getByTestId(/^bonus-/).filter({ hasNotText: 'past terms' }).first();
+  const id = (await live.getAttribute('data-testid'))!;
+  await live.getByRole('button', { name: /^Edit / }).click();
+  await expect(page.getByTestId(id)).toHaveCount(0);
+  await expect(rows).toHaveCount(total - 1);
+  await expect(page.getByRole('heading', { name: /^Edit bonus · / })).toHaveCount(1);
+});
