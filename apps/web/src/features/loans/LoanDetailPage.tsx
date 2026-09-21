@@ -8,6 +8,8 @@ import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, ReadOnlyRow, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
+import { spendingDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { UTANG_CHOICES } from '../ownables/catalogue-view';
 import { type PaymentDraft, paymentDraftFrom, paymentDraftToInput } from './loan-form';
 import { useLoan, useNextPayment, useSchedule } from './queries';
@@ -78,12 +80,23 @@ function PaymentForm({
   // The form fills itself in from the next scheduled row, once that row is known.
   const filled = draft ?? paymentDraftFrom(next.data, today, money[0]?.id ?? '', currency);
   const set = (patch: Partial<PaymentDraft>) => setDraft({ ...filled, ...patch });
+  // What leaves the paying account, read off the input `save()` sends: principal, interest and every extra riding
+  // along. An incomplete draft throws there, and asks nothing yet.
+  const outflowMinor = (() => {
+    try {
+      const input = paymentDraftToInput(filled, accountId, currency, balanceMinor, loanName, today);
+      return input.principalMinor + input.interestMinor + (input.extras ?? []).reduce((sum, extra) => sum + extra.amountMinor, 0);
+    } catch {
+      return 0;
+    }
+  })();
+  const setAside = useSetAside(spendingDoor(filled.moneyId, outflowMinor));
 
   async function save() {
     setError(null);
     setBusy(true);
     try {
-      await recordLoanPayment(database, ws, paymentDraftToInput(filled, accountId, currency, balanceMinor, loanName, today));
+      await recordLoanPayment(database, ws, { ...paymentDraftToInput(filled, accountId, currency, balanceMinor, loanName, today), setAside: setAside.choice });
       await invalidate();
       onDone();
     } catch (e) {
@@ -131,9 +144,16 @@ function PaymentForm({
         <InsetRow title="Add insurance or admin charge" chevron={false} onClick={() => set({ extras: [...filled.extras, { categoryId: '', amount: '' }] })} />
       </InsetGroup>
 
+      {setAside.node}
       <ErrorBox error={error} />
       <InsetGroup>
-        <InsetRow title="Save payment" chevron={false} onClick={() => !busy && void save()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow
+          title="Save payment"
+          chevron={false}
+          disabled={!setAside.ready}
+          onClick={() => !busy && setAside.ready && void save()}
+          className={busy ? 'opacity-40' : undefined}
+        />
         <InsetRow title="Cancel" chevron={false} onClick={onDone} />
       </InsetGroup>
     </>
@@ -223,6 +243,10 @@ function ExtraPaymentForm({
   const [busy, setBusy] = useState(false);
 
   const amountMinor = amount.trim() === '' ? 0 : Number(amount.replace(/\./g, ''));
+  // Lifted unchanged from the save, so the question measures exactly what `recordExtraPayment` takes out of the
+  // account: the extra and the bank's penalty. (Its parse is the loan page's own; replacing it is spec §12.5, queued.)
+  const penaltyMinor = penalty.trim() === '' ? 0 : Number(penalty.replace(/\./g, ''));
+  const setAside = useSetAside(spendingDoor(moneyId, (amountMinor || 0) + (penaltyMinor || 0)));
   const effect =
     amountMinor > 0
       ? extraPaymentEffect(
@@ -244,8 +268,9 @@ function ExtraPaymentForm({
         occurredOn: today,
         moneyAccountId: moneyId,
         amountMinor,
-        penaltyMinor: penalty.trim() === '' ? 0 : Number(penalty.replace(/\./g, '')),
+        penaltyMinor,
         keep,
+        setAside: setAside.choice,
       });
       await invalidate();
       onDone();
@@ -299,9 +324,16 @@ function ExtraPaymentForm({
         </Panel>
       )}
 
+      {setAside.node}
       <ErrorBox error={error} />
       <InsetGroup>
-        <InsetRow title="Save extra payment" chevron={false} onClick={() => !busy && void save()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow
+          title="Save extra payment"
+          chevron={false}
+          disabled={!setAside.ready}
+          onClick={() => !busy && setAside.ready && void save()}
+          className={busy ? 'opacity-40' : undefined}
+        />
         <InsetRow title="Cancel" chevron={false} onClick={onDone} />
       </InsetGroup>
     </>
