@@ -65,6 +65,17 @@
 
   /* Focus is drawn in the tint, so it reads as the app's own rather than the browser's. */
   --ph-focus: #248a3d;
+
+  /*
+   * Ink printed on a card's own art: the bank, the wordmark, the digits, and the strip a covered card carries.
+   *
+   * These two are the one pair the dark block below never redefines, on purpose. A card is a printed object whose
+   * colour is its bank's, not the reader's theme — navy stays navy at midnight — so what is printed on it must stay
+   * the colour it was printed in. Reaching for `text-white` here was the bug: Tailwind's white *is* the surface
+   * token, so in the dark the print on a navy card turned near-black and the print on a silver one turned white.
+   */
+  --ph-print-light: #ffffff;
+  --ph-print-dark: #0f172a;
 }
 
 @media (prefers-color-scheme: dark) {

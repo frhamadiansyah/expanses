@@ -82,3 +82,34 @@ test('a covered card prints only its strip, so no two lines of text share a band
 
   expect(crashes).toEqual([]);
 });
+
+/**
+ * A card is printed, not themed: the ink on its art stays the colour it was printed in when the reader is dark.
+ *
+ * Tailwind's `white` and `slate-900` are the kit's surface and ink since the shell learnt the dark, so a face that
+ * reached for them printed near-black on a navy card and white on a silver one the moment the system went dark.
+ * The face and the strip both read their ink from the two print tokens, which the dark block never redefines.
+ */
+test.describe('in the dark', () => {
+  test.use({ colorScheme: 'dark' });
+
+  test('the print on a card and on its strip keeps its own colour', async ({ page }) => {
+    for (const name of ['BCA KrisFlyer Visa Signature', 'Mandiri Marriott Bonvoy']) {
+      await page.goto('/accounts');
+      await page.getByLabel('Name', { exact: true }).fill(name);
+      await page.getByLabel('Type').selectOption('credit_card');
+      await page.getByRole('button', { name: 'Add account' }).click();
+      await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+    }
+
+    await page.goto('/cards');
+    const wall = page.getByRole('region', { name: 'Your cards' });
+    // A card with no catalogue design is a dark bank colour, so it prints in white — in the dark as in the light.
+    const front = wall.getByRole('img');
+    await expect(front).toBeVisible();
+    expect(await front.evaluate((node) => getComputedStyle(node).color)).toBe('rgb(255, 255, 255)');
+    // The strip over a covered card is printed on its scrim, and is white for the same reason.
+    const strip = wall.getByRole('button').getByText(/KrisFlyer Visa Signature|Marriott Bonvoy/);
+    expect(await strip.evaluate((node) => getComputedStyle(node).color)).toBe('rgb(255, 255, 255)');
+  });
+});

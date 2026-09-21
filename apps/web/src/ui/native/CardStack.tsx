@@ -135,10 +135,10 @@ export function CardStack({
                 }}
               >
                 <span className={cx('flex gap-2', fan ? 'flex-col items-start' : 'items-baseline justify-between')}>
-                  <span className="min-w-0 max-w-full truncate text-[12.5px] leading-[16px] font-semibold text-white">{card.name}</span>
-                  <span className="tabular shrink-0 text-[13px] leading-[16px] font-bold whitespace-nowrap text-white">{card.figure}</span>
+                  <span className="min-w-0 max-w-full truncate text-[12.5px] leading-[16px] font-semibold text-[var(--ph-print-light)]">{card.name}</span>
+                  <span className="tabular shrink-0 text-[13px] leading-[16px] font-bold whitespace-nowrap text-[var(--ph-print-light)]">{card.figure}</span>
                 </span>
-                {card.subtitle && !fan && <span className="min-w-0 truncate text-[11px] leading-[14px] text-white/80">{card.subtitle}</span>}
+                {card.subtitle && !fan && <span className="min-w-0 truncate text-[11px] leading-[14px] text-[var(--ph-print-light)] opacity-80">{card.subtitle}</span>}
               </span>
             )}
           </>

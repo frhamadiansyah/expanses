@@ -727,7 +727,7 @@ function Surface({ finish, id }: { finish: CatalogCardLook['finish'] | 'plain'; 
         </>
       )}
       {(finish === 'glossy' || finish === 'plain') && (
-        <span aria-hidden className="pointer-events-none absolute -top-1/2 -left-1/4 h-[120%] w-[90%] -rotate-12 rounded-full bg-gradient-to-b from-white/20 to-transparent blur-md" />
+        <span aria-hidden className="pointer-events-none absolute -top-1/2 -left-1/4 h-[120%] w-[90%] -rotate-12 rounded-full bg-gradient-to-b from-[rgb(255_255_255/0.2)] to-transparent blur-md" />
       )}
       <span aria-hidden className="pointer-events-none absolute inset-0 rounded-[inherit]" style={{ boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.28), inset 0 -1px 0 rgb(0 0 0 / 0.3)' }} />
     </>
@@ -791,7 +791,8 @@ export function CardFace({
       data-testid="card-face"
       className={cx(
         'relative shrink-0 overflow-hidden rounded-[0.9rem] shadow-[0_8px_20px_-6px_rgb(0_0_0/0.45)] select-none',
-        dark ? 'text-slate-900' : 'text-white',
+        // Fixed print, never Tailwind's white or slate: those are theme tokens now, and a card does not change colour at night.
+        dark ? 'text-[var(--ph-print-dark)]' : 'text-[var(--ph-print-light)]',
         portrait ? 'aspect-[0.6305]' : 'aspect-[1.586]',
         portrait ? (md ? 'w-[9.5rem] text-[10px]' : 'w-24 text-[7px]') : md ? 'w-60 text-xs' : 'w-36 text-[8px]',
         className,
