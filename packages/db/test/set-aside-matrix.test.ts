@@ -461,8 +461,6 @@ interface Walk {
   after: Record<string, number>;
   /** A goal's stage paid by the answer: paid after the post and the edit, unpaid after the delete. */
   paysStage?: 'Umrah' | 'Education';
-  /** Where the delete does not give a promise back (queued, out of scope): the promise it leaves. */
-  leftAfterDelete?: Record<string, number>;
 }
 
 const byTransaction = (door: Door) => async (w: World, setAside: SetAsideChoice) => ({ transactionId: (await door.post(w, 20_000_000, setAside))! });
@@ -492,20 +490,19 @@ const WALKS: Walk[] = [
     after: { 'EF@Jenius': 30_000_000, 'Umrah@BCA': 20_000_000, 'Education@Wise USD': 10_003 },
   },
   {
-    name: 'tagged buy for Umrah, borrowing the rest from the fund',
-    answer: borrowEf,
+    name: 'tagged buy for Umrah, smaller than its promise, with a borrow from the fund beside it',
+    // A buy smaller than the promise, so a second lowering by an edit would show (the review's I3): 20.000.000 emptied it.
+    answer: (w) => ({ ...borrowEf(w), overMinor: 1_000_000 }),
     post: async (w, setAside) => {
-      const result = await recordTrade(w.database, w.ws, buyOf(w, 20_000_000, w.umrahId, setAside));
+      const result = await recordTrade(w.database, w.ws, buyOf(w, 6_000_000, w.umrahId, setAside));
       return { transactionId: result.transactionId!, tradeId: result.tradeId };
     },
     edit: async (w, handle) => {
-      const result = await replaceTrade(w.database, w.ws, handle.tradeId!, buyOf(w, 20_000_000, w.umrahId));
+      const result = await replaceTrade(w.database, w.ws, handle.tradeId!, buyOf(w, 6_000_000, w.umrahId));
       return { transactionId: result.transactionId!, tradeId: result.tradeId };
     },
     remove: async (w, handle) => void (await deleteTrade(w.database, w.ws, handle.tradeId!)),
-    after: { 'EF@Jenius': 30_000_000, 'Education@Wise USD': 10_003 },
-    // Pre-existing and queued (ledger, "not resolved here"): a deleted tagged buy does not give the goal its cash promise back.
-    leftAfterDelete: { 'EF@Jenius': 30_000_000, 'Education@Wise USD': 10_003 },
+    after: { ...FIXTURE, 'Umrah@Jenius': 1_500_000 },
   },
   {
     name: 'untagged buy, spent from Umrah',
@@ -545,6 +542,18 @@ const WALKS: Walk[] = [
   },
 ];
 
+describe('a tagged buy edited unchanged', () => {
+  it('an unchanged replaceTrade leaves the promise as it was, however often', async () => {
+    const w = await world();
+    let { tradeId } = await recordTrade(w.database, w.ws, buyOf(w, 3_000_000, w.umrahId));
+    expect((await promisesOf(w))['Umrah@Jenius']).toBe(4_500_000);
+    for (let i = 0; i < 3; i++) ({ tradeId } = await replaceTrade(w.database, w.ws, tradeId, buyOf(w, 3_000_000, w.umrahId)));
+    expect((await promisesOf(w))['Umrah@Jenius']).toBe(4_500_000);
+    await deleteTrade(w.database, w.ws, tradeId);
+    expect(await promisesOf(w)).toEqual(FIXTURE);
+  });
+});
+
 describe('post, edit and void through each door', () => {
   it.each(WALKS.map((walk) => [walk.name, walk] as const))('%s', async (_name, walk) => {
     const w = await world();
@@ -564,7 +573,7 @@ describe('post, edit and void through each door', () => {
     if (walk.paysStage) expect(await stagePaid(w, goalOf(walk.paysStage))).toBe(DAY);
 
     await walk.remove(w, edited);
-    expect(await promisesOf(w)).toEqual(walk.leftAfterDelete ?? FIXTURE);
+    expect(await promisesOf(w)).toEqual(FIXTURE);
     expect(await answerDraws(w)).toEqual([]);
     if (walk.paysStage) expect(await stagePaid(w, goalOf(walk.paysStage))).toBeNull();
   });

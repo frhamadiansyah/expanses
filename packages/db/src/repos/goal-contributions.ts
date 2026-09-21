@@ -1,5 +1,5 @@
 import { monthRange, movedAmount, uuidv7 } from '@expanses/core';
-import { and, eq, gte, inArray, isNull, lte, type SQL, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lte, type SQL, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
@@ -79,7 +79,18 @@ export async function goalContributionEvents(database: Database, ws: WorkspaceCo
       .select({ goalId: goalDraws.goalId, accountId: goalDraws.accountId, transactionId: goalDraws.transactionId, amountMinor: goalDraws.amountMinor, occurredOn: goalDraws.occurredOn })
       .from(goalDraws)
       .innerJoin(transactions, eq(goalDraws.transactionId, transactions.id))
-      .where(and(eq(goalDraws.workspaceId, ws.workspaceId), eq(goalDraws.intent, 'move'), isNull(goalDraws.toAccountId), eq(transactions.status, 'posted'), ...within(goalDraws.occurredOn)));
+      // Only a tagged transfer's: a buy's lowering is the same shape but its transaction carries no goal, and the buy is
+      // counted as a buy below (ruling I3).
+      .where(
+        and(
+          eq(goalDraws.workspaceId, ws.workspaceId),
+          eq(goalDraws.intent, 'move'),
+          isNull(goalDraws.toAccountId),
+          eq(transactions.status, 'posted'),
+          isNotNull(transactions.goalId),
+          ...within(goalDraws.occurredOn),
+        ),
+      );
     const lines = moves.length
       ? await database.db
           .select({ transactionId: entries.transactionId, accountId: entries.accountId, amountMinor: entries.amountMinor, amountBaseMinor: entries.amountBaseMinor })

@@ -1,4 +1,4 @@
-import { type AccountSetAside, type BorrowMark, type SetAsideClaim, setAsideOn } from '@expanses/core';
+import { type AccountSetAside, type BorrowMark, movedAmount, type SetAsideClaim, setAsideOn } from '@expanses/core';
 import { and, eq, inArray, lte, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -90,8 +90,14 @@ export async function setAsideViews(database: Database, ws: WorkspaceContext, op
     // What the excluded transaction did to promises, undone — the same arithmetic undoSetAsideTx performs.
     if (draw.intent === 'spend') add(draw.accountId, draw.goalId, draw.amountMinor);
     if (draw.intent === 'move') {
-      add(draw.accountId, draw.goalId, draw.amountMinor);
-      if (draw.toAccountId && draw.toAmountMinor) add(draw.toAccountId, draw.goalId, -draw.toAmountMinor);
+      // Only what is still on the destination comes back off it, and the source gets the same share (ruling I1).
+      let giveBack = draw.amountMinor;
+      if (draw.toAccountId && draw.toAmountMinor) {
+        const taken = Math.min(draw.toAmountMinor, Math.max(0, promised.get(draw.toAccountId)?.get(draw.goalId) ?? 0));
+        add(draw.toAccountId, draw.goalId, -taken);
+        if (taken < draw.toAmountMinor) giveBack = movedAmount(draw.amountMinor, draw.toAmountMinor, taken);
+      }
+      add(draw.accountId, draw.goalId, giveBack);
     }
   }
   if (promised.size === 0) return {};

@@ -90,6 +90,8 @@ export async function convertToPurchase(database: Database, ws: WorkspaceContext
         setAside: keep,
       },
       null,
+      // The saved answer, so the carried borrow stands even when the goal's promise there was spent to nought since.
+      keep,
     );
     return { tradeId: result.tradeId, transactionId: result.transactionId! };
   });

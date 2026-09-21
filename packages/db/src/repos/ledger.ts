@@ -15,14 +15,18 @@ import { carryEventItemTx } from './event-items';
 import {
   applySetAsideTx,
   carryable,
+  carryAnswerTx,
+  carryTaggedTx,
+  goalActiveTx,
   parkForGoalTx,
+  sameAnswer,
   type SetAsideChoice,
   setAsideChoiceOfTx,
   setAsideTablesExist,
-  stillPromisedTx,
   taggedMoveOfTx,
   takeBackTaggedArrivalTx,
   undoSetAsideTx,
+  type VoidKeep,
   withSavedStage,
 } from './set-aside-tx';
 import { extrasFor, extrasForTx, extrasTablesExist, movePhotosTx, writeExtrasTx } from './transaction-extras';
@@ -208,7 +212,7 @@ export function postTransaction(database: Database, ws: WorkspaceContext, input:
 }
 
 /** Voids inside an open transaction, so a caller can void and repost several transactions atomically. */
-export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string, keep: VoidKeep = {}): Promise<void> {
   const [row] = await tx
     .select({ status: transactions.status, goalId: transactions.goalId })
     .from(transactions)
@@ -216,10 +220,11 @@ export async function voidTransactionTx(tx: Db, ws: WorkspaceContext, id: string
   if (!row) throw new LedgerError('NOT_FOUND', `Transaction ${id} not found`);
   if (row.status === 'void') throw new LedgerError('ALREADY_VOID', `Transaction ${id} is already void`);
   await tx.update(transactions).set({ status: 'void' }).where(eq(transactions.id, id));
-  // A transfer tagged to a goal parked what it landed: that comes back out, whichever door deletes or edits it.
-  if (row.goalId) await takeBackTaggedArrivalTx(tx, ws, id, row.goalId);
+  // A transfer tagged to a goal parked what it landed: that comes back out, whichever door deletes or edits it — as far
+  // as it is still there. An edit that still moves between the same two accounts keeps it and carries the difference.
+  const arrival = row.goalId && !keep.tagged ? await takeBackTaggedArrivalTx(tx, ws, id, row.goalId) : null;
   // What an answer did to a goal is a fact about the same money: it goes when the money goes.
-  if (await setAsideTablesExist(tx)) await undoSetAsideTx(tx, ws, id);
+  if (await setAsideTablesExist(tx)) await undoSetAsideTx(tx, ws, id, arrival, keep);
   await audit(tx, ws, 'void', id, {});
 }
 
@@ -277,14 +282,32 @@ export function replaceTransaction(
     // What the original said about itself, so a correction that does not mention a fact keeps it, and one that
     // mentions it — `channel: null` — clears it. Read before the void, written as part of the replacement.
     const extras = (await extrasTablesExist(tx)) ? await extrasForTx(tx, ws, id) : null;
-    // Read before the void reverses it. An edit that does not mention the answer keeps it, clamped to what it now pays.
-    const saved = (await setAsideTablesExist(tx)) ? await setAsideChoiceOfTx(tx, ws, id) : null;
+    // Read before the void. An edit carries the saved answer by the difference, never by undoing and redoing it (rulings
+    // I1, I2): an edit that does not mention it (a category re-file), or gives the same one again (an edit form), keeps
+    // the draw, re-pointed to the replacement. A different answer, or none, undoes the saved one and applies afresh.
+    const tables = await setAsideTablesExist(tx);
+    const oldLines = await tx
+      .select({ accountId: entries.accountId, amountMinor: entries.amountMinor })
+      .from(entries)
+      .where(and(eq(entries.transactionId, id), eq(entries.workspaceId, ws.workspaceId)));
+    const saved = tables ? await setAsideChoiceOfTx(tx, ws, id) : null;
     const carried = input.setAside === undefined ? saved : null;
-    await voidTransactionTx(tx, ws, id);
+    // A carried answer is dropped when the edit no longer pays from its account (or, a move, into its destination), or
+    // its goal was archived since: an edit that does not mention it is never refused over it.
     const answered =
-      input.setAside !== undefined ? input.setAside : carried && carryable(carried, input.lines) && (await stillPromisedTx(tx, ws, carried)) ? carried : null;
-    // The same spend, carried or answered again, stays on the stage it paid: never the next one.
-    const setAside = withSavedStage(answered, saved);
+      input.setAside !== undefined ? input.setAside : carried && carryable(carried, input.lines) && (await goalActiveTx(tx, ws, carried.goalId)) ? carried : null;
+    const keepAnswer = !!answered && !!saved && sameAnswer(answered, saved) && carryable(answered, input.lines) && (await goalActiveTx(tx, ws, answered.goalId));
+    // A transfer tagged to a goal stays tagged when it is corrected. Between the same two accounts it is carried by the
+    // difference; to another account, the old one is taken back and the new one parked.
+    const [taggedGoal] = original?.goalId
+      ? await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, original.goalId), eq(goals.workspaceId, ws.workspaceId)))
+      : [];
+    const nextMove = taggedGoal ? await taggedMoveOfTx(tx, ws, input.occurredOn, input.lines) : null;
+    const wasMove = nextMove ? await taggedMoveOfTx(tx, ws, input.occurredOn, oldLines) : null;
+    const keepTagged = !!nextMove && !!wasMove && nextMove.fromAccountId === wasMove.fromAccountId && nextMove.toAccountId === wasMove.toAccountId;
+    await voidTransactionTx(tx, ws, id, { answer: keepAnswer, tagged: keepTagged });
+    // The same spend answered afresh (from another account) stays on the stage it paid: never the next one.
+    const setAside = keepAnswer ? null : withSavedStage(answered, saved);
     // Keep import identity so re-importing the same statement still recognises the row.
     const replacement = await postTransactionTx(tx, ws, {
       ...input,
@@ -307,13 +330,9 @@ export function replaceTransaction(
       ...(input.eventId === undefined ? { eventId: original?.eventId ?? null } : {}),
       setAside,
     });
-    // A transfer tagged to a goal stays tagged when it is corrected: the void took back what it parked, and the edited
-    // amount is parked again, so the goal ends exactly where a new tagged transfer of that amount would leave it.
-    if (original?.goalId) {
-      const [goal] = await tx.select({ id: goals.id }).from(goals).where(and(eq(goals.id, original.goalId), eq(goals.workspaceId, ws.workspaceId)));
-      const move = goal ? await taggedMoveOfTx(tx, ws, input.occurredOn, input.lines) : null;
-      if (move) await parkForGoalTx(tx, ws, replacement, original.goalId, move);
-    }
+    if (keepAnswer) await carryAnswerTx(tx, ws, id, replacement, input.occurredOn, oldLines, input.lines, input.setAside ?? null);
+    if (keepTagged) await carryTaggedTx(tx, ws, id, replacement, original!.goalId!, wasMove!, nextMove!);
+    else if (nextMove) await parkForGoalTx(tx, ws, replacement, original!.goalId!, nextMove);
     // The date the bank posted it, and the payment made for it (or the purchases a payment was for), are
     // facts about the same money: they follow the correction.
     await tx.update(cardPostings).set({ transactionId: replacement }).where(and(eq(cardPostings.transactionId, id), eq(cardPostings.workspaceId, ws.workspaceId)));

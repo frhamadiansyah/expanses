@@ -154,7 +154,8 @@ describe('turning an expense into a purchase, by what the answer was', () => {
     await convertToPurchase(database, ws, { transactionId: id, accountId: gold.id, unitsMicro: 4_000_000, goalId: efId });
     // The buy lowers the Emergency fund's cash promise by the whole 6.800.000; no borrow from itself is kept.
     expect(await promised(efId)).toBe(23_200_000);
-    expect(await listDraws(database, ws)).toEqual([]);
+    // Only the buy's own lowering is recorded (a move with no destination, ruling I3), so a delete can give it back.
+    expect(await listDraws(database, ws)).toEqual([expect.objectContaining({ goalId: efId, intent: 'move', toAccountId: null, amountMinor: 6_800_000 })]);
   });
 });
 
@@ -192,6 +193,7 @@ describe('editing a buy through replaceTrade', () => {
     expect(await listDraws(database, ws)).toEqual([]);
     const back = await replaceTrade(database, ws, elsewhere.tradeId, buy(6_800_000, { setAside: borrow() }));
     await replaceTrade(database, ws, back.tradeId, buy(6_800_000, { goalId: efId }));
-    expect(await listDraws(database, ws)).toEqual([]);
+    // No borrow is kept; the buy for the fund records only its own lowering (ruling I3).
+    expect(await listDraws(database, ws)).toEqual([expect.objectContaining({ goalId: efId, intent: 'move', toAccountId: null })]);
   });
 });
