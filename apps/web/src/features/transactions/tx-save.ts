@@ -1,6 +1,7 @@
 import { parseRate } from '@expanses/core';
-import { type AccountRow, type Database, upsertRate, type WorkspaceContext } from '@expanses/db';
+import { type AccountRow, type Database, recordTrade, type RecordTradeInput, type SetAsideChoice, type TradeResult, upsertRate, type WorkspaceContext } from '@expanses/db';
 import { checkManualRate } from '../../lib/rates';
+import { tradeRatesForSave } from '../networth/trade-money';
 import type { FormDraft, FormPost } from './tx-form';
 
 /**
@@ -73,4 +74,40 @@ export async function ratesForSave({
     throw new Error(`No ${resolved.missing[0]}→${ws.baseCurrency} rate for ${rateDate}. Add it under “${where}”.`);
   }
   return resolved.rates;
+}
+
+/**
+ * The Buy / sell tab's own save (§3.6): works out the trade's rates (`tradeRatesForSave`, spec §5.2) and records it
+ * with the set-aside answer (§4.4). Pulled out of `TransactionCard.submit` so the one fact I5 is about — every buy
+ * or sell sends `setAside`, never only TradeForm's own save — is something a test can call directly rather than
+ * only ever see through a mount.
+ */
+export async function submitTrade({
+  database,
+  ws,
+  input,
+  holdingCurrency,
+  cashCurrency,
+  needsRate,
+  manualRate,
+  resolveRates,
+  onMissing,
+  where,
+  setAside,
+}: {
+  database: Database;
+  ws: WorkspaceContext;
+  input: RecordTradeInput;
+  holdingCurrency: string;
+  /** The paying or receiving account's currency; the holding's own for an opening position. */
+  cashCurrency: string;
+  needsRate: string | null;
+  manualRate: string;
+  resolveRates: (currencies: string[], onDate: string) => Promise<{ rates: Record<string, number> }>;
+  onMissing: (currency: string) => void;
+  where: string;
+  setAside: SetAsideChoice | null;
+}): Promise<TradeResult> {
+  const ratesToBase = await tradeRatesForSave({ database, ws, input, holdingCurrency, cashCurrency, needsRate, manualRate, resolveRates, onMissing, where });
+  return recordTrade(database, ws, { ...input, ratesToBase, setAside });
 }
