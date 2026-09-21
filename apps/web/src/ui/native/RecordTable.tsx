@@ -63,6 +63,7 @@ export function RecordTable<T>({
   columns,
   shape,
   detail,
+  rowTestId,
   header,
   className,
 }: {
@@ -71,6 +72,11 @@ export function RecordTable<T>({
   shape: RecordShape<T>;
   /** Required, and deliberately so: a table that has not said where its rows lead cannot be drawn safely. */
   detail: RecordDetail<T>;
+  /**
+   * The `data-testid` each record carries, in either form — so a locator names the record and not the layout.
+   * A screen whose rows are tables on a phone has no other stable handle on them.
+   */
+  rowTestId?: (record: T) => string;
   header?: string;
   className?: string;
 }) {
@@ -83,6 +89,7 @@ export function RecordTable<T>({
         {records.map((record) => (
           <InsetRow
             key={shape.key(record)}
+            testId={rowTestId?.(record)}
             title={shape.title(record)}
             subtitle={shape.subtitle?.(record)}
             value={shape.value(record)}
@@ -126,7 +133,7 @@ export function RecordTable<T>({
           </thead>
           <tbody>
             {records.map((record) => (
-              <tr key={shape.key(record)} className="border-t-[0.5px] border-[var(--ph-hair)] first:border-t-0">
+              <tr key={shape.key(record)} data-testid={rowTestId?.(record)} className="border-t-[0.5px] border-[var(--ph-hair)] first:border-t-0">
                 {columns.map((column) => (
                   <td
                     key={column.key}

@@ -1,7 +1,8 @@
 import { CASH_ITEMS, cashCodeForSubtype, CURRENCIES, displayAmount, hartaLabel, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
 import { type AccountRow, type AccountSubtype, archiveAccount, createAccount, createCardAccount, openCashAccount, renameAccount, upsertRate } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { type FormEvent, useState } from 'react';
+import { Plus } from 'lucide-react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { ACCOUNT_TYPES, SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -9,7 +10,8 @@ import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { depositLine } from '../networth/deposit-terms';
 import { useAssetProfiles, useAssetValues, useDepositTerms } from '../networth/queries';
 import { checkManualRate, ratePreview } from '../../lib/rates';
-import { Button, Card, Empty, ErrorBox, errorMessage, Field, Input, Money, PageHeader, Select } from '../../ui';
+import { Empty, ErrorBox, errorMessage, Money } from '../../ui';
+import { type CornerAction, Figure, InsetGroup, InsetRow, LargeTitle, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
 
 /** Sentinel for a bank the catalogue has never heard of. */
 const OTHER = '__other';
@@ -34,6 +36,7 @@ function AddAccountForm() {
   const [manualRate, setManualRate] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
 
   const kind = ACCOUNT_TYPES.find((t) => t.subtype === subtype)!.kind;
   const foreign = currency !== ws.baseCurrency;
@@ -86,87 +89,99 @@ function AddAccountForm() {
   }
 
   return (
-    <Card>
-      <form onSubmit={submit} className="grid gap-3 md:grid-cols-2">
-        <Field label="Name">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA Visa Platinum" required />
-        </Field>
-        <Field label="Type">
-          {/* The money accounts first, named as the catalogue names them, then everything else this form can open. */}
-          <Select value={subtype} onChange={(e) => setSubtype(e.target.value as AccountSubtype)}>
-            {CASH_ITEMS.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-            {ACCOUNT_TYPES.filter((t) => !isCashSubtype(t.subtype)).map((t) => (
-              <option key={t.subtype} value={t.subtype}>
-                {SUBTYPE_LABELS[t.subtype]}
-              </option>
-            ))}
-          </Select>
-        </Field>
+    <form ref={form} onSubmit={submit}>
+      <InsetGroup header="Add an account here" footer="The picker at Add account asks the same questions one at a time, and files it under the right tax code.">
+        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA Visa Platinum" required />
+        {/* The money accounts first, named as the catalogue names them, then everything else this form can open. */}
+        <SelectRow label="Type" value={subtype} onChange={(e) => setSubtype(e.target.value as AccountSubtype)}>
+          {CASH_ITEMS.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
+          ))}
+          {ACCOUNT_TYPES.filter((t) => !isCashSubtype(t.subtype)).map((t) => (
+            <option key={t.subtype} value={t.subtype}>
+              {SUBTYPE_LABELS[t.subtype]}
+            </option>
+          ))}
+        </SelectRow>
         {isCard && (
-          <Field label="Bank" hint="Optional. Applying a catalogue entry fills this in.">
-            <Select value={issuer} onChange={(e) => setIssuer(e.target.value)}>
-              <option value="">Not saying</option>
-              {banks.map((bank) => (
-                <option key={bank} value={bank}>
-                  {bank}
-                </option>
-              ))}
-              <option value={OTHER}>Other…</option>
-            </Select>
-          </Field>
-        )}
-        {isCard && issuer === OTHER && (
-          <Field label="Bank name">
-            <Input value={otherIssuer} onChange={(e) => setOtherIssuer(e.target.value)} placeholder="Bank Mega" />
-          </Field>
-        )}
-        {isCard && (
-          <Field label="Last 4 digits" hint="Optional. Tells two cards on one statement apart.">
-            <Input value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="1467" />
-          </Field>
-        )}
-        <Field label="Currency">
-          <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            {CURRENCIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code} — {c.name}
+          <SelectRow label="Bank" hint="Optional. Applying a catalogue entry fills this in." value={issuer} onChange={(e) => setIssuer(e.target.value)}>
+            <option value="">Not saying</option>
+            {banks.map((bank) => (
+              <option key={bank} value={bank}>
+                {bank}
               </option>
             ))}
-          </Select>
-        </Field>
-        <Field label={kind === 'liability' ? 'Amount owed now' : 'Current balance'} hint="Optional. Posted as an opening balance.">
-          <Input value={balance} onChange={(e) => setBalance(e.target.value)} inputMode="decimal" placeholder="0" />
-        </Field>
+            <option value={OTHER}>Other…</option>
+          </SelectRow>
+        )}
+        {isCard && issuer === OTHER && <TextRow label="Bank name" value={otherIssuer} onChange={(e) => setOtherIssuer(e.target.value)} placeholder="Bank Mega" />}
+        {isCard && (
+          <TextRow
+            label="Last 4 digits"
+            hint="Optional. Tells two cards on one statement apart."
+            value={last4}
+            onChange={(e) => setLast4(e.target.value)}
+            inputMode="numeric"
+            maxLength={4}
+            placeholder="1467"
+          />
+        )}
+        <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+          {CURRENCIES.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.code} — {c.name}
+            </option>
+          ))}
+        </SelectRow>
+        <TextRow
+          label={kind === 'liability' ? 'Amount owed now' : 'Current balance'}
+          hint="Optional. Posted as an opening balance."
+          value={balance}
+          onChange={(e) => setBalance(e.target.value)}
+          inputMode="decimal"
+          placeholder="0"
+        />
         {isDeposit && (
-          <Field label="Matures on" hint="The day the money comes back. Move it out with a transfer when it does.">
-            <Input type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />
-          </Field>
+          <TextRow
+            label="Matures on"
+            hint="The day the money comes back. Move it out with a transfer when it does."
+            type="date"
+            value={maturesOn}
+            onChange={(e) => setMaturesOn(e.target.value)}
+            required
+          />
         )}
-        <Field label="Balance as of">
-          <Input type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
-        </Field>
+        <TextRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
         {foreign && (
-          <Field label={`Rate: ${ws.baseCurrency} per 1 ${currency}`} hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}>
-            <Input value={manualRate} onChange={(e) => setManualRate(e.target.value)} inputMode="decimal" />
-          </Field>
+          <TextRow
+            label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+            hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
+            value={manualRate}
+            onChange={(e) => setManualRate(e.target.value)}
+            inputMode="decimal"
+          />
         )}
-        <div className="flex items-end md:col-span-2">
-          <Button type="submit" disabled={busy}>
-            Add account
-          </Button>
-        </div>
-        <div className="md:col-span-2">
-          <ErrorBox error={error} />
-        </div>
-      </form>
-    </Card>
+      </InsetGroup>
+      <ErrorBox error={error} />
+      <InsetGroup>
+        {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
+        <InsetRow title="Add account" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+      </InsetGroup>
+    </form>
   );
 }
 
+/**
+ * One section of the account list.
+ *
+ * It is `RecordTable` with `detail` saying `none`, and deliberately so. An account row carries four targets — its name,
+ * the tax code it files under, Rename and Archive — and there is no account detail screen for the last two to
+ * move to. Collapsing to one line would take Rename and Archive off the phone altogether, so the ruling applies:
+ * losing a column is worse than scrolling one. Desktop keeps all five columns; a phone scrolls the table
+ * sideways inside its own container, which is what stops the name from wrapping into the balance the way it did.
+ */
 function AccountList({ title, accounts, balances }: { title: string; accounts: AccountRow[]; balances: Record<string, number> }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
@@ -210,55 +225,96 @@ function AccountList({ title, accounts, balances }: { title: string; accounts: A
     }
   }
 
+  const action = 'ph-focus rounded px-[6px] py-[4px] text-[13px] leading-[17px] text-[var(--ph-tint)]';
+
   return (
-    <Card>
-      <h2 className="mb-2 text-sm font-semibold text-slate-600">{title}</h2>
-      <ul className="divide-y divide-slate-100">
-        {accounts.map((account) => (
-          <li key={account.id} className="flex items-center gap-3 py-2">
-            <div className="min-w-0 flex-1">
-              <Link to="/transactions" search={{ account: account.id }} className="font-medium hover:underline">
+    <RecordTable
+      header={title}
+      records={accounts}
+      detail={{ kind: 'none' }}
+      shape={{
+        key: (account) => account.id,
+        title: (account) => account.name,
+        subtitle: (account) => `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`,
+        value: (account) => (
+          <Figure>
+            <Money minor={displayAmount(account.kind, balances[account.id] ?? 0)} currency={account.currency!} />
+          </Figure>
+        ),
+      }}
+      columns={[
+        {
+          key: 'name',
+          heading: 'Account',
+          cell: (account) => (
+            <span className="block min-w-[10rem]">
+              <Link to="/transactions" search={{ account: account.id }} className="ph-focus block text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">
                 {account.name}
               </Link>
-              <div className="text-xs text-slate-500">
+              <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
                 {SUBTYPE_LABELS[account.subtype]} · {account.currency}
-                {filedAs(account) && (
-                  <>
-                    {' · '}
-                    {/* The code is never shown while choosing; here it is, and this is where it can be changed. */}
-                    <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="underline">
-                      {filedAs(account)}
-                    </Link>
-                  </>
-                )}
                 {terms(account.id) && ` · ${terms(account.id)}`}
-              </div>
-            </div>
-            {account.subtype === 'credit_card' && (
-              <Link to="/cards/$cardId" params={{ cardId: account.id }} className="text-sm font-medium text-emerald-700 underline">
-                Set up points
+              </span>
+            </span>
+          ),
+        },
+        {
+          key: 'filed',
+          heading: 'Filed as',
+          cell: (account) =>
+            filedAs(account) ? (
+              /* The code is never shown while choosing; here it is, and this is where it can be changed. */
+              <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="ph-focus text-[12.5px] leading-[16px] text-[var(--ph-tint)]">
+                {filedAs(account)}
               </Link>
-            )}
-            {valued(account.id) ? (
-              <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="text-right">
-                <Money minor={valued(account.id)!.valueMinor} currency={account.currency!} className="block font-medium" />
-                <span className="text-xs text-slate-500">
+            ) : (
+              <span className="text-[var(--ph-ink-3)]">—</span>
+            ),
+        },
+        {
+          key: 'balance',
+          heading: 'Balance',
+          numeric: true,
+          cell: (account) =>
+            valued(account.id) ? (
+              <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="ph-focus block text-right">
+                <Money minor={valued(account.id)!.valueMinor} currency={account.currency!} className="tabular block font-medium text-[var(--ph-ink)]" />
+                <span className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
                   cost <Money minor={valued(account.id)!.costMinor} currency={account.currency!} />
                 </span>
               </Link>
             ) : (
-              <Money minor={displayAmount(account.kind, balances[account.id] ?? 0)} currency={account.currency!} className="font-medium" />
-            )}
-            <Button variant="ghost" onClick={() => void rename(account)} aria-label={`Rename ${account.name}`}>
-              Rename
-            </Button>
-            <Button variant="ghost" onClick={() => void archive(account)} aria-label={`Archive ${account.name}`}>
-              Archive
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </Card>
+              <Figure>
+                <Money minor={displayAmount(account.kind, balances[account.id] ?? 0)} currency={account.currency!} />
+              </Figure>
+            ),
+        },
+        {
+          key: 'points',
+          heading: '',
+          cell: (account) =>
+            account.subtype === 'credit_card' ? (
+              <Link to="/cards/$cardId" params={{ cardId: account.id }} className={`${action} whitespace-nowrap`}>
+                Set up points
+              </Link>
+            ) : null,
+        },
+        {
+          key: 'actions',
+          heading: '',
+          cell: (account) => (
+            <span className="flex items-center justify-end gap-[2px] whitespace-nowrap">
+              <button type="button" className={action} onClick={() => void rename(account)} aria-label={`Rename ${account.name}`}>
+                Rename
+              </button>
+              <button type="button" className={action} onClick={() => void archive(account)} aria-label={`Archive ${account.name}`}>
+                Archive
+              </button>
+            </span>
+          ),
+        },
+      ]}
+    />
   );
 }
 
@@ -267,28 +323,20 @@ export function AccountsPage() {
   const balances = useBalances();
   const money = (accounts.data ?? []).filter(isMoneyAccount);
   const all = balances.data ?? {};
+  /* Three journeys, two corners: the `…` keeps Import CSV and Backup reachable and named in words. */
+  const actions: CornerAction[] = [
+    { key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={20} aria-hidden /> },
+    { key: 'import', label: 'Import CSV', to: '/import' },
+    { key: 'backup', label: 'Backup', to: '/backup' },
+  ];
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Accounts"
-        action={
-          <div className="flex gap-3 text-sm">
-            <Link to="/accounts/new" className="font-medium underline">
-              Add account
-            </Link>
-            <Link to="/import" className="underline">
-              Import CSV
-            </Link>
-            <Link to="/backup" className="underline">
-              Backup
-            </Link>
-          </div>
-        }
-      />
-      <AddAccountForm />
-      {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add a bank account or credit card above.</Empty>}
+    <div className={SCREEN}>
+      <LargeTitle title="Accounts" actions={actions} />
+      {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add a bank account or credit card below.</Empty>}
       <AccountList title="Money" accounts={money.filter((a) => a.kind === 'asset')} balances={all} />
       <AccountList title="Credit cards & debts" accounts={money.filter((a) => a.kind === 'liability')} balances={all} />
+      {/* Below the list it belongs to, not above it: the page is what you have, then the way to add to it. */}
+      <AddAccountForm />
     </div>
   );
 }

@@ -126,6 +126,8 @@ export interface InsetRowProps extends GroupChild {
   destructive?: boolean;
   /** The row's accessible name, when its title alone does not read as one. */
   label?: string;
+  /** What a test names this row by, so a locator survives the row changing shape. `Panel` already takes one. */
+  testId?: string;
   className?: string;
 }
 
@@ -150,6 +152,7 @@ export function InsetRow({
   search,
   destructive = false,
   label,
+  testId,
   position,
   className,
 }: InsetRowProps) {
@@ -205,7 +208,7 @@ export function InsetRow({
 
   if (to) {
     return (
-      <Link to={to} params={params} search={search} aria-label={label} className={cx(shell, 'ph-focus-inset')}>
+      <Link to={to} params={params} search={search} aria-label={label} data-testid={testId} className={cx(shell, 'ph-focus-inset')}>
         {separator}
         {inner}
       </Link>
@@ -213,14 +216,14 @@ export function InsetRow({
   }
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} aria-label={label} className={cx(shell, 'ph-focus-inset text-left')}>
+      <button type="button" onClick={onClick} aria-label={label} data-testid={testId} className={cx(shell, 'ph-focus-inset text-left')}>
         {separator}
         {inner}
       </button>
     );
   }
   return (
-    <div className={shell} style={{ minHeight: TAP }}>
+    <div className={shell} data-testid={testId} style={{ minHeight: TAP }}>
       {separator}
       {inner}
     </div>

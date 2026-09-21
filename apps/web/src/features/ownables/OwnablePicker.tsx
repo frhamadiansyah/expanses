@@ -1,9 +1,9 @@
 import { assetFamily, type OwnableFamily, type OwnableFlow } from '@expanses/core';
-import { Link, useRouter } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
+import { useRouter } from '@tanstack/react-router';
 import { usePhone } from '../../app/use-phone';
-import { cx, Input, Kicker, RowHint } from '../../ui';
+import { cx, Input } from '../../ui';
+import { InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
 import { type HandOverRow, MORE_ROW_ID, type PickerRow, pickerRows } from './catalogue-view';
 
 /**
@@ -81,52 +81,53 @@ export function OwnablePicker({
     onChoose(id);
   }
 
+  /*
+   * The two sentences that sit around the list. `moreHint` explains what "Something else" is showing; `hint`
+   * says what does not belong on this screen at all. Both belong to the group, so they are its header and its
+   * footer — the kit's own places for them — rather than paragraphs floating above and below a card. A search
+   * narrows the list to what was typed, and neither sentence is about that, so both stand down while one runs.
+   */
+  const listHeader = !searching && !family ? kicker : undefined;
+  const listFooter = searching
+    ? undefined
+    : more && family && moreHint
+      ? moreHint(assetFamily(family).label)
+      : !family
+        ? hint
+        : undefined;
+
   const list = (
-    <div className="space-y-2">
-      <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
-      {/* Above the list, not under it: on this screen it says what the rows below all have in common. */}
-      {more && family && !searching && moreHint && <RowHint>{moreHint(assetFamily(family).label)}</RowHint>}
-      {kicker && !searching && !family && <Kicker>{kicker}</Kicker>}
+    <>
+      <div className="mb-[12px]">
+        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
+      </div>
       {/* The list is the answer to what is typed above it, so a screen reader hears it change, not only sees it. */}
       <div aria-live="polite">
-        <RowList>
-          {rows.map((row) => (
-            <PickerButton key={row.id} row={row} onClick={() => choose(row.id)} />
-          ))}
-          {rows.length === 0 && <p className="px-3 py-3 text-sm text-slate-500">Nothing here matches “{query.trim()}”.</p>}
-        </RowList>
+        <InsetGroup header={listHeader} footer={listFooter}>
+          {rows.length > 0 ? (
+            rows.map((row) => <PickerInsetRow key={row.id} row={row} onClick={() => choose(row.id)} />)
+          ) : (
+            <InsetRow title={`Nothing here matches “${query.trim()}”.`} chevron={false} />
+          )}
+        </InsetGroup>
       </div>
-      {hint && !searching && !family && <RowHint>{hint}</RowHint>}
       {handOver.length > 0 && !searching && !family && (
-        <RowList>
+        <InsetGroup>
           {handOver.map((row) => {
             // A typed `Link` wherever the picker it hands over to has been built, so the router checks the path at
             // compile time; the rest stay a plain push until their route exists, which navigates just the same.
             const to = typedHandOver(row.to);
-            return to ? <PickerLink key={row.id} row={row} to={to} /> : <PickerButton key={row.id} row={row} onClick={() => router.history.push(row.to)} />;
+            return to ? <PickerInsetRow key={row.id} row={row} to={to} /> : <PickerInsetRow key={row.id} row={row} onClick={() => router.history.push(row.to)} />;
           })}
-        </RowList>
+        </InsetGroup>
       )}
-    </div>
+    </>
   );
 
   return (
-    <div className="mx-auto max-w-lg md:max-w-4xl">
-      <div className="mb-4 flex items-center gap-2">
-        {canGoBack ? (
-          <button
-            type="button"
-            onClick={back}
-            aria-label="Back"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-slate-600 ring-1 ring-slate-200 hover:text-slate-900"
-          >
-            <ChevronLeft size={18} aria-hidden />
-          </button>
-        ) : (
-          <span className="h-9 w-9 shrink-0 md:hidden" />
-        )}
-        <h1 className="text-xl font-semibold">{more ? 'Something else' : title}</h1>
-      </div>
+    <div className={SCREEN}>
+      {/* The step back is an undo of one step, not a destination, so it is named for what it does. */}
+      <LargeTitle title={more ? 'Something else' : title} back={canGoBack ? 'Back' : undefined} onBack={back} />
       {/* One screen at a time on a phone; both at once on anything wider, the list on the left. */}
       <div className={cx('gap-6', chosen ? 'md:grid md:grid-cols-2 md:items-start' : '')}>
         <div className={cx(phone && chosen && 'hidden')}>{list}</div>
@@ -136,37 +137,15 @@ export function OwnablePicker({
   );
 }
 
-/** The card a run of picker buttons sits in. Its own, not the row kit's: these rows are two lines and a tile. */
-function RowList({ children }: { children: ReactNode }) {
-  return <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">{children}</div>;
-}
-
-const PICKER_ROW =
-  'flex min-h-14 w-full items-center gap-3 border-t border-slate-100 px-3 py-2 text-left first:border-t-0 hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900';
-
-/** The tile, the label and the quiet line under it — the same whether the row acts or navigates. */
-function PickerBody({ row }: { row: PickerRow }) {
-  return (
-    <>
-      {/* Decoration: the label is what a screen reader and a test read this row by. */}
-      <span aria-hidden className={cx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base', row.tint)}>
-        {row.icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-slate-900">{row.label}</span>
-        <span className="block truncate text-xs text-slate-500">{row.sub}</span>
-      </span>
-      <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-400" />
-    </>
-  );
-}
-
-function PickerButton({ row, onClick }: { row: PickerRow; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className={PICKER_ROW}>
-      <PickerBody row={row} />
-    </button>
-  );
+/**
+ * A choice, as a row: the emoji that names its family, what it is, the line under it, and a chevron.
+ *
+ * The kit draws the circle behind the emoji in its own neutral fill. The family's tint was a Tailwind class,
+ * and `iconColour` wants a colour — reading one from the other would mean a second copy of the tint table, so
+ * the emoji, which is what actually identifies the family, carries it alone.
+ */
+function PickerInsetRow({ row, onClick, to }: { row: PickerRow; onClick?: () => void; to?: TypedHandOver }) {
+  return <InsetRow icon={row.icon} title={row.label} subtitle={row.sub} chevron onClick={onClick} to={to} />;
 }
 
 /** The pickers that exist as routes today. A hand-over anywhere else falls back to a push until its route lands. */
@@ -174,10 +153,3 @@ const TYPED_HAND_OVER = ['/accounts/new', '/net-worth/assets/new', '/debts/new']
 type TypedHandOver = (typeof TYPED_HAND_OVER)[number];
 const typedHandOver = (to: string): TypedHandOver | null => TYPED_HAND_OVER.find((path) => path === to) ?? null;
 
-function PickerLink({ row, to }: { row: PickerRow; to: TypedHandOver }) {
-  return (
-    <Link to={to} className={PICKER_ROW}>
-      <PickerBody row={row} />
-    </Link>
-  );
-}
