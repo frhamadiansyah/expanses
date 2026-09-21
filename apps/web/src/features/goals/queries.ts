@@ -1,5 +1,6 @@
 import { isoDate } from '@expanses/core';
 import {
+  type AccountRow,
   goalHistory,
   goalLinksFor,
   goalPlansFor,
@@ -15,7 +16,7 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
-import { isMoneyAccount, useAccounts } from '../../lib/queries';
+import { moneyHolders, useAccounts } from '../../lib/queries';
 import { useAssetProfiles } from '../networth/queries';
 
 export function useGoals() {
@@ -86,12 +87,18 @@ export function useDraws() {
   return useQuery({ queryKey: ['goal-draws', ws.workspaceId], queryFn: () => listDraws(database, ws, isoDate()) });
 }
 
-/** The server's own rule (`isSetAsideHolder`), asked synchronously so the form knows whether to offer a move. */
+/**
+ * The server's own rule (`canHoldSetAside`), asked synchronously so the form knows whether to offer a move. A pocket
+ * parent holds no money of its own, so it is never offered (`moneyHolders` leaves it out; ruling I5).
+ */
 export function useCanHold(): (accountId: string) => boolean {
   const accounts = useAccounts().data ?? [];
   const profiles = useAssetProfiles().data ?? [];
-  return (accountId) => {
-    const account = accounts.find((row) => row.id === accountId);
-    return !!account && isMoneyAccount(account) && isSetAsideHolder(account.subtype, profiles.find((row) => row.accountId === accountId)?.planGroup ?? null);
-  };
+  return (accountId) => canHoldOf(accounts, profiles, accountId);
+}
+
+/** `useCanHold`'s rule on plain rows, so it can be tested without a screen. */
+export function canHoldOf(accounts: readonly AccountRow[], profiles: readonly { accountId: string; planGroup: string | null }[], accountId: string): boolean {
+  const account = moneyHolders(accounts).find((row) => row.id === accountId);
+  return !!account && isSetAsideHolder(account.subtype, profiles.find((row) => row.accountId === accountId)?.planGroup ?? null);
 }

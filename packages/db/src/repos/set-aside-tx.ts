@@ -65,12 +65,24 @@ export function isSetAsideHolder(subtype: string, planGroup: string | null): boo
   return (SPENDABLE_SUBTYPES as readonly string[]).includes(subtype) || planGroup === 'invest';
 }
 
+/** Whether an account is a pocket parent: it holds no money of its own, only adds its pockets up (currency pockets). */
+export async function isPocketParentTx(tx: Db, ws: WorkspaceContext, accountId: string): Promise<boolean> {
+  const [child] = await tx
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'asset'), eq(accounts.parentId, accountId)))
+    .limit(1);
+  return !!child;
+}
+
 export async function canHoldSetAside(tx: Db, ws: WorkspaceContext, accountId: string): Promise<boolean> {
   const [account] = await tx
     .select({ subtype: accounts.subtype })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ws.workspaceId)));
   if (!account) return false;
+  // A pocket parent holds nothing, so nothing can be promised on it: the promise belongs on one of its pockets (ruling I5).
+  if (await isPocketParentTx(tx, ws, accountId)) return false;
   const [profile] = await tx
     .select({ planGroup: assetProfiles.planGroup })
     .from(assetProfiles)

@@ -1,11 +1,14 @@
 import { evaluateAmount, type ExchangeCost, formatMinor, isoDate } from '@expanses/core';
 import { type AccountRow, postTransaction } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, LargeTitle, ReadOnlyRow, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { useCanHold } from '../goals/queries';
+import { doorOfForm, postForDoor } from '../goals/set-aside-question';
+import { useSetAside } from '../goals/SetAsideQuestion';
 import { formToPost, type MoneyFieldSpec, settledAmount } from '../transactions/tx-form';
 import { ratesForSave } from '../transactions/tx-save';
 import { bankRateText, currencyName, moveDescription, moveDraft, moveView, pocketsOf, spreadLine, withPockets } from './pockets';
@@ -33,6 +36,8 @@ export function MovePage() {
 /**
  * An ordinary transfer between two pockets. Nothing here reads a figure or builds a line: `moveView` draws from the
  * kit's field records, and the save is the Transfer tab's own `formToPost` → `ratesForSave` → `postTransaction`.
+ * It is a transfer door like the Transfer tab (set-aside ruling I5): silent unless the move takes more than is free in
+ * the pocket it leaves, and then it asks the same question, "Move the promise" or "No — borrowing".
  */
 function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: AccountRow[]; accounts: AccountRow[] }) {
   const { database, ws } = useApp();
@@ -55,6 +60,10 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
   // Rates held for an earlier day: the save fetches the day's own, so the figure shown is only an estimate.
   const lastKnown = held.data?.stale ?? [];
   const rateDate = draft.occurredOn > isoDate() ? isoDate() : draft.occurredOn;
+  const canHold = useCanHold();
+  const post = useMemo(() => postForDoor(draft, accounts), [draft, accounts]);
+  const door = post ? doorOfForm(draft, post, accounts, canHold) : null;
+  const setAside = useSetAside(door, { toName: to.name });
 
   const settle = (which: 'amount' | 'toAmount', value: string, currency: string) => {
     const text = settledAmount(value, currency);
@@ -62,6 +71,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
   };
 
   async function save() {
+    if (!setAside.ready) return;
     setError(null);
     setBusy(true);
     try {
@@ -69,7 +79,7 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
       const post = formToPost(final, accounts);
       if (post.kind !== 'post') throw new Error('A move between pockets is a plain transfer');
       const ratesToBase = await ratesForSave({ database, ws, draft: final, post, accounts, rateDate, needsRate, resolveRates, onMissing: setNeedsRate, where: 'Rate' });
-      await postTransaction(database, ws, { ...post.input, ratesToBase });
+      await postTransaction(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
       await invalidate();
       // The posting converts at the rates the save resolved, which need not be the ones on screen. When the spread
       // the ledger now holds differs from the one shown, say so instead of leaving the screen's figure standing.
@@ -165,8 +175,9 @@ function MoveBody({ parent, pockets, accounts }: { parent: AccountRow; pockets: 
           <InsetRow testId="spread" title={lastKnown.length > 0 ? `${spread.title} (last known)` : spread.title} value={spread.figure} valueTone="ink" chevron={false} />
         </InsetGroup>
       )}
+      {setAside.node}
       <InsetGroup>
-        <InsetRow title="Move it" chevron={false} onClick={() => !busy && void save()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow title="Move it" chevron={false} onClick={() => !busy && setAside.ready && void save()} className={busy || !setAside.ready ? 'opacity-40' : undefined} />
       </InsetGroup>
     </div>
   );

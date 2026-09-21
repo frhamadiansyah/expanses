@@ -217,3 +217,30 @@ describe('M1: a carried borrow stands after its goal\'s promise there was spent 
     expect((await draws()).filter((draw) => draw.intent === 'borrow')).toEqual([expect.objectContaining({ transactionId: converted.transactionId, goalId: efId, amountMinor: 1_800_000 })]);
   });
 });
+
+describe('I5: a pocket parent holds no money, so nothing is promised on it', () => {
+  it('is no holder, refuses an earmark, and refuses a move answer naming it', async () => {
+    const { openPocketedAccount, canHoldSetAside, SetAsideError } = await import('../src/index');
+    const { parent, pockets } = await openPocketedAccount(database, ws, {
+      item: 'savings',
+      name: 'Pocket Valas',
+      openedOn: '2026-01-01',
+      pockets: [{ currency: 'IDR', openingBalanceMinor: 1_000_000 }, { currency: 'USD', openingBalanceMinor: 10_000, openingRateToBase: 16_000 }],
+    });
+    const idrPocket = pockets.find((pocket) => pocket.currency === 'IDR')!;
+    expect(await canHoldSetAside(database.db, ws, parent.id)).toBe(false);
+    expect(await canHoldSetAside(database.db, ws, idrPocket.id)).toBe(true);
+    await expect(saveEarmark(database, ws, { goalId: umrahId, accountId: parent.id, amountMinor: 1 })).rejects.toThrow(/holds no money of its own/);
+    await saveEarmark(database, ws, { goalId: umrahId, accountId: idrPocket.id, amountMinor: 500_000 });
+
+    const toParent = postTransaction(database, ws, {
+      occurredOn: DAY,
+      description: 'To the pocket',
+      lines: transferLines({ fromAccountId: jenius.id, toAccountId: idrPocket.id, amountMinor: 20_000_000, currency: 'IDR' }),
+      setAside: { accountId: jenius.id, goalId: efId, intent: 'move', overMinor: 15_000_000, toAccountId: parent.id },
+    });
+    await expect(toParent).rejects.toBeInstanceOf(SetAsideError);
+    expect(await promised(efId, jenius.id)).toBe(30_000_000);
+    expect(await draws()).toEqual([]);
+  });
+});
