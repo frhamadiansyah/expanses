@@ -251,11 +251,11 @@ export function CardHero({
             </span>
             {/* Each plan and what it still holds, on hover or keyboard focus. */}
             {showHeld && (
-              <div id="held-by-plans" role="tooltip" className="absolute top-full left-0 z-20 mt-1 w-80 rounded-[11px] bg-[var(--ph-ink)] p-2.5 text-xs text-white shadow-lg">
+              <div id="held-by-plans" role="tooltip" className="absolute top-full left-0 z-20 mt-1 w-80 rounded-[11px] bg-[var(--ph-ink)] p-2.5 text-xs text-[var(--ph-surface)] shadow-lg">
                 {holding.map(({ plan, split }) => (
                   <div key={plan.id} className="flex justify-between gap-3 py-0.5">
                     <span className="min-w-0">{plan.description}</span>
-                    <span className="shrink-0 tabular text-white/70">
+                    <span className="shrink-0 tabular opacity-70">
                       {formatMinor(split.unbilledMinor, currency)} · {split.monthsLeft} of {plan.months} left
                     </span>
                   </div>

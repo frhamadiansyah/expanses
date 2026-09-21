@@ -727,7 +727,7 @@ function Surface({ finish, id }: { finish: CatalogCardLook['finish'] | 'plain'; 
         </>
       )}
       {(finish === 'glossy' || finish === 'plain') && (
-        <span aria-hidden className="pointer-events-none absolute -top-1/2 -left-1/4 h-[120%] w-[90%] -rotate-12 rounded-full bg-gradient-to-b from-[rgb(255_255_255/0.2)] to-transparent blur-md" />
+        <span aria-hidden className="pointer-events-none absolute -top-1/2 -left-1/4 h-[120%] w-[90%] -rotate-12 rounded-full bg-gradient-to-b from-[var(--ph-sheen)] to-transparent blur-md" />
       )}
       <span aria-hidden className="pointer-events-none absolute inset-0 rounded-[inherit]" style={{ boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.28), inset 0 -1px 0 rgb(0 0 0 / 0.3)' }} />
     </>

@@ -151,4 +151,13 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
   await expect(held).toContainText(/Instalments hold Rp\s[\d.]+/);
   await held.getByText(/Instalments hold/).hover();
   await expect(held.getByRole('tooltip')).toContainText('iBox Grand Indonesia');
+
+  // The tip is drawn in the ink, which turns light at night, so its words take the surface rather than white.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const colours = await held.getByRole('tooltip').evaluate((node) => {
+    const style = getComputedStyle(node);
+    return { text: style.color, fill: style.backgroundColor };
+  });
+  expect(colours.text).not.toBe(colours.fill);
+  expect(colours.text).toBe('rgb(28, 28, 30)');
 });

@@ -76,6 +76,8 @@
    */
   --ph-print-light: #ffffff;
   --ph-print-dark: #0f172a;
+  /* Light falling on a glossy card: a physical highlight, so it too is left alone in the dark. */
+  --ph-sheen: rgb(255 255 255 / 0.2);
 }
 
 @media (prefers-color-scheme: dark) {
