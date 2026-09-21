@@ -119,6 +119,37 @@ test('a spread shown at last-known rates says so, and the move shows the spread 
   await expect(page.getByTestId('pocket-SGD')).toContainText('1.788,00');
 });
 
+test('Lend & borrow adds each side in rupiah at the held rate, and names a rate it lacks (I2)', async ({ page }, testInfo) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  // Money already owed, opened through Add asset: the Lend & borrow form records a loan in the base currency only.
+  const owed = async (who: string, currency: string, amount: string, rate?: string) => {
+    await page.goto('/net-worth/assets');
+    await page.getByRole('button', { name: 'Add asset' }).click();
+    await page.getByLabel('What is it?').selectOption('other_receivable');
+    await page.getByLabel('Name', { exact: true }).pressSequentially(`Owed by ${who}`);
+    await page.getByLabel('Currency').selectOption(currency);
+    if (rate) await page.getByLabel('Opening rate').pressSequentially(rate);
+    await page.getByLabel('Who').pressSequentially(who);
+    await page.getByLabel(/^Owed now/).pressSequentially(amount);
+    await page.getByRole('button', { name: 'Add asset' }).last().click();
+    // Saved once the person is listed under Owed to you: leaving earlier loses the write.
+    await expect(page.getByRole('main').getByText(who, { exact: true })).toBeVisible();
+  };
+  await owed('Andi', 'USD', '100', '16250');
+  await owed('Budi', 'IDR', '500000');
+
+  // US$100 at 16.250 and Rp 500.000: Rp 2.125.000, never 10.000 + 500.000 minor units read as Rp 510.000.
+  await page.goto('/net-worth/debts');
+  const total = page.getByTestId('debts-total-Owed to you');
+  await expect(total).toContainText('2.125.000');
+  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+
+  await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
+  await page.goto('/net-worth/debts');
+  await expect(total).toContainText('No USD rate yet');
+  await expect(total).not.toContainText('500.000');
+});
+
 test('the Money tile adds every account and pocket at today’s rates', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
