@@ -2,10 +2,11 @@ import { CATALOG, type CatalogEntry } from '@expanses/catalog';
 import { debtItem, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, ErrorBox, InputRow, RowGroup, RowHint, SelectRow } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { memberLevelsOf, searchCatalog } from '../cards/catalog-picker';
 import { fieldsFor, handOverRows } from './catalogue-view';
@@ -53,6 +54,7 @@ function DebtItemForm({ item }: { item: string }) {
   const [draft, setDraft] = useState<DebtItemDraft>(() => emptyDebtItemDraft(item, today));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
 
   const set = (patch: Partial<DebtItemDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const chosen = debtItem(item);
@@ -100,27 +102,32 @@ function DebtItemForm({ item }: { item: string }) {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2">
-      <RowHint>
-        {chosen.label} · {chosen.sub}
-      </RowHint>
+    /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
+    <form ref={form} onSubmit={submit}>
       <ErrorBox error={error} />
-      <RowGroup>
+      <InsetGroup
+        header={chosen.label}
+        footer={
+          <>
+            {chosen.sub}. The picker chose what kind of debt this is. Name is what you call yours.
+            {asks.includes('term') && ' Leave the months left empty if you do not know them: the debt still opens at what is owed, and its terms can be added on Loans.'}
+            {owedToAPerson && ' Money you owe a person is kept under Lend & borrow, and what is left there is what the tax report uses.'}
+          </>
+        }
+      >
         {/* A person's debt is filed under their name, so there is nothing else to call it. */}
-        {!owedToAPerson && <InputRow label="Name" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="KPR BTN Bintaro" />}
-        <InputRow label="Owed now" value={draft.owed} onChange={(e) => set({ owed: e.target.value })} inputMode="decimal" placeholder="0" required />
-        {asks.includes('lender') && <InputRow label="Lender" value={draft.lender} onChange={(e) => set({ lender: e.target.value })} placeholder="Bank BTN" required />}
-        {asks.includes('person') && <InputRow label="Who" value={draft.person} onChange={(e) => set({ person: e.target.value })} placeholder="Ibu" required />}
-        {asks.includes('rate') && <InputRow label="Interest rate" value={draft.rate} onChange={(e) => set({ rate: e.target.value })} inputMode="decimal" placeholder="9,25" />}
-        {asks.includes('term') && <InputRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="168" />}
-        <InputRow label="Owed as of" type="date" value={draft.openedOn} max={today} onChange={(e) => set({ openedOn: e.target.value })} />
-      </RowGroup>
-      <RowHint>The picker chose what kind of debt this is. Name is what you call yours.</RowHint>
-      {asks.includes('term') && <RowHint>Leave the months left empty if you do not know them: the debt still opens at what is owed, and its terms can be added on Loans.</RowHint>}
-      {owedToAPerson && <RowHint>Money you owe a person is kept under Lend &amp; borrow, and what is left there is what the tax report uses.</RowHint>}
-      <Button type="submit" disabled={busy}>
-        Add debt
-      </Button>
+        {!owedToAPerson && <TextRow label="Name" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="KPR BTN Bintaro" />}
+        <TextRow label="Owed now" value={draft.owed} onChange={(e) => set({ owed: e.target.value })} inputMode="decimal" placeholder="0" required />
+        {asks.includes('lender') && <TextRow label="Lender" value={draft.lender} onChange={(e) => set({ lender: e.target.value })} placeholder="Bank BTN" required />}
+        {asks.includes('person') && <TextRow label="Who" value={draft.person} onChange={(e) => set({ person: e.target.value })} placeholder="Ibu" required />}
+        {asks.includes('rate') && <TextRow label="Interest rate" value={draft.rate} onChange={(e) => set({ rate: e.target.value })} inputMode="decimal" placeholder="9,25" />}
+        {asks.includes('term') && <TextRow label="Months left" value={draft.term} onChange={(e) => set({ term: e.target.value })} inputMode="numeric" placeholder="168" />}
+        <TextRow label="Owed as of" type="date" value={draft.openedOn} max={today} onChange={(e) => set({ openedOn: e.target.value })} />
+      </InsetGroup>
+      <InsetGroup>
+        {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
+        <InsetRow title="Add debt" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+      </InsetGroup>
     </form>
   );
 }
@@ -167,6 +174,7 @@ function NewCardForm() {
   const [dueDay, setDueDay] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
 
   const credit = CATALOG.filter((entry) => entry.cardType !== 'debit');
   const matches = searchCatalog(credit, query);
@@ -226,11 +234,21 @@ function NewCardForm() {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2">
-      <RowHint>Credit card · filed as a debt, kept as a card</RowHint>
+    /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
+    <form ref={form} onSubmit={submit}>
       <ErrorBox error={error} />
-      <RowGroup>
-        <InputRow label="Find a card" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="BCA, KrisFlyer, Mandiri" />
+      <InsetGroup
+        header="Credit card · filed as a debt, kept as a card"
+        footer={
+          <>
+            A card keeps its statement, bill, points and instalments.{' '}
+            {entry
+              ? `Its earn rules and the ${entry.bank} published annual fee are filled in from the catalogue, verified ${entry.verifiedOn}. Both can be corrected on the card's own page.`
+              : 'Not in the list is fine: name it yourself and set up what it earns on the card’s own page.'}
+          </>
+        }
+      >
+        <TextRow label="Find a card" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="BCA, KrisFlyer, Mandiri" />
         <SelectRow label="Which card" value={entryId} onChange={(e) => choose(e.target.value)}>
           <option value="">Not listed — type the name</option>
           {byIssuer(options).map(([bank, entries]) => (
@@ -243,7 +261,7 @@ function NewCardForm() {
             </optgroup>
           ))}
         </SelectRow>
-        <InputRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA KrisFlyer" required />
+        <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA KrisFlyer" required />
         {/* Applying a catalogue entry fills the bank in, so it is only asked for when the card is typed by hand. */}
         {!entry && (
           <SelectRow label="Bank" value={issuer} onChange={(e) => setIssuer(e.target.value)}>
@@ -256,7 +274,7 @@ function NewCardForm() {
             <option value={OTHER}>Other…</option>
           </SelectRow>
         )}
-        {!entry && issuer === OTHER && <InputRow label="Bank name" value={otherIssuer} onChange={(e) => setOtherIssuer(e.target.value)} placeholder="Bank Mega" />}
+        {!entry && issuer === OTHER && <TextRow label="Bank name" value={otherIssuer} onChange={(e) => setOtherIssuer(e.target.value)} placeholder="Bank Mega" />}
         {levels.length > 0 && (
           <SelectRow label={`${entry?.program.name} level`} value={memberLevel} onChange={(e) => setMemberLevel(e.target.value)}>
             <option value="">Choose your level</option>
@@ -267,24 +285,16 @@ function NewCardForm() {
             ))}
           </SelectRow>
         )}
-        <InputRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="1467" />
-        <InputRow label="Owed now" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="0" />
+        <TextRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="1467" />
+        <TextRow label="Owed now" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="0" />
         {/* The card's own page calls these the billing and due dates; the same words here, so nothing is renamed halfway. */}
-        <InputRow label="Billing date" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required={Boolean(entry)} />
-        <InputRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="12" required={Boolean(entry)} />
-      </RowGroup>
-      <RowHint>A card keeps its statement, bill, points and instalments.</RowHint>
-      {entry ? (
-        <RowHint>
-          Its earn rules and the {entry.bank} published annual fee are filled in from the catalogue, verified {entry.verifiedOn}. Both can be corrected on the
-          card's own page.
-        </RowHint>
-      ) : (
-        <RowHint>Not in the list is fine: name it yourself and set up what it earns on the card's own page.</RowHint>
-      )}
-      <Button type="submit" disabled={busy}>
-        Add card
-      </Button>
+        <TextRow label="Billing date" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required={Boolean(entry)} />
+        <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="12" required={Boolean(entry)} />
+      </InsetGroup>
+      <InsetGroup>
+        {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
+        <InsetRow title="Add card" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+      </InsetGroup>
     </form>
   );
 }
