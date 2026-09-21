@@ -8,6 +8,7 @@ import {
   type ConfirmDepositEventInput,
   confirmDepositEvent,
   createWorkspace,
+  depositIncomePayments,
   type Database,
   DepositAutomationError,
   type DepositProposal,
@@ -24,6 +25,7 @@ import {
   voidTransaction,
   type WorkspaceContext,
 } from '../src/index';
+import { reopenDepositEventTx } from '../src/repos/deposit-event-log';
 import { setupDb } from './helpers';
 
 let database: Database;
@@ -551,6 +553,138 @@ describe('voiding is last in, first out across a maturity', () => {
     await voidTransaction(database, ws, aug.interestTransactionId!);
     expect((await logged()).map((row) => row.dueOn)).toEqual(['2026-09-15']);
     expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'monthly', dueOn: '2026-08-15' }, waiting: 1 });
+  });
+});
+
+describe('what is due, across deposits and over time', () => {
+  it('proposes nothing once the switch is turned off again, although the row is kept', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { enabled: false }));
+    expect(await logged()).toEqual([]);
+    expect(await database.db.values(sql`SELECT enabled FROM deposit_automation WHERE account_id = ${depositoId}`)).toEqual([[0]]);
+    expect(await listDueDeposits(database, ws, '2026-12-31')).toEqual([]);
+  });
+
+  it('keeps proposing a second deposit due the same day after the first is confirmed', async () => {
+    const twin = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Twin', currency: 'IDR', openingBalanceMinor: 20_000_000, openedOn: '2026-07-15', maturesOn: '2026-10-15', rateBps: 425 });
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    await saveDepositAutomation(database, ws, on(twin.id, bcaId));
+    await confirmDepositEvent(database, ws, asProposed((await listDueDeposits(database, ws, '2026-10-15')).find((p) => p.accountId === depositoId)!, '2026-10-15'));
+    // 20 000 000 × 4,25% × 92 / 365 = 214 246 (floored).
+    expect(await listDueDeposits(database, ws, '2026-10-15')).toMatchObject([{ accountId: twin.id, event: { kind: 'maturity', dueOn: '2026-10-15' }, grossMinor: 214_246 }]);
+  });
+
+  it('lists deposits soonest first, whatever order they were switched on in', async () => {
+    const later = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Later', currency: 'IDR', openingBalanceMinor: 20_000_000, openedOn: '2026-08-20', maturesOn: '2026-11-20', rateBps: 425 });
+    const sooner = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Sooner', currency: 'IDR', openingBalanceMinor: 20_000_000, openedOn: '2026-06-01', maturesOn: '2026-09-01', rateBps: 425 });
+    await saveDepositAutomation(database, ws, on(later.id, bcaId));
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    await saveDepositAutomation(database, ws, on(sooner.id, bcaId));
+    expect((await listDueDeposits(database, ws, '2026-12-01')).map((p) => p.event.dueOn)).toEqual(['2026-09-01', '2026-10-15', '2026-11-20']);
+  });
+
+  it('works the interest on the balance of the due day, not on what is left by the day it is confirmed', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    await database.transaction((tx) =>
+      postTransactionTx(tx, ws, {
+        occurredOn: '2026-10-20',
+        description: 'Broke part of it',
+        lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 10_000_000, currency: 'IDR' }),
+      }),
+    );
+    // 40 000 000 on the 25th would give 428 493; the due day's 50 000 000 gives 535 616.
+    expect(await next('2026-10-25')).toMatchObject({ principalMinor: 50_000_000, grossMinor: 535_616 });
+  });
+});
+
+describe('another workspace', () => {
+  /** A second book with its own deposit, automated and confirmed once, so its log and its settings both exist. */
+  async function otherBook() {
+    const other = await createWorkspace(database, { name: 'Business', type: 'business', baseCurrency: 'IDR' });
+    const bank = await openCashAccount(database, other, { item: 'bank', name: 'Mandiri', currency: 'IDR', openingBalanceMinor: 1_000_000, openedOn: '2026-07-15' });
+    const dep = await openCashAccount(database, other, { item: 'time_deposit', name: 'Mandiri Deposito', currency: 'IDR', openingBalanceMinor: 30_000_000, openedOn: '2026-07-15', maturesOn: '2026-10-15', rateBps: 425 });
+    await saveDepositAutomation(database, other, on(dep.id, bank.id, { interestPaid: 'monthly' }));
+    const [first] = await listDueDeposits(database, other, '2026-10-15');
+    await confirmDepositEvent(database, other, asProposed(first!, '2026-10-15'));
+    return { other, dep };
+  }
+
+  it('never lists, or reports, another workspace’s deposit', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    const { other, dep } = await otherBook();
+    expect((await listDueDeposits(database, ws, '2026-10-15')).map((p) => p.accountId)).toEqual([depositoId]);
+    expect((await listDueDeposits(database, other, '2026-10-15')).map((p) => p.accountId)).toEqual([dep.id]);
+    expect(await depositIncomePayments(database, ws)).toEqual([]);
+    expect((await depositIncomePayments(database, other)).map((p) => p.accountId)).toEqual([dep.id]);
+  });
+
+  it('never reopens an event of this workspace from another one', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { interestPaid: 'monthly' }));
+    const mine = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    const { other } = await otherBook();
+    expect(await database.transaction((tx) => reopenDepositEventTx(tx, other, mine.interestTransactionId!))).toEqual([]);
+    expect(await logged()).toHaveLength(1);
+  });
+});
+
+describe('confirm refusals', () => {
+  it('refuses a payout account archived after the settings were saved', async () => {
+    const jenius = await openCashAccount(database, ws, { item: 'bank', name: 'Jenius', currency: 'IDR' });
+    await saveDepositAutomation(database, ws, on(depositoId, jenius.id));
+    await archiveAccount(database, ws, jenius.id);
+    await expect(confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'))).rejects.toMatchObject({ code: 'BAD_PAYOUT' });
+    expect(await logged()).toEqual([]);
+    expect(await incomeAndTax()).toEqual({ income: 0, tax: 0 });
+  });
+
+  it('refuses a roll-over without a valid new term or rate', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    const p = await next('2026-10-15');
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { newTermMonths: undefined }))).rejects.toMatchObject({ code: 'BAD_FIGURE' });
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { newTermMonths: 2 as never }))).rejects.toMatchObject({ code: 'BAD_FIGURE' });
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { newRateBps: undefined }))).rejects.toMatchObject({ code: 'BAD_FIGURE' });
+    await expect(confirmDepositEvent(database, ws, asProposed(p, '2026-10-15', { newRateBps: 42.5 }))).rejects.toMatchObject({ code: 'BAD_FIGURE' });
+    expect(await logged()).toEqual([]);
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2026-10-15', rateBps: 425 });
+  });
+
+  it('refuses a close that says nothing came back', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    await expect(confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { principalMinor: 0 }))).rejects.toMatchObject({ code: 'BAD_FIGURE' });
+    expect(await logged()).toEqual([]);
+  });
+
+  it('lets an unexpected failure of the archive fail the whole close, and keeps nothing of it', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    // Fault injection: the archive's audit write fails with an error that is not the archive's own refusal.
+    await database.db.run(sql`CREATE TRIGGER audit_down BEFORE INSERT ON audit_log WHEN NEW.action = 'archive' BEGIN SELECT RAISE(ABORT, 'audit is down'); END`);
+    await expect(confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'))).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: expect.stringContaining('audit is down') }),
+    });
+    expect(await logged()).toEqual([]);
+    expect((await nativeBalances(database, ws))[depositoId]).toBe(50_000_000);
+    expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
+    expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(true);
+  });
+});
+
+describe('editing a close’s principal transfer', () => {
+  it('the log takes the edited principal and the replacement’s id, and voiding the replacement reopens the close whole', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
+    const result = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
+    const replacement = await replaceTransaction(database, ws, result.principalTransactionId!, {
+      occurredOn: '2026-10-15',
+      description: 'BCA Deposito matured',
+      lines: transferLines({ fromAccountId: depositoId, toAccountId: bcaId, amountMinor: 49_999_000, currency: 'IDR' }),
+    });
+    expect(await logged()).toMatchObject([{ principalMinor: 49_999_000, principalTransactionId: replacement, interestTransactionId: result.interestTransactionId }]);
+    await voidTransaction(database, ws, replacement);
+    expect(await logged()).toEqual([]);
+    const balances = await nativeBalances(database, ws);
+    expect(balances[bcaId]).toBe(1_000_000);
+    expect(balances[depositoId]).toBe(50_000_000);
+    expect(await incomeAndTax()).toEqual({ income: 0, tax: 0 });
+    expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
   });
 });
 

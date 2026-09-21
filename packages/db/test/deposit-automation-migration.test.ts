@@ -1,6 +1,22 @@
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createDatabase, createWorkspace, getDepositAutomation, migrate, MIGRATIONS, openCashAccount, saveDepositAutomation } from '../src/index';
+import { transferLines } from '@expanses/core';
+import {
+  confirmDepositEvent,
+  createDatabase,
+  createWorkspace,
+  depositIncomePayments,
+  getDepositAutomation,
+  incomeInputsFor,
+  listDueDeposits,
+  migrate,
+  MIGRATIONS,
+  openCashAccount,
+  postTransaction,
+  replaceTransaction,
+  saveDepositAutomation,
+  voidTransaction,
+} from '../src/index';
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
 
 let executor: NodeExecutor | undefined;
@@ -91,5 +107,28 @@ describe('migration 0054', () => {
       today: '2026-07-15',
     });
     expect(await getDepositAutomation(database, ws, deposito.id)).toMatchObject({ enabled: true, enabledOn: '2026-07-15' });
+  });
+
+  it('keeps every void, edit, due list and tax report working on a database stopped before 0054', async () => {
+    executor = createNodeExecutor();
+    const database = createDatabase(executor);
+    await migrate(database, MIGRATIONS.filter((m) => m.version <= 49));
+    const ws = await createWorkspace(database, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    const bank = await openCashAccount(database, ws, { item: 'bank', name: 'BCA', currency: 'IDR', openingBalanceMinor: 1_000_000, openedOn: '2026-07-15' });
+    const deposito = await openCashAccount(database, ws, { item: 'time_deposit', name: 'BCA Deposito', currency: 'IDR', openingBalanceMinor: 50_000_000, openedOn: '2026-07-15', maturesOn: '2026-10-15', rateBps: 425 });
+    const move = (amountMinor: number) => ({
+      occurredOn: '2026-08-01',
+      description: 'Top up',
+      lines: transferLines({ fromAccountId: bank.id, toAccountId: deposito.id, amountMinor, currency: 'IDR' }),
+    });
+    const first = await postTransaction(database, ws, move(1_000));
+    const edited = await replaceTransaction(database, ws, first, move(2_000));
+    await voidTransaction(database, ws, edited);
+    expect(await listDueDeposits(database, ws, '2026-12-31')).toEqual([]);
+    expect(await depositIncomePayments(database, ws)).toEqual([]);
+    expect(await incomeInputsFor(database, ws, 2026)).toEqual([]);
+    await expect(
+      confirmDepositEvent(database, ws, { accountId: deposito.id, kind: 'maturity', dueOn: '2026-10-15', today: '2026-10-15', principalMinor: 50_000_000, grossMinor: 535_616, taxMinor: 107_123, newRateBps: 425, newTermMonths: 3 }),
+    ).rejects.toMatchObject({ code: 'NOT_READY' });
   });
 });
