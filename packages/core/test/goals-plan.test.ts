@@ -239,3 +239,40 @@ describe('fitByRank', () => {
     expect(fits.every((fit) => fit.fits === 'none')).toBe(true);
   });
 });
+
+describe('a stage with a return of its own', () => {
+  const TODAY = '2026-09-21';
+  const base: Goal = { id: 'g', name: 'School', kind: 'education', rank: 0, growthBps: 0, returnBps: 800, standingMonthlyMinor: 0, standingNote: null, stages: [] };
+  const link = (baseMinor: number): GoalLink => ({ accountId: 'a', name: 'Savings', kind: 'earmark', unitsMicro: null, valueMinor: baseMinor, currency: 'IDR', baseMinor, risk: null });
+
+  it('saves for that stage at its own return, not the goal’s', () => {
+    const stage = { id: 's1', name: 'Preschool', targetMinor: 12_000_000, targetMonths: null, dueOn: '2027-09-21', paidOn: null };
+    expect(goalPlan({ ...base, stages: [{ ...stage, returnBps: 400 }] }, [], 0, 0, TODAY).requiredMonthlyMinor).toBe(981_799);
+    expect(goalPlan({ ...base, stages: [stage] }, [], 0, 0, TODAY).requiredMonthlyMinor).toBe(963_861);
+  });
+
+  it('carries what is left after a covered stage at that stage’s return', () => {
+    const plan = goalPlan(
+      {
+        ...base,
+        stages: [
+          { id: 's1', name: 'Preschool', targetMinor: 5_000_000, targetMonths: null, dueOn: '2027-09-21', paidOn: null, returnBps: 400 },
+          { id: 's2', name: 'Primary', targetMinor: 20_000_000, targetMonths: null, dueOn: '2028-09-21', paidOn: null },
+        ],
+      },
+      [link(10_000_000)],
+      0,
+      0,
+      TODAY,
+    );
+    // 10 jt at 4% is 10,4 jt; 5,4 jt left, 5.192.308 in today's money, then grown at the goal's 8%.
+    // Carrying at 8% instead would leave 5.370.370 and ask 529.669.
+    expect(plan.stages[0]!.state).toBe('covered');
+    expect(plan.requiredMonthlyMinor).toBe(537_677);
+  });
+
+  it('follows the goal’s return when the stage’s own is null', () => {
+    const stage = { id: 's1', name: 'Preschool', targetMinor: 12_000_000, targetMonths: null, dueOn: '2027-09-21', paidOn: null, returnBps: null };
+    expect(goalPlan({ ...base, stages: [stage] }, [], 0, 0, TODAY).requiredMonthlyMinor).toBe(963_861);
+  });
+});

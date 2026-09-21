@@ -12,6 +12,8 @@ export interface GoalStage {
   targetMonths: number | null;
   dueOn: string;
   paidOn: string | null;
+  /** What money for this stage is expected to earn, when it differs from the goal's (an education level's). */
+  returnBps?: number | null;
 }
 
 export interface Goal {
@@ -132,6 +134,7 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
     const todayMinor = stage.targetMinor ?? (stage.targetMonths ?? 0) * monthlyOutgoingMinor;
     const targetMinor = futureValueMinor(todayMinor, goal.growthBps, months);
     const row = { stageId: stage.id, name: stage.name, dueOn: stage.dueOn, months, todayMinor, targetMinor };
+    const rate = stage.returnBps ?? goal.returnBps;
 
     if (stage.paidOn) {
       stages.push({ ...row, state: 'paid' });
@@ -141,14 +144,14 @@ export function goalPlan(goal: Goal, links: GoalLink[], plannedMonthlyMinor: num
       stages.push({ ...row, state: 'later' });
       continue;
     }
-    const availableMinor = futureValueMinor(carryMinor, goal.returnBps, months);
+    const availableMinor = futureValueMinor(carryMinor, rate, months);
     if (availableMinor >= targetMinor) {
       // The surplus keeps funding the next stage, so bring it back to today's money.
-      carryMinor = roundHalfAwayFromZero((availableMinor - targetMinor) / yearlyFactor(goal.returnBps, months));
+      carryMinor = roundHalfAwayFromZero((availableMinor - targetMinor) / yearlyFactor(rate, months));
       stages.push({ ...row, state: 'covered' });
       continue;
     }
-    requiredMonthlyMinor = monthlyNeededMinor(targetMinor - availableMinor, goal.returnBps, months);
+    requiredMonthlyMinor = monthlyNeededMinor(targetMinor - availableMinor, rate, months);
     carryMinor = 0;
     stages.push({ ...row, state: 'saving' });
   }
