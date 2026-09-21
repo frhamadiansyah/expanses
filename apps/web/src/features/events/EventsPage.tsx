@@ -1,11 +1,27 @@
 import { isoDate } from '@expanses/core';
 import { type EventRow, saveEvent } from '@expanses/db';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { CalendarRange, ChevronRight, Plus } from 'lucide-react';
+import { CalendarRange, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone } from '../../app/use-phone';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, cx, Empty, ErrorBox, Field, Input, Money, PageHeader, RoundButton, Select } from '../../ui';
+import { cx, Empty, ErrorBox, Money } from '../../ui';
+import {
+  type GroupChild,
+  InsetGroup,
+  InsetRow,
+  LargeTitle,
+  ProgressBar,
+  ROW_ICON,
+  ROW_PAD_X,
+  ROW_PAD_Y,
+  rowHeight,
+  SCREEN,
+  SelectRow,
+  SubmitRow,
+  TextRow,
+} from '../../ui/native';
 import { useCategorySets } from '../categories/set-queries';
 import { eventListLine } from './plan-view';
 import { useEventPlan, useEvents } from './queries';
@@ -29,7 +45,12 @@ export function StatusChip({ status }: { status: 'Upcoming' | 'Now' | 'Done' }) 
     <span
       className={cx(
         'rounded-full px-1.5 py-px text-[10.5px] font-bold tracking-wide uppercase',
-        status === 'Now' ? 'bg-emerald-100 text-emerald-800' : status === 'Upcoming' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-500',
+        // The kit's panel pairs, so a chip keeps its meaning on a dark ground rather than turning into a pale smear.
+        status === 'Now'
+          ? 'bg-[var(--ph-tint-panel)] text-[var(--ph-tint-ink)]'
+          : status === 'Upcoming'
+            ? 'bg-[var(--ph-info-panel)] text-[var(--ph-info-ink)]'
+            : 'bg-[var(--ph-fill)] text-[var(--ph-ink-3)]',
       )}
     >
       {status}
@@ -44,50 +65,66 @@ export function StatusChip({ status }: { status: 'Upcoming' | 'Now' | 'Done' }) 
  * page it opens can never disagree. No items is no plan at all, not a plan of nought: such an event says what it
  * cost, says "spent", and is measured against nothing, because there is nothing to measure it against.
  */
-function EventCard({ event, today }: { event: EventRow; today: string }) {
+function EventListRow({ event, today, position }: GroupChild & { event: EventRow; today: string }) {
   const { ws } = useApp();
   const plan = useEventPlan(event.id).data;
   const line = plan ? eventListLine(plan, ws.baseCurrency) : null;
   const of = line?.ofMinor ?? null;
-  const over = line !== null && of !== null && line.amountMinor > of;
   return (
-    <Link to="/events/$eventId" params={{ eventId: event.id }} className="block" data-testid="event-row">
-      <Card>
-        <span className="flex items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-700">
-            <CalendarRange size={18} strokeWidth={2.2} aria-hidden />
+    <div className="relative">
+      {position?.separator && (
+        <span aria-hidden className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X + ROW_ICON + 10 }} />
+      )}
+      {/* The kit's row, with room for the lines an event carries: the dates and where it stands, what the plan still
+          wants, what came back — each its own line rather than one truncated subtitle, since every one is a figure. */}
+      <Link
+        to="/events/$eventId"
+        params={{ eventId: event.id }}
+        className="ph-focus-inset block w-full"
+        style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
+        data-testid="event-row"
+      >
+        <span className="flex w-full items-center gap-[10px]">
+          <span
+            aria-hidden
+            className="flex shrink-0 items-center justify-center rounded-full bg-[var(--ph-info-panel)] text-[var(--ph-info-ink)]"
+            style={{ width: ROW_ICON, height: ROW_ICON }}
+          >
+            <CalendarRange size={15} strokeWidth={2.2} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{event.name}</span>
-            <span className="flex items-center gap-1.5 text-xs text-slate-500">
-              {eventDates(event)} <StatusChip status={eventStatus(event, today)} />
+            <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{event.name}</span>
+            <span className="mt-[2px] flex items-center gap-[6px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+              <span className="truncate">{eventDates(event)}</span>
+              <StatusChip status={eventStatus(event, today)} />
             </span>
-            {line && <span className="block truncate text-xs text-slate-500">{line.subline}</span>}
+            {line && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{line.subline}</span>}
             {/* The figure on the right is clamped at nought, so what the clamp swallowed is said here rather than
                 left as a silent nought — the same both-sided rule the event's own screens keep under their ring. */}
-            {line?.backLine && <span className="block truncate text-xs text-emerald-700">{line.backLine}</span>}
+            {line?.backLine && <span className="block truncate text-[12.5px] leading-[16px] text-[var(--ph-tint)]">{line.backLine}</span>}
           </span>
           {line && (
-            <span className="shrink-0 text-right">
-              <Money minor={line.amountMinor} currency={ws.baseCurrency} className="block text-sm font-semibold" />
-              <span className="block text-xs text-slate-500">{of === null ? 'spent' : <>of <Money minor={of} currency={ws.baseCurrency} /></>}</span>
+            <span className="tabular shrink-0 text-right">
+              <Money minor={line.amountMinor} currency={ws.baseCurrency} className="block text-[15px] leading-[20px] text-[var(--ph-ink)]" />
+              <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+                {of === null ? 'spent' : <>of <Money minor={of} currency={ws.baseCurrency} /></>}
+              </span>
             </span>
           )}
-          <ChevronRight size={16} aria-hidden className="shrink-0 text-slate-300" />
+          <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
+            {'›'}
+          </span>
         </span>
-        {plan?.hasPlan && (
-          <span className="mt-2 mr-7 ml-12 block h-1 overflow-hidden rounded-full bg-slate-100">
-            {/* A plan can add up to nought — a list of things each priced at nothing — and nothing is not a bar
-                that is full. The width is read from the plan itself, never from a division by nought; the figure
-                arrives clamped from `eventListLine`, so this screen has no clamp of its own to remember. */}
-            <span
-              className={cx('block h-1 rounded-full', over ? 'bg-red-700' : 'bg-emerald-600')}
-              style={{ width: `${of !== null && of > 0 ? Math.min(1, line!.amountMinor / of) * 100 : 0}%` }}
-            />
+        {/* A plan can add up to nought — a list of things each priced at nothing — and nothing is not a bar that is
+            full. The kit's bar reads the fraction itself and never divides by nought; the figure arrives clamped
+            from `eventListLine`, so this screen has no clamp of its own to remember. */}
+        {plan?.hasPlan && line && (
+          <span className="mt-[8px] block" style={{ marginLeft: ROW_ICON + 10, marginRight: 16 }}>
+            <ProgressBar currentMinor={line.amountMinor} targetMinor={of ?? 0} label={`${event.name} against its plan`} />
           </span>
         )}
-      </Card>
-    </Link>
+      </Link>
+    </div>
   );
 }
 
@@ -104,6 +141,7 @@ export function EventsPage() {
   const events = useEvents();
   const sets = useCategorySets({ ownerWide: true }).data ?? [];
   const today = isoDate();
+  const phone = usePhone();
   const [error, setError] = useState<unknown>(null);
 
   const [adding, setAdding] = useState(false);
@@ -136,50 +174,35 @@ export function EventsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader
+    <div className={SCREEN}>
+      <LargeTitle
         title="Events"
-        controls={
-          <RoundButton label="New event" onClick={() => setAdding(true)}>
-            <Plus size={22} aria-hidden />
-          </RoundButton>
-        }
-        action={!adding && <Button onClick={() => setAdding(true)}>Add an event</Button>}
+        // The same glyph at every width, under the name each width has always announced: a phone's "New event",
+        // a desktop's "Add an event".
+        actions={[{ key: 'new', label: phone ? 'New event' : 'Add an event', glyph: <Plus size={22} aria-hidden />, run: () => setAdding(true) }]}
       />
       <ErrorBox error={error ?? events.error} />
 
       {adding && (
-        <Card>
-          <form onSubmit={addEvent} className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Name">
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Lebaran, the wedding, the renovation" />
-              </Field>
-              <Field label="Categories" hint="A set keeps an event's categories out of your monthly tree.">
-                <Select value={setId} onChange={(e) => setSetId(e.target.value)}>
-                  <option value="">The monthly categories</option>
-                  {sets.map((set) => (
-                    <option key={set.id} value={set.id}>
-                      {set.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Starts on">
-                <Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
-              </Field>
-              <Field label="Ends on">
-                <Input type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
-              </Field>
-            </div>
-            <div className="flex gap-2">
-              <Button type="submit">Save event</Button>
-              <Button type="button" variant="secondary" onClick={() => setAdding(false)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        </Card>
+        <form onSubmit={addEvent}>
+          <InsetGroup header="New event">
+            <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Lebaran, the wedding, the renovation" />
+            <SelectRow label="Categories" hint="A set keeps an event's categories out of your monthly tree." value={setId} onChange={(e) => setSetId(e.target.value)}>
+              <option value="">The monthly categories</option>
+              {sets.map((set) => (
+                <option key={set.id} value={set.id}>
+                  {set.name}
+                </option>
+              ))}
+            </SelectRow>
+            <TextRow label="Starts on" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+            <TextRow label="Ends on" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
+          </InsetGroup>
+          <InsetGroup>
+            <SubmitRow label="Save event" />
+            <InsetRow title={<span className="font-normal text-[var(--ph-ink-2)]">Cancel</span>} label="Cancel" onClick={() => setAdding(false)} chevron={false} />
+          </InsetGroup>
+        </form>
       )}
 
       {events.isSuccess && all.length === 0 && !adding && (
@@ -187,20 +210,18 @@ export function EventsPage() {
       )}
 
       {current.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="px-1 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Now and next</h2>
+        <InsetGroup header="Now and next">
           {current.map((event) => (
-            <EventCard key={event.id} event={event} today={today} />
+            <EventListRow key={event.id} event={event} today={today} />
           ))}
-        </section>
+        </InsetGroup>
       )}
       {past.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="px-1 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Past</h2>
+        <InsetGroup header="Past">
           {past.map((event) => (
-            <EventCard key={event.id} event={event} today={today} />
+            <EventListRow key={event.id} event={event} today={today} />
           ))}
-        </section>
+        </InsetGroup>
       )}
     </div>
   );

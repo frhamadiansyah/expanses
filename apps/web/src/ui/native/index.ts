@@ -12,7 +12,7 @@ export { InsetGroup, InsetRow, toneClass, type GroupChild, type InsetRowProps } 
 export { CornerButton, LargeTitle } from './NavTitle';
 export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
-export { DestructiveRow, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
+export { DestructiveRow, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, type WalletCard } from './CardStack';
 export { Panel, PanelHeader, SCREEN } from './Panel';
 export { Figure, RecordTable, type RecordColumn, type RecordDetail, type RecordShape } from './RecordTable';

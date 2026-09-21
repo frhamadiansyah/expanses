@@ -1,3 +1,4 @@
+import { Search } from 'lucide-react';
 import { type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
 import { cx } from '../index';
 import { type FormKind, planFormRow, planSwitchRow } from './form-row';
@@ -224,6 +225,44 @@ export function SwitchRow({
       </div>
       {plan.hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
     </div>
+  );
+}
+
+/**
+ * A form's primary action as a row: the tint, the row's height, and a real submit button.
+ *
+ * A real `submit`, not a row that calls the save itself: the browser still checks every `required` field before
+ * anything is written, exactly as the dark rectangle it replaces did, and Enter in any field still submits.
+ */
+export function SubmitRow({ label, disabled = false, position }: GroupChild & { label: string; disabled?: boolean }) {
+  return (
+    <div className="relative">
+      <Separator show={Boolean(position?.separator)} />
+      <button
+        type="submit"
+        disabled={disabled}
+        className="ph-focus-inset block w-full text-left text-[15px] leading-[20px] font-semibold text-[var(--ph-tint)] disabled:text-[var(--ph-ink-3)]"
+        style={shell(false)}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The search field above a list: the track's grey, a magnifier, no outline. iOS draws it on the page rather than
+ * in a group, and at the group's width, so the list below it and the field line up on a wide screen too.
+ */
+export function SearchField({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className={cx('flex w-full items-center gap-[6px] bg-[var(--ph-track)] px-[8px] md:max-w-2xl', className)} style={{ borderRadius: 10, minHeight: 36 }}>
+      <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+      <input
+        {...props}
+        className="ph-focus min-w-0 flex-1 rounded bg-transparent py-[7px] text-[16px] leading-[20px] text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] md:text-[15px]"
+      />
+    </label>
   );
 }
 
