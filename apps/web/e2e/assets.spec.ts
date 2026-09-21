@@ -42,7 +42,8 @@ test('buys, sells, and works out the gain at average cost', async ({ page }) => 
   await addBank(page);
   await addGold(page);
 
-  await page.getByRole('link', { name: 'Buy & sell' }).click();
+  // The net-worth tabs are the kit's segmented control now: a radio group, not a row of links.
+  await page.getByRole('radio', { name: 'Buy & sell' }).click();
   await expect(page.getByRole('heading', { name: 'Buy & sell' })).toBeVisible();
 
   await page.getByLabel('What happened').selectOption('buy');
@@ -82,7 +83,7 @@ test('sends trade edits to Buy & sell instead of the transaction form', async ({
   await addGold(page);
 
   // A buy dated today, so it lands in the month the Transactions page opens on.
-  await page.getByRole('link', { name: 'Buy & sell' }).click();
+  await page.getByRole('radio', { name: 'Buy & sell' }).click();
   await page.getByLabel('Units, shares or grams').fill('2');
   await page.getByLabel('What it cost, before fees (IDR)').fill('3980000');
   await page.getByRole('button', { name: 'Record', exact: true }).click();

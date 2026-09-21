@@ -1,10 +1,12 @@
-import { averagePriceMicro, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
+import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
 import { archiveAccount } from '@expanses/db';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
-import { Button, Card, Empty, ErrorBox, Money, PageHeader } from '../../ui';
+import { Empty, ErrorBox, Money } from '../../ui';
+import { Hero, InsetGroup, InsetRow, LargeTitle } from '../../ui/native';
+import { Panel, SCREEN } from './Panel';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { AssetSettings } from './AssetSettings';
@@ -64,46 +66,34 @@ export function AssetDetailPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title={value?.name ?? 'Asset'}
-        action={
-          <Link to="/net-worth/assets" className="text-sm text-slate-600 hover:text-slate-900">
-            Back to assets
-          </Link>
-        }
-      />
+    <div className={SCREEN}>
+      <LargeTitle title={value?.name ?? 'Asset'} back="All assets" backTo="/net-worth/assets" />
       <ErrorBox error={values.error ?? profile.error ?? error} />
       {!value && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
 
       {value && (
-        <Card className="space-y-3">
-          <div>
-            <div className="text-2xl font-semibold">
-              <Money minor={value.valueMinor} currency={value.currency} />
-            </div>
-            <div className="text-sm text-slate-600">
-              Cost <Money minor={value.costMinor} currency={value.currency} />
-              {value.costMinor !== 0 && (
-                <>
-                  {' · '}
-                  <Money minor={gain} currency={value.currency} tone="auto" />
-                  {' since you bought it'}
-                </>
-              )}
-            </div>
-            <div className="text-xs text-slate-500">
-              {METHOD_LABELS[value.mode]}
-              {position && position.unitsMicro > 0 && (
-                <>
-                  {` · ${formatUnits(position.unitsMicro)} ${unitLabel}`}
-                  {average !== null && ` · average cost ${formatPriceMicro(average, value.currency)}`}
-                </>
-              )}
-              {value.asOf && ` · price from ${value.asOf}`}
-              {value.source === 'cost' && ' · no price yet, showing what you paid'}
-            </div>
-          </div>
+        <>
+          <Hero
+            minor={value.valueMinor}
+            currency={value.currency}
+            caption={
+              <>
+                Cost {formatMinor(value.costMinor, value.currency)}
+                {value.costMinor !== 0 && ` · ${formatMinor(gain, value.currency)} since you bought it`}
+                <span className="mt-[2px] block">
+                  {METHOD_LABELS[value.mode]}
+                  {position && position.unitsMicro > 0 && (
+                    <>
+                      {` · ${formatUnits(position.unitsMicro)} ${unitLabel}`}
+                      {average !== null && ` · average cost ${formatPriceMicro(average, value.currency)}`}
+                    </>
+                  )}
+                  {value.asOf && ` · price from ${value.asOf}`}
+                  {value.source === 'cost' && ' · no price yet, showing what you paid'}
+                </span>
+              </>
+            }
+          />
 
           {value.mode === 'market' && (
             <PriceForm
@@ -117,93 +107,78 @@ export function AssetDetailPage() {
           )}
           {value.mode === 'snapshot' && <ValuationForm accountId={accountId} currency={value.currency} />}
           {value.mode === 'derived' && (
-            <p className="text-sm text-slate-600">
-              This balance follows your transactions.{' '}
-              <Link to="/transactions" search={{ account: accountId }} className="underline">
-                See them
-              </Link>
-              .
-            </p>
+            <InsetGroup>
+              <InsetRow title="See them" subtitle="This balance follows your transactions." to="/transactions" search={{ account: accountId }} />
+            </InsetGroup>
           )}
-        </Card>
+        </>
       )}
 
       {value && forGoals.length > 0 && (
-        <Card>
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h2 className="text-sm font-semibold">For goals</h2>
-            <Link to="/net-worth/trades" className="text-xs text-slate-600 underline">
-              Change on Buy &amp; sell
-            </Link>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            {forGoals.map((link) => (
-              <span key={link.goalId} className="rounded bg-slate-100 px-2 py-1">
-                <b>{(goals.data ?? []).find((goal) => goal.id === link.goalId)?.name ?? 'A goal'}</b> {link.unitsMicro === null ? '' : `${formatUnits(link.unitsMicro)} ${unitLabel}`} ·{' '}
-                <Money minor={link.valueMinor} currency={value.currency} />
-              </span>
-            ))}
-          </div>
-        </Card>
+        <InsetGroup header="For goals">
+          {forGoals.map((link) => (
+            <InsetRow
+              key={link.goalId}
+              title={(goals.data ?? []).find((goal) => goal.id === link.goalId)?.name ?? 'A goal'}
+              subtitle={link.unitsMicro === null ? undefined : `${formatUnits(link.unitsMicro)} ${unitLabel}`}
+              value={<Money minor={link.valueMinor} currency={value.currency} />}
+              valueTone="ink"
+              chevron={false}
+            />
+          ))}
+          <InsetRow title="Change on Buy & sell" to="/net-worth/trades" />
+        </InsetGroup>
       )}
 
       {value && history.data && history.data.some((point) => point !== 0) && (
-        <Card>
-          <h2 className="mb-2 text-sm font-semibold">Last 12 months</h2>
+        <Panel header="Last 12 months">
           <ValueChart values={history.data} labels={months.map(MONTH_LABEL)} currency={value.currency} />
-        </Card>
+        </Panel>
       )}
 
       {value?.mode === 'market' && (trades.data?.length ?? 0) > 0 && (
-        <Card>
-          <h2 className="mb-2 text-sm font-semibold">Buys, sells and income</h2>
-          <div className="divide-y divide-slate-100 text-sm">
-            {[...(trades.data ?? [])].reverse().map((trade) => (
-              <div key={trade.id} className="flex items-baseline justify-between gap-3 py-2">
-                <span className="text-slate-500">{trade.occurredOn}</span>
-                <span className="flex-1">
-                  {trade.kind === 'buy' ? 'Bought' : trade.kind === 'sell' ? 'Sold' : trade.kind === 'income' ? 'Income' : 'Units changed'}
-                  {trade.kind !== 'income' && ` ${formatUnits(trade.unitsMicro)} ${unitLabel}`}
-                </span>
-                <Money minor={trade.grossMinor} currency={value.currency} />
-              </div>
-            ))}
-          </div>
-        </Card>
+        <InsetGroup header="Buys, sells and income">
+          {[...(trades.data ?? [])].reverse().map((trade) => (
+            <InsetRow
+              key={trade.id}
+              title={`${trade.kind === 'buy' ? 'Bought' : trade.kind === 'sell' ? 'Sold' : trade.kind === 'income' ? 'Income' : 'Units changed'}${
+                trade.kind !== 'income' ? ` ${formatUnits(trade.unitsMicro)} ${unitLabel}` : ''
+              }`}
+              subtitle={trade.occurredOn}
+              value={<Money minor={trade.grossMinor} currency={value.currency} />}
+              valueTone="ink"
+              chevron={false}
+            />
+          ))}
+        </InsetGroup>
       )}
 
       {value?.mode === 'snapshot' && (valuations.data?.length ?? 0) > 0 && (
-        <Card>
-          <h2 className="mb-2 text-sm font-semibold">Value history</h2>
-          <div className="divide-y divide-slate-100 text-sm">
-            {(valuations.data ?? []).map((row) => (
-              <div key={row.id} className="flex items-baseline justify-between gap-3 py-2">
-                <span className="text-slate-500">{row.asOf}</span>
-                <span className="flex-1">
-                  {row.basis}
-                  {row.note ? ` · ${row.note}` : ''}
-                </span>
-                <Money minor={row.valueMinor} currency={value.currency} />
-              </div>
-            ))}
-          </div>
-        </Card>
+        <InsetGroup header="Value history">
+          {(valuations.data ?? []).map((row) => (
+            <InsetRow
+              key={row.id}
+              title={`${row.basis}${row.note ? ` · ${row.note}` : ''}`}
+              subtitle={row.asOf}
+              value={<Money minor={row.valueMinor} currency={value.currency} />}
+              valueTone="ink"
+              chevron={false}
+            />
+          ))}
+        </InsetGroup>
       )}
 
       {value && boughtWith && (
-        <Card className="space-y-1">
-          <h2 className="text-sm font-semibold">What of it is yours</h2>
-          <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
-            <span className="text-slate-600">
-              Worth <Money minor={value.valueMinor} currency={value.currency} />, still owed{' '}
-              <Money minor={Math.abs(balances.data?.[boughtWith.accountId] ?? 0)} currency={value.currency} /> to {boughtWith.lenderName}
-            </span>
-            <Money minor={value.valueMinor - Math.abs(balances.data?.[boughtWith.accountId] ?? 0)} currency={value.currency} tone="auto" className="font-semibold" />
-          </div>
-          <Link to="/net-worth/loans/$accountId" params={{ accountId: boughtWith.accountId }} className="text-xs text-slate-600 underline">
-            See the loan
-          </Link>
-        </Card>
+        <InsetGroup
+          header="What of it is yours"
+          trailing={<Money minor={value.valueMinor - Math.abs(balances.data?.[boughtWith.accountId] ?? 0)} currency={value.currency} />}
+          footer={`Worth ${formatMinor(value.valueMinor, value.currency)}, still owed ${formatMinor(
+            Math.abs(balances.data?.[boughtWith.accountId] ?? 0),
+            value.currency,
+          )} to ${boughtWith.lenderName}.`}
+        >
+          <InsetRow title="See the loan" to="/net-worth/loans/$accountId" params={{ accountId: boughtWith.accountId }} />
+        </InsetGroup>
       )}
 
       {value && <DepositTermsCard accountId={accountId} />}
@@ -225,22 +200,18 @@ export function AssetDetailPage() {
       )}
 
       {profile.data?.coretaxSection && (
-        <Card>
+        <Panel>
           <CoretaxFieldsForm profile={profile.data} section={profile.data.coretaxSection} />
-        </Card>
+        </Panel>
       )}
 
       {value && (
-        <Card>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-slate-600">
-              {canArchive ? 'Nothing left here. Archiving hides it from the list and keeps its history.' : 'Archiving is available once nothing is left in this asset.'}
-            </p>
-            <Button variant="danger" disabled={!canArchive} onClick={archive}>
-              Archive
-            </Button>
-          </div>
-        </Card>
+        /* Its own group, as the kit asks of anything destructive: the air around it is the only undo a finger has. */
+        <InsetGroup
+          footer={canArchive ? 'Nothing left here. Archiving hides it from the list and keeps its history.' : 'Archiving is available once nothing is left in this asset.'}
+        >
+          <InsetRow destructive title="Archive" onClick={() => canArchive && void archive()} className={canArchive ? undefined : 'opacity-40'} />
+        </InsetGroup>
       )}
     </div>
   );

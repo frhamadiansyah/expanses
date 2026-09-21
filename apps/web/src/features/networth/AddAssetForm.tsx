@@ -1,9 +1,11 @@
 import { ASSET_FAMILIES, ASSET_ITEMS, CORETAX_SECTIONS, CURRENCIES, isoDate, type ValuationBasis } from '@expanses/core';
 import { createAccount, openDebtBalance, recordTrade, recordValuation, saveAssetProfile } from '@expanses/db';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { ErrorBox } from '../../ui';
+import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { SwitchRow } from './SwitchRow';
 import { chosenItem, emptyDraft, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
 import { BASIS_LABELS } from './labels';
 
@@ -27,6 +29,7 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
   const [draft, setDraft] = useState<NewAssetDraft>(() => emptyDraft(itemId ?? 'fund', ws.baseCurrency, today));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
 
   const change = (patch: Partial<NewAssetDraft>) => setDraft((current) => ({ ...current, ...patch }));
   /** A different thing, or the same thing valued the other way: either one starts its own fields over. */
@@ -42,8 +45,8 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
   const buying = needsPurchases(draft.itemId, draft.typedInstead);
   const legacyCash = draft.itemId === 'cash';
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
     setError(null);
     setBusy(true);
     try {
@@ -107,180 +110,176 @@ export function AddAssetForm({ onDone, itemId }: { onDone: () => void; itemId?: 
   }
 
   return (
-    <Card>
-      <form onSubmit={submit} className="space-y-4">
+    /* Still a real `<form>`: Enter in any box saves, exactly as it did when the button below was the submit. */
+    <form ref={form} onSubmit={submit}>
+      <InsetGroup
+        header={itemId === undefined ? 'What you are adding' : item.label}
+        footer={itemId === undefined ? 'This sets how the value is worked out and which tax-report table it belongs to.' : item.sub}
+      >
         {/* The picker route has already chosen; the Assets page asks here, as it always has. */}
-        {itemId === undefined && (
-          <Field label="What is it?" hint="This sets how the value is worked out and which tax-report table it belongs to.">
-            <Select value={draft.itemId} onChange={(e) => retarget(e.target.value, false)}>
-              {ASSET_FAMILIES.map((family) => (
-                <optgroup key={family.id} label={family.label}>
-                  {family.items.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-              <optgroup label="Money — better added as an account">
-                {LEGACY_ITEMS.map((entry) => (
+        {itemId === undefined ? (
+          <SelectRow label="What is it?" value={draft.itemId} onChange={(e) => retarget(e.target.value, false)}>
+            {ASSET_FAMILIES.map((family) => (
+              <optgroup key={family.id} label={family.label}>
+                {family.items.map((entry) => (
                   <option key={entry.id} value={entry.id}>
                     {entry.label}
                   </option>
                 ))}
               </optgroup>
-            </Select>
-          </Field>
-        )}
-        {itemId !== undefined && (
-          <p className="text-sm text-slate-600">
-            <b>{item.label}</b> · {item.sub}
-          </p>
-        )}
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Name">
-            <Input value={draft.name} onChange={(e) => change({ name: e.target.value })} placeholder="Antam gold bars" required />
-          </Field>
-          <Field label="Currency">
-            <Select value={draft.currency} onChange={(e) => change({ currency: e.target.value })}>
-              {CURRENCIES.map((currency) => (
-                <option key={currency.code} value={currency.code}>
-                  {currency.code}
+            ))}
+            <optgroup label="Money — better added as an account">
+              {LEGACY_ITEMS.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
                 </option>
               ))}
-            </Select>
-          </Field>
-          {draft.currency !== ws.baseCurrency && (
-            <Field
-              label={`Rate to ${ws.baseCurrency}`}
-              hint={`What one ${draft.currency} was worth when you got this. Your ledger needs it to hold one running total; the tax report uses the KMK rate instead.`}
+            </optgroup>
+          </SelectRow>
+        ) : null}
+        <TextRow label="Name" value={draft.name} onChange={(e) => change({ name: e.target.value })} placeholder="Antam gold bars" required />
+        <SelectRow label="Currency" value={draft.currency} onChange={(e) => change({ currency: e.target.value })}>
+          {CURRENCIES.map((currency) => (
+            <option key={currency.code} value={currency.code}>
+              {currency.code}
+            </option>
+          ))}
+        </SelectRow>
+        {draft.currency !== ws.baseCurrency ? (
+          <TextRow
+            label={`Rate to ${ws.baseCurrency}`}
+            aria-label="Opening rate"
+            hint={`What one ${draft.currency} was worth when you got this. Your ledger needs it to hold one running total; the tax report uses the KMK rate instead.`}
+            value={draft.openingRate}
+            onChange={(e) => change({ openingRate: e.target.value })}
+            inputMode="decimal"
+            placeholder="16000"
+          />
+        ) : null}
+        {canType ? (
+          <SwitchRow label="I'd rather type what it is worth" checked={draft.typedInstead} onChange={(checked) => retarget(draft.itemId, checked)} />
+        ) : null}
+      </InsetGroup>
+
+      {buying && (
+        <>
+          {draft.purchases.map((purchase, index) => (
+            <InsetGroup
+              key={index}
+              header={index === 0 ? 'Already own some?' : `Purchase ${index + 1}`}
+              footer={index === draft.purchases.length - 1 ? 'Past purchases are recorded against Opening Balances, so your bank balances do not move.' : undefined}
             >
-              <Input
-                aria-label="Opening rate"
-                value={draft.openingRate}
-                onChange={(e) => change({ openingRate: e.target.value })}
-                inputMode="decimal"
-                placeholder="16000"
+              <TextRow
+                label="Bought on"
+                type="date"
+                value={purchase.occurredOn}
+                max={today}
+                onChange={(e) => change({ purchases: draft.purchases.map((row, i) => (i === index ? { ...row, occurredOn: e.target.value } : row)) })}
               />
-            </Field>
-          )}
-        </div>
+              <TextRow
+                label="How much"
+                value={purchase.units}
+                inputMode="decimal"
+                placeholder="10"
+                onChange={(e) => change({ purchases: draft.purchases.map((row, i) => (i === index ? { ...row, units: e.target.value } : row)) })}
+              />
+              <TextRow
+                label={`Total cost (${draft.currency})`}
+                value={purchase.cost}
+                inputMode="decimal"
+                placeholder="13.100.000"
+                onChange={(e) => change({ purchases: draft.purchases.map((row, i) => (i === index ? { ...row, cost: e.target.value } : row)) })}
+              />
+            </InsetGroup>
+          ))}
+          <InsetGroup>
+            <InsetRow
+              title="Add another purchase"
+              chevron={false}
+              onClick={() => change({ purchases: [...draft.purchases, { occurredOn: today, units: '', cost: '' }] })}
+            />
+          </InsetGroup>
+        </>
+      )}
 
-        {canType && (
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={draft.typedInstead} onChange={(e) => retarget(draft.itemId, e.target.checked)} />
-            I'd rather type what it is worth
-          </label>
-        )}
+      {/* Money owed leads with the person: what it is worth is whatever the ledger says they still owe. */}
+      {owed && (
+        <InsetGroup header="Who owes it">
+          <TextRow label="Who" value={draft.personName} onChange={(e) => change({ personName: e.target.value })} placeholder="Andi" />
+          <TextRow
+            label={`Owed now (${draft.currency})`}
+            value={draft.cost}
+            inputMode="decimal"
+            onChange={(e) => change({ cost: e.target.value })}
+            placeholder="25.000.000"
+          />
+        </InsetGroup>
+      )}
 
-        {buying && (
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Already own some?</div>
-            <p className="text-xs text-slate-500">Past purchases are recorded against Opening Balances, so your bank balances do not move.</p>
-            {draft.purchases.map((purchase, index) => (
-              <div key={index} className="grid gap-2 md:grid-cols-3">
-                <Field label="Bought on">
-                  <Input
-                    type="date"
-                    value={purchase.occurredOn}
-                    max={today}
-                    onChange={(e) => change({ purchases: draft.purchases.map((row, i) => (i === index ? { ...row, occurredOn: e.target.value } : row)) })}
-                  />
-                </Field>
-                <Field label="How much">
-                  <Input
-                    value={purchase.units}
-                    inputMode="decimal"
-                    placeholder="10"
-                    onChange={(e) => change({ purchases: draft.purchases.map((row, i) => (i === index ? { ...row, units: e.target.value } : row)) })}
-                  />
-                </Field>
-                <Field label={`Total cost (${draft.currency})`}>
-                  <Input
-                    value={purchase.cost}
-                    inputMode="decimal"
-                    placeholder="13.100.000"
-                    onChange={(e) => change({ purchases: draft.purchases.map((row, i) => (i === index ? { ...row, cost: e.target.value } : row)) })}
-                  />
-                </Field>
-              </div>
+      {!buying && !owed && (
+        <InsetGroup header={legacyCash ? 'The account' : 'What it cost'}>
+          <TextRow
+            label={legacyCash ? 'Open date' : 'Bought on'}
+            type="date"
+            value={draft.purchasedOn}
+            max={today}
+            onChange={(e) => change({ purchasedOn: e.target.value })}
+          />
+          <TextRow
+            label={legacyCash ? `Balance today (${draft.currency})` : `What it cost (${draft.currency})`}
+            value={draft.cost}
+            inputMode="decimal"
+            onChange={(e) => change({ cost: e.target.value })}
+            placeholder="1.150.000.000"
+          />
+        </InsetGroup>
+      )}
+
+      {needsEstimate(draft.itemId, draft.typedInstead) && (
+        <InsetGroup header="What it is worth now" footer="Leave empty to use what you paid until you estimate it.">
+          <TextRow
+            label={`What it is worth now (${draft.currency})`}
+            value={draft.estimate}
+            inputMode="decimal"
+            onChange={(e) => change({ estimate: e.target.value })}
+            placeholder="1.420.000.000"
+          />
+          <SelectRow label="Where that came from" value={draft.estimateBasis} onChange={(e) => change({ estimateBasis: e.target.value as ValuationBasis })}>
+            {BASES.map((basis) => (
+              <option key={basis} value={basis}>
+                {BASIS_LABELS[basis]}
+              </option>
             ))}
-            <Button type="button" variant="secondary" onClick={() => change({ purchases: [...draft.purchases, { occurredOn: today, units: '', cost: '' }] })}>
-              Add another purchase
-            </Button>
-          </div>
-        )}
+          </SelectRow>
+        </InsetGroup>
+      )}
 
-        {/* Money owed leads with the person: what it is worth is whatever the ledger says they still owe. */}
-        {owed && (
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Who">
-              <Input value={draft.personName} onChange={(e) => change({ personName: e.target.value })} placeholder="Andi" />
-            </Field>
-            <Field label={`Owed now (${draft.currency})`}>
-              <Input value={draft.cost} inputMode="decimal" onChange={(e) => change({ cost: e.target.value })} placeholder="25.000.000" />
-            </Field>
-          </div>
-        )}
+      {owed ? (
+        <p className="px-[4px] pb-[18px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+          Money owed to you is kept under Lend &amp; borrow; its balance is what the report uses.
+        </p>
+      ) : (
+        <InsetGroup
+          header={`For the tax report: ${CORETAX_SECTIONS[section].label}`}
+          footer="Fill these in once and every yearly report reuses them. You can leave them for later."
+        >
+          {CORETAX_SECTIONS[section].fields.map((field) => (
+            <TextRow
+              key={field.key}
+              label={field.label}
+              value={draft.coretaxFields[field.key] ?? ''}
+              onChange={(e) => change({ coretaxFields: { ...draft.coretaxFields, [field.key]: e.target.value } })}
+            />
+          ))}
+        </InsetGroup>
+      )}
 
-        {!buying && !owed && (
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label={legacyCash ? 'Open date' : 'Bought on'}>
-              <Input type="date" value={draft.purchasedOn} max={today} onChange={(e) => change({ purchasedOn: e.target.value })} />
-            </Field>
-            <Field label={legacyCash ? `Balance today (${draft.currency})` : `What it cost (${draft.currency})`}>
-              <Input value={draft.cost} inputMode="decimal" onChange={(e) => change({ cost: e.target.value })} placeholder="1.150.000.000" />
-            </Field>
-          </div>
-        )}
-
-        {needsEstimate(draft.itemId, draft.typedInstead) && (
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label={`What it is worth now (${draft.currency})`} hint="Leave empty to use what you paid until you estimate it.">
-              <Input value={draft.estimate} inputMode="decimal" onChange={(e) => change({ estimate: e.target.value })} placeholder="1.420.000.000" />
-            </Field>
-            <Field label="Where that came from">
-              <Select value={draft.estimateBasis} onChange={(e) => change({ estimateBasis: e.target.value as ValuationBasis })}>
-                {BASES.map((basis) => (
-                  <option key={basis} value={basis}>
-                    {BASIS_LABELS[basis]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-        )}
-
-        {owed ? (
-          <p className="text-xs text-slate-500">Money owed to you is kept under Lend &amp; borrow; its balance is what the report uses.</p>
-        ) : (
-          <div className="space-y-2">
-            <div className="text-sm font-medium">For the tax report: {CORETAX_SECTIONS[section].label}</div>
-            <p className="text-xs text-slate-500">Fill these in once and every yearly report reuses them. You can leave them for later.</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              {CORETAX_SECTIONS[section].fields.map((field) => (
-                <Field key={field.key} label={field.label}>
-                  <Input
-                    value={draft.coretaxFields[field.key] ?? ''}
-                    onChange={(e) => change({ coretaxFields: { ...draft.coretaxFields, [field.key]: e.target.value } })}
-                  />
-                </Field>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <ErrorBox error={error} />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>
-            Add asset
-          </Button>
-          <Button type="button" variant="secondary" onClick={onDone}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-    </Card>
+      <ErrorBox error={error} />
+      <InsetGroup>
+        {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
+        <InsetRow title="Add asset" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />
+        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
+      </InsetGroup>
+    </form>
   );
 }
