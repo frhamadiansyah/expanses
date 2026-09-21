@@ -147,7 +147,7 @@ export function Layout() {
           <TabBar onAdd={() => setAdding(true)} onAccount={() => setMore(true)} accountOpen={more} />
           {more && <AccountSheet onClose={() => setMore(false)} />}
           {adding && (
-            <Sheet title="Add a transaction" onClose={() => setAdding(false)}>
+            <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
               <TransactionCard onDone={() => setAdding(false)} />
             </Sheet>
           )}

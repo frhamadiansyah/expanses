@@ -144,7 +144,7 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
   }
 
   return (
-    <Sheet title="Edit" onClose={onClose}>
+    <Sheet grouped title="Edit" onClose={onClose}>
       <div className="space-y-3">
         {/* The ⋯ of §F3's header. `Sheet` draws the ✕ and the title; this is the third corner. */}
         <div className="flex justify-end">
@@ -158,7 +158,9 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
           </button>
         </div>
 
-        <AmountRow draft={draft} accounts={accounts} set={set} />
+        <FormRows>
+          <AmountRow draft={draft} accounts={accounts} set={set} />
+        </FormRows>
 
         <RowGroup>
           <InputRow label="Note" value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder="Superindo" />
@@ -207,7 +209,7 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
         />
       )}
       {sheet === 'details' && (
-        <Sheet title="More details" onClose={() => setSheet(null)}>
+        <Sheet grouped title="More details" onClose={() => setSheet(null)}>
           {/* The same component, with the same props, the card opens — §4's rows in one implementation, so a
               field cannot be present on one way in and missing from the other. */}
           <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} />

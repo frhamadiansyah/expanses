@@ -10,13 +10,14 @@ import {
   splitBill,
   type TransactionView,
 } from '@expanses/db';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
+import { AlignLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Home, Landmark } from 'lucide-react';
+import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { Button, Card, ErrorBox, InputRow, RowGroup, Select, SelectRow } from '../../ui';
+import { Card, cx, ErrorBox, InputRow, SelectRow } from '../../ui';
+import { SegmentedControl } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -29,7 +30,7 @@ import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { AmountRow } from './AmountRow';
 import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, transferTargets } from './buy-in-form';
 import { CategoryPicker } from './CategoryPicker';
-import { FormRow, FormRows } from './FormRow';
+import { FormRow, FormRows, ROW_BODY, RowGlyph, RowLead } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
@@ -58,6 +59,20 @@ function MoneyAccountOptions({ accounts, spendableOnly, keep }: { accounts: Acco
       </optgroup>
     </>
   );
+}
+
+/** The ‹ › steppers are 28px drawn; their target reaches the 44pt floor around them. */
+const TAP_REACH = { '--ph-tap-y': '8px', '--ph-tap-x': '4px' } as CSSProperties;
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Thu, 17 Sep 2026" — how B2's date row reads a day. The empty string for anything that is not a date. */
+export function dayLabel(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return '';
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return `${DAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 /** A day either side of the date, as the ‹ › buttons step it. */
@@ -200,56 +215,120 @@ function CardBody({
   const rateDate = draft.occurredOn > isoDate() ? isoDate() : draft.occurredOn;
   const missingRate = needsRate ? { from: needsRate, to: ws.baseCurrency, onDate: rateDate } : null;
 
+  // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
+  // anything else as its name with what the row is for: "BCA Tahapan · Received into".
+  const paying = payable.find((option) => option.accountId === draft.moneyId && (option.cardId ?? '') === draft.cardId);
   const payLabel = draft.mode === 'income' ? 'Received into' : draft.mode === 'transfer' ? 'From' : 'Paid with';
   const categoryName = draft.categoryId ? (byId.get(draft.categoryId)?.name ?? '') : '';
 
-  const body = (
-    <form onSubmit={submit} className="space-y-3">
-      <div role="radiogroup" aria-label="What this is" className="flex flex-wrap gap-2">
-        {([
-          ['expense', 'Expense'],
-          ['income', 'Income'],
-          ['transfer', 'Transfer'],
-          ...(choices.buys.length > 0 ? ([['trade', 'Buy or sell']] as const) : []),
-        ] as const).map(([value, label]) => (
-          <Button
-            key={value}
-            role="radio"
-            aria-checked={draft.mode === value}
-            variant={draft.mode === value ? 'primary' : 'secondary'}
-            onClick={() => {
-              if (value !== 'trade') {
-                // A tab that offers no flag must not carry one. The currency and the "Charged in …" row belong
-                // to the tab they were chosen on: leaving USD on the draft while moving to Transfer left the
-                // save reading a figure in a currency the screen no longer showed. `currencyChoosable` is the
-                // one question about that, asked here too rather than restated.
-                const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
-                return set({ mode: value, categoryId: '', splits: [], ...flag });
-              }
-              const first = choices.buys[0]!;
-              set({
-                mode: 'trade',
-                purchase: { ...emptyPurchaseDraft(first.accountId, draft.moneyId, isoDate()), lotSize: first.lotSize, useLots: (first.lotSize ?? 1) > 1 },
-              });
-            }}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
+  /** Which glyph leads the paying row: a card, a bank for what came in, the account money leaves. */
+  const payGlyph = draft.mode === 'income' ? <Landmark size={15} /> : draft.mode === 'transfer' ? <ArrowUpRight size={15} /> : <CreditCard size={15} />;
+  const modes = [
+    { key: 'expense', label: 'Expense' },
+    { key: 'income', label: 'Income' },
+    { key: 'transfer', label: 'Transfer' },
+    ...(choices.buys.length > 0 ? [{ key: 'trade', label: 'Buy / sell' }] : []),
+  ];
+  const chooseMode = (value: FormMode) => {
+    if (value === draft.mode) return;
+    if (value !== 'trade') {
+      // A tab that offers no flag must not carry one. The currency and the "Charged in …" row belong
+      // to the tab they were chosen on: leaving USD on the draft while moving to Transfer left the
+      // save reading a figure in a currency the screen no longer showed. `currencyChoosable` is the
+      // one question about that, asked here too rather than restated.
+      const flag = currencyChoosable({ ...draft, mode: value }) ? {} : { currency: '', chargedAmount: '' };
+      return set({ mode: value, categoryId: '', splits: [], ...flag });
+    }
+    const first = choices.buys[0]!;
+    set({
+      mode: 'trade',
+      purchase: { ...emptyPurchaseDraft(first.accountId, draft.moneyId, isoDate()), lotSize: first.lotSize, useLots: (first.lotSize ?? 1) > 1 },
+    });
+  };
 
-      {draft.mode === 'trade' ? (
-        /*
-         * §3.6, as rows: what · amount · units or lots · fee · Paid with / Proceeds into · Date, then a second
-         * card for the goal and — only on a credit card — the two facts the points engine needs. There is no
-         * workspace row here either: a trade posts through `recordTrade`, whose money half touches no category.
-         *
-         * `purchaseDraftToInput` and `recordTrade` are called exactly as before; only the layout moved. Every
-         * message they throw still arrives in the `ErrorBox` above Save, which is the whole of this tab's
-         * validation — nothing here reads a figure for itself.
-         */
-        <>
-          <RowGroup>
+  /*
+   * B2's Note and Date rows. Note is still today's Description — the same field, typed in place — drawn as the
+   * row's title with ☰ in the lead. Date is ‹ [the day] ›: the arrows step a day, which is nearly always what a
+   * correction is, and the middle is the real date input laid over the day it shows, so it is still labelled
+   * Date and still opens the browser's own picker.
+   */
+  const noteRow = (
+    <div className="flex items-center gap-[10px] pl-[10px]">
+      <RowLead>
+        <RowGlyph tone="plain">
+          <AlignLeft size={16} />
+        </RowGlyph>
+      </RowLead>
+      <span className={ROW_BODY}>
+        <input
+          id={noteId}
+          aria-label="Note"
+          value={draft.description}
+          onChange={(e) => set({ description: e.target.value })}
+          placeholder="Note"
+          className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
+        />
+      </span>
+    </div>
+  );
+  const stepButton = 'ph-focus ph-tap flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-tint)]';
+  const dateRow = (on: string, change: (iso: string) => void) => (
+    <div className="flex items-center gap-[10px] pl-[10px]">
+      <RowLead>
+        <RowGlyph tone="plain">
+          <CalendarDays size={16} />
+        </RowGlyph>
+      </RowLead>
+      <span className={cx(ROW_BODY, 'gap-[6px]')}>
+        <button type="button" aria-label="A day earlier" onClick={() => change(stepDay(on, -1))} className={stepButton} style={TAP_REACH}>
+          <ChevronLeft size={16} aria-hidden />
+        </button>
+        <span className="relative flex h-7 min-w-0 flex-1 items-center justify-center rounded-lg bg-[var(--ph-fill)] text-[13px] font-medium text-[var(--ph-tint)]">
+          <span aria-hidden className="truncate">
+            {dayLabel(on)}
+          </span>
+          <input
+            id={dateId}
+            aria-label="Date"
+            type="date"
+            required
+            value={on}
+            onChange={(e) => change(e.target.value)}
+            onClick={(e) => {
+              try {
+                e.currentTarget.showPicker?.();
+              } catch {
+                // A browser that will not show its picker on a click still takes the keyboard.
+              }
+            }}
+            className="ph-focus absolute inset-0 h-full w-full cursor-pointer rounded-lg opacity-0"
+          />
+        </span>
+        <button type="button" aria-label="A day later" onClick={() => change(stepDay(on, 1))} className={stepButton} style={TAP_REACH}>
+          <ChevronRight size={16} aria-hidden />
+        </button>
+      </span>
+    </div>
+  );
+
+  const body = (
+    <form onSubmit={submit} className="flex flex-col gap-[10px]">
+      {/* Option B: one card — the four tabs across its top, then every row of the tab under them. */}
+      <div className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)]">
+        <div className="px-3 pt-[10px] pb-[6px]">
+          <SegmentedControl label="What this is" segments={modes} value={draft.mode} onChange={(key) => chooseMode(key as FormMode)} />
+        </div>
+        {draft.mode === 'trade' ? (
+          /*
+           * §3.6, as rows: what · amount · units or lots · fee · Paid with / Proceeds into · Date, then a second
+           * card for the goal and — only on a credit card — the two facts the points engine needs. There is no
+           * workspace row here either: a trade posts through `recordTrade`, whose money half touches no category.
+           *
+           * `purchaseDraftToInput` and `recordTrade` are called exactly as before; only the layout moved. Every
+           * message they throw still arrives in the `ErrorBox` above Save, which is the whole of this tab's
+           * validation — nothing here reads a figure for itself.
+           */
+          <FormRows className="rounded-none">
             <SelectRow
               label="What you bought or sold"
               hint="Units are recorded, so this never counts as spending."
@@ -312,61 +391,27 @@ function CardBody({
               <MoneyAccountOptions accounts={accounts} spendableOnly keep={purchase.moneyId} />
             </SelectRow>
             <InputRow label="Date" type="date" value={purchase.occurredOn} max={isoDate()} onChange={(e) => setPurchase({ occurredOn: e.target.value })} />
-          </RowGroup>
-
-          {(goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
-            <RowGroup>
-              {goals.length > 0 && (
-                <SelectRow
-                  label={purchase.mode === 'buy' ? 'For goal' : 'Sell from goal'}
-                  value={purchase.goalId}
-                  onChange={(e) => setPurchase({ goalId: e.target.value })}
-                >
-                  <option value="">No goal</option>
-                  {goals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>{goal.name}</option>
-                  ))}
-                </SelectRow>
-              )}
-              {purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card' && (
-                <>
-                  <SelectRow
-                    label="Category for points"
-                    hint="Not spending: it only tells the points engine what the card bought."
-                    value={purchase.spendCategoryId}
-                    onChange={(e) => setPurchase({ spendCategoryId: e.target.value })}
-                  >
-                    <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
-                  </SelectRow>
-                  <InputRow
-                    label="MCC"
-                    hint="Gold and jewellery shops are 5944."
-                    value={purchase.mcc}
-                    inputMode="numeric"
-                    onChange={(e) => setPurchase({ mcc: e.target.value })}
-                    placeholder="5944"
-                  />
-                </>
-              )}
-            </RowGroup>
-          )}
-        </>
-      ) : (
-        <>
-          <FormRows>
+          </FormRows>
+        ) : (
+          <FormRows className="rounded-none">
             {/*
               A correction stays in the workspace it was filed in. `replaceTransaction` refuses a write that
               crosses books, and a refusal met at Save is a choice that should never have been offered: the
               switch also clears the category on its way, so what it costs is the whole edit. The row stays,
               greyed, because which workspace this is in is still worth reading — it is the offer that goes.
-            */}
-            {/*
+
               §3.5: a transfer has **no workspace row**. Moving your own money belongs to no workspace — the ledger
               files by the categories a transaction touches, and a transfer touches none — so a row offering to file
               it would be offering something the save cannot honour.
             */}
             {draft.mode !== 'transfer' && (
               <FormRow
+                lead="value"
+                icon={
+                  <RowGlyph>
+                    <Home size={15} />
+                  </RowGlyph>
+                }
                 label="Workspace"
                 name="Workspace for this transaction"
                 value={openBook?.name ?? ''}
@@ -375,140 +420,173 @@ function CardBody({
                 onClick={() => setSheet('workspace')}
               />
             )}
-            <FormRow label={payLabel} value={chosenPayment(payable, draft)} onClick={() => setSheet('money')} />
-          </FormRows>
+            <FormRow
+              lead="value"
+              icon={<RowGlyph tone="plain">{payGlyph}</RowGlyph>}
+              label={payLabel}
+              value={paying?.cardId ? paying.accountName : chosenPayment(payable, draft)}
+              caption={paying?.cardId ? `···· ${paying.last4 ?? '????'}` : payLabel}
+              onClick={() => setSheet('money')}
+            />
 
-          <AmountRow draft={draft} accounts={accounts} set={set} />
+            <AmountRow draft={draft} accounts={accounts} set={set} />
 
-          {draft.mode === 'transfer' ? (
-            <RowGroup>
-              {/*
+            {draft.mode === 'transfer' ? (
+              /*
                 The hint is the To row's own second line rather than the group's: it is about where this money may
                 land, and a fund bought by transfer is the one mistake this row exists to head off.
-              */}
+              */
               <SelectRow
                 label="To"
-                hint="Buying a fund, shares or gold? Use Buy or sell, so units are counted."
+                hint="Buying a fund, shares or gold? Use Buy / sell, so units are counted."
                 value={draft.toId}
                 onChange={(e) => set({ toId: e.target.value })}
               >
                 <MoneyAccountOptions accounts={transferTargets(accounts, assetValues.data ?? [])} />
               </SelectRow>
-            </RowGroup>
-          ) : (
-            draft.splits.length === 0 && (
-              <FormRows>
+            ) : (
+              draft.splits.length === 0 && (
                 <FormRow
+                  lead="value"
                   label="Category"
-                  icon={draft.categoryId ? <CategoryIcon categoryId={draft.categoryId} accounts={accounts} size="xs" /> : undefined}
+                  placeholder="Select category"
+                  icon={
+                    draft.categoryId ? (
+                      <CategoryIcon categoryId={draft.categoryId} accounts={accounts} size="sm" />
+                    ) : (
+                      <span className="block h-7 w-7 rounded-full bg-[var(--ph-fill)]" />
+                    )
+                  }
                   value={categoryName}
+                  caption=""
                   onClick={() => setSheet('category')}
                 />
-              </FormRows>
-            )
+              )
+            )}
+
+            {noteRow}
+            {dateRow(draft.occurredOn, (occurredOn) => set({ occurredOn }))}
+          </FormRows>
+        )}
+      </div>
+
+      {draft.mode === 'trade' && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
+        <FormRows>
+          {goals.length > 0 && (
+            <SelectRow
+              label={purchase.mode === 'buy' ? 'For goal' : 'Sell from goal'}
+              value={purchase.goalId}
+              onChange={(e) => setPurchase({ goalId: e.target.value })}
+            >
+              <option value="">No goal</option>
+              {goals.map((goal) => (
+                <option key={goal.id} value={goal.id}>{goal.name}</option>
+              ))}
+            </SelectRow>
           )}
-
-          <RowGroup>
-            <InputRow
-              id={noteId}
-              label="Note"
-              value={draft.description}
-              onChange={(e) => set({ description: e.target.value })}
-              placeholder={draft.mode === 'transfer' ? 'Transfer' : 'Superindo'}
-            />
-            {/* ‹ and › step a day, which is nearly always what a correction is; the middle is the date itself. */}
-            <div className="flex min-h-11 items-center justify-between gap-3 border-t border-slate-100 px-3">
-              <label htmlFor={dateId} className="shrink-0 text-sm text-slate-900">
-                Date
-              </label>
-              <span className="flex items-center gap-1">
-                <button
-                  type="button"
-                  aria-label="A day earlier"
-                  onClick={() => set({ occurredOn: stepDay(draft.occurredOn, -1) })}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-slate-900"
-                >
-                  <ChevronLeft size={16} aria-hidden />
-                </button>
-                <input
-                  id={dateId}
-                  type="date"
-                  required
-                  value={draft.occurredOn}
-                  onChange={(e) => set({ occurredOn: e.target.value })}
-                  className="min-w-0 rounded-lg bg-transparent py-2 text-right text-base text-slate-900 focus-visible:outline-2 focus-visible:outline-slate-900 md:text-sm"
-                />
-                <button
-                  type="button"
-                  aria-label="A day later"
-                  onClick={() => set({ occurredOn: stepDay(draft.occurredOn, 1) })}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-slate-900"
-                >
-                  <ChevronRight size={16} aria-hidden />
-                </button>
-              </span>
-            </div>
-          </RowGroup>
-
-          {/*
-            §3.5's second card. For goal is offered only while adding — `formToPost` refuses to tag an edit, and a
-            row that cannot be honoured is worse than no row. Received amount appears only when the two accounts
-            settle in different currencies, because that is the only time the figure that lands is not the figure
-            that left; `exchangeLines` reads it in the To account's own currency, which is what the label names.
-          */}
-          {draft.mode === 'transfer' && (crossCurrency || (!initial && goals.length > 0)) && (
-            <RowGroup>
-              {!initial && goals.length > 0 && (
-                <SelectRow
-                  label="For goal"
-                  hint="Money parked for a goal counts towards it while it waits."
-                  value={draft.goalId}
-                  onChange={(e) => set({ goalId: e.target.value })}
-                >
-                  <option value="">No goal</option>
-                  {goals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>{goal.name}</option>
-                  ))}
-                </SelectRow>
-              )}
-              {received && (
-                <InputRow label={received.label} value={received.value} onChange={(e) => set({ toAmount: e.target.value })} inputMode="decimal" required />
-              )}
-            </RowGroup>
+          {purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card' && (
+            <>
+              <SelectRow
+                label="Category for points"
+                hint="Not spending: it only tells the points engine what the card bought."
+                value={purchase.spendCategoryId}
+                onChange={(e) => setPurchase({ spendCategoryId: e.target.value })}
+              >
+                <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
+              </SelectRow>
+              <InputRow
+                label="MCC"
+                hint="Gold and jewellery shops are 5944."
+                value={purchase.mcc}
+                inputMode="numeric"
+                onChange={(e) => setPurchase({ mcc: e.target.value })}
+                placeholder="5944"
+              />
+            </>
           )}
-
-        </>
+        </FormRows>
       )}
 
       {/*
-        §4's rows, every one of them, behind one way in. The card used to carry "Someone owes part of this"
-        here as well — one name, one figure, the shape the form had before `splitBill` learned to take
-        several people. It is now the With row inside this sheet, where a dinner for four can be recorded.
+        §3.5's second card. For goal is offered only while adding — `formToPost` refuses to tag an edit, and a
+        row that cannot be honoured is worse than no row. Received amount appears only when the two accounts
+        settle in different currencies, because that is the only time the figure that lands is not the figure
+        that left; `exchangeLines` reads it in the To account's own currency, which is what the label names.
+      */}
+      {draft.mode === 'transfer' && (crossCurrency || (!initial && goals.length > 0)) && (
+        <FormRows>
+          {!initial && goals.length > 0 && (
+            <SelectRow
+              label="For goal"
+              hint="Money parked for a goal counts towards it while it waits."
+              value={draft.goalId}
+              onChange={(e) => set({ goalId: e.target.value })}
+            >
+              <option value="">No goal</option>
+              {goals.map((goal) => (
+                <option key={goal.id} value={goal.id}>{goal.name}</option>
+              ))}
+            </SelectRow>
+          )}
+          {received && (
+            <InputRow label={received.label} value={received.value} onChange={(e) => set({ toAmount: e.target.value })} inputMode="decimal" required />
+          )}
+        </FormRows>
+      )}
+
+      {/*
+        §4's rows, every one of them, behind one way in — B2's green "Add more details" under the card. The card
+        used to carry "Someone owes part of this" here as well — one name, one figure, the shape the form had
+        before `splitBill` learned to take several people. It is now the With row inside this sheet, where a
+        dinner for four can be recorded.
 
         Outside the tab branch, because Buy or sell has extras too: `extraRows` answers Photos and Exclude for
         every mode, and this row used to be drawn in the expense branch alone — so a trade computed two rows
         that nothing drew, and a contract note could not be kept with the purchase it belongs to.
       */}
-      <FormRows>
-        <FormRow label="Add more details" tone="muted" onClick={() => setSheet('details')} />
-      </FormRows>
+      <button
+        type="button"
+        onClick={() => setSheet('details')}
+        className="ph-focus min-h-11 w-full rounded-full bg-[var(--ph-surface)] text-[15px] font-medium text-[var(--ph-tint)] active:bg-[var(--ph-fill)]"
+      >
+        Add more details
+      </button>
 
+      {/* The set-aside question (E2) sits above the dock, in the kit's inset groups, so the dock stays one line. */}
       {setAside.node}
-      <ErrorBox error={error} />
-      <div className="flex gap-2">
-        <Button type="submit" disabled={busy || !setAside.ready}>
-          Save
-        </Button>
-        <Button variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
+
+      {/*
+        The dock: Save across the foot, where B2 puts it. Inside a sheet it rides the sheet's foot while the rows
+        scroll; on its own screen or in a list it simply ends the card. Cancel stays beside it — the sheet's ✕ is
+        a way out, but the full-screen form has no ✕, and a form with no Cancel there has no way out but Back.
+      */}
+      <div className="flex flex-col gap-2 pt-1 in-[[role=dialog]]:shadow-[0_40px_0_0_var(--ph-surface)] in-[[role=dialog]]:sticky in-[[role=dialog]]:bottom-0 in-[[role=dialog]]:-mx-4 in-[[role=dialog]]:border-t-[0.5px] in-[[role=dialog]]:border-[var(--ph-hair)] in-[[role=dialog]]:bg-[var(--ph-surface)] in-[[role=dialog]]:px-4 in-[[role=dialog]]:py-2">
+        <ErrorBox error={error} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onDone}
+            className="ph-focus min-h-11 shrink-0 rounded-full px-4 text-[15px] text-[var(--ph-ink-2)] active:bg-[var(--ph-fill)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={busy || !setAside.ready}
+            className="ph-focus min-h-11 flex-1 rounded-full bg-[var(--ph-tint)] text-[15px] font-semibold text-[var(--ph-surface)] disabled:opacity-50"
+          >
+            Save
+          </button>
+        </div>
       </div>
     </form>
   );
 
   return (
     <>
-      {full ? <div className="space-y-3">{body}</div> : <Card>{body}</Card>}
+      {/* On its own screen the card sits on the page's ground; anywhere else — a sheet, a list — on a panel of
+          that ground, so its white groups read as cards the way B2 draws them. */}
+      {full ? body : <div className="rounded-2xl bg-[var(--ph-ground)] p-0 in-[[role=dialog]]:rounded-none">{body}</div>}
 
       {sheet === 'workspace' && <WorkspaceSheet onClose={() => setSheet(null)} />}
       {sheet === 'money' && (
@@ -529,7 +607,7 @@ function CardBody({
         />
       )}
       {sheet === 'details' && (
-        <Sheet title="More details" onClose={() => setSheet(null)}>
+        <Sheet grouped title="More details" onClose={() => setSheet(null)}>
           {/* The same component, with the same props, that Task 14's edit sheet opens: one implementation of
               §4's rows, so a field cannot be present on one way in and missing from the other. */}
           <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} />

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
+import { todayIn } from './today';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -55,7 +56,7 @@ test('the phone types money on the dock, and has four ways off it', async ({ pag
   for (const digit of '450000') await keypad.getByRole('button', { name: digit, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await expect(keypad).toBeHidden();
-  await expect(amount).toHaveText('450000');
+  await expect(amount).toHaveText('450.000');
 });
 
 test('a purchase recorded by thumb reaches the list', async ({ page }) => {
@@ -90,7 +91,7 @@ test('Escape inside the sheet puts the dock away and keeps what was typed', asyn
   await page.keyboard.press('Escape');
   await expect(keypad).toBeHidden();
   await expect(form).toBeVisible();
-  await expect(amount).toHaveText('450000');
+  await expect(amount).toHaveText('450.000');
 
   // A second press is the sheet's own way out, which is what Escape was always for once the dock is gone.
   await page.keyboard.press('Escape');
@@ -134,8 +135,6 @@ test('a photograph attached by thumb is on the receipt', async ({ page }) => {
   expect(await picture.evaluate(async (img: HTMLImageElement) => (await fetch(img.src)).text())).toBe('a receipt');
 });
 
-const TODAY = new Date().toISOString().slice(0, 10);
-
 /** Below this a thumb misses; iOS' own guidance and the size every other phone spec here holds things to. */
 const TAP = 44;
 
@@ -172,7 +171,7 @@ test('the dock adds up what a thumb types, and has no Save key of its own', asyn
 
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await expect(keypad).toBeHidden();
-  await expect(amount).toHaveText('155000');
+  await expect(amount).toHaveText('155.000');
 
   await form.getByRole('button', { name: 'Paid with' }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
@@ -195,6 +194,7 @@ test('the dock adds up what a thumb types, and has no Save key of its own', asyn
  * rather than obviously wrong, and only the *rate* can tell them apart.
  */
 test('the flag brings the charged row, pre-filled at the day’s rate, and takes it away again', async ({ page }) => {
+  const TODAY = await todayIn(page);
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addWallet(page);
   // A CNY account opened today stores today's CNY→IDR rate; that is the only rate this device will have.
@@ -234,7 +234,7 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
    */
   const charged = page.getByRole('button', { name: 'Charged in IDR' });
   await expect(charged).toBeVisible();
-  await expect(charged).toHaveText('272400');
+  await expect(charged).toHaveText('272.400');
   await expect(page.getByText(`≈ 2.270 per 1 CNY · suggested from ${TODAY}`)).toBeVisible();
 
   // And the thumb's targets on the two money rows are targets a thumb can hit: 44px, Apple's minimum, measured
@@ -249,7 +249,7 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
   await charged.click();
   for (const key of 'C275000') await keypad.getByRole('button', { name: key, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
-  await expect(charged).toHaveText('275000');
+  await expect(charged).toHaveText('275.000');
 
   await page.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();

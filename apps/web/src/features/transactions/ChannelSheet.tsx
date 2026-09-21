@@ -24,8 +24,9 @@ export function ChannelSheet({
   onClose: () => void;
 }) {
   return (
-    <Sheet title="Channel" onClose={onClose}>
-      <ul className="-mx-1 divide-y divide-slate-100">
+    <Sheet grouped title="Channel" onClose={onClose}>
+      {/* D1: the two choices in one card, a radio circle each, and the one explanation under it. */}
+      <ul className="overflow-hidden rounded-[11px] bg-[var(--ph-surface)] [&>li+li>button>.ph-row-body]:border-t-[0.5px] [&>li+li>button>.ph-row-body]:border-[var(--ph-hair)]">
         {CHOICES.map((choice) => (
           <li key={choice.value}>
             <button
@@ -37,18 +38,26 @@ export function ChannelSheet({
                 onPick(value === choice.value ? '' : choice.value);
                 onClose();
               }}
-              className="flex min-h-12 w-full items-center gap-3 px-1 py-2 text-left text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900"
+              className="ph-focus-inset flex w-full items-center pl-[14px] text-left active:bg-[var(--ph-fill)]"
             >
-              <span className="min-w-0 flex-1">
-                <span className={cx('block', value === choice.value && 'font-semibold')}>{choice.label}</span>
-                <span className="block text-xs text-slate-500">{choice.line}</span>
+              <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center gap-3 py-2 pr-[14px]">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] leading-5 text-[var(--ph-ink)]">{choice.label}</span>
+                  <span className="block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{choice.line}</span>
+                </span>
+                <span
+                  aria-hidden
+                  className={cx(
+                    'h-5 w-5 shrink-0 rounded-full',
+                    value === choice.value ? 'border-[6px] border-[var(--ph-tint)]' : 'border-[1.5px] border-[var(--ph-chevron)]',
+                  )}
+                />
               </span>
-              {value === choice.value && <span className="shrink-0 text-xs font-semibold text-emerald-700">Chosen</span>}
             </button>
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-xs text-slate-500">
+      <p className="mt-[10px] px-1 text-[12px] leading-4 text-[var(--ph-ink-3)]">
         Some cards earn or spend points only online, or only offline. Optional: leave it blank and nothing is chosen for you. Tap the chosen one again to
         clear it.
       </p>
