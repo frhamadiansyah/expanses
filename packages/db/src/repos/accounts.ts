@@ -164,27 +164,30 @@ export async function renameAccount(database: Database, ws: WorkspaceContext, id
   });
 }
 
-export async function archiveAccount(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
-  await database.transaction(async (tx) => {
-    const [account] = await tx
-      .select()
-      .from(accounts)
-      .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
-    if (!account) throw new AccountError('Account not found');
-    // Default categories carry keys too; only the system equity accounts are protected.
-    if (SYSTEM_ACCOUNTS.some((s) => s.key === account.systemKey)) throw new AccountError('System accounts cannot be archived');
-    if (account.kind === 'asset' || account.kind === 'liability') {
-      // Archived money accounts leave net worth, so they must be empty first.
-      const [row] = await tx
-        .select({ total: sql<number>`coalesce(sum(${entries.amountMinor}), 0)` })
-        .from(entries)
-        .innerJoin(transactions, eq(entries.transactionId, transactions.id))
-        .where(and(eq(entries.accountId, id), eq(transactions.status, 'posted')));
-      if (Number(row?.total ?? 0) !== 0) {
-        throw new AccountError(`${account.name} still has a balance. Bring it to zero before archiving so net worth stays correct.`);
-      }
+/** Archives inside a transaction already running. Refuses a system account, and a money account that still holds a balance. */
+export async function archiveAccountTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+  const [account] = await tx
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!account) throw new AccountError('Account not found');
+  // Default categories carry keys too; only the system equity accounts are protected.
+  if (SYSTEM_ACCOUNTS.some((s) => s.key === account.systemKey)) throw new AccountError('System accounts cannot be archived');
+  if (account.kind === 'asset' || account.kind === 'liability') {
+    // Archived money accounts leave net worth, so they must be empty first.
+    const [row] = await tx
+      .select({ total: sql<number>`coalesce(sum(${entries.amountMinor}), 0)` })
+      .from(entries)
+      .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+      .where(and(eq(entries.accountId, id), eq(transactions.status, 'posted')));
+    if (Number(row?.total ?? 0) !== 0) {
+      throw new AccountError(`${account.name} still has a balance. Bring it to zero before archiving so net worth stays correct.`);
     }
-    await tx.update(accounts).set({ archivedAt: new Date().toISOString() }).where(eq(accounts.id, id));
-    await writeAudit(tx, ws, 'archive', id, {});
-  });
+  }
+  await tx.update(accounts).set({ archivedAt: new Date().toISOString() }).where(eq(accounts.id, id));
+  await writeAudit(tx, ws, 'archive', id, {});
+}
+
+export async function archiveAccount(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
+  await database.transaction((tx) => archiveAccountTx(tx, ws, id));
 }

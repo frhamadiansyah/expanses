@@ -24,7 +24,7 @@ export const assetProfiles = sqliteTable('asset_profiles', {
 export const depositTerms = sqliteTable('deposit_terms', {
   accountId: text('account_id').primaryKey(),
   workspaceId: text('workspace_id').notNull(),
-  /** The day the money comes back. Nothing is automated off it: the owner moves it with a transfer. */
+  /** The day the money comes back. Nothing is automated off it unless the owner switches automation on (0054). */
   maturesOn: text('matures_on').notNull(),
   rateBps: integer('rate_bps').notNull(),
   createdAt: text('created_at').notNull(),
