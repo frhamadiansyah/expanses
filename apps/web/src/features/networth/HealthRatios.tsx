@@ -1,8 +1,7 @@
 import { DEFAULT_DEBT_SERVICE_BPS, healthRatios, type PeriodFlows, type RatioSettings, type RatioStatus, type SheetTotals } from '@expanses/core';
 import { useState } from 'react';
 import { usePhone } from '../../app/use-phone';
-import { InsetGroup, Panel, PanelHeader, type Segment, SegmentedControl, SelectRow } from '../../ui/native';
-import { SwitchRow } from './SwitchRow';
+import { InsetGroup, Panel, PanelHeader, type Segment, SegmentedControl, SelectRow, SwitchRow } from '../../ui/native';
 import { periodChoices, periodRange, type RatioPeriod, ratioDisplay } from './health-cards';
 
 /** The status, in the kit's own inks rather than in four tinted pills. */

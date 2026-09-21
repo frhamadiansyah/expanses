@@ -1,6 +1,6 @@
 import { type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
 import { cx } from '../index';
-import { type FormKind, planFormRow } from './form-row';
+import { type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { type GroupChild, toneClass } from './InsetList';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 
@@ -183,6 +183,46 @@ export function DestructiveRow({ label, onClick, position }: GroupChild & { labe
       >
         {label}
       </button>
+    </div>
+  );
+}
+
+/**
+ * A yes-or-no row: the question on the left, the box that answers it on the right.
+ *
+ * The kit's other form rows put a word, a field or a picker on the right; this one puts the control itself,
+ * which is the only shape a checkbox has that is not "a box floating loose on the page beside its sentence" —
+ * the shape the kit exists to remove. It lived in `features/networth` because the kit had no toggle and three
+ * checkboxes had nowhere to go; being the seventh form row is where it belongs, on the same height, the same
+ * separator inset and the same inks as the six above it.
+ */
+export function SwitchRow({
+  label,
+  checked,
+  onChange,
+  disabled = false,
+  hint,
+  position,
+}: GroupChild & { label: string; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean; hint?: ReactNode }) {
+  const id = useId();
+  const plan = planSwitchRow({ checked, hint: hint !== undefined && hint !== null && hint !== false, disabled });
+  return (
+    <div className="relative">
+      <Separator show={Boolean(position?.separator)} />
+      <div className="flex items-center gap-3" style={{ minHeight: plan.minHeight, padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
+        <label htmlFor={id} className={cx('min-w-0 flex-1 text-[15px] leading-[20px]', toneClass(plan.labelTone))}>
+          {label}
+        </label>
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.checked)}
+          className="ph-focus h-[20px] w-[20px] shrink-0 accent-[var(--ph-tint)]"
+        />
+      </div>
+      {plan.hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
     </div>
   );
 }

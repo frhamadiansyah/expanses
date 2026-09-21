@@ -1,3 +1,4 @@
+import { ROW_PAD_X, rowHeight } from './metrics';
 import type { Tone } from './row';
 
 /**
@@ -43,4 +44,35 @@ export function planFormRow(kind: FormKind, value: string | null | undefined, pl
     case 'static':
       return { text: value, tone: 'ink-2', chevron: false, placeholder: false };
   }
+}
+
+export interface SwitchRowPlan {
+  /** The row's own line. A hint sits under it and does not stretch it. */
+  minHeight: number;
+  /** Where the hairline starts: level with the label, since a switch row never carries an icon. */
+  separatorInset: number;
+  /** The label's ink — quieter when the answer cannot be changed. */
+  labelTone: Tone;
+  /** Whether a hint is drawn under the row at all. */
+  hint: boolean;
+  /** What the control is saying, for the row that has to announce it rather than draw it. */
+  state: 'on' | 'off';
+}
+
+/**
+ * A row whose answer is yes or no.
+ *
+ * The kit's six form rows all put an answer on the right, and a toggle is that shape with a control instead of
+ * a word — which is why three checkboxes on the net-worth screens had nowhere in the vocabulary to go and ended
+ * up floating loose on the page beside their sentences, the exact shape the kit set out to remove. It decides
+ * nothing a form row does not already decide: the same row height, the same separator inset, the same inks.
+ */
+export function planSwitchRow(row: { checked: boolean; hint?: boolean; disabled?: boolean }): SwitchRowPlan {
+  return {
+    minHeight: rowHeight(false),
+    separatorInset: ROW_PAD_X,
+    labelTone: row.disabled === true ? 'ink-3' : 'ink',
+    hint: row.hint === true,
+    state: row.checked ? 'on' : 'off',
+  };
 }

@@ -4,8 +4,7 @@ import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
-import { SwitchRow } from './SwitchRow';
+import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { chosenItem, emptyDraft, needsEstimate, needsPurchases, type NewAssetDraft, planNewAsset } from './add-asset';
 import { BASIS_LABELS } from './labels';
 

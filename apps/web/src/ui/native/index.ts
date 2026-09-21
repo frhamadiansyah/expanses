@@ -12,7 +12,7 @@ export { InsetGroup, InsetRow, toneClass, type GroupChild, type InsetRowProps } 
 export { CornerButton, LargeTitle } from './NavTitle';
 export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
-export { DestructiveRow, PickerRow, ReadOnlyRow, SelectRow, TextRow, FORM_KINDS } from './FormRow';
+export { DestructiveRow, PickerRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, type WalletCard } from './CardStack';
 export { Panel, PanelHeader, SCREEN } from './Panel';
 export { Figure, RecordTable, type RecordColumn, type RecordDetail, type RecordShape } from './RecordTable';
@@ -24,7 +24,7 @@ export { iconTint, moneyTone, planRow, type Direction, type RowLayout, type RowS
 export { PHONE_MAX, SEGMENT_HEIGHT, SEGMENT_MORE, fitSegments, segmentRoute, type PlacedSegment, type Segment, type SegmentPlan, type SegmentRoute } from './segments';
 export { CORNER_MAX, backLabel, planCornerActions, type CornerAction, type CornerPlan } from './title';
 export { heroFigure, progressFraction, progressPercent, progressTone, type HeroFigure } from './hero-figure';
-export { planFormRow, type FormKind, type FormRowPlan } from './form-row';
+export { planFormRow, planSwitchRow, type FormKind, type FormRowPlan, type SwitchRowPlan } from './form-row';
 export { planRecordTable, reachableColumns, type PhoneForm, type RecordDestination, type RecordTablePlan } from './record-table';
 export { planPanel, type PanelPlan } from './surface';
 export { CARD_H, CARD_W, FAN_X, STRIP, cardFigure, cardsBeforeScrolling, stackLayout, type StackLayout, type StackedCard } from './card-stack';
