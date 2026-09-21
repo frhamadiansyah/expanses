@@ -1,5 +1,5 @@
 import { loadSecurityList, type SecurityList } from '@expanses/catalog';
-import { baseCosts, listHoldingLinks, listSecurities, listSecurityPrices } from '@expanses/db';
+import { baseCosts, brokerlessHoldingsOf, listHoldingLinks, listSecurities, listSecurityPrices } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -20,6 +20,16 @@ export function useHoldingLinks() {
 export function useSecurityPrices(securityId: string) {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['security-prices', ws.workspaceId, securityId], queryFn: () => listSecurityPrices(database, ws, securityId) });
+}
+
+/** The live holdings of a security with no broker named, oldest first — the one a no-broker buy lands on comes first. */
+export function useBrokerlessHoldings(securityId: string | null) {
+  const { database, ws } = useApp();
+  return useQuery({
+    queryKey: ['brokerless-holdings', ws.workspaceId, securityId],
+    queryFn: () => brokerlessHoldingsOf(database, ws, securityId!),
+    enabled: securityId !== null,
+  });
 }
 
 export function useBaseCosts() {

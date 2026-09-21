@@ -1,4 +1,5 @@
 import { formatBps, formatLots, formatMinor } from '@expanses/core';
+import { Plus } from 'lucide-react';
 import { usePhone } from '../../app/use-phone';
 import { useApp } from '../../app/context';
 import { cx, Empty, ErrorBox } from '../../ui';
@@ -181,7 +182,13 @@ export function InvestmentsPage() {
   return (
     <div className={SCREEN}>
       {/* No NetWorthTabs: this is pushed from Assets with a back line, like an asset's own page. */}
-      <LargeTitle title="Investments" back="Assets" backTo="/net-worth/assets" />
+      <LargeTitle
+        title="Investments"
+        back="Assets"
+        backTo="/net-worth/assets"
+        // Add a holding: a glyph in the corner at every width, drawn as a link so a desktop keeps its new tab.
+        actions={[{ key: 'add', label: 'Add a holding', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/investments/new' }]}
+      />
       <ErrorBox error={error} />
       {view && !any && <Empty>No shares or funds yet. Add a listed share or a fund on Assets to see it here.</Empty>}
       {view && any && phone && (

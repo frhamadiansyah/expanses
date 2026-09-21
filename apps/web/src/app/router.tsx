@@ -41,6 +41,7 @@ import { RecurringPage } from '../features/bills/RecurringPage';
 import { EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
+import { AddHoldingPage } from '../features/investments/AddHoldingPage';
 import { BrokerPage } from '../features/investments/BrokerPage';
 import { InvestmentsPage } from '../features/investments/InvestmentsPage';
 import { SecurityPage } from '../features/investments/SecurityPage';
@@ -166,6 +167,12 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
   // The Assets page's Investments group, read by stock and by broker.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments', component: InvestmentsPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/investments/new',
+    component: AddHoldingPage,
+    validateSearch: (search: Record<string, unknown>): { link?: string } => ({ link: typeof search.link === 'string' ? search.link : undefined }),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId', component: SecurityPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments/security/$securityId/price', component: SecurityPricePage }),
   // The static `none` outranks `$accountId`: holdings kept with no broker named.

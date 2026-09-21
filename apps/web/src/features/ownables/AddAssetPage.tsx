@@ -26,7 +26,8 @@ export function AddAssetPage() {
       }
       moreHint={(family) => `Anything here is recorded as a thing you give a value to, and files under ${family.toLowerCase()} in the tax report.`}
       chosen={chosen}
-      onChoose={setChosen}
+      // Listed shares start from a ticker (spec §7.5); everything else opens the form here, as before.
+      onChoose={(id) => (id === 'stock' ? void navigate({ to: '/net-worth/investments/new' }) : setChosen(id))}
       handOver={handOverRows('asset')}
     >
       {/* The form is the kit's groups, which are laid on the kit's grey — the picker's own shell is shared with
