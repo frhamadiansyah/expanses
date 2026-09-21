@@ -529,7 +529,9 @@ export function formToPost(draft: FormDraft, accounts: readonly AccountRow[]): F
     return {
       kind: 'trade',
       input: {
-        ...purchaseDraftToInput(draft.purchase, currency, isoDate()),
+        // The paying account's currency: a holding in another currency carries what was charged (`withCharged`),
+        // so the door (`postForDoor` → `tradeDoor`) weighs the money that left, in that account's own currency.
+        ...purchaseDraftToInput(draft.purchase, currency, isoDate(), accounts.find((a) => a.id === draft.purchase.moneyId)?.currency ?? currency),
         // §4: Photos and Exclude from report appear "always", and `extraRows` offers both on this tab. Buying
         // something is the one purchase with a contract note to keep, and the tab used to have nowhere to put
         // it: the rows were computed and never drawn. The trade's own fields stay `purchase`'s.

@@ -122,6 +122,13 @@ describe('purchaseDraftToInput', () => {
     expect(() => purchaseDraftToInput(draft({ units: '2', amount: '1.000', occurredOn: '2026-09-13' }), 'IDR', TODAY)).toThrow(/after today/);
     expect(() => purchaseDraftToInput(draft({ useLots: true, lots: '', amount: '1.000' }), 'IDR', TODAY)).toThrow(/how many lots/);
   });
+
+  it('carries what left a rupiah account for a dollar holding on the input, so the door reads it', () => {
+    const draft = { ...emptyPurchaseDraft('aapl', 'bca', '2026-03-08'), units: '10', amount: '1.234,57', charged: '20.000.001' };
+    expect(purchaseDraftToInput(draft, 'USD', '2026-03-08', 'IDR')).toMatchObject({ grossMinor: 123_457, cashMinor: 20_000_001 });
+    expect(() => purchaseDraftToInput({ ...draft, charged: '' }, 'USD', '2026-03-08', 'IDR')).toThrow(/Charged in IDR/);
+    expect(purchaseDraftToInput(draft, 'USD', '2026-03-08').cashMinor).toBeUndefined(); // one currency: no charged figure
+  });
 });
 
 describe('transferTargets', () => {

@@ -5,7 +5,7 @@ import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Empty, ErrorBox, Money } from '../../ui';
-import { Figure, InsetGroup, InsetRow, LargeTitle, Panel, type RecordColumn, RecordTable, SCREEN, SelectRow } from '../../ui/native';
+import { Figure, GROUP_GAP, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, type RecordColumn, RecordTable, SCREEN, SelectRow } from '../../ui/native';
 import { NetWorthTabs } from './NetWorthTabs';
 import { ReinvestCell } from './ReinvestCell';
 import { useAssetProfiles, useAssetValues, usePositions, useTradeTemplates, useTrades, useDueTemplates } from './queries';
@@ -214,7 +214,9 @@ export function TradesPage() {
       )}
 
       {holdings.length > 0 && (
-        <Panel header={editing ? 'Edit this trade' : 'Record a buy, sell or income'}>
+        /* The form draws its own Option B cards, so it sits under the panel's header rather than inside a panel. */
+        <section className="w-full md:max-w-2xl" style={{ marginBottom: GROUP_GAP }}>
+          <PanelHeader title={editing ? 'Edit this trade' : 'Record a buy, sell or income'} />
           <TradeForm
             key={`${editing?.id ?? 'new'}-${initial?.accountId ?? ''}-${templateId ?? ''}`}
             holdings={holdings}
@@ -232,7 +234,7 @@ export function TradesPage() {
             }}
             onCancel={editing || initial ? () => { setEditing(null); setInitial(undefined); setTemplateId(null); } : undefined}
           />
-        </Panel>
+        </section>
       )}
 
       {(trades.data?.length ?? 0) > 0 && (

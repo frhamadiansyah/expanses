@@ -1,5 +1,6 @@
 import { parseMajor, parseUnits, unitsFromLots } from '@expanses/core';
 import type { AccountRow, AssetProfileRow, AssetValueRow, RecordTradeInput } from '@expanses/db';
+import { withCharged } from '../networth/trade-money';
 
 export interface BuyChoice {
   /** "buy:<accountId>" or "sell:<accountId>", the value the picker carries. */
@@ -52,6 +53,8 @@ export interface PurchaseDraft {
   /** Category of a card purchase, so points still count. */
   spendCategoryId: string;
   mcc: string;
+  /** What left or reached the paying account in its own currency, when it differs from the holding's. */
+  charged: string;
 }
 
 export const emptyPurchaseDraft = (accountId: string, moneyId: string, today: string): PurchaseDraft => ({
@@ -69,10 +72,14 @@ export const emptyPurchaseDraft = (accountId: string, moneyId: string, today: st
   goalId: '',
   spendCategoryId: '',
   mcc: '',
+  charged: '',
 });
 
-/** Turns what was typed into a trade to record, with messages meant for the screen. */
-export function purchaseDraftToInput(draft: PurchaseDraft, currency: string, today: string): RecordTradeInput {
+/**
+ * Turns what was typed into a trade to record, with messages meant for the screen. `cashCurrency` is the paying or
+ * receiving account's; when it differs from the holding's, what was charged goes on the input (`withCharged`).
+ */
+export function purchaseDraftToInput(draft: PurchaseDraft, currency: string, today: string, cashCurrency = currency): RecordTradeInput {
   if (!draft.accountId) throw new Error('Choose what you bought or sold');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose a date');
   if (draft.occurredOn > today) throw new Error('A purchase cannot be dated after today');
@@ -112,7 +119,7 @@ export function purchaseDraftToInput(draft: PurchaseDraft, currency: string, tod
     if (feeMinor < 0) throw new Error('A fee cannot be negative');
   }
 
-  return {
+  const input: RecordTradeInput = {
     accountId: draft.accountId,
     kind: draft.mode,
     occurredOn: draft.occurredOn,
@@ -125,6 +132,7 @@ export function purchaseDraftToInput(draft: PurchaseDraft, currency: string, tod
     spendCategoryId: draft.moneyIsCard && draft.spendCategoryId ? draft.spendCategoryId : null,
     mcc: draft.moneyIsCard && draft.mcc.trim() !== '' ? draft.mcc.trim() : null,
   };
+  return withCharged(input, draft.charged, currency, cashCurrency);
 }
 
 /**

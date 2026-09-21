@@ -165,20 +165,42 @@ async function postedBasis(tx: Db, transactionId: string, holdingAccountId: stri
   return -rows.reduce((total, row) => total + row.amountMinor, 0);
 }
 
+/** What a posted trade moved through its cash account, when that is in another currency, and the rates it posted at. */
+export interface PostedTradeMoney {
+  cashMinor?: number;
+  ratesToBase: Record<string, number>;
+}
+
 /**
  * What a posted trade moved through a cash account in another currency, and the rates it posted at — read back from
  * its own lines before it is voided, so a sell reworked by an edit keeps its own day. The trade row has no column for
- * either, and none is added: the ledger already holds both.
+ * either, and none is added: the ledger already holds both. A buy's figure is what left the account; anything else's,
+ * what reached it.
  */
-async function postedMoneyTx(tx: Db, transactionId: string, accounts: TradeAccounts): Promise<{ cashMinor?: number; ratesToBase: Record<string, number> }> {
+async function postedMoneyTx(tx: Db, transactionId: string, accounts: TradeAccounts, kind: TradeKind): Promise<PostedTradeMoney> {
   const lines = await tx
     .select({ accountId: entries.accountId, amountMinor: entries.amountMinor, currency: entries.currency, fxRateToBase: entries.fxRateToBase })
     .from(entries)
     .where(eq(entries.transactionId, transactionId));
   const ratesToBase = Object.fromEntries(lines.map((line) => [line.currency, line.fxRateToBase]));
   if (accounts.cashCurrency === accounts.holdingCurrency) return { ratesToBase };
-  // A sell's cash line is what reached the account: its signed lines summed, then clamped (`inflowTo`).
-  return { cashMinor: inflowTo(lines, accounts.cashAccountId), ratesToBase };
+  // The cash line's signed lines summed, then clamped: what left for a buy (`outflowFrom`), what reached it otherwise.
+  return { cashMinor: kind === 'buy' ? outflowFrom(lines, accounts.cashAccountId) : inflowTo(lines, accounts.cashAccountId), ratesToBase };
+}
+
+/**
+ * The same read for an edit: Buy & sell opens a trade that crossed a currency with "Charged in" filled from what its
+ * own transaction posted, never empty. Reads only; the trade must be an active one of this workspace.
+ */
+export async function postedTradeMoney(database: Database, ws: WorkspaceContext, tradeId: string): Promise<PostedTradeMoney> {
+  const [row] = await database.db
+    .select()
+    .from(investmentTrades)
+    .where(and(eq(investmentTrades.id, tradeId), eq(investmentTrades.workspaceId, ws.workspaceId), eq(investmentTrades.status, 'active')));
+  if (!row) throw new AssetError('Trade not found in this workspace');
+  if (!row.transactionId) return { ratesToBase: {} };
+  const { accounts: tradeAccounts } = await tradeAccountsFor(database.db, ws, row.accountId, row.cashAccountId);
+  return postedMoneyTx(database.db, row.transactionId, tradeAccounts, row.kind);
 }
 
 /**
@@ -203,7 +225,7 @@ async function recalculateSells(
     const oldBasisMinor = await postedBasis(tx, sell.transactionId!, accountId);
     if (oldBasisMinor === newBasisMinor) continue;
     const withCash = sell.cashAccountId === later[0]!.cashAccountId ? tradeAccounts : (await tradeAccountsFor(tx, ws, accountId, sell.cashAccountId)).accounts;
-    const posted = await postedMoneyTx(tx, sell.transactionId!, withCash);
+    const posted = await postedMoneyTx(tx, sell.transactionId!, withCash, sell.kind);
     const input = toInput({ ...sell, cashAccountId: sell.cashAccountId, cashMinor: posted.cashMinor });
     const lines = tradePostings(input, position, withCash);
     await voidTransactionTx(tx, ws, sell.transactionId!);

@@ -1,4 +1,4 @@
-import { isoDate, type PaymentOption } from '@expanses/core';
+import { isoDate, type PaymentOption, tradeRateNeeds } from '@expanses/core';
 import {
   type AccountRow,
   type CardRow,
@@ -25,6 +25,7 @@ import { useCanHold, useGoals, useSetAsideChoiceOf } from '../goals/queries';
 import { doorOfForm, postForDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { useAssetProfiles, useAssetValues } from '../networth/queries';
+import { tradeRatesForSave } from '../networth/trade-money';
 import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { AmountRow } from './AmountRow';
@@ -149,6 +150,9 @@ function CardBody({
   const chosen = [...choices.buys, ...choices.sells].find((option) => option.value === `${purchase.mode}:${purchase.accountId}`);
   const purchaseMoney = byId.get(purchase.moneyId);
   const purchaseCurrency = byId.get(purchase.accountId)?.currency ?? ws.baseCurrency;
+  // The paying or receiving account's currency; with none chosen yet, the holding's own (nothing crosses).
+  const purchaseCashCurrency = purchaseMoney ? (purchaseMoney.currency ?? ws.baseCurrency) : purchaseCurrency;
+  const purchaseNeeds = tradeRateNeeds(purchaseCurrency, purchaseCashCurrency, ws.baseCurrency);
   const toAccount = byId.get(draft.toId);
   // The Received row reads the same record the save reads (`receivedField`), so the two cannot disagree on its currency.
   const received = receivedField(draft, accounts);
@@ -185,8 +189,13 @@ function CardBody({
     try {
       const post = formToPost(draft, accounts);
       if (post.kind === 'trade') {
-        // Units are recorded, so this saves as a purchase and never touches spending.
-        await recordTrade(database, ws, { ...post.input, setAside: setAside.choice });
+        // Units are recorded, so this saves as a purchase and never touches spending. Its rates come from the one
+        // place every trade form gets them; a missing day rate is asked for under Add more details, dated by the trade.
+        const ratesToBase = await tradeRatesForSave({
+          database, ws, input: post.input, holdingCurrency: purchaseCurrency, cashCurrency: purchaseCashCurrency,
+          needsRate, manualRate: draft.manualRate, resolveRates, onMissing: setNeedsRate, where: 'Add more details',
+        });
+        await recordTrade(database, ws, { ...post.input, ratesToBase, setAside: setAside.choice });
       } else {
         // The manual rate, the rates the posting needs and the message asking for a missing one, all in the
         // one place both ways into a save go through. The rate field lives under Add more details and only
@@ -212,7 +221,8 @@ function CardBody({
   }
 
   // Rates are resolved no later than today, so the row asks for the rate under the date the save will store it.
-  const rateDate = draft.occurredOn > isoDate() ? isoDate() : draft.occurredOn;
+  const onDate = draft.mode === 'trade' ? draft.purchase.occurredOn : draft.occurredOn;
+  const rateDate = onDate > isoDate() ? isoDate() : onDate;
   const missingRate = needsRate ? { from: needsRate, to: ws.baseCurrency, onDate: rateDate } : null;
 
   // B2 reads a card as its account's name with the digits as the caption — "BCA KrisFlyer · ···· 1467" — and
@@ -386,10 +396,19 @@ function CardBody({
               label={purchase.mode === 'buy' ? 'Paid with' : 'Proceeds into'}
               hint={purchase.mode === 'buy' ? 'A credit card works: the card owes more, and the purchase still earns points.' : undefined}
               value={purchase.moneyId}
-              onChange={(e) => setPurchase({ moneyId: e.target.value, moneyIsCard: byId.get(e.target.value)?.subtype === 'credit_card' })}
+              onChange={(e) => setPurchase({ moneyId: e.target.value, moneyIsCard: byId.get(e.target.value)?.subtype === 'credit_card', charged: '' })}
             >
               <MoneyAccountOptions accounts={accounts} spendableOnly keep={purchase.moneyId} />
             </SelectRow>
+            {purchaseNeeds.charged && (
+              <InputRow
+                label={`Charged in ${purchaseCashCurrency}`}
+                hint={purchase.mode === 'buy' ? `What left ${purchaseMoney?.name ?? 'the account'}, in ${purchaseCashCurrency}.` : `What reached ${purchaseMoney?.name ?? 'the account'}, in ${purchaseCashCurrency}.`}
+                value={purchase.charged}
+                inputMode="decimal"
+                onChange={(e) => setPurchase({ charged: e.target.value })}
+              />
+            )}
             <InputRow label="Date" type="date" value={purchase.occurredOn} max={isoDate()} onChange={(e) => setPurchase({ occurredOn: e.target.value })} />
           </FormRows>
         ) : (

@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   type AccountRow, checkLedgerIntegrity, createAccount, type Database, deleteTrade, listTrades, nativeBalances, recordTrade, replaceTrade,
-  saveAssetProfile, schema, type WorkspaceContext,
+  postedTradeMoney, saveAssetProfile, schema, type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -51,5 +51,22 @@ describe('a later sell reworked by an edit', () => {
     expect(new Set(usdLines.map((l) => l.fxRateToBase))).toEqual(new Set([rateFromAmounts(89_500, 'USD', 14_588_501, 'IDR')]));
     expect((await sellLines()).map((l) => l.amountMinor)).toEqual([14_588_501]);
     await expect(checkLedgerIntegrity(database, ws)).resolves.toEqual([]);
+  });
+});
+
+describe('what a posted trade moved through its cash account, read back for an edit', () => {
+  it('is what reached the rupiah account for a sell, and what left it for a buy', async () => {
+    const sell = (await listTrades(database, ws)).find((t) => t.kind === 'sell')!;
+    expect(await postedTradeMoney(database, ws, sell.id)).toMatchObject({ cashMinor: 14_588_501 });
+    const paid = await recordTrade(database, ws, {
+      accountId: aapl.id, kind: 'buy', occurredOn: '2026-07-01', unitsMicro: shares(1), grossMinor: 21_000, feeMinor: 100, taxMinor: 0, cashAccountId: bca.id,
+      cashMinor: 3_421_003, ratesToBase: { USD: rateFromAmounts(21_100, 'USD', 3_421_003, 'IDR') },
+    });
+    expect(await postedTradeMoney(database, ws, paid.tradeId)).toMatchObject({ cashMinor: 3_421_003 });
+  });
+
+  it('has no charged figure for a trade in one currency, and refuses a trade from another workspace', async () => {
+    expect((await postedTradeMoney(database, ws, secondBuy)).cashMinor).toBeUndefined();
+    await expect(postedTradeMoney(database, { ...ws, workspaceId: 'elsewhere' }, secondBuy)).rejects.toThrow(/not found/i);
   });
 });
