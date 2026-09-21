@@ -1,7 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { DepositProposal } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { draftFrom, interestLine, landsText, newRateText, outcomeLine, proposalHeader, readDraft } from './deposit-proposal';
+import { cardFigures, draftFrom, interestLine, landsText, newRateText, outcomeLine, proposalHeader, readDraft } from './deposit-proposal';
 
 const idr: DepositProposal = {
   accountId: 'dep', name: 'BCA Deposito', currency: 'IDR',
@@ -80,5 +80,29 @@ describe('what the card says', () => {
     expect(outcomeLine(idr, 'BCA Tahapan')).toBe('Roll over 3 months · interest to BCA Tahapan');
     expect(outcomeLine({ ...idr, settings: { ...idr.settings, atMaturity: 'principal_interest' } }, null)).toBe('Roll over 3 months · interest stays in the deposit');
     expect(outcomeLine({ ...idr, settings: { ...idr.settings, atMaturity: 'close' } }, 'BCA Tahapan')).toBe('Everything to BCA Tahapan · the deposit closes');
+  });
+});
+
+describe('the card once the editor is closed', () => {
+  it('shows the edited figures that Confirm will post, not the estimate', () => {
+    const shown = cardFigures(idr, { ...draftFrom(idr), gross: '535.700', tax: '107.140', term: 6 });
+    expect(shown.gross).toBe(formatMinor(535_700, 'IDR'));
+    // 535 700 − 107 140 = 428 560: the net of what was typed, not the proposed 428 493.
+    expect(shown.interest).toBe(`${formatMinor(428_560, 'IDR')} after tax`);
+    expect(shown.principal).toBe(formatMinor(50_000_000, 'IDR'));
+    expect(shown.term).toBe(6);
+    expect(outcomeLine(idr, 'BCA Tahapan', shown.term)).toBe('Roll over 6 months · interest to BCA Tahapan');
+  });
+
+  it('keeps the percentage while the figures are the estimate, and shows a closing principal as typed', () => {
+    expect(cardFigures(idr, draftFrom(idr)).interest).toBe(`${formatMinor(428_493, 'IDR')} after 20% tax`);
+    const closing: DepositProposal = { ...idr, settings: { ...idr.settings, atMaturity: 'close' } };
+    expect(cardFigures(closing, { ...draftFrom(closing), principal: '49.000.000' }).principal).toBe(formatMinor(49_000_000, 'IDR'));
+  });
+
+  it('shows a dash, never the estimate, while the draft does not read', () => {
+    expect(cardFigures(idr, { ...draftFrom(idr), gross: 'abc' })).toMatchObject({ principal: '—', gross: '—', interest: '—' });
+    // A rate that is not kept yet does not blank the figures: the New rate row asks for it.
+    expect(cardFigures(idr, { ...draftFrom(idr), rate: '' }).gross).toBe(formatMinor(535_616, 'IDR'));
   });
 });

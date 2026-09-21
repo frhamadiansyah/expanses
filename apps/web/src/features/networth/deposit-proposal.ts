@@ -62,15 +62,46 @@ export function proposalHeader(p: DepositProposal, today: string): string {
   return p.event.kind === 'maturity' ? `Matured ${when}` : `Interest due ${when}`;
 }
 
-export function interestLine(p: DepositProposal): string {
-  return `${formatMinor(p.netMinor, p.currency)} ${p.settings.taxExempt ? 'tax-free' : `after ${rateLabel(p.settings.taxBps)} tax`}`;
+/**
+ * The net that lands, with how it was taxed. Given the figures on the card, it prints those: a tax typed over the
+ * estimate is no longer the setting's percentage of the gross, so it says "after tax" instead of a percentage.
+ */
+export function interestLine(p: DepositProposal, figures: Pick<ProposalFigures, 'grossMinor' | 'taxMinor'> = p): string {
+  const how = p.settings.taxExempt ? 'tax-free' : figures.taxMinor === p.taxMinor && figures.grossMinor === p.grossMinor ? `after ${rateLabel(p.settings.taxBps)} tax` : 'after tax';
+  return `${formatMinor(figures.grossMinor - figures.taxMinor, p.currency)} ${how}`;
 }
 
-export function outcomeLine(p: DepositProposal, payoutName: string | null): string {
+export interface CardFigures {
+  principal: string;
+  gross: string;
+  interest: string;
+  term: TermMonths;
+}
+
+/**
+ * What the read-only card shows: the figures as they stand in the draft, which are exactly what Confirm and
+ * "Recorded it myself" will send. A draft that does not read shows a dash, as the Lands row does, never the estimate.
+ */
+export function cardFigures(p: DepositProposal, draft: ProposalDraft): CardFigures {
+  try {
+    // The rate is not shown here (the New rate row prints it), so an empty one must not blank the figures.
+    const f = readDraft(p, { ...draft, rate: draft.rate || '1' });
+    return {
+      principal: formatMinor(f.principalMinor, p.currency),
+      gross: formatMinor(f.grossMinor, p.currency),
+      interest: interestLine(p, f),
+      term: draft.term,
+    };
+  } catch {
+    return { principal: '—', gross: '—', interest: '—', term: draft.term };
+  }
+}
+
+export function outcomeLine(p: DepositProposal, payoutName: string | null, termMonths: TermMonths = p.settings.termMonths): string {
   const to = payoutName ?? 'the account you choose';
   if (p.event.kind === 'monthly') return p.settings.atMaturity === 'principal_interest' ? 'Stays in the deposit' : `To ${to}`;
   if (p.settings.atMaturity === 'close') return `Everything to ${to} · the deposit closes`;
-  const term = `Roll over ${termLabel(p.settings.termMonths)}`;
+  const term = `Roll over ${termLabel(termMonths)}`;
   return p.settings.atMaturity === 'principal_interest' ? `${term} · interest stays in the deposit` : `${term} · interest to ${to}`;
 }
 

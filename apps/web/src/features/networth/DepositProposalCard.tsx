@@ -6,7 +6,7 @@ import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/querie
 import { checkManualRate, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
-import { closing, draftFrom, interestLine, landsText, newRateText, outcomeLine, proposalHeader, readDraft, rolling } from './deposit-proposal';
+import { cardFigures, closing, draftFrom, landsText, newRateText, outcomeLine, proposalHeader, readDraft, rolling } from './deposit-proposal';
 import { termLabel } from './maturity-settings';
 import { useDueDeposits } from './queries';
 
@@ -76,6 +76,7 @@ function ProposalBody({ proposal: p, onClosed }: { proposal: DepositProposal; on
     }
   }
 
+  const shown = cardFigures(p, draft);
   const rows = editing
     ? [
         <TextRow key="gross" label="Interest before tax" inputMode="decimal" value={draft.gross} onChange={(e) => setDraft({ ...draft, gross: e.target.value })} />,
@@ -100,10 +101,11 @@ function ProposalBody({ proposal: p, onClosed }: { proposal: DepositProposal; on
           : []),
       ]
     : [
-        <ReadOnlyRow key="principal" label="Principal" value={formatMinor(p.principalMinor, p.currency)} />,
-        <ReadOnlyRow key="gross" label="Before tax" value={formatMinor(p.grossMinor, p.currency)} />,
-        <ReadOnlyRow key="interest" label="Interest" value={interestLine(p)} />,
-        <ReadOnlyRow key="outcome" label="Then" value={outcomeLine(p, payoutName)} />,
+        // The draft, not the estimate: once figures were edited, the card shows what Confirm will post.
+        <ReadOnlyRow key="principal" label="Principal" value={shown.principal} />,
+        <ReadOnlyRow key="gross" label="Before tax" value={shown.gross} />,
+        <ReadOnlyRow key="interest" label="Interest" value={shown.interest} />,
+        <ReadOnlyRow key="outcome" label="Then" value={outcomeLine(p, payoutName, rolling(p) ? shown.term : undefined)} />,
         ...(rolling(p) ? [<ReadOnlyRow key="rate" label="New rate" value={newRateText(draft.rate)} />] : []),
       ];
   if (foreign && askRate) {

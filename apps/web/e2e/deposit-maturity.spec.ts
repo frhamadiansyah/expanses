@@ -78,6 +78,33 @@ test('posts edited gross and tax as typed, lands their difference, and a new rat
   await expectBalance(page, s.payoutName, '1.428.560');
 });
 
+test('once the editor is closed, the card shows exactly what Confirm posts', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  await automate(page, { choice: 'principal', paid: 'at_maturity', exempt: false });
+  await page.clock.setSystemTime(at(s.matures));
+  await page.reload();
+  const card = page.getByTestId('deposit-proposal');
+  await card.getByRole('button', { name: 'Edit figures' }).click();
+  await typeInto(page, 'Interest before tax', '535.700');
+  await typeInto(page, 'Tax withheld', '107.140');
+  await typeInto(page, 'New rate %', '4,1');
+  await page.getByLabel('New term').selectOption('6');
+  await card.getByRole('button', { name: 'Done editing' }).click();
+  await expect(card.getByLabel('Interest before tax')).toHaveCount(0);
+  // The typed figures, not the estimate (535.616 before tax, 428.493 after 20% tax, a 3-month roll-over).
+  await expect(card).toContainText('535.700');
+  await expect(card).toContainText('428.560 after tax');
+  await expect(card).toContainText('Roll over 6 months · interest to BCA Tahapan');
+  await expect(card).toContainText('4,1%');
+  await expect(card).not.toContainText('535.616');
+  await expect(card).not.toContainText('428.493');
+  await card.getByRole('button', { name: 'Confirm' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.getByText('Matures 15 Apr 2027 · 4,1%')).toBeVisible();
+  await expectBalance(page, s.payoutName, '1.428.560');
+});
+
 test('records it by hand: nothing posts, and the next one is proposed', async ({ page }) => {
   const s = await setUp(page, 'IDR');
   await openDeposit(page, s.depositName);
