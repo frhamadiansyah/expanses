@@ -12,13 +12,17 @@ import { type Segment, SegmentedControl } from '../../ui/native';
  *
  * A wide screen has the room for all five, so it is given all five: the desktop loses no control to the phone's
  * limit. The key is the route itself, so which segment is lit is read off the address rather than stored twice.
+ *
+ * Each tab also *names* its route, so each is drawn as a real link: this is the app's main section navigation,
+ * and a middle click, a ⌘-click and "open in a new tab" all have to keep working on it. Plain clicking,
+ * the keyboard and Back are unchanged — the link is what the browser needs, not a different journey.
  */
 const TABS = [
-  { key: '/net-worth', label: 'Overview' },
-  { key: '/net-worth/assets', label: 'Assets' },
-  { key: '/net-worth/trades', label: 'Buy & sell', short: 'Trades' },
-  { key: '/net-worth/debts', label: 'Lend & borrow', short: 'Debts' },
-  { key: '/net-worth/loans', label: 'Loans' },
+  { key: '/net-worth', label: 'Overview', to: '/net-worth' },
+  { key: '/net-worth/assets', label: 'Assets', to: '/net-worth/assets' },
+  { key: '/net-worth/trades', label: 'Buy & sell', short: 'Trades', to: '/net-worth/trades' },
+  { key: '/net-worth/debts', label: 'Lend & borrow', short: 'Debts', to: '/net-worth/debts' },
+  { key: '/net-worth/loans', label: 'Loans', to: '/net-worth/loans' },
 ] as const satisfies readonly Segment[];
 
 type TabPath = (typeof TABS)[number]['key'];

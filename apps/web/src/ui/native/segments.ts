@@ -1,3 +1,4 @@
+import type { LinkProps } from '@tanstack/react-router';
 import { PHONE_WIDTH, textWidth } from './metrics';
 
 /**
@@ -26,7 +27,21 @@ export const SEGMENT_MORE = 32;
 const TRACK_PAD = 2;
 const SEGMENT_PAD = 9;
 
-export interface Segment {
+/**
+ * The route a segment names, when it names one.
+ *
+ * A segment that changes the address is a link, and a link is the only thing a middle click, a ⌘-click or an
+ * "open in a new tab" knows what to do with. A radio button that calls `navigate` looks and sounds identical
+ * and answers none of the three — which on the app's main section navigation is desktop reach quietly removed.
+ * `InsetRow` and `CornerButton` took a route for this reason in 16a3c47; this is the same fix in the same shape.
+ */
+export interface SegmentRoute {
+  to: LinkProps['to'];
+  params?: LinkProps['params'];
+  search?: LinkProps['search'];
+}
+
+export interface Segment extends Partial<SegmentRoute> {
   key: string;
   label: string;
   /**
@@ -41,6 +56,20 @@ export interface PlacedSegment {
   /** The name actually drawn: `label`, or `short` when the full one would have been clipped. */
   label: string;
   shortened: boolean;
+  /** The route this segment goes to, or `null` when it only changes something on the page. */
+  route: SegmentRoute | null;
+}
+
+/**
+ * Whether a segment navigates, and where to.
+ *
+ * A segment names a route or it does not; the answer is never guessed from a key that happens to look like a
+ * path. `null` is the honest reply for a filter, a period or a form's two directions, none of which have an
+ * address to open in a second tab.
+ */
+export function segmentRoute(segment: Segment): SegmentRoute | null {
+  if (segment.to === undefined) return null;
+  return { to: segment.to, params: segment.params, search: segment.search };
 }
 
 export interface SegmentPlan {
@@ -67,9 +96,11 @@ export function fitSegments(items: readonly Segment[], width = PHONE_WIDTH, max 
     const segmentWidth = Math.floor((width - TRACK_PAD * 2) / count);
     const room = segmentWidth - SEGMENT_PAD * 2;
     const placed = taken.map((item): PlacedSegment => {
-      if (textWidth(item.label, 12.5) <= room) return { key: item.key, label: item.label, shortened: false };
-      if (item.short && textWidth(item.short, 12.5) <= room) return { key: item.key, label: item.short, shortened: true };
-      return { key: item.key, label: item.short ?? item.label, shortened: Boolean(item.short) };
+      // The route travels with the segment whatever its label does: a shortened name is still the same address.
+      const route = segmentRoute(item);
+      if (textWidth(item.label, 12.5) <= room) return { key: item.key, label: item.label, shortened: false, route };
+      if (item.short && textWidth(item.short, 12.5) <= room) return { key: item.key, label: item.short, shortened: true, route };
+      return { key: item.key, label: item.short ?? item.label, shortened: Boolean(item.short), route };
     });
     const fits = placed.every((segment) => textWidth(segment.label, 12.5) <= room);
     // The last pass keeps whatever it produced: one segment that still will not fit is a label nobody can

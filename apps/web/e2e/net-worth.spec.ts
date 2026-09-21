@@ -77,3 +77,27 @@ test('moves net worth by the price difference only', async ({ page }) => {
   // 10 g at Rp 1.900.000 is Rp 19.000.000, against Rp 18.600.000 paid: only the Rp 400.000 difference moves.
   await expect(page.getByTestId('net-worth')).toContainText('69.000.000');
 });
+
+/**
+ * The five section tabs are the app's main navigation, and a desktop is its highest tier: middle click and
+ * "open link in new tab" have to work on them. Only a real `<a href>` gives a browser that — a radio button
+ * that calls `navigate` looks identical and answers none of it — so the href is what is asserted.
+ */
+test('every net-worth section tab is a real link, so it can be opened in a new tab', async ({ page }) => {
+  await page.goto('/net-worth');
+  const tabs = page.getByRole('radiogroup', { name: 'Net worth sections' }).getByRole('radio');
+  await expect(tabs).toHaveCount(5);
+  const hrefs = await tabs.evaluateAll((nodes) => nodes.map((node) => [node.tagName, node.getAttribute('href')]));
+  expect(hrefs).toEqual([
+    ['A', '/net-worth'],
+    ['A', '/net-worth/assets'],
+    ['A', '/net-worth/trades'],
+    ['A', '/net-worth/debts'],
+    ['A', '/net-worth/loans'],
+  ]);
+
+  // Still a segmented control: clicking one selects it and takes the page with it, exactly as before.
+  await page.getByRole('radio', { name: 'Lend & borrow' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/debts$/);
+  await expect(page.getByRole('radio', { name: 'Lend & borrow' })).toHaveAttribute('aria-checked', 'true');
+});

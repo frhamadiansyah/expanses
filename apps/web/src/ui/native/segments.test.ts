@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TAP, tapReach } from './metrics';
-import { fitSegments, SEGMENT_HEIGHT, SEGMENT_MORE, type Segment } from './segments';
+import { fitSegments, SEGMENT_HEIGHT, SEGMENT_MORE, type Segment, segmentRoute } from './segments';
 
 /** The four tabs `/cards/$cardId` carries today as an underline row that wraps at 390px. */
 const CARD_TABS: Segment[] = [
@@ -59,6 +59,48 @@ describe('fitSegments', () => {
     const plan = fitSegments([{ key: 'long', label: 'Outstanding statement balance' }], 90);
     expect(plan.shown.map((segment) => segment.key)).toEqual(['long']);
     expect(plan.overflow).toEqual([]);
+  });
+});
+
+/**
+ * The five `/net-worth` sections as they are actually declared: each names the route it goes to, so each is
+ * drawn as a link and keeps middle click and open-in-new-tab.
+ */
+const SECTIONS: Segment[] = [
+  { key: '/net-worth', label: 'Overview', to: '/net-worth' },
+  { key: '/net-worth/assets', label: 'Assets', to: '/net-worth/assets' },
+  { key: '/net-worth/trades', label: 'Buy & sell', short: 'Trades', to: '/net-worth/trades' },
+  { key: '/net-worth/debts', label: 'Lend & borrow', short: 'Debts', to: '/net-worth/debts' },
+  { key: '/net-worth/loans', label: 'Loans', to: '/net-worth/loans' },
+];
+
+describe('a segment that names a route', () => {
+  it('has no route when it only changes something on the page', () => {
+    expect(segmentRoute({ key: 'ttm', label: 'Last 12 months' })).toBeNull();
+    expect(segmentRoute(CARD_TABS[0]!)).toBeNull();
+  });
+
+  it('carries the route it was given, parameters and search included', () => {
+    expect(segmentRoute({ key: 'loans', label: 'Loans', to: '/net-worth/loans' })).toEqual({
+      to: '/net-worth/loans',
+      params: undefined,
+      search: undefined,
+    });
+  });
+
+  it('keeps a segment’s route when its label is shortened to fit', () => {
+    const [debts] = fitSegments([{ key: 'debts', label: 'Lend & borrow', short: 'Debts', to: '/net-worth/debts' }], 90).shown;
+    expect(debts?.label).toBe('Debts');
+    expect(debts?.shortened).toBe(true);
+    // The shorter name is the same section: a renamed segment must still open in a new tab.
+    expect(debts?.route).toEqual({ to: '/net-worth/debts', params: undefined, search: undefined });
+  });
+
+  it('keeps the route of the segment that a phone pushes behind the …', () => {
+    const plan = fitSegments(SECTIONS);
+    expect(plan.shown.every((segment) => segment.route !== null)).toBe(true);
+    // Loans is the fifth, and behind the … it is still a link rather than a button that navigates.
+    expect(plan.overflow.map((segment) => segmentRoute(segment)?.to)).toEqual(['/net-worth/loans']);
   });
 });
 
