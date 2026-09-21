@@ -140,3 +140,29 @@ describe('planNewAsset', () => {
     expect(plan.profile!.acquiredYear).toBeNull();
   });
 });
+
+describe('the rate an asset opens at', () => {
+  it('is no longer read by a parser of its own: planNewAsset hands the typed text on untouched', () => {
+    // A motorcycle is valued by a figure you type, so its cost is the opening balance (the `draft.cost` branch).
+    const plan = planNewAsset({ ...emptyDraft('motorcycle', 'IDR', '2026-09-21'), name: 'Bike bought abroad', currency: 'USD', cost: '1000.00', purchasedOn: '2026-09-01', openingRate: '16.500' }, '2026-09-21');
+    // `openingRateFor` reads it with parseRate (16,5, which ratePreview shows before saving) — not 16500 as before.
+    expect(plan).not.toHaveProperty('openingRateToBase');
+    expect([plan.rateNeededMinor, plan.rateDate]).toEqual([100_000, '2026-09-01']);
+  });
+
+  it('needs a rate for the purchases, dated at the earliest one', () => {
+    const plan = planNewAsset(
+      {
+        ...emptyDraft('stock', 'IDR', '2026-09-21'),
+        name: 'US shares',
+        currency: 'USD',
+        purchases: [
+          { occurredOn: '2026-05-02', units: '10', cost: '150.25' },
+          { occurredOn: '2026-03-01', units: '5', cost: '70.10' },
+        ],
+      },
+      '2026-09-21',
+    );
+    expect([plan.rateNeededMinor, plan.rateDate]).toEqual([22_035, '2026-03-01']);
+  });
+});

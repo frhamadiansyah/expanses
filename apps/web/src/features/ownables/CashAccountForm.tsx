@@ -1,12 +1,13 @@
 import { cashItem, CURRENCIES, isoDate, type MoneyAccountSubtype, parseMajor, parseRate } from '@expanses/core';
-import { openCashAccount, upsertRate } from '@expanses/db';
+import { openCashAccount, openPocketedAccount } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { checkManualRate, ratePreview } from '../../lib/rates';
+import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { choosePocketCurrency, nextPocketCurrency, type PocketDraft, readPockets } from '../accounts/pockets';
 import { fieldsFor } from './catalogue-view';
 
 /**
@@ -32,6 +33,8 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
   const [rate, setRate] = useState('');
   const [openedOn, setOpenedOn] = useState(isoDate());
   const [manualRate, setManualRate] = useState('');
+  const [pocketed, setPocketed] = useState(false);
+  const [pockets, setPockets] = useState<PocketDraft[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   // A row is one line and has no room to explain itself, so the sentence lives under the group and the row points at it.
@@ -42,25 +45,35 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
   const asks = fieldsFor('account', item);
   const locked = asks.includes('matures');
   const foreign = currency !== ws.baseCurrency;
+  // The kinds held at an institution, and not a deposit: its terms are per deposit (spec §16.3).
+  const canPocket = asks.includes('bank') && !locked;
+  const setPocket = (i: number, patch: Partial<PocketDraft>) => setPockets((rows) => rows.map((row, j) => (j === i ? { ...row, ...patch } : row)));
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      const openingBalanceMinor = balance.trim() ? parseMajor(balance, currency) : 0;
-      let openingRateToBase: number | undefined;
-      if (foreign && openingBalanceMinor !== 0) {
-        if (manualRate.trim()) {
-          openingRateToBase = parseRate(manualRate);
-          await checkManualRate(database, currency, ws.baseCurrency, openedOn, openingRateToBase);
-          await upsertRate(database, { fromCurrency: currency, toCurrency: ws.baseCurrency, onDate: openedOn, rate: openingRateToBase, source: 'manual', sourceDate: openedOn });
-        } else {
-          const resolved = await resolveRates([currency], openedOn);
-          openingRateToBase = resolved.rates[currency];
-          if (openingRateToBase === undefined) throw new Error(`No ${currency}→${ws.baseCurrency} rate available. Enter it manually.`);
+      if (pocketed) {
+        const read = readPockets(pockets);
+        const settled = [];
+        // Every rate is settled before any account is written, so the account and its pockets below are one
+        // transaction: all or nothing. The rates are not part of it — a typed rate is stored as soon as it is
+        // checked (`openingRateFor`), so a later pocket's refusal leaves an earlier typed rate saved for that day.
+        for (const pocket of read) {
+          settled.push({
+            currency: pocket.currency,
+            openingBalanceMinor: pocket.openingBalanceMinor,
+            openingRateToBase: await openingRateFor({ database, ws, currency: pocket.currency, openedOn, openingBalanceMinor: pocket.openingBalanceMinor, typed: pocket.typedRate, resolveRates }),
+          });
         }
+        await openPocketedAccount(database, ws, { item, name, bank: bank.trim() || undefined, openedOn, pockets: settled });
+        await invalidate();
+        await navigate({ to: '/accounts' });
+        return;
       }
+      const openingBalanceMinor = balance.trim() ? parseMajor(balance, currency) : 0;
+      const openingRateToBase = await openingRateFor({ database, ws, currency, openedOn, openingBalanceMinor, typed: manualRate, resolveRates });
       await openCashAccount(database, ws, {
         item,
         name,
@@ -96,7 +109,7 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
         }
       >
         <TextRow label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="BCA Tahapan" required />
-        {asks.includes('balance') && (
+        {asks.includes('balance') && !pocketed && (
           <TextRow
             label="Balance now"
             aria-describedby={balanceHint}
@@ -109,7 +122,21 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
           />
         )}
         {asks.includes('bank') && <TextRow label="Bank" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="BCA" />}
-        {asks.includes('currency') && (
+        {canPocket && (
+          <SwitchRow
+            label="Holds more than one currency"
+            hint="Off for an account that holds one currency. On for one that keeps several currencies inside it."
+            checked={pocketed}
+            onChange={(on) => {
+              setPocketed(on);
+              if (on && pockets.length === 0) {
+                const first = { currency: ws.baseCurrency, balance: '', rate: '' };
+                setPockets([first, { currency: nextPocketCurrency([first]), balance: '', rate: '' }]);
+              }
+            }}
+          />
+        )}
+        {asks.includes('currency') && !pocketed && (
           <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {CURRENCIES.map((c) => (
               <option key={c.code} value={c.code}>
@@ -121,7 +148,7 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
         {asks.includes('matures') && <TextRow label="Matures on" type="date" value={maturesOn} onChange={(e) => setMaturesOn(e.target.value)} required />}
         {asks.includes('rate') && <TextRow label="Interest rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="6,25" />}
         <TextRow label="Balance as of" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
-        {foreign && (
+        {foreign && !pocketed && (
           <TextRow
             label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
             hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
@@ -131,6 +158,35 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
           />
         )}
       </InsetGroup>
+      {/* A flat array of rows, not a fragment per pocket: `InsetGroup` hands each direct child its position. */}
+      {pocketed && (
+        <InsetGroup header="Pockets" footer="Leave a rate blank and the rate for the opening date is used. Fill it in only when you want your own figure.">
+          {pockets.flatMap((pocket, i) => [
+            <SelectRow key={`c${i}`} label={`Pocket ${i + 1}`} value={pocket.currency} onChange={(e) => setPockets((rows) => choosePocketCurrency(rows, i, e.target.value))}>
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} — {c.name}
+                </option>
+              ))}
+            </SelectRow>,
+            <TextRow key={`b${i}`} label={`Opening ${pocket.currency}`} value={pocket.balance} onChange={(e) => setPocket(i, { balance: e.target.value })} inputMode="decimal" placeholder="0" />,
+            ...(pocket.currency !== ws.baseCurrency
+              ? [
+                  <TextRow
+                    key={`r${i}`}
+                    label={`Rate: ${ws.baseCurrency} per 1 ${pocket.currency}`}
+                    hint={ratePreview(pocket.rate, pocket.currency, ws.baseCurrency) ?? 'Optional.'}
+                    value={pocket.rate}
+                    onChange={(e) => setPocket(i, { rate: e.target.value })}
+                    inputMode="decimal"
+                  />,
+                ]
+              : []),
+          ])}
+          <InsetRow title="Add another currency" onClick={() => setPockets((rows) => [...rows, { currency: nextPocketCurrency(rows), balance: '', rate: '' }])} />
+          {pockets.length > 2 && <InsetRow title="Remove the last pocket" onClick={() => setPockets((rows) => rows.slice(0, -1))} />}
+        </InsetGroup>
+      )}
       <InsetGroup>
         {/* `requestSubmit` rather than calling `submit` straight: the browser still checks `required` first. */}
         <InsetRow title="Add account" chevron={false} onClick={() => !busy && form.current?.requestSubmit()} className={busy ? 'opacity-40' : undefined} />

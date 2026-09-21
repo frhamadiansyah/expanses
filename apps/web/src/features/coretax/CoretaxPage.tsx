@@ -1,4 +1,4 @@
-import { balanceSheet, carryOver, isoDate, readiness, reconciliation } from '@expanses/core';
+import { carryOver, isoDate, readiness } from '@expanses/core';
 import { draftReport } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -10,7 +10,7 @@ import { FreezePanel } from './FreezePanel';
 import { BusinessSection } from './BusinessSection';
 import { IncomeSection } from './IncomeSection';
 import { KmkRates } from './KmkRates';
-import { readinessLinks, screenSections } from './report-rows';
+import { readinessLinks, reportCheck, screenSections } from './report-rows';
 import { SectionTable } from './SectionTable';
 import { useReport, usePreviousRows, useReportRows, useReportYears } from './queries';
 
@@ -41,8 +41,8 @@ export function CoretaxPage() {
   const links = readinessLinks(issues, all);
   const blocking = links.filter((link) => link.issue.level === 'blocking');
   const warnings = links.filter((link) => link.issue.level === 'warning');
-  const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
-  const check = reconciliation(harta, utang, sheet.netWorthMinor);
+  // Against the balance sheet on 31 December — unless a currency held then has no rate, which is named instead.
+  const { report: reportTotals, check, missing } = reportCheck(harta, utang, sheetInputs.data);
 
   async function start(
     basis?: 'cost' | 'estimate' | 'njop' | 'appraisal',
@@ -118,11 +118,19 @@ export function CoretaxPage() {
             header="Ikhtisar"
             footer={
               <>
-                Harta <Money minor={check.hartaMinor} currency={ws.baseCurrency} /> · Utang{' '}
-                <Money minor={check.utangMinor} currency={ws.baseCurrency} />. The report says{' '}
-                <Money minor={check.reportNetMinor} currency={ws.baseCurrency} />, and your balance sheet on 31 December {taxYear} says{' '}
-                <Money minor={check.netWorthMinor} currency={ws.baseCurrency} />.
-                {check.differenceMinor !== 0 && (
+                Harta <Money minor={reportTotals.hartaMinor} currency={ws.baseCurrency} /> · Utang{' '}
+                <Money minor={reportTotals.utangMinor} currency={ws.baseCurrency} />. The report says{' '}
+                <Money minor={reportTotals.reportNetMinor} currency={ws.baseCurrency} />
+                {check === null ? (
+                  <span data-testid="reconciliation-missing" className="text-[var(--ph-warn)]">
+                    . No {missing.join(', ')} rate yet for 31 December {taxYear}, so your balance sheet cannot be compared with it.
+                  </span>
+                ) : (
+                  <>
+                    , and your balance sheet on 31 December {taxYear} says <Money minor={check.netWorthMinor} currency={ws.baseCurrency} />.
+                  </>
+                )}
+                {check !== null && check.differenceMinor !== 0 && (
                   <>
                     {' The gap is '}
                     <Money minor={check.differenceMinor} currency={ws.baseCurrency} tone="auto" />.

@@ -4,7 +4,7 @@ import { useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, ReadOnlyRow, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
@@ -68,7 +68,7 @@ function PaymentForm({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const money = accounts.filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
+  const money = moneyHolders(accounts).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
   const today = isoDate();
   const next = useNextPayment(accountId, today);
   const [draft, setDraft] = useState<PaymentDraft | null>(null);
@@ -212,7 +212,7 @@ function ExtraPaymentForm({
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const money = accounts.filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype) && account.archivedAt === null);
+  const money = moneyHolders(accounts).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
   const today = isoDate();
   const [amount, setAmount] = useState('');
   const [penalty, setPenalty] = useState('');
