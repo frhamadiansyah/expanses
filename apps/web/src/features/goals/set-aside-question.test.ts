@@ -24,6 +24,17 @@ describe('doorOfForm', () => {
     const lines = (to: string) => post([{ accountId: to, amountMinor: 20_000_000, currency: 'IDR' }, { accountId: 'jenius', amountMinor: -20_000_000, currency: 'IDR' }]);
     expect(doorOfForm(draft({ mode: 'transfer', moneyId: 'jenius', toId: 'bca' }), lines('bca'), ACCOUNTS, holds)).toMatchObject({ intents: MOVING, toAccountId: 'bca' });
     expect(doorOfForm(draft({ mode: 'transfer', moneyId: 'jenius', toId: 'card' }), lines('card'), ACCOUNTS, holds)).toMatchObject({ intents: SPENDING, toAccountId: null });
+    // An asset that cannot hold a set-aside (gold bars): offering the move would make Save throw (W12).
+    expect(doorOfForm(draft({ mode: 'transfer', moneyId: 'jenius', toId: 'gold' }), lines('gold'), ACCOUNTS, holds)).toMatchObject({ intents: SPENDING, toAccountId: null });
+  });
+
+  it('reads a cross-currency tagged transfer\'s outflow in rupiah, not the dollars that landed (W22)', () => {
+    const tagged: FormPost = { kind: 'transfer-goal', input: { occurredOn: '2026-09-19', description: 'x', amountMinor: 7_500_000, toAmountMinor: 46_875, fromAccountId: 'jenius', toAccountId: 'usd', goalId: 'umrah' } };
+    expect(doorOfForm(draft({ mode: 'transfer' }), tagged, ACCOUNTS, holds)).toMatchObject({ accountId: 'jenius', outflowMinor: 7_500_000 });
+  });
+
+  it('opens no door before an account is chosen (W2)', () => {
+    expect(spendingDoor('', 1)).toBeNull();
   });
 
   it('lets a tagged transfer use its own goal\'s money only where that money can go', () => {
@@ -77,6 +88,8 @@ describe('choiceOf and readyOf', () => {
       accountId: 'jenius', goalId: 'ef', intent: 'borrow', overMinor: 1_800_000, toAccountId: null, wasWhole: true, wholeSince: '2026-08-03',
     });
     expect(choiceOf(ask, { goalId: 'ef', intent: 'spend' }, door, { whole: true, since: '2026-08-03' })).toMatchObject({ intent: 'spend', wasWhole: false, wholeSince: null });
+    // A borrow from a goal that was not whole records no "whole" window (X1).
+    expect(choiceOf(ask, { goalId: 'ef', intent: 'borrow' }, door, { whole: false, since: null })).toMatchObject({ intent: 'borrow', wasWhole: false, wholeSince: null });
     expect(choiceOf(ask, { goalId: 'ef', intent: null }, { ...door, intents: BORROW_ONLY })).toMatchObject({ intent: 'borrow' });
     expect(choiceOf(ask, { goalId: 'ef', intent: 'move' }, { ...door, intents: MOVING, toAccountId: 'bca' })).toMatchObject({ intent: 'move', toAccountId: 'bca' });
   });
