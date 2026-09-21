@@ -99,3 +99,15 @@ test('the Money tile adds every account and pocket at today’s rates', async ({
   // Twice: the tile and the account's own row. Without the tile it is once.
   await expect(page.getByText(/58\.982\.000/)).toHaveCount(2);
 });
+
+test('net worth’s Assets list shows the account once, at the ≈ total, and opens to its pockets', async ({ page }) => {
+  await mockRates(page, { SGD: 12_680 });
+  await openWithPockets(page, VALAS);
+  await page.goto('/net-worth/assets');
+  await expect(page.getByRole('link', { name: /Valas Plus · USD/ })).toHaveCount(0);
+  const row = page.getByRole('link', { name: /^Valas Plus/ });
+  await expect(row).toContainText('3 pockets');
+  await expect(row).toContainText('58.982.000');
+  await row.click();
+  await expect(page.getByTestId('pocket-USD')).toBeVisible();
+});
