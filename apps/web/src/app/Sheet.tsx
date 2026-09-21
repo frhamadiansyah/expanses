@@ -14,7 +14,22 @@ let open = 0;
  * Escape goes through `useEscape`, which answers the innermost thing open and nothing else: a keypad inside
  * this sheet takes the press, and the sheet keeps the draft it is holding.
  */
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Sheet({
+  title,
+  onClose,
+  children,
+  grouped = false,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  /**
+   * Lay the sheet on the kit's grouped ground rather than on a surface, so the white groups inside it read as
+   * cards — the look the Add a transaction screens were approved in (Option B). A sheet of plain rows keeps the
+   * surface.
+   */
+  grouped?: boolean;
+}) {
   const panel = useRef<HTMLDivElement>(null);
 
   useEscape(onClose);
@@ -44,7 +59,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         aria-label={title}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl bg-[var(--ph-surface)] p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl"
+        className={`max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl`}
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />
