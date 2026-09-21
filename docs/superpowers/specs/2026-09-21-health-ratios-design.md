@@ -92,7 +92,7 @@ user sees today changes until they mark a category lifestyle.
 
 ### 3.3 What does not change
 
-The ratio card's benchmark stays 3–6 months, graded as today. Accelerated debt paydown is never in the base. The
+**The ratio card grades against the household's own months** (user decision, 2026-09-21 — Q5 flipped): the months on its emergency goal, derived from the two answers or typed. A household with no emergency goal is graded against the guide's 3–6 months as today. Accelerated debt paydown is never in the base. The
 income-based emergency route from the workbook is not built — no source was found for it.
 
 ## 4. Essential vs lifestyle
@@ -212,6 +212,8 @@ touched:
 - **education v1** (`feeTodayMinor`, `startsInYears`, `yearsOfStudy`, `feeInflationBps`) becomes one level named
   "Course" in calendar years, with one yearly fee; its stages keep their ids and paid marks by position;
 - **retirement v1** keeps the goal's own return as the return while saving;
+- **education v2** (user decision, Q8): re-read on every open from that day, only to move the band of a level whose
+  return was never typed;
 - **emergency v1** gets growth 0%.
 
 Nothing else about the goal — name, rank, standing amount, set-asides, tags — is touched.
@@ -264,7 +266,7 @@ cover = PV(yearly family need, years of support, inflation, return)
 - **Not built:** the workbook's lowest-of-four-methods and its after-the-fact "− assets + debts" (which double-counts on
   a needs-based result); any rounding down to a round number; a critical-illness or accident rider calculator — no
   published sizing rule exists; any income multiple; any country-specific benefit offset.
-- Nothing is saved; like the other calculators on that page, it answers a question you may not want to keep.
+- **The figures are remembered** (user decision, 2026-09-21): "Keep these figures" stores what was typed in `goal_calculators.inputs_json`, with no schema change — one reserved row per workspace (`goal_id` `life-cover:<workspace>`; `kind` retirement only because 0017's CHECK allows three kinds; the JSON says `calculator: life_cover`), which every goal reader skips. A prefilled box never typed in is not stored, so it keeps following the balance sheet. No goal is made.
 
 ## 12. The workbook's four bugs — none inherited
 
@@ -319,16 +321,21 @@ cover with resources above / below needs.
 
 ## 17. Open questions
 
-1. **Default for the emergency base, and what an unmarked category counts as.** The record says the switch becomes
-   essential vs all but names no default. This design defaults to **essential** and counts an unmarked category as
-   **essential** (erring toward a larger fund, as the record does with the 24-month cell), so nothing changes until a
-   category is marked. Confirm or reverse.
-2. **Should the default categories come pre-marked** (e.g. Restaurants, Entertainment as lifestyle)? Built with none
-   marked, because a preset list was not agreed.
+1. ~~Default for the emergency base~~ — **user decision 2026-09-21:** essential, and an unmarked category counts as
+   essential.
+2. ~~Pre-marked default categories~~ — **user decision 2026-09-21:** no; default categories start unmarked.
 3. **The stacked band on the Budget page** is a new visual treatment, which the kit does not have. Built as rows
    (Essential spent, Lifestyle spent) until the kit decides.
 4. ~~The emergency template's return~~ — provisional ruling 2026-09-21: keep 2%, outside the horizon bands.
-5. **The emergency ratio card's guide** stays 3–6 months; it does not read the household months. Should it?
+5. ~~The emergency ratio card's guide~~ — **user decision 2026-09-21 (flipped):** it grades against the household's own months (§3.3).
 6. ~~Upgrading existing derived goals~~ — provisional ruling 2026-09-21: silently, only when the figure changes, never
    a hand-edited target (§9.4).
 7. ~~The calendar-year fallback~~ — provisional ruling 2026-09-21: 1 January, and the level's row subtitle says so.
+8. ~~A level's band on open~~ — **user decision 2026-09-21:** yes; on open, a level whose return was never typed
+   re-reads its band for the months left until it starts. A typed return is never touched.
+9. ~~Remembering life-cover inputs~~ — **user decision 2026-09-21:** yes, in `goal_calculators.inputs_json`, no schema
+   change (§11).
+10. ~~`computed_minor` for retirement now in today's money~~ — accepted: nothing outside the repo reads it.
+11. **Open:** a v1 education working upgraded to v2 becomes calendar years, so its years move to 1 January (a
+    September-dated year moves up to 8 months earlier). §9.4's "due dates do not move" holds for the *year*, not the
+    day. Accept, or keep the old day some other way?

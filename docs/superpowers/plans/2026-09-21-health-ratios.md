@@ -26,7 +26,22 @@
 - **The user's workbook is not an authority.** Do not copy its ×4 week, its gold/jewellery sums, its min-of-methods, or its PMT. 18% appears nowhere.
 - Tests **discriminate**: each asserts a computed figure that its nearest wrong neighbour (×4, floor, abs-then-sum, interest twice, rank-only order, IDR-only fixture) would get wrong.
 - Branch `feat/health-ratios`. Commit per task. Every commit message ends with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
-- **Gate before every commit:** from the root `npm run typecheck`, `npm test`, `npm run build`; then the task's targeted Playwright specs (`cd apps/web && npx playwright test <spec>`). The full Playwright suite runs in Task 12.
+- **Gate before every commit:** from the root `npm run typecheck`, `npm test`, `npm run build`; then the task's targeted Playwright specs (`cd apps/web && npx playwright test -c playwright.hr.config.ts '(^|/)<spec-name>\.spec\.ts$'`). The full Playwright suite runs in Task 12.
+- **Playwright runs on its own port, never the shared 4173.** Before the first e2e step, create the **untracked** `apps/web/playwright.hr.config.ts` (never `git add` it):
+
+  ```ts
+  import { defineConfig } from '@playwright/test';
+  import base from './playwright.config';
+
+  export default defineConfig({
+    ...base,
+    use: { ...base.use, baseURL: 'http://localhost:4181' },
+    webServer: { ...base.webServer, command: 'npm run build && npx vite preview --port 4181 --strictPort', url: 'http://localhost:4181' },
+  });
+  ```
+
+  Every e2e command is `cd apps/web && npx playwright test -c playwright.hr.config.ts '<regex>'`, filtered by the spec **filename** as an anchored regex — `'(^|/)goals\.spec\.ts$'` — never a bare word (`goals` would also run `phone-goals.spec.ts`, `goal-classes.spec.ts`, …). A step that says "run both specs" means exactly this form, one regex per file.
+- **User decisions (2026-09-21) are built, not provisional:** an unmarked category counts as essential and the emergency base defaults to essential (Q1); no default category is pre-marked (Q2); **the emergency ratio card grades against the household's own target months** (Q5, flipped — Task 4). Q3 (Budget split as rows), Q4 (emergency template 2%), Q6 (silent upgrade only on change), Q7 (1 January) stand as ruled. Each default is one named constant: `DEFAULT_EMERGENCY_BASE`, the `'essential'` fallback in `needs.ts`'s `walk`, `DEFAULT_EMERGENCY_TARGET_MONTHS`.
 
 ---
 
@@ -290,9 +305,11 @@ describe('a budget line in a month', () => {
     expect(perMonthMinor(6, 'daily')).toBe(183);
   });
 
-  it('divides a quarter by three and a year by twelve', () => {
+  it('divides a quarter by three and a year by twelve, rounding what does not divide', () => {
+    // 15.386.000 ÷ 3 = 5.128.666,67 and 2.400.010 ÷ 12 = 200.000,83: a floor says 5.128.666 and 200.000.
+    // (2.400.000 ÷ 12 divides evenly, so it could not tell a floor from a round.)
     expect(perMonthMinor(15_386_000, 'quarterly')).toBe(5_128_667);
-    expect(perMonthMinor(2_400_000, 'yearly')).toBe(200_000);
+    expect(perMonthMinor(2_400_010, 'yearly')).toBe(200_001);
     expect(perMonthMinor(900_000, 'monthly')).toBe(900_000);
   });
 
@@ -553,10 +570,11 @@ export { COMPULSORY_KINDS, type GoalClass, fundingOrder, goalClass } from './goa
 
 **Files:**
 - Create: `packages/db/src/repos/category-needs.ts`, `packages/db/test/category-needs.test.ts`
-- Modify: `packages/db/src/repos/books.ts` (`copyCategoriesTx`), `packages/db/src/index.ts`
+- Modify: `packages/db/src/repos/books.ts` (`copyCategoriesTx`), `packages/db/src/repos/budgets.ts` (the refusals move into one exported reader), `packages/db/src/index.ts`
 
 **Interfaces:**
-- Consumes: `healthTablesExist`, `categoryNeeds`, `resolveNeeds`, `CATEGORY_NEEDS`, `bookOfCategory`, `hasBooks` (books.ts), `accounts`.
+- Consumes: `healthTablesExist`, `categoryNeeds`, `resolveNeeds`, `CATEGORY_NEEDS`, `accounts`.
+- Produces (budgets.ts): `spendingCategoryRefusal(db: Db, ws, categoryAccountId): Promise<'NOT_FOUND' | 'NOT_A_CATEGORY' | 'OTHER_BOOK' | null>` — the body of today's private `assertCategory` + `assertInOpenBook`, which now throw `BudgetError` from its answer. `saveCategoryNeed` asks the same function, so the two entry points cannot drift apart (no second copy of the refusals).
 - Produces: `CategoryNeedError(code, message)`; `listCategoryNeeds(database, ws): Promise<Record<string, CategoryNeed>>` (own marks only); `resolvedCategoryNeeds(db: Db, ws): Promise<Record<string, CategoryNeed>>` (every expense category of the workspace); `saveCategoryNeed(database, ws, categoryAccountId, need)`; `clearCategoryNeed(database, ws, categoryAccountId)`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -671,7 +689,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts } from '../schema';
 import { categoryNeeds } from '../schema-health';
-import { bookOfCategory, hasBooks } from './books';
+import { spendingCategoryRefusal } from './budgets';
 import { healthTablesExist } from './health-tables';
 
 export class CategoryNeedError extends Error {
@@ -708,20 +726,16 @@ export async function resolvedCategoryNeeds(db: Db, ws: WorkspaceContext): Promi
   return resolveNeeds(nodes, Object.fromEntries(rows.map((row) => [row.id, row.need])));
 }
 
-/** The refusals `saveBudget` applies, applied here too: a spending category of this workspace, in the open book. */
+const REFUSED: Record<'NOT_FOUND' | 'NOT_A_CATEGORY' | 'OTHER_BOOK', string> = {
+  NOT_FOUND: 'That category does not exist in this workspace',
+  NOT_A_CATEGORY: 'Only a spending category is essential or lifestyle',
+  OTHER_BOOK: 'That category belongs to another workspace',
+};
+
+/** The refusals `saveBudget` applies — asked of the very function `saveBudget` asks, never a copy of it. */
 async function assertSpendingCategory(tx: Db, ws: WorkspaceContext, categoryAccountId: string): Promise<void> {
-  const [account] = await tx
-    .select({ kind: accounts.kind, subtype: accounts.subtype })
-    .from(accounts)
-    .where(and(eq(accounts.id, categoryAccountId), eq(accounts.workspaceId, ws.workspaceId)));
-  if (!account) throw new CategoryNeedError('NOT_FOUND', 'That category does not exist in this workspace');
-  if (account.subtype !== 'category' || account.kind !== 'expense') {
-    throw new CategoryNeedError('NOT_A_CATEGORY', 'Only a spending category is essential or lifestyle');
-  }
-  if (ws.bookId && (await hasBooks(tx))) {
-    const owner = await bookOfCategory(tx, categoryAccountId);
-    if (owner && owner !== ws.bookId) throw new CategoryNeedError('OTHER_BOOK', 'That category belongs to another workspace');
-  }
+  const refusal = await spendingCategoryRefusal(tx, ws, categoryAccountId);
+  if (refusal) throw new CategoryNeedError(refusal, REFUSED[refusal]);
 }
 
 export async function saveCategoryNeed(database: Database, ws: WorkspaceContext, categoryAccountId: string, need: CategoryNeed): Promise<void> {
@@ -745,6 +759,33 @@ export async function clearCategoryNeed(database: Database, ws: WorkspaceContext
   });
 }
 ```
+
+In `packages/db/src/repos/budgets.ts`, replace the private `assertInOpenBook` / `assertCategory` pair with one exported reader, and keep both callers' behaviour (`setBudgetOverride` asks only the book question, as today):
+
+```ts
+/**
+ * Why a category cannot carry a budget or a need mark, or null when it can: a spending category of this workspace,
+ * filed in the open book. One reader for both entry points (`saveBudget`, `saveCategoryNeed`).
+ */
+export async function spendingCategoryRefusal(db: Db, ws: WorkspaceContext, categoryAccountId: string): Promise<'NOT_FOUND' | 'NOT_A_CATEGORY' | 'OTHER_BOOK' | null> {
+  const [account] = await db
+    .select({ kind: accounts.kind, subtype: accounts.subtype })
+    .from(accounts)
+    .where(and(eq(accounts.id, categoryAccountId), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!account) return 'NOT_FOUND';
+  if (account.subtype !== 'category' || account.kind !== 'expense') return 'NOT_A_CATEGORY';
+  return (await otherBook(db, ws, categoryAccountId)) ? 'OTHER_BOOK' : null;
+}
+
+/** Filed in a book other than the open one. False when no book is open, and on a database from before books. */
+async function otherBook(db: Db, ws: WorkspaceContext, categoryAccountId: string): Promise<boolean> {
+  if (!ws.bookId || !(await hasBooks(db))) return false;
+  const owner = await bookOfCategory(db, categoryAccountId);
+  return owner !== null && owner !== ws.bookId;
+}
+```
+
+`assertCategory` becomes `const refusal = await spendingCategoryRefusal(database.db, ws, accountId); if (refusal) throw new BudgetError(refusal, …today's message for that code…)`; `assertInOpenBook` becomes `if (await otherBook(database.db, ws, id)) throw new BudgetError('OTHER_BOOK', …)`. Import `type Db`. The existing `budgets.test.ts` refusal tests must pass unchanged.
 
 In `packages/db/src/repos/books.ts`, import `categoryNeeds` from `../schema-health` and `healthTablesExist` from `./health-tables`, and append to the end of `copyCategoriesTx`, after the MCC loop (it is already past the `if (sourceIds.size === 0) return;` guard):
 
@@ -776,7 +817,8 @@ In `packages/db/src/index.ts`: `export * from './repos/category-needs';`
 
 **Interfaces:**
 - Consumes: `resolvedCategoryNeeds` (Task 3).
-- Produces: `PeriodFlows.lifestyleSpendingMinor: number`; `EmergencyBase = 'essential' | 'all'`; `EMERGENCY_BASES`; `DEFAULT_EMERGENCY_BASE = 'essential'`; `emergencyOutgoingMinor(flows, base): number` (a **period total** — callers divide); `RatioSettings = { emergencyBase?: EmergencyBase; debtServiceBenchmarkBps?: number }` (`emergencyIncludesDebtPayments` is removed); `DEFAULT_DEBT_SERVICE_BPS = 3000`.
+- Produces: `PeriodFlows.lifestyleSpendingMinor: number`; `EmergencyBase = 'essential' | 'all'`; `EMERGENCY_BASES`; `DEFAULT_EMERGENCY_BASE = 'essential'`; `emergencyOutgoingMinor(flows, base): number` (a **period total** — callers divide); `RatioSettings = { emergencyBase?: EmergencyBase; emergencyTargetMonths?: number; debtServiceBenchmarkBps?: number }` (`emergencyIncludesDebtPayments` is removed); `DEFAULT_DEBT_SERVICE_BPS = 3000`; `DEFAULT_EMERGENCY_TARGET_MONTHS = 3`; `householdEmergencyMonths(goals): number | null`.
+- **User decision Q5 (2026-09-21, flipped):** the emergency card grades against **the household's own months** — the months on its emergency goal (derived from the two answers, or typed) — not a flat 3–6. With no emergency goal it falls back to `DEFAULT_EMERGENCY_TARGET_MONTHS` (3, the guide's floor) and says "3–6 months" as today.
 
 - [ ] **Step 1: Change the tests first**
 
@@ -843,6 +885,47 @@ describe('debt servicing', () => {
 });
 ```
 
+```ts
+describe('the emergency card grades against the household’s own months', () => {
+  // 200 jt ÷ 41,773 jt a month = 4,79 months.
+  it('is good at 4,79 months against the guide’s 3 when the household has set no months', () => {
+    const ratio = by(healthRatios(flows(), totals()), 'emergency_fund');
+    expect(ratio.status).toBe('good');
+    expect(ratio.target).toBe(3);
+    expect(ratio.benchmarkText).toBe('3–6 months');
+  });
+
+  it('is act at the same 4,79 months when the household’s own figure is 12', () => {
+    // A flat 3–6 guide would call this good; 12 months ÷ 1,2 = 10 is the watch floor, so 4,79 is act.
+    const ratio = by(healthRatios(flows(), totals(), { emergencyTargetMonths: 12 }), 'emergency_fund');
+    expect(ratio.status).toBe('act');
+    expect(ratio.target).toBe(12);
+    expect(ratio.benchmarkText).toBe('12 months · your household');
+  });
+
+  it('is watch between the watch floor and the household’s months', () => {
+    // 440 jt ÷ 41,773 jt = 10,53 months: at least 12 ÷ 1,2 = 10, below 12.
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 440_000_000 }, { emergencyTargetMonths: 12 })).toBe('watch');
+    expect(statusOf('emergency_fund', {}, { liquidMinor: 502_000_000 }, { emergencyTargetMonths: 12 })).toBe('good');
+  });
+});
+
+describe('householdEmergencyMonths', () => {
+  const g = (kind: Goal['kind'], months: (number | null)[], paid = false): Pick<Goal, 'kind' | 'stages'> => ({
+    kind,
+    stages: months.map((targetMonths, i) => ({ id: `s${i}`, name: 's', targetMinor: targetMonths === null ? 1 : null, targetMonths, dueOn: '2028-01-01', paidOn: paid ? '2026-01-01' : null })),
+  });
+
+  it('reads the months on the emergency goal, the largest when there are several, ignoring other kinds and paid stages', () => {
+    expect(householdEmergencyMonths([g('holiday', [null]), g('emergency', [6]), g('emergency', [12])])).toBe(12);
+    expect(householdEmergencyMonths([g('emergency', [24], true), g('emergency', [6])])).toBe(6);
+    expect(householdEmergencyMonths([g('holiday', [null])])).toBeNull();
+  });
+});
+```
+
+(Import `type Goal`, `householdEmergencyMonths`. The fixture's `statusOf` already takes settings as its fourth argument.)
+
 Keep "counts loan interest once" (it compares two runs on the same base, so it still holds). Re-derive the "grades against three months" figures against the new default denominator of Rp 41,773 jt a month: `good` at `liquidMinor: 126_000_000` (3,02), `watch` at `110_000_000` (2,63), `act` at `100_000_000` (2,39). Import `emergencyOutgoingMinor`.
 
 In `packages/db/test/flows.test.ts`, import `saveCategoryNeed` and add:
@@ -903,11 +986,31 @@ export interface RatioSettings {
    * payment spending does not already hold. The interest is an expense entry, inside spending already.
    */
   emergencyBase?: EmergencyBase;
+  /**
+   * The household's own months — its emergency goal's (user decision Q5, 2026-09-21). The card grades against these
+   * rather than a flat guide. Absent: `DEFAULT_EMERGENCY_TARGET_MONTHS`, and the card reads "3–6 months" as before.
+   */
+  emergencyTargetMonths?: number;
   /** 3000 by default; 3500 is the looser guide. */
   debtServiceBenchmarkBps?: number;
 }
 
 export const DEFAULT_DEBT_SERVICE_BPS = 3000;
+/** The guide's floor, used only while the household has set no months of its own. */
+export const DEFAULT_EMERGENCY_TARGET_MONTHS = 3;
+
+/**
+ * The months the household asked of its emergency fund: the largest `targetMonths` on an unpaid stage of any
+ * emergency goal, typed or worked out. Null when there is none.
+ */
+export function householdEmergencyMonths(goals: readonly Pick<Goal, 'kind' | 'stages'>[]): number | null {
+  const months = goals
+    .filter((goal) => goal.kind === 'emergency')
+    .flatMap((goal) => goal.stages)
+    .filter((stage) => !stage.paidOn && stage.targetMonths !== null && stage.targetMonths > 0)
+    .map((stage) => stage.targetMonths!);
+  return months.length > 0 ? Math.max(...months) : null;
+}
 
 /**
  * What an emergency fund covers over the period, as a total. The ratio card and the emergency goal both size
@@ -927,17 +1030,23 @@ In `healthRatios`, delete `debtPrincipal`, `countsDebtPayments` and the old `eme
 ```ts
   const base = settings.emergencyBase ?? DEFAULT_EMERGENCY_BASE;
   const emergencyOutgoing = monthly(emergencyOutgoingMinor(flows, base), flows.months);
+  const ownMonths = settings.emergencyTargetMonths;
+  const emergencyTarget = ownMonths && ownMonths > 0 ? ownMonths : DEFAULT_EMERGENCY_TARGET_MONTHS;
 ```
+
+The emergency row grades with `(value) => higherIsBetter(value, emergencyTarget)`, target `emergencyTarget`, max `Math.max(9, emergencyTarget * 1.5)`, benchmark text `ownMonths ? \`${emergencyTarget} months · your household\` : '3–6 months'`. (Import `type Goal` from `../goals/plan` for `householdEmergencyMonths`; export it and `DEFAULT_EMERGENCY_TARGET_MONTHS` from `index.ts`.)
 
 The emergency row's guide:
 
 ```ts
       base === 'essential'
-        ? 'Cash & equivalents ÷ monthly essential spending plus loan principal. Lifestyle categories are left out; loan interest is already inside spending. The guide asks 3–6 months, more with dependants or irregular income.'
-        : 'Cash & equivalents ÷ monthly spending plus loan principal. Loan interest is already inside spending. The guide asks 3–6 months, more with dependants or irregular income.',
+        ? `Cash & equivalents ÷ monthly essential spending plus loan principal. Lifestyle categories are left out; loan interest is already inside spending. ${graded}`
+        : `Cash & equivalents ÷ monthly spending plus loan principal. Loan interest is already inside spending. ${graded}`,
 ```
 
-Export `DEFAULT_EMERGENCY_BASE`, `EMERGENCY_BASES`, `type EmergencyBase`, `emergencyOutgoingMinor` beside the existing health exports in `packages/core/src/index.ts`.
+with `const graded = ownMonths ? \`Graded against the ${emergencyTarget} months your emergency fund asks for.\` : 'The guide asks 3–6 months, more with dependants or irregular income; set an emergency fund to grade against your own.';`
+
+Export `DEFAULT_EMERGENCY_BASE`, `EMERGENCY_BASES`, `type EmergencyBase`, `emergencyOutgoingMinor`, `DEFAULT_EMERGENCY_TARGET_MONTHS`, `householdEmergencyMonths` beside the existing health exports in `packages/core/src/index.ts`.
 
 - [ ] **Step 4: `flows.ts`**
 
@@ -975,7 +1084,13 @@ import { DEFAULT_DEBT_SERVICE_BPS, DEFAULT_EMERGENCY_BASE, type EmergencyBase, h
 const EMPTY_FLOWS: PeriodFlows = { months: 0, incomeMinor: 0, spendingMinor: 0, lifestyleSpendingMinor: 0, debtPaymentsMinor: 0, nonMortgageDebtPaymentsMinor: 0, debtPrincipalMinor: 0, putAwayMinor: 0 };
 // …
   const [settings, setSettings] = useState<RatioSettings>({ emergencyBase: DEFAULT_EMERGENCY_BASE, debtServiceBenchmarkBps: DEFAULT_DEBT_SERVICE_BPS });
+  // Q5: the card grades against the household's own months, read from its emergency goal — never a copy of them.
+  const goals = useGoals();
+  const emergencyTargetMonths = householdEmergencyMonths(goals.data ?? []) ?? undefined;
+  // …and `healthRatios(flows, totals, { ...settings, emergencyTargetMonths })` where the component calls it today.
 ```
+
+(`useGoals` from `../goals/queries`; `householdEmergencyMonths` from `@expanses/core`. The months are not a setting the user flips on this card: they are the emergency goal's.)
 
 Replace the `SwitchRow` and the debt `SelectRow` (drop `SwitchRow` from the import):
 
@@ -1031,7 +1146,7 @@ test('the emergency card divides cash by a month of spending, and the debt guide
 
 (If `Panel` does not render a `section`, locate the card through the heading's nearest ancestor that also contains the value; do not assert on the guide text.)
 
-- [ ] **Step 7: Run** — both vitest files, root gate, `cd apps/web && npx playwright test e2e/health-ratios.spec.ts e2e/net-worth.spec.ts`. Fix every `PeriodFlows` literal the compiler names (`grep -rn "debtPrincipalMinor: 0" packages apps`). Expected: PASS.
+- [ ] **Step 7: Run** — both vitest files, root gate, `cd apps/web && npx playwright test -c playwright.hr.config.ts '(^|/)health-ratios\.spec\.ts$' '(^|/)net-worth\.spec\.ts$'`. Fix every `PeriodFlows` literal the compiler names (`grep -rn "debtPrincipalMinor: 0" packages apps`). Expected: PASS.
 - [ ] **Step 8: Commit** — `feat(health): the emergency fund counts essential or all spending, and the debt guide starts at 30%`, trailer.
 
 ---
@@ -1155,14 +1270,16 @@ Import `DEFAULT_EMERGENCY_BASE`, `emergencyOutgoingMinor`, `type EmergencyBase` 
       .filter((row) => row.kind === 'emergency')
       .map((row) => [row.goalId, (row.inputs as EmergencyInputs).base ?? DEFAULT_EMERGENCY_BASE]),
   );
-  const outgoingFor = (goalId: string) => perMonth(emergencyOutgoingMinor(flows, baseOf.get(goalId) ?? DEFAULT_EMERGENCY_BASE), flows.months);
+  // Summed signed inside emergencyOutgoingMinor, then clamped once here: refunds larger than spending make a month of
+  // nothing, never a negative target.
+  const outgoingFor = (goalId: string) => Math.max(0, perMonth(emergencyOutgoingMinor(flows, baseOf.get(goalId) ?? DEFAULT_EMERGENCY_BASE), flows.months));
 ```
 
 and call `goalPlan(goal, mine, monthlyFromTemplates(goal.id), outgoingFor(goal.id), date)`. Leave `capacityMonthlyMinor` exactly as it is.
 
 In `GoalsPage.tsx`, the "You save each month" subtitle becomes `Take-home pay − spending − loan principal`.
 
-- [ ] **Step 5: Run** — both test files, root gate, `npx playwright test e2e/goals.spec.ts`. PASS.
+- [ ] **Step 5: Run** — both test files, root gate, `npx playwright test -c playwright.hr.config.ts '(^|/)goals\.spec\.ts$'`. PASS.
 - [ ] **Step 6: Commit** — `feat(goals): an emergency goal sizes itself on the base its working chose`, trailer.
 
 ---
@@ -1170,7 +1287,7 @@ In `GoalsPage.tsx`, the "You save each month" subtitle becomes `Take-home pay �
 ### Task 6: A frequency on every budget line; essential and lifestyle on the sheet
 
 **Files:**
-- Modify: `packages/db/src/repos/budgets.ts`, `packages/core/src/budget/sheet.ts`, `packages/db/src/repos/budget-sheet.ts`
+- Modify: `packages/db/src/repos/budgets.ts`, `packages/core/src/budget/sheet.ts`, `packages/db/src/repos/budget-sheet.ts`, `packages/db/src/repos/books.ts` (`setBookBaseCurrency` converts the typed amount too)
 - Test: Create `packages/db/test/budget-frequency.test.ts`; add to `packages/core/test/budget-sheet.test.ts` (create it if absent)
 
 **Interfaces:**
@@ -1182,7 +1299,8 @@ In `GoalsPage.tsx`, the "You save each month" subtitle becomes `Take-home pay �
 ```ts
 // packages/db/test/budget-frequency.test.ts
 import { afterEach, describe, expect, it } from 'vitest';
-import { categoryIdsByKey, createDatabase, createWorkspace, listAccounts, listBudgets, migrate, MIGRATIONS, removeBudget, saveBudget, setBudgetOverride } from '../src/index';
+import { isoDate } from '@expanses/core';
+import { categoryIdsByKey, createAccount, createBook, createDatabase, createWorkspace, inBook, listAccounts, listBudgets, migrate, MIGRATIONS, removeBudget, saveBudget, setBookBaseCurrency, setBudgetOverride, upsertRate } from '../src/index';
 import { createNodeExecutor, type NodeExecutor } from '../src/node';
 import { setupDb } from './helpers';
 
@@ -1246,6 +1364,19 @@ describe('a budget typed in another unit', () => {
     await removeBudget(database, ws, groceries);
     await saveBudget(database, ws, { categoryAccountId: groceries, amountMinor: 900_000 });
     expect((await listBudgets(database, ws, MONTH))[0]).toMatchObject({ frequency: 'monthly', amountAsSetMinor: 900_000 });
+  });
+
+  it('converts the amount as typed when the workspace changes currency, and works the month out from it', async () => {
+    // setBookBaseCurrency rewrites budgets.amount_minor; left alone, "Rp 500.000 a week" would read S$5.000,00 a week.
+    const { database, ws } = await setupDb();
+    const biz = await createBook(database, ws, { name: 'Business', kind: 'business', baseCurrency: 'IDR' });
+    const book = inBook(ws, biz);
+    const software = await createAccount(database, book, { name: 'Software', kind: 'expense', subtype: 'category', currency: null });
+    await saveBudget(database, book, { categoryAccountId: software.id, amountMinor: 500_000, frequency: 'weekly' });
+    await upsertRate(database, { fromCurrency: 'IDR', toCurrency: 'SGD', onDate: isoDate(), rate: 0.000083, source: 'manual', sourceDate: isoDate() });
+    await setBookBaseCurrency(database, ws, biz, 'SGD');
+    // Rp 500.000 at 0,000083 is S$41,50 a week; 4.150 cents × 52 ÷ 12 = 17.983,33 → 17.983 a month.
+    expect((await listBudgets(database, book, MONTH)).find((row) => row.categoryAccountId === software.id)).toMatchObject({ frequency: 'weekly', amountAsSetMinor: 4_150, planMinor: 17_983 });
   });
 
   it('stores the monthly figure alone on a database stopped before 0053', async () => {
@@ -1376,6 +1507,8 @@ and each returned row adds:
       amountAsSetMinor: unitOf.get(row.id)?.amountAsSetMinor ?? row.amountMinor,
 ```
 
+In `books.ts`'s `setBookBaseCurrency`, inside the `caps` loop and guarded by `healthTablesExist(tx)`: a cap with a `budget_frequencies` row converts **the amount as typed** once (`into(asSet)`) and writes `amount_minor = perMonthMinor(into(asSet), frequency)` — converted once per line, then per month, never the two rounded separately. If `into(asSet)` comes to 0 or less (the CHECK refuses it), delete the frequency row and keep `into(cap.amountMinor)`: the line becomes monthly rather than failing the whole change. A cap without a row is converted exactly as today.
+
 - [ ] **Step 4: `sheet.ts` and `budget-sheet.ts`**
 
 `BudgetSheetInput` gains:
@@ -1401,7 +1534,7 @@ Return both. Import `type CategoryNeed` from `./needs`.
 
 In `budget-sheet.ts`, add `resolvedCategoryNeeds(database.db, ws)` to the `Promise.all` (as `needs`) and pass `needs` to `budgetSheet`.
 
-- [ ] **Step 5: Run** — both tests, root gate, `npx playwright test e2e/budget.spec.ts e2e/phone-budget-page.spec.ts e2e/events.spec.ts`. PASS.
+- [ ] **Step 5: Run** — both tests, `packages/db/test/book-currency.test.ts`, `packages/db/test/budgets.test.ts`, root gate, `npx playwright test -c playwright.hr.config.ts '(^|/)budget\.spec\.ts$' '(^|/)phone-budget-page\.spec\.ts$' '(^|/)events\.spec\.ts$'`. PASS.
 - [ ] **Step 6: Commit** — `feat(budget): a line is typed in the unit you think in and counted as a month`, trailer.
 
 ---
@@ -1507,7 +1640,7 @@ Import `fundingOrder, goalClass, type GoalClass` from `@expanses/core`, `type Go
   }
 ```
 
-Move the body of today's `cards.map((card, index) => { const plan = plans[index]!; return (<section …>…</section>); })` **verbatim** into `function GoalSection({ card, plan }: { card: GoalCard; plan: GoalPlanRow })`, declared inside `GoalsPage` so it closes over `move`, `archive`, `togglePaid`, `derived` and `ws`. Replace the old grid with:
+Move the body of today's `cards.map((card, index) => { const plan = plans[index]!; return (<section …>…</section>); })` **verbatim** into a **render function** `const goalSection = (card: GoalCard, plan: GoalPlanRow) => (<section key={card.goalId} …>…</section>)`, declared inside `GoalsPage` so it closes over `move`, `archive`, `togglePaid`, `derived` and `ws`. Not a component (`<GoalSection/>`): a component declared inside another is a new type on every render, so React would unmount and remount every card after each Move — dropping keyboard focus off the Move row a desktop user just pressed. Replace the old grid with:
 
 ```tsx
       {SECTIONS.map((section) => {
@@ -1520,9 +1653,7 @@ Move the body of today's `cards.map((card, index) => { const plan = plans[index]
             <PanelHeader title={section.title} />
             <p className="px-[4px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{section.note}</p>
             <div className="grid gap-x-6 lg:grid-cols-2">
-              {inSection.map(({ plan, card }) => (
-                <GoalSection key={card.goalId} card={card} plan={plan} />
-              ))}
+              {inSection.map(({ plan, card }) => goalSection(card, plan))}
             </div>
           </div>
         );
@@ -1559,7 +1690,7 @@ test('an emergency fund added after a holiday is listed first, and cannot be mov
 });
 ```
 
-- [ ] **Step 6: Run** — vitest files, root gate, `npx playwright test e2e/goal-classes.spec.ts e2e/goals.spec.ts e2e/calculators.spec.ts`. PASS.
+- [ ] **Step 6: Run** — vitest files, root gate, `npx playwright test -c playwright.hr.config.ts '(^|/)goal-classes\.spec\.ts$' '(^|/)goals\.spec\.ts$' '(^|/)calculators\.spec\.ts$'`. PASS.
 - [ ] **Step 7: Commit** — `feat(goals): compulsory goals come first, on the page and in what gets funded`, trailer.
 
 ---
@@ -1651,7 +1782,7 @@ test('a parent’s mark reaches its children, a child can keep its own, and clea
 });
 ```
 
-- [ ] **Step 4: Run** — root gate, `npx playwright test e2e/category-needs.spec.ts e2e/phone-category-needs.spec.ts e2e/category-sets.spec.ts e2e/mcc.spec.ts`. PASS.
+- [ ] **Step 4: Run** — root gate, `npx playwright test -c playwright.hr.config.ts '(^|/)category-needs\.spec\.ts$' '(^|/)phone-category-needs\.spec\.ts$' '(^|/)category-sets\.spec\.ts$' '(^|/)mcc\.spec\.ts$'`. PASS.
 - [ ] **Step 5: Commit** — `feat(categories): mark a category essential or lifestyle, and see what it inherits`, trailer.
 
 ---
@@ -1807,7 +1938,7 @@ test('a weekly line is shown and counted as 52/12 of a week', async ({ page }) =
 
 `phone-budget-frequency.spec.ts`: the same flow with `yearly` and `2400000` typed key by key, asserting `caps-total` contains `200.000` and the line `a year`. (Read the category option's label the way `phone-budget-page.spec.ts` does.)
 
-- [ ] **Step 5: Run** — web vitest, root gate, `npx playwright test e2e/budget-frequency.spec.ts e2e/phone-budget-frequency.spec.ts e2e/budget.spec.ts e2e/phone-budget-page.spec.ts e2e/events.spec.ts e2e/add-transaction.spec.ts`. PASS.
+- [ ] **Step 5: Run** — web vitest, root gate, `npx playwright test -c playwright.hr.config.ts '(^|/)budget-frequency\.spec\.ts$' '(^|/)phone-budget-frequency\.spec\.ts$' '(^|/)budget\.spec\.ts$' '(^|/)phone-budget-page\.spec\.ts$' '(^|/)events\.spec\.ts$' '(^|/)add-transaction\.spec\.ts$'`. PASS.
 - [ ] **Step 6: Commit** — `feat(budget): an Every picker and a Per month row, and the month split into essential and lifestyle`, trailer.
 
 ---
@@ -1955,7 +2086,7 @@ Replace `Card`, `Field`, `Input`, `Button` with the kit's `InsetGroup`, `TextRow
 
 In `submit`, the emergency `inputs` is `emergencyInputsOf(emergency)`. The emergency blurb: `Months of what you spend, with loan principal added. The amount follows your spending, so it moves when your spending does.`
 
-In `CalculatorsPage.tsx`'s emergency section, replace the `months` state with an `EmergencyDraft` (`useState(() => emergencyDraftFrom())`) and add the same Household, Income and Months rows (no Counts row — the monthly figure there is typed by hand). `emergencyTargetMinor(Number(draft.months), …)` stays the reader; the save passes `emergencyInputsOf(draft)`. Its blurb: `Months of what goes out, loan principal included.`
+In `CalculatorsPage.tsx`'s emergency section, replace the `months` state with an `EmergencyDraft` (`useState(() => emergencyDraftFrom())`) and add the same Household, Income and Months rows (no Counts row — the monthly figure there is typed by hand). The months are read by `emergencyInputsOf(draft)` — the one reader, which accepts `9,5` — inside a `try` (a figure it refuses shows no answer), never by `Number(draft.months)`, which reads `9,5` as NaN; `emergencyTargetMinor(inputs.months, …)` stays the reader of the target, and the save passes the same `inputs`. Its blurb: `Months of what goes out, loan principal included.`
 
 - [ ] **Step 4: E2E**
 
@@ -1992,7 +2123,7 @@ test('two answers prefill the months, say why, and size the goal on a month of s
 });
 ```
 
-- [ ] **Step 5: Run** — web vitest, root gate, `npx playwright test e2e/emergency-calculator.spec.ts e2e/calculators.spec.ts e2e/goals.spec.ts`. PASS.
+- [ ] **Step 5: Run** — web vitest, root gate, `npx playwright test -c playwright.hr.config.ts '(^|/)emergency-calculator\.spec\.ts$' '(^|/)calculators\.spec\.ts$' '(^|/)goals\.spec\.ts$'`. PASS.
 - [ ] **Step 6: Commit** — `feat(goals): the emergency calculator asks two questions and says which answers gave the months`, trailer.
 
 ---
@@ -2020,10 +2151,11 @@ Every figure is typed key by key (`pressSequentially(…, { delay: 30 })`), neve
 | 10 | Row 2's marks on the Budget page | `essential-spent` `2.000.000`, `lifestyle-spent` `1.000.000` |
 | 11 | Holiday, then Emergency fund; Move Holiday up; Move Emergency fund down | the Emergency fund stays in `goals-compulsory`, alone |
 | 12 | An emergency goal worked out, closed, reopened | Household, Income and Counts reopen as saved; the months note is unchanged |
+| 13 | Q5: an emergency goal worked out as With children, Salaried (12 months), with the set-up's Rp 17 jt against Rp 3 jt a month | the card reads `5,7 months` and grades **act** (below 12 ÷ 1,2 = 10), where row 1 with no goal grades it good; the card's benchmark reads `12 months · your household` |
 
 (Row 8's category names must be real default names — check them in `packages/core/src/categories/defaults.ts` and choose five with no budgeted ancestor.)
 
-- [ ] **Step 2: The phone walk** — rows 2, 7, 9 and 11 at phone width.
+- [ ] **Step 2: The phone walk** — rows 2, 7, 9, 11 and 13 at phone width.
 - [ ] **Step 3: Run both specs.** Fix a failure in the task that owns the behaviour, never by loosening the spec.
 - [ ] **Step 4: Commit** — `test(e2e): walk the health-ratio combinations at both widths`, trailer.
 
@@ -2031,7 +2163,7 @@ Every figure is typed key by key (`pressSequentially(…, { delay: 30 })`), neve
 
 ### Task 12: Final gate and the spec walk
 
-- [ ] **Step 1:** From the root `npm run typecheck && npm test && npm run build`; then `cd apps/web && npx playwright test --workers=2` (the whole suite).
+- [ ] **Step 1:** From the root `npm run typecheck && npm test && npm run build`; then `cd apps/web && npx playwright test -c playwright.hr.config.ts --workers=2` (the whole suite).
 - [ ] **Step 2:** `grep -rn "1800\|emergencyIncludesDebtPayments" packages apps/web/src apps/web/e2e` — nothing matches. `grep -rn "\* 4\b\|\* 30\b" packages/core/src/budget` — nothing matches.
 - [ ] **Step 3:** Walk the spec's Part-1 sections against the table below; each row's behaviour is on screen and under a test.
 - [ ] **Step 4:** Commit any fix-ups with the trailer. Do not merge or push.
