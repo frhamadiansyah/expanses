@@ -41,6 +41,7 @@ import { RecurringPage } from '../features/bills/RecurringPage';
 import { EditTransactionRoute, NewTransactionRoute } from '../features/transactions/FormPage';
 import { ReceiptRoute } from '../features/transactions/ReceiptPage';
 import { TransactionsPage } from '../features/transactions/TransactionsPage';
+import { InvestmentsPage } from '../features/investments/InvestmentsPage';
 import { DeveloperSettingsPage } from '../features/workspaces/DeveloperSettingsPage';
 import { SettingsPage } from '../features/workspaces/SettingsPage';
 import { Layout } from './Layout';
@@ -160,6 +161,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
+  // The Assets page's Investments group, read by stock and by broker.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments', component: InvestmentsPage }),
   // "new" is a static segment, which outranks the `$accountId` below it however they are ordered here.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/new', component: AddAssetPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),

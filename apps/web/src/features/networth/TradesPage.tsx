@@ -168,6 +168,9 @@ export function TradesPage() {
     <div className={SCREEN}>
       <LargeTitle title="Buy & sell" />
       <NetWorthTabs />
+      <InsetGroup>
+        <InsetRow title="Investments" subtitle="By stock and by broker" to="/net-worth/investments" />
+      </InsetGroup>
       <ErrorBox error={values.error ?? trades.error ?? error} />
       {notice && (
         <Panel className="text-[13px] leading-[17px] text-[var(--ph-tint)]" testId="trade-notice">

@@ -48,6 +48,8 @@ function Group({ group, baseCurrency }: { group: AssetGroup; baseCurrency: strin
       {group.rows.map((row) => (
         <Row key={row.accountId} row={row} baseCurrency={baseCurrency} />
       ))}
+      {/* The same holdings read by stock and by broker: its last row, under the group's own total. */}
+      {group.group === 'invest' && <InsetRow title="By stock and broker" to="/net-worth/investments" />}
     </InsetGroup>
   );
 }
