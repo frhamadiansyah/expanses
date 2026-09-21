@@ -47,7 +47,9 @@ export interface SetAsideChoice {
   wholeSince?: string | null;
   /**
    * A spend an edit carries: the stage the original paid (null when it paid none). Omitted on a fresh answer, which
-   * pays the earliest unpaid stage. Carrying it keeps one payment on one stage — an edit never pays the next.
+   * pays the earliest unpaid stage. Carrying it keeps one payment on one stage — an edit never pays the next. Null
+   * pays none: also what the second and later postings of one payment split across several (Pay several) carry, so
+   * one payment pays one stage.
    */
   stageId?: string | null;
 }
@@ -189,13 +191,14 @@ export async function taggedMoveOfTx(tx: Db, ws: WorkspaceContext, occurredOn: s
 }
 
 /**
- * The answer an edit posts, with the stage its original spend paid: the same spend (carried, or given again by an edit
- * form) stays on that stage, and any other answer picks afresh. `saved` is the original's answer, read before the void.
+ * The answer an edit posts, with the stage its original spend paid: a spend from the same goal (carried, or given again
+ * by an edit form, from the same account or — the payment moved — another) stays on that stage, and any other answer
+ * picks afresh. One payment pays one stage. `saved` is the original's answer, read before the void.
  */
 export function withSavedStage(answered: SetAsideChoice | null, saved: SetAsideChoice | null): SetAsideChoice | null {
   if (!answered) return null;
   const { stageId: _ignored, ...fresh } = answered;
-  const same = answered.intent === 'spend' && saved?.intent === 'spend' && answered.goalId === saved.goalId && answered.accountId === saved.accountId;
+  const same = answered.intent === 'spend' && saved?.intent === 'spend' && answered.goalId === saved.goalId;
   return same ? { ...fresh, stageId: saved.stageId ?? null } : fresh;
 }
 
@@ -320,8 +323,13 @@ export async function undoSetAsideTx(tx: Db, ws: WorkspaceContext, transactionId
   for (const draw of rows) {
     if (draw.intent === 'spend') {
       await adjustSetAsideTx(tx, ws, draw.goalId, draw.accountId, draw.amountMinor);
-      // Only a stage still carrying this draw's date: one the owner re-dated by hand is theirs.
-      if (draw.stageId) {
+      // Only a stage still carrying this draw's date: one the owner re-dated by hand is theirs. And never on an archived
+      // goal: it is history, and the edit that re-files the payment which completed it drops the answer (it promises
+      // nothing now), so un-paying here would leave the archive reading not done for a payment that still stands.
+      const [goal] = draw.stageId
+        ? await tx.select({ status: goals.status }).from(goals).where(and(eq(goals.id, draw.goalId), eq(goals.workspaceId, ws.workspaceId)))
+        : [];
+      if (draw.stageId && goal?.status !== 'archived') {
         await tx
           .update(goalStages)
           .set({ paidOn: null })

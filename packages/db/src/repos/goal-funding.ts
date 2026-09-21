@@ -270,9 +270,19 @@ export interface GoalHistoryEntry {
   text: string;
 }
 
-const HISTORY_LENGTH = 6;
+/** How many history lines a goal's card shows. */
+export const GOAL_HISTORY_LENGTH = 6;
 
-export async function goalHistory(database: Database, ws: WorkspaceContext, date: string): Promise<Record<string, GoalHistoryEntry[]>> {
+/**
+ * Per goal, its history newest first: the newest `limit` (six, the card's) or, with `limit: null`, all of it — what a
+ * reader that looks past the six (the "Fully funded" window's reached day) must read.
+ */
+export async function goalHistory(
+  database: Database,
+  ws: WorkspaceContext,
+  date: string,
+  { limit = GOAL_HISTORY_LENGTH }: { limit?: number | null } = {},
+): Promise<Record<string, GoalHistoryEntry[]>> {
   const events = await goalContributionEvents(database, ws, { to: date });
   const draws = await listDraws(database, ws, date);
   const accountRows = await database.db.select({ id: accounts.id, name: accounts.name, currency: accounts.currency }).from(accounts).where(eq(accounts.workspaceId, ws.workspaceId));
@@ -320,7 +330,7 @@ export async function goalHistory(database: Database, ws: WorkspaceContext, date
   for (const goalId of Object.keys(byGoal)) {
     byGoal[goalId] = byGoal[goalId]!
       .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn) || Number(b.kind === 'reached') - Number(a.kind === 'reached'))
-      .slice(0, HISTORY_LENGTH);
+      .slice(0, limit ?? undefined);
   }
   return byGoal;
 }

@@ -22,6 +22,9 @@ export interface IdleCashRow {
  * uses it to notice cash parked at a broker: put there to be invested, still sitting as cash.
  */
 export async function idleCash(database: Database, ws: WorkspaceContext, onDate: string): Promise<IdleCashRow[]> {
+  // Only accounts valued at their ledger balance. A unit holding (market or snapshot) is worth its units at a price,
+  // while what is free on it is its ledger balance less its promises: the two are not the same measure, so a holding
+  // is never idle cash, promised or not. The spec (§4.6) names the free figure only; unit holdings stay out, as before.
   const values = (await assetValuesAt(database, ws, onDate)).filter((value) => value.mode === 'derived');
   if (values.length === 0) return [];
 
@@ -50,6 +53,7 @@ export async function idleCash(database: Database, ws: WorkspaceContext, onDate:
     const since = lastArrival.get(value.accountId);
     if (since === undefined) continue;
     const view = views[value.accountId];
+    // Like with like: a derived account's value is its ledger balance on the date, the balance its free figure is taken from.
     const amountMinor = view ? Math.max(0, view.freeMinor) : value.valueMinor;
     rows.push({ accountId: value.accountId, name: value.name, currency: value.currency, planGroup: value.planGroup, amountMinor, since });
   }
