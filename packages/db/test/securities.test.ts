@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  type AccountRow, archiveAccount, createAccount, createWorkspace, type Database, getAssetProfile, linkHolding, listHoldingLinks, listPrices,
-  listSecurities, listSecurityPrices, type NewSecurity, saveAssetProfile, securitiesSchema, securityOfHolding, upsertPrice, upsertSecurityPrice,
-  type WorkspaceContext,
+  type AccountRow, archiveAccount, assetValuesAt, checkLedgerIntegrity, createAccount, createWorkspace, type Database, getAssetProfile, linkHolding,
+  listHoldingLinks, listPrices, listSecurities, listSecurityPrices, nativeBalances, type NewSecurity, positionsFor, recordTrade, saveAssetProfile,
+  securitiesSchema, securityOfHolding, upsertPrice, upsertSecurityPrice, type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -20,6 +20,12 @@ async function holding(name: string, currency = 'IDR') {
   await saveAssetProfile(database, ws, { accountId: account.id, assetKind: 'stock' });
   return account;
 }
+
+/** Everything the ledger says: every balance, every position (units and cost), and whether it still balances. */
+async function ledger() {
+  return { balances: await nativeBalances(database, ws), positions: await positionsFor(database, ws), integrity: await checkLedgerIntegrity(database, ws) };
+}
+const valueOf = async (accountId: string) => (await assetValuesAt(database, ws, '2026-09-30')).find((row) => row.accountId === accountId)!.valueMinor;
 
 beforeEach(async () => {
   ({ database, ws } = await setupDb());
@@ -167,13 +173,19 @@ describe('linkHolding', () => {
     await upsertPrice(database, ws, { accountId: a.id, onDate: '2026-09-12', priceMicro: 9_550_000_000 });
     await upsertPrice(database, ws, { accountId: b.id, onDate: '2026-09-12', priceMicro: 9_600_000_000 });
     await upsertPrice(database, ws, { accountId: b.id, onDate: '2026-09-05', priceMicro: 9_400_000_000 });
+    // I1: a third holding, never linked, priced on other days. Only the linked holding's own rows may move.
+    const tlkm = await holding('TLKM');
+    await upsertPrice(database, ws, { accountId: tlkm.id, onDate: '2026-08-01', priceMicro: 3_800_000_000 });
     await linkHolding(database, ws, { accountId: a.id, security: bbca });
-    await linkHolding(database, ws, { accountId: b.id, security: bbca });
     const [security] = await listSecurities(database, ws);
+    expect(await listSecurityPrices(database, ws, security!.id)).toEqual([{ onDate: '2026-09-12', priceMicro: 9_550_000_000 }]);
+    await linkHolding(database, ws, { accountId: b.id, security: bbca });
     expect(await listSecurityPrices(database, ws, security!.id)).toEqual([
       { onDate: '2026-09-12', priceMicro: 9_550_000_000 }, // A's stood; B's 9.600 on the same day did not replace it
       { onDate: '2026-09-05', priceMicro: 9_400_000_000 },
     ]);
+    // TLKM's own series is untouched and never became BBCA's.
+    expect(await listPrices(database, ws, tlkm.id)).toEqual([{ onDate: '2026-08-01', priceMicro: 3_800_000_000 }]);
     expect((await getAssetProfile(database, ws, b.id))!.lotSize).toBe(100);
     // Ruling m12: once moved, the holding's own rows are removed — no stale series is left to come back.
     expect(await database.db.values(sql`SELECT count(*) FROM prices WHERE account_id = ${b.id}`)).toEqual([[0]]);
@@ -182,13 +194,27 @@ describe('linkHolding', () => {
 
   it('gives an unlinked holding the security’s latest price as its own, never its old series (m12)', async () => {
     const a = await holding('A');
+    await recordTrade(database, ws, { accountId: a.id, kind: 'buy', occurredOn: '2026-01-05', unitsMicro: 300_000_000, grossMinor: 2_625_000, feeMinor: 0, taxMinor: 0, cashAccountId: bank.id });
     await upsertPrice(database, ws, { accountId: a.id, onDate: '2026-01-05', priceMicro: 8_750_000_000 });
     await linkHolding(database, ws, { accountId: a.id, security: bbca });
     const [security] = await listSecurities(database, ws);
     await upsertSecurityPrice(database, ws, { securityId: security!.id, onDate: '2026-09-19', priceMicro: 9_775_000_000 });
     await upsertSecurityPrice(database, ws, { securityId: security!.id, onDate: '2026-06-01', priceMicro: 9_100_000_000 });
+    // I2: another security priced later than this one. The unlinked holding takes its own security's latest, not it.
+    const b = await holding('B');
+    await linkHolding(database, ws, { accountId: b.id, security: { ...bbca, ticker: 'BBRI', name: 'BBRI name' } });
+    const bbri = (await listSecurities(database, ws)).find((s) => s.ticker === 'BBRI')!;
+    await upsertSecurityPrice(database, ws, { securityId: bbri.id, onDate: '2026-09-21', priceMicro: 4_000_000_000 });
+    // I3: the unlink changes where the price comes from, never the ledger.
+    const before = await ledger();
+    const valueBefore = await valueOf(a.id);
     await linkHolding(database, ws, { accountId: a.id, security: null });
     expect(await listPrices(database, ws, a.id)).toEqual([{ onDate: '2026-09-19', priceMicro: 9_775_000_000 }]);
+    expect(await ledger()).toEqual(before);
+    expect(before.positions[a.id]).toMatchObject({ unitsMicro: 300_000_000, costMinor: 2_625_000 });
+    expect(before.integrity).toEqual([]);
+    expect(await valueOf(a.id)).toBe(valueBefore); // 300 × 9.775 either way
+    expect(valueBefore).toBe(2_932_500);
     // The security keeps its whole series for every other holding of it.
     expect(await listSecurityPrices(database, ws, security!.id)).toHaveLength(3);
   });
@@ -205,13 +231,23 @@ describe('linkHolding', () => {
 
   it('re-points a holding to another security with no stale own price to bring back (m12)', async () => {
     const a = await holding('A');
+    await recordTrade(database, ws, { accountId: a.id, kind: 'buy', occurredOn: '2026-01-05', unitsMicro: 300_000_000, grossMinor: 2_625_000, feeMinor: 0, taxMinor: 0, cashAccountId: bank.id });
     await upsertPrice(database, ws, { accountId: a.id, onDate: '2026-01-05', priceMicro: 8_750_000_000 });
+    const before = await ledger();
     await linkHolding(database, ws, { accountId: a.id, security: bbca });
-    await linkHolding(database, ws, { accountId: a.id, security: { ...bbca, ticker: 'BBRI', name: 'BBRI name' } });
+    // I3: linking moves the price source, never the ledger.
+    expect(await ledger()).toEqual(before);
+    expect((await getAssetProfile(database, ws, a.id))!.lotSize).toBe(100);
+    await linkHolding(database, ws, { accountId: a.id, security: { ...bbca, ticker: 'BBRI', name: 'BBRI name', lotSize: 500 } });
     const bbri = (await listSecurities(database, ws)).find((s) => s.ticker === 'BBRI')!;
     // Priced by BBRI alone: BBCA's series stays BBCA's, and the holding's old row was removed on the first link.
     expect(await listSecurityPrices(database, ws, bbri.id)).toEqual([]);
     expect(await listPrices(database, ws, a.id)).toEqual([]);
+    // I5: the re-point takes BBRI's lot size, so lots typed later count BBRI's shares, not BBCA's.
+    expect((await getAssetProfile(database, ws, a.id))!.lotSize).toBe(500);
+    // I3: nor does the re-point touch the ledger.
+    expect(await ledger()).toEqual(before);
+    expect(before.positions[a.id]).toMatchObject({ unitsMicro: 300_000_000, costMinor: 2_625_000 });
   });
 
   it('refuses a broker the owner closed (m10)', async () => {
