@@ -22,7 +22,7 @@ import type { Database, Db } from '../database';
 import { goalCalculators } from '../schema-budget';
 import { goalStages, goals as goalsTable } from '../schema-goals';
 import { goalStageTerms } from '../schema-health';
-import { GoalDbError, type SaveGoalStageInput, saveGoalTx } from './goals';
+import { GoalDbError, type GoalRow, listGoals, type SaveGoalStageInput, saveGoalTx } from './goals';
 import { healthTablesExist } from './health-tables';
 
 /**
@@ -298,4 +298,72 @@ export async function listGoalCalculators(database: Database, ws: WorkspaceConte
     computedMinor: row.computedMinor,
     computedAt: row.computedAt,
   }));
+}
+
+const stageFigure = (stage: { targetMinor: number | null; targetMonths: number | null; dueOn: string; returnBps?: number | null }, withReturns: boolean) =>
+  `${stage.dueOn}|${stage.targetMinor}|${stage.targetMonths}|${withReturns ? (stage.returnBps ?? null) : ''}`;
+
+/**
+ * Same growth, return, stages and stage returns. Stages are compared as a set of figures, never by position: the goal
+ * lists them by date and sort, the working by level, and two levels can start on the same day. A stage the working no
+ * longer asks for but that is kept anyway — paid, or drawn against — is no difference: a re-work would keep it too.
+ * Without 0053 a stage has nowhere to keep a return, so returns are not compared.
+ */
+function sameFigures(goal: GoalRow, derived: Derived, drawn: Set<string>, withReturns: boolean): boolean {
+  if (goal.growthBps !== derived.growthBps) return false;
+  if (derived.returnBps !== null && goal.returnBps !== derived.returnBps) return false;
+  const left = goal.stages.map((stage) => ({ figure: stageFigure(stage, withReturns), kept: stage.paidOn !== null || drawn.has(stage.id) }));
+  for (const stage of derived.stages) {
+    const at = left.findIndex((candidate) => candidate.figure === stageFigure(stage, withReturns));
+    if (at < 0) return false;
+    left.splice(at, 1);
+  }
+  return left.every((stage) => stage.kept);
+}
+
+/**
+ * Works every goal worked out before today's-money stages out again, silently, and only when the figure changes: a v1
+ * working is dated from its own computed_at, so the day it was worked out stays the day it was worked out. And (Part 2
+ * Q1) a v2 education working is re-read from today, so a level whose return was never typed follows its band as its
+ * start draws near; its dates are years or ages, so `today` moves only those returns. Retirement and emergency v2 are
+ * left alone: their dates count from the day they were worked out. A goal typed by hand has no calculator row, so is
+ * never visited. Each goal is written in its own transaction, keeping its computed_at. Returns the goals that changed.
+ */
+export async function upgradeCalculatorGoals(database: Database, ws: WorkspaceContext, today: string): Promise<string[]> {
+  const isV2 = (row: GoalCalculatorRow) => (row.inputs as { version?: number }).version === 2;
+  const rows = (await listGoalCalculators(database, ws)).filter((row) => !isV2(row) || row.kind === 'education');
+  if (rows.length === 0) return [];
+  const goals = await listGoals(database, ws, { includeArchived: true });
+  const changed: string[] = [];
+  for (const row of rows) {
+    const goal = goals.find((candidate) => candidate.id === row.goalId);
+    if (!goal) continue;
+    const workedOn = isV2(row) ? today : row.computedAt.slice(0, 10);
+    // A retirement worked out before kept the goal's own return; it stays the return while saving.
+    const inputs = row.kind === 'retirement' ? { ...(row.inputs as RetirementInputs), returnBeforeBps: goal.returnBps } : row.inputs;
+    let derived: Derived;
+    try {
+      derived = derive(row.kind, inputs, workedOn, goal.name);
+    } catch {
+      continue; // A working the rules now refuse is left exactly as it is, not half-rewritten.
+    }
+    const didChange = await database.transaction(async (tx) => {
+      if (sameFigures(goal, derived, await drawnStageIds(tx, goal.id), await healthTablesExist(tx))) {
+        // Nothing moves; the working is only stamped as read in today's money, so it is not visited again.
+        if (!isV2(row)) {
+          await tx
+            .update(goalCalculators)
+            .set({ inputsJson: JSON.stringify(derived.inputs) })
+            .where(and(eq(goalCalculators.goalId, goal.id), eq(goalCalculators.workspaceId, ws.workspaceId)));
+        }
+        return false;
+      }
+      const [goalRow] = await tx.select().from(goalsTable).where(and(eq(goalsTable.id, goal.id), eq(goalsTable.workspaceId, ws.workspaceId)));
+      // Keeps its computed_at: the working is re-stated, not redone on a new day.
+      await writeCalculatorTx(tx, ws, goalRow!, row.kind, derived, row.computedAt);
+      return true;
+    });
+    if (didChange) changed.push(goal.id);
+  }
+  return changed;
 }
