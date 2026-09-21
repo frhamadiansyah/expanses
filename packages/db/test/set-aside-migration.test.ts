@@ -18,12 +18,28 @@ describe('migration 0050', () => {
     executor = createNodeExecutor();
     const older = createDatabase(executor);
     await migrate(older, MIGRATIONS.filter((m) => m.version <= 49));
-    // A negative answer is not remembered, so the same handle sees the table once migrate has run.
+    // A negative answer is not remembered, so the same handle sees the table once migrate has run. Called twice:
+    // a broken cache that remembers the negative would only show on a second pre-migration call.
+    expect(await setAsideTablesExist(older.db)).toBe(false);
     expect(await setAsideTablesExist(older.db)).toBe(false);
 
-    expect(await migrate(older)).toEqual([50]);
+    expect(await migrate(older)).toEqual(MIGRATIONS.map((m) => m.version).filter((v) => v > 49));
     expect(await setAsideTablesExist(older.db)).toBe(true);
     expect(await older.db.values(sql`SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name IN ('goal_draws_account', 'goal_draws_transaction')`)).toEqual([[2]]);
+  });
+
+  it('adds no column to any existing table', async () => {
+    executor = createNodeExecutor();
+    const older = createDatabase(executor);
+    await migrate(older, MIGRATIONS.filter((m) => m.version <= 49));
+    const tables = ['transactions', 'entries', 'accounts', 'goal_earmarks', 'goals', 'goal_stages'];
+    const columnsOf = async (table: string) => older.db.values(sql.raw(`PRAGMA table_info(${table})`));
+    const before = await Promise.all(tables.map(columnsOf));
+
+    await migrate(older);
+
+    const after = await Promise.all(tables.map(columnsOf));
+    expect(after).toEqual(before);
   });
 
   it('applies after migrations numbered above it, since the runner is set-based', async () => {
