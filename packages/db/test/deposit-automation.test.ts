@@ -1,5 +1,5 @@
 import { transferLines } from '@expanses/core';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   archiveAccount,
@@ -339,6 +339,20 @@ describe('voiding what an event posted reopens it', () => {
     });
   });
 
+  it('a roll-over at a new rate and term: voiding it restores the rate, the term and its start as they were', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId));
+    // The first roll-over starts a stored term (1 month, 4,25%); the second changes both, and is the one voided.
+    await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15', { newTermMonths: 1 }));
+    const second = await confirmDepositEvent(database, ws, asProposed(await next('2026-11-15'), '2026-11-15', { newRateBps: 510, newTermMonths: 6 }));
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2027-05-15', rateBps: 510 });
+    await voidTransaction(database, ws, second.interestTransactionId!);
+    expect(await getDepositTerms(database, ws, depositoId)).toMatchObject({ maturesOn: '2026-11-15', rateBps: 425 });
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ termMonths: 1, termStartedOn: '2026-10-15' });
+    // The same maturity again, over the same 31 days at the old rate: 50 000 000 × 4,25% × 31 / 365 = 180 479 (floored).
+    expect(await next('2026-11-15')).toMatchObject({ event: { kind: 'maturity', dueOn: '2026-11-15', periodFrom: '2026-10-15', days: 31 }, rateBps: 425, grossMinor: 180_479 });
+    expect(await logged()).toHaveLength(1);
+  });
+
   it('a close: its other posting is voided with it, the deposit reopens with automation on, and the maturity returns', async () => {
     await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close' }));
     const result = await confirmDepositEvent(database, ws, asProposed(await next('2026-10-15'), '2026-10-15'));
@@ -350,6 +364,8 @@ describe('voiding what an event posted reopens it', () => {
     expect(balances[depositoId]).toBe(50_000_000);
     expect((await listAccounts(database, ws)).map((a) => a.id)).toContain(depositoId);
     expect((await getDepositAutomation(database, ws, depositoId)).enabled).toBe(true);
+    // Un-archived through the accounts repo, so the audit has it.
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${depositoId} AND action LIKE '%archive' ORDER BY id`)).toEqual([['archive'], ['unarchive']]);
     expect(await next('2026-10-15')).toMatchObject({ event: { kind: 'maturity', dueOn: '2026-10-15' }, principalMinor: 50_000_000, grossMinor: 535_616 });
   });
 

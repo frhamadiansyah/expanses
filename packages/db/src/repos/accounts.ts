@@ -188,6 +188,21 @@ export async function archiveAccountTx(tx: Db, ws: WorkspaceContext, id: string)
   await writeAudit(tx, ws, 'archive', id, {});
 }
 
+/**
+ * The reverse of `archiveAccountTx`, inside a running transaction: the account is live again, and the audit says so.
+ * Used when what archived it is taken back (a deposit's close, reopened by voiding what it posted).
+ */
+export async function unarchiveAccountTx(tx: Db, ws: WorkspaceContext, id: string): Promise<void> {
+  const [account] = await tx
+    .select({ id: accounts.id, archivedAt: accounts.archivedAt })
+    .from(accounts)
+    .where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+  if (!account) throw new AccountError('Account not found');
+  if (account.archivedAt === null) return;
+  await tx.update(accounts).set({ archivedAt: null }).where(eq(accounts.id, id));
+  await writeAudit(tx, ws, 'unarchive', id, {});
+}
+
 export async function archiveAccount(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
   await database.transaction((tx) => archiveAccountTx(tx, ws, id));
 }

@@ -1,4 +1,4 @@
-import { type IncomeHolding, type IncomeRow, investmentIncomeFor } from '@expanses/core';
+import { type IncomeHolding, type IncomeRow, type IncomeTreatment, investmentIncomeFor } from '@expanses/core';
 import { and, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
@@ -8,6 +8,15 @@ import { AssetError, assertAccountInWorkspace } from './assets';
 import { listAssetProfiles } from './assets';
 import { depositIncomePayments } from './deposit-automation';
 import { listTrades } from './trades';
+
+/**
+ * How a holding's income is taxed: what the owner set, or, for a time deposit nobody set, final. A deposit's interest
+ * has the one treatment (withheld at source as final), so leaving it unset would only push it into "Not set". Every
+ * other holding stays unset until the owner says: the report never guesses where there is a real choice.
+ */
+export function taxTreatmentOf(set: IncomeTreatment | null | undefined, subtype: string | undefined): IncomeTreatment | null {
+  return set ?? (subtype === 'time_deposit' ? 'final' : null);
+}
 
 /**
  * What each holding paid in a year, and what was withheld.
@@ -33,8 +42,8 @@ export async function incomeInputsFor(database: Database, ws: WorkspaceContext, 
       name: account?.name ?? profile.accountId,
       assetKind: profile.assetKind,
       currency: account?.currency ?? ws.baseCurrency,
-      // Null until the owner says how this holding's income is taxed; the report never guesses.
-      treatment: profile.taxTreatment,
+      // As the owner set it; a deposit nobody set reads final, anything else stays unset.
+      treatment: taxTreatmentOf(profile.taxTreatment, account?.subtype),
     };
   });
 

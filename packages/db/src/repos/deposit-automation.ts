@@ -408,6 +408,10 @@ export async function confirmDepositEvent(database: Database, ws: WorkspaceConte
       interestTransactionId,
       principalTransactionId,
       recordedByHand: byHand ? 1 : 0,
+      // What the roll-over replaced, so a reopen can put it back.
+      priorRateBps: rolling ? terms.rateBps : null,
+      priorTermMonths: rolling ? settings.termMonths : null,
+      priorTermStartedOn: rolling ? settings.termStartedOn : null,
       confirmedAt: now,
     });
 

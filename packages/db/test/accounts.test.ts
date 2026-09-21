@@ -1,4 +1,5 @@
 import { expenseLines } from '@expanses/core';
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   AccountError,
@@ -11,6 +12,7 @@ import {
   postTransaction,
   saveEarmark,
   saveGoal,
+  unarchiveAccountTx,
 } from '../src/index';
 import { setupDb } from './helpers';
 
@@ -80,6 +82,18 @@ describe('createAccount', () => {
     const visible = await listAccounts(database, ws);
     expect(visible.some((a) => a.id === wallet.id)).toBe(false);
     expect(visible.some((a) => a.id === equity.id)).toBe(true);
+  });
+});
+
+describe('unarchiving', () => {
+  it('brings an archived account back, audits it, and refuses one from another workspace', async () => {
+    const { database, ws } = await setupDb();
+    const wallet = await createAccount(database, ws, { name: 'Wallet', kind: 'asset', subtype: 'cash', currency: 'IDR' });
+    await archiveAccount(database, ws, wallet.id);
+    await database.transaction((tx) => unarchiveAccountTx(tx, ws, wallet.id));
+    expect((await listAccounts(database, ws)).some((a) => a.id === wallet.id)).toBe(true);
+    expect(await database.db.values(sql`SELECT action FROM audit_log WHERE entity_id = ${wallet.id} AND action LIKE '%archive' ORDER BY id`)).toEqual([['archive'], ['unarchive']]);
+    await expect(database.transaction((tx) => unarchiveAccountTx(tx, { ...ws, workspaceId: 'elsewhere' }, wallet.id))).rejects.toThrow(AccountError);
   });
 });
 

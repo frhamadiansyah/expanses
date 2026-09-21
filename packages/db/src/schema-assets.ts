@@ -117,5 +117,9 @@ export const depositEvents = sqliteTable('deposit_events', {
   interestTransactionId: text('interest_transaction_id'),
   principalTransactionId: text('principal_transaction_id'),
   recordedByHand: integer('recorded_by_hand').notNull(),
+  /** A roll-over's rate, term length and stored term start before its confirm; put back when the event is reopened. */
+  priorRateBps: integer('prior_rate_bps'),
+  priorTermMonths: integer('prior_term_months'),
+  priorTermStartedOn: text('prior_term_started_on'),
   confirmedAt: text('confirmed_at').notNull(),
 });

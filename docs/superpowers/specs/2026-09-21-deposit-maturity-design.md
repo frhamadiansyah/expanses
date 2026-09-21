@@ -308,9 +308,18 @@ asks for the manual rate row (`checkManualRate`, then `upsertRate`). The rate is
 After confirming, every query is invalidated. The next waiting event, if any, is proposed straight away. After
 *Don't roll over*, the page navigates to `/net-worth/assets`.
 
-A confirmed event is final in the log. If the posted transaction is later deleted in the transaction list, the
-event is **not** proposed again. The log says it was handled, and the owner corrects the ledger as with any other
-transaction.
+**Voiding an event's posted transaction reopens the event; editing it keeps it.** Every void goes through
+`voidTransactionTx`, which removes the event's log row in the same database transaction. The proposal comes back
+as it was, and the tax report drops the event (§6.6):
+
+- a roll-over's new term is taken back: the maturity returns to the due day, and the rate, the term's length and
+  its stored start return to what the confirm replaced (0054 logs them as `prior_rate_bps`, `prior_term_months`,
+  `prior_term_started_on`). This happens only while nothing later is logged on that deposit;
+- a close is reopened whole: voiding either its interest or its principal transfer voids the other too, the
+  deposit is un-archived (`unarchiveAccountTx`, audited) and its automation is switched back on.
+
+An edit (void and replace as one step) keeps the event done; the log follows the replacement and takes its gross,
+tax and principal. A hand-recorded event posted nothing, so no void reaches it.
 
 ### 6.5 Recorded it myself
 
@@ -343,12 +352,14 @@ join it **through the same reader**:
 - A `cash` holding's payment is named **interest** (`IncomeKind` gains `'interest'`), so the row reads "BCA
   Deposito · interest". This is the bunga deposito line.
 - The band is the deposit's own **How its income is taxed** (its asset profile's `taxTreatment`), set on the
-  deposit's page like any holding's. It stays "Not set" until the owner says, because the report never guesses.
+  deposit's page like any holding's. A time deposit nobody set reads **final** (`taxTreatmentOf`): its interest has
+  that one treatment, and the tax report is the one surface allowed to know it. Any other holding stays "Not set"
+  until the owner says.
 - Events recorded by hand are included with the figures the owner confirmed. The year is the due day's year.
 - A deposit in another currency is `foreign`, as a foreign holding is: listed in its own money and left out of
   the withheld total.
-- A logged event stays in the report even if its transaction is later deleted (§6.4). The log, not the ledger, is
-  what the report reads.
+- Voiding an event's posted transaction reopens it, so it leaves the report; editing it keeps it, with the edited
+  gross and tax (§6.4). The log, not the ledger, is what the report reads.
 
 ## 7. The due marker (Net worth → Assets)
 
@@ -394,6 +405,10 @@ CREATE TABLE deposit_events (
   interest_transaction_id TEXT,
   principal_transaction_id TEXT,
   recorded_by_hand INTEGER NOT NULL DEFAULT 0 CHECK (recorded_by_hand IN (0, 1)),
+  -- a roll-over's terms before its confirm, restored when the event is reopened (§6.4); NULL otherwise
+  prior_rate_bps INTEGER,
+  prior_term_months INTEGER CHECK (prior_term_months IS NULL OR prior_term_months IN (1, 3, 6, 12)),
+  prior_term_started_on TEXT,
   confirmed_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX deposit_events_once ON deposit_events (account_id, kind, due_on);
@@ -491,7 +506,8 @@ kit tokens (`--ph-tint` for the check glyph), so dark mode follows without any l
 8. Tax is a per-deposit percentage (default 20) plus a tax-free switch, with no country gate (§5.3).
 9. The three choices are kit rows with a check glyph, not radios. The settings row is labelled "Term" rather
    than the mockup's "New term", because it also dates the current term's payouts.
-10. A confirmed event stays confirmed even if its transaction is later deleted.
+10. Voiding an event's posted transaction reopens it: the proposal returns and the tax report drops it (§6.4).
+    Editing the transaction keeps the event, with the edited figures.
 11. **Recorded it myself** logs the event with the card's figures and `recorded_by_hand = 1`, posts nothing, and
     still rolls the term over or tries the archive (decision 3; §6.5).
 12. The tax report's final-income section reads the log through `investmentIncomeFor`, and a `cash` holding's

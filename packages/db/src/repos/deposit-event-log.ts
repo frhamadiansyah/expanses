@@ -3,6 +3,9 @@ import type { WorkspaceContext } from '../context';
 import type { Db } from '../database';
 import { accounts, entries } from '../schema';
 import { depositAutomation, depositEvents, depositTerms } from '../schema-assets';
+// accounts.ts reaches the ledger, which calls in here: a cycle of function calls only, resolved long before any runs.
+import { unarchiveAccountTx } from './accounts';
+import { saveDepositTermsTx } from './deposit-terms';
 
 /**
  * The confirmed-event log's side of the ledger's void and edit. A leaf: the ledger calls in here, and nothing here
@@ -57,9 +60,13 @@ export async function reopenDepositEventTx(tx: Db, ws: WorkspaceContext, transac
       .from(depositEvents)
       .where(and(eq(depositEvents.accountId, event.accountId), gt(depositEvents.dueOn, event.dueOn)));
     if (!later && settings?.termStartedOn === event.dueOn) {
-      await tx.update(depositTerms).set({ maturesOn: event.dueOn }).where(eq(depositTerms.accountId, event.accountId));
-      // With no stored start, the term is dated back from the maturity by its length.
-      await tx.update(depositAutomation).set({ termStartedOn: null, updatedAt: now }).where(eq(depositAutomation.accountId, event.accountId));
+      // The rate, the term's length and its start go back to what the confirm replaced (logged with the event).
+      const [terms] = await tx.select({ rateBps: depositTerms.rateBps }).from(depositTerms).where(eq(depositTerms.accountId, event.accountId));
+      await saveDepositTermsTx(tx, ws, { accountId: event.accountId, maturesOn: event.dueOn, rateBps: event.priorRateBps ?? terms?.rateBps ?? 0 });
+      await tx
+        .update(depositAutomation)
+        .set({ termMonths: event.priorTermMonths ?? settings.termMonths, termStartedOn: event.priorTermStartedOn, updatedAt: now })
+        .where(eq(depositAutomation.accountId, event.accountId));
     }
     return [];
   }
@@ -69,10 +76,7 @@ export async function reopenDepositEventTx(tx: Db, ws: WorkspaceContext, transac
     .update(depositAutomation)
     .set({ enabled: 1, enabledOn: settings?.enabledOn ?? event.dueOn, updatedAt: now })
     .where(eq(depositAutomation.accountId, event.accountId));
-  await tx
-    .update(accounts)
-    .set({ archivedAt: null })
-    .where(and(eq(accounts.id, event.accountId), eq(accounts.workspaceId, ws.workspaceId)));
+  await unarchiveAccountTx(tx, ws, event.accountId);
   return [event.interestTransactionId, event.principalTransactionId].filter((id): id is string => id !== null && id !== transactionId);
 }
 

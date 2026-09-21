@@ -37,6 +37,12 @@ CREATE TABLE deposit_events (
   principal_transaction_id TEXT,
   /* 1 when the owner said "Recorded it myself": nothing was posted, and the figures are the ones on the card. */
   recorded_by_hand INTEGER NOT NULL DEFAULT 0 CHECK (recorded_by_hand IN (0, 1)),
+  /* A roll-over's terms before its confirm replaced them: the rate, the term's length and its stored start. Voiding
+     what the event posted reopens it and puts these back, so the returning proposal is the one that was confirmed.
+     NULL on every event that does not roll over. */
+  prior_rate_bps INTEGER,
+  prior_term_months INTEGER CHECK (prior_term_months IS NULL OR prior_term_months IN (1, 3, 6, 12)),
+  prior_term_started_on TEXT,
   confirmed_at TEXT NOT NULL
 );
 /* One confirmation per event: a second confirm fails here and rolls its whole transaction back. */

@@ -202,13 +202,21 @@ describe('deposit interest from the confirmed-event log', () => {
     ]);
   });
 
-  it('counts an event recorded by hand, sets nothing it was not told, and keeps each year to its own', async () => {
+  it('counts an event recorded by hand, reads a deposit nobody set as final, and keeps each year to its own', async () => {
     const { database, ws, dep, confirm } = await deposit('IDR');
     await confirm(true, '2026-10-15');
     // The second term: 15 Oct 2026 → 15 Jan 2027, 92 days again, due in 2027.
     await confirm(false, '2027-01-15');
-    expect((await incomeInputsFor(database, ws, 2026)).find((row) => row.accountId === dep.id)).toMatchObject({ grossMinor: 535_616, taxMinor: 107_123, treatment: null });
+    // A time deposit's interest has one treatment, so an unset deposit reads final; a bond nobody set still reads unset.
+    expect((await incomeInputsFor(database, ws, 2026)).find((row) => row.accountId === dep.id)).toMatchObject({ grossMinor: 535_616, taxMinor: 107_123, treatment: 'final' });
     expect((await incomeInputsFor(database, ws, 2027)).find((row) => row.accountId === dep.id)).toMatchObject({ grossMinor: 535_616, taxMinor: 107_123 });
+  });
+
+  it('keeps a treatment the owner set on a deposit over the default', async () => {
+    const { database, ws, dep, confirm } = await deposit('IDR');
+    await setAssetReporting(database, ws, dep.id, { taxTreatment: 'ordinary' });
+    await confirm(false, '2026-10-15');
+    expect((await incomeInputsFor(database, ws, 2026)).find((row) => row.accountId === dep.id)).toMatchObject({ grossMinor: 535_616, treatment: 'ordinary' });
   });
 
   it('marks a deposit in another currency as held abroad, in its own minor units', async () => {

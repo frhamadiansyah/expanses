@@ -1,5 +1,5 @@
 import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
-import { archiveAccount } from '@expanses/db';
+import { archiveAccount, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -194,7 +194,8 @@ export function AssetDetailPage() {
           coretaxCode={profile.data?.coretaxCode ?? null}
           // What the thing is, for the codes two items share: a saving account must not read back as a current one.
           itemId={account?.subtype}
-          taxTreatment={profile.data?.taxTreatment ?? null}
+          // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
+          taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
         />
       )}
 
