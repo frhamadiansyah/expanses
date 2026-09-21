@@ -20,7 +20,7 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { assetProfiles, prices, valuations } from '../schema-assets';
-import { BALANCE_SUBTYPES } from './accounts';
+import { BALANCE_SUBTYPES, pocketParentIds } from './accounts';
 import { installmentTotals } from './installments';
 import { nativeBalances } from './ledger';
 import { scheduleFor } from './loans';
@@ -65,9 +65,12 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
   const rows = await database.db
     .select()
     .from(accounts)
-    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'asset'), isNull(accounts.archivedAt)))
+    .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.kind, 'asset')))
     .orderBy(asc(accounts.sortOrder), asc(accounts.name));
-  const assetsAccounts = rows.filter((row) => assetSubtypes.includes(row.subtype));
+  // A pocket parent holds nothing, so it is no asset: net worth, the tax report, idle cash and goals all read here.
+  // Archived rows are read too, so a parent whose pockets are all archived is still recognised.
+  const parents = pocketParentIds(rows);
+  const assetsAccounts = rows.filter((row) => row.archivedAt === null && assetSubtypes.includes(row.subtype) && !parents.has(row.id));
   if (assetsAccounts.length === 0) return [];
 
   const profiles = await database.db.select().from(assetProfiles).where(eq(assetProfiles.workspaceId, ws.workspaceId));

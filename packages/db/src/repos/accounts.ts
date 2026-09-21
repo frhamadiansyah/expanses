@@ -191,7 +191,20 @@ export async function renameAccount(database: Database, ws: WorkspaceContext, id
   const trimmed = name.trim();
   if (!trimmed) throw new AccountError('Name is required');
   await database.transaction(async (tx) => {
+    const [before] = await tx.select({ name: accounts.name }).from(accounts).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
     await tx.update(accounts).set({ name: trimmed }).where(and(eq(accounts.id, id), eq(accounts.workspaceId, ws.workspaceId)));
+    if (before) {
+      // Pockets still named after the account follow it; one the owner renamed keeps its own name.
+      const pockets = await tx
+        .select({ id: accounts.id, name: accounts.name, currency: accounts.currency })
+        .from(accounts)
+        .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), eq(accounts.kind, 'asset')));
+      for (const pocket of pockets) {
+        if (pocket.currency && pocket.name === pocketName(before.name, pocket.currency)) {
+          await tx.update(accounts).set({ name: pocketName(trimmed, pocket.currency) }).where(eq(accounts.id, pocket.id));
+        }
+      }
+    }
     await writeAudit(tx, ws, 'rename', id, { name: trimmed });
   });
 }
@@ -205,6 +218,16 @@ export async function archiveAccount(database: Database, ws: WorkspaceContext, i
     if (!account) throw new AccountError('Account not found');
     // Default categories carry keys too; only the system equity accounts are protected.
     if (SYSTEM_ACCOUNTS.some((s) => s.key === account.systemKey)) throw new AccountError('System accounts cannot be archived');
+    if (account.kind === 'asset') {
+      const open = await tx
+        .select({ currency: accounts.currency })
+        .from(accounts)
+        .where(and(eq(accounts.workspaceId, ws.workspaceId), eq(accounts.parentId, id), isNull(accounts.archivedAt)))
+        .orderBy(asc(accounts.sortOrder), asc(accounts.id));
+      if (open.length > 0) {
+        throw new AccountError(`${account.name} still has pockets: ${open.map((row) => row.currency).join(', ')}. Archive each pocket first.`);
+      }
+    }
     if (account.kind === 'asset' || account.kind === 'liability') {
       // Archived money accounts leave net worth, so they must be empty first.
       const [row] = await tx

@@ -1,15 +1,26 @@
+import { exchangeCost, exchangeLines, transferLines } from '@expanses/core';
+import { and, eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   addPocket,
+  archiveAccount,
+  assetValuesAt,
+  coretaxInputsFor,
   type Database,
   getAssetProfile,
   listAccounts,
   nativeBalances,
+  netWorthAt,
   openCashAccount,
   openingsOf,
   openPocketedAccount,
+  periodFlows,
   pocketName,
   pocketParentIds,
+  postTransaction,
+  renameAccount,
+  schema,
+  systemAccountId,
   type WorkspaceContext,
 } from '../src/index';
 import { setupDb } from './helpers';
@@ -116,5 +127,105 @@ describe('names', () => {
       { id: 'dining', parentId: 'food', kind: 'expense' },
     ] as const;
     expect(pocketParentIds(rows)).toEqual(new Set(['p']));
+  });
+});
+
+
+describe('the parent holds no money', () => {
+  it('refuses any posting that touches it, before writing anything', async () => {
+    const { parent, pockets } = await valas();
+    const txCount = async () => (await database.db.select().from(schema.transactions)).length;
+    const before = await txCount();
+    await expect(
+      postTransaction(database, ws, { occurredOn: '2026-09-21', description: 'Into the parent', lines: transferLines({ fromAccountId: pockets[2]!.id, toAccountId: parent.id, amountMinor: 1_000, currency: 'IDR' }) }),
+    ).rejects.toMatchObject({ code: 'POCKET_PARENT', message: 'BCA Pocket Valas holds no money of its own. Choose one of its pockets.' });
+    expect(await txCount()).toBe(before);
+  });
+
+  it('is archived only after its pockets', async () => {
+    const { parent } = await valas();
+    await expect(archiveAccount(database, ws, parent.id)).rejects.toThrow('BCA Pocket Valas still has pockets: USD, SGD, IDR. Archive each pocket first.');
+  });
+
+  it('renames the pockets still named after it, and leaves a renamed pocket alone', async () => {
+    const { parent, pockets } = await valas();
+    await renameAccount(database, ws, pockets[1]!.id, 'My Singapore money');
+    await renameAccount(database, ws, parent.id, 'OCBC Multi');
+    const names = new Map((await listAccounts(database, ws)).map((a) => [a.id, a.name]));
+    expect([names.get(parent.id), names.get(pockets[0]!.id), names.get(pockets[1]!.id), names.get(pockets[2]!.id)]).toEqual([
+      'OCBC Multi',
+      'OCBC Multi · USD',
+      'My Singapore money',
+      'OCBC Multi · IDR',
+    ]);
+  });
+});
+
+describe('what the parent is worth to every reader', () => {
+  it('is nothing: net worth and the asset list see each pocket once and the parent never', async () => {
+    const { parent, pockets } = await valas();
+    const values = await assetValuesAt(database, ws, '2026-09-21');
+    // THE assertion that fails before Step 5: today the parent is returned as a 0-valued row, which idle cash and
+    // goal funding would list. The net-worth and daftar-harta checks below pass today too (a parent holds 0, and
+    // the kas table skips a balance ≤ 0); they guard the figures, they do not prove the filter.
+    expect(values.some((row) => row.accountId === parent.id)).toBe(false);
+    // Rows come in (sort_order, name) order; the pockets' sort_order 0,1,2 is what makes this USD, SGD, IDR — by name
+    // alone it would be IDR, SGD, USD.
+    expect(values.filter((row) => pockets.some((p) => p.id === row.accountId)).map((row) => [row.currency, row.valueMinor])).toEqual([
+      ['USD', 240_000],
+      ['SGD', 115_000],
+      ['IDR', 5_400_000],
+    ]);
+    // The mockup's total, at the mockup's rates — not the opening rates, and not the parent counted on top.
+    expect((await netWorthAt(database, ws, '2026-09-21', { USD: 16_250, SGD: 12_680 })).assetsMinor).toBe(58_982_000);
+  });
+
+  it('puts one kas row per pocket on daftar harta, and none for the parent', async () => {
+    const { parent, pockets } = await valas();
+    const inputs = await coretaxInputsFor(database, ws, 2026);
+    expect(inputs.cash.some((row) => row.accountId === parent.id)).toBe(false);
+    expect(inputs.cash.map((row) => [row.accountId, row.name, row.code, row.currency, row.balanceMinor])).toEqual([
+      [pockets[0]!.id, 'BCA Pocket Valas · USD', '0102', 'USD', 240_000],
+      [pockets[1]!.id, 'BCA Pocket Valas · SGD', '0102', 'SGD', 115_000],
+      [pockets[2]!.id, 'BCA Pocket Valas · IDR', '0102', 'IDR', 5_400_000],
+    ]);
+  });
+});
+
+describe('a move between pockets', () => {
+  const moveUsdToSgd = async () => {
+    const { pockets } = await valas();
+    const exchangeId = await systemAccountId(database.db, ws, 'currency_exchange');
+    const id = await postTransaction(database, ws, {
+      occurredOn: '2026-09-21',
+      description: 'BCA Pocket Valas: USD → SGD',
+      lines: exchangeLines({ fromAccountId: pockets[0]!.id, fromAmountMinor: 50_000, fromCurrency: 'USD', toAccountId: pockets[1]!.id, toAmountMinor: 63_800, toCurrency: 'SGD', exchangeAccountId: exchangeId }),
+      ratesToBase: { USD: 16_250, SGD: 12_680 },
+    });
+    return { pockets, exchangeId, id };
+  };
+
+  it('records the bank’s spread on the Currency exchange account, to the rupiah the screen showed', async () => {
+    const { exchangeId, id } = await moveUsdToSgd();
+    const legs = await database.db
+      .select({ base: schema.entries.amountBaseMinor })
+      .from(schema.entries)
+      .where(and(eq(schema.entries.transactionId, id), eq(schema.entries.accountId, exchangeId)));
+    const recorded = legs.reduce((sum, leg) => sum + leg.base, 0);
+    const shown = exchangeCost({ fromMinor: 50_000, fromCurrency: 'USD', toMinor: 63_800, toCurrency: 'SGD', baseCurrency: 'IDR', ratesToBase: { USD: 16_250, SGD: 12_680 } })!;
+    expect(recorded).toBe(shown.costMinor);
+    expect(recorded).toBe(35_160);
+  });
+
+  it('moves the pockets’ own balances, each in its own currency', async () => {
+    const { pockets } = await moveUsdToSgd();
+    const balances = await nativeBalances(database, ws);
+    expect([balances[pockets[0]!.id], balances[pockets[1]!.id]]).toEqual([190_000, 178_800]);
+  });
+
+  it('reaches neither income nor spending, and lowers put-away by exactly the spread (today’s rule, pinned)', async () => {
+    await moveUsdToSgd();
+    const flows = await periodFlows(database, ws, { from: '2026-09-01', to: '2026-09-30' });
+    expect([flows.incomeMinor, flows.spendingMinor, flows.putAwayMinor]).toEqual([0, 0, -35_160]);
   });
 });
