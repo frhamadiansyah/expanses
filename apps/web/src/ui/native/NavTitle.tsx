@@ -8,9 +8,12 @@ import { backLabel, type CornerAction, planCornerActions, titleSteps } from './t
 /**
  * Primitive 3: the large title, and the corner buttons beside it.
  *
- * 30 px / 800, the back destination named above it, and actions as circular 44 pt buttons — never a dark
+ * 30 px / 600, the back destination named above it, and actions as circular 44 pt buttons — never a dark
  * rectangle, never an underlined text link. The two things the app does today in place of this are exactly the
  * two things this refuses to draw.
+ *
+ * The weight is the one Cashflow's header has carried since before the kit: one title face across the app, and
+ * the screen most looked at is not the exception to it.
  */
 
 /**
@@ -189,7 +192,9 @@ export function LargeTitle({
           <h1
             title={oneLine ? title : undefined}
             className={cx(
-              'font-extrabold tracking-[-0.03em] text-[var(--ph-ink)] md:text-[24px] md:leading-[30px]',
+              // Semibold, the weight Cashflow's title has always carried: a page's name is not a figure, and the
+              // screen whose title people see most should not be the only one that draws it this way.
+              'font-semibold tracking-tight text-[var(--ph-ink)] md:text-[24px] md:leading-[30px]',
               steps ? 'text-[22px] leading-[36px]' : 'text-[30px] leading-[36px]',
               oneLine && 'truncate',
             )}

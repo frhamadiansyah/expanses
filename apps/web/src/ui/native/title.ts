@@ -62,9 +62,9 @@ export function backLabel(destination: string): string {
 }
 
 /**
- * How many characters a 30 px / 800 large title holds on one line of a 390 pt phone, gutters taken off.
+ * How many characters a 30 px large title holds on one line of a 390 pt phone, gutters taken off.
  *
- * Measured, not guessed: the 358 px column holds about twenty of the app's own letters at that weight.
+ * Measured, not guessed: the 358 px column holds about twenty of the app's own letters.
  */
 export const LARGE_TITLE_FITS = 20;
 
