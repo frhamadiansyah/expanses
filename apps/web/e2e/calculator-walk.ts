@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { openWorking } from './goals';
 import { addEducationGoal, stageLines, todayLines, typeInto } from './education-walk';
 
 /**
@@ -30,7 +31,7 @@ export async function neededAMonth(page: Page): Promise<number> {
 
 /** One level, 2032 to 2038, 45 jt once at entry and 20 jt every year. */
 export async function firstLevel(page: Page) {
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await page.getByRole('button', { name: 'Add a level' }).click();
   await typeInto(page, 'Starts in year', '2032');
   await typeInto(page, 'Until year', '2038');
@@ -57,7 +58,7 @@ export async function row5(page: Page) {
   const before = sum(await todayFigures(page));
   expect(before).toBe(165_000_000);
 
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await page.getByRole('button', { name: 'Add a level' }).click();
   await typeInto(page, 'Starts in year', '2038');
   await typeInto(page, 'Until year', '2041');

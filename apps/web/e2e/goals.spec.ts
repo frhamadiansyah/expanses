@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openGoalForm } from './goals';
+import { openGoalForm, openWorking, workingSettled } from './goals';
 import { goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
 
@@ -190,7 +190,7 @@ test('working a retirement goal out keeps the return its owner typed', async ({ 
   await expect(goalRow(page, 'Retirement')).toBeVisible();
 
   const retirement = await goalCard(page, 'Retirement');
-  await retirement.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await expect(page.getByLabel('Return while saving (%)')).toHaveValue('9');
   await page.getByLabel('Yearly spending in retirement (IDR)').fill('120000000');
   await page.getByLabel('Years until retirement').fill('20');
@@ -198,10 +198,11 @@ test('working a retirement goal out keeps the return its owner typed', async ({ 
   await page.getByRole('button', { name: 'Use this amount' }).click();
   await expect(page.getByText('Worked out from your figures')).toBeVisible();
 
-  await retirement.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await expect(page.getByLabel('Return while saving (%)')).toHaveValue('9');
   await page.getByRole('button', { name: 'Use this amount' }).click();
   await expect(page.getByText('Worked out from your figures')).toBeVisible();
+  await workingSettled(page);
   await retirement.getByRole('button', { name: 'Edit' }).click();
   await expect(page.getByLabel('Expected return a year (%)')).toHaveValue('9');
 });
@@ -215,7 +216,8 @@ test('works out a retirement target from your own figures', async ({ page }) => 
   await page.getByRole('button', { name: 'Add goal' }).last().click();
   await expect(goalRow(page, 'Retirement')).toBeVisible();
 
-  await (await goalCard(page, 'Retirement')).getByRole('button', { name: 'Work out the amount' }).click();
+  await goalCard(page, 'Retirement');
+  await openWorking(page);
   // Three rates, opening at the agreed figures: 3.5% inflation, 10% while saving, 5% while retired.
   await expect(page.getByLabel('Inflation a year (%)')).toHaveValue('3.5');
   await expect(page.getByLabel('Return while saving (%)')).toHaveValue('10');
@@ -229,7 +231,7 @@ test('works out a retirement target from your own figures', async ({ page }) => 
 
   await expect(page.getByText('Worked out from your figures')).toBeVisible();
   // The working reopens as it was saved.
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await expect(page.getByLabel('Yearly spending in retirement (IDR)')).toHaveValue('120000000');
   await expect(page.getByLabel('Return while retired (%)')).toHaveValue('8');
   await expect(page.getByLabel('Inflation a year (%)')).toHaveValue('5');
@@ -245,7 +247,7 @@ test('typing an amount by hand stops the goal being worked out', async ({ page }
   await expect(goalRow(page, 'Retirement')).toBeVisible();
 
   const retirement = await goalCard(page, 'Retirement');
-  await retirement.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await page.getByLabel('Yearly spending in retirement (IDR)').fill('120000000');
   await page.getByLabel('Years until retirement').fill('20');
   await page.getByLabel('Years in retirement').fill('20');
@@ -254,6 +256,7 @@ test('typing an amount by hand stops the goal being worked out', async ({ page }
   await page.getByRole('button', { name: 'Use this amount' }).click();
   await expect(page.getByText('Worked out from your figures')).toBeVisible();
 
+  await workingSettled(page);
   await retirement.getByRole('button', { name: 'Edit' }).click();
   await page.getByLabel(/Cost in today's money/).first().fill('3000000000');
   await page.getByRole('button', { name: 'Save goal' }).click();

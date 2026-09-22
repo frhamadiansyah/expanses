@@ -5,6 +5,7 @@ import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
+import { Calculator, calculatorKindOf } from './Calculator';
 import { GOAL_KIND_LABELS, GOAL_TEMPLATES, type GoalTemplate, prefilledReturnBps, roomFor, setAsideHint, templateDueOn, templateFor } from './goal-cards';
 import { useSetAsideViews } from './queries';
 
@@ -64,6 +65,8 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
   const [setAside, setSetAside] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // The working opens in place of the fields: the goal's own page one step in, and Cancel brings the fields back.
+  const [working, setWorking] = useState(false);
 
   const template = GOAL_TEMPLATES.find((row) => row.kind === kind);
   const savingsAccounts = moneyHolders(accounts.data ?? []).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
@@ -156,9 +159,23 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
     }
   }
 
+  // One page: the working replaces the fields while it is open, and Cancel hands them back with their edits.
+  if (working && goal) {
+    return <Calculator goal={goal} onDone={onDone} onCancel={() => setWorking(false)} />;
+  }
+
   return (
     <Card>
       <form onSubmit={submit} className="space-y-4">
+        {/* For the goals whose amount is worked out rather than typed: the working is part of editing them. */}
+        {goal && calculatorKindOf(kind) && (
+          <div className="space-y-1">
+            <Button type="button" variant="secondary" onClick={() => setWorking(true)}>
+              Work out the amount
+            </Button>
+            <p className="text-xs text-slate-500">The household, the levels or the retirement figures behind the amount. The goal follows the working.</p>
+          </div>
+        )}
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="What kind of goal" hint={template?.hint}>
             <Select value={kind} onChange={(e) => pickKind(e.target.value as GoalKind)} disabled={!!goal}>

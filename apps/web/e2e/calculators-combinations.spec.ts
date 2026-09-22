@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { figure, firstLevel, neededAMonth, planTotal, row1, row5, row8, todayFigures } from './calculator-walk';
 import { addEducationGoal, stageLines, typeInto } from './education-walk';
-import { openGoalForm } from './goals';
+import { openGoalForm, openWorking } from './goals';
 import { goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
 
@@ -31,7 +31,7 @@ test('row 1 — no birthday: 65 jt, then 20 jt five times, each due on 1 January
 
 test('row 2 — with a birthday: ages 6 to 12, the years on the birthday', async ({ page }) => {
   await addEducationGoal(page);
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await page.getByLabel('Birthday', { exact: true }).fill('2026-03-15');
   await page.getByRole('button', { name: 'Add a level' }).click();
   await typeInto(page, 'Starts at age', '6');
@@ -67,7 +67,7 @@ test('row 4 — a level’s return left to its band, then typed as 4,5, moves wh
   const banded = await neededAMonth(page);
   const total = await planTotal(page);
 
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await typeInto(page, 'Assumed return (%)', '4,5');
   await page.getByRole('button', { name: 'Use this amount' }).click();
   await expect.poll(() => neededAMonth(page)).not.toBe(banded);
@@ -75,7 +75,7 @@ test('row 4 — a level’s return left to its band, then typed as 4,5, moves wh
   expect(await neededAMonth(page)).toBeGreaterThan(banded);
   expect(await planTotal(page)).toBe(total);
   // And the typed return is what the working reopens on.
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await expect(page.getByLabel('Assumed return (%)', { exact: true })).toHaveValue('4.5');
 });
 
@@ -97,7 +97,7 @@ test('row 6 — money set aside before a level is added: the target rises, what 
   await expect(stageLines(page)).toHaveCount(6);
   const before = await planTotal(page);
 
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await page.getByRole('button', { name: 'Add a level' }).click();
   await typeInto(page, 'Starts in year', '2038');
   await typeInto(page, 'Until year', '2041');

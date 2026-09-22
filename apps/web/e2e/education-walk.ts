@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
-import { openGoalForm } from './goals';
+import { openGoalForm, openWorking } from './goals';
 import { goalCard } from './set-aside';
 
 /** Types a figure a key at a time into the last box with this label — the newest level's, when there are two. */
@@ -37,7 +37,7 @@ export function todayLines(page: Page, figure: string): Locator {
  */
 export async function twoLevelsWalk(page: Page) {
   await addEducationGoal(page);
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
 
   // Spec §10: monthly tuition stays out of the fund, and the editor says so.
   await expect(page.getByText('Monthly fees belong in the budget beside groceries; only the lumpy charges belong here.')).toBeVisible();
@@ -59,7 +59,7 @@ export async function twoLevelsWalk(page: Page) {
   await expect(todayLines(page, '20.000.000')).toHaveCount(5);
 
   // The saved levels come back: the second working starts from the first, not from nothing.
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await expect(page.getByLabel('Starts in year', { exact: true })).toHaveValue('2032');
   await expect(page.getByLabel('Enrollment today (IDR)', { exact: true })).toHaveValue('45000000');
   await page.getByRole('button', { name: 'Add a level' }).click();

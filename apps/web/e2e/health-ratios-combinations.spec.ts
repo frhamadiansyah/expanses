@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
-import { openGoalForm } from './goals';
+import { openGoalForm, openWorking } from './goals';
 import { goalCard, goalRow } from './set-aside';
 
 /**
@@ -54,9 +54,9 @@ async function addFromTemplate(page: Page, template: string, amount?: string) {
   await openGoalForm(page, template);
   if (amount) await type(page.getByLabel(/Cost in today's money/).first(), amount);
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  // The save lands as a row on the list; the goal's own page is opened from it, and its move row proves it is there.
+  // The save lands as a row on the list; the goal's own page is opened from it, where the working is opened next.
   await expect(goalRow(page, template)).toBeVisible();
-  await expect((await goalCard(page, template)).getByRole('button', { name: `Move ${template} down` })).toBeVisible();
+  await goalCard(page, template);
 }
 
 /** Caps a category in a unit, the amount typed a key at a time, and waits for the line to say it. */
@@ -122,7 +122,7 @@ test('row 6 — the same goal worked out counting all spending', async ({ page }
   await addFromTemplate(page, 'Emergency fund');
   await expect(page.getByTestId('goal-page')).toContainText('12.000.000');
 
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await type(page.getByLabel('Months of outgoings'), '6');
   await expect(page.getByText('Your own figure · the guide is 3')).toBeVisible();
   await page.getByLabel('Counts', { exact: true }).selectOption('all');
@@ -203,12 +203,10 @@ test('row 10 — the month split into essential and lifestyle on the Budget page
   await expect(page.getByTestId('lifestyle-spent')).toContainText('1.000.000');
 });
 
-test('row 11 — neither move crosses the sections', async ({ page }) => {
+test('row 11 — the sections hold: a holiday never lists under compulsory', async ({ page }) => {
   await addFromTemplate(page, 'Holiday', '15000000');
   await addFromTemplate(page, 'Emergency fund');
-  await (await goalCard(page, 'Holiday')).getByRole('button', { name: 'Move Holiday up' }).click();
-  await (await goalCard(page, 'Emergency fund')).getByRole('button', { name: 'Move Emergency fund down' }).click();
-  // The list is where the order is read, so a move from a goal's own page lands back on it.
+  // The sections are the ranking: whatever order the goals were added in, each lists in its own.
   await page.goto('/goals');
   const compulsory = page.getByTestId('goals-compulsory');
   await expect(compulsory).toContainText('Emergency fund');
@@ -221,7 +219,7 @@ test('row 11 — neither move crosses the sections', async ({ page }) => {
 test('row 12 — a working reopens on the answers and base it was saved with', async ({ page }) => {
   await setUp(page);
   await addFromTemplate(page, 'Emergency fund');
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await page.getByLabel('Household').selectOption('children');
   await page.getByLabel('Income').selectOption('irregular');
   await page.getByLabel('Counts', { exact: true }).selectOption('all');
@@ -232,7 +230,8 @@ test('row 12 — a working reopens on the answers and base it was saved with', a
 
   await page.goto('/accounts');
   await page.goto('/goals');
-  await (await goalCard(page, 'Emergency fund')).getByRole('button', { name: 'Work out the amount' }).click();
+  await goalCard(page, 'Emergency fund');
+  await openWorking(page);
   await expect(page.getByLabel('Household')).toHaveValue('children');
   await expect(page.getByLabel('Income')).toHaveValue('irregular');
   await expect(page.getByLabel('Counts', { exact: true })).toHaveValue('all');
@@ -244,7 +243,7 @@ test('row 12 — a working reopens on the answers and base it was saved with', a
 test('row 13 — the card grades against the household’s own months', async ({ page }) => {
   await setUp(page);
   await addFromTemplate(page, 'Emergency fund');
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await page.getByLabel('Household').selectOption('children');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('12');
   await page.getByRole('button', { name: 'Use this amount' }).click();

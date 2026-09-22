@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
-import { openGoalForm } from './goals';
+import { openGoalForm, openWorking } from './goals';
 import { goalCard } from './set-aside';
 
 test.beforeEach(({ page }) => {
@@ -20,9 +20,9 @@ test('two answers prefill the months, say why, and size the goal on a month of s
   await page.goto('/goals');
   await openGoalForm(page, 'Emergency fund');
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  // The goal's own page carries its move row and its working; the save lands as a row on the list.
+  // The goal's own page carries its fields and its working; the save lands as a row on the list.
   await goalCard(page, 'Emergency fund');
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await openWorking(page);
   await page.getByLabel('Household').selectOption('children');
   await page.getByLabel('Income').selectOption('irregular');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('24');

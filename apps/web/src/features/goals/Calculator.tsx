@@ -59,11 +59,11 @@ const BASE_HINTS: Record<EmergencyBase, string> = {
  * Waits for the saved workings before the form opens, so a working saved earlier reopens as it was saved rather
  * than on the defaults the form would otherwise start from.
  */
-export function Calculator({ goal, onDone }: { goal: GoalRow; onDone: () => void }) {
+export function Calculator({ goal, onDone, onCancel }: { goal: GoalRow; onDone: () => void; onCancel?: () => void }) {
   const calculators = useGoalCalculators();
   if (!calculators.isSuccess) return null;
   const saved = calculators.data.find((row) => row.goalId === goal.id);
-  return <CalculatorForm key={goal.id} goal={goal} saved={saved} onDone={onDone} />;
+  return <CalculatorForm key={goal.id} goal={goal} saved={saved} onDone={onDone} onCancel={onCancel} />;
 }
 
 /** A saved education working as levels: one from before levels existed is read as the one course it described. */
@@ -72,7 +72,7 @@ function savedEducation(saved: GoalCalculatorRow | undefined): EducationPlanInpu
   return 'feeTodayMinor' in saved.inputs ? educationFromV1(saved.inputs as EducationInputs, saved.computedAt.slice(0, 10)) : (saved.inputs as EducationPlanInputs);
 }
 
-function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: GoalCalculatorRow | undefined; onDone: () => void }) {
+function CalculatorForm({ goal, saved, onDone, onCancel }: { goal: GoalRow; saved: GoalCalculatorRow | undefined; onDone: () => void; onCancel?: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const kind = calculatorKindOf(goal.kind)!;
@@ -237,7 +237,8 @@ function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: GoalCal
       {/* `requestSubmit` rather than calling `submit`: the browser still checks the required rows first. */}
       <InsetGroup>
         <InsetRow title="Use this amount" chevron={false} disabled={busy} onClick={() => formRef.current?.requestSubmit()} />
-        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
+        {/* Back to the goal's fields when the working was opened from them: the same page, one step up. */}
+        <InsetRow title="Cancel" chevron={false} onClick={onCancel ?? onDone} />
       </InsetGroup>
     </form>
   );

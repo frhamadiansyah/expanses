@@ -1,15 +1,14 @@
-import { fundingOrder, isoDate } from '@expanses/core';
-import { archiveGoal, type GoalHistoryEntry, reorderGoals, setStagePaid } from '@expanses/db';
+import { isoDate } from '@expanses/core';
+import { archiveGoal, type GoalHistoryEntry, setStagePaid } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
+import { Archive, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox, Money } from '../../ui';
-import { DestructiveRow, Hero, InsetGroup, InsetRow, LargeTitle, Panel, ProgressBar, SCREEN } from '../../ui/native';
-import { Calculator, calculatorKindOf } from './Calculator';
+import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, ProgressBar, SCREEN } from '../../ui/native';
 import { FundingRow } from './funding';
 import { GoalForm } from './GoalForm';
-import { movedOrder } from './goal-moves';
 import { cardHistory, dayMonth, fundedWindow, type GoalCard, goalCard, historyDay } from './goal-cards';
 import { useDraws, useEarmarks, useGoalCalculators, useGoalHistory, useGoalPlans } from './queries';
 
@@ -87,21 +86,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
 
   const plans = summary.data?.plans ?? [];
   const plan = plans.find((row) => row.goalId === goalId);
-  // The order the list reads in, so a move from here lands where the list would put it.
-  const ordered = fundingOrder(plans.map((row) => ({ ...row, kind: row.goal.kind, rank: row.goal.rank })));
-
-  async function move(by: number) {
-    setError(null);
-    try {
-      // A move never crosses a section: an emergency fund cannot be ranked below a holiday it is funded before.
-      const order = movedOrder(ordered, goalId, by);
-      if (!order) return;
-      await reorderGoals(database, ws, order);
-      await invalidate();
-    } catch (e) {
-      setError(e);
-    }
-  }
 
   async function archive(name: string) {
     if (!window.confirm(`Archive "${name}"? Its tagged purchases keep their history.`)) return;
@@ -140,6 +124,12 @@ export function GoalPage({ goalId }: { goalId: string }) {
   const derived = new Set((calculators.data ?? []).map((row) => row.goalId));
   const { lines: historyLines, stood } = cardHistory(history[card.goalId] ?? [], (key) => wholeBorrows.has(key));
 
+  // The page's two corners: edit — the fields, and the working behind the amount inside them — and archive.
+  const actions: CornerAction[] = [
+    { key: 'edit', label: 'Edit', glyph: <Pencil size={20} aria-hidden />, run: () => setEditing(true) },
+    { key: 'archive', label: 'Archive', glyph: <Archive size={20} aria-hidden />, run: () => void archive(card.name) },
+  ];
+
   return (
     <div className={SCREEN} data-testid="goal-page">
       <LargeTitle
@@ -147,6 +137,7 @@ export function GoalPage({ goalId }: { goalId: string }) {
         back="Goals"
         backTo="/goals"
         oneLine
+        actions={actions}
         subtitle={
           <>
             <StatusPill card={card} /> · {card.kindLabel} · by {card.dueLabel}
@@ -156,7 +147,6 @@ export function GoalPage({ goalId }: { goalId: string }) {
       <ErrorBox error={summary.error ?? error} />
 
       {editing && <GoalForm goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setEditing(false)} />}
-      {calculating && <Calculator goal={plan.goal} onDone={() => setCalculating(false)} />}
 
       {/* The kind and the date are in the line under the title: the panel repeats none of it. */}
       <Panel wide>
@@ -269,16 +259,10 @@ export function GoalPage({ goalId }: { goalId: string }) {
         </InsetGroup>
       )}
 
-      <InsetGroup wide>
-        <InsetRow title="Edit" onClick={() => setEditing(true)} />
-        {calculatorKindOf(plan.goal.kind) && <InsetRow title="Work out the amount" onClick={() => setCalculating(true)} />}
-        <InsetRow title="Move up" label={`Move ${card.name} up`} onClick={() => move(-1)} chevron={false} />
-        <InsetRow title="Move down" label={`Move ${card.name} down`} onClick={() => move(1)} chevron={false} />
-      </InsetGroup>
-      {/* Its own group is the point: a row's height away from Move down is the wrong tap to make. */}
-      <InsetGroup wide footer={card.done ? 'Keeps the history, stops it claiming money.' : undefined}>
-        <DestructiveRow label="Archive" onClick={() => archive(card.name)} />
-      </InsetGroup>
+      {/* Edit and Archive are the page's corners now; what archiving keeps is said as a fact, under the history. */}
+      {card.done && (
+        <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Keeps the history, stops it claiming money.</p>
+      )}
     </div>
   );
 }
