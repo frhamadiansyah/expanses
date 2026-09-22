@@ -24,7 +24,8 @@ export function CategoryOptions({
   parentSuffix = '(all)',
   ownerWide = false,
 }: {
-  accounts: AccountRow[];
+  /** Read, never written: a sheet may hold its accounts in a readonly list. */
+  accounts: readonly AccountRow[];
   kind: 'expense' | 'income';
   placeholder?: string | null;
   parentSuffix?: string;

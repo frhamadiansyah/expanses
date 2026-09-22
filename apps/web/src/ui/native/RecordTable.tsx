@@ -19,6 +19,9 @@ import type { Tone } from './row';
  * "behind the chevron" — so it is drawn as a table on the phone as well, inside its own sideways scroller, and
  * every column survives. Which of the two a table is, it is **told** by `detail`; it never guesses.
  *
+ * A screen may also say its rows slide (`rowSwipe`) — right for the row's answer, left for the action behind it,
+ * a tap still opening the form. That is the rows form's own extra; the table never grows a gesture.
+ *
  * Desktop is this product's paid tier, so the table is not a fallback — it is the better of the two, and it
  * keeps every column.
  */
@@ -64,6 +67,7 @@ export function RecordTable<T>({
   shape,
   detail,
   rowTestId,
+  rowSwipe,
   header,
   className,
 }: {
@@ -77,6 +81,11 @@ export function RecordTable<T>({
    * A screen whose rows are tables on a phone has no other stable handle on them.
    */
   rowTestId?: (record: T) => string;
+  /**
+   * The gestures a phone row answers to, when a screen has them: a right drag past the threshold, and the action
+   * revealed behind the left edge. Nothing on a desktop — the table's own buttons are one click away there.
+   */
+  rowSwipe?: (record: T) => { onSwipeRight?: () => void; rightHint?: ReactNode; leftAction?: ReactNode } | undefined;
   header?: string;
   className?: string;
 }) {
@@ -86,17 +95,23 @@ export function RecordTable<T>({
   if (plan.form === 'rows') {
     return (
       <InsetGroup header={header} className={className}>
-        {records.map((record) => (
-          <InsetRow
-            key={shape.key(record)}
-            testId={rowTestId?.(record)}
-            title={shape.title(record)}
-            subtitle={shape.subtitle?.(record)}
-            value={shape.value(record)}
-            valueTone={shape.valueTone?.(record) ?? 'ink-2'}
-            onClick={detail.kind === 'screen' ? () => detail.open(record) : undefined}
-          />
-        ))}
+        {records.map((record) => {
+          const swipe = rowSwipe?.(record);
+          return (
+            <InsetRow
+              key={shape.key(record)}
+              testId={rowTestId?.(record)}
+              title={shape.title(record)}
+              subtitle={shape.subtitle?.(record)}
+              value={shape.value(record)}
+              valueTone={shape.valueTone?.(record) ?? 'ink-2'}
+              onClick={detail.kind === 'screen' ? () => detail.open(record) : undefined}
+              onSwipeRight={swipe?.onSwipeRight}
+              rightHint={swipe?.rightHint}
+              leftAction={swipe?.leftAction}
+            />
+          );
+        })}
       </InsetGroup>
     );
   }

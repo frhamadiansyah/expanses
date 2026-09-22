@@ -1,6 +1,7 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Children, cloneElement, createContext, isValidElement, type ReactElement, type ReactNode, useContext } from 'react';
 import { cx } from '../index';
+import { SwipeRow } from '../SwipeRow';
 import { groupHeader, type HeaderProgress, type RowPosition, rowPositions } from './group';
 import { GROUP_GAP, GROUP_RADIUS, ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 import { iconTint, planRow, type Tone } from './row';
@@ -133,6 +134,16 @@ export interface InsetRowProps extends GroupChild {
   valueTone?: Tone;
   chevron?: boolean;
   onClick?: () => void;
+  /**
+   * The row's gestures, for a list that has them: a right drag past the threshold calls this, and a left drag
+   * reveals `leftAction` behind the row's left edge — the same `SwipeRow` the bills list pays a bill with. A tap
+   * stays a tap: the drag that ends on a row never also opens it.
+   */
+  onSwipeRight?: () => void;
+  /** What the layer under a right swipe says while the drag is under way — "Record", "Pay". */
+  rightHint?: ReactNode;
+  /** The action behind the left edge, revealed by a left drag. The caller owns it, so it can be a real button. */
+  leftAction?: ReactNode;
   to?: LinkProps['to'];
   /**
    * The route's own parameters and search, handed to the link.
@@ -165,6 +176,7 @@ export interface InsetRowProps extends GroupChild {
  * **A row never contains a button.** The row *is* the tap target — with `onClick` it is a real `<button>`, with
  * `to` a real link, and either way it answers Enter and Space and draws focus where it lands. A second control
  * inside it would put two targets inside one 44 pt box and leave a keyboard with no way to say which it meant.
+ * A row that slides is not an exception: its action sits *behind* the row, never inside the tap target.
  */
 export function InsetRow({
   icon,
@@ -175,6 +187,9 @@ export function InsetRow({
   valueTone = 'ink-3',
   chevron,
   onClick,
+  onSwipeRight,
+  rightHint,
+  leftAction,
   to,
   params,
   search,
@@ -234,48 +249,69 @@ export function InsetRow({
       style={{ height: 0.5, left: destructive ? 0 : plan.separatorInset }}
     />
   ) : null;
+  const slides = !disabled && (onSwipeRight !== undefined || leftAction !== undefined);
 
-  if (to) {
+  /** The row itself. `suppress` answers true when the gesture that just ended was a drag and not a tap. */
+  const row = (suppress: () => boolean = () => false, named: string | null = testId ?? null) => {
+    const name = named ?? undefined;
+    if (to) {
+      return (
+        /*
+         * A link has no `disabled` of its own. `aria-disabled` says so out loud, `tabIndex={-1}` takes it out of the
+         * tab order, and the click is refused — the three things `disabled` does to a button, done by hand.
+         */
+        <Link
+          to={to}
+          params={params}
+          search={search}
+          aria-label={label}
+          aria-disabled={disabled || undefined}
+          tabIndex={disabled ? -1 : undefined}
+          data-testid={name}
+          className={cx(shell, 'ph-focus-inset')}
+          onClick={(event) => {
+            if (disabled || suppress()) event.preventDefault();
+          }}
+        >
+          {separator}
+          {inner}
+        </Link>
+      );
+    }
+    if (onClick) {
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            if (suppress()) return;
+            onClick();
+          }}
+          disabled={disabled}
+          aria-label={label}
+          data-testid={name}
+          className={cx(shell, 'ph-focus-inset text-left')}
+        >
+          {separator}
+          {inner}
+        </button>
+      );
+    }
     return (
-      /*
-       * A link has no `disabled` of its own. `aria-disabled` says so out loud, `tabIndex={-1}` takes it out of the
-       * tab order, and the click is refused — the three things `disabled` does to a button, done by hand.
-       */
-      <Link
-        to={to}
-        params={params}
-        search={search}
-        aria-label={label}
-        aria-disabled={disabled || undefined}
-        tabIndex={disabled ? -1 : undefined}
-        data-testid={testId}
-        className={cx(shell, 'ph-focus-inset')}
-        onClick={disabled ? (event) => event.preventDefault() : undefined}
-      >
+      <div className={shell} data-testid={name} style={{ minHeight: TAP }}>
         {separator}
         {inner}
-      </Link>
+      </div>
     );
-  }
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        aria-label={label}
-        data-testid={testId}
-        className={cx(shell, 'ph-focus-inset text-left')}
-      >
-        {separator}
-        {inner}
-      </button>
-    );
-  }
+  };
+
+  if (!slides) return row();
   return (
-    <div className={shell} data-testid={testId} style={{ minHeight: TAP }}>
-      {separator}
-      {inner}
-    </div>
+    /*
+     * The test id moves out here with the gestures, so a locator scoped to the row reaches the action behind it as
+     * well as what is written on the row's face — which is `SwipeRow`'s own reason for carrying one.
+     */
+    <SwipeRow enabled testId={testId} onSwipeRight={onSwipeRight} rightHint={rightHint} leftAction={leftAction}>
+      {(suppressClick) => row(suppressClick, null)}
+    </SwipeRow>
   );
 }
