@@ -40,7 +40,7 @@ export function ChoiceRow({
     <>
       <PickerRow label={label} value={chosen?.label ?? null} placeholder="Choose…" hint={hint} position={position} onOpen={() => setOpen(true)} />
       {open && (
-        <Sheet title={label} onClose={() => setOpen(false)} grouped>
+        <Sheet title={label} onClose={() => setOpen(false)} grouped compact>
           <InsetGroup>
             {options.map((option) => (
               <InsetRow
