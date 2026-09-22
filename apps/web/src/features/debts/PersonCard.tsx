@@ -3,7 +3,10 @@ import { forgiveRemainder, type PersonDebtRow, recordRepayment, saveDebtProfile,
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { ratePreview } from '../../lib/rates';
+import { useHeldRates } from '../accounts/queries';
+import { debtRatesForSave } from './debt-rates';
 import { Button, cx, ErrorBox, Field, Input, Money, Select } from '../../ui';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
@@ -159,6 +162,14 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
   const [draft, setDraft] = useState<RepaymentDraft>(() => emptyRepaymentDraft(today, moneyAccounts[0]?.id ?? ''));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const resolveRates = useResolveRates();
+  const [manualRate, setManualRate] = useState('');
+  const [needsRate, setNeedsRate] = useState<string | null>(null);
+  // A person's loan in another currency is repaid at that day's rate: asked for when none is stored (as lending does).
+  const foreign = person.currency !== ws.baseCurrency;
+  const rateDay = draft.occurredOn > today ? today : draft.occurredOn;
+  const held = useHeldRates(foreign && repayingId ? [person.currency] : [], rateDay);
+  const asksRate = foreign && (needsRate === person.currency || (held.data?.missing ?? []).includes(person.currency));
 
   const back = person.direction === 'lent' ? 'came back' : 'you paid';
 
@@ -167,10 +178,22 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
     setBusy(true);
     try {
       const input = repaymentDraftToInput({ ...draft, moneyId: draft.moneyId || moneyAccounts[0]?.id || '' }, accountId, person.currency, balanceMinor, person.personName);
-      await recordRepayment(database, ws, { ...input, setAside });
+      const ratesToBase = await debtRatesForSave({
+        database,
+        ws,
+        currency: person.currency,
+        occurredOn: input.occurredOn,
+        amountMinor: input.amountMinor,
+        typed: asksRate ? manualRate : '',
+        resolveRates,
+        onMissing: setNeedsRate,
+      });
+      await recordRepayment(database, ws, { ...input, ratesToBase, setAside });
       await invalidate();
       setRepayingId(null);
       setDraft(emptyRepaymentDraft(today, moneyAccounts[0]?.id ?? ''));
+      setManualRate('');
+      setNeedsRate(null);
     } catch (e) {
       setError(e);
     } finally {
@@ -256,6 +279,11 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
                         ))}
                       </Select>
                     </Field>
+                    {asksRate && (
+                      <Field label={`Rate: ${ws.baseCurrency} per 1 ${loan.currency}`} hint={ratePreview(manualRate, loan.currency, ws.baseCurrency) ?? 'No rate is stored for this day. Leave empty to fetch it.'}>
+                        <Input value={manualRate} inputMode="decimal" onChange={(e) => setManualRate(e.target.value)} placeholder="16250" />
+                      </Field>
+                    )}
                   </div>
                   <RepaymentActions
                     person={person}
