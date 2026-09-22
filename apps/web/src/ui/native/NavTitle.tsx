@@ -173,8 +173,13 @@ export function LargeTitle({
    * The way back is a control a thumb has to find, so it is 44 tall like every other — and drawn as though it were
    * not: the negative margins give the hit area back to the layout, so the line still sits where 28px put it.
    */
+  /*
+   * The way back is drawn in the page's own ink, not the tint: it is chrome, not an action, and a column of green
+   * back links down the phone's history read as an accent shouting on every screen. The tint stays where it says
+   * something — a selection, progress, the receipt for something saved.
+   */
   const backShell =
-    'ph-focus -mt-[8px] -mb-[6px] -ml-[2px] inline-flex min-h-[44px] items-center rounded px-[2px] text-[14px] leading-[18px] text-[var(--ph-tint)]';
+    'ph-focus -mt-[8px] -mb-[6px] -ml-[2px] inline-flex min-h-[44px] items-center rounded px-[2px] text-[14px] leading-[18px] text-[var(--ph-ink)]';
   return (
     <header className="mb-[14px] md:max-w-4xl">
       {back &&
