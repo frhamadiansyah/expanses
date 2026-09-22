@@ -3,21 +3,22 @@ import { type DepositAutomationRow, saveDepositAutomation } from '@expanses/db';
 import { Check } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { rateInputText } from './deposit-terms';
 import { MATURITY_CHOICES, payoutChoices, saveQueue, taxBpsFrom, termLabel } from './maturity-settings';
-import { useDepositAutomation, useDepositTerms } from './queries';
+import { useDepositAutomation } from './queries';
 
 /**
- * S2: the switch and its settings, inline on the deposit's page. Off is one row and changes nothing anywhere.
- * Mounted once the saved settings are in, so the local copy starts from them.
+ * S1: what happens at maturity is one row on the deposit, reading off or the chosen answer; tapping it opens the
+ * sheet that holds the switch and the choices — where this used to lay them all out on the page for a decision
+ * made once a year. Off is one row and changes nothing anywhere.
  */
 export function MaturitySettings({ accountId, currency }: { accountId: string; currency: string }) {
   const automation = useDepositAutomation(accountId);
-  const terms = useDepositTerms();
-  if (!automation.data || !(terms.data ?? []).some((row) => row.accountId === accountId)) return null;
+  if (!automation.data) return null;
   return <SettingsGroup key={accountId} saved={automation.data} currency={currency} />;
 }
 
@@ -30,6 +31,7 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
    * one save after another, so two quick changes can never send the older settings last.
    */
   const [settings, setSettings] = useState(saved);
+  const [open, setOpen] = useState(false);
   const [taxText, setTaxText] = useState(rateInputText(saved.taxBps) || '0');
   const [error, setError] = useState<unknown>(null);
   // Saves still on their way to the database: the group says so (aria-busy), so nothing reads it half-written.
@@ -149,7 +151,22 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
 
   return (
     <div data-testid="maturity-settings" aria-busy={saving > 0}>
-      <InsetGroup header="At maturity">{rows}</InsetGroup>
+      {/* The row reads off or the answer; the sheet holds everything that sets it. */}
+      <InsetGroup>
+        <InsetRow
+          testId="maturity-row"
+          title="At maturity"
+          value={settings.enabled ? (MATURITY_CHOICES.find((choice) => choice.id === settings.atMaturity)?.row ?? 'On') : 'Off'}
+          valueTone={settings.enabled ? 'tint' : 'ink-3'}
+          onClick={() => setOpen(true)}
+        />
+        <InsetRow testId="maturity-paid" title="Interest paid" value={settings.interestPaid === 'monthly' ? 'Monthly' : 'At maturity'} chevron={false} />
+      </InsetGroup>
+      {open && (
+        <Sheet title="At maturity" onClose={() => setOpen(false)} grouped>
+          <InsetGroup>{rows}</InsetGroup>
+        </Sheet>
+      )}
       <ErrorBox error={error} />
     </div>
   );

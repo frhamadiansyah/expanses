@@ -13,13 +13,14 @@ import { useLoans } from '../loans/queries';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
 import { DepositProposalCard } from './DepositProposalCard';
 import { DepositTermsCard } from './DepositTermsCard';
+import { depositHeroLine } from './deposit-terms';
 import { MaturitySettings } from './MaturitySettings';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
 import { StockAndBroker } from './StockAndBroker';
 import { RecordedByHand } from './RecordedByHand';
 import { SetAsidePanel } from './SetAsidePanel';
-import { useAssetProfile, useAssetValues, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
+import { useAssetProfile, useAssetValues, useDepositAutomation, useDepositTerms, useMonthEndValues, usePositions, usePrices, useTrades, useValuations } from './queries';
 import { ValuationForm } from './ValuationForm';
 import { ValueChart } from './ValueChart';
 
@@ -72,6 +73,10 @@ export function AssetDetailPage() {
   const gain = value ? value.valueMinor - value.costMinor : 0;
   const canArchive = value ? value.valueMinor === 0 && (position?.unitsMicro ?? 0) === 0 : false;
   const forGoals = (goalLinks.data ?? []).filter((link) => link.accountId === accountId && link.kind === 'tagged');
+  // The deposit's own facts, for the line under its figure — and the term its maturity settings hold.
+  const deposits = useDepositTerms();
+  const deposit = (deposits.data ?? []).find((row) => row.accountId === accountId);
+  const automation = useDepositAutomation(accountId);
   // The loan that bought this, when one did: its balance against the value is the equity.
   const boughtWith = (loans.data ?? []).find((loan) => loan.assetAccountId === accountId && loan.status === 'open');
 
@@ -110,6 +115,8 @@ export function AssetDetailPage() {
             currency={value.currency}
             caption={
               <>
+                {/* A deposit is read as what it pays and when it comes back, first — as its page says it. */}
+                {deposit && <span className="block">{depositHeroLine(deposit, automation.data?.termMonths ?? 1)}</span>}
                 Cost {formatMinor(value.costMinor, value.currency)}
                 {value.costMinor !== 0 && ` · ${formatMinor(gain, value.currency)} since you bought it`}
                 <span className="mt-[2px] block">
@@ -141,6 +148,7 @@ export function AssetDetailPage() {
           )}
           {/* B3: what is promised out of this account and what is free, right under the bank's figure. */}
           <SetAsidePanel accountId={accountId} />
+          {account?.subtype === 'time_deposit' && <MaturitySettings accountId={accountId} currency={value.currency} />}
 
           {value.mode === 'market' && (
             <PriceForm
@@ -239,7 +247,6 @@ export function AssetDetailPage() {
       )}
 
       {value && <DepositTermsCard accountId={accountId} />}
-      {value && account?.subtype === 'time_deposit' && <MaturitySettings accountId={accountId} currency={value.currency} />}
       {value && account?.subtype === 'time_deposit' && <RecordedByHand accountId={accountId} currency={value.currency} />}
 
       {value && (

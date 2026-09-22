@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { at, automate, COMBOS, comboName, confirmEach, expectBalance, HAND_COMBOS, openDeposit, settingsSaved, setUp, startReport, typeInto, walk } from './deposit-maturity';
+import { at, automate, COMBOS, comboName, confirmEach, expectBalance, HAND_COMBOS, openDeposit, openMaturitySheet, settingsSaved, setUp, startReport, typeInto, walk } from './deposit-maturity';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -8,6 +8,9 @@ test.beforeEach(({ page }) => {
 test('is off by default and changes nothing', async ({ page }) => {
   const s = await setUp(page, 'IDR');
   await openDeposit(page, s.depositName);
+  // The row says so without opening anything; the switch behind it says the same.
+  await expect(page.getByTestId('maturity-row')).toContainText('Off');
+  await openMaturitySheet(page);
   await expect(page.getByLabel('Automate')).not.toBeChecked();
   await expect(page.getByTestId('maturity-principal')).toHaveCount(0);
   await page.clock.setSystemTime(at(s.matures));
@@ -47,6 +50,11 @@ test('keeps its settings across a reload, and a typed withholding', async ({ pag
   await page.getByLabel('Tax withheld %').press('Tab');
   await settingsSaved(page);
   await page.reload();
+  // The two rows read the saved answers without opening anything…
+  await expect(page.getByTestId('maturity-row')).toContainText("Don't roll over");
+  await expect(page.getByTestId('maturity-paid')).toContainText('Monthly');
+  // …and the sheet holds them for the proof.
+  await openMaturitySheet(page);
   await expect(page.getByLabel('Automate')).toBeChecked();
   await expect(page.getByTestId('maturity-close').getByLabel('Chosen')).toBeVisible();
   await expect(page.getByLabel('Interest paid')).toHaveValue('monthly');

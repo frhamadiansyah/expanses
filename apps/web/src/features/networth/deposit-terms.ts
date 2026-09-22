@@ -18,6 +18,18 @@ export function maturityLabel(maturesOn: string): string {
 /** A rate held in basis points, said the way the form asks for it: 625 is "6,25%". */
 export const rateLabel = (rateBps: number): string => `${(rateBps / 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`;
 
+/** A term in months, said the way a person says it: 3 is "3 months", 1 is "1 month". */
+export const termLabel = (months: number): string => `${months} ${months === 1 ? 'month' : 'months'}`;
+
+/**
+ * The deposit's facts in the order a deposit is read in, under its figure: what it pays, for how long, and the
+ * day the money comes back — "4,25% · 3 months · matures 15 Oct 2026". A rate of zero is left off.
+ */
+export function depositHeroLine(terms: { maturesOn: string; rateBps: number }, termMonths: number): string {
+  const parts = [terms.rateBps > 0 ? rateLabel(terms.rateBps) : null, termLabel(termMonths), `matures ${maturityLabel(terms.maturesOn)}`];
+  return parts.filter((part): part is string => part !== null).join(' · ');
+}
+
 /** The short line for a deposit. A rate of zero is left off: nobody typed one, so there is nothing to say. */
 export function depositLine(terms: { maturesOn: string; rateBps: number }): string {
   const matures = `Matures ${maturityLabel(terms.maturesOn)}`;
