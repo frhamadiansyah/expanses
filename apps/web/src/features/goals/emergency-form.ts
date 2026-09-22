@@ -2,7 +2,7 @@ import { type EmergencyBase, emergencyMonthsFor, type Household, type IncomeStab
 import type { EmergencyInputs } from '@expanses/db';
 
 export const HOUSEHOLD_LABELS: Record<Household, string> = { single: 'Single', couple: 'Married, no children', children: 'With children' };
-export const INCOME_LABELS: Record<IncomeStability, string> = { salaried: 'Salaried', irregular: 'Freelance or irregular' };
+export const INCOME_LABELS: Record<IncomeStability, string> = { salaried: 'Salaried', irregular: 'Irregular' };
 
 export interface EmergencyDraft {
   household: Household;
