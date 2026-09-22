@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react';
-import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
+import { Children, isValidElement, type InputHTMLAttributes, type MouseEvent, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
 import { cx } from '../index';
 import { type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { type GroupChild, toneClass } from './InsetList';
@@ -42,7 +42,7 @@ export function PickerRow({
   label: string;
   value: string | null | undefined;
   placeholder?: string;
-  onOpen: () => void;
+  onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
   hint?: ReactNode;
 }) {
   const plan = planFormRow('picker', value, placeholder);
@@ -134,10 +134,10 @@ export function SelectRow({
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
-      {/* The whole row is the label: the select covers only its own answers, and every other tap still opens it —
-          which is also the width the platform's own panel is drawn at. */}
-      <label htmlFor={id} className="flex items-center gap-3" style={shell(false)}>
-        <span className={LABEL}>{label}</span>
+      <div className="flex items-center gap-3" style={shell(false)}>
+        <label htmlFor={id} className={LABEL}>
+          {label}
+        </label>
         <span
           className={cx(
             'relative flex min-w-0 flex-1 items-center justify-end gap-[6px]',
@@ -152,12 +152,11 @@ export function SelectRow({
           <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
             {'›'}
           </span>
-          {/* No wider than its longest answer, hugging the right edge: the box a platform panel is drawn to. */}
-          <select {...props} id={id} className="absolute inset-y-0 right-0 w-auto cursor-pointer appearance-none bg-transparent opacity-0">
+          <select {...props} id={id} className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0">
             {children}
           </select>
         </span>
-      </label>
+      </div>
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
     </div>
   );
