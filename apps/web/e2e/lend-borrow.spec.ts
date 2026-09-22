@@ -46,9 +46,12 @@ test('lending on a credit card raises the card, earns points, and is never spend
   await expect(page.getByText('Owed to you').first()).toBeVisible();
   await expect(page.getByText('Due within a year').first()).toBeVisible();
 
-  // Spending stays empty, because no expense category was touched.
+  // Spending stays empty, because no expense category was touched. `/spending` is the transactions list now, and
+  // the report there says it in its own words. The assertion used to be the *absence* of the amount anywhere on the
+  // page, which passed whenever the list had not finished loading and never tested the thing it claimed.
   await page.goto('/spending');
-  await expect(page.getByText(/4\.000\.000/)).toHaveCount(0);
+  await expect(page.getByText(/^Nothing recorded for /)).toBeVisible();
+  await expect(page.getByTestId('period-total')).toHaveText(/Rp\s?0$/);
 });
 
 test('records a repayment and the balance falls', async ({ page }) => {
@@ -112,4 +115,32 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
 
   await page.goto('/spending');
   await expect(page.getByText(/300\.000/).first()).toBeVisible();
+});
+
+/** The other direction: money taken from a person, which lands under "You owe". */
+async function borrow(page: Page, person: string, amount: string, into: string) {
+  await page.goto('/net-worth/lend-borrow');
+  await page.getByRole('button', { name: 'Add a loan' }).click();
+  await page.getByRole('radio', { name: 'I borrowed money' }).click();
+  await page.getByLabel('Person').fill(person);
+  await page.getByLabel(/^Amount/).fill(amount);
+  await page.getByLabel('Received into').selectOption({ label: into });
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('heading', { name: person })).toBeVisible();
+}
+
+test('the desktop keeps both sides in front of you, side by side', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Andi', '1000000', 'BCA Tahapan (IDR)');
+  await borrow(page, 'Dewi', '750000', 'BCA Tahapan (IDR)');
+
+  await page.goto('/net-worth/lend-borrow');
+  // Both group headers, both figures and both people at once: the phone's one-list-at-a-time control is not here,
+  // so nothing the desktop could see before this is behind a tap now.
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Owed to you', 'You owe']);
+  await expect(page.getByRole('radiogroup', { name: 'Lend & borrow' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
+  await expect(page.getByTestId('debts-total-Owed to you')).toHaveText('Rp 1.000.000');
+  await expect(page.getByTestId('debts-total-You owe')).toHaveText('Rp 750.000');
 });

@@ -3,9 +3,10 @@ import { HelpCircle, Plus } from 'lucide-react';
 import { useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { usePhone } from '../../app/use-phone';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { useHeldRates } from '../accounts/queries';
-import { type CornerAction, Figure, InsetGroup, InsetRow, LargeTitle, PanelHeader, SCREEN } from '../../ui/native';
+import { type CornerAction, Figure, InsetGroup, InsetRow, LargeTitle, PanelHeader, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
 import { NetWorthTabs } from '../networth/NetWorthTabs';
 import { DebtForm } from './DebtForm';
 import { PersonCard } from './PersonCard';
@@ -38,14 +39,24 @@ function Column({ title, people, emptyText, currency, rates }: { title: string; 
   );
 }
 
+/** The phone draws one side at a time; the two names are the mockup's own words. */
+const SIDES: readonly Segment[] = [
+  { key: 'owed', label: 'Owed to you' },
+  { key: 'owe', label: 'You owe' },
+];
+type Side = 'owed' | 'owe';
+
 export function LendBorrowPage() {
   const { ws } = useApp();
+  const phone = usePhone();
   const people = usePeopleDebts();
   // Opened from a person's row on Debts: that person alone, with the way back to everyone one tap away.
   const { person: only } = useSearch({ from: '/net-worth/lend-borrow' });
   const theirs = (list: PersonDebtRow[]) => (only ? list.filter((row) => row.personName === only) : list);
   const [adding, setAdding] = useState(false);
   const [showSettled, setShowSettled] = useState(false);
+  // Which side the phone is showing. Null until the reader picks one, so the first paint shows something.
+  const [side, setSide] = useState<Side | null>(null);
 
   const owedToYou = theirs(people.data?.owedToYou ?? []);
   const youOwe = theirs(people.data?.youOwe ?? []);
@@ -53,6 +64,13 @@ export function LendBorrowPage() {
   const held = useHeldRates([...owedToYou, ...youOwe].map((person) => person.currency));
   const rates = held.data?.rates;
   const nothingYet = people.isSuccess && owedToYou.length === 0 && youOwe.length === 0 && settled.length === 0;
+  /*
+   * Which side the phone opens on. The mockup's first segment — "Owed to you" — unless a person was named (the
+   * way in from their row on Debts), where it is the side that person is on: opening Dewi's row must show Dewi,
+   * not an empty list. Never derived from how many rows each side has, so a reader who forgives their last
+   * borrower does not have the list switch sides under them.
+   */
+  const shown: Side = side ?? (only && owedToYou.length === 0 ? 'owe' : 'owed');
 
   // While the inline form is open there is no action to show, and an empty corner would still take its gap.
   const actions: CornerAction[] = adding
@@ -83,12 +101,23 @@ export function LendBorrowPage() {
         </Empty>
       )}
 
-      {!nothingYet && (
-        <div className="grid gap-6 md:grid-cols-2">
-          <Column title="Owed to you" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
-          <Column title="You owe" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
-        </div>
-      )}
+      {!nothingYet &&
+        (phone ? (
+          <>
+            {/* The phone shows one list at a time, as the mockup draws it; the desktop keeps both side by side. */}
+            <SegmentedControl segments={SIDES} value={shown} onChange={(key) => setSide(key as Side)} label="Lend & borrow" className="mb-[18px]" />
+            {shown === 'owed' ? (
+              <Column title="Owed to you" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
+            ) : (
+              <Column title="You owe" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
+            )}
+          </>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2">
+            <Column title="Owed to you" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
+            <Column title="You owe" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
+          </div>
+        ))}
 
       {settled.length > 0 && (
         <>
