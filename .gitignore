@@ -8,6 +8,7 @@ test-results/
 *.sqlite3
 .DS_Store
 dist-preview/
+dist-stable/
 
 # TypeScript incremental build info
 *.tsbuildinfo
