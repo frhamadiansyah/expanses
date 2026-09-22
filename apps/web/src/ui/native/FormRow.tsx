@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react';
-import { type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
+import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
 import { cx } from '../index';
 import { type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { type GroupChild, toneClass } from './InsetList';
@@ -110,6 +110,11 @@ export function TextRow({
  * exactly as `PickerRow` draws it (label left, answer right in the tint, chevron) and the select is laid bare
  * inside it: no box, no arrow of its own, no second border inside the group's hairline. The forbidden shape is a
  * naked `<select>` sitting on the page under a label, not the platform's list behind a row that looks like a row.
+ *
+ * The answer is drawn by the row rather than left to the control, and the select is laid invisibly over what it
+ * says. WebKit lays a closed `select`'s text out from the left of a box as wide as its **longest option**, and
+ * ignores `text-align` on it: "Single" in a Household list whose longest option is "Married, no children" sat a
+ * hundred pixels short of the right edge, in the one place a value is supposed to line up with every other.
  */
 export function SelectRow({
   label,
@@ -121,8 +126,11 @@ export function SelectRow({
 }: GroupChild & { label: string; hint?: ReactNode } & SelectHTMLAttributes<HTMLSelectElement>) {
   const generated = useId();
   const id = props.id ?? generated;
+  const value = props.value === undefined || props.value === null ? '' : String(props.value);
   // The same decision `PickerRow` asks: an answer is drawn in the tint, a prompt still waiting for one is grey.
-  const plan = planFormRow('picker', typeof props.value === 'string' ? props.value : String(props.value ?? ''));
+  const plan = planFormRow('picker', value);
+  // A value with no option of its own draws nothing, exactly as a browser draws a select whose value matches nothing.
+  const shown = plan.placeholder ? plan.text : (optionLabel(children, value) ?? '');
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
@@ -130,26 +138,42 @@ export function SelectRow({
         <label htmlFor={id} className={LABEL}>
           {label}
         </label>
-        <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
-          <select
-            {...props}
-            id={id}
-            className={cx(
-              'ph-focus min-w-0 appearance-none truncate rounded bg-transparent text-right text-[16px] leading-[20px] md:text-[15px]',
-              toneClass(plan.tone),
-              className,
-            )}
-          >
-            {children}
-          </select>
+        <span
+          className={cx(
+            'relative flex min-w-0 flex-1 items-center justify-end gap-[6px]',
+            /* The select is the only focusable thing here, so the ring is drawn on what the reader can see. */
+            'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ph-focus)]',
+            className,
+          )}
+        >
+          <span aria-hidden className={cx('min-w-0 truncate text-[16px] leading-[20px] md:text-[15px]', toneClass(plan.tone))}>
+            {shown}
+          </span>
           <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
             {'›'}
           </span>
+          <select {...props} id={id} className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0">
+            {children}
+          </select>
         </span>
       </div>
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
     </div>
   );
+}
+
+/** The label the select is showing: the option whose value is the chosen one, inside an `optgroup` or not. */
+function optionLabel(children: ReactNode, value: string): string | null {
+  for (const child of Children.toArray(children)) {
+    if (!isValidElement(child)) continue;
+    const props = child.props as { value?: unknown; children?: ReactNode };
+    if (child.type === 'option' && String(props.value ?? '') === value) return String(props.children ?? '');
+    if (child.type === 'optgroup') {
+      const inside = optionLabel(props.children, value);
+      if (inside !== null) return inside;
+    }
+  }
+  return null;
 }
 
 /** A row that shows rather than asks: a computed total, a workspace's name. Quieter ink, and it points nowhere. */
