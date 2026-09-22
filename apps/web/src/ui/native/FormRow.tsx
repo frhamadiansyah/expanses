@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react';
-import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
+import { Children, isValidElement, type InputHTMLAttributes, type MouseEvent, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
 import { cx } from '../index';
 import { type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { type GroupChild, toneClass } from './InsetList';
@@ -42,7 +42,7 @@ export function PickerRow({
   label: string;
   value: string | null | undefined;
   placeholder?: string;
-  onOpen: () => void;
+  onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
   hint?: ReactNode;
 }) {
   const plan = planFormRow('picker', value, placeholder);

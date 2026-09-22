@@ -19,7 +19,6 @@ export function Sheet({
   onClose,
   children,
   grouped = false,
-  compact = false,
 }: {
   title: string;
   onClose: () => void;
@@ -30,13 +29,6 @@ export function Sheet({
    * surface.
    */
   grouped?: boolean;
-  /**
-   * A menu rather than a screen: no grab handle, no title bar, no Close, and a panel that floats clear of the
-   * edges, as wide as its longest answer and only as tall as the answers in it — the way the platform draws a
-   * dropdown, without the blank space a full-width panel leaves beside two words. For two or three choices, where
-   * a full sheet's chrome is most of the panel. The backdrop and Escape are still the ways out.
-   */
-  compact?: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
 
@@ -67,25 +59,21 @@ export function Sheet({
         aria-label={title}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className={`overflow-y-auto ${compact ? 'mb-3 max-h-[70dvh] w-fit min-w-40 max-w-[calc(100%-1.5rem)] rounded-2xl p-1.5 md:mb-0 md:max-w-sm' : 'max-h-[85dvh] w-full rounded-t-2xl p-4 md:max-w-2xl md:rounded-2xl'} ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} text-[var(--ph-ink)] shadow-xl outline-none`}
-        style={{ paddingBottom: compact ? 'calc(0.375rem + env(safe-area-inset-bottom))' : 'calc(1rem + env(safe-area-inset-bottom))' }}
+        className={`max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} p-4 text-[var(--ph-ink)] shadow-xl outline-none md:max-w-2xl md:rounded-2xl`}
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
-        {!compact && (
-          <>
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold">{title}</h2>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]"
-              >
-                <X size={18} aria-hidden />
-              </button>
-            </div>
-          </>
-        )}
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--ph-chevron)] md:hidden" aria-hidden />
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-[var(--ph-ink-3)] hover:bg-[var(--ph-fill)]"
+          >
+            <X size={18} aria-hidden />
+          </button>
+        </div>
         {children}
       </div>
     </div>
