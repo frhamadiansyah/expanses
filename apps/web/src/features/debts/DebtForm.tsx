@@ -3,7 +3,9 @@ import { recordLoan } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { ratePreview, ratesForSave } from '../../lib/rates';
+import { useHeldRates } from '../accounts/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, type Segment, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
@@ -22,6 +24,7 @@ const DIRECTIONS: readonly Segment[] = [
 export function DebtForm({ onDone }: { onDone: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const resolveRates = useResolveRates();
   const accounts = useAccounts().data ?? [];
   const people = usePeopleDebts();
   const profiles = useDebtProfiles();
@@ -29,12 +32,20 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
   const [draft, setDraft] = useState<DebtDraft>(() => emptyDebtDraft(today));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [manualRate, setManualRate] = useState('');
+  // The pair a Save came back without, so the rate row stays on screen even if the stored-rate read raced it.
+  const [needsRate, setNeedsRate] = useState<string | null>(null);
   const form = useRef<HTMLFormElement>(null);
 
   const set = (patch: Partial<DebtDraft>) => setDraft((current) => ({ ...current, ...patch }));
   // A loan comes from money you hold, or a card. Another person's account is not a source.
   const money = moneyHolders(accounts).filter((account) => WALLET_SUBTYPES.includes(account.subtype));
   const currency = money.find((account) => account.id === draft.moneyId)?.currency ?? ws.baseCurrency;
+  const foreign = currency !== ws.baseCurrency;
+  // Read from what this device holds, never fetched just because the form opened (see `useStoredRates`).
+  const held = useHeldRates(foreign ? [currency] : [], draft.occurredOn > today ? today : draft.occurredOn);
+  // Asked for when no rate is stored for the day, or when a Save found none; left out when one is known.
+  const asksRate = foreign && (needsRate === currency || (held.data?.missing ?? []).includes(currency));
   const suggestions = people.data ? personSuggestions(people.data, draft.personName) : [];
   // Lending pays money out; borrowing brings it in and asks nothing. The figure is the one `submit` sends.
   const lentMinor = (() => {
@@ -68,7 +79,18 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
     setError(null);
     setBusy(true);
     try {
-      await recordLoan(database, ws, { ...debtDraftToInput(draft, currency, today), setAside: setAside.choice });
+      const input = debtDraftToInput(draft, currency, today);
+      const ratesToBase = await ratesForSave({
+        database,
+        ws,
+        currency,
+        occurredOn: input.occurredOn,
+        amountMinor: input.amountMinor,
+        typed: asksRate ? manualRate : '',
+        resolveRates,
+        onMissing: setNeedsRate,
+      });
+      await recordLoan(database, ws, { ...input, ratesToBase, setAside: setAside.choice });
       await invalidate();
       onDone();
     } catch (e) {
@@ -127,6 +149,16 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
             </optgroup>
           )}
         </SelectRow>
+        {asksRate ? (
+          <TextRow
+            label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+            hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? `No ${currency} rate is stored for this day. Leave empty to fetch it.`}
+            value={manualRate}
+            onChange={(e) => setManualRate(e.target.value)}
+            inputMode="decimal"
+            placeholder="16250"
+          />
+        ) : null}
       </InsetGroup>
 
       {/* The datalist belongs to the Person box above; it draws nothing of its own. */}

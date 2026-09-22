@@ -2,6 +2,7 @@ import type { ScheduleRow } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
 import {
   emptyLoanTermsDraft,
+  extraPaymentMinor,
   type LoanTermsDraft,
   loanTermsDraftToInput,
   type PaymentDraft,
@@ -151,5 +152,32 @@ describe('paymentDraftToInput', () => {
 
   it('refuses a date in the future', () => {
     expect(() => paymentDraftToInput(payment({ occurredOn: '2099-01-01' }), 'kpr', 'IDR', 700_000_000, 'KPR Bintaro', TODAY)).toThrow(/after today/);
+  });
+});
+
+describe('extraPaymentMinor', () => {
+  it('reads a rupiah figure with its thousands marks as one and a half million rupiah', () => {
+    expect(extraPaymentMinor('1.500.000', 'IDR')).toBe(1_500_000);
+    expect(extraPaymentMinor('800.000', 'IDR')).toBe(800_000);
+    expect(extraPaymentMinor('800000', 'IDR')).toBe(800_000);
+  });
+
+  it('reads a dollar figure with a comma for its cents as cents, not as nothing', () => {
+    // 12,50 was `Number('12,50')` before this: NaN, so a penalty the bank charged reached the ledger as no penalty.
+    expect(extraPaymentMinor('12,50', 'USD')).toBe(1_250);
+    expect(extraPaymentMinor('12.50', 'USD')).toBe(1_250);
+    expect(extraPaymentMinor('500.00', 'USD')).toBe(50_000);
+  });
+
+  it('is nothing for an empty box: no penalty is a real answer', () => {
+    expect(extraPaymentMinor('', 'IDR')).toBe(0);
+    expect(extraPaymentMinor('   ', 'USD')).toBe(0);
+  });
+
+  it('refuses, in the reader’s own words, a figure that is not money in that currency', () => {
+    // Cents typed into a rupiah box: the message names the currency and the digits, which is the whole point of
+    // reading both boxes here rather than swallowing them as zero.
+    expect(() => extraPaymentMinor('12,50', 'IDR')).toThrow(/IDR allows 0 decimal places/);
+    expect(() => extraPaymentMinor('abc', 'IDR')).toThrow(/Invalid amount/);
   });
 });

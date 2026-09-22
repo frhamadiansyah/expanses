@@ -58,7 +58,14 @@ export function categoryMark(categoryId: string | null, accounts: readonly Accou
 
 const SIZES = { lg: { box: 'h-16 w-16', glyph: 32 }, md: { box: 'h-9 w-9', glyph: 18 }, sm: { box: 'h-6 w-6', glyph: 14 }, xs: { box: 'h-5 w-5', glyph: 12 } } as const;
 
-/** A round, tinted category mark: the glyph names the category, the colour its top-level parent. */
+/**
+ * A round, tinted category mark: the glyph names the category, the colour its top-level parent.
+ *
+ * The wash is the colour at 15 % over whatever the circle sits on — `transparent`, not white. Mixing into white is
+ * what the kit's own tint does not do (`iconTint` in `native/row.ts`), and it is why every category mark stayed a
+ * pale circle on a black page at night: the circle was the only light thing on the screen. At 15 % over a white
+ * surface it is the identical colour it always was in the light.
+ */
 export function CategoryIcon({
   categoryId,
   accounts,
@@ -86,8 +93,9 @@ export function CategoryIcon({
   const { box, glyph } = SIZES[size];
   return (
     <span
+      data-testid="category-mark"
       className={`inline-flex shrink-0 items-center justify-center rounded-full ${box}`}
-      style={{ background: `color-mix(in srgb, ${visual.colour} 15%, #fff)`, color: visual.colour }}
+      style={{ background: `color-mix(in srgb, ${visual.colour} 15%, transparent)`, color: visual.colour }}
       title={title}
       aria-hidden={title ? undefined : true}
     >

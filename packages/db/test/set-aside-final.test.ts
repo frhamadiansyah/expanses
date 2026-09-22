@@ -11,6 +11,7 @@ import {
   archiveGoal,
   createAccount,
   type Database,
+  deleteTrade,
   goalContributionEvents,
   goalContributionsFor,
   goalHistory,
@@ -205,7 +206,7 @@ describe('a goal\'s own move worth nothing in base is not a line (M1, B1f)', () 
   });
 });
 
-describe('editing a buy through replaceTrade (I4)', () => {
+describe('editing and deleting a buy (I4, and the queue’s own re-check)', () => {
   let gold: AccountRow;
   beforeEach(async () => {
     gold = await createAccount(database, ws, { name: 'Antam', kind: 'asset', subtype: 'investment', currency: 'IDR' });
@@ -243,6 +244,33 @@ describe('editing a buy through replaceTrade (I4)', () => {
     await replaceTrade(database, ws, again.tradeId, buy());
     expect(await paidOn(umrahId)).toEqual([['Tickets', '2026-09-20'], ['Hotel', null]]);
     expect(await promised(umrahId, jenius.id)).toBe(700_000);
+  });
+
+  it('a deleted tagged buy gives the goal’s promise back, exactly as an edit that un-tags it does not', async () => {
+    /*
+     * The queue carried "deleting a tagged buy doesn't give back the goal's cash promise" through the set-aside
+     * reviews without anyone proving it either way. Re-checked here, both shapes of a tagged buy: the money it spent
+     * out of the goal's promise comes back (the buy never happened), and the draw that recorded what it borrowed goes
+     * with it. Delete and edit reach the void by the same road (`retire` → `voidTransactionTx` → `undoSetAsideTx`);
+     * what differs is the *money*, and an edit that keeps the outflow rightly keeps the promise spent (T1e).
+     */
+    const spent = await recordTrade(database, ws, buy(spendFrom(umrahId)));
+    // Umrah's Rp 7.500.000 on Jenius is down by the whole Rp 6.800.000 the buy took from it.
+    expect(await promised(umrahId, jenius.id)).toBe(700_000);
+    expect((await listDraws(database, ws)).map((draw) => [draw.intent, draw.amountMinor])).toEqual([['spend', 6_800_000]]);
+
+    await deleteTrade(database, ws, spent.tradeId);
+
+    // The promise is whole again, and nothing is left owing.
+    expect(await promised(umrahId, jenius.id)).toBe(7_500_000);
+    expect(await listDraws(database, ws)).toEqual([]);
+
+    // And the borrowing shape: the draw goes, and the money it borrowed is owed by nobody.
+    const borrowed = await recordTrade(database, ws, buy({ accountId: jenius.id, goalId: umrahId, intent: 'borrow', overMinor: 1_800_000 }));
+    expect((await listDraws(database, ws)).map((draw) => [draw.intent, draw.amountMinor])).toEqual([['borrow', 1_800_000]]);
+    await deleteTrade(database, ws, borrowed.tradeId);
+    expect(await listDraws(database, ws)).toEqual([]);
+    expect(await promised(umrahId, jenius.id)).toBe(7_500_000);
   });
 });
 

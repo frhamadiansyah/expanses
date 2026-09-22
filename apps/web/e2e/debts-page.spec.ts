@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
 import { digits, oneOfEach } from './debts-page';
+import { forgetRates, openWithPockets } from './pockets';
 
 /**
  * Debts: everything owed, one list in three groups — Loans, Credit cards, You owe people — with one converted
@@ -143,6 +144,34 @@ test('every Loans page action is still there: add terms, cancel, and the instalm
   await expect(page.getByText('Every loan account already has its terms.')).toBeVisible();
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('button', { name: 'Add loan terms' })).toBeVisible();
+});
+
+test('an asset whose rate is missing does not hide the due split, which is made of the debts', async ({ page }, testInfo) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  // The mortgage through the chooser: one rupiah debt, with the terms its schedule is read from.
+  await page.goto('/debts/new');
+  await page.getByRole('button', { name: 'Home mortgage' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('KPR BCA');
+  await page.getByLabel('Owed now').fill('712500000');
+  await page.getByLabel('Lender').fill('BCA');
+  await page.getByLabel('Interest rate').fill('9');
+  await page.getByLabel('Months left').fill('180');
+  await page.getByRole('button', { name: 'Add debt' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/loans$/);
+
+  // A funded dollar holding, and then no rate anywhere on the device: the balance sheet names USD as missing, and it
+  // names it on the *asset* side — the debts are all rupiah.
+  await openWithPockets(page, { name: 'Unpriced Valas', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'USD', balance: '2400', rate: '16250' }] });
+  await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
+
+  await page.goto('/net-worth/loans');
+  // The whole and the split are both figures, and they add up: what is owed never waits on what is owned.
+  await expect(page.getByTestId('debts-total')).toContainText('Rp 712.500.000');
+  const within = digits(await page.getByTestId('debts-side-within-year').innerText());
+  const long = digits(await page.getByTestId('debts-side-long-term').innerText());
+  expect(within).toBeGreaterThan(13_000_000);
+  expect(within + long).toBe(712_500_000);
+  await expect(page.getByText(/No USD rate yet/)).toHaveCount(0);
 });
 
 test('a loan paid off leaves the list and the total, and waits under the paid-off loans', async ({ page }) => {

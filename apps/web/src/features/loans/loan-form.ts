@@ -117,6 +117,21 @@ export function paymentDraftFrom(row: ScheduleRow | null | undefined, today: str
   };
 }
 
+/**
+ * A figure typed into one of the extra payment's two boxes — the extra itself, and the bank's penalty — in the
+ * loan's own money, in minor units. An empty box is nothing, which is a real answer for a penalty.
+ *
+ * The app's own reader, so what is typed is money in the currency the box names: "1.500.000" is one and a half
+ * million rupiah, and on a dollar loan "12,50" is twelve dollars and fifty cents. Both boxes used to be read with
+ * `Number(x.replace(/\./g, ''))`, which is right for a rupiah figure and answers a dollar one with `NaN` — a
+ * penalty the bank charged that was posted as nothing, and a NaN that rode into the ledger beside it. A figure
+ * neither spelling can read — rupiah with cents on it, say — now comes back in the reader's own words.
+ */
+export function extraPaymentMinor(typed: string, currency: string): number {
+  if (typed.trim() === '') return 0;
+  return parseMajor(typed, currency);
+}
+
 /** Turns a payment as typed into one to record, refusing more principal than is left. */
 export function paymentDraftToInput(
   draft: PaymentDraft,

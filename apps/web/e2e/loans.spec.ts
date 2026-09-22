@@ -196,3 +196,55 @@ test('a loan in another currency is printed in its own currency, and the monthly
   // The instalments converted at the rate held for the day: 500 × 16.250.
   await expect(page.getByText('The instalments the banks ask for each month')).toContainText('8.125.000');
 });
+
+test('an extra payment reads its penalty in the loan’s own money, cents and all', async ({ page }) => {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  // A dollar account to pay from, and a dollar loan with the terms its schedule is worked out from.
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Wise USD');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+  await page.getByLabel('Current balance').pressSequentially('2400.00');
+  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Wise USD', exact: true })).toBeVisible();
+
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar car loan');
+  await page.getByLabel('Type').selectOption('loan');
+  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+  await page.getByLabel('Amount owed now').pressSequentially('20000.00');
+  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Dollar car loan', exact: true })).toBeVisible();
+
+  await page.goto('/net-worth/loans');
+  await page.getByRole('button', { name: 'Add loan terms' }).click();
+  await page.getByLabel('Lender').pressSequentially('Car Finance');
+  await page.getByLabel('Amount borrowed (USD)').pressSequentially('24000.00');
+  await page.getByLabel('Rate a year (%)').pressSequentially('0');
+  await page.getByLabel('How interest is worked out').selectOption('zero');
+  await page.getByLabel('First payment on').fill('2026-01-25');
+  await page.getByLabel('Tenor in months').pressSequentially('48');
+  await page.getByLabel('Payment day').fill('25');
+  await page.getByLabel('Payment each month (USD)').pressSequentially('500.00');
+  await page.getByRole('button', { name: 'Save terms' }).click();
+  await expect(page.getByRole('row', { name: /Dollar car loan/ })).toContainText('Car Finance');
+
+  await page.getByRole('link', { name: 'Dollar car loan' }).click();
+  await expect(page.getByText('Still owed')).toBeVisible();
+  await page.getByRole('button', { name: 'Extra payment' }).click();
+  await page.getByLabel(/How much/).fill('500.00');
+  /*
+   * The bank's penalty, written the way a dollar figure is: twelve dollars fifty. The box used to be read with
+   * `Number(x.replace(/\./g, ''))`, which is right for rupiah and answers this with `NaN` — so the fee the bank
+   * charged went in as nothing and the NaN rode into the ledger beside it.
+   */
+  await page.getByLabel(/Penalty the bank charges/).pressSequentially('12,50');
+  await page.getByRole('button', { name: 'Save extra payment' }).click();
+
+  // The principal falls by the extra alone — a penalty is a fee, never part of the principal — and the fee, with the
+  // extra, is exactly what left the dollar account: 2.400 − 500 − 12,50.
+  await expect(page.getByText(/19\.500,00/).first()).toBeVisible();
+  await page.goto('/accounts');
+  await expect(page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Wise USD', exact: true }) })).toContainText('1.887,50');
+});

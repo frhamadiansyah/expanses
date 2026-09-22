@@ -179,6 +179,9 @@ export function BudgetPage() {
     try {
       if (!categoryId) throw new Error(options.length === 0 ? 'There are no categories to budget for yet' : 'Choose a category');
       const target = categoryId;
+      // The empty box is the one refusal `parseMajor` has no words for — it answers `Invalid amount: ""` — so it is
+      // worded here, as every other amount box in the app words it.
+      if (!amount.trim()) throw new Error('The amount is empty — type a figure');
       const minor = parseMajor(amount, planCurrency);
       if (thisMonthOnly) await setBudgetOverride(database, ws, { categoryAccountId: target, month, amountMinor: minor });
       else await saveBudget(database, ws, { categoryAccountId: target, amountMinor: minor, frequency: unit });
@@ -194,6 +197,9 @@ export function BudgetPage() {
     setError(null);
     if (!planReady) return;
     try {
+      // Worded here for the same reason as the amount box below: the empty case is the one `parseMajor` has no
+      // words of its own for.
+      if (!income.trim()) throw new Error('The expected take-home is empty — type a figure');
       const minor = parseMajor(income, planCurrency);
       if (incomeThisMonthOnly) await setIncomeOverride(database, ws, { month, amountMinor: minor });
       else await saveExpectedIncome(database, ws, minor);
@@ -370,8 +376,11 @@ export function BudgetPage() {
           <InsetRow
             title="Set income"
             chevron={false}
-            onClick={() => planReady && incomeForm.current?.requestSubmit()}
-            className={planReady ? undefined : 'opacity-40'}
+            /* A real `disabled` row until the books are read. The guard inside `submitIncome` is the correctness
+             * half — a figure must be parsed in the currency the book really reads in — and this is the half that
+             * must never swallow a tap: the platform refuses the press, visibly, and takes it the moment it can. */
+            disabled={!planReady}
+            onClick={() => incomeForm.current?.requestSubmit()}
           />
         </InsetGroup>
       </form>
@@ -407,11 +416,12 @@ export function BudgetPage() {
           />
           {unit !== 'monthly' && <ReadOnlyRow label="Per month" value={preview === null ? null : formatMinor(preview, planCurrency)} />}
           <SwitchRow label="Just this month" checked={thisMonthOnly} onChange={setThisMonthOnly} />
+          {/* Same as Set income above: nothing is pressed and dropped while the books are still being read. */}
           <InsetRow
             title="Set budget"
             chevron={false}
-            onClick={() => planReady && budgetForm.current?.requestSubmit()}
-            className={planReady ? undefined : 'opacity-40'}
+            disabled={!planReady}
+            onClick={() => budgetForm.current?.requestSubmit()}
           />
         </InsetGroup>
         <InsetGroup>

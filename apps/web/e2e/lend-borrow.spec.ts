@@ -144,3 +144,57 @@ test('the desktop keeps both sides in front of you, side by side', async ({ page
   await expect(page.getByTestId('debts-total-Owed to you')).toHaveText('Rp 1.000.000');
   await expect(page.getByTestId('debts-total-You owe')).toHaveText('Rp 750.000');
 });
+
+/**
+ * A dollar account holding nothing yet: an empty opening asks no rate, so none is stored before the loan.
+ * The rate server is cut off too, so the form can only get the dollar's rate by asking for it.
+ */
+async function emptyDollarAccount(page: Page) {
+  await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('Wise USD');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+  await page.getByLabel('Current balance').fill('0');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Wise USD', exact: true })).toBeVisible();
+}
+
+test('lends US$100 with no dollar rate stored: the form asks for it and the loan records', async ({ page }) => {
+  await emptyDollarAccount(page);
+
+  await page.goto('/net-worth/lend-borrow');
+  await page.getByRole('button', { name: 'Add a loan' }).click();
+  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel('Paid from').selectOption({ label: 'Wise USD (USD)' });
+  await page.getByLabel('Amount (USD)').fill('100');
+  await page.getByLabel('Rate: IDR per 1 USD').fill('16250');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
+  await expect(page.getByText(/No USD.IDR rate/)).toHaveCount(0);
+  // Printed in dollars on their card, and converted at the typed rate in the side's total.
+  await expect(page.getByText(/US\$\s?100/).first()).toBeVisible();
+  await expect(page.getByTestId('debts-total-Owed to you')).toContainText('1.625.000');
+});
+
+test('borrows US$50 with no dollar rate stored: the form asks for it and the debt records', async ({ page }) => {
+  await emptyDollarAccount(page);
+
+  await page.goto('/net-worth/lend-borrow');
+  await page.getByRole('button', { name: 'Add a loan' }).click();
+  await page.getByRole('radio', { name: 'I borrowed money' }).click();
+  await page.getByLabel('Person').fill('Budi');
+  await page.getByLabel('Received into').selectOption({ label: 'Wise USD (USD)' });
+  await page.getByLabel('Amount (USD)').fill('50');
+  // Saved blank first: with no rate stored and none to fetch, it says so and waits for one — nothing is lost.
+  await page.getByLabel('Rate: IDR per 1 USD').fill('');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText(/No USD.IDR rate/)).toBeVisible();
+  await page.getByLabel('Rate: IDR per 1 USD').fill('16000');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Budi' })).toBeVisible();
+  await expect(page.getByText(/US\$\s?50/).first()).toBeVisible();
+  await expect(page.getByTestId('debts-total-You owe')).toContainText('800.000');
+});

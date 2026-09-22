@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 import { restoreAgedByDays } from './backup-reminders-fixture';
 import { addBank } from './recovery-fixture';
 import { tokenColour } from './securities';
@@ -107,6 +108,24 @@ test('a screen the decision list left alone follows the reader too', async ({ pa
   expect(await tokenColour(page, '--ph-surface')).toBe('rgb(28, 28, 30)');
   expect(await painted(page.locator('.bg-white').first())).toBe(await tokenColour(page, '--ph-surface'));
   expect(await painted(page.locator('.bg-white').first())).not.toBe('rgb(255, 255, 255)');
+});
+
+test('a category mark is a wash of what it sits on, so at night it is not a light circle', async ({ page }) => {
+  await addBank(page, 'BCA Tahapan', '5000000');
+  await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '150000' });
+  await page.goto('/transactions');
+
+  const mark = page.getByTestId('category-mark').first();
+  await expect(mark).toBeVisible();
+  /*
+   * The mark mixes the category's own colour into `transparent`, so the surface behind it comes through — the same
+   * reading of a tinted icon the kit's rows use. It used to mix into **white**, which is an opaque pale disc: on a
+   * black page, the one light thing left on the screen. The sweep above could not catch it, because the disc was
+   * never one of the greys it looks for. What is asserted here is the wash itself, read off the element.
+   */
+  const wash = await mark.evaluate((node) => getComputedStyle(node).backgroundColor);
+  expect(wash).not.toContain('255, 255, 255');
+  expect(wash).toMatch(/0\.15\)$/);
 });
 
 test.describe('the same shell in the light', () => {
