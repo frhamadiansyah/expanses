@@ -42,10 +42,10 @@ test('an emergency fund is saved over a horizon and a rate you set, not a buried
   await expect(page.getByTestId('answer-emergency')).toContainText('3.000.000');
   // The kit's two assumptions now sit in the boxes they were made in.
   await expect(page.getByLabel('Save it over (months)')).toHaveValue('12');
-  await expect(page.getByLabel('Return a year (%)')).toHaveValue('2');
+  await expect(page.getByLabel('Est. return a year (%)')).toHaveValue('2');
 
   // A rate of nothing is plain division: three million over a year is 250.000 a month.
-  await type(page, 'Return a year (%)', '0');
+  await type(page, 'Est. return a year (%)', '0');
   await expect(page.getByTestId('answer-emergency')).toContainText('250.000');
   // Stretch it to two years and the month is halved.
   await type(page, 'Save it over (months)', '24');

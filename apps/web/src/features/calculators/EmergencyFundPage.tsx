@@ -110,7 +110,7 @@ export function EmergencyFundPage() {
           inputMode="numeric"
         />
         <TextRow
-          label="Return a year (%)"
+          label="Est. return a year (%)"
           hint={returnProblem}
           value={returnPercent}
           onChange={(e) => setReturnPercent(e.target.value)}
