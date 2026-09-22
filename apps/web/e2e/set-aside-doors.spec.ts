@@ -197,7 +197,9 @@ async function addKpr(page: Page) {
   await page.getByLabel('Amount owed now').pressSequentially('700000000');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'KPR Bintaro', exact: true })).toBeVisible();
+  // The terms are written on the loan's own page; the list is how the loan is reached, and the page it ends on.
   await page.goto('/net-worth/loans');
+  await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   // Some of these come filled in: each is cleared before it is typed.
   await retype(page, 'Lender', 'Bank BTN');
@@ -207,7 +209,10 @@ async function addKpr(page: Page) {
   await retype(page, 'Tenor in months', '180');
   await retype(page, 'Payment day', '25');
   await page.getByRole('button', { name: 'Save terms' }).click();
+  // Saving is a round trip; the schedule appearing is the write landing. See `addKpr` in loans.spec.ts.
+  await expect(page.getByText('Where this loan stands')).toBeVisible();
   // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
+  await page.goto('/net-worth/loans');
   await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('Bank BTN');
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
 }
