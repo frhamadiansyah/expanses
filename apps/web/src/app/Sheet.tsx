@@ -32,8 +32,9 @@ export function Sheet({
   grouped?: boolean;
   /**
    * A menu rather than a screen: no grab handle, no title bar, no Close, and a panel that floats clear of the
-   * edges and is only as tall as the answers in it. For two or three choices, where a full sheet's chrome is most
-   * of the panel. The backdrop and Escape are still the ways out.
+   * edges, as wide as its longest answer and only as tall as the answers in it — the way the platform draws a
+   * dropdown, without the blank space a full-width panel leaves beside two words. For two or three choices, where
+   * a full sheet's chrome is most of the panel. The backdrop and Escape are still the ways out.
    */
   compact?: boolean;
 }) {
@@ -66,7 +67,7 @@ export function Sheet({
         aria-label={title}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className={`overflow-y-auto ${compact ? 'mb-3 max-h-[70dvh] w-[calc(100%-1.5rem)] rounded-2xl p-1.5 md:mb-0 md:max-w-sm' : 'max-h-[85dvh] w-full rounded-t-2xl p-4 md:max-w-2xl md:rounded-2xl'} ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} text-[var(--ph-ink)] shadow-xl outline-none`}
+        className={`overflow-y-auto ${compact ? 'mb-3 max-h-[70dvh] w-fit min-w-40 max-w-[calc(100%-1.5rem)] rounded-2xl p-1.5 md:mb-0 md:max-w-sm' : 'max-h-[85dvh] w-full rounded-t-2xl p-4 md:max-w-2xl md:rounded-2xl'} ${grouped ? 'bg-[var(--ph-ground)]' : 'bg-[var(--ph-surface)]'} text-[var(--ph-ink)] shadow-xl outline-none`}
         style={{ paddingBottom: compact ? 'calc(0.375rem + env(safe-area-inset-bottom))' : 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
         {!compact && (
