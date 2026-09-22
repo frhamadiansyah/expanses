@@ -1,6 +1,7 @@
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Bell,
   Calculator,
   CalendarRange,
   CheckCheck,
@@ -10,7 +11,6 @@ import {
   House,
   Landmark,
   PiggyBank,
-  Receipt,
   Scale,
   Settings,
   Sparkles,
@@ -61,7 +61,7 @@ export const MORE_GROUPS: readonly NavGroup[] = [
     items: [
       { to: '/', label: 'Dashboard', icon: House },
       { to: '/budget', label: 'Budget', icon: PiggyBank },
-      { to: '/bills', label: 'Recurring', icon: Receipt },
+      { to: '/bills', label: 'Recurring', icon: Bell },
       { to: '/events', label: 'Events', icon: CalendarRange },
       { to: '/goals', label: 'Goals', icon: Sparkles },
       { to: '/accounts', label: 'Accounts', icon: Landmark },

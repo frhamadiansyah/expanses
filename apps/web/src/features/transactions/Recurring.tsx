@@ -1,6 +1,6 @@
 import { isoDate } from '@expanses/core';
 import { Link } from '@tanstack/react-router';
-import { ChevronRight, Receipt } from 'lucide-react';
+import { Bell, ChevronRight } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { Card, Money } from '../../ui';
 import { useAccounts } from '../../lib/queries';
@@ -37,9 +37,10 @@ export function Recurring({ today = isoDate() }: { today?: string }) {
     <Card>
       <Link to="/bills" className="flex w-full items-center gap-3 text-left" data-testid="recurring-card">
         {/* The circle is the kit's own grey, the same one the queue's row wears: neither of these lines is a
-            warning, so neither borrows the alarm's amber to say "there is something here". */}
+            warning, so neither borrows the alarm's amber to say "there is something here". The glyph is a bell —
+            the month reminding you what is already spoken for — where the screen behind it is a page of bills. */}
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]">
-          <Receipt size={18} strokeWidth={2.2} aria-hidden />
+          <Bell size={18} strokeWidth={2.2} aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
           {/* "Recurring bills", not "Recurring": the line is a total across bills, and the screen behind it is
