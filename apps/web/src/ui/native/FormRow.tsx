@@ -28,8 +28,8 @@ function Separator({ show }: { show: boolean }) {
 }
 
 /**
- * A row that opens a picker: the answer on the right in the tint, or its prompt in grey, and a chevron saying
- * it reopens. It stays one tap target — the row is the button, and there is nothing else inside it to hit.
+ * A row that opens a picker: the answer on the right, or its prompt in grey, and a chevron saying it reopens.
+ * It stays one tap target — the row is the button, and there is nothing else inside it to hit.
  */
 export function PickerRow({
   label,
@@ -107,9 +107,9 @@ export function TextRow({
  *
  * `PickerRow` is the shape to reach for when a screen has a sheet to open. Where the answer is a `<select>` — which
  * on a phone *is* the system picker, and on a desktop is the control a keyboard already knows — the row is drawn
- * exactly as `PickerRow` draws it (label left, answer right in the tint, chevron) and the select is laid bare
- * inside it: no box, no arrow of its own, no second border inside the group's hairline. The forbidden shape is a
- * naked `<select>` sitting on the page under a label, not the platform's list behind a row that looks like a row.
+ * exactly as `PickerRow` draws it (label left, answer right, chevron) and the select is laid bare inside it: no
+ * box, no arrow of its own, no second border inside the group's hairline. The forbidden shape is a naked
+ * `<select>` sitting on the page under a label, not the platform's list behind a row that looks like a row.
  *
  * The answer is drawn by the row rather than left to the control, and the select is laid invisibly over what it
  * says. WebKit lays a closed `select`'s text out from the left of a box as wide as its **longest option**, and
@@ -127,7 +127,7 @@ export function SelectRow({
   const generated = useId();
   const id = props.id ?? generated;
   const value = props.value === undefined || props.value === null ? '' : String(props.value);
-  // The same decision `PickerRow` asks: an answer is drawn in the tint, a prompt still waiting for one is grey.
+  // The same decision `PickerRow` asks: an answer is drawn a shade darker than the prompt still waiting for one.
   const plan = planFormRow('picker', value);
   // A value with no option of its own draws nothing, exactly as a browser draws a select whose value matches nothing.
   const shown = plan.placeholder ? plan.text : (optionLabel(children, value) ?? '');
@@ -142,7 +142,7 @@ export function SelectRow({
           className={cx(
             'relative flex min-w-0 flex-1 items-center justify-end gap-[6px]',
             /* The select is the only focusable thing here, so the ring is drawn on what the reader can see. */
-            'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ph-focus)]',
+            'ph-focus-within',
             className,
           )}
         >

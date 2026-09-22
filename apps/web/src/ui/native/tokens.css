@@ -149,6 +149,29 @@
   outline-offset: -2px;
 }
 
+/* The same ring for a control the kit draws but does not own — a select, whose focusable element is hidden under
+   what the row says. The ring is drawn on the thing the reader can see. */
+.ph-focus-within:has(:focus-visible) {
+  outline: 2px solid var(--ph-focus);
+  outline-offset: 2px;
+}
+
+/*
+ * A thumb gets no ring.
+ *
+ * `:focus-visible` is meant to be the keyboard's ring, but WebKit treats a text field and a `<select>` as
+ * focus-visible however they were focused — typing is about to go there — so a tap drew a green box around every
+ * field on a phone, where native draws nothing at all. The ring is taken away from coarse pointers only: a
+ * keyboard, whose one cue it is, keeps it.
+ */
+@media (pointer: coarse) {
+  .ph-focus:focus-visible,
+  .ph-focus-inset:focus-visible,
+  .ph-focus-within:has(:focus-visible) {
+    outline: none;
+  }
+}
+
 /*
  * A hit area bigger than the picture.
  *

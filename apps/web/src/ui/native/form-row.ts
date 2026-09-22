@@ -10,7 +10,7 @@ import type { Tone } from './row';
  */
 
 export type FormKind =
-  /** Opens a picker — a sheet, a list, a native date control. Chevron, value in the tint. */
+  /** Opens a picker — a sheet, a list, a native date control. Chevron, the answer in the secondary ink. */
   | 'picker'
   /** Typed into in place. No chevron: nothing opens, the caret is already there. */
   | 'typed'
@@ -29,16 +29,17 @@ export interface FormRowPlan {
 /**
  * The right-hand side of a form row.
  *
- * An unanswered picker shows its placeholder in the tertiary ink, because a grey word reads as a prompt and a
- * green one reads as a choice already made — the difference between "Category" waiting and "Groceries" chosen
- * is the only state a one-line field has room to show.
+ * An unanswered picker shows its placeholder in the tertiary ink, and an answered one in the secondary ink — the
+ * weight of the grey, with the chevron beside it, is the whole difference a one-line field has room for, and it is
+ * what native does: a prompt is a light grey word, an answer a darker one. The tint is not spent here (a value is
+ * not an action, and a page of green values reads as a page of links).
  */
 export function planFormRow(kind: FormKind, value: string | null | undefined, placeholder = ''): FormRowPlan {
   const answered = value !== null && value !== undefined && value !== '';
   if (!answered) return { text: placeholder, tone: 'ink-3', chevron: kind === 'picker', placeholder: true };
   switch (kind) {
     case 'picker':
-      return { text: value, tone: 'tint', chevron: true, placeholder: false };
+      return { text: value, tone: 'ink-2', chevron: true, placeholder: false };
     case 'typed':
       return { text: value, tone: 'ink', chevron: false, placeholder: false };
     case 'static':

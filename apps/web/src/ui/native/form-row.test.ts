@@ -4,7 +4,7 @@ import { planFormRow, planSwitchRow } from './form-row';
 
 describe('planFormRow', () => {
   it('shows a chosen picker value in the tint, with the chevron that says it reopens', () => {
-    expect(planFormRow('picker', 'Groceries')).toEqual({ text: 'Groceries', tone: 'tint', chevron: true, placeholder: false });
+    expect(planFormRow('picker', 'Groceries')).toEqual({ text: 'Groceries', tone: 'ink-2', chevron: true, placeholder: false });
   });
 
   it('shows an unanswered picker as a grey prompt, still pointing at what it opens', () => {
