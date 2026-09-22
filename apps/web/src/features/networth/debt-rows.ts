@@ -89,6 +89,10 @@ export interface DebtInputs {
   /** The people you owe, as Lend & borrow lists them: one per person per currency. */
   people: readonly PersonDebtRow[];
   /** The balance sheet's inputs, for the due split. Null until they are read. */
+  /**
+   * The balance sheet's own reading, exactly as `sheetInputsAt` hands it over: the liabilities, and one `missing`
+   * list collected across *both* sides of the sheet. Only `liabilities` is read here — see `dueSplit` for why.
+   */
   sheet: { liabilities: readonly SheetLiability[]; missing: readonly string[] } | null;
   baseCurrency: string;
   ratesToBase: Readonly<Record<string, number>>;
@@ -191,13 +195,27 @@ export function groupDebts(input: DebtInputs, today: string = new Date().toISOSt
     return { kind, label: DEBT_GROUP_LABELS[kind], totalMinor: total.totalMinor, missing: total.missing, rows: own };
   }).filter((group) => group.rows.length > 0);
 
-  return { groups, total: totalOf(groups), cleared, due: dueSplit(input.sheet) };
+  return { groups, total: totalOf(groups), cleared, due: dueSplit(input.sheet, missingOf(rows)) };
 }
 
-/** The balance sheet's own split of what is owed: its rows, its function, its missing rates. */
-function dueSplit(sheet: DebtInputs['sheet']): DueSplit {
+/** The rates the debts themselves are waiting on, in the very reading the totals above used, each named once. */
+function missingOf(rows: readonly DebtRow[]): string[] {
+  return [...new Set(rows.map((row) => row.missing).filter((code): code is string => code !== null))].sort();
+}
+
+/**
+ * The balance sheet's own split of what is owed: its rows, its function.
+ *
+ * The sheet hands back one `missing` list for *both* sides of the sheet, so a missing rate on an **asset** — a
+ * dollar holding with no dollar rate, say — used to hide the split of everything owed, which has nothing to do with
+ * it. What withholds the split is a rate one of the **debts** is waiting on: those are the figures the split is made
+ * of, read at the same rates the group totals above were read at, so the two can never disagree — a figure on one
+ * side and a refusal on the other, or two figures that do not add up. The assets' own missing rates stay the balance
+ * sheet's business, on `/net-worth`, where they belong.
+ */
+function dueSplit(sheet: DebtInputs['sheet'], missingRates: readonly string[]): DueSplit {
   if (!sheet) return { withinYearMinor: null, longTermMinor: null, missing: [] };
-  if (sheet.missing.length > 0) return { withinYearMinor: null, longTermMinor: null, missing: [...sheet.missing] };
+  if (missingRates.length > 0) return { withinYearMinor: null, longTermMinor: null, missing: [...missingRates] };
   const { shortTerm, longTerm } = balanceSheet([], [...sheet.liabilities]);
   return { withinYearMinor: shortTerm.totalMinor, longTermMinor: longTerm.totalMinor, missing: [] };
 }

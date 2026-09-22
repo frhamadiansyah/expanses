@@ -53,6 +53,17 @@ const person = (partial: Partial<PersonDebtRow> & Pick<PersonDebtRow, 'personNam
 
 const card = (partial: Partial<CardFacts> = {}): CardFacts => ({ last4: null, hasTerms: true, dueOn: null, billedMinor: 0, leftToPayMinor: 0, ...partial });
 
+/**
+ * The balance sheet's own reading of the same four debts, as `sheetInputsAt` would hand it over: every one of them,
+ * so the split it produces and the whole this page converts are the same money read twice.
+ */
+const sheetLiabilities = (): SheetLiability[] => [
+  { accountId: 'kpr', name: 'KPR BCA', subtype: 'loan', balanceMinor: 712_500_000, dueWithinYearMinor: 33_690_000, note: null },
+  { accountId: 'car', name: 'Car loan', subtype: 'loan', balanceMinor: 18_750_000, dueWithinYearMinor: 6_250_000, note: null },
+  { accountId: 'kris', name: 'BCA KrisFlyer', subtype: 'credit_card', balanceMinor: 8_460_000, dueWithinYearMinor: 8_460_000, note: null },
+  { accountId: 'pay-Dewi', name: 'Dewi', subtype: 'payable', balanceMinor: 750_000, dueWithinYearMinor: 750_000, note: null },
+];
+
 /** The mockup's sample, in the ledger's own signs: a liability's raw balance is negative. */
 function sample(overrides: Partial<DebtInputs> = {}): DebtInputs {
   return {
@@ -197,19 +208,41 @@ describe('groupDebts', () => {
   });
 
   it('splits by due date exactly as the balance sheet does, from the same rows', () => {
-    const liabilities: SheetLiability[] = [
-      { accountId: 'kpr', name: 'KPR BCA', subtype: 'loan', balanceMinor: 712_500_000, dueWithinYearMinor: 33_690_000, note: null },
-      { accountId: 'kris', name: 'BCA KrisFlyer', subtype: 'credit_card', balanceMinor: 8_460_000, dueWithinYearMinor: 8_460_000, note: null },
-      { accountId: 'pay-Dewi', name: 'Dewi', subtype: 'payable', balanceMinor: 750_000, dueWithinYearMinor: 750_000, note: null },
-    ];
+    const liabilities = sheetLiabilities();
     const sheet = balanceSheet([], liabilities);
     const debts = groupDebts(sample({ sheet: { liabilities, missing: [] } }));
     expect(debts.due).toEqual({ withinYearMinor: sheet.shortTerm.totalMinor, longTermMinor: sheet.longTerm.totalMinor, missing: [] });
-    expect(debts.due.withinYearMinor).toBe(42_900_000);
+    expect(debts.due.withinYearMinor).toBe(49_150_000);
+    // The split and the whole are the same money read twice: their sum is the converted total above.
+    expect(debts.due.withinYearMinor! + debts.due.longTermMinor!).toBe(debts.total.totalMinor);
   });
 
-  it('has no due split while the balance sheet is missing a rate, and names it', () => {
-    const debts = groupDebts(sample({ sheet: { liabilities: [], missing: ['USD'] } }));
+  it('keeps the due split while only an ASSET is missing a rate, which the sheet names in its own list', () => {
+    /*
+     * `sheetInputsAt` collects one `missing` list across both sides of the balance sheet, and this page used to
+     * refuse the split whenever it had anything in it — so a dollar holding with no dollar rate hid what was owed,
+     * which has nothing to do with it. Every debt here is rupiah and every one of them has its figure.
+     */
+    const liabilities = sheetLiabilities();
+    const debts = groupDebts(sample({ sheet: { liabilities, missing: ['USD'] } }));
+
+    expect(debts.due).toEqual({ withinYearMinor: 49_150_000, longTermMinor: 691_310_000, missing: [] });
+    expect(debts.due.withinYearMinor! + debts.due.longTermMinor!).toBe(debts.total.totalMinor);
+  });
+
+  it('has no due split while a DEBT is missing its own rate, and names it — never a figure beside a refusal', () => {
+    const liabilities = sheetLiabilities();
+    const debts = groupDebts(
+      sample({
+        accounts: [account({ id: 'usd', name: 'Dollar loan', subtype: 'loan', currency: 'USD' }), ...sample().accounts],
+        balances: { ...sample().balances, usd: -2_000_000 },
+        sheet: { liabilities, missing: [] },
+      }),
+    );
+
+    // The row says it in its own words, the total refuses to add up, and the split refuses with the same currency.
+    expect(debts.groups.find((group) => group.kind === 'loan')!.missing).toEqual(['USD']);
+    expect(debts.total).toEqual({ totalMinor: null, missing: ['USD'] });
     expect(debts.due).toEqual({ withinYearMinor: null, longTermMinor: null, missing: ['USD'] });
   });
 });
