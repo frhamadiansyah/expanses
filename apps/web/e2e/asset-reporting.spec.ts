@@ -21,6 +21,9 @@ async function addBankAsset(page: Page) {
 async function openSettings(page: Page) {
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
+  // Settings live behind the gear now, on a page of their own — off the chart and the history they sat under.
+  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByRole('button', { name: 'Save settings' })).toBeVisible();
 }
 

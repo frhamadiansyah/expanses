@@ -168,6 +168,8 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await page.goto('/accounts');
   await expect(page.getByText(/0109 · Setara kas lainnya/)).toBeVisible();
   await page.getByRole('link', { name: /Setara kas lainnya/ }).click();
+  // The code boxes live on the asset's settings page, behind its gear.
+  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('What it is').selectOption({ label: 'Saving account' });
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Saved.')).toBeVisible();
@@ -184,6 +186,7 @@ test('a thing sharing its code with another reads back as itself', async ({ page
 
   // 0102 is both a current account and a saving account. The account itself says which, and the list opens on it.
   await page.getByRole('link', { name: /0102 · Tabungan/ }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByLabel('What it is')).toHaveValue('savings');
 
   // Typing a code the list does not name is the way out, and choosing it puts the cursor in the box.

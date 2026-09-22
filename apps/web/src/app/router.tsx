@@ -31,6 +31,7 @@ import { AddAccountPage } from '../features/ownables/AddAccountPage';
 import { AddAssetPage } from '../features/ownables/AddAssetPage';
 import { AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
+import { AssetSettingsRoute } from '../features/networth/AssetSettingsPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
 import { GoalRoute } from '../features/goals/GoalPage';
@@ -191,6 +192,8 @@ const routeTree = rootRoute.addChildren([
   // "new" is a static segment, which outranks the `$accountId` below it however they are ordered here.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/new', component: AddAssetPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
+  // An asset's settings, behind its gear: they used to sit at the bottom of the asset's own page.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId/settings', component: AssetSettingsRoute }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/goals', component: GoalsPage }),
   // One goal on its own page: the list reads them as a set, and a goal that was a card among cards is a page now.

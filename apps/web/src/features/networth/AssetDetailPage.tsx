@@ -1,20 +1,19 @@
 import { type AssetKind, averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
-import { archiveAccount, taxTreatmentOf } from '@expanses/db';
+import { archiveAccount } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
+import { Settings } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { approxLine, Hero, InsetGroup, InsetRow, LargeTitle, Panel, rateLine, SCREEN } from '../../ui/native';
+import { approxLine, type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, rateLine, SCREEN } from '../../ui/native';
 import { useHeldRates, useOpenings } from '../accounts/queries';
 import { useGoalLinks, useGoals } from '../goals/queries';
 import { useLoans } from '../loans/queries';
 import { useHoldingLinks, useSecurities } from '../investments/queries';
-import { AssetSettings } from './AssetSettings';
 import { DepositProposalCard } from './DepositProposalCard';
 import { DepositTermsCard } from './DepositTermsCard';
 import { MaturitySettings } from './MaturitySettings';
-import { CoretaxFieldsForm } from './CoretaxFieldsForm';
 import { METHOD_LABELS, UNIT_LABELS } from './labels';
 import { PriceForm } from './PriceForm';
 import { StockAndBroker } from './StockAndBroker';
@@ -87,6 +86,11 @@ export function AssetDetailPage() {
     }
   }
 
+  // The gear is the page's own door to its settings: an asset's group, its tax treatment and its code.
+  const actions: CornerAction[] = value
+    ? [{ key: 'settings', label: 'Settings', glyph: <Settings size={22} aria-hidden />, to: '/net-worth/assets/$accountId/settings', params: { accountId } }]
+    : [];
+
   return (
     <div className={SCREEN}>
       <LargeTitle
@@ -94,6 +98,7 @@ export function AssetDetailPage() {
         back={parent?.name ?? 'All assets'}
         backTo={parent ? '/accounts/$accountId' : '/net-worth/assets'}
         backParams={parent ? { accountId: parent.id } : undefined}
+        actions={actions}
       />
       <ErrorBox error={values.error ?? profile.error ?? error} />
       {!value && !values.isPending && <Empty>That asset is not in this workspace.</Empty>}
@@ -236,30 +241,6 @@ export function AssetDetailPage() {
       {value && <DepositTermsCard accountId={accountId} />}
       {value && account?.subtype === 'time_deposit' && <MaturitySettings accountId={accountId} currency={value.currency} />}
       {value && account?.subtype === 'time_deposit' && <RecordedByHand accountId={accountId} currency={value.currency} />}
-
-      {/* Only once the profile is in: the form fills its boxes when it mounts, and an empty code reads as "type one". */}
-      {value && !profile.isPending && (
-        <AssetSettings
-          key={accountId}
-          accountId={accountId}
-          group={profile.data?.planGroup ?? value.planGroup}
-          lotSize={profile.data?.lotSize ?? null}
-          // A holding linked to a security takes its lot size from the security, so the box is not offered.
-          showLotSize={value.mode === 'market' && profile.data?.unitKind !== 'grams' && !linkedToSecurity}
-          reportable={profile.data?.reportable ?? true}
-          coretaxCode={profile.data?.coretaxCode ?? null}
-          // What the thing is, for the codes two items share: a saving account must not read back as a current one.
-          itemId={account?.subtype}
-          // As the tax report reads it: a deposit nobody set shows final, the band its interest is reported in.
-          taxTreatment={taxTreatmentOf(profile.data?.taxTreatment, account?.subtype)}
-        />
-      )}
-
-      {profile.data?.coretaxSection && (
-        <Panel>
-          <CoretaxFieldsForm profile={profile.data} section={profile.data.coretaxSection} />
-        </Panel>
-      )}
 
       {value && (
         /* Its own group, as the kit asks of anything destructive: the air around it is the only undo a finger has. */

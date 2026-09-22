@@ -127,9 +127,10 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await addAccount(page, 'RDN Stockbit', 'bank', 'Current balance', '0');
   await addStock(page);
 
-  // Broker cash is money meant to be invested, not the emergency buffer.
+  // Broker cash is money meant to be invested, not the emergency buffer. Its gear page is where that is said.
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: /RDN Stockbit/ }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('Counts as').selectOption('invest');
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Saved.')).toBeVisible();

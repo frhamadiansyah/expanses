@@ -35,8 +35,11 @@ test('an account with pockets is one row that adds them up, and opens to each po
   // A pocket is an ordinary account page: its code, the rate it opened at, and back to its account.
   await page.getByTestId('pocket-USD').click();
   await expect(page.getByText('Opened at 16.250 IDR per 1 USD')).toBeVisible();
-  // Its kode harta: the code lives in the settings' Tax report code box, whose value getByText cannot see.
+  // Its kode harta: the code lives in the settings' Tax report code box, which sits behind the page's gear now.
+  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByLabel('Tax report code')).toHaveValue('0102');
+  // Back to the pocket's page, and from there to its account.
+  await page.getByRole('link', { name: /Valas Plus · USD/ }).first().click();
   await page.getByRole('link', { name: 'Valas Plus' }).first().click();
   await expect(page.getByTestId('pocket-USD')).toBeVisible();
 });

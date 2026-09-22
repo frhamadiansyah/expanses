@@ -96,9 +96,10 @@ test('says what is missing before it can be filed, and stops saying it once fixe
   await startReport(page);
   await expect(page.getByText(/needs Atas nama|needs Nama bank/).first()).toBeVisible();
 
-  // The tax-report details live on the asset, which is where the link sends you.
+  // The tax-report details live on the asset's settings page now, behind its gear.
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('Nomor akun').fill('1234567890');
   await page.getByLabel('Atas nama').fill('Fandrian');
   await page.getByLabel('Nama bank/institusi').fill('Bank Central Asia');
@@ -198,6 +199,7 @@ test('downloads the converter file once the sheet has everything it needs', asyn
   // The kas sheet needs its account number, owner, institution and country before it can be built.
   await page.goto('/net-worth/assets');
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('Nomor akun').fill('1234567890');
   await page.getByLabel('Atas nama').fill('Fandrian');
   await page.getByLabel('Nama bank/institusi').fill('Bank Central Asia');
