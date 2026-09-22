@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { addHoldingFlow, bbcaFirst, tokenColour } from './securities';
+import { addHoldingFlow, tokenColour } from './securities';
 import { addMoneyAccount } from './set-aside';
 
 const noSideScroll = async (page: Page) => expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -10,7 +10,7 @@ test.beforeEach(({ page }) => {
 
 test('every securities screen fits a 390 px phone and is reached by thumb', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
-  await addHoldingFlow(page, { ...bbcaFirst(), broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', paidFrom: 'BCA Tahapan (IDR)' });
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', paidFrom: 'BCA Tahapan (IDR)' });
   await expect(page.getByLabel('Total')).toHaveValue(/8\.750\.000$/);
   await noSideScroll(page);
   await page.getByRole('button', { name: 'Add holding' }).tap();

@@ -1,15 +1,6 @@
-import { readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 
-/**
- * The IDX list is an empty placeholder until the exchange's Daftar Saham arrives (Task 3's IDX half). While it is, a
- * walk that finds BBCA on the list names it instead — the same stock, market, currency and lot size, typed through
- * Name it myself — and the assertions that need the list itself wait, exactly as the catalogue's own tests do.
- */
-export const idxPending =
-  (JSON.parse(readFileSync(new URL('../../../packages/catalog/securities/idx.json', import.meta.url), 'utf8')) as { rows: unknown[] }).rows.length === 0;
-
-/** BBCA as the IDX list carries it, for Name it myself while the list is pending. */
+/** BBCA as the IDX list carries it, typed through Name it myself — the walk that checks a stock named by hand is the listed one. */
 export const BBCA_BY_HAND = { ticker: 'BBCA', name: 'BCA', market: 'IDX', currency: 'IDR', lotSize: '100' };
 
 /** The owner's preview switch (developer settings, linked from nowhere): the US list, granted on this device. */
@@ -69,9 +60,6 @@ export async function addHoldingFlow(
   await page.getByLabel('Paid from').selectOption({ label: o.paidFrom });
   if (o.charged) await page.getByLabel(/^Charged in/).pressSequentially(o.charged);
 }
-
-/** BBCA from the IDX list, or — while that list is pending — named by hand with the list's own facts. */
-export const bbcaFirst = (): { search: string; nameIt?: NameIt } => (idxPending ? { search: 'BBCA', nameIt: BBCA_BY_HAND } : { search: 'BBCA' });
 
 /** The token as a computed colour — moved here from phone-dark-shell.spec.ts, which now imports it. */
 export async function tokenColour(page: Page, name: string): Promise<string> {

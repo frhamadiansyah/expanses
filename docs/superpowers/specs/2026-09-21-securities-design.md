@@ -271,7 +271,9 @@ to it:
   found in the entry chunk, if either list is not in exactly one chunk of its own, or if a list chunk passes its
   budget (IDX 25 KB gzipped, US 160 KB gzipped — raised from 150 KB by the owner's ruling, after rows that are not
   ordinary holdings were dropped). The gate every task runs therefore guards the size for good. While the IDX list
-  has no rows (the exchange's file is pending), its check is a warning, "IDX list: pending", not a failure.
+  has no rows, its check is a warning, "IDX list: pending", not a failure. It has rows since 2026-09-22: 962, from the
+  exchange's *Daftar Saham* export of that day (.xlsx, read by the pinned SheetJS devDependency; the file itself stays
+  out of git), 12.9 KB gzipped against its 25 KB budget.
 
 ### 6.4 Keeping the lists current
 

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { expectBalance, startReport } from './deposit-maturity';
-import { addHoldingFlow, BBCA_BY_HAND, bbcaFirst, idxPending, setForeignList } from './securities';
+import { addHoldingFlow, BBCA_BY_HAND, setForeignList } from './securities';
 import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
 import { todayIn } from './today';
 
@@ -11,7 +11,7 @@ test.beforeEach(({ page }) => {
 
 test('1–4: BBCA at two brokers is one stock, one price values both, and the bank moved by exactly what was paid', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
-  await addHoldingFlow(page, { ...bbcaFirst(), broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', fee: '13.125', paidFrom: 'BCA Tahapan (IDR)' });
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', fee: '13.125', paidFrom: 'BCA Tahapan (IDR)' });
   await expect(page.getByLabel('Total')).toHaveValue(/8\.750\.000$/); // 10 lots × 100 × 8.750
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
@@ -69,7 +69,6 @@ test('9: a free user’s search for AAPL finds nothing on IDX and offers Name it
 });
 
 test('9 (the list): the same search finds BBCA, so the empty answer is about the market, not a failure', async ({ page }) => {
-  test.skip(idxPending, 'the IDX list waits for the exchange’s Daftar Saham');
   await page.goto('/net-worth/investments/new');
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
   await expect(page.getByRole('button', { name: /^BBCA\b/ }).first()).toBeVisible();
@@ -102,12 +101,6 @@ test('6 & 10: the switched-on list fills AAPL in; a missing day rate is asked fo
 
 test('11: a holding recorded before is given its ticker and broker; its lot setting goes to the security', async ({ page }) => {
   await addMoneyAccount(page, 'Stockbit', 'fund', '0');
-  if (idxPending) {
-    // Nothing to find BBCA on yet, so the stock is recorded once by hand; the old holding is then linked to it.
-    await addHoldingFlow(page, { ...bbcaFirst(), broker: 'No broker', quantity: '1', price: '1', paidFrom: 'Owned before this app' });
-    await page.getByRole('button', { name: 'Add holding' }).click();
-    await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
-  }
   await page.goto('/net-worth/assets');
   await page.getByRole('button', { name: 'Add asset' }).click();
   await page.getByLabel('What is it?').selectOption('stock');
@@ -130,7 +123,7 @@ test('11: a holding recorded before is given its ticker and broker; its lot sett
 
 test('12: the tax report names the broker and files AAPL at the rupiah it cost', async ({ page }) => {
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
-  await addHoldingFlow(page, { ...bbcaFirst(), broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', paidFrom: 'Owned before this app' });
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await addHoldingFlow(page, {
@@ -149,7 +142,7 @@ test('12: the tax report names the broker and files AAPL at the rupiah it cost',
 
 test('the Add a holding form is a set-aside door: a buy that takes promised money asks which goal paid', async ({ page }) => {
   await jeniusWithTwoGoals(page); // Jenius Rp 42.500.000, Rp 37.500.000 promised: Rp 5.000.000 free
-  await addHoldingFlow(page, { ...bbcaFirst(), broker: { new: 'Stockbit' }, quantity: '10', price: '6.800', paidFrom: 'Jenius (IDR)' });
+  await addHoldingFlow(page, { search: 'BBCA', broker: { new: 'Stockbit' }, quantity: '10', price: '6.800', paidFrom: 'Jenius (IDR)' });
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
   const add = page.getByRole('button', { name: 'Add holding' });
   await expect(add).toBeDisabled();
@@ -162,7 +155,7 @@ test('the Add a holding form is a set-aside door: a buy that takes promised mone
 });
 
 test('a buy with no broker names the holding it adds to — and, with two, which one and how to reach the other', async ({ page }) => {
-  await addHoldingFlow(page, { ...bbcaFirst(), broker: 'No broker', quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
+  await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '9.000', paidFrom: 'Owned before this app' });
@@ -204,7 +197,7 @@ test('a buy with no broker names the holding it adds to — and, with two, which
 });
 
 test('every way in reaches Investments and Add a holding: Buy & sell, the Assets group, the picker and the inline form', async ({ page }) => {
-  await addHoldingFlow(page, { ...bbcaFirst(), broker: 'No broker', quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
+  await addHoldingFlow(page, { search: 'BBCA', broker: 'No broker', quantity: '1', price: '8.750', paidFrom: 'Owned before this app' });
   await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
 

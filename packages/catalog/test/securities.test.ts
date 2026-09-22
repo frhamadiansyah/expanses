@@ -3,19 +3,12 @@ import idxFile from '../securities/idx.json';
 import usFile from '../securities/us.json';
 import { expandList, type ListFile, loadSecurityList, MARKETS, searchSecurities, validateSecurityList } from '../src/index';
 
-/*
- * The IDX list is generated from the exchange's Daftar Saham, which is still to come from the owner (idx.co.id refuses
- * a download). Until it lands, idx.json is an empty list and every assertion about its rows waits; they run on their
- * own the day the generated file is committed.
- */
-const idxPending = (idxFile as ListFile).rows.length === 0;
-
 describe('the bundled lists', () => {
   it('are valid, with no duplicate ticker on a market', () => {
     expect(validateSecurityList(idxFile, 'idx')).toEqual([]);
     expect(validateSecurityList(usFile, 'us')).toEqual([]);
   });
-  it.skipIf(idxPending)('carry as many IDX rows as the exchange publishes', () => {
+  it('carry as many IDX rows as the exchange publishes', () => {
     expect((idxFile as ListFile).rows.length).toBeGreaterThan(850);
     expect((idxFile as ListFile).rows.length).toBeLessThan(1_100);
   });
@@ -32,7 +25,7 @@ describe('the bundled lists', () => {
     // Real stocks and ETFs stay: a 4-letter Nasdaq ticker ending in W, R or U is an ordinary share.
     expect(rows.some(([ticker]) => ticker === 'ROKU')).toBe(true);
   });
-  it.skipIf(idxPending)('carry the IDX names the owner holds, on the right market', async () => {
+  it('carry the IDX names the owner holds, on the right market', async () => {
     const idx = (await loadSecurityList('idx')).securities;
     for (const ticker of ['BBCA', 'TLKM', 'BBRI']) expect(idx.find((s) => s.ticker === ticker)).toMatchObject({ market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share' });
   });
@@ -41,11 +34,11 @@ describe('the bundled lists', () => {
     expect(us.find((s) => s.ticker === 'AAPL')).toMatchObject({ market: 'NASDAQ', currency: 'USD', lotSize: null, kind: 'share' });
     expect(us.find((s) => s.ticker === 'VOO')).toMatchObject({ market: 'NYSE ARCA', currency: 'USD', lotSize: null, kind: 'etf' });
   });
-  it('loads an empty list as an empty list', async () => {
+  it('carry the date of the exchange file they were generated from', async () => {
     const idx = await loadSecurityList('idx');
+    expect(idx.asOf).toBe((idxFile as ListFile).asOf);
     expect(idx.asOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(Array.isArray(idx.securities)).toBe(true);
-    if (idxPending) expect(idx.securities).toEqual([]);
+    expect(idx.securities).toHaveLength((idxFile as ListFile).rows.length);
   });
   it('never hands out the US list as the IDX one — every row it loads is on an IDX market', async () => {
     const idx = (await loadSecurityList('idx')).securities;
