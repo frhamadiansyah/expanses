@@ -34,6 +34,28 @@ test('the catalogue says what each calculator answers, and opens its own page', 
   await expect(page.getByRole('heading', { name: 'Calculators' })).toBeVisible();
 });
 
+test('an emergency fund is saved over a horizon and a rate you set, not a buried assumption', async ({ page }) => {
+  await page.goto('/calculators/emergency');
+  await type(page, 'What goes out a month (IDR)', '1000000');
+
+  // Three months of outgoings — the prefill for single, salaried — make the pot.
+  await expect(page.getByTestId('answer-emergency')).toContainText('3.000.000');
+  // The kit's two assumptions now sit in the boxes they were made in.
+  await expect(page.getByLabel('Save it over (months)')).toHaveValue('12');
+  await expect(page.getByLabel('Return a year (%)')).toHaveValue('2');
+
+  // A rate of nothing is plain division: three million over a year is 250.000 a month.
+  await type(page, 'Return a year (%)', '0');
+  await expect(page.getByTestId('answer-emergency')).toContainText('250.000');
+  // Stretch it to two years and the month is halved.
+  await type(page, 'Save it over (months)', '24');
+  await expect(page.getByTestId('answer-emergency')).toContainText('125.000');
+  // A horizon of nothing is refused on its row, and the answer waits rather than lying.
+  await type(page, 'Save it over (months)', '0');
+  await expect(page.getByText('Not below one month')).toBeVisible();
+  await expect(page.getByTestId('answer-emergency')).toHaveCount(0);
+});
+
 test('answers what retirement costs a month without saving anything', async ({ page }) => {
   await page.goto('/calculators/retirement');
   await retirementFigures(page);
