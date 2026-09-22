@@ -43,3 +43,20 @@ test('a budget row leads with what is left or over, then what was spent and its 
   await expect(transport).toContainText('no budget');
   await expect(transport).not.toContainText('%');
 });
+
+test('by thumb: Set budget takes the tap it is given, even as the page opens', async ({ page }) => {
+  /*
+   * The row is drawn before the workspace's books are read, and the books decide the currency a typed figure is
+   * parsed in — so the page waits rather than guesses. It used to wait *silently*: the row looked pressable, the
+   * tap landed, and the guard inside the form dropped it with nothing on screen. It is a real `disabled` row now,
+   * which is what a tap waits for instead of vanishing into. So this tap is given to a page that may not be ready,
+   * and the refusal it must produce — "Choose a category", the form's own first check — is the proof it landed.
+   */
+  await page.goto('/budget');
+  await page.getByRole('button', { name: 'Set budget' }).tap();
+  await expect(page.getByRole('alert')).toHaveText('Choose a category');
+
+  // The same for the income row above it, whose own empty case is worded rather than left to `parseMajor`.
+  await page.getByRole('button', { name: 'Set income' }).tap();
+  await expect(page.getByRole('alert')).toHaveText('The expected take-home is empty — type a figure');
+});
