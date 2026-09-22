@@ -41,7 +41,9 @@ export function Recurring({ today = isoDate() }: { today?: string }) {
           <Receipt size={18} strokeWidth={2.2} aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium">Recurring</span>
+          {/* "Recurring bills", not "Recurring": the line is a total across bills, and the screen behind it is
+              the one called Recurring. */}
+          <span className="block text-sm font-medium">Recurring bills</span>
           <span className="block truncate text-xs text-slate-500">
             {settled} of {readRows.length} {readRows.length === 1 ? 'bill' : 'bills'} paid
           </span>
