@@ -1,11 +1,5 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
-
-/** Answers a choice row: the row opens a sheet, and the sheet holds the answers. */
-async function choose(page: Page, label: string, option: string) {
-  await page.getByRole('button', { name: new RegExp(`^${label} `) }).click();
-  await page.getByRole('dialog', { name: label }).getByRole('button', { name: option, exact: true }).click();
-}
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -26,8 +20,8 @@ test('two answers prefill the months, say why, and size the goal on a month of s
   await page.getByRole('button', { name: 'Add goal' }).last().click();
   await expect(page.getByRole('button', { name: 'Move Emergency fund down' })).toBeVisible();
   await page.getByRole('button', { name: 'Work out the amount' }).click();
-  await choose(page, 'Household', 'With children');
-  await choose(page, 'Income', 'Irregular');
+  await page.getByLabel('Household').selectOption('children');
+  await page.getByLabel('Income').selectOption('irregular');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('24');
   // The two answers above are what set it, so the row does not repeat them back as a hint.
   await expect(page.getByText(/with children, freelance/)).toHaveCount(0);
