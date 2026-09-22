@@ -4,15 +4,17 @@ import { useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
+import { moneyHolders, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useSuggestedDraft } from '../../lib/suggested-draft';
 import { Empty, ErrorBox } from '../../ui';
 import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, ReadOnlyRow, RecordTable, SCREEN, SelectRow, TextRow } from '../../ui/native';
+import { useHeldRates } from '../accounts/queries';
 import { CategoryOptions } from '../cards/options';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { UTANG_CHOICES } from '../ownables/catalogue-view';
-import { type PaymentDraft, paymentDraftFrom, paymentDraftToInput } from './loan-form';
+import { type PaymentDraft, extraPaymentMinor, paymentDraftFrom, paymentDraftToInput } from './loan-form';
 import { useLoan, useNextPayment, useSchedule } from './queries';
 
 /**
@@ -52,6 +54,42 @@ function LoanCodeField({ terms }: { terms: LoanTermsRow }) {
       <ErrorBox error={error} />
     </>
   );
+}
+
+/**
+ * The rate a payment on this loan is posted at, and the row that asks for it while the day has none.
+ *
+ * The ledger values every line in the base currency, so a payment on a dollar loan cannot be written without the
+ * dollar's rate for its day — and both of this page's doors (a recorded payment, and an extra one) posted with no
+ * rate at all, so the ledger refused them with "No USD→IDR rate" and the screen held no way to hand one over. This
+ * is the same reading Lend & borrow and every account form goes through: a typed rate is checked and stored for the
+ * day, a blank one is resolved, and a missing one puts this row on screen rather than a refusal after the fact.
+ */
+function useRateForPayment(currency: string, onDate: string) {
+  const { database, ws } = useApp();
+  const resolveRates = useResolveRates();
+  const [typed, setTyped] = useState('');
+  const [needs, setNeeds] = useState<string | null>(null);
+  const foreign = currency !== ws.baseCurrency;
+  // Read from what this device already holds, never fetched just because the form opened (see `useStoredRates`).
+  const held = useHeldRates(foreign ? [currency] : [], onDate);
+  // Asked for when no rate is stored for the day, or when a save found none; left out while one is known.
+  const asking = foreign && (needs === currency || (held.data?.missing ?? []).includes(currency));
+  return {
+    /** What the posting needs for this day and this figure — the map `recordLoanPayment` and `recordExtraPayment` take. */
+    ratesToBase: (amountMinor: number) =>
+      ratesForSave({ database, ws, currency, occurredOn: onDate, amountMinor, typed: asking ? typed : '', resolveRates, onMissing: setNeeds }),
+    node: asking ? (
+      <TextRow
+        label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+        hint={ratePreview(typed, currency, ws.baseCurrency) ?? `No ${currency} rate is stored for this day. Leave empty to fetch it.`}
+        value={typed}
+        onChange={(e) => setTyped(e.target.value)}
+        inputMode="decimal"
+        placeholder="16250"
+      />
+    ) : null,
+  };
 }
 
 /** Records the instalment the schedule says is next, with anything riding along on it. */
@@ -96,12 +134,16 @@ function PaymentForm({
     }
   })();
   const setAside = useSetAside(spendingDoor(filled.moneyId, outflowMinor));
+  const rate = useRateForPayment(currency, filled.occurredOn);
 
   async function save() {
     setError(null);
     setBusy(true);
     try {
-      await recordLoanPayment(database, ws, { ...paymentDraftToInput(filled, accountId, currency, balanceMinor, loanName, today), setAside: setAside.choice });
+      const input = paymentDraftToInput(filled, accountId, currency, balanceMinor, loanName, today);
+      const outflow = input.principalMinor + input.interestMinor + (input.extras ?? []).reduce((sum, extra) => sum + extra.amountMinor, 0);
+      const ratesToBase = await rate.ratesToBase(outflow);
+      await recordLoanPayment(database, ws, { ...input, ratesToBase, setAside: setAside.choice });
       await invalidate();
       onDone();
     } catch (e) {
@@ -124,6 +166,8 @@ function PaymentForm({
             </option>
           ))}
         </SelectRow>
+        {/* The rate, and only while the day has none: a loan in the base currency draws nothing here. */}
+        {rate.node}
       </InsetGroup>
 
       <InsetGroup header="Riding along on it">
@@ -247,11 +291,22 @@ function ExtraPaymentForm({
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  const amountMinor = amount.trim() === '' ? 0 : Number(amount.replace(/\./g, ''));
-  // Lifted unchanged from the save, so the question measures exactly what `recordExtraPayment` takes out of the
-  // account: the extra and the bank's penalty. (Its parse is the loan page's own; replacing it is spec §12.5, queued.)
-  const penaltyMinor = penalty.trim() === '' ? 0 : Number(penalty.replace(/\./g, ''));
-  const setAside = useSetAside(spendingDoor(moneyId, (amountMinor || 0) + (penaltyMinor || 0)));
+  /*
+   * Both boxes read through the app's own reader, in the loan's own money — one reader for the extra and the
+   * penalty alike. Read leniently here, where the figure only measures the question the door asks; `save` reads
+   * the same boxes strictly, so a figure nothing can read is refused by name rather than posted as nothing.
+   */
+  const readMinor = (typed: string): number => {
+    try {
+      return extraPaymentMinor(typed, currency);
+    } catch {
+      return 0;
+    }
+  };
+  const amountMinor = readMinor(amount);
+  const penaltyMinor = readMinor(penalty);
+  const setAside = useSetAside(spendingDoor(moneyId, amountMinor + penaltyMinor));
+  const rate = useRateForPayment(currency, today);
   const effect =
     amountMinor > 0
       ? extraPaymentEffect(
@@ -267,13 +322,19 @@ function ExtraPaymentForm({
     setError(null);
     setBusy(true);
     try {
-      if (!(amountMinor > 0)) throw new Error('Enter how much extra to pay');
+      // Read strictly here, so the figure the repository posts is the one the reader read: blank is refused in the
+      // door's own words, and a figure it cannot read at all is refused in the reader's.
+      const paidMinor = extraPaymentMinor(amount, currency);
+      if (!(paidMinor > 0)) throw new Error('Enter how much extra to pay');
+      const feeMinor = extraPaymentMinor(penalty, currency);
+      const ratesToBase = await rate.ratesToBase(paidMinor + Math.max(feeMinor, 0));
       await recordExtraPayment(database, ws, {
         accountId,
         occurredOn: today,
         moneyAccountId: moneyId,
-        amountMinor,
-        penaltyMinor,
+        amountMinor: paidMinor,
+        penaltyMinor: feeMinor,
+        ratesToBase,
         keep,
         setAside: setAside.choice,
       });
@@ -312,6 +373,8 @@ function ExtraPaymentForm({
           inputMode="decimal"
           onChange={(e) => setPenalty(e.target.value)}
         />
+        {/* The rate, and only while the day has none: a loan in the base currency draws nothing here. */}
+        {rate.node}
       </InsetGroup>
 
       {effect && (

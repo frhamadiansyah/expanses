@@ -4,9 +4,8 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { ratePreview } from '../../lib/rates';
+import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useHeldRates } from '../accounts/queries';
-import { debtRatesForSave } from './debt-rates';
 import { Button, cx, ErrorBox, Field, Input, Money, Select } from '../../ui';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
@@ -178,7 +177,7 @@ export function PersonCard({ person }: { person: PersonDebtRow }) {
     setBusy(true);
     try {
       const input = repaymentDraftToInput({ ...draft, moneyId: draft.moneyId || moneyAccounts[0]?.id || '' }, accountId, person.currency, balanceMinor, person.personName);
-      const ratesToBase = await debtRatesForSave({
+      const ratesToBase = await ratesForSave({
         database,
         ws,
         currency: person.currency,

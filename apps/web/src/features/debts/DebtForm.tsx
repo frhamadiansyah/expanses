@@ -4,14 +4,13 @@ import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { ratePreview } from '../../lib/rates';
+import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useHeldRates } from '../accounts/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, type Segment, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { debtRatesForSave } from './debt-rates';
 import { type DebtDraft, debtDraftToInput, emptyDebtDraft, personSuggestions } from './debts-form';
 import { useDebtProfiles, usePeopleDebts } from './queries';
 
@@ -81,7 +80,7 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
     setBusy(true);
     try {
       const input = debtDraftToInput(draft, currency, today);
-      const ratesToBase = await debtRatesForSave({
+      const ratesToBase = await ratesForSave({
         database,
         ws,
         currency,
