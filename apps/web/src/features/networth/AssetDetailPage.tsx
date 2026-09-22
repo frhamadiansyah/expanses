@@ -1,4 +1,4 @@
-import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
+import { type AssetKind, averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
 import { archiveAccount, taxTreatmentOf } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -25,6 +25,9 @@ import { ValuationForm } from './ValuationForm';
 import { ValueChart } from './ValueChart';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
+
+/** The kinds a ticker prices and a broker keeps — the Stock and broker group is theirs alone. */
+const BROKER_KINDS: readonly AssetKind[] = ['stock', 'fund', 'bond'];
 
 export function AssetDetailPage() {
   const { database, ws } = useApp();
@@ -176,7 +179,14 @@ export function AssetDetailPage() {
         </Panel>
       )}
 
-      {value?.mode === 'market' && account?.subtype === 'investment' && <StockAndBroker accountId={accountId} />}
+      {/*
+       * §7.6's group, for the kinds that are a ticker and a broker. Gold and jewellery are not among them: they
+       * sit in a safe or at home, and their price is a buyback price per gram, not a ticker's. A holding already
+       * linked keeps the group whatever its kind, so the link can still be read and changed.
+       */}
+      {value?.mode === 'market' && preset && (BROKER_KINDS.includes(preset.kind) || linkedToSecurity) && (
+        <StockAndBroker accountId={accountId} />
+      )}
 
       {value?.mode === 'market' && (trades.data?.length ?? 0) > 0 && (
         <InsetGroup header="Buys, sells and income">

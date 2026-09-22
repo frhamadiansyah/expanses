@@ -415,6 +415,11 @@ On an asset page of a `market`-valued holding, a group **Stock and broker**:
   result (or Name it myself) links instead of opening the form.
 - **Kept at** — `SelectRow` of the brokers, and **No broker**.
 
+**Which holdings get it.** A stock, a fund or a bond — the kinds a ticker prices and a broker keeps. Gold and
+jewellery (0701–0704) do not: they are kept in a safe or at home, and their price is a buyback price per gram, so the
+group would offer them nothing. A holding already linked to a security keeps the group whatever its kind, so the link
+can still be read and changed.
+
 Linking a ticker carries the holding's prices (§3.3) and sets the holding's lot size to the security's; the Lot size
 setting is hidden for a linked holding ("Set by BBCA"). The price form on a linked holding's page says "This price is
 BBCA's, and values every broker that holds it."
