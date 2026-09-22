@@ -33,8 +33,15 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
 
   // Not money yet: the list shows it, marked as not recorded, whichever month is open.
   await page.goto('/transactions');
-  // The queue's row sits above the list carrying the same count as the filter, which then narrows to the rows.
-  await expect(page.getByTestId('not-recorded-card')).toContainText('2 not recorded');
+  /*
+   * The queue's row sits above the list with the count and what recording it all would spend — and the list under
+   * it holds only what was recorded. A draft is not a transaction; Not recorded is how the list is asked for it.
+   */
+  const queue = page.getByTestId('not-recorded-card');
+  await expect(queue).toContainText('Review transactions');
+  await expect(queue).toContainText('2 not recorded');
+  await expect(queue).toContainText('325.000');
+  await expect(page.getByTestId('not-recorded-row')).toHaveCount(0);
   await page.getByRole('button', { name: '2 not recorded' }).click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
   // The import already guessed a category, so the row names it and can be recorded as it stands.
@@ -56,8 +63,9 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
 
   await page.goto('/transactions');
   await expect(page.getByText('SUPERINDO KEBAYORAN')).toBeVisible();
-  // The row follows the queue down, and the one still waiting stayed waiting.
+  // The row follows the queue down — one left, and its figure — and the one still waiting stayed waiting.
   await expect(page.getByTestId('not-recorded-card')).toContainText('1 not recorded');
+  await expect(page.getByTestId('not-recorded-card')).toContainText('75.000');
   await page.getByRole('button', { name: '1 not recorded' }).click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   await expect(page.getByTestId('not-recorded-row')).toContainText('APOTEK K24');
@@ -112,6 +120,7 @@ test('the queue row is the way in to Review, and leaves with the last draft', as
 
   await page.goto('/transactions');
   const queue = page.getByTestId('not-recorded-card');
+  await expect(queue).toContainText('Review transactions');
   await expect(queue).toContainText('2 not recorded');
   // The row opens the queue's own screen, where the whole queue can be worked off.
   await queue.click();

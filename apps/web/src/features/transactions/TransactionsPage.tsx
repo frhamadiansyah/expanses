@@ -274,7 +274,13 @@ export function TransactionsPage() {
   const pending = (drafts.data ?? []).filter(
     (draft) => !scopeIds || (draft.accountId !== null && scopeIds.includes(draft.accountId)) || (draft.categoryAccountId !== null && scopeIds.includes(draft.categoryAccountId)),
   );
-  const rows = buildRows(recorded, pending, accounts, cards);
+  /*
+   * A draft is not a transaction yet, so the list — the ledger's view of the month — holds only what was recorded.
+   * The queue is reached through its own row and through Not recorded, which is why asking for it still shows all
+   * of it. The table is the exception it has always been: it is the editor, and a half-typed row waiting there is
+   * the work in progress that editor exists for.
+   */
+  const rows = buildRows(recorded, view === 'table' || filters.onlyDrafts ? pending : [], accounts, cards);
   const shown = sortRows(filterRows(rows, { ...filters, month }, accounts), sort);
   const sum = totals(shown);
 
@@ -1085,7 +1091,7 @@ export function TransactionsPage() {
       {view === 'table' ? (
         <>
         {!inCategory && chartShown && <Recurring today={today} />}
-        {!inCategory && chartShown && <NotRecorded count={pending.length} />}
+        {!inCategory && chartShown && <NotRecorded drafts={pending} />}
         {/* baseCurrency is what a row typed into the table is parsed and recorded in, so it stays the owner's. */}
         <TransactionsTable
           rows={shown}
@@ -1170,7 +1176,7 @@ export function TransactionsPage() {
           {/* The month's recurring bills sit with the list they are part of, under its controls. */}
           {!inCategory && chartShown && <Recurring today={today} />}
           {/* And the queue's own door, in the same place: one row for what has not reached the accounts yet. */}
-          {!inCategory && chartShown && <NotRecorded count={pending.length} />}
+          {!inCategory && chartShown && <NotRecorded drafts={pending} />}
 
           {sort.key === 'amount' && grouping === 'date' && shown.length > 0 ? (
             <>
