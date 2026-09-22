@@ -108,8 +108,8 @@ test('row 6 — money set aside before a level is added: the target rises, what 
   await expect(page.getByTestId('goal-link')).toHaveCount(1);
 });
 
-test('row 7 — retirement saved from the Calculators page: 3,5% growth, 10% return, and the page’s figure', async ({ page }) => {
-  await page.goto('/calculators');
+test('row 7 — retirement saved from the Retirement page: 3,5% growth, 10% return, and the page’s figure', async ({ page }) => {
+  await page.goto('/calculators/retirement');
   await typeInto(page, 'Yearly spending in retirement (IDR)', '120000000');
   await typeInto(page, 'Your age now', '35');
   await typeInto(page, 'Age you retire', '55');
@@ -141,7 +141,7 @@ test('row 9 — life cover opens on the loan and the education goal just added',
   await page.getByRole('button', { name: 'Add goal' }).last().click();
   await expect(page.getByRole('button', { name: 'Move Education down' })).toBeVisible();
 
-  await page.goto('/calculators');
+  await page.goto('/calculators/life-cover');
   await expect(page.getByLabel('Debts to clear (IDR)', { exact: true })).toHaveValue('300000000');
   await expect(page.getByLabel('Education still to fund (IDR)', { exact: true })).toHaveValue('150000000');
 });

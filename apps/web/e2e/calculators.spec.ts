@@ -17,8 +17,25 @@ async function retirementFigures(page: Page) {
   await type(page, 'Age you retire', '55');
 }
 
-test('answers what retirement costs a month without saving anything', async ({ page }) => {
+test('the catalogue says what each calculator answers, and opens its own page', async ({ page }) => {
   await page.goto('/calculators');
+  // A row carries the sentence its page repeats, and no fields: choosing happens here, working out happens there.
+  await expect(page.getByRole('link', { name: /Emergency fund/ })).toContainText('Months of outgoings, loan principal included');
+  await expect(page.getByLabel('What goes out a month (IDR)')).toHaveCount(0);
+
+  await page.getByRole('link', { name: /Retirement fund/ }).click();
+  await expect(page).toHaveURL(/\/calculators\/retirement$/);
+  await expect(page.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
+  await expect(page.getByText('What the pot must hold the day you stop, drawn down while it earns.')).toBeVisible();
+
+  // The way back names the list rather than "Back". Scoped by its own label: the sidebar has a Calculators link too.
+  await page.getByLabel('Calculators', { exact: true }).click();
+  await expect(page).toHaveURL(/\/calculators$/);
+  await expect(page.getByRole('heading', { name: 'Calculators' })).toBeVisible();
+});
+
+test('answers what retirement costs a month without saving anything', async ({ page }) => {
+  await page.goto('/calculators/retirement');
   await retirementFigures(page);
 
   // 120 jt a year for 20 years at 5% against 3.5%, in the money of the day you stop.
@@ -31,7 +48,7 @@ test('answers what retirement costs a month without saving anything', async ({ p
 });
 
 test('saves each month at the return while saving, not the return while retired', async ({ page }) => {
-  await page.goto('/calculators');
+  await page.goto('/calculators/retirement');
   await retirementFigures(page);
   const card = page.getByTestId('answer-retirement').locator('div > div').nth(1);
   await expect(card).toContainText('Save each month');
@@ -54,7 +71,7 @@ test('saves each month at the return while saving, not the return while retired'
 });
 
 test('a half-typed rate is refused on its row and the page stays up', async ({ page }) => {
-  await page.goto('/calculators');
+  await page.goto('/calculators/retirement');
   await retirementFigures(page);
   await expect(page.getByTestId('answer-retirement')).toContainText('4.120.008.061');
 
@@ -68,11 +85,11 @@ test('a half-typed rate is refused on its row and the page stays up', async ({ p
   await type(page, 'Years in retirement', '20');
   await type(page, 'Inflation a year (%)', '3,5');
   await expect(page.getByTestId('answer-retirement')).toContainText('4.120.008.061');
-  await expect(page.getByRole('heading', { name: 'Calculators' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
 });
 
 test('turns the answer into a goal, which reaches the budget sheet', async ({ page }) => {
-  await page.goto('/calculators');
+  await page.goto('/calculators/retirement');
   await retirementFigures(page);
   await page.getByRole('button', { name: 'Save Retirement fund as a goal' }).click();
   await expect(page.getByText('Saved Retirement fund as a goal.')).toBeVisible();
@@ -86,7 +103,7 @@ test('turns the answer into a goal, which reaches the budget sheet', async ({ pa
 });
 
 test('says what the levels will cost when the time comes, and saves them as a goal', async ({ page }) => {
-  await page.goto('/calculators');
+  await page.goto('/calculators/education');
   // The page opens with one level to fill in.
   await type(page, 'Starts in year', '2036');
   await type(page, 'Until year', '2040');

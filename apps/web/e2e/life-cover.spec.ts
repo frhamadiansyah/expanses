@@ -8,7 +8,7 @@ async function type(page: Page, label: string, text: string) {
 }
 
 test('life cover adds every need once and takes off what is already there', async ({ page }) => {
-  await page.goto('/calculators');
+  await page.goto('/calculators/life-cover');
   // The agreed prefills: 3.5% inflation, 5% on the payout, ten years.
   await expect(page.getByLabel('Inflation during support (%)', { exact: true })).toHaveValue('3.5');
   await expect(page.getByLabel('Return on the payout (%)', { exact: true })).toHaveValue('5');
@@ -38,7 +38,7 @@ test('life cover adds every need once and takes off what is already there', asyn
 });
 
 test('a half-typed rate is refused on its own row, and the page stays up', async ({ page }) => {
-  await page.goto('/calculators');
+  await page.goto('/calculators/life-cover');
   await type(page, 'Yearly amount your family needs (IDR)', '120000000');
   await type(page, 'Debts to clear (IDR)', '300000000');
   await type(page, 'Education still to fund (IDR)', '150000000');

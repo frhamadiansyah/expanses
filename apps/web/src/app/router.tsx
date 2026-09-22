@@ -14,6 +14,10 @@ import { PickPurchasePage } from '../features/events/PickPurchasePage';
 import { PlanPage } from '../features/events/PlanPage';
 import { BudgetPage } from '../features/budget/BudgetPage';
 import { CalculatorsPage } from '../features/calculators/CalculatorsPage';
+import { EducationFundPage } from '../features/calculators/EducationFundPage';
+import { EmergencyFundPage } from '../features/calculators/EmergencyFundPage';
+import { LifeCoverPage } from '../features/calculators/LifeCoverPage';
+import { RetirementFundPage } from '../features/calculators/RetirementFundPage';
 import { ImportPage } from '../features/import/ImportPage';
 import { ReviewPage } from '../features/review/ReviewPage';
 import { CardDetailPage } from '../features/cards/CardDetailPage';
@@ -141,6 +145,11 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId', component: ItemPage, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/events/$eventId/plan/$itemId/edit', component: EditItemRoute, validateSearch: planSearch }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators', component: CalculatorsPage }),
+  // Each calculator is its own page, so the catalogue chooses and the page answers (one to a screen, not four).
+  createRoute({ getParentRoute: () => rootRoute, path: '/calculators/emergency', component: EmergencyFundPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/calculators/education', component: EducationFundPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/calculators/retirement', component: RetirementFundPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/calculators/life-cover', component: LifeCoverPage }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),

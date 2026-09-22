@@ -80,7 +80,7 @@ async function typeLife(page: Page, label: string, text: string) {
 
 /** Row 8: life cover with resources above needs says so, with the surplus, and never a negative cover. */
 export async function row8(page: Page) {
-  await page.goto('/calculators');
+  await page.goto('/calculators/life-cover');
   await typeLife(page, 'Yearly amount your family needs (IDR)', '120000000');
   await typeLife(page, 'Debts to clear (IDR)', '300000000');
   await typeLife(page, 'Education still to fund (IDR)', '150000000');
