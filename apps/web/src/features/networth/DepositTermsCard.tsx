@@ -21,7 +21,18 @@ export function DepositTermsCard({ accountId }: { accountId: string }) {
   const terms = (deposits.data ?? []).find((row) => row.accountId === accountId);
   const [editing, setEditing] = useState(false);
 
-  if (!terms) return null;
+  // A deposit whose rate and date were never said is asked here, not left out: the same card, its form open.
+  if (!terms) {
+    return (
+      <Panel className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Deposit terms</h2>
+          <p className="text-sm text-slate-600">Not set yet: say the day the money comes back and what it pays.</p>
+        </div>
+        <DepositTermsForm accountId={accountId} maturesOn="" rateBps={0} onSaved={() => undefined} />
+      </Panel>
+    );
+  }
   return (
     <Panel className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-3">

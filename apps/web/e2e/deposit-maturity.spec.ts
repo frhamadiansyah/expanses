@@ -50,15 +50,14 @@ test('keeps its settings across a reload, and a typed withholding', async ({ pag
   await page.getByLabel('Tax withheld %').press('Tab');
   await settingsSaved(page);
   await page.reload();
-  // The two rows read the saved answers without opening anything…
+  // The page's own rows read the saved answers without opening anything…
   await expect(page.getByTestId('maturity-row')).toContainText("Don't roll over");
-  await expect(page.getByTestId('maturity-paid')).toContainText('Monthly');
-  // …and the sheet holds them for the proof.
+  await expect(page.getByLabel('Interest paid')).toHaveValue('monthly');
+  await expect(page.getByLabel('Term', { exact: true })).toHaveValue('3');
+  // …and the sheet holds the decision itself.
   await openMaturitySheet(page);
   await expect(page.getByLabel('Automate')).toBeChecked();
   await expect(page.getByTestId('maturity-close').getByLabel('Chosen')).toBeVisible();
-  await expect(page.getByLabel('Interest paid')).toHaveValue('monthly');
-  await expect(page.getByLabel('Term', { exact: true })).toHaveValue('3');
   await expect(page.getByLabel('Lands in')).toHaveValue(/.+/);
   await expect(page.getByLabel('Tax withheld %')).toHaveValue('12,5');
 });

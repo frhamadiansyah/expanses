@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { addTransfer } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -76,6 +77,54 @@ test('updates a price from the assets list and shows the new value', async ({ pa
 
   // 15 g at Rp 1.842.000 a gram.
   await expect(page.getByText(/27\.630\.000/).first()).toBeVisible();
+});
+
+async function openSettings(page: Page, name: string) {
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: new RegExp(`^${name}`) }).first().click();
+  await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
+}
+
+test('renames an account from its settings page, and every list reads the new name', async ({ page }) => {
+  await addBank(page);
+  await openSettings(page, 'BCA Tahapan');
+
+  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan Utama');
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+
+  await page.goto('/net-worth/assets');
+  await expect(page.getByRole('link', { name: /BCA Tahapan Utama/ })).toBeVisible();
+});
+
+test('an account opened by mistake deletes, armed on the first tap; one with entries refuses and says why', async ({ page }) => {
+  await addBank(page);
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('Jenius');
+  await page.getByLabel('Type').selectOption('savings');
+  await page.getByLabel('Current balance').fill('0');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Jenius', exact: true })).toBeVisible();
+  // A third account, opened and never touched again: this one can go.
+  await page.getByLabel('Name', { exact: true }).fill('Hana');
+  await page.getByLabel('Current balance').fill('1000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'Hana', exact: true })).toBeVisible();
+  // One transfer in, and Jenius is no longer an account that was only opened.
+  await page.goto('/transactions');
+  await addTransfer(page, { from: 'BCA Tahapan', to: 'Jenius (IDR)', amount: '5000000' });
+
+  await openSettings(page, 'Jenius');
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(page.getByRole('alert')).toContainText('has entries of its own');
+
+  // The one that was only opened goes, opening entry and all.
+  await openSettings(page, 'Hana');
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('button', { name: 'Click again to delete' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/assets$/);
+  await expect(page.getByRole('link', { name: /Hana/ })).toHaveCount(0);
 });
 
 test('sends trade edits to Buy & sell instead of the transaction form', async ({ page }) => {

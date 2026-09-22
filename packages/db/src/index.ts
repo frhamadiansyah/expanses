@@ -15,6 +15,7 @@ export { inBook, ownerScope, type WorkspaceContext } from './context';
 export { DEFAULT_CATEGORIES, SYSTEM_ACCOUNTS, type SystemAccountKey } from './seed';
 export * from './repos/workspaces';
 export * from './repos/accounts';
+export * from './repos/account-delete';
 export * from './repos/cash-accounts';
 export * from './repos/pockets';
 export * from './repos/deposit-terms';

@@ -117,13 +117,14 @@ export async function openMaturitySheet(page: Page) {
 }
 
 export async function automate(page: Page, c: Pick<Combo, 'choice' | 'paid' | 'exempt'>, termMonths = '3') {
+  // Interest paid and the term are the deposit's own rows on the page; the sheet holds the decision itself.
+  await page.getByLabel('Interest paid').selectOption(c.paid);
+  await page.getByLabel('Term', { exact: true }).selectOption(termMonths);
   await openMaturitySheet(page);
   await page.getByLabel('Automate').check();
   await expect(page.getByTestId('maturity-principal')).toBeVisible();
   await page.getByTestId(`maturity-${c.choice}`).click();
   await expect(page.getByTestId(`maturity-${c.choice}`).getByLabel('Chosen')).toBeVisible();
-  await page.getByLabel('Interest paid').selectOption(c.paid);
-  await page.getByLabel('Term', { exact: true }).selectOption(termMonths);
   if (c.exempt) await page.getByLabel('Tax-free deposit').check();
   await settingsSaved(page);
 }

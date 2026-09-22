@@ -83,6 +83,7 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
   }
 
   // Rows as an array: InsetGroup numbers its children with Children.toArray, which does not look inside a fragment.
+  // The sheet holds the decision itself — the switch and the three choices — and what only the choice needs.
   const rows = [
     <SwitchRow
       key="automate"
@@ -105,10 +106,6 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
           onClick={() => save({ atMaturity: choice.id })}
         />
       )),
-      <SelectRow key="paid" label="Interest paid" value={settings.interestPaid} onChange={(e) => save({ interestPaid: e.target.value as DepositAutomationRow['interestPaid'] })}>
-        <option value="monthly">Monthly</option>
-        <option value="at_maturity">At maturity</option>
-      </SelectRow>,
     );
     if (needsPayout(settings.atMaturity)) {
       rows.push(
@@ -126,13 +123,6 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
       );
     }
     rows.push(
-      <SelectRow key="term" label="Term" value={String(settings.termMonths)} onChange={(e) => save({ termMonths: Number(e.target.value) as TermMonths })}>
-        {TERM_MONTHS.map((months) => (
-          <option key={months} value={months}>
-            {termLabel(months)}
-          </option>
-        ))}
-      </SelectRow>,
       <SwitchRow key="keep" label="Keep the rate when it rolls over" checked={settings.keepRate} onChange={(keepRate) => save({ keepRate })} />,
       <SwitchRow
         key="exempt"
@@ -151,7 +141,10 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
 
   return (
     <div data-testid="maturity-settings" aria-busy={saving > 0}>
-      {/* The row reads off or the answer; the sheet holds everything that sets it. */}
+      {/*
+       * What the deposit pays out and for how long are the deposit's own facts, so they are chosen here, on the
+       * page; the sheet is kept for the decision itself — what happens at maturity.
+       */}
       <InsetGroup>
         <InsetRow
           testId="maturity-row"
@@ -160,7 +153,17 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
           valueTone={settings.enabled ? 'tint' : 'ink-3'}
           onClick={() => setOpen(true)}
         />
-        <InsetRow testId="maturity-paid" title="Interest paid" value={settings.interestPaid === 'monthly' ? 'Monthly' : 'At maturity'} chevron={false} />
+        <SelectRow label="Interest paid" value={settings.interestPaid} onChange={(e) => save({ interestPaid: e.target.value as DepositAutomationRow['interestPaid'] })}>
+          <option value="monthly">Monthly</option>
+          <option value="at_maturity">At maturity</option>
+        </SelectRow>
+        <SelectRow label="Term" value={String(settings.termMonths)} onChange={(e) => save({ termMonths: Number(e.target.value) as TermMonths })}>
+          {TERM_MONTHS.map((months) => (
+            <option key={months} value={months}>
+              {termLabel(months)}
+            </option>
+          ))}
+        </SelectRow>
       </InsetGroup>
       {open && (
         <Sheet title="At maturity" onClose={() => setOpen(false)} grouped>

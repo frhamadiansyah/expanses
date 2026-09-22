@@ -1,7 +1,7 @@
 import { type AssetKind, averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
 import { archiveAccount } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { Settings } from 'lucide-react';
+import { Archive, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
@@ -81,6 +81,7 @@ export function AssetDetailPage() {
   const boughtWith = (loans.data ?? []).find((loan) => loan.assetAccountId === accountId && loan.status === 'open');
 
   async function archive() {
+    if (!window.confirm(`Archive "${value?.name ?? 'this asset'}"? It leaves the list; its history stays.`)) return;
     setError(null);
     try {
       await archiveAccount(database, ws, accountId);
@@ -91,9 +92,12 @@ export function AssetDetailPage() {
     }
   }
 
-  // The gear is the page's own door to its settings: an asset's group, its tax treatment and its code.
+  // The page's corners: its settings, and the way out of it. Archiving waits until nothing is left in it.
   const actions: CornerAction[] = value
-    ? [{ key: 'settings', label: 'Settings', glyph: <Settings size={22} aria-hidden />, to: '/net-worth/assets/$accountId/settings', params: { accountId } }]
+    ? [
+        { key: 'settings', label: 'Settings', glyph: <Settings size={22} aria-hidden />, to: '/net-worth/assets/$accountId/settings', params: { accountId } },
+        { key: 'archive', label: 'Archive', glyph: <Archive size={20} aria-hidden />, disabled: !canArchive, run: () => void archive() },
+      ]
     : [];
 
   return (
@@ -116,7 +120,12 @@ export function AssetDetailPage() {
             caption={
               <>
                 {/* A deposit is read as what it pays and when it comes back, first — as its page says it. */}
-                {deposit && <span className="block">{depositHeroLine(deposit, automation.data?.termMonths ?? 1)}</span>}
+                {account?.subtype === 'time_deposit' &&
+                  (deposit ? (
+                    <span className="block">{depositHeroLine(deposit, automation.data?.termMonths ?? 1)}</span>
+                  ) : (
+                    <span className="block">Rate and maturity not set yet</span>
+                  ))}
                 Cost {formatMinor(value.costMinor, value.currency)}
                 {value.costMinor !== 0 && ` · ${formatMinor(gain, value.currency)} since you bought it`}
                 <span className="mt-[2px] block">
@@ -164,7 +173,7 @@ export function AssetDetailPage() {
           {value.mode === 'snapshot' && <ValuationForm accountId={accountId} currency={value.currency} />}
           {value.mode === 'derived' && (
             <InsetGroup>
-              <InsetRow title="See them" subtitle="This balance follows your transactions." to="/transactions" search={{ account: accountId }} />
+              <InsetRow title="Its transactions" subtitle="The rows behind this balance, in the ledger." to="/transactions" search={{ account: accountId }} />
             </InsetGroup>
           )}
         </>
@@ -249,13 +258,9 @@ export function AssetDetailPage() {
       {value && <DepositTermsCard accountId={accountId} />}
       {value && account?.subtype === 'time_deposit' && <RecordedByHand accountId={accountId} currency={value.currency} />}
 
-      {value && (
-        /* Its own group, as the kit asks of anything destructive: the air around it is the only undo a finger has. */
-        <InsetGroup
-          footer={canArchive ? 'Nothing left here. Archiving hides it from the list and keeps its history.' : 'Archiving is available once nothing is left in this asset.'}
-        >
-          <InsetRow destructive title="Archive" onClick={() => canArchive && void archive()} className={canArchive ? undefined : 'opacity-40'} />
-        </InsetGroup>
+      {value && !canArchive && (
+        /* Why the corner's archive is dimmed: the way the page says it without a row of its own. */
+        <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Archiving is available once nothing is left in this asset.</p>
       )}
     </div>
   );

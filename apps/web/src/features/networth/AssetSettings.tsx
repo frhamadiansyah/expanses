@@ -1,5 +1,5 @@
 import { hartaLabel, type PlanGroup } from '@expanses/core';
-import { setAssetGroup, setAssetReporting, setLotSize } from '@expanses/db';
+import { renameAccount, setAssetGroup, setAssetReporting, setLotSize } from '@expanses/db';
 import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
@@ -11,6 +11,7 @@ import { Panel } from '../../ui/native';
 /** Which side of the plan an asset counts on, and how many shares make a lot at your broker. */
 export function AssetSettings({
   accountId,
+  name: currentName,
   group: current,
   lotSize,
   showLotSize,
@@ -20,6 +21,8 @@ export function AssetSettings({
   taxTreatment: currentTreatment,
 }: {
   accountId: string;
+  /** What it is called; renameAccount changes it, pockets named after it included. */
+  name: string;
   group: PlanGroup;
   /** Null when the holding is counted in single units, or has no profile yet. */
   lotSize: number | null;
@@ -34,6 +37,7 @@ export function AssetSettings({
 }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const [nameText, setNameText] = useState(currentName);
   const [group, setGroup] = useState<PlanGroup>(current);
   const [lots, setLots] = useState(lotSize === null ? '' : String(lotSize));
   const [reportable, setReportable] = useState(currentReportable);
@@ -50,6 +54,7 @@ export function AssetSettings({
     setNotice('');
     setBusy(true);
     try {
+      if (nameText.trim() !== currentName) await renameAccount(database, ws, accountId, nameText);
       if (group !== current) await setAssetGroup(database, ws, accountId, group);
       if (showLotSize) {
         const typed = lots.trim();
@@ -79,6 +84,9 @@ export function AssetSettings({
     <Panel className="space-y-3">
       <h2 className="text-sm font-semibold">Settings</h2>
       <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Name" hint="What this is called, everywhere it is read.">
+          <Input value={nameText} onChange={(e) => setNameText(e.target.value)} required />
+        </Field>
         <Field label="Counts as" hint="Broker cash set to Investments is money meant to be invested, not your emergency buffer.">
           <Select value={group} onChange={(e) => setGroup(e.target.value as PlanGroup)}>
             {PLAN_GROUP_ORDER.map((key) => (
