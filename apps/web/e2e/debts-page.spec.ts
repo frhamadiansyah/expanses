@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { addTransaction } from './add-transaction';
 import { digits, oneOfEach } from './debts-page';
 
 /**
@@ -176,4 +177,41 @@ test('a loan paid off leaves the list and the total, and waits under the paid-of
   await page.getByRole('button', { name: 'Show paid-off loans (1)' }).click();
   await expect(page.getByRole('heading', { name: 'Paid off' })).toBeVisible();
   await expect(page.getByText(/^cleared \d{4}-\d{2}-\d{2}$/)).toBeVisible();
+});
+
+test('a card paid past its bill holds the surplus: Unpaid at nothing, and the credit named on both screens', async ({ page }) => {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).pressSequentially('BCA Tahapan');
+  await page.getByLabel('Type').selectOption('bank');
+  await page.getByLabel('Current balance').pressSequentially('50000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+
+  await page.getByLabel('Name', { exact: true }).pressSequentially('BCA Visa');
+  await page.getByLabel('Type').selectOption('credit_card');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+
+  // Rp 100.000 bought on the card, then Rp 350.000 paid on it: the bank holds the difference for you.
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Coffee', paidWith: 'BCA Visa', category: 'Groceries', amount: '100000', keyByKey: true });
+
+  await page.goto('/net-worth/loans');
+  await page.getByRole('link', { name: 'BCA Visa' }).click();
+  const tile = page.getByTestId('tile-left-to-pay');
+  await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 100.000');
+  await tile.getByRole('button', { name: 'Pay', exact: true }).click();
+  await tile.getByLabel('Amount (IDR)').fill('350000');
+  await tile.getByRole('button', { name: 'Record payment' }).click();
+
+  // The card owes nothing — Unpaid is at nothing, exactly as the Debts row says — and the surplus is named under it.
+  await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 0');
+  await expect(tile.getByTestId('tile-credit')).toHaveText('Credit Rp 250.000');
+
+  // And the Debts row says the same thing the card does.
+  await page.goto('/net-worth/loans');
+  const row = page.getByRole('row', { name: /BCA Visa/ });
+  await expect(row.getByRole('cell').nth(1)).toHaveText('Credit Rp 250.000');
+  await expect(row.getByRole('cell').nth(2)).toHaveText('Rp 0');
+  await expect(page.getByTestId('debts-group-total-card')).toHaveText('Rp 0');
 });

@@ -16,6 +16,7 @@ import { limitUsage } from './limit-usage';
 import { pointsSummary } from './points-summary';
 import { useInstallments } from '../loans/queries';
 import { spendingDoor } from '../goals/set-aside-question';
+import { creditLine } from '../networth/debt-rows';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { type CardPoints, formatPoints, shortDate } from './useCardPoints';
 
@@ -53,6 +54,7 @@ function WalletTile({
   figure,
   figureTestId,
   caption,
+  note,
   action,
   onAction,
   testId,
@@ -62,6 +64,8 @@ function WalletTile({
   figure: ReactNode;
   figureTestId?: string;
   caption?: ReactNode;
+  /** A line under the caption in the tint, for something in the owner's favour: a card's credit. */
+  note?: ReactNode;
   action?: string;
   onAction?: () => void;
   testId?: string;
@@ -76,6 +80,7 @@ function WalletTile({
             {figure}
           </div>
           {caption && <div className="mt-[2px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{caption}</div>}
+          {note && <div className="mt-[2px] text-[12.5px] leading-[16px] font-semibold text-[var(--ph-tint)]">{note}</div>}
         </div>
         {action && (
           <button
@@ -230,6 +235,7 @@ export function CardHero({
   plastic,
   issuer,
   owedMinor,
+  creditMinor = 0,
   debit = false,
   pointsBalance,
   today,
@@ -241,6 +247,8 @@ export function CardHero({
   plastic: readonly CardRow[];
   issuer: string | null;
   owedMinor: number;
+  /** What the card was paid past what it owed — money the bank holds for you. Unpaid stays at nothing beside it. */
+  creditMinor?: number;
   /** A debit card spends money the account already holds: nothing is owed, nothing is due, nothing to pay. */
   debit?: boolean;
   pointsBalance: { total: number; posted: number; estimated: number } | null;
@@ -429,6 +437,7 @@ export function CardHero({
               figure={formatMinor(owedMinor, currency)}
               figureTestId="tile-unpaid-balance"
               caption={billCaption()}
+              note={creditMinor > 0 ? <span data-testid="tile-credit" title="Paid past what was owed: the bank holds this for you">{creditLine(creditMinor, currency)}</span> : undefined}
               action={paying ? undefined : 'Pay'}
               onAction={() => setPaying(true)}
             >
@@ -458,6 +467,9 @@ export function CardHero({
           <div data-testid="tile-left-to-pay">
             <InsetGroup header="Current bill" wide>
               <InsetRow title={<TileFigure>{cp.terms && lastCycle ? formatMinor(leftToPayMinor, currency) : '—'}</TileFigure>} subtitle={billCaption()} />
+              {creditMinor > 0 && (
+                <InsetRow testId="tile-credit" title={<span className="text-[var(--ph-tint)]">{creditLine(creditMinor, currency)}</span>} subtitle="Paid past what was owed: the bank holds this for you" />
+              )}
               {!paying &&
                 (cp.terms && lastCycle ? (
                   <InsetRow title={<span className="text-[var(--ph-tint)]">Pay this bill</span>} onClick={() => setPaying(true)} />

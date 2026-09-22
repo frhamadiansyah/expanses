@@ -47,7 +47,7 @@ import { refreshLedger, useCardLedger } from './useCardLedger';
 import { BookOpen, Plus, Trash2 } from 'lucide-react';
 import { ActionRow, Capsule, ColumnGroup, EARLIER, FigureRow, GlyphButton, Line, Meter, RowWithActions, Step, StepperRow, SubmitRow, SUBTITLE, TextLine, TITLE } from './rows';
 import { type CardPoints, type CycleResult, formatPoints, loadCardPoints, loadCycleResult, pointsValue, shortDate } from './useCardPoints';
-import { owedMinor } from '../networth/debt-rows';
+import { creditMinor, owedMinor } from '../networth/debt-rows';
 
 const route = getRouteApi('/cards/$cardId');
 
@@ -371,6 +371,8 @@ export function CardDetailPage() {
 
   // The Debts page's figure for this card, read by the same function, so the two screens always agree.
   const owed = isDebit ? 0 : owedMinor(balances.data ?? {}, card.id);
+  // Paid past what it owed: the bank holds the rest for you. Unpaid stays at nothing, as the Debts page says.
+  const credit = isDebit ? 0 : creditMinor(balances.data ?? {}, card.id);
   const optionalMinor = (v: string) => (v.trim() ? parseMajor(v, currency) : null);
   // Setup is ordered: the statement day defines cycles, a program holds rules, and rules produce points.
   const hasTerms = !!cp.terms;
@@ -449,6 +451,7 @@ export function CardDetailPage() {
         plastic={plastic}
         issuer={identities[card.id]?.issuer ?? null}
         owedMinor={owed}
+        creditMinor={credit}
         debit={isDebit}
         pointsBalance={ledger.data ? { total: ledger.data.balance.total, posted: ledger.data.balance.postedTotal, estimated: ledger.data.balance.projectedTotal } : null}
         today={today}

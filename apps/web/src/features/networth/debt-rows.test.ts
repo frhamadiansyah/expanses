@@ -1,7 +1,7 @@
 import { balanceSheet, type SheetLiability } from '@expanses/core';
 import type { LoanTermsRow, PersonDebtRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { type CardFacts, type DebtAccount, type DebtInputs, bareFigure, groupDebts, owedMinor } from './debt-rows';
+import { type CardFacts, type DebtAccount, type DebtInputs, bareFigure, creditLine, creditMinor, groupDebts, owedMinor } from './debt-rows';
 
 const account = (partial: Partial<DebtAccount> & Pick<DebtAccount, 'id' | 'name' | 'subtype'>): DebtAccount => ({
   kind: 'liability',
@@ -147,6 +147,14 @@ describe('groupDebts', () => {
     expect(owedMinor({ kris: 1_250_000 }, 'kris')).toBe(0);
   });
 
+  it('says what a card paid past its bill holds for you, as the row’s subtitle, and still owes nothing', () => {
+    const debts = groupDebts(sample({ balances: { ...sample().balances, kris: 250_000 } }));
+    const group = debts.groups.find((g) => g.kind === 'card')!;
+    expect(group.rows[0]).toMatchObject({ minor: 0, baseMinor: 0, detail: creditLine(250_000, 'IDR') });
+    expect(group.rows[0]!.detail).toMatch(/^Credit Rp\s250\.000$/);
+    expect(group.totalMinor).toBe(0);
+  });
+
   it('says a card with nothing billed yet has nothing billed, and still owes what it has bought', () => {
     const debts = groupDebts(sample({ cards: { kris: card({ last4: '3091', billedMinor: 0 }) } }));
     const [row] = debts.groups.find((group) => group.kind === 'card')!.rows;
@@ -211,6 +219,26 @@ describe('groupDebts', () => {
   it('has no due split while the balance sheet is missing a rate, and names it', () => {
     const debts = groupDebts(sample({ sheet: { liabilities: [], missing: ['USD'] } }));
     expect(debts.due).toEqual({ withinYearMinor: null, longTermMinor: null, missing: ['USD'] });
+  });
+});
+
+describe('creditMinor', () => {
+  it('is what a card was paid past what it owed', () => {
+    expect(creditMinor({ kris: 250_000 }, 'kris')).toBe(250_000);
+    expect(owedMinor({ kris: 250_000 }, 'kris')).toBe(0);
+  });
+  it('is nothing on a card paid exactly, or with no balance at all', () => {
+    expect(creditMinor({ kris: 0 }, 'kris')).toBe(0);
+    expect(creditMinor({}, 'kris')).toBe(0);
+    expect(Object.is(creditMinor({ kris: 0 }, 'kris'), -0)).toBe(false);
+  });
+  it('is nothing while the card owes', () => {
+    expect(creditMinor({ kris: -8_460_000 }, 'kris')).toBe(0);
+  });
+  it('is in the card’s own currency, never converted', () => {
+    // A dollar card paid US$12,34 too much: 1.234 cents, written with its own symbol.
+    expect(creditMinor({ usd: 1_234 }, 'usd')).toBe(1_234);
+    expect(creditLine(1_234, 'USD')).toBe(`Credit ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'USD' }).format(12.34)}`);
   });
 });
 

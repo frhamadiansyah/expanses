@@ -1,4 +1,4 @@
-import { balanceSheet, convertMinor, currencyInfo, displayAmount, periodOn, type SheetLiability, sumToBase } from '@expanses/core';
+import { balanceSheet, convertMinor, currencyInfo, displayAmount, formatMinor, periodOn, type SheetLiability, sumToBase } from '@expanses/core';
 import type { AccountRow, LoanTermsRow, PersonDebtRow } from '@expanses/db';
 import { totalOf } from './asset-rows';
 
@@ -139,6 +139,17 @@ export function owedMinor(balances: Readonly<Record<string, number>>, accountId:
 }
 
 /**
+ * What a card has been paid past what it owed: money the bank holds for you, in the card's own currency. Nothing
+ * while anything is owed. `owedMinor` stays at nothing for such a card, so the Debts total never nets it off.
+ */
+export function creditMinor(balances: Readonly<Record<string, number>>, accountId: string): number {
+  return Math.max(0, -displayAmount('liability', balances[accountId] ?? 0));
+}
+
+/** The line an overpaid card carries, on its Unpaid tile and as its Debts row's subtitle: `Credit Rp 250.000`. */
+export const creditLine = (minor: number, currency: string) => `Credit ${formatMinor(minor, currency)}`;
+
+/**
  * Everything owed, in three groups. `today` picks each loan's current rate; it defaults to the real today.
  */
 export function groupDebts(input: DebtInputs, today: string = new Date().toISOString().slice(0, 10)): DebtSheet {
@@ -167,7 +178,9 @@ export function groupDebts(input: DebtInputs, today: string = new Date().toISOSt
     } else if (account.subtype === 'credit_card') {
       const minor = owed(account.id);
       const facts = cards[account.id];
-      rows.push({ key: account.id, kind: 'card', accountId: account.id, personName: null, name: account.name, detail: cardDetail(facts, minor, currency), icon: 'card', last4: facts?.last4 ?? null, minor, currency, ...converted(minor, currency, baseCurrency, ratesToBase) });
+      const credit = creditMinor(balances, account.id);
+      const detail = credit > 0 ? creditLine(credit, currency) : cardDetail(facts, minor, currency);
+      rows.push({ key: account.id, kind: 'card', accountId: account.id, personName: null, name: account.name, detail, icon: 'card', last4: facts?.last4 ?? null, minor, currency, ...converted(minor, currency, baseCurrency, ratesToBase) });
     }
   }
 
