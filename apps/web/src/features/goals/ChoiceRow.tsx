@@ -61,7 +61,7 @@ export function ChoiceRow({
               }}
               className="ph-focus-inset flex w-full items-center gap-2 px-[13px] py-[11px] text-left"
             >
-              <span aria-hidden className="w-[20px] shrink-0 text-[17px] leading-[22px] font-semibold text-[var(--ph-tint)]">
+              <span aria-hidden className="w-[20px] shrink-0 text-[17px] leading-[22px] text-[var(--ph-ink)]">
                 {option.value === value ? '✓' : ''}
               </span>
               <span className="min-w-0 flex-1 truncate text-[17px] leading-[22px] text-[var(--ph-ink)]">{option.label}</span>

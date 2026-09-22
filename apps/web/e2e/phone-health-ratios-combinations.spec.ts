@@ -2,6 +2,12 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
 import { openGoalForm } from './goals';
 
+/** Answers a choice row: the row opens the app's own menu, and the menu holds the answers. */
+async function choose(page: Page, label: string, option: string) {
+  await page.getByRole('button', { name: new RegExp(`^${label} `) }).click();
+  await page.getByRole('dialog', { name: label }).getByRole('button', { name: option, exact: true }).click();
+}
+
 /**
  * The health-ratio combinations (spec §15, Part 1 rows), rows 2, 7, 9, 11 and 13 at phone width.
  *
@@ -133,7 +139,7 @@ test('row 13 — the card grades against the household’s own months', async ({
   await setUp(page);
   await addFromTemplate(page, 'Emergency fund');
   await page.getByRole('button', { name: 'Work out the amount' }).click();
-  await page.getByLabel('Household').selectOption('children');
+  await choose(page, 'Household', 'With children');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('12');
   await page.getByRole('button', { name: 'Use this amount' }).click();
   // 12 months of Rp 3 jt.

@@ -2,6 +2,12 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
 import { openGoalForm } from './goals';
 
+/** Answers a choice row: the row opens the app's own menu, and the menu holds the answers. */
+async function choose(page: Page, label: string, option: string) {
+  await page.getByRole('button', { name: new RegExp(`^${label} `) }).click();
+  await page.getByRole('dialog', { name: label }).getByRole('button', { name: option, exact: true }).click();
+}
+
 /**
  * The health-ratio combinations (spec §15, Part 1 rows), one test a row, at desktop width.
  *
@@ -215,8 +221,8 @@ test('row 12 — a working reopens on the answers and base it was saved with', a
   await setUp(page);
   await addFromTemplate(page, 'Emergency fund');
   await page.getByRole('button', { name: 'Work out the amount' }).click();
-  await page.getByLabel('Household').selectOption('children');
-  await page.getByLabel('Income').selectOption('irregular');
+  await choose(page, 'Household', 'With children');
+  await choose(page, 'Income', 'Irregular');
   await page.getByLabel('Counts', { exact: true }).selectOption('all');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('24');
   await page.getByRole('button', { name: 'Use this amount' }).click();
@@ -226,8 +232,8 @@ test('row 12 — a working reopens on the answers and base it was saved with', a
   await page.goto('/accounts');
   await page.goto('/goals');
   await page.getByRole('button', { name: 'Work out the amount' }).click();
-  await expect(page.getByLabel('Household')).toHaveValue('children');
-  await expect(page.getByLabel('Income')).toHaveValue('irregular');
+  await expect(page.getByRole('button', { name: /^Household / })).toContainText('With children');
+  await expect(page.getByRole('button', { name: /^Income / })).toContainText('Irregular');
   await expect(page.getByLabel('Counts', { exact: true })).toHaveValue('all');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('24');
   // The answers are the two rows above; the months row does not repeat them back.
@@ -238,7 +244,7 @@ test('row 13 — the card grades against the household’s own months', async ({
   await setUp(page);
   await addFromTemplate(page, 'Emergency fund');
   await page.getByRole('button', { name: 'Work out the amount' }).click();
-  await page.getByLabel('Household').selectOption('children');
+  await choose(page, 'Household', 'With children');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('12');
   await page.getByRole('button', { name: 'Use this amount' }).click();
   // 12 months of Rp 3 jt.
