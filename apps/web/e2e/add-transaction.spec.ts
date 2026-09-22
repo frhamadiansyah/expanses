@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith } from './add-transaction';
 import { addEvent } from './event-plan';
+import { openGoalForm } from './goals';
 import { cardSection } from './card-section';
 import { todayIn } from './today';
 
@@ -176,8 +177,7 @@ async function addForeignAccount(page: Page, name: string, currency: string, bal
 
 async function addGoal(page: Page, name: string, amount: string, dueOn: string) {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Add goal' }).first().click();
-  await page.getByLabel('What kind of goal').selectOption('education');
+  await openGoalForm(page, 'Education');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel(/Cost in today's money/).first().fill(amount);
   await page.getByLabel('Needed by').first().fill(dueOn);

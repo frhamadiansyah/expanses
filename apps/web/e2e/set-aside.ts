@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAmount } from './add-transaction';
+import { openGoalForm } from './goals';
 
 /**
  * A goal's card on /goals. Never `locator('section', { hasText })`: the "Start from a template" group is a section
@@ -41,7 +42,7 @@ export async function addMoneyAccount(page: Page, name: string, subtype: string,
 
 export async function addGoal(page: Page, name: string, amount: string, dueOn = '2027-12-31') {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Add goal' }).first().click();
+  await openGoalForm(page, 'Holiday');
   await page.getByLabel('What kind of goal').selectOption('holiday');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel(/Cost in today's money/).first().pressSequentially(amount);

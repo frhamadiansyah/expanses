@@ -3,6 +3,7 @@ import { archiveGoal, type GoalHistoryEntry, type GoalLinkRow, type GoalPlanRow,
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import {
@@ -143,6 +144,8 @@ export function GoalsPage() {
   const [editing, setEditing] = useState<GoalRow | null>(null);
   const [calculating, setCalculating] = useState<GoalRow | null>(null);
   const [adding, setAdding] = useState<GoalKind | null>(null);
+  // The templates are not a section of the page: the + opens them, and one opens the form it already carries.
+  const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   const calculators = useGoalCalculators();
@@ -314,7 +317,9 @@ export function GoalsPage() {
 
   /* The primary action is a corner glyph at every width, not a dark rectangle beside the title. */
   const actions: CornerAction[] =
-    adding || editing ? [] : [{ key: 'add', label: 'Add goal', glyph: <Plus size={22} aria-hidden />, run: () => setAdding(GOAL_TEMPLATES[0]!.kind) }];
+    adding || editing || choosing
+      ? []
+      : [{ key: 'add', label: 'Add goal', glyph: <Plus size={22} aria-hidden />, run: () => setChoosing(true) }];
 
   return (
     <div className={SCREEN}>
@@ -322,6 +327,24 @@ export function GoalsPage() {
       <ErrorBox error={summary.error ?? error} />
 
       {calculating && <Calculator goal={calculating} onDone={() => setCalculating(null)} />}
+
+      {/* The templates, where the + is: a grouped list of rows with chevrons, and one opens the form. */}
+      {choosing && (
+        <Sheet title="Add a goal" onClose={() => setChoosing(false)} grouped>
+          <InsetGroup>
+            {GOAL_TEMPLATES.map((template) => (
+              <InsetRow
+                key={template.kind}
+                title={template.label}
+                onClick={() => {
+                  setChoosing(false);
+                  setAdding(template.kind);
+                }}
+              />
+            ))}
+          </InsetGroup>
+        </Sheet>
+      )}
 
       {(adding || editing) && (
         <GoalForm
@@ -371,15 +394,6 @@ export function GoalsPage() {
       )}
 
       {cards.length === 0 && !adding && summary.isSuccess && <Empty>No goals yet. Start with an emergency fund, education or a holiday.</Empty>}
-
-      {/* A chooser is a grouped list of rows with chevrons, not a wrapping set of outlined buttons. */}
-      {!adding && !editing && (
-        <InsetGroup header="Start from a template">
-          {GOAL_TEMPLATES.map((template) => (
-            <InsetRow key={template.kind} title={template.label} onClick={() => setAdding(template.kind)} />
-          ))}
-        </InsetGroup>
-      )}
 
       {SECTIONS.map((section) => {
         const inSection = ordered

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
+import { openGoalForm } from './goals';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -93,8 +94,7 @@ test('the sheet plans against typed income and reports what happened', async ({ 
 
 test('a goal becomes a savings row on the sheet', async ({ page }) => {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Add goal' }).first().click();
-  await page.getByLabel('What kind of goal').selectOption('education');
+  await openGoalForm(page, 'Education');
   await page.getByLabel('Name', { exact: true }).fill('School fees');
   await page.getByLabel(/Cost in today's money/).first().fill('120000000');
   await page.getByLabel('Needed by').first().fill('2030-06-30');

@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { figure, firstLevel, neededAMonth, planTotal, row1, row5, row8, todayFigures } from './calculator-walk';
 import { addEducationGoal, stageLines, typeInto } from './education-walk';
+import { openGoalForm } from './goals';
 import { localIsoDate } from './today';
 
 test.beforeEach(({ page }) => {
@@ -148,7 +149,7 @@ test('row 9 — life cover opens on the loan and the education goal just added',
 
 test('row 10 — a holiday’s return follows its date until one is typed, then stays', async ({ page }) => {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Holiday', exact: true }).click();
+  await openGoalForm(page, 'Holiday');
   const expectedReturn = page.getByLabel('Expected return a year (%)');
   await expect(expectedReturn).toHaveValue('4');
 

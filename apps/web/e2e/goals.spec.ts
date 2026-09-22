@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openGoalForm } from './goals';
 import { localIsoDate } from './today';
 
 test.beforeEach(({ page }) => {
@@ -31,10 +32,12 @@ async function addGold(page: Page) {
   await expect(page.getByText(/18\.000\.000/).first()).toBeVisible();
 }
 
+/** The template a kind opens with, in the chooser the + shows. */
+const TEMPLATE_OF: Record<string, string> = { hajj: 'Hajj or umrah', education: 'Education' };
+
 async function addGoal(page: Page, kind: string, name: string, amount: string, dueOn: string) {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Add goal' }).first().click();
-  await page.getByLabel('What kind of goal').selectOption(kind);
+  await openGoalForm(page, TEMPLATE_OF[kind] ?? 'Emergency fund');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel(/Cost in today's money/).first().fill(amount);
   await page.getByLabel('Needed by').first().fill(dueOn);
@@ -120,7 +123,7 @@ test('refuses a sell the goal cannot cover', async ({ page }) => {
 
 test('a template button opens that template, not the first one', async ({ page }) => {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Hajj or umrah' }).click();
+  await openGoalForm(page, 'Hajj or umrah');
 
   await expect(page.getByLabel('What kind of goal')).toHaveValue('hajj');
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Hajj or umrah');
@@ -133,7 +136,7 @@ test('a new goal’s return follows when it is needed, until one is typed', asyn
     return localIsoDate(date);
   };
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Holiday', exact: true }).click();
+  await openGoalForm(page, 'Holiday');
   const expectedReturn = page.getByLabel('Expected return a year (%)');
   await expect(expectedReturn).toHaveValue('4');
 
@@ -154,7 +157,7 @@ test('only a new goal’s first payment moves its return: not a later payment, n
     return localIsoDate(date);
   };
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Holiday', exact: true }).click();
+  await openGoalForm(page, 'Holiday');
   const expectedReturn = page.getByLabel('Expected return a year (%)');
   await expect(expectedReturn).toHaveValue('4');
   await page.getByLabel(/Cost in today's money/).first().fill('10000000');
@@ -175,8 +178,7 @@ test('only a new goal’s first payment moves its return: not a later payment, n
 
 test('working a retirement goal out keeps the return its owner typed', async ({ page }) => {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Add goal' }).first().click();
-  await page.getByLabel('What kind of goal').selectOption('retirement');
+  await openGoalForm(page, 'Retirement');
   await page.getByLabel('Name', { exact: true }).fill('Retirement');
   await page.getByLabel(/Cost in today's money/).first().fill('1000000000');
   await page.getByLabel('Needed by').first().fill('2046-09-13');
@@ -202,8 +204,7 @@ test('working a retirement goal out keeps the return its owner typed', async ({ 
 
 test('works out a retirement target from your own figures', async ({ page }) => {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Add goal' }).first().click();
-  await page.getByLabel('What kind of goal').selectOption('retirement');
+  await openGoalForm(page, 'Retirement');
   await page.getByLabel('Name', { exact: true }).fill('Retirement');
   await page.getByLabel(/Cost in today's money/).first().fill('1000000000');
   await page.getByLabel('Needed by').first().fill('2046-09-13');
@@ -232,8 +233,7 @@ test('works out a retirement target from your own figures', async ({ page }) => 
 
 test('typing an amount by hand stops the goal being worked out', async ({ page }) => {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Add goal' }).first().click();
-  await page.getByLabel('What kind of goal').selectOption('retirement');
+  await openGoalForm(page, 'Retirement');
   await page.getByLabel('Name', { exact: true }).fill('Retirement');
   await page.getByLabel(/Cost in today's money/).first().fill('1000000000');
   await page.getByLabel('Needed by').first().fill('2046-09-13');

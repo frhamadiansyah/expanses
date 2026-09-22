@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
+import { openGoalForm } from './goals';
 
 /**
  * The health-ratio combinations (spec §15, Part 1 rows), rows 2, 7, 9, 11 and 13 at phone width.
@@ -44,7 +45,7 @@ function emergencyCard(page: Page) {
 
 async function addFromTemplate(page: Page, template: string, amount?: string) {
   await page.goto('/goals');
-  await page.getByRole('button', { name: template, exact: true }).click();
+  await openGoalForm(page, template);
   if (amount) await type(page.getByLabel(/Cost in today's money/).first(), amount);
   await page.getByRole('button', { name: 'Add goal' }).last().click();
   await expect(page.getByRole('button', { name: `Move ${template} down` })).toBeVisible();

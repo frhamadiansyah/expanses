@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
+import { openGoalForm } from './goals';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -16,7 +17,7 @@ test('two answers prefill the months, say why, and size the goal on a month of s
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '1000000' });
 
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Emergency fund', exact: true }).click();
+  await openGoalForm(page, 'Emergency fund');
   await page.getByRole('button', { name: 'Add goal' }).last().click();
   await expect(page.getByRole('button', { name: 'Move Emergency fund down' })).toBeVisible();
   await page.getByRole('button', { name: 'Work out the amount' }).click();

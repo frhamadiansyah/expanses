@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAmount } from './add-transaction';
+import { openGoalForm } from './goals';
 import { addBill, addGoal, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
 
 /*
@@ -305,8 +306,7 @@ export const JOURNEYS: Journey[] = [
     run: async (page) => {
       await addMoneyAccount(page, 'Jenius', 'savings', '35000000');
       await page.goto('/goals');
-      await page.getByRole('button', { name: 'Add goal' }).first().click();
-      await page.getByLabel('What kind of goal').selectOption('emergency');
+      await openGoalForm(page, 'Emergency fund');
       await page.getByLabel('Name', { exact: true }).fill('Emergency fund');
       await page.getByRole('button', { name: 'Add goal' }).last().click();
       await expect(page.getByRole('heading', { name: 'Emergency fund', exact: true })).toBeVisible();

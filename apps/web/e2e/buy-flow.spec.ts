@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPurchase, addTransaction, attachPhoto } from './add-transaction';
 import { cardSection } from './card-section';
+import { openGoalForm } from './goals';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -134,8 +135,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await expect(page.getByText('Saved.')).toBeVisible();
 
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Add goal' }).first().click();
-  await page.getByLabel('What kind of goal').selectOption('education');
+  await openGoalForm(page, 'Education');
   await page.getByLabel('Name', { exact: true }).fill('University for Aisyah');
   await page.getByLabel(/Cost in today's money/).first().fill('350000000');
   await page.getByLabel('Needed by').first().fill('2038-07-31');
@@ -198,8 +198,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
 
 async function addGoal(page: Page, kind: string, name: string, amount: string, dueOn: string) {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Add goal' }).first().click();
-  await page.getByLabel('What kind of goal').selectOption(kind);
+  await openGoalForm(page, kind === 'hajj' ? 'Hajj or umrah' : 'Emergency fund');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel(/Cost in today's money/).first().fill(amount);
   await page.getByLabel('Needed by').first().fill(dueOn);
