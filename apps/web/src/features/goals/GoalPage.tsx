@@ -158,7 +158,8 @@ export function GoalPage({ goalId }: { goalId: string }) {
       {editing && <GoalForm goal={plan.goal} earmarks={earmarks.data ?? []} onDone={() => setEditing(false)} />}
       {calculating && <Calculator goal={plan.goal} onDone={() => setCalculating(false)} />}
 
-      <Panel wide footer={`${card.kindLabel} · by ${card.dueLabel}`}>
+      {/* The kind and the date are in the line under the title: the panel repeats none of it. */}
+      <Panel wide>
         <Hero
           minor={card.currentMinor}
           currency={ws.baseCurrency}
