@@ -51,7 +51,7 @@ export function PickerRow({
       <Separator show={Boolean(position?.separator)} />
       <button type="button" onClick={onOpen} className="ph-focus-inset flex w-full items-center gap-3" style={shell(false)}>
         <span className={LABEL}>{label}</span>
-        <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
+        <span data-picker-value="" className="flex min-w-0 flex-1 items-center justify-end gap-[6px]">
           <span className={cx('truncate text-right text-[15px] leading-[20px]', toneClass(plan.tone))}>{plan.text}</span>
           {plan.chevron && (
             <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">

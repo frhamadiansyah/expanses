@@ -105,7 +105,10 @@ function ChoiceMenu({ label, anchor, onClose, children }: { label: string; ancho
       const { width, height } = node.getBoundingClientRect();
       const edge = 12;
       const gap = 6;
-      const left = Math.min(Math.max(edge, row.left), Math.max(edge, window.innerWidth - width - edge));
+      // Under the answer, not under the whole row: the platform centres its own menu on the control, and the answer
+      // is the control. The row itself stands in on a row that grows one.
+      const area = anchor.querySelector('[data-picker-value]')?.getBoundingClientRect() ?? row;
+      const left = Math.min(Math.max(edge, area.left + area.width / 2 - width / 2), Math.max(edge, window.innerWidth - width - edge));
       const below = row.bottom + gap;
       const above = row.top - height - gap;
       const top = below + height + edge <= window.innerHeight ? below : Math.max(edge, above);
