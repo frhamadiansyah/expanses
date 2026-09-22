@@ -1,13 +1,11 @@
 import { flatToEffectiveBps, isoDate, type LoanMethod } from '@expanses/core';
-import { saveLoanTerms } from '@expanses/db';
-import { Link } from '@tanstack/react-router';
+import { saveLoanTerms, type LoanTermsRow } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
-import { emptyLoanTermsDraft, type LoanTermsDraft, loanTermsDraftToInput } from './loan-form';
-import { useLoans } from './queries';
+import { emptyLoanTermsDraft, type LoanTermsDraft, loanTermsDraftFromTerms, loanTermsDraftToInput } from './loan-form';
 
 const METHOD_LABELS: Record<LoanMethod, string> = {
   annuity: 'Annuity — interest on what is left',
@@ -15,24 +13,27 @@ const METHOD_LABELS: Record<LoanMethod, string> = {
   zero: 'No interest',
 };
 
-/** Adds the terms of a loan already running, so its schedule can be worked out. */
-export function TermsForm({ onDone }: { onDone: () => void }) {
+/**
+ * The terms of one loan: what was agreed, so its schedule can be worked out.
+ *
+ * Opened from the loan's own page, which already knows which loan this is — so there is no `Which loan` picker to
+ * answer a second time, and no state in which the form has nothing to do. Given the terms on file it amends them;
+ * given none it writes them.
+ */
+export function TermsForm({ accountId, terms, onDone }: { accountId: string; terms?: LoanTermsRow; onDone: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
-  const loans = useLoans();
   const today = isoDate();
-  const known = new Set((loans.data ?? []).map((loan) => loan.accountId));
-  const loanAccounts = accounts.filter((account) => account.subtype === 'loan' && account.archivedAt === null && !known.has(account.id));
-  const assets = accounts.filter((account) => ['property', 'vehicle'].includes(account.subtype) && account.archivedAt === null);
+  const account = accounts.find((row) => row.id === accountId);
+  const currency = account?.currency ?? ws.baseCurrency;
+  const assets = accounts.filter((row) => ['property', 'vehicle'].includes(row.subtype) && row.archivedAt === null);
 
-  const [draft, setDraft] = useState<LoanTermsDraft>(() => emptyLoanTermsDraft(loanAccounts[0]?.id ?? '', today));
+  const [draft, setDraft] = useState<LoanTermsDraft>(() => (terms ? loanTermsDraftFromTerms(terms, currency, today) : emptyLoanTermsDraft(accountId, today)));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const set = (patch: Partial<LoanTermsDraft>) => setDraft((current) => ({ ...current, ...patch }));
-
-  const currency = accounts.find((account) => account.id === draft.accountId)?.currency ?? ws.baseCurrency;
   const tenor = Number(draft.tenorMonths) || 0;
   const rateBps = Math.round((Number(draft.rate.replace(',', '.')) || 0) * 100);
   const effective = draft.method === 'flat' && tenor > 1 && rateBps > 0 ? flatToEffectiveBps(rateBps, tenor) : null;
@@ -52,34 +53,12 @@ export function TermsForm({ onDone }: { onDone: () => void }) {
     }
   }
 
-  if (loanAccounts.length === 0) {
-    return (
-      <InsetGroup
-        footer={
-          <>
-            Every loan account already has its terms. Add another on{' '}
-            <Link to="/accounts" className="text-[var(--ph-tint)] underline">
-              Accounts
-            </Link>{' '}
-            first, with what you still owe as its balance.
-          </>
-        }
-      >
-        <InsetRow title="Close" chevron={false} onClick={onDone} />
-      </InsetGroup>
-    );
-  }
-
   return (
     <form ref={form} onSubmit={submit}>
-      <InsetGroup header="Which loan" footer="Its balance is what you still owe today.">
-        <SelectRow label="Which loan" value={draft.accountId} onChange={(e) => set({ accountId: e.target.value })}>
-          {loanAccounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </SelectRow>
+      <InsetGroup
+        header={account?.name ?? 'This loan'}
+        footer={terms ? 'Changing what was agreed moves no money: the balance and its payments are as they are.' : 'Its balance is what you still owe today.'}
+      >
         <TextRow label="Lender" value={draft.lenderName} onChange={(e) => set({ lenderName: e.target.value })} placeholder="Bank BTN" required />
         <TextRow
           label={`Amount borrowed (${currency})`}

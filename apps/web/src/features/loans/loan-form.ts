@@ -1,5 +1,5 @@
-import { isoDate, type LoanMethod, minorToMajorString, parseMajor, type ScheduleRow } from '@expanses/core';
-import type { LoanPaymentInput, SaveLoanTermsInput } from '@expanses/db';
+import { isoDate, type LoanMethod, minorToMajorString, parseMajor, periodOn, type ScheduleRow } from '@expanses/core';
+import type { LoanPaymentInput, LoanTermsRow, SaveLoanTermsInput } from '@expanses/db';
 
 export interface LoanTermsDraft {
   accountId: string;
@@ -36,6 +36,33 @@ export const emptyLoanTermsDraft = (accountId: string, today: string): LoanTerms
 });
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The terms already on file, as the form holds them — what Edit terms opens with, so a wrong tenor or a renamed
+ * lender can be put right without starting over.
+ *
+ * The rate and the payment come from the period in force today rather than the first one: a loan that has had a
+ * rate change since should be corrected from what it pays now.
+ */
+export function loanTermsDraftFromTerms(terms: LoanTermsRow, currency: string, today: string): LoanTermsDraft {
+  const current = periodOn(terms.periods, today) ?? terms.periods[terms.periods.length - 1];
+  const rate = current ? Number((current.rateBps / 100).toFixed(2)).toString().replace('.', ',') : '';
+  return {
+    accountId: terms.accountId,
+    lenderName: terms.lenderName,
+    purpose: terms.purpose ?? '',
+    originalAmount: minorToMajorString(terms.originalMinor, currency),
+    firstPaymentOn: terms.firstPaymentOn,
+    tenorMonths: String(terms.tenorMonths),
+    method: terms.method,
+    paymentDay: String(terms.paymentDay),
+    rate,
+    payment: current && current.paymentMinor > 0 ? minorToMajorString(current.paymentMinor, currency) : '',
+    rateKind: current?.kind ?? 'fixed',
+    assetAccountId: terms.assetAccountId ?? '',
+    lenderNpwp: terms.lenderNpwp ?? '',
+  };
+}
 
 /** A percentage as basis points: "9,25" is 925. */
 function rateToBps(typed: string): number {

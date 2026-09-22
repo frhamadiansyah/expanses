@@ -1,9 +1,11 @@
 import type { ScheduleRow } from '@expanses/core';
+import type { LoanTermsRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import {
   emptyLoanTermsDraft,
   extraPaymentMinor,
   type LoanTermsDraft,
+  loanTermsDraftFromTerms,
   loanTermsDraftToInput,
   type PaymentDraft,
   paymentDraftFrom,
@@ -179,5 +181,73 @@ describe('extraPaymentMinor', () => {
     // reading both boxes here rather than swallowing them as zero.
     expect(() => extraPaymentMinor('12,50', 'IDR')).toThrow(/IDR allows 0 decimal places/);
     expect(() => extraPaymentMinor('abc', 'IDR')).toThrow(/Invalid amount/);
+  });
+});
+
+describe('loanTermsDraftFromTerms', () => {
+  const terms = (over: Partial<LoanTermsRow> = {}): LoanTermsRow => ({
+    accountId: 'kpr',
+    workspaceId: 'ws',
+    lenderName: 'BCA',
+    lenderNpwp: null,
+    purpose: 'House in Bintaro',
+    originalMinor: 900_000_000,
+    firstPaymentOn: '2026-01-05',
+    tenorMonths: 180,
+    method: 'annuity',
+    paymentDay: 5,
+    assetAccountId: 'house',
+    coretaxCode: '101',
+    status: 'open',
+    statusOn: null,
+    isHomeLoan: true,
+    periods: [
+      { id: 'p1', accountId: 'kpr', fromOn: '2026-01-05', rateBps: 475, kind: 'fixed', paymentMinor: 5_950_000 },
+      { id: 'p2', accountId: 'kpr', fromOn: '2026-06-05', rateBps: 690, kind: 'floating', paymentMinor: 6_400_000 },
+    ],
+    ...over,
+  });
+
+  it('opens the terms as they stand, from the period running today and not the first one', () => {
+    const opened = loanTermsDraftFromTerms(terms(), 'IDR', '2026-09-12');
+
+    // 6,9% is the rate in force: the loan's first period, 4,75%, would be the wrong neighbour to read back.
+    expect(opened).toMatchObject({
+      accountId: 'kpr',
+      lenderName: 'BCA',
+      originalAmount: '900000000',
+      firstPaymentOn: '2026-01-05',
+      tenorMonths: '180',
+      paymentDay: '5',
+      rate: '6,9',
+      payment: '6400000',
+      rateKind: 'floating',
+      assetAccountId: 'house',
+      purpose: 'House in Bintaro',
+    });
+  });
+
+  it('round-trips: saving what it opened with writes the same terms back', () => {
+    const input = loanTermsDraftToInput(loanTermsDraftFromTerms(terms(), 'IDR', '2026-09-12'), 'IDR');
+
+    expect(input).toMatchObject({
+      accountId: 'kpr',
+      lenderName: 'BCA',
+      originalMinor: 900_000_000,
+      firstPaymentOn: '2026-01-05',
+      tenorMonths: 180,
+      paymentDay: 5,
+      rateBps: 690,
+      paymentMinor: 6_400_000,
+      rateKind: 'floating',
+      assetAccountId: 'house',
+    });
+  });
+
+  it('leaves the bank’s figure empty when none was named, rather than writing zero', () => {
+    // A loan whose bank named no figure is worked out from the rate; a zero in the box would say the opposite.
+    const periods = terms().periods.map((period) => ({ ...period, paymentMinor: 0 }));
+
+    expect(loanTermsDraftFromTerms({ ...terms(), periods }, 'IDR', '2026-09-12').payment).toBe('');
   });
 });

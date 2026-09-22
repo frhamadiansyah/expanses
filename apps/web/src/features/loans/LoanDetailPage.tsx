@@ -15,6 +15,7 @@ import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { UTANG_CHOICES } from '../ownables/catalogue-view';
 import { type PaymentDraft, extraPaymentMinor, paymentDraftFrom, paymentDraftToInput } from './loan-form';
+import { TermsForm } from './TermsForm';
 import { useLoan, useNextPayment, useSchedule } from './queries';
 
 /**
@@ -418,6 +419,8 @@ export function LoanDetailPage() {
   const balances = useBalances();
   const [open, setOpen] = useState<'payment' | 'rate' | 'extra' | null>(null);
   const [showRows, setShowRows] = useState(false);
+  /** The terms are written and corrected from the loan itself, which already knows which loan this is. */
+  const [termsOpen, setTermsOpen] = useState(false);
 
   const account = accounts.find((row) => row.id === accountId);
   const currency = account?.currency ?? ws.baseCurrency;
@@ -435,9 +438,17 @@ export function LoanDetailPage() {
     <div className={SCREEN}>
       <LargeTitle title={account?.name ?? 'Loan'} back="Debts" backTo="/net-worth/loans" />
       <ErrorBox error={loan.error ?? schedule.error} />
-      {!terms && !loan.isPending && <Empty>This loan has no terms yet. Add them on Debts to see its schedule.</Empty>}
+      {termsOpen && <TermsForm accountId={accountId} terms={terms ?? undefined} onDone={() => setTermsOpen(false)} />}
+      {!termsOpen && !terms && !loan.isPending && (
+        <>
+          <Empty>This loan has no terms yet. Its schedule is worked out from them.</Empty>
+          <InsetGroup>
+            <InsetRow title="Add loan terms" chevron={false} onClick={() => setTermsOpen(true)} />
+          </InsetGroup>
+        </>
+      )}
 
-      {terms && (
+      {!termsOpen && terms && (
         <>
           <Hero
             minor={balanceMinor}
@@ -465,6 +476,8 @@ export function LoanDetailPage() {
               <InsetRow title="Record payment" chevron={false} onClick={() => setOpen('payment')} />
               <InsetRow title="Rate change" chevron={false} onClick={() => setOpen('rate')} />
               <InsetRow title="Extra payment" chevron={false} onClick={() => setOpen('extra')} />
+              {/* The agreement itself, correctable from the loan it belongs to rather than only writable once. */}
+              <InsetRow title="Edit terms" chevron={false} onClick={() => setTermsOpen(true)} />
             </InsetGroup>
           )}
         </>

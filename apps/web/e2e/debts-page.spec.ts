@@ -116,7 +116,7 @@ test('the old Lend & borrow address still opens it, with its search', async ({ p
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?person=Dewi$/);
 });
 
-test('every Loans page action is still there: add terms, cancel, and the instalments line', async ({ page }) => {
+test('a loan with no terms says so, and its terms are written from the loan itself', async ({ page }) => {
   await page.goto('/accounts');
   await page.getByLabel('Name', { exact: true }).pressSequentially('KPR Bintaro');
   await page.getByLabel('Type').selectOption('loan');
@@ -127,6 +127,12 @@ test('every Loans page action is still there: add terms, cancel, and the instalm
   await page.goto('/net-worth/loans');
   // A loan account with no terms is still owed, so it is listed — and says what it lacks.
   await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('no terms yet');
+  /*
+   * The list keeps no terms tool of its own: the loan's own page already knows which loan this is, so it is where
+   * the agreement is written — and there is no state in which a tool here would have nothing to offer.
+   */
+  await page.getByRole('link', { name: 'KPR Bintaro' }).click();
+  await expect(page.getByText('This loan has no terms yet')).toBeVisible();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByLabel('Lender')).toHaveCount(0);
@@ -137,13 +143,12 @@ test('every Loans page action is still there: add terms, cancel, and the instalm
   await page.getByLabel('First payment on').fill('2026-01-25');
   await page.getByLabel('Tenor in months').pressSequentially('180');
   await page.getByRole('button', { name: 'Save terms' }).click();
+  // The schedule is there at once, on the page the terms were written on.
+  await expect(page.getByText('Where this loan stands')).toBeVisible();
+
+  await page.goto('/net-worth/loans');
   await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('Bank BTN · 9% · 180 months');
   await expect(page.getByText('The instalments the banks ask for each month')).toContainText(/7\.\d{3}\.\d{3}/);
-  // Every loan account now has its terms, and the form says so, with its Close.
-  await page.getByRole('button', { name: 'Add loan terms' }).click();
-  await expect(page.getByText('Every loan account already has its terms.')).toBeVisible();
-  await page.getByRole('button', { name: 'Close' }).click();
-  await expect(page.getByRole('button', { name: 'Add loan terms' })).toBeVisible();
 });
 
 test('an asset whose rate is missing does not hide the due split, which is made of the debts', async ({ page }, testInfo) => {

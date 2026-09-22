@@ -14,7 +14,6 @@ import { bareFigure, type DebtGroup, type DebtIcon, type DebtRow, type DebtSheet
 import { useSheet } from '../networth/queries';
 import { monthlyInstalments } from './instalments';
 import { useCardFacts, useLoans, useScheduledPayments } from './queries';
-import { TermsForm } from './TermsForm';
 
 /**
  * Debts: everything owed, in one list, grouped the way Assets groups what is owned — Loans, Credit cards, and
@@ -202,7 +201,6 @@ export function DebtsPage() {
   const cards = useCardFacts(cardIds, today);
   const owedTo = people.data?.youOwe ?? [];
   const held = useHeldRates([...all.filter((a) => a.kind === 'liability').map((a) => a.currency ?? baseCurrency), ...owedTo.map((p) => p.currency)]);
-  const [adding, setAdding] = useState(false);
   const [showCleared, setShowCleared] = useState(false);
 
   const rates = held.data?.rates ?? {};
@@ -238,16 +236,16 @@ export function DebtsPage() {
       </>
     );
 
-  /** Under the Loans group: add terms to a loan already running, and the loans paid off. */
+  /**
+   * Under the Loans group: the loans paid off, which the live list cannot show. A loan's terms are written and
+   * corrected on the loan's own page — it already knows which loan it is, and there is no state in which the list
+   * has nothing to offer.
+   */
   const loanTools = (
     <>
-      {adding && <TermsForm onDone={() => setAdding(false)} />}
-      {!adding && (
+      {(debts?.cleared.length ?? 0) > 0 && (
         <InsetGroup>
-          <InsetRow title="Add loan terms" onClick={() => setAdding(true)} chevron={false} />
-          {(debts?.cleared.length ?? 0) > 0 && (
-            <InsetRow title={`${showCleared ? 'Hide' : 'Show'} paid-off loans (${debts!.cleared.length})`} onClick={() => setShowCleared((was) => !was)} chevron={false} />
-          )}
+          <InsetRow title={`${showCleared ? 'Hide' : 'Show'} paid-off loans (${debts!.cleared.length})`} onClick={() => setShowCleared((was) => !was)} chevron={false} />
         </InsetGroup>
       )}
       {showCleared && debts && debts.cleared.length > 0 && (
