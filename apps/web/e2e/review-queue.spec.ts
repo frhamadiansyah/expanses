@@ -33,6 +33,8 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
 
   // Not money yet: the list shows it, marked as not recorded, whichever month is open.
   await page.goto('/transactions');
+  // The queue's row sits above the list carrying the same count as the filter, which then narrows to the rows.
+  await expect(page.getByTestId('not-recorded-card')).toContainText('2 not recorded');
   await page.getByRole('button', { name: '2 not recorded' }).click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(2);
   // The import already guessed a category, so the row names it and can be recorded as it stands.
@@ -54,7 +56,8 @@ test('captured rows wait in the queue, and reach the ledger only when confirmed'
 
   await page.goto('/transactions');
   await expect(page.getByText('SUPERINDO KEBAYORAN')).toBeVisible();
-  // The one still waiting stayed waiting.
+  // The row follows the queue down, and the one still waiting stayed waiting.
+  await expect(page.getByTestId('not-recorded-card')).toContainText('1 not recorded');
   await page.getByRole('button', { name: '1 not recorded' }).click();
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   await expect(page.getByTestId('not-recorded-row')).toContainText('APOTEK K24');
@@ -99,4 +102,30 @@ test('a capture is finished and recorded from the transactions list itself', asy
   await expect(page.locator('li', { hasText: 'APOTEK K24' })).toContainText('80.000');
   await expect(page.getByTestId('not-recorded-row')).toHaveCount(1);
   await expect(page.getByTestId('not-recorded-row')).toContainText('SUPERINDO KEBAYORAN');
+});
+
+test('the queue row is the way in to Review, and leaves with the last draft', async ({ page }) => {
+  await addAccount(page);
+  await loadCsv(page);
+  await page.getByRole('button', { name: /Send \d+ to review/ }).click();
+  await expect(page.getByText(/Sent \d+ rows to Review/)).toBeVisible();
+
+  await page.goto('/transactions');
+  const queue = page.getByTestId('not-recorded-card');
+  await expect(queue).toContainText('2 not recorded');
+  // The row opens the queue's own screen, where the whole queue can be worked off.
+  await queue.click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(2);
+
+  await page.getByLabel('Category for SUPERINDO KEBAYORAN').selectOption({ label: 'Groceries' });
+  await page.getByRole('button', { name: 'Record SUPERINDO KEBAYORAN' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(1);
+  await page.getByLabel('Category for APOTEK K24').selectOption({ label: 'Pharmacy' });
+  await page.getByRole('button', { name: 'Record APOTEK K24' }).click();
+  await expect(page.getByTestId('draft-row')).toHaveCount(0);
+
+  // Nothing waiting, so the row says nothing — and both purchases are in the list.
+  await page.goto('/transactions');
+  await expect(page.getByText('SUPERINDO KEBAYORAN')).toBeVisible();
+  await expect(page.getByTestId('not-recorded-card')).toHaveCount(0);
 });

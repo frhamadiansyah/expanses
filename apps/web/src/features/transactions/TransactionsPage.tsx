@@ -44,6 +44,7 @@ import { useGoals } from '../goals/queries';
 import { type Door, spendingDoor } from '../goals/set-aside-question';
 import { asksAboutSetAside, SetAsideSheet } from '../goals/SetAsideQuestion';
 import { Recurring } from './Recurring';
+import { NotRecorded } from './NotRecorded';
 import { Sheet } from '../../app/Sheet';
 import { SpendingReport } from './SpendingReport';
 import { TransactionCard } from './TransactionCard';
@@ -1084,6 +1085,7 @@ export function TransactionsPage() {
       {view === 'table' ? (
         <>
         {!inCategory && chartShown && <Recurring today={today} />}
+        {!inCategory && chartShown && <NotRecorded count={pending.length} />}
         {/* baseCurrency is what a row typed into the table is parsed and recorded in, so it stays the owner's. */}
         <TransactionsTable
           rows={shown}
@@ -1167,6 +1169,8 @@ export function TransactionsPage() {
           )}
           {/* The month's recurring bills sit with the list they are part of, under its controls. */}
           {!inCategory && chartShown && <Recurring today={today} />}
+          {/* And the queue's own door, in the same place: one row for what has not reached the accounts yet. */}
+          {!inCategory && chartShown && <NotRecorded count={pending.length} />}
 
           {sort.key === 'amount' && grouping === 'date' && shown.length > 0 ? (
             <>
