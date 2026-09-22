@@ -22,7 +22,6 @@ import { useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, TextRow } from '../../ui/native';
 import { EducationEditor } from './EducationEditor';
-import { ChoiceRow } from './ChoiceRow';
 import { educationDraftFrom, educationInputsOf } from './education-model';
 import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS, monthsNote, typedMonths, withAnswers } from './emergency-form';
 import { useGoalCalculators } from './queries';
@@ -127,21 +126,30 @@ function CalculatorForm({ goal, saved, onDone }: { goal: GoalRow; saved: GoalCal
   const rows: ReactElement[] =
     kind === 'emergency'
       ? [
-          // Two or three answers each: the app's own sheet, not the platform's panel.
-          <ChoiceRow
+          <SelectRow
             key="household"
             label="Household"
             value={emergency.household}
-            options={HOUSEHOLDS.map((key) => ({ value: key, label: HOUSEHOLD_LABELS[key] }))}
-            onChoose={(value) => setEmergency((d) => withAnswers(d, { household: value as Household }))}
-          />,
-          <ChoiceRow
+            onChange={(e) => setEmergency((d) => withAnswers(d, { household: e.target.value as Household }))}
+          >
+            {HOUSEHOLDS.map((key) => (
+              <option key={key} value={key}>
+                {HOUSEHOLD_LABELS[key]}
+              </option>
+            ))}
+          </SelectRow>,
+          <SelectRow
             key="income"
             label="Income"
             value={emergency.income}
-            options={INCOME_STABILITIES.map((key) => ({ value: key, label: INCOME_LABELS[key] }))}
-            onChoose={(value) => setEmergency((d) => withAnswers(d, { income: value as IncomeStability }))}
-          />,
+            onChange={(e) => setEmergency((d) => withAnswers(d, { income: e.target.value as IncomeStability }))}
+          >
+            {INCOME_STABILITIES.map((key) => (
+              <option key={key} value={key}>
+                {INCOME_LABELS[key]}
+              </option>
+            ))}
+          </SelectRow>,
           <TextRow
             key="months"
             label="Months of outgoings"
