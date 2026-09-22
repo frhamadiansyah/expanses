@@ -2,7 +2,7 @@ import { isoDate } from '@expanses/core';
 import { Link } from '@tanstack/react-router';
 import { ChevronRight, Receipt } from 'lucide-react';
 import { useApp } from '../../app/context';
-import { Card, cx, Money } from '../../ui';
+import { Card, Money } from '../../ui';
 import { useAccounts } from '../../lib/queries';
 import { billsInReadCurrency, isSettled, owedNow } from '../bills/bill-view';
 import type { MonthlyBill } from '@expanses/db';
@@ -30,14 +30,15 @@ export function Recurring({ today = isoDate() }: { today?: string }) {
 
   const settled = readRows.filter(isSettled).length;
   const owed = owedNow(readRows);
-  const done = settled === readRows.length;
   const readCurrency = money.data?.currency ?? ws.baseCurrency;
 
   return (
     // The same card as a category group below it, so the bills read as one more line of the list.
     <Card>
       <Link to="/bills" className="flex w-full items-center gap-3 text-left" data-testid="recurring-card">
-        <span className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', done ? 'bg-slate-100 text-slate-400' : 'bg-amber-50 text-amber-700')}>
+        {/* The circle is the kit's own grey, the same one the queue's row wears: neither of these lines is a
+            warning, so neither borrows the alarm's amber to say "there is something here". */}
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink-3)]">
           <Receipt size={18} strokeWidth={2.2} aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
