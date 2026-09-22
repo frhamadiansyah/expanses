@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
 import { openGoalForm } from './goals';
+import { goalCard, goalRow } from './set-aside';
 
 /**
  * The health-ratio combinations (spec §15, Part 1 rows), rows 2, 7, 9, 11 and 13 at phone width.
@@ -43,12 +44,15 @@ function emergencyCard(page: Page) {
   return page.locator('section', { has: page.getByRole('heading', { name: 'Emergency fund', exact: true }) }).last();
 }
 
+/** Adds a goal from a template and leaves the browser on the goal's own page, where its working is read. */
 async function addFromTemplate(page: Page, template: string, amount?: string) {
   await page.goto('/goals');
   await openGoalForm(page, template);
   if (amount) await type(page.getByLabel(/Cost in today's money/).first(), amount);
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  await expect(page.getByRole('button', { name: `Move ${template} down` })).toBeVisible();
+  // The save lands as a row on the list; the goal's own page is opened from it, and its move row proves it is there.
+  await expect(goalRow(page, template)).toBeVisible();
+  await expect((await goalCard(page, template)).getByRole('button', { name: `Move ${template} down` })).toBeVisible();
 }
 
 /** Caps a category in a unit, the amount typed a key at a time, and waits for the line to say it. */
@@ -120,13 +124,16 @@ test('row 9 — a workspace that reads in dollars types and converts in cents', 
 test('row 11 — neither move crosses the sections', async ({ page }) => {
   await addFromTemplate(page, 'Holiday', '15000000');
   await addFromTemplate(page, 'Emergency fund');
-  await page.getByRole('button', { name: 'Move Holiday up' }).click();
-  await page.getByRole('button', { name: 'Move Emergency fund down' }).click();
+  await (await goalCard(page, 'Holiday')).getByRole('button', { name: 'Move Holiday up' }).click();
+  await (await goalCard(page, 'Emergency fund')).getByRole('button', { name: 'Move Emergency fund down' }).click();
+  // The list is where the order is read, so a move from a goal's own page lands back on it.
+  await page.goto('/goals');
   const compulsory = page.getByTestId('goals-compulsory');
   await expect(compulsory).toContainText('Emergency fund');
   await expect(compulsory).not.toContainText('Holiday');
   await expect(page.getByTestId('goals-additional')).toContainText('Holiday');
-  await expect(page.getByTestId('goals-additional')).toContainText('15.000.000');
+  // The 15 jt is the goal's target, which a row does not carry: it is read under the figure on the goal's page.
+  await expect((await goalCard(page, 'Holiday')).getByText(/15\.000\.000/).first()).toBeVisible();
 });
 
 test('row 13 — the card grades against the household’s own months', async ({ page }) => {
@@ -136,8 +143,8 @@ test('row 13 — the card grades against the household’s own months', async ({
   await page.getByLabel('Household').selectOption('children');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('12');
   await page.getByRole('button', { name: 'Use this amount' }).click();
-  // 12 months of Rp 3 jt.
-  await expect(page.getByTestId('goals-compulsory')).toContainText('36.000.000');
+  // 12 months of Rp 3 jt, under the figure on the goal's own page.
+  await expect(page.getByTestId('goal-page')).toContainText('36.000.000');
 
   await page.goto('/net-worth');
   const card = emergencyCard(page);

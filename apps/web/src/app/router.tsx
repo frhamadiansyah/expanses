@@ -33,6 +33,7 @@ import { AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
+import { GoalRoute } from '../features/goals/GoalPage';
 import { LendBorrowPage } from '../features/debts/LendBorrowPage';
 import { LoanDetailPage } from '../features/loans/LoanDetailPage';
 import { DebtsPage } from '../features/loans/DebtsPage';
@@ -192,6 +193,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets/$accountId', component: AssetDetailPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/trades', component: TradesPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/goals', component: GoalsPage }),
+  // One goal on its own page: the list reads them as a set, and a goal that was a card among cards is a page now.
+  createRoute({ getParentRoute: () => rootRoute, path: '/goals/$goalId', component: GoalRoute }),
   // Lend & borrow: money between you and people, both ways. It was drawn at /net-worth/debts under that name
   // while "Debts" meant only people; Debts is now everything owed, so the old address hands over, search and all.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/lend-borrow', component: LendBorrowPage, validateSearch: lendBorrowSearch }),

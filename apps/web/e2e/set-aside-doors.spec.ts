@@ -20,9 +20,8 @@ const TODAY = local(now);
 const LAST_MONTH = local(new Date(now.getFullYear(), now.getMonth() - 1, 15));
 
 async function expectShort(page: Page, goal: string, figure: RegExp) {
-  await page.goto('/goals');
-  // The card says it twice since Task 13 — under the figure and on the Funded-by row — and both carry the same figure.
-  await expect(goalCard(page, goal).getByText(figure).first()).toBeVisible();
+  // The goal's own page says it twice since Task 13 — under the figure and on the Funded-by row — and both carry the same figure.
+  await expect((await goalCard(page, goal)).getByText(figure).first()).toBeVisible();
 }
 
 /** Answers the question in `scope`: the Emergency fund, borrowing. */
@@ -180,8 +179,9 @@ test('paying several bills with "Yes" counts the whole paid total against the go
 
   // 7.500.000 − (3.000.000 + 4.000.000) = 500.000 left promised. Spending only the bill that went over leaves 3.500.000.
   await page.goto('/goals');
-  await expect(goalCard(page, 'Umrah 2027').getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/Rp.500\.000/);
-  await expect(goalCard(page, 'Umrah 2027').getByText('Done', { exact: true })).toBeVisible();
+  const umrah = await goalCard(page, 'Umrah 2027');
+  await expect(umrah.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/Rp.500\.000/);
+  await expect(umrah.getByText('Done', { exact: true })).toBeVisible();
   // And the free money is left free: 35.500.000 held − 30.500.000 promised = 5.000.000, as before the bills.
   await openAccountPage(page, 'Jenius');
   await expect(page.getByText(/^Rp.5\.000\.000$/).first()).toBeVisible();

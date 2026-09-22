@@ -151,7 +151,7 @@ test('the Add a holding form is a set-aside door: a buy that takes promised mone
   await add.click();
   await expect(page.getByRole('heading', { name: 'BBCA' })).toBeVisible();
   await page.goto('/goals');
-  await expect(goalCard(page, 'Emergency fund').getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
+  await expect((await goalCard(page, 'Emergency fund')).getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
 });
 
 test('a buy with no broker names the holding it adds to — and, with two, which one and how to reach the other', async ({ page }) => {

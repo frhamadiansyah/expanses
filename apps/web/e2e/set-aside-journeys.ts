@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAmount } from './add-transaction';
 import { openGoalForm } from './goals';
-import { addBill, addGoal, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
+import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
 
 /*
  * The combination walk end to end (Task 14, step 2). Each journey is run by `set-aside-combinations.spec.ts` on the
@@ -127,8 +127,9 @@ export const JOURNEYS: Journey[] = [
       await saveForm(edit);
 
       await page.goto('/goals');
-      await expect(goalCard(page, 'Emergency fund').getByText(/^Short by Rp.1\.000\.000$/)).toBeVisible();
-      await expectNotShort(goalCard(page, 'Umrah 2027'));
+      const ef = await goalCard(page, 'Emergency fund');
+      await expect(ef.getByText(/^Short by Rp\s1\.000\.000$/)).toBeVisible();
+      await expectNotShort(await goalCard(page, 'Umrah 2027'));
       await expectFree(page, 'Jenius', '-Rp.1\\.000\\.000');
       await expect(promiseRow(page, 'Emergency fund', 'Short by Rp.1\\.000\\.000')).toBeVisible();
     },
@@ -144,7 +145,7 @@ export const JOURNEYS: Journey[] = [
       await saveForm(edit);
 
       await page.goto('/goals');
-      const ef = goalCard(page, 'Emergency fund');
+      const ef = await goalCard(page, 'Emergency fund');
       await expectNotShort(ef);
       await expect(ef.getByTestId('goal-history').filter({ hasText: 'Borrowed' })).toHaveCount(0);
       // 42.500.000 − 4.000.000 − 37.500.000 promised.
@@ -170,7 +171,8 @@ export const JOURNEYS: Journey[] = [
       await expectFree(page, 'BCA', 'Rp.5\\.000\\.000');
       await expect(promiseRow(page, 'Emergency fund', 'Covered.*15\\.000\\.000')).toBeVisible();
       await page.goto('/goals');
-      await expectNotShort(page.locator('body'));
+      await expectNotShort(await goalCard(page, 'Emergency fund'));
+      await expectNotShort(await goalCard(page, 'Umrah 2027'));
 
       await deleteFromReceipt(page, 'To BCA');
       await expectFree(page, 'Jenius', 'Rp.5\\.000\\.000');
@@ -201,7 +203,7 @@ export const JOURNEYS: Journey[] = [
       await expect(promiseRow(page, 'Emergency fund', 'Covered.*15\\.000\\.000')).toBeVisible();
       // The goal names the dollars in dollars, converted or said to have no rate — never added in as rupiah.
       await page.goto('/goals');
-      const wise = goalCard(page, 'Emergency fund').getByTestId('goal-link').filter({ hasText: 'Wise USD' });
+      const wise = (await goalCard(page, 'Emergency fund')).getByTestId('goal-link').filter({ hasText: 'Wise USD' });
       await expect(wise).toContainText(/US\$.?925,98/);
       await expect(wise).toContainText(/\(Rp.[\d.]+\)|no IDR rate yet/);
     },
@@ -239,7 +241,7 @@ export const JOURNEYS: Journey[] = [
       await saveForm(form);
 
       await page.goto('/goals');
-      const umrah = goalCard(page, 'Umrah 2027');
+      const umrah = await goalCard(page, 'Umrah 2027');
       // 7.500.000 − 6.000.000. Taking only the part over the free money would leave 6.500.000.
       await expect(umrah.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/Rp.1\.500\.000/);
       await expect(umrah.getByText('Done', { exact: true })).toBeVisible();
@@ -247,7 +249,8 @@ export const JOURNEYS: Journey[] = [
       await expectFree(page, 'Jenius', 'Rp.5\\.000\\.000');
 
       await page.goto('/goals');
-      await goalCard(page, 'Umrah 2027').getByRole('button', { name: 'Archive' }).click();
+      await (await goalCard(page, 'Umrah 2027')).getByRole('button', { name: 'Archive' }).click();
+      // Back on the list, where the goal's row went with it.
       await expect(page.getByRole('heading', { name: 'Umrah 2027', exact: true })).toHaveCount(0);
       // Free rises by the 1.500.000 Umrah still promised: 5.000.000 → 6.500.000.
       await expectFree(page, 'Jenius', 'Rp.6\\.500\\.000');
@@ -272,7 +275,8 @@ export const JOURNEYS: Journey[] = [
       await saveForm(topUp);
 
       await page.goto('/goals');
-      await expectNotShort(page.locator('body'));
+      await expectNotShort(await goalCard(page, 'Emergency fund'));
+      await expectNotShort(await goalCard(page, 'Umrah 2027'));
       // 42.500.000 − 21.500.000 − 100.000 + 16.600.000 = 37.500.000: exactly what is promised.
       await expectFree(page, 'Jenius', 'Rp.0');
       await expect(promiseRow(page, 'Emergency fund', 'Covered')).toBeVisible();
@@ -297,7 +301,7 @@ export const JOURNEYS: Journey[] = [
       await expect(sheet).toHaveCount(0);
 
       await page.goto('/goals');
-      await expect(goalCard(page, 'Emergency fund').getByText(/^Short by Rp.2\.000\.000$/)).toBeVisible();
+      await expect((await goalCard(page, 'Emergency fund')).getByText(/^Short by Rp\s2\.000\.000$/)).toBeVisible();
       await expectFree(page, 'Jenius', '-Rp.2\\.000\\.000');
     },
   },
@@ -309,7 +313,7 @@ export const JOURNEYS: Journey[] = [
       await openGoalForm(page, 'Emergency fund');
       await page.getByLabel('Name', { exact: true }).fill('Emergency fund');
       await page.getByRole('button', { name: 'Add goal' }).last().click();
-      await expect(page.getByRole('heading', { name: 'Emergency fund', exact: true })).toBeVisible();
+      await expect(goalRow(page, 'Emergency fund')).toBeVisible();
       await setAside(page, 'Emergency fund', 'Jenius (IDR)', '30000000');
 
       const form = await openExpense(page, 'Jenius');
@@ -322,7 +326,7 @@ export const JOURNEYS: Journey[] = [
       await saveForm(form);
 
       await page.goto('/goals');
-      const ef = goalCard(page, 'Emergency fund');
+      const ef = await goalCard(page, 'Emergency fund');
       // 30.000.000 − 6.800.000, drawn down by the whole payment…
       await expect(ef.getByTestId('goal-link').filter({ hasText: 'Jenius' })).toContainText(/Rp.23\.200\.000/);
       // …and open to be rebuilt: not Done, and no archive note.
@@ -348,7 +352,7 @@ export const JOURNEYS: Journey[] = [
       await saveForm(form);
 
       await page.goto('/goals');
-      await expect(goalCard(page, 'Education').getByText(phone ? /^Short by US\$.?1,00$/ : /^Short by US\$.?0,01$/)).toBeVisible();
+      await expect((await goalCard(page, 'Education')).getByText(phone ? /^Short by US\$.?1,00$/ : /^Short by US\$.?0,01$/)).toBeVisible();
       await expectFree(page, 'Wise USD', phone ? '-US\\$.?1,00' : '-US\\$.?0,01');
 
       const edit = await openEdit(page, 'Books');
@@ -356,7 +360,7 @@ export const JOURNEYS: Journey[] = [
       await expect(edit.getByText(/more than is free/)).toHaveCount(0);
       await saveForm(edit);
       await page.goto('/goals');
-      await expectNotShort(goalCard(page, 'Education'));
+      await expectNotShort(await goalCard(page, 'Education'));
       // 500,03 − 390,00 − 100,03 promised.
       await expectFree(page, 'Wise USD', 'US\\$.?10,00');
 

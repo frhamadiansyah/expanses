@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
 import { openGoalForm } from './goals';
+import { goalCard } from './set-aside';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -19,7 +20,8 @@ test('two answers prefill the months, say why, and size the goal on a month of s
   await page.goto('/goals');
   await openGoalForm(page, 'Emergency fund');
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  await expect(page.getByRole('button', { name: 'Move Emergency fund down' })).toBeVisible();
+  // The goal's own page carries its move row and its working; the save lands as a row on the list.
+  await goalCard(page, 'Emergency fund');
   await page.getByRole('button', { name: 'Work out the amount' }).click();
   await page.getByLabel('Household').selectOption('children');
   await page.getByLabel('Income').selectOption('irregular');

@@ -47,7 +47,7 @@ test('moving between pockets asks only when it takes promised money, and the pro
   await expect(page.getByTestId('pocket-USD')).toContainText('1.900,00');
 
   await page.goto('/goals');
-  const umrah = goalCard(page, 'Umrah 2027');
+  const umrah = await goalCard(page, 'Umrah 2027');
   // US$100,00 over moved at 638 ÷ 500: S$127,60 now promised on the SGD pocket, US$1.900,00 left on USD.
   await expect(umrah.getByTestId('goal-link').filter({ hasText: 'Valas Plus · SGD' })).toContainText('127,60');
   await expect(umrah.getByTestId('goal-link').filter({ hasText: 'Valas Plus · USD' })).toContainText('1.900,00');

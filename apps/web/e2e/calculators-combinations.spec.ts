@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { figure, firstLevel, neededAMonth, planTotal, row1, row5, row8, todayFigures } from './calculator-walk';
 import { addEducationGoal, stageLines, typeInto } from './education-walk';
 import { openGoalForm } from './goals';
+import { goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
 
 test.beforeEach(({ page }) => {
@@ -122,10 +123,12 @@ test('row 7 — retirement saved from the Retirement page: 3,5% growth, 10% retu
   await expect(page.getByText('Saved Retirement fund as a goal.')).toBeVisible();
 
   await page.goto('/goals');
-  await expect(page.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
+  // The saved goal is a row on the list; its figures and Edit are read on its own page.
+  const retirement = await goalCard(page, 'Retirement fund');
+  await expect(retirement.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
   // The goal inflates its today's-money pot once, to the day you stop: the page's own figure.
   expect(await planTotal(page)).toBe(youNeed);
-  await page.getByRole('button', { name: 'Edit' }).first().click();
+  await retirement.getByRole('button', { name: 'Edit' }).click();
   await expect(page.getByLabel('Cost growth a year (%)')).toHaveValue('3.5');
   await expect(page.getByLabel('Expected return a year (%)')).toHaveValue('10');
 });
@@ -137,10 +140,10 @@ test('row 8 — life cover with more than enough: no further cover, and the surp
 test('row 9 — life cover opens on the loan and the education goal just added', async ({ page }) => {
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '300000000');
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Education', exact: true }).click();
+  await openGoalForm(page, 'Education');
   await typeInto(page, "Cost in today's money (IDR)", '150000000');
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  await expect(page.getByRole('button', { name: 'Move Education down' })).toBeVisible();
+  await expect(goalRow(page, 'Education')).toBeVisible();
 
   await page.goto('/calculators/life-cover');
   await expect(page.getByLabel('Debts to clear (IDR)', { exact: true })).toHaveValue('300000000');

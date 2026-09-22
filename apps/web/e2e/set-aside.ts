@@ -3,11 +3,26 @@ import { openAmount } from './add-transaction';
 import { openGoalForm } from './goals';
 
 /**
- * A goal's card on /goals. Never `locator('section', { hasText })`: the "Start from a template" group is a section
- * drawn first, and its rows include the template "Emergency fund", so `.first()` lands there (no Edit button).
+ * A goal's row on /goals, where each goal is one line of the list. The goal itself — its figure, stages, what
+ * funds it, Edit — is on its own page, which `goalCard` opens.
  */
-export const goalCard = (page: Page, name: string) =>
-  page.locator('section').filter({ has: page.getByRole('heading', { name, exact: true }) }).first();
+export const goalRow = (page: Page, name: string) => page.getByTestId('goal-row').filter({ hasText: name }).first();
+
+/**
+ * The goal's own page, opened from its row on the list: everything that used to be a card on /goals is read
+ * there now. Returns the page's own root, so a caller scopes its reads the way it used to scope them to a card.
+ *
+ * A caller fresh from the goal form is already on the list, and is not sent back to it: a reload while the save
+ * is still being written would throw the goal away. The row is waited for where the page already stands.
+ */
+export async function goalCard(page: Page, name: string) {
+  if (!/\/goals$/.test(page.url())) await page.goto('/goals');
+  await goalRow(page, name).click();
+  await expect(page).toHaveURL(/\/goals\/[^/]+$/);
+  // Scoped by the goal's own name in the title: a locator kept while another goal is opened must not quietly
+  // read that goal's page instead.
+  return page.getByTestId('goal-page').filter({ has: page.getByRole('heading', { name, exact: true }) });
+}
 
 /**
  * Types an amount one keystroke at a time: the keypad digit by digit on a phone, the input key by key on a desktop.
@@ -48,12 +63,12 @@ export async function addGoal(page: Page, name: string, amount: string, dueOn = 
   await page.getByLabel(/Cost in today's money/).first().pressSequentially(amount);
   await page.getByLabel('Needed by').first().fill(dueOn);
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  await expect(page.getByRole('heading', { name })).toBeVisible();
+  await expect(goalRow(page, name)).toBeVisible();
 }
 
 export async function setAside(page: Page, goal: string, box: string, amount: string) {
-  await page.goto('/goals');
-  await goalCard(page, goal).getByRole('button', { name: 'Edit' }).click();
+  const card = await goalCard(page, goal);
+  await card.getByRole('button', { name: 'Edit' }).click();
   const input = page.getByLabel(box);
   await input.clear();
   await input.pressSequentially(amount);
@@ -61,7 +76,7 @@ export async function setAside(page: Page, goal: string, box: string, amount: st
   await expect(page.getByRole('alert')).toHaveCount(0);
   // Saved, not merely pressed: the form closes once the save lands. Navigating away before that loses it.
   await expect(page.getByRole('button', { name: 'Save goal' })).toHaveCount(0);
-  await expect(goalCard(page, goal).getByTestId('goal-link').filter({ hasText: box.replace(/ \(.*\)$/, '') }).first()).toBeVisible();
+  await expect(card.getByTestId('goal-link').filter({ hasText: box.replace(/ \(.*\)$/, '') }).first()).toBeVisible();
 }
 
 /** The record's account: Jenius Rp 42.500.000, Emergency fund Rp 30.000.000 (first), Umrah Rp 7.500.000 — Rp 5.000.000 free. */

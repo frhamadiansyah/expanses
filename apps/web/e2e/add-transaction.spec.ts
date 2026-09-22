@@ -182,7 +182,7 @@ async function addGoal(page: Page, name: string, amount: string, dueOn: string) 
   await page.getByLabel(/Cost in today's money/).first().fill(amount);
   await page.getByLabel('Needed by').first().fill(dueOn);
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  await expect(page.getByRole('heading', { name })).toBeVisible();
+  await expect(page.getByTestId('goal-row').filter({ hasText: name }).first()).toBeVisible();
 }
 
 test('a transfer moves money between two accounts and is filed in no workspace', async ({ page }) => {
@@ -532,8 +532,10 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
   // own minor units under the base-currency symbol. The rupiah translation rides alongside, from the rate
   // typed when the account was opened.
   await page.goto('/goals');
-  // The funding line is a row of the goal's group now: the name, what the funding is and the figure are parts of
+  // The funding line is a row of the goal's own page: the name, what the funding is and the figure are parts of
   // one row rather than one run of text, so the row is named and asked — the same fix `goals.spec.ts` made.
+  await page.getByTestId('goal-row').filter({ hasText: 'University for Aisyah' }).first().click();
+  await expect(page).toHaveURL(/\/goals\/[^/]+$/);
   const fundedBy = page.getByTestId('goal-link').filter({ hasText: 'Wise USD' }).first();
   await expect(fundedBy).toBeVisible();
   await expect(fundedBy).toContainText('set aside');

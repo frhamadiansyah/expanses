@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { goalCard } from './set-aside';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -66,7 +67,7 @@ test('answers what retirement costs a month without saving anything', async ({ p
 
   // Nothing is stored until it is asked for.
   await page.goto('/goals');
-  await expect(page.getByRole('heading', { name: 'Retirement fund' })).toHaveCount(0);
+  await expect(page.getByTestId('goal-row').filter({ hasText: 'Retirement fund' })).toHaveCount(0);
 });
 
 test('saves each month at the return while saving, not the return while retired', async ({ page }) => {
@@ -117,8 +118,9 @@ test('turns the answer into a goal, which reaches the budget sheet', async ({ pa
   await expect(page.getByText('Saved Retirement fund as a goal.')).toBeVisible();
 
   await page.goto('/goals');
-  await expect(page.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
-  await expect(page.getByText('Worked out from your figures')).toBeVisible();
+  const retirement = await goalCard(page, 'Retirement fund');
+  await expect(retirement.getByRole('heading', { name: 'Retirement fund' })).toBeVisible();
+  await expect(retirement.getByText('Worked out from your figures')).toBeVisible();
 
   await page.goto('/budget');
   await expect(page.getByTestId('savings-Retirement fund')).toContainText('a month');
@@ -141,6 +143,7 @@ test('says what the levels will cost when the time comes, and saves them as a go
   await page.getByRole('button', { name: 'Save Education fund as a goal' }).click();
   await expect(page.getByText('Saved Education fund as a goal.')).toBeVisible();
   await page.goto('/goals');
-  await expect(page.getByRole('heading', { name: 'Education fund' })).toBeVisible();
-  await expect(page.getByRole('button', { name: / · year \d+: / })).toHaveCount(4);
+  const education = await goalCard(page, 'Education fund');
+  await expect(education.getByRole('heading', { name: 'Education fund' })).toBeVisible();
+  await expect(education.getByRole('button', { name: / · year \d+: / })).toHaveCount(4);
 });

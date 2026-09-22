@@ -63,7 +63,7 @@ test('a USD buy from Jenius asks which goal paid for the rupiah that left, not t
   await page.getByRole('button', { name: 'Record', exact: true }).click();
   await expect(page.getByTestId('trade-notice')).toContainText('Recorded');
   await page.goto('/goals');
-  await expect(goalCard(page, 'Emergency fund').getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
+  await expect((await goalCard(page, 'Emergency fund')).getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
 });
 
 // I5: only TradeForm's save (above) was guarded — the Buy / sell tab's own `recordTrade` call used to be able to
@@ -88,7 +88,7 @@ test('the Buy / sell tab also asks which goal paid for the rupiah that left, on 
   await form.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(form).toHaveCount(0);
   await page.goto('/goals');
-  await expect(goalCard(page, 'Emergency fund').getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
+  await expect((await goalCard(page, 'Emergency fund')).getByText(/short by Rp.1\.800\.000/i).first()).toBeVisible();
 });
 
 test('editing a sell into a rupiah account opens with what arrived, and saves without retyping it', async ({ page }) => {

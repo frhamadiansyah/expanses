@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { addTransaction } from './add-transaction';
 import { openGoalForm } from './goals';
+import { goalCard, goalRow } from './set-aside';
 
 /**
  * The health-ratio combinations (spec §15, Part 1 rows), one test a row, at desktop width.
@@ -47,12 +48,15 @@ function emergencyBase(page: Page) {
   return page.getByRole('radiogroup', { name: 'Emergency fund counts' });
 }
 
+/** Adds a goal from a template and leaves the browser on the goal's own page, where its working is read. */
 async function addFromTemplate(page: Page, template: string, amount?: string) {
   await page.goto('/goals');
   await openGoalForm(page, template);
   if (amount) await type(page.getByLabel(/Cost in today's money/).first(), amount);
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  await expect(page.getByRole('button', { name: `Move ${template} down` })).toBeVisible();
+  // The save lands as a row on the list; the goal's own page is opened from it, and its move row proves it is there.
+  await expect(goalRow(page, template)).toBeVisible();
+  await expect((await goalCard(page, template)).getByRole('button', { name: `Move ${template} down` })).toBeVisible();
 }
 
 /** Caps a category in a unit, the amount typed a key at a time, and waits for the line to say it. */
@@ -108,15 +112,15 @@ test('row 5 — an emergency goal typed by hand sizes itself on essential spendi
   await setUp(page);
   await markFoodLifestyle(page);
   await addFromTemplate(page, 'Emergency fund');
-  // Six months of Rp 2 jt essential spending.
-  await expect(page.getByTestId('goals-compulsory')).toContainText('12.000.000');
+  // Six months of Rp 2 jt essential spending, under the figure on the goal's own page.
+  await expect(page.getByTestId('goal-page')).toContainText('12.000.000');
 });
 
 test('row 6 — the same goal worked out counting all spending', async ({ page }) => {
   await setUp(page);
   await markFoodLifestyle(page);
   await addFromTemplate(page, 'Emergency fund');
-  await expect(page.getByTestId('goals-compulsory')).toContainText('12.000.000');
+  await expect(page.getByTestId('goal-page')).toContainText('12.000.000');
 
   await page.getByRole('button', { name: 'Work out the amount' }).click();
   await type(page.getByLabel('Months of outgoings'), '6');
@@ -124,8 +128,8 @@ test('row 6 — the same goal worked out counting all spending', async ({ page }
   await page.getByLabel('Counts', { exact: true }).selectOption('all');
   await page.getByRole('button', { name: 'Use this amount' }).click();
   // Six months of Rp 3 jt, lifestyle included.
-  await expect(page.getByTestId('goals-compulsory')).toContainText('18.000.000');
-  await expect(page.getByTestId('goals-compulsory')).not.toContainText('12.000.000');
+  await expect(page.getByTestId('goal-page')).toContainText('18.000.000');
+  await expect(page.getByTestId('goal-page')).not.toContainText('12.000.000');
 });
 
 test('row 7 — a weekly line overridden for one month keeps its note, and next month is the week again', async ({ page }) => {
@@ -202,13 +206,16 @@ test('row 10 — the month split into essential and lifestyle on the Budget page
 test('row 11 — neither move crosses the sections', async ({ page }) => {
   await addFromTemplate(page, 'Holiday', '15000000');
   await addFromTemplate(page, 'Emergency fund');
-  await page.getByRole('button', { name: 'Move Holiday up' }).click();
-  await page.getByRole('button', { name: 'Move Emergency fund down' }).click();
+  await (await goalCard(page, 'Holiday')).getByRole('button', { name: 'Move Holiday up' }).click();
+  await (await goalCard(page, 'Emergency fund')).getByRole('button', { name: 'Move Emergency fund down' }).click();
+  // The list is where the order is read, so a move from a goal's own page lands back on it.
+  await page.goto('/goals');
   const compulsory = page.getByTestId('goals-compulsory');
   await expect(compulsory).toContainText('Emergency fund');
   await expect(compulsory).not.toContainText('Holiday');
   await expect(page.getByTestId('goals-additional')).toContainText('Holiday');
-  await expect(page.getByTestId('goals-additional')).toContainText('15.000.000');
+  // The 15 jt is the goal's target, which a row does not carry: it is read under the figure on the goal's page.
+  await expect((await goalCard(page, 'Holiday')).getByText(/15\.000\.000/).first()).toBeVisible();
 });
 
 test('row 12 — a working reopens on the answers and base it was saved with', async ({ page }) => {
@@ -220,12 +227,12 @@ test('row 12 — a working reopens on the answers and base it was saved with', a
   await page.getByLabel('Counts', { exact: true }).selectOption('all');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('24');
   await page.getByRole('button', { name: 'Use this amount' }).click();
-  // 24 months of Rp 3 jt, all spending.
-  await expect(page.getByTestId('goals-compulsory')).toContainText('72.000.000');
+  // 24 months of Rp 3 jt, all spending — the target under the figure on the goal's own page.
+  await expect(page.getByTestId('goal-page')).toContainText('72.000.000');
 
   await page.goto('/accounts');
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Work out the amount' }).click();
+  await (await goalCard(page, 'Emergency fund')).getByRole('button', { name: 'Work out the amount' }).click();
   await expect(page.getByLabel('Household')).toHaveValue('children');
   await expect(page.getByLabel('Income')).toHaveValue('irregular');
   await expect(page.getByLabel('Counts', { exact: true })).toHaveValue('all');
@@ -241,8 +248,8 @@ test('row 13 — the card grades against the household’s own months', async ({
   await page.getByLabel('Household').selectOption('children');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('12');
   await page.getByRole('button', { name: 'Use this amount' }).click();
-  // 12 months of Rp 3 jt.
-  await expect(page.getByTestId('goals-compulsory')).toContainText('36.000.000');
+  // 12 months of Rp 3 jt, under the figure on the goal's own page.
+  await expect(page.getByTestId('goal-page')).toContainText('36.000.000');
 
   await page.goto('/net-worth');
   const card = emergencyCard(page);

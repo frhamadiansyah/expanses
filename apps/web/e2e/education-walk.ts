@@ -1,4 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openGoalForm } from './goals';
+import { goalCard } from './set-aside';
 
 /** Types a figure a key at a time into the last box with this label — the newest level's, when there are two. */
 export async function typeInto(page: Page, label: string, text: string) {
@@ -11,10 +13,12 @@ export async function typeInto(page: Page, label: string, text: string) {
 /** Adds an education goal from its template, with a placeholder cost the calculator replaces. */
 export async function addEducationGoal(page: Page) {
   await page.goto('/goals');
-  await page.getByRole('button', { name: 'Education', exact: true }).click();
+  await openGoalForm(page, 'Education');
   await typeInto(page, "Cost in today's money (IDR)", '1000000');
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  await expect(page.getByRole('button', { name: 'Move Education down' })).toBeVisible();
+  // The save lands as a row on the list, and every step after this reads the goal's own page: its working, its
+  // stages, its figures — so the goal is opened here, once.
+  await goalCard(page, 'Education');
 }
 
 /** The goal's stage lines: each is named "<level> · year <n>: <state>". */

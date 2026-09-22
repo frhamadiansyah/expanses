@@ -99,7 +99,7 @@ test('a goal becomes a savings row on the sheet', async ({ page }) => {
   await page.getByLabel(/Cost in today's money/).first().fill('120000000');
   await page.getByLabel('Needed by').first().fill('2030-06-30');
   await page.getByRole('button', { name: 'Add goal' }).last().click();
-  await expect(page.getByRole('heading', { name: 'School fees' })).toBeVisible();
+  await expect(page.getByTestId('goal-row').filter({ hasText: 'School fees' }).first()).toBeVisible();
 
   await page.goto('/budget');
   await expect(page.getByTestId('savings-School fees')).toContainText('a month');

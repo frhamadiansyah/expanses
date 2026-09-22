@@ -36,15 +36,12 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   await expect(form).toHaveCount(0);
 
   await page.goto('/goals');
-  const ef = goalCard(page, 'Emergency fund');
+  const ef = await goalCard(page, 'Emergency fund');
   // The borrow shares the shortfall onto the goal it was taken from: covered 28.200.000, short 1.800.000 — and
   // Umrah, ranked below it, untouched (a rank-order share-out would have put the shortfall on Umrah).
   // Under the figure, the shortfall (the Funded-by row repeats it below).
   await expect(ef.getByText(/^Short by Rp.1\.800\.000$/)).toBeVisible();
   await expect(ef.getByText(/28\.200\.000/).first()).toBeVisible();
-  const umrah = goalCard(page, 'Umrah 2027');
-  await expect(umrah.getByText(/short by/i)).toHaveCount(0);
-  await expect(umrah.getByText(/7\.500\.000/).first()).toBeVisible();
   // The fund's target has grown past the 30.000.000 set aside (a holiday goal grows 3% a year), so it was never whole:
   // it must not claim it "stood whole" before the laptop. The next test borrows from a goal that was.
   await expect(ef.getByText(/Fully funded/)).toHaveCount(0);
@@ -56,6 +53,10 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   await expect(borrowed).toHaveCount(1);
   await expect(borrowed).toContainText(/Laptop/);
   await expect(borrowed).toContainText(/-Rp.1\.800\.000/);
+
+  const umrah = await goalCard(page, 'Umrah 2027');
+  await expect(umrah.getByText(/short by/i)).toHaveCount(0);
+  await expect(umrah.getByText(/7\.500\.000/).first()).toBeVisible();
   await expect(umrah.getByText(/went to/)).toHaveCount(0);
 
   await openAccountPage(page, 'Jenius');
@@ -88,23 +89,24 @@ test('Umrah tickets from the Umrah fund: the goal is done, not short', async ({ 
   await expect(form).toHaveCount(0);
 
   await page.goto('/goals');
-  const umrah = goalCard(page, 'Umrah 2027');
+  const umrah = await goalCard(page, 'Umrah 2027');
   // Spent, not broken: the whole promise came out, its stage is paid, and nothing reads short.
   await expect(umrah.getByRole('button', { name: /: Paid$/ })).toBeVisible();
   await expect(umrah.getByText(/Nothing yet/)).toBeVisible();
   await expect(umrah.getByText(/short by/i)).toHaveCount(0);
-  // The Emergency fund was not asked for a rupiah: 5.000.000 free + 2.500.000 of Umrah's = 7.500.000.
-  await expect(goalCard(page, 'Emergency fund').getByText(/30\.000\.000/).first()).toBeVisible();
-  await expect(goalCard(page, 'Emergency fund').getByText(/short by/i)).toHaveCount(0);
   // Done — and the archive group says what archiving now does.
   await expect(umrah.getByText('Done', { exact: true })).toBeVisible();
   await expect(umrah.getByText('Keeps the history, stops it claiming money.')).toBeVisible();
   const spent = umrah.getByTestId('goal-history').filter({ hasText: 'Spent' });
   await expect(spent).toContainText(/Umrah tickets/);
   await expect(spent).toContainText(/-Rp.7\.500\.000/);
-  // The Emergency fund was spent from nothing and stays open.
-  await expect(goalCard(page, 'Emergency fund').getByText('Done', { exact: true })).toHaveCount(0);
-  await expect(goalCard(page, 'Emergency fund').getByText('Keeps the history, stops it claiming money.')).toHaveCount(0);
+  // The Emergency fund was not asked for a rupiah: 5.000.000 free + 2.500.000 of Umrah's = 7.500.000 — and it was
+  // spent from nothing, so it stays open.
+  const ef = await goalCard(page, 'Emergency fund');
+  await expect(ef.getByText(/30\.000\.000/).first()).toBeVisible();
+  await expect(ef.getByText(/short by/i)).toHaveCount(0);
+  await expect(ef.getByText('Done', { exact: true })).toHaveCount(0);
+  await expect(ef.getByText('Keeps the history, stops it claiming money.')).toHaveCount(0);
 });
 
 test('deleting the purchase gives the promise back', async ({ page }) => {
@@ -125,7 +127,7 @@ test('deleting the purchase gives the promise back', async ({ page }) => {
   await page.getByRole('button', { name: 'Click again to delete' }).click();
   await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
   await page.goto('/goals');
-  const umrah = goalCard(page, 'Umrah 2027');
+  const umrah = await goalCard(page, 'Umrah 2027');
   await expect(umrah.getByText('Done', { exact: true })).toHaveCount(0);
   await expect(umrah.getByText('Keeps the history, stops it claiming money.')).toHaveCount(0);
   // The promise came back whole: the figure, not only the missing label.
@@ -177,7 +179,8 @@ test('an account that promised more than it holds says so on its page, and Net w
 test('the goal form says what is free for this goal, and how short a bigger figure leaves the account', async ({ page }) => {
   await jeniusWithTwoGoals(page);
   await page.goto('/goals');
-  await goalCard(page, 'Umrah 2027').getByRole('button', { name: 'Edit' }).click();
+  const umrah = await goalCard(page, 'Umrah 2027');
+  await umrah.getByRole('button', { name: 'Edit' }).click();
   // 5.000.000 free on Jenius plus Umrah's own 7.500.000 there, which the save replaces: 12.500.000.
   await expect(page.getByText(/^Rp.12\.500\.000 free for this goal$/)).toBeVisible();
   const box = page.getByLabel('Jenius (IDR)');
@@ -206,7 +209,7 @@ test('a goal that was whole says when it stood whole and where the money went', 
   await expect(form).toHaveCount(0);
 
   await page.goto('/goals');
-  const umrah = goalCard(page, 'Umrah 2027');
+  const umrah = await goalCard(page, 'Umrah 2027');
   await expect(umrah.getByText(/^Short by Rp.4\.500\.000$/)).toBeVisible();
   // Its start is the day it became whole when the records say so, else "until" (ruling Q4); either way it ends today.
   await expect(umrah.getByText(/^Fully funded (on \d+ \w+|until \d+ \w+|\d+ \w+ – \d+ \w+)$/)).toBeVisible();
@@ -238,7 +241,8 @@ test('the goal form\'s hint reads today\'s balance, as the question does: money 
   await expect(form).toHaveCount(0);
 
   await page.goto('/goals');
-  await goalCard(page, 'Umrah 2027').getByRole('button', { name: 'Edit' }).click();
+  const umrah = await goalCard(page, 'Umrah 2027');
+  await umrah.getByRole('button', { name: 'Edit' }).click();
   // 10.000.000 today; counting the 5.000.000 dated next month would say 15.000.000, a figure the question never uses.
   await expect(page.getByText(/^Rp.10\.000\.000 free for this goal$/)).toBeVisible();
   await expect(page.getByText(/15\.000\.000 free for this goal/)).toHaveCount(0);
