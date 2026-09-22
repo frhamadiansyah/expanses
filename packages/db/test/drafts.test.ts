@@ -11,6 +11,7 @@ import {
   listDrafts,
   type NewDraft,
   purgeExpiredPayloads,
+  reopenDraft,
 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
 
@@ -97,6 +98,33 @@ describe('working through the queue', () => {
     expect(await listDrafts(database, ws)).toEqual([]);
     expect((await listDrafts(database, ws, 'dismissed'))[0]).toMatchObject({ status: 'dismissed' });
     expect(await captureDrafts(database, ws, [draft()])).toEqual({ captured: 0, skipped: 1 });
+  });
+
+  it('puts a resolved draft back in the queue, whichever way it was resolved', async () => {
+    const { database, ws, draft } = await workspace();
+
+    // Recorded, then taken back: the draft is pending again and claims no transaction of its own. The transaction
+    // it posted is the ledger's to void, not this function's.
+    await captureDrafts(database, ws, [draft()]);
+    const [recorded] = await listDrafts(database, ws);
+    const transactionId = await confirmDraft(database, ws, recorded!.id);
+    expect((await listDrafts(database, ws, 'confirmed'))[0]).toMatchObject({ transactionId });
+
+    await reopenDraft(database, ws, recorded!.id);
+
+    expect(await listDrafts(database, ws)).toMatchObject([{ id: recorded!.id, status: 'pending', transactionId: null }]);
+    // Its keeping date came back with it: a reopened draft is not purged under the owner's feet.
+    expect(await purgeExpiredPayloads(database, ws, '2026-09-20')).toBe(0);
+    expect((await listDrafts(database, ws))[0]!.rawPayload).toBe('09/09/2026,SUPERINDO,250000');
+
+    // Discarded, then taken back: the same way in from the other direction.
+    const [again] = await listDrafts(database, ws);
+    await dismissDraft(database, ws, again!.id);
+    expect(await listDrafts(database, ws)).toEqual([]);
+
+    await reopenDraft(database, ws, again!.id);
+
+    expect(await listDrafts(database, ws)).toMatchObject([{ id: again!.id, status: 'pending' }]);
   });
 });
 

@@ -16,9 +16,11 @@ import {
   listCards,
   listCategorySets,
   listSetCategories,
+  openDebtBalance,
   payCardPurchases,
   postTransaction,
   recordLoan,
+  recordLoanPayment,
   recordRepayment,
   recordTaggedTransfer,
   recordTrade,
@@ -31,6 +33,7 @@ import {
   saveExpenseTemplate,
   saveGoal,
   saveInstallment,
+  saveLoanTerms,
   saveMerchantMcc,
   splitBill,
   tagTransaction,
@@ -335,6 +338,73 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
   const loan = await recordLoan(database, ws, { person: { name: 'Budi', direction: 'lent', currency: 'IDR', reason: 'Motorbike repair' }, occurredOn: addDays(today, -52), amountMinor: 3_000_000, moneyAccountId: bca.id });
   await recordRepayment(database, ws, { debtAccountId: loan.debtAccountId, occurredOn: addDays(today, -21), amountMinor: 1_000_000, moneyAccountId: bca.id });
   void dinner;
+
+  // ---- What is owed ----
+  /*
+   * Three bank loans and the other direction of the people ledger, so the Debts screen has its whole range: a
+   * mortgage with twenty years left, a car loan past the halfway mark, one opened this quarter — and people the
+   * household borrowed from, one repaid in part and one that came with it from before the app existed.
+   *
+   * Every loan is opened at what was owed when it was taken on, then paid down through `recordLoanPayment`, which
+   * is the same call the Loan page's Pay makes — so what the screen shows is a real schedule, not a number typed
+   * to look like one.
+   */
+  const openLoan = async (input: {
+    name: string;
+    lender: string;
+    purpose: string;
+    owedThenMinor: number;
+    originalMinor: number;
+    monthsIn: number;
+    tenorMonths: number;
+    rateBps: number;
+    paymentDay: number;
+    principalMinor: number;
+    interestMinor: number;
+    /** Left out for the loan whose bank named no figure, which the schedule then works out itself. */
+    namedPaymentMinor?: number;
+  }) => {
+    const account = await createAccount(database, ws, {
+      name: input.name,
+      kind: 'liability',
+      subtype: 'loan',
+      currency: 'IDR',
+      openingBalanceMinor: input.owedThenMinor,
+      openedOn: addDays(withDay(monthStart(today, input.monthsIn + 1), input.paymentDay), -1),
+    });
+    await saveLoanTerms(database, ws, {
+      accountId: account.id,
+      lenderName: input.lender,
+      purpose: input.purpose,
+      originalMinor: input.originalMinor,
+      firstPaymentOn: withDay(monthStart(today, input.monthsIn), input.paymentDay),
+      tenorMonths: input.tenorMonths,
+      method: 'annuity',
+      paymentDay: input.paymentDay,
+      rateBps: input.rateBps,
+      paymentMinor: input.namedPaymentMinor,
+    });
+    for (let back = input.monthsIn; back >= 1; back -= 1) {
+      await recordLoanPayment(database, ws, {
+        accountId: account.id,
+        occurredOn: withDay(monthStart(today, back), input.paymentDay),
+        moneyAccountId: bca.id,
+        principalMinor: input.principalMinor,
+        interestMinor: input.interestMinor,
+      });
+    }
+    return account;
+  };
+
+  await openLoan({ name: 'KPR BCA', lender: 'BCA', purpose: 'house', owedThenMinor: 728_400_000, originalMinor: 900_000_000, monthsIn: 24, tenorMonths: 180, rateBps: 475, paymentDay: 5, principalMinor: 3_100_000, interestMinor: 2_850_000, namedPaymentMinor: 5_950_000 });
+  await openLoan({ name: 'Car loan Adira', lender: 'Adira Finance', purpose: 'car', owedThenMinor: 260_400_000, originalMinor: 320_000_000, monthsIn: 24, tenorMonths: 36, rateBps: 690, paymentDay: 12, principalMinor: 4_600_000, interestMinor: 1_150_000, namedPaymentMinor: 5_750_000 });
+  // The one with nothing named by the bank: the app's own schedule supplies the instalment it will ask for.
+  await openLoan({ name: 'KTA Mandiri', lender: 'Mandiri', purpose: 'personal', owedThenMinor: 56_600_000, originalMinor: 60_000_000, monthsIn: 2, tenorMonths: 24, rateBps: 1_080, paymentDay: 20, principalMinor: 1_900_000, interestMinor: 650_000 });
+
+  const dewi = await recordLoan(database, ws, { person: { name: 'Dewi', direction: 'borrowed', currency: 'IDR', reason: 'Motorbike down payment' }, occurredOn: addDays(today, -40), amountMinor: 4_500_000, moneyAccountId: bca.id });
+  await recordRepayment(database, ws, { debtAccountId: dewi.debtAccountId, occurredOn: addDays(today, -12), amountMinor: 1_500_000, moneyAccountId: bca.id });
+  // Came with the household from before the app: opened at what is still owed, the way Add a debt opens one.
+  await openDebtBalance(database, ws, { direction: 'borrowed', personName: 'Kadek', currency: 'IDR', balanceMinor: 2_000_000, openedOn: addDays(today, -120), reason: 'Bali villa share' });
 
   // ---- Card statements ----
   // Bought on the KrisFlyer statement day itself, but the bank posted it a day later: billed on the next statement.

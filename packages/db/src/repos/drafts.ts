@@ -1,5 +1,5 @@
 import { uuidv7 } from '@expanses/core';
-import { and, asc, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, lte, ne, sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { draftTransactions } from '../schema-drafts';
@@ -243,6 +243,27 @@ export async function dismissDraft(database: Database, ws: WorkspaceContext, id:
     .update(draftTransactions)
     .set({ status: 'dismissed', resolvedAt: now, rawPurgeAfter: addDays(now.slice(0, 10), RAW_RETENTION_DAYS) })
     .where(and(eq(draftTransactions.workspaceId, ws.workspaceId), eq(draftTransactions.id, id), eq(draftTransactions.status, 'pending')));
+}
+
+/**
+ * Puts a resolved draft back in the queue — the same way back from Record and from Discard.
+ *
+ * It is what the toast's Undo calls. The transaction a confirm posted is not this function's business: the ledger
+ * takes it back through `voidTransaction`, and the draft returns with no transaction of its own, ready to be read
+ * again. The keeping date goes with the resolution, so a reopened draft's payload is not purged under it.
+ */
+export async function reopenDraft(database: Database, ws: WorkspaceContext, id: string): Promise<void> {
+  await database.db
+    .update(draftTransactions)
+    .set({ status: 'pending', transactionId: null, resolvedAt: null, rawPurgeAfter: null })
+    .where(
+      and(
+        eq(draftTransactions.workspaceId, ws.workspaceId),
+        eq(draftTransactions.id, id),
+        // Only what was resolved: a pending draft has nothing to take back, and this must not touch its dates.
+        ne(draftTransactions.status, 'pending'),
+      ),
+    );
 }
 
 /**
