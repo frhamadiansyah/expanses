@@ -23,7 +23,12 @@ test('two answers prefill the months, say why, and size the goal on a month of s
   await page.getByLabel('Household').selectOption('children');
   await page.getByLabel('Income').selectOption('irregular');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('24');
-  await expect(page.getByText('24 months · with children, freelance or irregular')).toBeVisible();
+  // The two answers above are what set it, so the row does not repeat them back as a hint.
+  await expect(page.getByText(/with children, freelance/)).toHaveCount(0);
+  // A figure of your own is the one case it does explain.
+  await page.getByLabel('Months of outgoings').fill('30');
+  await expect(page.getByText('Your own figure · the guide is 24')).toBeVisible();
+  await page.getByLabel('Months of outgoings').fill('24');
   // The goal's base is its own, and the page says so: the ratio card on Net worth has a switch of its own.
   await expect(page.getByText('For this goal only; the emergency ratio on Net worth has its own switch.')).toBeVisible();
   await page.getByRole('button', { name: 'Use this amount' }).click();

@@ -119,7 +119,7 @@ test('row 6 — the same goal worked out counting all spending', async ({ page }
 
   await page.getByRole('button', { name: 'Work out the amount' }).click();
   await type(page.getByLabel('Months of outgoings'), '6');
-  await expect(page.getByText('Your own figure · the guide for single, salaried is 3')).toBeVisible();
+  await expect(page.getByText('Your own figure · the guide is 3')).toBeVisible();
   await page.getByLabel('Counts', { exact: true }).selectOption('all');
   await page.getByRole('button', { name: 'Use this amount' }).click();
   // Six months of Rp 3 jt, lifestyle included.
@@ -229,7 +229,8 @@ test('row 12 — a working reopens on the answers and base it was saved with', a
   await expect(page.getByLabel('Income')).toHaveValue('irregular');
   await expect(page.getByLabel('Counts', { exact: true })).toHaveValue('all');
   await expect(page.getByLabel('Months of outgoings')).toHaveValue('24');
-  await expect(page.getByText('24 months · with children, freelance or irregular')).toBeVisible();
+  // The answers are the two rows above; the months row does not repeat them back.
+  await expect(page.getByText(/with children, freelance/)).toHaveCount(0);
 });
 
 test('row 13 — the card grades against the household’s own months', async ({ page }) => {

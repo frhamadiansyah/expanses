@@ -11,12 +11,13 @@ describe('the emergency months box', () => {
     expect(draft.months).toBe('12');
     draft = withAnswers(draft, { income: 'irregular' });
     expect(draft.months).toBe('24');
-    expect(monthsNote(draft)).toBe('24 months · with children, freelance or irregular');
+    // The answers are the two rows above; the row has nothing of its own to say until they are typed over.
+    expect(monthsNote(draft)).toBeUndefined();
 
     draft = typedMonths(draft, '9');
     draft = withAnswers(draft, { household: 'single' });
     expect(draft.months).toBe('9');
-    expect(monthsNote(draft)).toBe('Your own figure · the guide for single, freelance or irregular is 6');
+    expect(monthsNote(draft)).toBe('Your own figure · the guide is 6');
   });
 
   it('reads a working saved before the answers existed as the user’s own figure', () => {
@@ -36,6 +37,6 @@ describe('the emergency months box', () => {
   it('reopens a saved working on its answers and its base', () => {
     const draft = emergencyDraftFrom({ months: 12, household: 'children', income: 'salaried', base: 'all' });
     expect(draft).toEqual({ household: 'children', income: 'salaried', months: '12', monthsTyped: false, base: 'all' });
-    expect(monthsNote(draft)).toBe('12 months · with children, salaried');
+    expect(monthsNote(draft)).toBeUndefined();
   });
 });

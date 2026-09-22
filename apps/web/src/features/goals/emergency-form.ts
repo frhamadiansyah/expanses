@@ -30,11 +30,16 @@ export function typedMonths(draft: EmergencyDraft, months: string): EmergencyDra
   return { ...draft, months, monthsTyped: true };
 }
 
-/** Which two answers produced the number — or that the number is the user's own. Never an argument. */
-export function monthsNote(draft: EmergencyDraft): string {
+/**
+ * The line under the months row — and only when the number is the reader's own.
+ *
+ * When the two answers above set it, the row has nothing to explain: naming the household and the income is the
+ * row repeating the two rows directly above it, so it says nothing. A number typed over the guide is the one case
+ * the row cannot account for on its own, so it says what the guide would have been.
+ */
+export function monthsNote(draft: EmergencyDraft): string | undefined {
   const guide = emergencyMonthsFor(draft.household, draft.income);
-  const answers = `${HOUSEHOLD_LABELS[draft.household].toLowerCase()}, ${INCOME_LABELS[draft.income].toLowerCase()}`;
-  return draft.monthsTyped && Number(draft.months) !== guide ? `Your own figure · the guide for ${answers} is ${guide}` : `${guide} months · ${answers}`;
+  return draft.monthsTyped && Number(draft.months) !== guide ? `Your own figure · the guide is ${guide}` : undefined;
 }
 
 export function emergencyInputsOf(draft: EmergencyDraft): EmergencyInputs {
