@@ -3,8 +3,9 @@ import { createGoalFromCalculator, type EmergencyInputs } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
-import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, TextRow } from '../../ui/native';
 import { emergencyDraftFrom, emergencyInputsOf, HOUSEHOLD_LABELS, INCOME_LABELS, monthsNote, typedMonths, withAnswers } from '../goals/emergency-form';
+import { ChoiceRow } from '../goals/ChoiceRow';
 import { EMERGENCY_FUND } from './catalogue';
 import { Answer, CalculatorPage, SaveRow } from './parts';
 
@@ -57,28 +58,19 @@ export function EmergencyFundPage() {
   return (
     <CalculatorPage entry={EMERGENCY_FUND} error={error} saved={saved}>
       <InsetGroup>
-        <SelectRow
+        {/* Two or three answers each: the app's own sheet, not the platform's panel. */}
+        <ChoiceRow
           label="Household"
           value={emergency.household}
-          onChange={(e) => setEmergency((d) => withAnswers(d, { household: e.target.value as Household }))}
-        >
-          {HOUSEHOLDS.map((key) => (
-            <option key={key} value={key}>
-              {HOUSEHOLD_LABELS[key]}
-            </option>
-          ))}
-        </SelectRow>
-        <SelectRow
+          options={HOUSEHOLDS.map((key) => ({ value: key, label: HOUSEHOLD_LABELS[key] }))}
+          onChoose={(value) => setEmergency((d) => withAnswers(d, { household: value as Household }))}
+        />
+        <ChoiceRow
           label="Income"
           value={emergency.income}
-          onChange={(e) => setEmergency((d) => withAnswers(d, { income: e.target.value as IncomeStability }))}
-        >
-          {INCOME_STABILITIES.map((key) => (
-            <option key={key} value={key}>
-              {INCOME_LABELS[key]}
-            </option>
-          ))}
-        </SelectRow>
+          options={INCOME_STABILITIES.map((key) => ({ value: key, label: INCOME_LABELS[key] }))}
+          onChoose={(value) => setEmergency((d) => withAnswers(d, { income: value as IncomeStability }))}
+        />
         <TextRow
           label="Months of outgoings"
           hint={monthsNote(emergency)}
