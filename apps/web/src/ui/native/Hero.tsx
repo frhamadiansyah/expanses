@@ -52,6 +52,7 @@ export function ProgressBar({
 export function Hero({
   icon,
   iconColour,
+  label,
   minor,
   currency,
   direction = 'neutral',
@@ -64,6 +65,8 @@ export function Hero({
 }: {
   icon?: ReactNode;
   iconColour?: string;
+  /** What the figure is, above it: "In the account", "You owe". Left off where the page's own title says it. */
+  label?: ReactNode;
   /** Null when there is no figure to show yet — a bill whose amount varies. `empty` is drawn in its place, quietly. */
   minor: number | null;
   currency: string;
@@ -91,6 +94,7 @@ export function Hero({
           {icon}
         </span>
       )}
+      {label && <p className="mb-[2px] text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{label}</p>}
       <p className={cx('tabular text-[34px] leading-[40px] font-extrabold tracking-[-0.03em]', toneClass(figure.tone))}>
         {approximate && minor !== null && '~'}
         {figure.text}

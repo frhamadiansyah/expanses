@@ -191,12 +191,15 @@ test('an account without pockets opened at the pockets routes says it has none (
   await openWithPockets(page, { name: 'Two Pockets', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '100' }] });
   await page.getByRole('link', { name: 'Two Pockets', exact: true }).click();
   await expect(page.getByText('2 pockets ·')).toBeVisible();
-  // A pocket is an account with no pockets of its own: its id on the pockets routes is not a Rp 0 parent.
+  // A pocket is an account with no pockets of its own: its id on the accounts route is its own page — the figure
+  // it holds and the rows behind it — rather than a Rp 0 parent with nothing under it.
   await page.getByTestId('pocket-SGD').click();
   const id = /\/net-worth\/assets\/([^/?#]+)/.exec(page.url())![1];
   await page.goto(`/accounts/${id}`);
-  await expect(page.getByText('it has no pockets')).toBeVisible();
-  await expect(page.getByRole('link', { name: /Add a pocket/ })).toHaveCount(0);
+  await expect(page.getByText('In the account')).toBeVisible();
+  // No group of its own: exact, because this fixture's account is *called* Two Pockets.
+  await expect(page.getByRole('heading', { name: 'Pockets', exact: true })).toHaveCount(0);
+  // And the route that *adds* a pocket refuses it: a pocket cannot hold a pocket.
   await page.goto(`/accounts/${id}/pocket`);
   await expect(page.getByText('it has no pockets')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add pocket' })).toHaveCount(0);

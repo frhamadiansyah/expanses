@@ -1,9 +1,10 @@
-import { type AssetKind, averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
+import { type AssetKind, averagePriceMicro, CASH_ITEMS, formatMinor, formatPriceMicro, formatUnits, isoDate, lastNMonths, monthOf, presetFor } from '@expanses/core';
 import { archiveAccount } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { Archive, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
+import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { approxLine, type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, rateLine, SCREEN } from '../../ui/native';
@@ -25,6 +26,9 @@ import { ValuationForm } from './ValuationForm';
 import { ValueChart } from './ValueChart';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
+
+/** The kinds of money account whose value is simply the ledger's own balance: cash, a bank, a wallet, a deposit. */
+const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
 
 /** The kinds a ticker prices and a broker keeps — the Stock and broker group is theirs alone. */
 const BROKER_KINDS: readonly AssetKind[] = ['stock', 'fund', 'bond'];
@@ -61,6 +65,8 @@ export function AssetDetailPage() {
   const account = (accounts.data ?? []).find((row) => row.id === accountId);
   // A pocket goes back to its account's page; any money account in a foreign currency shows ≈ and its opening rate.
   const parent = account?.parentId ? (accounts.data ?? []).find((row) => row.id === account.parentId) : undefined;
+  // Whether this is a money account at all: its figure is the ledger's, not a valuation of something bought.
+  const cash = Boolean(account && value?.mode === 'derived' && CASH_SUBTYPES.has(account.subtype));
   const foreignMoney = value?.mode === 'derived' && value.currency !== ws.baseCurrency;
   const held = useHeldRates(foreignMoney && value ? [value.currency] : []);
   const openings = useOpenings(foreignMoney ? [accountId] : []);
@@ -126,8 +132,20 @@ export function AssetDetailPage() {
                   ) : (
                     <span className="block">Rate and maturity not set yet</span>
                   ))}
-                Cost {formatMinor(value.costMinor, value.currency)}
-                {value.costMinor !== 0 && ` · ${formatMinor(gain, value.currency)} since you bought it`}
+                {/*
+                 * A money account holds money: there is no cost it was bought at and no gain since, so the line
+                 * says what it is instead of a figure that would read as a loss on your own cash.
+                 */}
+                {cash ? (
+                  <span className="block">
+                    {SUBTYPE_LABELS[account!.subtype]} · {account!.currency}
+                  </span>
+                ) : (
+                  <>
+                    Cost {formatMinor(value.costMinor, value.currency)}
+                    {value.costMinor !== 0 && ` · ${formatMinor(gain, value.currency)} since you bought it`}
+                  </>
+                )}
                 <span className="mt-[2px] block">
                   {foreignMoney && (
                     <span className="block">
@@ -261,7 +279,7 @@ export function AssetDetailPage() {
 
       {value && !canArchive && (
         /* Why the corner's archive is dimmed: the way the page says it without a row of its own. */
-        <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Archiving is available once nothing is left in this asset.</p>
+        <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Archiving is available once nothing is left in this {cash ? 'account' : 'asset'}.</p>
       )}
     </div>
   );
