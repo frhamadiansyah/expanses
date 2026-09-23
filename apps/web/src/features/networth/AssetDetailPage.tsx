@@ -255,7 +255,8 @@ export function AssetDetailPage() {
         </InsetGroup>
       )}
 
-      {value && <DepositTermsCard accountId={accountId} />}
+      {/* A deposit's own terms, for a deposit: a wallet, a bank account or a bar of gold has no day the money comes back. */}
+      {value && account?.subtype === 'time_deposit' && <DepositTermsCard accountId={accountId} />}
       {value && account?.subtype === 'time_deposit' && <RecordedByHand accountId={accountId} currency={value.currency} />}
 
       {value && !canArchive && (

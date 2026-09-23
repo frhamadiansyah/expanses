@@ -35,6 +35,11 @@ test('a digital wallet and a fund account hold money, and the wallet pays for lu
   // Both are money the owner holds, so net worth counts them and the wallet's spending came off it.
   await page.goto('/');
   await expect(page.getByTestId('net-worth')).toContainText('8.455.000');
+
+  // A wallet has no day the money comes back: the deposit's terms card belongs to deposits only.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: /^GoPay/ }).first().click();
+  await expect(page.getByText('Deposit terms')).toHaveCount(0);
 });
 
 test('a deposit funded from an account moves the money, and says where it came from', async ({ page }) => {
@@ -60,7 +65,7 @@ test('a deposit funded from an account moves the money, and says where it came f
   await page.goto('/');
   await expect(page.getByTestId('net-worth')).toContainText('100.000.000');
 
-  // Its history says Transfer and names both accounts — not an opening balance appearing out of nowhere.
+  // And its ledger shows one transfer naming both accounts, not an opening balance.
   await page.goto('/accounts');
   await page.getByRole('link', { name: 'bluuu', exact: true }).click();
   const row = page.getByRole('main').getByRole('listitem');
@@ -69,4 +74,10 @@ test('a deposit funded from an account moves the money, and says where it came f
   await expect(row).toContainText('bluuu');
   await expect(row).toContainText('BCA Tahapan');
   await expect(row).not.toContainText('Opening balance');
+
+  // A deposit keeps its own terms card, with the term beside the rate and date; a wallet has neither.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: /^bluuu/ }).first().click();
+  await expect(page.getByText('Deposit terms')).toBeVisible();
+  await expect(page.getByLabel('Term', { exact: true })).toBeVisible();
 });

@@ -57,6 +57,42 @@ test('keeps its settings across a reload, and a typed withholding', async ({ pag
   await expect(page.getByLabel('Tax withheld %')).toHaveValue('12,5');
 });
 
+test('everything rolling over pins interest paid, the tax is its own group, and the term sits with the deposit terms', async ({ page }) => {
+  const s = await setUp(page, 'IDR');
+  await openDeposit(page, s.depositName);
+  const group = page.getByTestId('maturity-settings');
+
+  // The term is the deposit's own fact now: it reads and writes on the terms card, not in this group.
+  await expect(group).not.toContainText('Term');
+  await page.getByLabel('Term', { exact: true }).selectOption('6');
+  await expect(page.getByTestId('deposit-term')).toHaveAttribute('aria-busy', 'false');
+  await page.reload();
+  await expect(page.getByLabel('Term', { exact: true })).toHaveValue('6');
+
+  await page.getByLabel('Automate at maturity').check();
+  await settingsSaved(page);
+  // The tax is asked in its own section, under the switch that is the only thing that makes it matter.
+  await expect(group).toContainText('Tax-free deposit');
+  await expect(page.getByLabel('Tax withheld %')).toHaveValue('20');
+
+  // Monthly is on offer while interest is paid out…
+  await page.getByLabel('Interest paid').selectOption('monthly');
+  await settingsSaved(page);
+  // …and everything rolling over leaves nothing to pay during the term, so the row states the only answer there is.
+  await page.getByTestId('maturity-principal_interest').click();
+  await settingsSaved(page);
+  await expect(page.getByLabel('Interest paid')).toHaveCount(0);
+  await expect(group).toContainText('Interest paid');
+  await expect(group).toContainText('At maturity');
+
+  // Pinned in the database, not just hidden on the screen: a choice that pays out again shows what was stored.
+  await page.reload();
+  await expect(page.getByLabel('Interest paid')).toHaveCount(0);
+  await page.getByTestId('maturity-close').click();
+  await settingsSaved(page);
+  await expect(page.getByLabel('Interest paid')).toHaveValue('at_maturity');
+});
+
 test('proposes on the day and posts what was confirmed, with a new term', async ({ page }) => {
   const s = await setUp(page, 'IDR');
   await openDeposit(page, s.depositName);

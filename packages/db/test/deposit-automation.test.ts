@@ -1,4 +1,4 @@
-import { transferLines } from '@expanses/core';
+import { type TermMonths, transferLines } from '@expanses/core';
 import { eq, sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -27,6 +27,7 @@ import {
   postTransactionTx,
   replaceTransaction,
   saveDepositAutomation,
+  saveDepositTermMonths,
   type SaveDepositAutomationInput,
   undoRecordedByHand,
   voidTransaction,
@@ -131,6 +132,62 @@ describe('the switch', () => {
     await database.db.run(sql`UPDATE deposit_automation SET term_started_on = '2026-07-15' WHERE account_id = ${depositoId}`);
     await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close', today: '2026-08-01' }));
     expect((await getDepositAutomation(database, ws, depositoId)).termStartedOn).toBe('2026-07-15');
+  });
+});
+
+/**
+ * The term is edited beside the deposit's rate and date now, not in the settings group, so it is written on a
+ * column of its own: two writers, two fields, and neither save can put back the other's older answer.
+ */
+describe('the term on its own', () => {
+  it('keeps the stored term when a settings save leaves it out', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { termMonths: 6 }));
+    // Exactly what the group sends now: every answer it owns, and no term at all.
+    await saveDepositAutomation(database, ws, {
+      accountId: depositoId,
+      enabled: true,
+      atMaturity: 'principal',
+      interestPaid: 'at_maturity',
+      payoutAccountId: bcaId,
+      keepRate: true,
+      taxBps: 1_000,
+      taxExempt: false,
+      today: '2026-07-15',
+    });
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ termMonths: 6, taxBps: 1_000 });
+  });
+
+  it('writes only the term, on a deposit that has no settings at all', async () => {
+    const fresh = await openCashAccount(database, ws, { item: 'time_deposit', name: 'Fresh deposit', currency: 'IDR', maturesOn: '2027-01-01' });
+    await saveDepositTermMonths(database, ws, fresh.id, 12);
+    expect(await getDepositAutomation(database, ws, fresh.id)).toMatchObject({
+      enabled: false,
+      atMaturity: 'principal',
+      interestPaid: 'at_maturity',
+      payoutAccountId: null,
+      keepRate: true,
+      taxBps: 2_000,
+      taxExempt: false,
+      termMonths: 12,
+    });
+  });
+
+  it('leaves every other answer where it was', async () => {
+    await saveDepositAutomation(database, ws, on(depositoId, bcaId, { atMaturity: 'close', interestPaid: 'monthly', taxExempt: true, keepRate: false }));
+    await saveDepositTermMonths(database, ws, depositoId, 6);
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({
+      enabled: true,
+      atMaturity: 'close',
+      interestPaid: 'monthly',
+      payoutAccountId: bcaId,
+      keepRate: false,
+      taxExempt: true,
+      termMonths: 6,
+    });
+  });
+
+  it('refuses a term that is not one of the four', async () => {
+    await expect(saveDepositTermMonths(database, ws, depositoId, 2 as TermMonths)).rejects.toMatchObject({ code: 'BAD_TERM' });
   });
 });
 

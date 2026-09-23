@@ -1,11 +1,13 @@
-import { saveDepositTerms } from '@expanses/db';
+import { TERM_MONTHS, type TermMonths } from '@expanses/core';
+import { saveDepositTerms, saveDepositTermMonths } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Button, ErrorBox, Field, Input } from '../../ui';
 import { depositLine, rateBpsFrom, rateInputText } from './deposit-terms';
-import { useDepositTerms } from './queries';
-import { Panel } from '../../ui/native';
+import { termLabel } from './maturity-settings';
+import { useDepositAutomation, useDepositTerms } from './queries';
+import { Panel, SelectRow } from '../../ui/native';
 
 /**
  * A time deposit's own two facts, on the account's own page: the day the money comes back and what it pays.
@@ -15,6 +17,11 @@ import { Panel } from '../../ui/native';
  * printed here in the words a person would say them in, and corrected here too.
  *
  * Nothing is automated off the maturity: the money leaves a deposit by a transfer, the way it arrived.
+ *
+ * The term sits here too: it is the third thing the certificate says (how long the money is in), read off the same
+ * line as the rate and the date, so it is corrected in the same place. It is stored with the deposit's automation —
+ * the maturity schedule counts monthly payouts off it — and it is saved on its own column, so a save here cannot put
+ * back an older payout choice and the settings group's save cannot put back an older term.
  */
 export function DepositTermsCard({ accountId }: { accountId: string }) {
   const deposits = useDepositTerms();
@@ -29,6 +36,7 @@ export function DepositTermsCard({ accountId }: { accountId: string }) {
           <h2 className="text-sm font-semibold">Deposit terms</h2>
           <p className="text-sm text-slate-600">Not set yet: say the day the money comes back and what it pays.</p>
         </div>
+        <TermRow accountId={accountId} />
         <DepositTermsForm accountId={accountId} maturesOn="" rateBps={0} onSaved={() => undefined} />
       </Panel>
     );
@@ -44,6 +52,7 @@ export function DepositTermsCard({ accountId }: { accountId: string }) {
           {editing ? 'Close' : 'Change'}
         </Button>
       </div>
+      <TermRow accountId={accountId} />
       {editing && (
         <DepositTermsForm
           // A fresh form whenever the saved terms change, so the boxes never hold what was already put right.
@@ -56,6 +65,46 @@ export function DepositTermsCard({ accountId }: { accountId: string }) {
       )}
       <p className="text-xs text-slate-500">When it matures, move the money to an account with a transfer.</p>
     </Panel>
+  );
+}
+
+/** The length of a term, saved on its own column so nothing else a deposit's settings do can put it back. */
+function TermRow({ accountId }: { accountId: string }) {
+  const { database, ws } = useApp();
+  const invalidate = useInvalidateAll();
+  const automation = useDepositAutomation(accountId);
+  const [error, setError] = useState<unknown>(null);
+  // Says when the write has landed, so a reload or a clock jump cannot overtake it.
+  const [saving, setSaving] = useState(false);
+  return (
+    <div data-testid="deposit-term" aria-busy={saving}>
+      <SelectRow
+        label="Term"
+        value={String(automation.data?.termMonths ?? 1)}
+        onChange={(e) => {
+          const termMonths = Number(e.target.value) as TermMonths;
+          setError(null);
+          setSaving(true);
+          void (async () => {
+            try {
+              await saveDepositTermMonths(database, ws, accountId, termMonths);
+              await invalidate();
+            } catch (e) {
+              setError(e);
+            } finally {
+              setSaving(false);
+            }
+          })();
+        }}
+      >
+        {TERM_MONTHS.map((months) => (
+          <option key={months} value={months}>
+            {termLabel(months)}
+          </option>
+        ))}
+      </SelectRow>
+      <ErrorBox error={error} />
+    </div>
   );
 }
 

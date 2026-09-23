@@ -164,7 +164,11 @@ export interface SaveDepositAutomationInput {
   atMaturity: MaturityChoice;
   interestPaid: InterestPaid;
   payoutAccountId: string | null;
-  termMonths: TermMonths;
+  /**
+   * Left out, the term already stored is kept (the default when there is none): the term is edited beside the
+   * deposit's own rate and date now, and a settings save on the page must not put back an older answer.
+   */
+  termMonths?: TermMonths;
   keepRate: boolean;
   taxBps: number;
   taxExempt: boolean;
@@ -174,7 +178,9 @@ export interface SaveDepositAutomationInput {
 
 /** Writes a deposit's settings. A missing payout is allowed here and refused at confirm, where it matters. */
 export async function saveDepositAutomation(database: Database, ws: WorkspaceContext, input: SaveDepositAutomationInput): Promise<void> {
-  if (!(TERM_MONTHS as readonly number[]).includes(input.termMonths)) throw new DepositAutomationError('BAD_TERM', 'A term is 1, 3, 6 or 12 months');
+  if (input.termMonths !== undefined && !(TERM_MONTHS as readonly number[]).includes(input.termMonths)) {
+    throw new DepositAutomationError('BAD_TERM', 'A term is 1, 3, 6 or 12 months');
+  }
   if (!Number.isInteger(input.taxBps) || input.taxBps < 0 || input.taxBps > 10_000) {
     throw new DepositAutomationError('BAD_TAX', 'Tax withheld is a percentage from 0 to 100, to two decimals');
   }
@@ -192,7 +198,7 @@ export async function saveDepositAutomation(database: Database, ws: WorkspaceCon
       atMaturity: input.atMaturity,
       interestPaid: input.interestPaid,
       payoutAccountId: input.payoutAccountId,
-      termMonths: input.termMonths,
+      termMonths: input.termMonths ?? before?.termMonths ?? AUTOMATION_DEFAULTS.termMonths,
       termStartedOn: before?.termStartedOn ?? null,
       keepRate: input.keepRate ? 1 : 0,
       taxBps: input.taxBps,
@@ -201,6 +207,30 @@ export async function saveDepositAutomation(database: Database, ws: WorkspaceCon
     };
     const { accountId, workspaceId, ...changes } = values;
     await tx.insert(depositAutomation).values(values).onConflictDoUpdate({ target: depositAutomation.accountId, set: changes });
+  });
+}
+
+/**
+ * The term alone, which is the one setting edited away from the rest: its row lives with the deposit's own rate and
+ * date. A column of its own, so a save here cannot put back an older payout choice, and the settings group's save
+ * cannot put back an older term.
+ */
+export async function saveDepositTermMonths(database: Database, ws: WorkspaceContext, accountId: string, termMonths: TermMonths): Promise<void> {
+  if (!(TERM_MONTHS as readonly number[]).includes(termMonths)) throw new DepositAutomationError('BAD_TERM', 'A term is 1, 3, 6 or 12 months');
+  await database.transaction(async (tx) => {
+    if (!(await automationTablesExist(tx))) throw new DepositAutomationError('NOT_READY', 'Update the app to automate a deposit');
+    const deposit = await liveDepositTx(tx, ws, accountId);
+    const row = {
+      accountId: deposit.id,
+      workspaceId: ws.workspaceId,
+      ...AUTOMATION_DEFAULTS,
+      termMonths,
+      updatedAt: new Date().toISOString(),
+    };
+    await tx
+      .insert(depositAutomation)
+      .values({ ...row, enabled: row.enabled ? 1 : 0, keepRate: row.keepRate ? 1 : 0, taxExempt: row.taxExempt ? 1 : 0 })
+      .onConflictDoUpdate({ target: depositAutomation.accountId, set: { termMonths, updatedAt: row.updatedAt } });
   });
 }
 

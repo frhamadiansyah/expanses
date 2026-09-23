@@ -29,8 +29,6 @@ export const COMBOS: Combo[] = [
   { currency: 'IDR', choice: 'principal',          paid: 'monthly',     exempt: true,  nets: ['180.479', '180.479', '174.657'], deposit: '50.000.000', payout: '1.535.615' },
   { currency: 'IDR', choice: 'principal_interest', paid: 'at_maturity', exempt: false, nets: ['428.493'],                       deposit: '50.428.493', payout: '1.000.000' },
   { currency: 'IDR', choice: 'principal_interest', paid: 'at_maturity', exempt: true,  nets: ['535.616'],                       deposit: '50.535.616', payout: '1.000.000' },
-  { currency: 'IDR', choice: 'principal_interest', paid: 'monthly',     exempt: false, nets: ['144.384', '144.800', '140.534'], deposit: '50.429.718', payout: '1.000.000' },
-  { currency: 'IDR', choice: 'principal_interest', paid: 'monthly',     exempt: true,  nets: ['180.479', '181.130', '175.920'], deposit: '50.537.529', payout: '1.000.000' },
   { currency: 'IDR', choice: 'close',              paid: 'at_maturity', exempt: false, nets: ['428.493'],                       deposit: null,         payout: '51.428.493' },
   { currency: 'IDR', choice: 'close',              paid: 'at_maturity', exempt: true,  nets: ['535.616'],                       deposit: null,         payout: '51.535.616' },
   { currency: 'IDR', choice: 'close',              paid: 'monthly',     exempt: false, nets: ['144.384', '144.384', '139.726'], deposit: null,         payout: '51.428.494' },
@@ -41,8 +39,6 @@ export const COMBOS: Combo[] = [
   { currency: 'USD', choice: 'principal',          paid: 'monthly',     exempt: true,  nets: ['29,72', '28,76', '29,72'],       deposit: '10.000,00',  payout: '138,20' },
   { currency: 'USD', choice: 'principal_interest', paid: 'at_maturity', exempt: false, nets: ['70,57'],                         deposit: '10.070,57',  payout: '50,00' },
   { currency: 'USD', choice: 'principal_interest', paid: 'at_maturity', exempt: true,  nets: ['88,21'],                         deposit: '10.088,21',  payout: '50,00' },
-  { currency: 'USD', choice: 'principal_interest', paid: 'monthly',     exempt: false, nets: ['23,78', '23,07', '23,89'],       deposit: '10.070,74',  payout: '50,00' },
-  { currency: 'USD', choice: 'principal_interest', paid: 'monthly',     exempt: true,  nets: ['29,72', '28,85', '29,90'],       deposit: '10.088,47',  payout: '50,00' },
   { currency: 'USD', choice: 'close',              paid: 'at_maturity', exempt: false, nets: ['70,57'],                         deposit: null,         payout: '10.120,57' },
   { currency: 'USD', choice: 'close',              paid: 'at_maturity', exempt: true,  nets: ['88,21'],                         deposit: null,         payout: '10.138,21' },
   { currency: 'USD', choice: 'close',              paid: 'monthly',     exempt: false, nets: ['23,78', '23,01', '23,78'],       deposit: null,         payout: '10.120,57' },
@@ -51,14 +47,13 @@ export const COMBOS: Combo[] = [
 
 /**
  * "Recorded it myself" on the first proposal, the rest confirmed: one walk for each choice × payout, across both
- * currencies and both tax states. The first event posts nothing, so with principal + interest the later payouts do not
- * compound on it (140.129, not 140.534), and a deposit that should close at maturity keeps its principal and stays open.
- * The repository walks all 24 this way (Task 7); these are the screens'.
+ * currencies and both tax states. A roll-over of principal + interest pays nothing out during the term, so that
+ * pair of answers is not one the screen offers and has no walk of its own. The repository walks every pair it can
+ * store (Task 7); these are the screens'.
  */
 // prettier-ignore
 export const HAND_COMBOS: Combo[] = [
   { currency: 'IDR', choice: 'principal',          paid: 'at_maturity', exempt: false, nets: ['428.493'],                       deposit: '50.000.000', payout: '1.000.000' },
-  { currency: 'IDR', choice: 'principal_interest', paid: 'monthly',     exempt: false, nets: ['144.384', '144.384', '140.129'], deposit: '50.284.513', payout: '1.000.000' },
   { currency: 'IDR', choice: 'close',              paid: 'at_maturity', exempt: true,  nets: ['535.616'],                       deposit: '50.000.000', payout: '1.000.000' },
   { currency: 'USD', choice: 'principal',          paid: 'monthly',     exempt: true,  nets: ['29,72', '28,76', '29,72'],       deposit: '10.000,00',  payout: '108,48' },
   { currency: 'USD', choice: 'principal_interest', paid: 'at_maturity', exempt: true,  nets: ['88,21'],                         deposit: '10.000,00',  payout: '50,00' },
@@ -108,11 +103,13 @@ export async function openDeposit(page: Page, name: string) {
 }
 
 export async function automate(page: Page, c: Pick<Combo, 'choice' | 'paid' | 'exempt'>, termMonths = '3') {
-  // Everything is on the deposit's page: the two facts first, then the switch and what its choice needs.
-  await page.getByLabel('Interest paid').selectOption(c.paid);
+  // The term answers on the deposit's own terms card; everything else is under the switch, on the same page.
   await page.getByLabel('Term', { exact: true }).selectOption(termMonths);
+  await expect(page.getByTestId('deposit-term')).toHaveAttribute('aria-busy', 'false');
   await page.getByLabel('Automate at maturity').check();
   await expect(page.getByTestId('maturity-principal')).toBeVisible();
+  // Everything rolling over pays nothing out during the term, so the row is not offered to it: it states at maturity.
+  if (c.choice !== 'principal_interest') await page.getByLabel('Interest paid').selectOption(c.paid);
   await page.getByTestId(`maturity-${c.choice}`).click();
   await expect(page.getByTestId(`maturity-${c.choice}`).getByLabel('Chosen')).toBeVisible();
   if (c.exempt) await page.getByLabel('Tax-free deposit').check();

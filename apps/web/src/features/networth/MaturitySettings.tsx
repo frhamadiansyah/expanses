@@ -1,13 +1,13 @@
-import { isoDate, needsPayout, TERM_MONTHS, type TermMonths } from '@expanses/core';
+import { isoDate, needsPayout } from '@expanses/core';
 import { type DepositAutomationRow, saveDepositAutomation } from '@expanses/db';
 import { Check } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { rateInputText } from './deposit-terms';
-import { MATURITY_CHOICES, payoutChoices, saveQueue, taxBpsFrom, termLabel } from './maturity-settings';
+import { MATURITY_CHOICES, payoutChoices, saveQueue, taxBpsFrom } from './maturity-settings';
 import { useDepositAutomation } from './queries';
 
 /**
@@ -54,7 +54,6 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
           atMaturity: next.atMaturity,
           interestPaid: next.interestPaid,
           payoutAccountId: next.payoutAccountId,
-          termMonths: next.termMonths,
           keepRate: next.keepRate,
           taxBps: next.taxBps,
           taxExempt: next.taxExempt,
@@ -99,7 +98,13 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
           subtitle={choice.subtitle(payoutName)}
           value={settings.atMaturity === choice.id ? <Check size={18} aria-label="Chosen" className="text-[var(--ph-tint)]" /> : undefined}
           chevron={false}
-          onClick={() => save({ atMaturity: choice.id })}
+          onClick={() =>
+            save({
+              atMaturity: choice.id,
+              // Everything rolls over, so nothing can be paid out during the term: the two answers cannot disagree.
+              ...(choice.id === 'principal_interest' ? { interestPaid: 'at_maturity' as const } : {}),
+            })
+          }
         />
       )),
     );
@@ -120,39 +125,46 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
     }
     rows.push(
       <SwitchRow key="keep" label="Keep the rate when it rolls over" checked={settings.keepRate} onChange={(keepRate) => save({ keepRate })} />,
-      <SwitchRow
-        key="exempt"
-        label="Tax-free deposit"
-        checked={settings.taxExempt}
-        hint="Only if the rules exempt this deposit on its own. Splitting a larger sum into smaller deposits doesn't make them tax-free."
-        onChange={(taxExempt) => save({ taxExempt })}
-      />,
     );
-    if (!settings.taxExempt) {
-      rows.push(
-        <TextRow key="tax" label="Tax withheld %" value={taxText} inputMode="decimal" onChange={(e) => setTaxText(e.target.value)} onBlur={commitTax} />,
-      );
-    }
   }
 
-  // The deposit's own facts close the group whatever the switch says; the choice's settings only exist once it is on.
+  /*
+   * The deposit's own facts close the group whatever the switch says; the choice's settings only exist once it is
+   * on. Interest paid is the one of the two the choice can answer by itself: with everything rolling over there is
+   * no monthly payout to choose, so the row states the answer instead of offering one that would contradict it.
+   */
   rows.push(
-    <SelectRow key="paid" label="Interest paid" value={settings.interestPaid} onChange={(e) => save({ interestPaid: e.target.value as DepositAutomationRow['interestPaid'] })}>
-      <option value="monthly">Monthly</option>
-      <option value="at_maturity">At maturity</option>
-    </SelectRow>,
-    <SelectRow key="term" label="Term" value={String(settings.termMonths)} onChange={(e) => save({ termMonths: Number(e.target.value) as TermMonths })}>
-      {TERM_MONTHS.map((months) => (
-        <option key={months} value={months}>
-          {termLabel(months)}
-        </option>
-      ))}
-    </SelectRow>,
+    settings.atMaturity === 'principal_interest' ? (
+      <ReadOnlyRow key="paid" label="Interest paid" value="At maturity" />
+    ) : (
+      <SelectRow key="paid" label="Interest paid" value={settings.interestPaid} onChange={(e) => save({ interestPaid: e.target.value as DepositAutomationRow['interestPaid'] })}>
+        <option value="monthly">Monthly</option>
+        <option value="at_maturity">At maturity</option>
+      </SelectRow>
+    ),
   );
+
+  // The tax the bank withholds is the deposit's own, not a part of what its maturity does: its own group, under the
+  // switch that is the only thing that can make it matter (interest is posted by the automation, and nothing else).
+  const taxRows = settings.enabled
+    ? [
+        <SwitchRow
+          key="exempt"
+          label="Tax-free deposit"
+          checked={settings.taxExempt}
+          hint="Only if the rules exempt this deposit on its own. Splitting a larger sum into smaller deposits doesn't make them tax-free."
+          onChange={(taxExempt) => save({ taxExempt })}
+        />,
+        ...(settings.taxExempt
+          ? []
+          : [<TextRow key="tax" label="Tax withheld %" value={taxText} inputMode="decimal" onChange={(e) => setTaxText(e.target.value)} onBlur={commitTax} />]),
+      ]
+    : null;
 
   return (
     <div data-testid="maturity-settings" aria-busy={saving > 0}>
       <InsetGroup>{rows}</InsetGroup>
+      {taxRows && <InsetGroup header="Tax">{taxRows}</InsetGroup>}
       <ErrorBox error={error} />
     </div>
   );
