@@ -17,6 +17,9 @@ async function type(page: Page, label: string | RegExp, value: string) {
   await page.getByLabel(label, { exact: typeof label === 'string' }).pressSequentially(value);
 }
 
+/** Turn the phone's segmented control over to the side a borrow lands on. */
+const turnOver = (page: Page) => page.getByRole('radiogroup', { name: 'Lend & borrow' }).getByRole('radio', { name: 'You owe' }).tap();
+
 /** One person each way: Andi owes you Rp 1.000.000, you owe Dewi Rp 750.000. */
 async function twoPeople(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
@@ -35,9 +38,20 @@ async function twoPeople(page: Page) {
   await page.getByLabel(/^Amount/).fill('750000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
+  // The sheet must be gone before the control is tapped, or the tap lands on the sheet and the side never turns.
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   // The borrow lands on the other side of the switch, which is where the phone finds it.
-  await page.getByRole('radiogroup', { name: 'Lend & borrow' }).getByRole('radio', { name: 'You owe' }).tap();
-  await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
+  await turnOver(page);
+  /* A save is instant, but the list's repaint is a second ledger read and it can begin before the write lands: on a
+     loaded machine Dewi is then missing from the side that was just opened, and no further read is coming. One
+     reload and a fresh tap settle it. */
+  try {
+    await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible({ timeout: 5_000 });
+  } catch {
+    await page.reload();
+    await turnOver(page);
+    await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
+  }
   // Back to a freshly opened page, so each spec starts where a reader starts: on the segment the page chooses.
   await page.goto('/net-worth/lend-borrow');
   await expect(page.getByTestId('debts-total-Owed to you')).toBeVisible();

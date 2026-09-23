@@ -223,8 +223,9 @@ test('the Money tile adds every account and pocket at today’s rates', async ({
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   await expect(page.getByText(/across 1 account · 3 currencies/)).toBeVisible();
-  // Twice: the tile and the account's own row. Without the tile it is once.
-  await expect(page.getByText(/58\.982\.000/)).toHaveCount(2);
+  // Three times: the tile, the group's own total, and the account's own row. Without the group header it is twice,
+  // and without the tile once.
+  await expect(page.getByText(/58\.982\.000/)).toHaveCount(3);
 });
 
 test('net worth’s Assets list shows the account once, at the ≈ total, and opens to its pockets', async ({ page }) => {
@@ -361,8 +362,8 @@ test('an empty foreign pocket needs no rate: the Money tile still adds up', asyn
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openWithPockets(page, { name: 'Unpriced Valas', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'USD', balance: '' }] });
   await expect(page.getByText(/across 1 account · 2 currencies/)).toBeVisible();
-  // Twice: the tile and the account's own row.
-  await expect(page.getByText(/5\.400\.000/)).toHaveCount(2);
+  // Three times: the tile, the group's own total, and the account's own row.
+  await expect(page.getByText(/5\.400\.000/)).toHaveCount(3);
   await expect(page.getByText(/No USD rate yet/)).toHaveCount(0);
 });
 
