@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openCard } from './accounts';
+import { openCard, openTypes } from './accounts';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -30,10 +30,12 @@ test('the same digits are refused at the same bank, and allowed at another', asy
   await addCard(page, 'Mandiri Prioritas', 'Mandiri', '1467', false);
   await expect(page.getByText(/already recorded for Mandiri/)).toBeVisible();
   await page.goto('/accounts');
+  await openTypes(page);
   await expect(page.getByRole('link', { name: 'Mandiri Prioritas', exact: true })).toHaveCount(0);
 
   // Another bank ending 1467 is a different card, and is fine.
   await addCard(page, 'BCA KrisFlyer', 'BCA', '1467');
+  await openTypes(page);
   await expect(page.getByRole('link', { name: 'BCA KrisFlyer', exact: true })).toBeVisible();
 });
 

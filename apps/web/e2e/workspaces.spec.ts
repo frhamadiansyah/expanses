@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount, openCard } from './accounts';
+import { openAccount, openCard, openTypes } from './accounts';
 import { addItem, moneyIn, planFor } from './event-plan';
 import { addTransaction } from './add-transaction';
 
@@ -8,6 +8,7 @@ import { addTransaction } from './add-transaction';
  * page, then the row on that page that leads to its ledger.
  */
 async function openHistory(page: Page, name: string) {
+  await openTypes(page);
   await page.getByRole('link', { name, exact: true }).click();
   await page.getByRole('link', { name: /Its transactions/ }).click();
 }

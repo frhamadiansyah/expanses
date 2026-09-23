@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openTypes } from './accounts';
 import { openDeposit } from './deposit-maturity';
 
 /**
@@ -18,6 +19,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   // The balance is optional here, and the form says what happens to it.
   await expect(page.getByText('Optional. Posted as an opening balance.')).toBeVisible();
   await page.getByRole('button', { name: 'Add account' }).click();
+  await openTypes(page);
   await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
 
   await page.goto('/accounts/new');
@@ -30,6 +32,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByLabel('Matures on').fill('2027-03-01');
   await page.getByLabel('Interest rate').fill('6,25');
   await page.getByRole('button', { name: 'Add account' }).click();
+  await openTypes(page);
   await expect(page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true })).toBeVisible();
 
   // What was typed on the way in is said back: the day the money comes back, and what it pays for waiting.
@@ -46,6 +49,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByRole('button', { name: 'Save terms' }).click();
   await expect(page.getByText('Matures 1 Dec 2027 · 6,75%')).toBeVisible();
   await page.goto('/accounts');
+  await openTypes(page);
   await expect(deposito).toContainText('Matures 1 Dec 2027 · 6,75%');
 
   // Money you hold: net worth counts it, and the balance sheet calls it cash.
@@ -74,6 +78,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   await page.goto('/accounts');
+  await openTypes(page);
   await expect(
     page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) }),
   ).toContainText('120.000.000');

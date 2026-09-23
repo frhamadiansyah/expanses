@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openTypes } from './accounts';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -263,5 +263,6 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   // extra, is exactly what left the dollar account: 2.400 − 500 − 12,50.
   await expect(page.getByText(/19\.500,00/).first()).toBeVisible();
   await page.goto('/accounts');
+  await openTypes(page);
   await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Wise USD', exact: true }) })).toContainText('1.887,50');
 });

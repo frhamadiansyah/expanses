@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openTypes } from './accounts';
 import { openNewAsset } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto } from './add-transaction';
 import { cardSection } from './card-section';
@@ -230,6 +230,7 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
 
   // The card owes the cost **and the fee** — 3.980.000 + 15.000 — and the bank was never touched.
   await page.goto('/accounts');
+  await openTypes(page);
   // An account is a row of the table now, not a list item — see `add-transaction.spec.ts` for the whole note.
   await expect(page.getByRole('listitem').filter({ hasText: 'BCA KrisFlyer' }).first()).toContainText('3.995.000');
   await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('50.000.000');
@@ -263,6 +264,7 @@ test('a sale pays its proceeds into a bank account and takes the units back out'
   await page.goto('/net-worth/trades');
   await expect(page.getByText('8 g').first()).toBeVisible();
   await page.goto('/accounts');
+  await openTypes(page);
   await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('54.200.000');
 });
 

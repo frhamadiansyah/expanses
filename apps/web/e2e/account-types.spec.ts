@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openTypes } from './accounts';
 import { addTransaction } from './add-transaction';
 
 test('a digital wallet and a fund account hold money, and the wallet pays for lunch', async ({ page }) => {
@@ -15,6 +15,7 @@ test('a digital wallet and a fund account hold money, and the wallet pays for lu
   await expect(page.getByText('Warung Tegal')).toBeVisible();
 
   await page.goto('/accounts');
+  await openTypes(page);
   // An account is a table row now — the same five columns, scrollable at 390 px rather than wrapping the name
   // into the balance. The row still holds the name as a link into its history, so the locator is the same fact.
   const wallet = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'GoPay', exact: true }) });
@@ -47,6 +48,7 @@ test('a deposit funded from an account moves the money, and says where it came f
 
   // And its ledger shows one transfer naming both accounts, not an opening balance.
   await page.goto('/accounts');
+  await openTypes(page);
   // The name opens the deposit's own page; its ledger is the row on it that says so.
   await page.getByRole('link', { name: 'bluuu', exact: true }).click();
   await page.getByRole('link', { name: /Its transactions/ }).click();

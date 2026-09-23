@@ -11,6 +11,25 @@ import { expect, type Page } from '@playwright/test';
  * `/debts/new` (the picker's hint says the same to the owner).
  */
 
+/**
+ * Open every type drawer on `/accounts`.
+ *
+ * The list opens as a list of sums: a kind of account divides into its types — `Cash`, `Current account`,
+ * `Saving account` — and each type is closed until it is tapped. A walk that reads a row on that page, clicks its
+ * name or counts a figure opens the drawers first, which is the one thing the page asks of a reader now. A kind
+ * that holds only one type draws its rows flat and has no drawer to open.
+ */
+export async function openTypes(page: Page) {
+  /* The list is painted a moment after the route changes. Ask what is closed before that and the answer is
+   * "nothing", which leaves every row behind its drawer — so wait for the list first, and carry on if this page
+   * has no accounts at all. */
+  await page.locator('main ul li').first().waitFor({ timeout: 5_000 }).catch(() => {});
+  /* Open them one at a time by "the first one still closed": a snapshot of handles goes stale as each click
+   * redraws the list, and the last handle then points at a drawer that no longer exists. */
+  const closed = page.locator('[data-testid^="type-drawer-"][aria-expanded="false"]');
+  for (let i = 0; i < 12 && (await closed.count()) > 0; i += 1) await closed.first().click();
+}
+
 /** What the account picker calls each kind of money the ledger stores. */
 const MONEY_KIND: Record<string, string> = {
   cash: 'Cash',
@@ -69,6 +88,8 @@ export async function openAccount(page: Page, o: NewAccount) {
   if (o.opened) await page.getByLabel('Balance as of').fill(o.opened);
   if (o.extra) await o.extra(page);
   await page.getByRole('button', { name: 'Add account' }).click();
+  /* The row it just made sits inside its type's drawer, and the list opens with those closed. */
+  await openTypes(page);
   await expect(page.getByRole('link', { name: o.name, exact: true })).toBeVisible();
 }
 

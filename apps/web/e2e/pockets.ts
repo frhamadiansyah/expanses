@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 import BetterSqlite3 from 'better-sqlite3';
+import { openTypes } from './accounts';
 
 /** Frankfurter answers only for the codes given, at the rates given; everything else fails, as offline would. */
 export async function mockRates(page: Page, rates: Record<string, number>) {
@@ -30,6 +31,8 @@ export async function openWithPockets(
     if (pocket.rate) await page.getByLabel(new RegExp(`^Rate: \\w+ per 1 ${pocket.currency}$`)).pressSequentially(pocket.rate);
   }
   await page.getByRole('button', { name: 'Add account' }).click();
+  /* The row it just made sits inside its type's drawer, and adding it may be what made the cash group divide. */
+  await openTypes(page);
   await expect(page.getByRole('link', { name: account.name, exact: true })).toBeVisible();
 }
 
