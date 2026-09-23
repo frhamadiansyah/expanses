@@ -1,16 +1,37 @@
-import { displayAmount } from '@expanses/core';
-import { type AccountRow, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
+import { displayAmount, sumToBase } from '@expanses/core';
+import { type AccountRow, type AccountSubtype, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
+import { type ReactNode } from 'react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { depositLine } from '../networth/deposit-terms';
+import { PLAN_GROUP_LABELS } from '../networth/labels';
 import { useAssetValues, useDepositTerms } from '../networth/queries';
 import { Empty, errorMessage, Money } from '../../ui';
 import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, LargeTitle, LineAction, Panel, SCREEN } from '../../ui/native';
 import { moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
+
+/**
+ * The kinds of account, gathered the way the Assets page gathers what you own and the Debts page gathers what you
+ * owe: cash first, then money that is waiting for a date, then what is invested, what is for use, what is owed to
+ * you — and under them the cards, the loans and the people you owe.
+ *
+ * Four of the words are the plan groups the Assets page already names its groups by, and the last three are the
+ * Debts page's own three, so the same account is called the same thing on every page that lists it.
+ */
+const GROUPS: { key: string; label: string; subtypes: AccountSubtype[] }[] = [
+  { key: 'cash', label: PLAN_GROUP_LABELS.liquid, subtypes: ['bank', 'cash', 'savings', 'ewallet', 'fund', 'other_cash'] },
+  { key: 'deposit', label: 'Time deposits', subtypes: ['time_deposit'] },
+  { key: 'invest', label: PLAN_GROUP_LABELS.invest, subtypes: ['investment'] },
+  { key: 'use', label: PLAN_GROUP_LABELS.use, subtypes: ['property', 'vehicle'] },
+  { key: 'owed', label: PLAN_GROUP_LABELS.owed, subtypes: ['receivable'] },
+  { key: 'cards', label: 'Credit cards', subtypes: ['credit_card'] },
+  { key: 'loans', label: 'Loans', subtypes: ['loan'] },
+  { key: 'people', label: 'You owe people', subtypes: ['payable'] },
+];
 
 /**
  * One section of the account list.
@@ -25,6 +46,7 @@ import { useHeldRates } from './queries';
  */
 function AccountList({
   title,
+  trailing,
   accounts,
   balances,
   everything,
@@ -32,6 +54,8 @@ function AccountList({
   rates,
 }: {
   title: string;
+  /** The group's own figure, drawn in its header as the Assets page draws its groups'. */
+  trailing?: ReactNode;
   accounts: AccountRow[];
   balances: Record<string, number>;
   /** Every account, pockets included: a parent's row is drawn from its pockets, which are not rows of their own. */
@@ -78,7 +102,7 @@ function AccountList({
   }
 
   return (
-    <Panel wide pad={false} header={title}>
+    <Panel wide pad={false} header={title} trailing={trailing}>
       <ul>
         {accounts.map((account, index) => (
           <li key={account.id}>
@@ -153,6 +177,18 @@ export function AccountsPage() {
   const rates = useHeldRates(everything.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!));
   const held = rates.data?.rates ?? {};
   const summary = moneySummary(everything, all, ws.baseCurrency, held);
+  /**
+   * A group's own figure: what its rows add up to at today's rates, or the rate one of them lacks, named instead —
+   * never a partial sum. Liabilities are added up as what is owed, so a card reads as the same positive figure its
+   * own row shows.
+   */
+  const groupTotal = (rows: AccountRow[]) => {
+    const amounts = rows.flatMap((account) => {
+      const its = pocketsOf(account.id, everything);
+      return (its.length > 0 ? its : [account]).map((row) => ({ minor: displayAmount(row.kind, all[row.id] ?? 0), currency: row.currency! }));
+    });
+    return groupedFigure(sumToBase({ amounts, baseCurrency: ws.baseCurrency, ratesToBase: held }), ws.baseCurrency).text;
+  };
   /* Three journeys, two corners: the `…` keeps Import CSV and Backup reachable and named in words. */
   const actions: CornerAction[] = [
     { key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={20} aria-hidden /> },
@@ -180,8 +216,27 @@ export function AccountsPage() {
           </Panel>
         ))}
       {/* A pocket is never a row of its own: its account's row adds it up (P1). */}
-      <AccountList title="Money" accounts={money.filter((a) => a.kind === 'asset' && a.parentId === null)} balances={all} everything={everything} parents={parents} rates={held} />
-      <AccountList title="Credit cards & debts" accounts={money.filter((a) => a.kind === 'liability')} balances={all} everything={everything} parents={parents} rates={held} />
+      {GROUPS.map((group) => {
+        const rows = money.filter((account) => account.parentId === null && group.subtypes.includes(account.subtype));
+        if (rows.length === 0) return null;
+        return (
+          <AccountList
+            key={group.key}
+            title={group.label}
+            /* Normal case: the header shouts in capitals, and a currency symbol must not. */
+            trailing={
+              <span className="tracking-normal normal-case">
+                <Figure>{groupTotal(rows)}</Figure>
+              </span>
+            }
+            accounts={rows}
+            balances={all}
+            everything={everything}
+            parents={parents}
+            rates={held}
+          />
+        );
+      })}
     </div>
   );
 }
