@@ -1,5 +1,5 @@
-import { CASH_ITEMS, displayAmount, sumToBase } from '@expanses/core';
-import { type AccountRow, type AccountSubtype, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
+import { ASSET_ITEMS, CASH_ITEMS, type AssetKind, displayAmount, presetFor, sumToBase } from '@expanses/core';
+import { type AccountRow, type AccountSubtype, type AssetProfileRow, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -7,30 +7,91 @@ import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { depositLine } from '../networth/deposit-terms';
+import { DEBT_GROUP_LABELS } from '../networth/debt-rows';
 import { PLAN_GROUP_LABELS } from '../networth/labels';
-import { useAssetValues, useDepositTerms } from '../networth/queries';
+import { useAssetProfiles, useAssetValues, useDepositTerms } from '../networth/queries';
 import { cx, Empty, errorMessage, Money } from '../../ui';
 import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, LargeTitle, LineAction, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
 import { moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
 
+/** One drawer of a group: what it is called, and what it is known by. */
+interface Drawer {
+  key: string;
+  label: string;
+}
+
+/** The catalogue item a Coretax code names, so a holding can be drawn in the report's own words. */
+const ITEM_BY_CODE = new Map(ASSET_ITEMS.map((item) => [item.code, item]));
+
 /**
  * The kinds of account, gathered the way the Assets page gathers what you own and the Debts page gathers what you
- * owe: cash first, then money that is waiting for a date, then what is invested, what is for use, what is owed to
- * you — and under them the cards, the loans and the people you owe.
+ * owe: money first, then what is invested, what is for use, what is owed to you — and under them everything you owe,
+ * in one section, as the Debts page tells it.
  *
- * Four of the words are the plan groups the Assets page already names its groups by, and the last three are the
- * Debts page's own three, so the same account is called the same thing on every page that lists it.
+ * The words are the plan groups the Assets page already names its groups by, and the debts are the Debts page's own
+ * three, so the same account is called the same thing on every page that lists it.
+ *
+ * Each group divides into drawers by what an account *is*: money by its type, a holding by the thing it holds, a
+ * debt by which kind of debt it is. `order` is the order the drawers read in — the catalogue's own where there is
+ * one, so cash comes before the account that holds it.
  */
-const GROUPS: { key: string; label: string; subtypes: AccountSubtype[] }[] = [
-  { key: 'cash', label: PLAN_GROUP_LABELS.liquid, subtypes: ['bank', 'cash', 'savings', 'ewallet', 'fund', 'other_cash'] },
-  { key: 'deposit', label: 'Time deposits', subtypes: ['time_deposit'] },
-  { key: 'invest', label: PLAN_GROUP_LABELS.invest, subtypes: ['investment'] },
-  { key: 'use', label: PLAN_GROUP_LABELS.use, subtypes: ['property', 'vehicle'] },
-  { key: 'owed', label: PLAN_GROUP_LABELS.owed, subtypes: ['receivable'] },
-  { key: 'cards', label: 'Credit cards', subtypes: ['credit_card'] },
-  { key: 'loans', label: 'Loans', subtypes: ['loan'] },
-  { key: 'people', label: 'You owe people', subtypes: ['payable'] },
+const GROUPS: {
+  key: string;
+  label: string;
+  subtypes: AccountSubtype[];
+  drawer: (account: AccountRow, profile: AssetProfileRow | undefined) => Drawer;
+  order: readonly string[];
+}[] = [
+  {
+    key: 'cash',
+    label: PLAN_GROUP_LABELS.liquid,
+    /* A deposit is a cash equivalent, which is what this group is called: it belongs with the money. */
+    subtypes: ['cash', 'bank', 'savings', 'time_deposit', 'ewallet', 'fund', 'other_cash'],
+    drawer: (account) => ({ key: account.subtype, label: SUBTYPE_LABELS[account.subtype] }),
+    order: CASH_ITEMS.map((item) => item.id),
+  },
+  {
+    key: 'invest',
+    label: PLAN_GROUP_LABELS.invest,
+    subtypes: ['investment'],
+    /* Gold and shares are both `investment` accounts, so the type says nothing. The drawer is the thing itself,
+     * taken from the profile the asset's own page keeps: its catalogue item where one is set — "Gold bullion",
+     * "Listed shares" — and the kind of asset it is otherwise. */
+    drawer: (account, profile) => {
+      const item = profile?.coretaxCode ? ITEM_BY_CODE.get(profile.coretaxCode) : undefined;
+      if (item) return { key: `item:${item.id}`, label: item.label };
+      return { key: `kind:${profile?.assetKind ?? 'other'}`, label: profile ? presetFor(profile.assetKind).label : SUBTYPE_LABELS.investment };
+    },
+    order: ASSET_ITEMS.map((item) => `item:${item.id}`),
+  },
+  {
+    key: 'use',
+    label: PLAN_GROUP_LABELS.use,
+    subtypes: ['property', 'vehicle'],
+    drawer: (account) => ({ key: account.subtype, label: SUBTYPE_LABELS[account.subtype] }),
+    order: ['property', 'vehicle'],
+  },
+  {
+    key: 'owed',
+    label: PLAN_GROUP_LABELS.owed,
+    subtypes: ['receivable'],
+    drawer: (account) => ({ key: account.subtype, label: SUBTYPE_LABELS[account.subtype] }),
+    order: ['receivable'],
+  },
+  {
+    key: 'debts',
+    label: 'Debts',
+    /* Cards, loans and the people you owe are all what you owe: one section, as the Debts page is one page, with
+     * the Debts page's own three drawers inside it. */
+    subtypes: ['credit_card', 'loan', 'payable'],
+    drawer: (account) => {
+      if (account.subtype === 'credit_card') return { key: 'card', label: DEBT_GROUP_LABELS.card };
+      if (account.subtype === 'loan') return { key: 'loan', label: DEBT_GROUP_LABELS.loan };
+      return { key: 'person', label: DEBT_GROUP_LABELS.person };
+    },
+    order: ['loan', 'card', 'person'],
+  },
 ];
 
 /** The kinds of account whose own page is on `/accounts`: money, not things. */
@@ -114,7 +175,7 @@ function AccountList({
   title,
   trailing,
   accounts,
-  types,
+  drawers,
   open,
   onToggle,
   balances,
@@ -128,9 +189,9 @@ function AccountList({
   /** The group's own figure, drawn in its header as the Assets page draws its groups'. */
   trailing?: ReactNode;
   accounts: AccountRow[];
-  /** The types this group holds, in the order the group names them, so cash is drawn with cash. */
-  types: AccountSubtype[];
-  /** The drawers that are open, by `group:type`. Closed to begin with. */
+  /** The drawers this group divides into, in the order they read, each holding its own accounts. */
+  drawers: (Drawer & { rows: AccountRow[] })[];
+  /** The drawers that are open, by `group:key`. Closed to begin with. */
   open: ReadonlySet<string>;
   onToggle: (key: string) => void;
   balances: Record<string, number>;
@@ -158,9 +219,8 @@ function AccountList({
     return row ? depositLine(row) : null;
   };
   if (accounts.length === 0) return null;
-  /** A type's own figure, added exactly as its group's is: what its rows come to, or the rate one lacks named. */
-  const typeTotal = (rows: AccountRow[]) => totalOf(rows, everything, balances, ws.baseCurrency, rates);
-  const sections = types.map((subtype) => ({ subtype, rows: accounts.filter((account) => account.subtype === subtype) }));
+  /** A drawer's own figure, added exactly as its group's is: what its rows come to, or the rate one lacks named. */
+  const drawerTotal = (rows: AccountRow[]) => totalOf(rows, everything, balances, ws.baseCurrency, rates);
 
   async function rename(account: AccountRow) {
     const next = window.prompt('Rename account', account.name);
@@ -238,25 +298,25 @@ function AccountList({
   return (
     <Panel wide pad={false} header={title} trailing={trailing}>
       <ul>
-        {/* One type is no division at all: those rows are drawn on their own, with no drawer over them. */}
-        {sections.length <= 1
+        {/* One drawer is no division at all: those rows are drawn on their own, with no drawer over them. */}
+        {drawers.length <= 1
           ? accounts.map((account, index) => line(account, index > 0))
-          : sections.flatMap((section, index) => {
-              const key = `${groupKey}:${section.subtype}`;
+          : drawers.flatMap((drawer, index) => {
+              const key = `${groupKey}:${drawer.key}`;
               const shown = open.has(key);
               return [
-                <li key={section.subtype}>
+                <li key={drawer.key}>
                   <TypeDrawer
-                    label={SUBTYPE_LABELS[section.subtype]}
-                    count={plural(section.rows.length, 'account')}
-                    figure={<Figure>{typeTotal(section.rows)}</Figure>}
+                    label={drawer.label}
+                    count={plural(drawer.rows.length, 'account')}
+                    figure={<Figure>{drawerTotal(drawer.rows)}</Figure>}
                     open={shown}
                     separator={index > 0}
-                    testId={`type-drawer-${section.subtype}`}
+                    testId={`type-drawer-${drawer.key}`}
                     onToggle={() => onToggle(key)}
                   />
                 </li>,
-                ...(shown ? section.rows.map((account) => line(account, true, 1)) : []),
+                ...(shown ? drawer.rows.map((account) => line(account, true, 1)) : []),
               ];
             })}
       </ul>
@@ -278,6 +338,9 @@ export function AccountsPage() {
   const rates = useHeldRates(everything.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!));
   const held = rates.data?.rates ?? {};
   const summary = moneySummary(everything, all, ws.baseCurrency, held);
+  /* What a holding *is* lives on its asset profile, not on the account: a drawer asks it. */
+  const profiles = useAssetProfiles();
+  const profileOf = (id: string) => (profiles.data ?? []).find((row) => row.accountId === id);
   /**
    * Which type drawers are open, by `group:type`. Closed to begin with: the page opens as a list of sums, and the
    * balances inside a type are one tap away rather than a wall of rows nobody asked for.
@@ -296,6 +359,22 @@ export function AccountsPage() {
    * own row shows.
    */
   const groupTotal = (rows: AccountRow[]) => totalOf(rows, everything, all, ws.baseCurrency, held);
+  /** A group's drawers, in the group's own order, each holding the accounts that fell into it. */
+  const drawersOf = (group: (typeof GROUPS)[number], rows: AccountRow[]) => {
+    const found = new Map<string, Drawer & { rows: AccountRow[] }>();
+    for (const account of rows) {
+      const drawer = group.drawer(account, profileOf(account.id));
+      const at = found.get(drawer.key);
+      if (at) at.rows.push(account);
+      else found.set(drawer.key, { ...drawer, rows: [account] });
+    }
+    /* A drawer the group's order does not name reads last, in the order it was found. */
+    const rank = (key: string) => {
+      const at = group.order.indexOf(key);
+      return at === -1 ? group.order.length : at;
+    };
+    return [...found.values()].sort((a, b) => rank(a.key) - rank(b.key));
+  };
   /* Three journeys, two corners: the `…` keeps Import CSV and Backup reachable and named in words. */
   const actions: CornerAction[] = [
     { key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={20} aria-hidden /> },
@@ -327,11 +406,10 @@ export function AccountsPage() {
         const rows = money.filter((account) => account.parentId === null && group.subtypes.includes(account.subtype));
         if (rows.length === 0) return null;
         /*
-         * The types this group in fact holds, in the order the group names them — cash with cash, current with
-         * current. A group whose accounts are all one type gets no dividers at all: a line naming the only kind of
-         * thing in the panel says nothing the panel's own header has not already said.
+         * What this group divides into. One drawer is no division at all, and gets no divider: a line naming the
+         * only kind of thing in the panel says nothing the panel's own header has not already said.
          */
-        const types = group.subtypes.filter((subtype) => rows.some((account) => account.subtype === subtype));
+        const drawers = drawersOf(group, rows);
         return (
           <AccountList
             key={group.key}
@@ -344,7 +422,7 @@ export function AccountsPage() {
               </span>
             }
             accounts={rows}
-            types={types}
+            drawers={drawers}
             open={openTypes}
             onToggle={toggleType}
             balances={all}
