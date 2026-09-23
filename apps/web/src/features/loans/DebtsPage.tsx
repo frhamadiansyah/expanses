@@ -1,11 +1,10 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { Link, type LinkProps, useNavigate } from '@tanstack/react-router';
+import { Link, type LinkProps } from '@tanstack/react-router';
 import { Car, CreditCard, House, Landmark, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
-import { usePhone } from '../../app/use-phone';
 import { useAccounts, useBalances } from '../../lib/queries';
-import { cx, Empty, ErrorBox, Money } from '../../ui';
+import { Empty, ErrorBox, Money } from '../../ui';
 import { ApproxFigure, approxLine, type CornerAction, Figure, Hero, InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
 import { useHeldRates } from '../accounts/queries';
 import { usePeopleDebts } from '../debts/queries';
@@ -60,17 +59,30 @@ function HeaderFigure({ group, baseCurrency }: { group: DebtGroup; baseCurrency:
   );
 }
 
-/** The phone's trailing figure: in the base currency bare, as the header names it; otherwise its own, with ≈ beneath. */
+/**
+ * A debt's trailing figure: in the base currency bare, as the group's header names it; otherwise its own, with
+ * what that comes to beneath — and the rate it was worked at after that.
+ *
+ * The rate stays on the row rather than only on the debt's own page: the two figures are a conversion, and a
+ * conversion with no rate beside it is a number with nothing to check it against.
+ */
 function RowFigure({ row, baseCurrency, rates }: { row: DebtRow; baseCurrency: string; rates: Record<string, number> }) {
   if (row.currency === baseCurrency) return <Figure>{bareFigure(row.minor, row.currency)}</Figure>;
-  return <ApproxFigure figure={formatMinor(row.minor, row.currency)} beneath={approxLine(row.minor, row.currency, baseCurrency, rates)} />;
+  const at = row.rate === null ? null : `at ${row.rate.toLocaleString('id-ID', { maximumFractionDigits: 4 })}`;
+  return (
+    <ApproxFigure
+      figure={formatMinor(row.minor, row.currency)}
+      beneath={[approxLine(row.minor, row.currency, baseCurrency, rates), at].filter(Boolean).join(' · ')}
+    />
+  );
 }
 
 function subtitleOf(row: DebtRow): string {
   return [row.last4 ? `···· ${row.last4}` : null, row.detail || null].filter(Boolean).join(' · ');
 }
 
-function PhoneGroup({ group, baseCurrency, rates, footer }: { group: DebtGroup; baseCurrency: string; rates: Record<string, number>; footer?: ReactNode }) {
+/** A group of debts, as the kit draws a list: a header with the group's own total, and a row per debt. */
+function DebtListGroup({ group, baseCurrency, rates, footer }: { group: DebtGroup; baseCurrency: string; rates: Record<string, number>; footer?: ReactNode }) {
   return (
     <InsetGroup header={group.label} trailing={<HeaderFigure group={group} baseCurrency={baseCurrency} />} footer={footer}>
       {group.rows.map((row) => {
@@ -93,101 +105,25 @@ function PhoneGroup({ group, baseCurrency, rates, footer }: { group: DebtGroup; 
   );
 }
 
-/** The desktop's table: the balance in the debt's own currency next to its value in the base currency. */
-function DebtTable({ groups, baseCurrency }: { groups: DebtGroup[]; baseCurrency: string }) {
-  const navigate = useNavigate();
-  const cell = 'border-t-[0.5px] border-[var(--ph-hair)] px-[14px] py-[10px] align-middle';
-  const head = 'border-b-[0.5px] border-[var(--ph-hair)] px-[14px] py-[10px] text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase';
-  return (
-    <div className="overflow-hidden bg-[var(--ph-surface)]" style={{ borderRadius: 11 }}>
-      <table className="w-full border-collapse text-[14px]" data-testid="debts-table">
-        <thead>
-          <tr>
-            <th scope="col" className={cx(head, 'text-left')}>Debt</th>
-            <th scope="col" className={cx(head, 'text-left')}>Details</th>
-            <th scope="col" className={cx(head, 'text-right')}>Balance</th>
-            <th scope="col" className={cx(head, 'text-right')}>In {currencyWord(baseCurrency)}</th>
-          </tr>
-        </thead>
-        {groups.map((group) => (
-          <tbody key={group.kind}>
-            <tr>
-              <th colSpan={4} scope="colgroup" className="bg-[var(--ph-ground)] px-[14px] pt-[14px] pb-[6px] text-left text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">
-                <span className="flex items-baseline justify-between gap-3">
-                  <span>{group.label}</span>
-                  <HeaderFigure group={group} baseCurrency={baseCurrency} />
-                </span>
-              </th>
-            </tr>
-            {group.rows.map((row) => {
-              const to = destination(row);
-              return (
-                <tr
-                  key={row.key}
-                  data-testid={`debt-row-${row.key}`}
-                  className="cursor-pointer hover:bg-[var(--ph-fill)]"
-                  onClick={(event) => {
-                    // The name is a real link; a click anywhere else on the row goes to the same place.
-                    if ((event.target as HTMLElement).closest('a')) return;
-                    void navigate(to);
-                  }}
-                >
-                  <td className={cx(cell, 'text-[var(--ph-ink)]')}>
-                    <Link {...to} className="ph-focus font-medium text-[var(--ph-ink)]">
-                      {row.name}
-                    </Link>
-                    {row.last4 && <span className="text-[var(--ph-ink-3)]"> ···· {row.last4}</span>}
-                  </td>
-                  <td className={cx(cell, 'text-[var(--ph-ink-3)]')}>{row.detail}</td>
-                  <td className={cx(cell, 'tabular text-right whitespace-nowrap text-[var(--ph-ink)]')}>{formatMinor(row.minor, row.currency)}</td>
-                  <td className={cx(cell, 'tabular text-right whitespace-nowrap')}>
-                    {row.baseMinor === null ? (
-                      <Figure tone="warn">{`No ${row.missing} rate yet`}</Figure>
-                    ) : (
-                      <>
-                        <Figure>{bareFigure(row.baseMinor, baseCurrency)}</Figure>
-                        {row.rate !== null && (
-                          <span className="ml-[6px] rounded-full bg-[var(--ph-track)] px-[8px] py-[2px] text-[11px] font-semibold text-[var(--ph-ink-2)]">
-                            at {row.rate.toLocaleString('id-ID', { maximumFractionDigits: 4 })}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        ))}
-      </table>
-    </div>
-  );
-}
-
 /** The figure the page is for, or — when a rate is missing — the rate named instead of a wrong figure. */
-function Total({ debts, baseCurrency, today, left }: { debts: DebtSheet; baseCurrency: string; today: string; left: boolean }) {
+function Total({ debts, baseCurrency, today }: { debts: DebtSheet; baseCurrency: string; today: string }) {
   const caption = `You owe, in ${currencyWord(baseCurrency)} · ${longDate(today)}`;
   if (debts.total.totalMinor !== null)
     return (
       <div data-testid="debts-total">
-        <Hero minor={debts.total.totalMinor} currency={baseCurrency} direction="out" caption={caption} align={left ? 'start' : 'center'} />
+        <Hero minor={debts.total.totalMinor} currency={baseCurrency} direction="out" caption={caption} />
       </div>
     );
   return (
-    <div data-testid="debts-total" className={cx('flex flex-col', left ? 'items-start text-left' : 'items-center text-center')} style={{ marginBottom: 18 }}>
+    <div data-testid="debts-total" className="flex flex-col items-center text-center" style={{ marginBottom: 18 }}>
       <p className="text-[22px] leading-[28px] font-extrabold tracking-[-0.03em] text-[var(--ph-warn)]">No {debts.total.missing.join(', ')} rate yet</p>
       <p className="mt-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">so the total can't be added up</p>
     </div>
   );
 }
 
-/** The row figure in a totals group on the desktop: bare, as the hero above names the currency. */
-const sideFigure = (minor: number | null, missing: readonly string[], baseCurrency: string) =>
-  minor === null ? <Figure tone="warn">{missing.length ? `No ${missing.join(', ')} rate yet` : '—'}</Figure> : <Figure>{bareFigure(minor, baseCurrency)}</Figure>;
-
 export function DebtsPage() {
   const { ws } = useApp();
-  const phone = usePhone();
   const today = isoDate();
   const baseCurrency = ws.baseCurrency;
   const accounts = useAccounts();
@@ -277,12 +213,20 @@ export function DebtsPage() {
         </Empty>
       )}
 
-      {debts && phone && (
+      {debts && (
         <>
-          {!nothing && <Total debts={debts} baseCurrency={baseCurrency} today={today} left={false} />}
+          {/*
+           * One list at every width, the way Assets draws what is owned: the total as the hero, a group header
+           * with its own total, a row per debt — its own currency and, beneath, what that comes to here.
+           *
+           * It was a two-column desktop page: the same figures twice in a left rail and a four-column table, with
+           * a currency column that only ever had dollars in it. The table's balance/≈ pair is what the row already
+           * says, so the rail and the table went and the phone's own list became the page.
+           */}
+          {!nothing && <Total debts={debts} baseCurrency={baseCurrency} today={today} />}
           {debts.groups.map((group) => (
             <div key={group.kind}>
-              <PhoneGroup group={group} baseCurrency={baseCurrency} rates={rates} footer={group.kind === 'loan' ? instalmentLine : undefined} />
+              <DebtListGroup group={group} baseCurrency={baseCurrency} rates={rates} footer={group.kind === 'loan' ? instalmentLine : undefined} />
               {group.kind === 'loan' && loanTools}
             </div>
           ))}
@@ -293,32 +237,6 @@ export function DebtsPage() {
           )}
           {!loansGroup && loanTools}
         </>
-      )}
-
-      {debts && !phone && (
-        <div className="grid items-start gap-[28px] md:grid-cols-[260px_minmax(0,1fr)]">
-          <div>
-            {!nothing && <Total debts={debts} baseCurrency={baseCurrency} today={today} left />}
-            {!nothing && (
-              <InsetGroup>
-                {debts.groups.map((group) => (
-                  <InsetRow key={group.kind} title={group.label} value={sideFigure(group.totalMinor, group.missing, baseCurrency)} valueTone="ink" testId={`debts-side-${group.kind}`} />
-                ))}
-              </InsetGroup>
-            )}
-            {!nothing && due && sheet.isSuccess && (
-              <InsetGroup>
-                <InsetRow title="Due within a year" value={sideFigure(due.withinYearMinor, due.missing, baseCurrency)} valueTone="ink" testId="debts-side-within-year" />
-                <InsetRow title="Long term" value={sideFigure(due.longTermMinor, due.missing, baseCurrency)} valueTone="ink" testId="debts-side-long-term" />
-              </InsetGroup>
-            )}
-            {instalmentLine && <p className="px-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{instalmentLine}</p>}
-          </div>
-          <div className="min-w-0">
-            {!nothing && <DebtTable groups={debts.groups} baseCurrency={baseCurrency} />}
-            <div className={nothing ? undefined : 'mt-[18px]'}>{loanTools}</div>
-          </div>
-        </div>
       )}
     </div>
   );

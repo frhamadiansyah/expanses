@@ -5,6 +5,9 @@ test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
+/** A debt's own line on Debts: its testid is the account's id, so a row is found by the words on it. */
+const debtRow = (page: Page, name: string) => page.getByTestId(/^debt-row-/).filter({ hasText: name });
+
 /** The label the old inline form used went with it; the kind decides what the picker asks for now. */
 async function addAccount(page: Page, name: string, type: string, balanceLabel: string, amount: string) {
   await openAccount(page, { subtype: type, name, balance: amount });
@@ -29,7 +32,7 @@ async function addKpr(page: Page, { asset }: { asset?: string } = {}) {
   await expect(page.getByText('Where this loan stands')).toBeVisible();
   // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
   await page.goto('/net-worth/loans');
-  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('Bank BTN');
+  await expect(debtRow(page, 'KPR Bintaro')).toContainText('Bank BTN');
 }
 
 test('onboards a loan already running and reads its next twelve months', async ({ page }) => {
@@ -38,7 +41,7 @@ test('onboards a loan already running and reads its next twelve months', async (
   await addKpr(page);
 
   // Debts lists the loan at what is still owed, the ledger's figure, under Loans.
-  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('700.000.000');
+  await expect(debtRow(page, 'KPR Bintaro')).toContainText('700.000.000');
   // The instalments the banks ask for each month moved under the Loans group. `addKpr` never fills "Payment each
   // month" — the form invites you to leave it blank — and the list used to read that stored blank back as `Rp 0`.
   // It is the instalment, worked out from what the ledger says is owed, gated on being greater than zero.
@@ -74,7 +77,7 @@ test('a loan’s terms are corrected from the loan itself, and the schedule foll
   // The schedule is rebuilt from the new tenor, and the list says the shorter term.
   await expect(page.getByText('Where this loan stands')).toBeVisible();
   await page.goto('/net-worth/loans');
-  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('Bank BTN · 9% · 120 months');
+  await expect(debtRow(page, 'KPR Bintaro')).toContainText('Bank BTN · 9% · 120 months');
 });
 
 /**
@@ -209,14 +212,13 @@ test('a loan in another currency is printed in its own currency, and the monthly
   await expect(page.getByText('Where this loan stands')).toBeVisible();
 
   // The balance in the loan's own currency — US$20.000,00, not "Rp 2.000.000", which is how 2.000.000 cents
-  // would read — and beside it the same in rupiah at the held rate, which says the rate it used.
+  // would read — and beneath it the same in rupiah at the held rate, naming the rate it used.
   await page.goto('/net-worth/loans');
-  const row = page.getByRole('row', { name: /Dollar car loan/ });
-  const balance = row.getByRole('cell').nth(2);
-  await expect(balance).toContainText('US$');
-  await expect(balance).not.toContainText('Rp');
-  await expect(row.getByRole('cell').nth(3)).toContainText('325.000.000');
-  await expect(row.getByRole('cell').nth(3)).toContainText('at 16.250');
+  const row = debtRow(page, 'Dollar car loan');
+  await expect(row).toContainText('US$');
+  await expect(row).not.toContainText('Rp 2.000.000');
+  await expect(row).toContainText('≈ Rp 325.000.000');
+  await expect(row).toContainText('at 16.250');
   // The instalments converted at the rate held for the day: 500 × 16.250.
   await expect(page.getByText('The instalments the banks ask for each month')).toContainText('8.125.000');
 });
@@ -243,7 +245,7 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   // The schedule is the write landing; a page load before it does loses the write. See `addKpr`.
   await expect(page.getByText('Where this loan stands')).toBeVisible();
   await page.goto('/net-worth/loans');
-  await expect(page.getByRole('row', { name: /Dollar car loan/ })).toContainText('Car Finance');
+  await expect(debtRow(page, 'Dollar car loan')).toContainText('Car Finance');
 
   await page.getByRole('link', { name: 'Dollar car loan' }).click();
   await expect(page.getByText('Still owed')).toBeVisible();

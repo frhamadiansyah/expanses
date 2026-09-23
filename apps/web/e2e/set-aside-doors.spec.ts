@@ -206,7 +206,7 @@ async function addKpr(page: Page) {
   await expect(page.getByText('Where this loan stands')).toBeVisible();
   // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
   await page.goto('/net-worth/loans');
-  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('Bank BTN');
+  await expect(page.getByTestId(/^debt-row-/).filter({ hasText: 'KPR Bintaro' })).toContainText('Bank BTN');
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
 }
 

@@ -44,7 +44,13 @@ export function useAssetProfiles() {
 
 export function useAssetProfile(accountId: string) {
   const { database, ws } = useApp();
-  return useQuery({ queryKey: ['asset-profile', ws.workspaceId, accountId], queryFn: () => getAssetProfile(database, ws, accountId) });
+  /*
+   * `?? null`, as `coretax/queries.ts` does and for the same reason: an account with no profile written for it yet
+   * is a null answer, not a failure. TanStack Query refuses `undefined` as a result and throws its own
+   * `"<hash> data is undefined"` in its place, which is what a bank account opened from the asset list used to
+   * show at the top of its own page.
+   */
+  return useQuery({ queryKey: ['asset-profile', ws.workspaceId, accountId], queryFn: async () => (await getAssetProfile(database, ws, accountId)) ?? null });
 }
 
 /** Every time deposit's maturity and rate, so a page can say them back beside the account they belong to. */

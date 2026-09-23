@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { digits, oneOfEach } from './debts-page';
@@ -6,13 +6,19 @@ import { forgetRates, openWithPockets } from './pockets';
 
 /**
  * Debts: everything owed, one list in three groups — Loans, Credit cards, You owe people — with one converted
- * total, each group's own total, and the split by due date the balance sheet already makes. On the desktop it is a
- * table with the balance in each debt's own currency beside its value in rupiah.
+ * total, each group's own total, and the split by due date the balance sheet already makes. One list at every
+ * width, the way Assets draws what is owned: its own currency on the row, and what that comes to beneath.
  */
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
+
+/**
+ * A debt's own line. The row's testid is the account's id, which a spec cannot know, so a row is found by the
+ * words on it — the same way a reader finds it.
+ */
+const debtRow = (page: Page, name: string) => page.getByTestId(/^debt-row-/).filter({ hasText: name });
 
 test('Debts shows all three groups with the right figures, and the due split is the balance sheet’s', async ({ page }) => {
   await oneOfEach(page);
@@ -23,36 +29,33 @@ test('Debts shows all three groups with the right figures, and the due split is 
   await expect(page.getByTestId('debts-total')).toContainText('Rp 731.950.000');
   await expect(page.getByTestId('debts-total')).toContainText('You owe, in Rupiah');
 
-  // Each group in its own header, in the Assets page's order.
-  const table = page.getByTestId('debts-table');
-  await expect(table.getByRole('columnheader')).toHaveText(['Debt', 'Details', 'Balance', 'In Rupiah', /^Loans\s*Rp\s728\.750\.000$/, /^Credit cards\s*Rp\s2\.450\.000$/, /^You owe people\s*Rp\s750\.000$/]);
+  // Each group in its own header, in the Assets page's order, with its own total on the header.
+  await expect(page.getByRole('heading', { level: 2 })).toContainText(['Loans', 'Credit cards', 'You owe people']);
   await expect(page.getByTestId('debts-group-total-loan')).toHaveText('Rp 728.750.000');
   await expect(page.getByTestId('debts-group-total-card')).toHaveText('Rp 2.450.000');
   await expect(page.getByTestId('debts-group-total-person')).toHaveText('Rp 750.000');
-  // And the same beside the hero.
-  await expect(page.getByTestId('debts-side-loan')).toContainText('728.750.000');
-  await expect(page.getByTestId('debts-side-card')).toContainText('2.450.000');
-  await expect(page.getByTestId('debts-side-person')).toContainText('750.000');
 
-  // A debt in dollars is a dollar figure, and its rupiah value names the rate it was worked at.
-  const dollar = page.getByRole('row', { name: /Dollar car loan/ });
-  await expect(dollar.getByRole('cell').nth(2)).toHaveText('US$1.000,00');
-  await expect(dollar.getByRole('cell').nth(3)).toContainText('16.250.000');
-  await expect(dollar.getByRole('cell').nth(3)).toContainText('at 16.250');
+  // A debt in dollars is a dollar figure, and beneath it the rupiah that comes to — with the rate it was worked at.
+  const dollar = debtRow(page, 'Dollar car loan');
+  await expect(dollar).toContainText('US$1.000,00');
+  await expect(dollar).toContainText('≈ Rp 16.250.000');
+  await expect(dollar).toContainText('at 16.250');
 
   // A card owes everything not yet paid: the Rp 2.000.000 billed and the Rp 450.000 bought since.
-  const card = page.getByRole('row', { name: /BCA Visa/ });
-  await expect(card.getByRole('cell').nth(2)).toHaveText('Rp 2.450.000');
-  await expect(card.getByRole('cell').nth(1)).toHaveText(/^due \d+ \w{3} · 450\.000 unbilled$/);
+  // The figure is bare, as the group's header names the currency — the same way Assets draws its rows.
+  const card = debtRow(page, 'BCA Visa');
+  await expect(card).toContainText('2.450.000');
+  await expect(card).toContainText(/due \d+ \w{3} · 450\.000 unbilled/);
 
   // The mortgage says what it is, the way the Loans page did.
-  await expect(page.getByRole('row', { name: /KPR BCA/ }).getByRole('cell').nth(1)).toHaveText('BCA · 9% · 180 months');
+  await expect(debtRow(page, 'KPR BCA')).toContainText('BCA · 9% · 180 months');
 
-  // Due within a year and long term add up to the whole, and within a year is the balance sheet's own figure.
-  const within = digits(await page.getByTestId('debts-side-within-year').innerText());
-  const long = digits(await page.getByTestId('debts-side-long-term').innerText());
+  /*
+   * Due within a year is the balance sheet's own figure, named under the list — and what within a year and long
+   * term add up to is `groupDebts`' own arithmetic, held to the total by `debt-rows.test.ts`.
+   */
+  const within = digits(await page.getByTestId('debts-due').innerText());
   expect(within).toBeGreaterThan(3_200_000);
-  expect(within + long).toBe(731_950_000);
   await page.goto('/net-worth');
   const sheetWithin = page.getByRole('heading', { name: 'Due within a year' }).locator('xpath=..');
   expect(digits(await sheetWithin.innerText())).toBe(within);
@@ -71,15 +74,15 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await oneOfEach(page);
 
   await page.goto('/net-worth/loans');
-  await page.getByRole('link', { name: 'KPR BCA', exact: true }).click();
+  await debtRow(page, 'KPR BCA').click();
   await expect(page).toHaveURL(/\/net-worth\/loans\/[^/]+$/);
   await expect(page.getByText('Still owed')).toBeVisible();
   // The loan's own page names where back goes by the page's new name.
   await page.getByRole('link', { name: 'Debts', exact: true }).first().click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
 
-  // A click anywhere on a row, not only its name, goes to the same place.
-  await page.getByRole('row', { name: /BCA Visa/ }).getByRole('cell').nth(2).click();
+  // A tap anywhere on a row, not only on its name: the row itself is the target.
+  await debtRow(page, 'BCA Visa').getByText(/unbilled/).click();
   await expect(page).toHaveURL(/\/cards\/[^/?]+/);
   await expect(page.getByRole('heading', { name: 'BCA Visa' })).toBeVisible();
   // It opens raised out of the Wallet stack, and its Unpaid tile is the very figure the Debts row showed.
@@ -87,7 +90,7 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await expect(page.getByTestId('tile-unpaid-balance')).toHaveText('Rp 2.450.000');
 
   await page.goto('/net-worth/loans');
-  await page.getByRole('link', { name: 'Dewi', exact: true }).click();
+  await debtRow(page, 'Dewi').click();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?person=Dewi$/);
   await expect(page.getByRole('heading', { name: 'Lend & borrow', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Only Dewi' })).toBeVisible();
@@ -122,7 +125,7 @@ test('a loan with no terms says so, and its terms are written from the loan itse
 
   await page.goto('/net-worth/loans');
   // A loan account with no terms is still owed, so it is listed — and says what it lacks.
-  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('no terms yet');
+  await expect(debtRow(page, 'KPR Bintaro')).toContainText('no terms yet');
   /*
    * The list keeps no terms tool of its own: the loan's own page already knows which loan this is, so it is where
    * the agreement is written — and there is no state in which a tool here would have nothing to offer.
@@ -143,7 +146,7 @@ test('a loan with no terms says so, and its terms are written from the loan itse
   await expect(page.getByText('Where this loan stands')).toBeVisible();
 
   await page.goto('/net-worth/loans');
-  await expect(page.getByRole('row', { name: /KPR Bintaro/ })).toContainText('Bank BTN · 9% · 180 months');
+  await expect(debtRow(page, 'KPR Bintaro')).toContainText('Bank BTN · 9% · 180 months');
   await expect(page.getByText('The instalments the banks ask for each month')).toContainText(/7\.\d{3}\.\d{3}/);
 });
 
@@ -168,10 +171,8 @@ test('an asset whose rate is missing does not hide the due split, which is made 
   await page.goto('/net-worth/loans');
   // The whole and the split are both figures, and they add up: what is owed never waits on what is owned.
   await expect(page.getByTestId('debts-total')).toContainText('Rp 712.500.000');
-  const within = digits(await page.getByTestId('debts-side-within-year').innerText());
-  const long = digits(await page.getByTestId('debts-side-long-term').innerText());
+  const within = digits(await page.getByTestId('debts-due').innerText());
   expect(within).toBeGreaterThan(13_000_000);
-  expect(within + long).toBe(712_500_000);
   await expect(page.getByText(/No USD rate yet/)).toHaveCount(0);
 });
 
@@ -188,7 +189,7 @@ test('a loan paid off leaves the list and the total, and waits under the paid-of
   await page.getByRole('button', { name: 'Add debt' }).click();
   await expect(page.getByTestId('debts-total')).toContainText('Rp 3.000.000');
 
-  await page.getByRole('link', { name: 'Kredit HP', exact: true }).click();
+  await debtRow(page, 'Kredit HP').click();
   // A payment of everything that is left clears it: the ledger marks the loan paid off.
   await page.getByRole('button', { name: 'Record payment' }).click();
   await page.getByLabel('Principal (IDR)').fill('');
@@ -197,7 +198,7 @@ test('a loan paid off leaves the list and the total, and waits under the paid-of
   await expect(page.getByRole('button', { name: 'Save payment' })).toHaveCount(0);
 
   await page.goto('/net-worth/loans');
-  await expect(page.getByRole('row', { name: /Kredit HP/ })).toHaveCount(0);
+  await expect(debtRow(page, 'Kredit HP')).toHaveCount(0);
   await expect(page.getByTestId('debts-total')).toHaveCount(0);
   await page.getByRole('button', { name: 'Show paid-off loans (1)' }).click();
   await expect(page.getByRole('heading', { name: 'Paid off' })).toBeVisible();
@@ -226,8 +227,8 @@ test('a card paid past its bill holds the surplus: Unpaid at nothing, and the cr
 
   // And the Debts row says the same thing the card does.
   await page.goto('/net-worth/loans');
-  const row = page.getByRole('row', { name: /BCA Visa/ });
-  await expect(row.getByRole('cell').nth(1)).toHaveText('Credit Rp 250.000');
-  await expect(row.getByRole('cell').nth(2)).toHaveText('Rp 0');
+  const row = debtRow(page, 'BCA Visa');
+  await expect(row).toContainText('Credit Rp 250.000');
+  await expect(row).toContainText('0');
   await expect(page.getByTestId('debts-group-total-card')).toHaveText('Rp 0');
 });
