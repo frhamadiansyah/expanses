@@ -2,15 +2,15 @@ import { CASH_ITEMS, displayAmount, sumToBase } from '@expanses/core';
 import { type AccountRow, type AccountSubtype, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
-import { type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { depositLine } from '../networth/deposit-terms';
 import { PLAN_GROUP_LABELS } from '../networth/labels';
 import { useAssetValues, useDepositTerms } from '../networth/queries';
-import { Empty, errorMessage, Money } from '../../ui';
-import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, LargeTitle, LineAction, Panel, SCREEN } from '../../ui/native';
+import { cx, Empty, errorMessage, Money } from '../../ui';
+import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, LargeTitle, LineAction, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
 import { moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
 
@@ -53,6 +53,52 @@ function destination(account: AccountRow): Pick<LinkProps, 'to' | 'params' | 'se
 }
 
 /**
+ * What a set of accounts comes to at today's rates — or the rate one of them lacks, named instead. Never a partial
+ * sum, and never a different answer for a group than for a drawer inside it.
+ */
+function totalOf(rows: AccountRow[], everything: AccountRow[], balances: Record<string, number>, baseCurrency: string, rates: Record<string, number>): string {
+  const amounts = rows.flatMap((account) => {
+    const its = pocketsOf(account.id, everything);
+    return (its.length > 0 ? its : [account]).map((row) => ({ minor: displayAmount(row.kind, balances[row.id] ?? 0), currency: row.currency! }));
+  });
+  return groupedFigure(sumToBase({ amounts, baseCurrency, ratesToBase: rates }), baseCurrency).text;
+}
+
+/**
+ * One type of account, folded away: the line that names it, how many it holds and what they come to.
+ *
+ * Drawn on the kit's own padding, height, hairline and inks — the same shape to the eye as the rows it hides — and
+ * the whole line is the target, because a drawer that opens only when its words are hit is a drawer a thumb
+ * misses. It lives in the feature rather than the kit for the reason `BillRow` does: "a type of account" is this
+ * page's idea, where the kit holds the shapes more than one screen draws.
+ */
+function TypeDrawer({ label, count, figure, open, separator, testId, onToggle }: { label: string; count: string; figure: ReactNode; open: boolean; separator: boolean; testId: string; onToggle: () => void }) {
+  return (
+    <div className="relative">
+      {separator && <span aria-hidden className="pointer-events-none absolute top-0 z-10 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        data-testid={testId}
+        className="ph-focus-inset flex w-full items-center gap-[10px] text-left"
+        style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{label}</span>
+          <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{count}</span>
+        </span>
+        {figure}
+        {/* The kit's chevron, turned over to say which way the drawer is: down when it is open, along when it is not. */}
+        <span aria-hidden className={cx('shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]', open && 'rotate-90')}>
+          {'›'}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+/**
  * One section of the account list.
  *
  * A native list: one group, a line per account with its balance on the right, and the things that can be done to
@@ -64,18 +110,29 @@ function destination(account: AccountRow): Pick<LinkProps, 'to' | 'params' | 'se
  * of four-digit codes under every balance read as noise; the asset's own page still names it, and still changes it.
  */
 function AccountList({
+  groupKey,
   title,
   trailing,
   accounts,
+  types,
+  open,
+  onToggle,
   balances,
   everything,
   parents,
   rates,
 }: {
+  /** This group's key, which the open drawers are named by. */
+  groupKey: string;
   title: string;
   /** The group's own figure, drawn in its header as the Assets page draws its groups'. */
   trailing?: ReactNode;
   accounts: AccountRow[];
+  /** The types this group holds, in the order the group names them, so cash is drawn with cash. */
+  types: AccountSubtype[];
+  /** The drawers that are open, by `group:type`. Closed to begin with. */
+  open: ReadonlySet<string>;
+  onToggle: (key: string) => void;
   balances: Record<string, number>;
   /** Every account, pockets included: a parent's row is drawn from its pockets, which are not rows of their own. */
   everything: AccountRow[];
@@ -101,6 +158,9 @@ function AccountList({
     return row ? depositLine(row) : null;
   };
   if (accounts.length === 0) return null;
+  /** A type's own figure, added exactly as its group's is: what its rows come to, or the rate one lacks named. */
+  const typeTotal = (rows: AccountRow[]) => totalOf(rows, everything, balances, ws.baseCurrency, rates);
+  const sections = types.map((subtype) => ({ subtype, rows: accounts.filter((account) => account.subtype === subtype) }));
 
   async function rename(account: AccountRow) {
     const next = window.prompt('Rename account', account.name);
@@ -120,58 +180,85 @@ function AccountList({
     }
   }
 
+  /**
+   * One account's line: what it is called, what type it is, its figure, and the things that can be done to it.
+   * A function rather than a map inline, because a type's drawer draws its own rows under itself.
+   */
+  const line = (account: AccountRow, separator: boolean, depth = 0) => (
+    <li key={account.id}>
+      <ActionLine
+        separator={separator}
+        depth={depth}
+        name={
+          /* An account's name opens the account itself: a pocket parent to its pockets, money to the page that
+           * tells its whole story, and everything else to the page its own list opens it with. */
+          <Link {...destination(account)} className="ph-focus">
+            {account.name}
+          </Link>
+        }
+        subtitle={
+          <>
+            {kindLine(account)}
+            {!parents.has(account.id) && terms(account.id) && ` · ${terms(account.id)}`}
+          </>
+        }
+        figure={
+          parents.has(account.id) ? (
+            parentFigure(account)
+          ) : valued(account.id) ? (
+            <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="ph-focus block shrink-0 text-right">
+              <Money minor={valued(account.id)!.valueMinor} currency={account.currency!} className="tabular block font-medium text-[var(--ph-ink)]" />
+              <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+                cost <Money minor={valued(account.id)!.costMinor} currency={account.currency!} />
+              </span>
+            </Link>
+          ) : (
+            <Figure>
+              <Money minor={displayAmount(account.kind, balances[account.id] ?? 0)} currency={account.currency!} />
+            </Figure>
+          )
+        }
+      >
+        {parents.has(account.id) && <span className="shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]">Each pocket files its own row</span>}
+        {account.subtype === 'credit_card' && (
+          <LineAction to="/cards/$cardId" params={{ cardId: account.id }}>
+            Set up points
+          </LineAction>
+        )}
+        <LineAction label={`Rename ${account.name}`} onClick={() => void rename(account)}>
+          Rename
+        </LineAction>
+        <LineAction label={`Archive ${account.name}`} onClick={() => void archive(account)}>
+          Archive
+        </LineAction>
+      </ActionLine>
+    </li>
+  );
+
   return (
     <Panel wide pad={false} header={title} trailing={trailing}>
       <ul>
-        {accounts.map((account, index) => (
-          <li key={account.id}>
-            <ActionLine
-              separator={index > 0}
-              name={
-                /* An account's name opens the account itself: a pocket parent to its pockets, money to the page that
-                 * tells its whole story, and everything else to the page its own list opens it with. */
-                <Link {...destination(account)} className="ph-focus">
-                  {account.name}
-                </Link>
-              }
-              subtitle={
-                <>
-                  {kindLine(account)}
-                  {!parents.has(account.id) && terms(account.id) && ` · ${terms(account.id)}`}
-                </>
-              }
-              figure={
-                parents.has(account.id) ? (
-                  parentFigure(account)
-                ) : valued(account.id) ? (
-                  <Link to="/net-worth/assets/$accountId" params={{ accountId: account.id }} className="ph-focus block shrink-0 text-right">
-                    <Money minor={valued(account.id)!.valueMinor} currency={account.currency!} className="tabular block font-medium text-[var(--ph-ink)]" />
-                    <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-                      cost <Money minor={valued(account.id)!.costMinor} currency={account.currency!} />
-                    </span>
-                  </Link>
-                ) : (
-                  <Figure>
-                    <Money minor={displayAmount(account.kind, balances[account.id] ?? 0)} currency={account.currency!} />
-                  </Figure>
-                )
-              }
-            >
-              {parents.has(account.id) && <span className="shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]">Each pocket files its own row</span>}
-              {account.subtype === 'credit_card' && (
-                <LineAction to="/cards/$cardId" params={{ cardId: account.id }}>
-                  Set up points
-                </LineAction>
-              )}
-              <LineAction label={`Rename ${account.name}`} onClick={() => void rename(account)}>
-                Rename
-              </LineAction>
-              <LineAction label={`Archive ${account.name}`} onClick={() => void archive(account)}>
-                Archive
-              </LineAction>
-            </ActionLine>
-          </li>
-        ))}
+        {/* One type is no division at all: those rows are drawn on their own, with no drawer over them. */}
+        {sections.length <= 1
+          ? accounts.map((account, index) => line(account, index > 0))
+          : sections.flatMap((section, index) => {
+              const key = `${groupKey}:${section.subtype}`;
+              const shown = open.has(key);
+              return [
+                <li key={section.subtype}>
+                  <TypeDrawer
+                    label={SUBTYPE_LABELS[section.subtype]}
+                    count={plural(section.rows.length, 'account')}
+                    figure={<Figure>{typeTotal(section.rows)}</Figure>}
+                    open={shown}
+                    separator={index > 0}
+                    testId={`type-drawer-${section.subtype}`}
+                    onToggle={() => onToggle(key)}
+                  />
+                </li>,
+                ...(shown ? section.rows.map((account) => line(account, true, 1)) : []),
+              ];
+            })}
       </ul>
     </Panel>
   );
@@ -192,17 +279,23 @@ export function AccountsPage() {
   const held = rates.data?.rates ?? {};
   const summary = moneySummary(everything, all, ws.baseCurrency, held);
   /**
+   * Which type drawers are open, by `group:type`. Closed to begin with: the page opens as a list of sums, and the
+   * balances inside a type are one tap away rather than a wall of rows nobody asked for.
+   */
+  const [openTypes, setOpenTypes] = useState<ReadonlySet<string>>(new Set());
+  const toggleType = (key: string) =>
+    setOpenTypes((open) => {
+      const next = new Set(open);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  /**
    * A group's own figure: what its rows add up to at today's rates, or the rate one of them lacks, named instead —
    * never a partial sum. Liabilities are added up as what is owed, so a card reads as the same positive figure its
    * own row shows.
    */
-  const groupTotal = (rows: AccountRow[]) => {
-    const amounts = rows.flatMap((account) => {
-      const its = pocketsOf(account.id, everything);
-      return (its.length > 0 ? its : [account]).map((row) => ({ minor: displayAmount(row.kind, all[row.id] ?? 0), currency: row.currency! }));
-    });
-    return groupedFigure(sumToBase({ amounts, baseCurrency: ws.baseCurrency, ratesToBase: held }), ws.baseCurrency).text;
-  };
+  const groupTotal = (rows: AccountRow[]) => totalOf(rows, everything, all, ws.baseCurrency, held);
   /* Three journeys, two corners: the `…` keeps Import CSV and Backup reachable and named in words. */
   const actions: CornerAction[] = [
     { key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={20} aria-hidden /> },
@@ -233,9 +326,16 @@ export function AccountsPage() {
       {GROUPS.map((group) => {
         const rows = money.filter((account) => account.parentId === null && group.subtypes.includes(account.subtype));
         if (rows.length === 0) return null;
+        /*
+         * The types this group in fact holds, in the order the group names them — cash with cash, current with
+         * current. A group whose accounts are all one type gets no dividers at all: a line naming the only kind of
+         * thing in the panel says nothing the panel's own header has not already said.
+         */
+        const types = group.subtypes.filter((subtype) => rows.some((account) => account.subtype === subtype));
         return (
           <AccountList
             key={group.key}
+            groupKey={group.key}
             title={group.label}
             /* Normal case: the header shouts in capitals, and a currency symbol must not. */
             trailing={
@@ -244,6 +344,9 @@ export function AccountsPage() {
               </span>
             }
             accounts={rows}
+            types={types}
+            open={openTypes}
+            onToggle={toggleType}
             balances={all}
             everything={everything}
             parents={parents}
