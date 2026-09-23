@@ -3,7 +3,8 @@ import { openCashAccount, openPocketedAccount } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useId, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { canPayWith } from '../../lib/account-types';
+import { useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
@@ -17,6 +18,11 @@ import { fieldsFor } from './catalogue-view';
  * which currency, and a time deposit adds the day the money comes back and what it pays. The catalogue decided
  * all of that when the item was chosen — this form only draws it.
  *
+ * A balance is the one answer with two meanings, so it asks which: money that was already there is an opening
+ * balance against equity, and money out of an account the owner already tracks is a transfer that moves both
+ * balances. The second is what someone opening a deposit usually means, and guessing it (or not offering it at
+ * all) is how a ledger ends up with a transfer that names no source.
+ *
  * The bank is kept as the Coretax "Nama bank/institusi" of the account's own kas row, which is where the tax
  * report reads it from; there is no column on `accounts` for it, and inventing one would break older databases.
  */
@@ -29,6 +35,7 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
   const [balance, setBalance] = useState('');
   const [bank, setBank] = useState('');
   const [currency, setCurrency] = useState(ws.baseCurrency);
+  const [sourceId, setSourceId] = useState('');
   const [maturesOn, setMaturesOn] = useState('');
   const [rate, setRate] = useState('');
   const [openedOn, setOpenedOn] = useState(isoDate());
@@ -48,6 +55,19 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
   // The kinds held at an institution, and not a deposit: its terms are per deposit (spec §16.3).
   const canPocket = asks.includes('bank') && !locked;
   const setPocket = (i: number, patch: Partial<PocketDraft>) => setPockets((rows) => rows.map((row, j) => (j === i ? { ...row, ...patch } : row)));
+  // Where a typed balance could move from: accounts the owner can spend from, in the same currency, newest name order.
+  const sources = (useAccounts().data ?? [])
+    .filter((a) => !a.archivedAt && a.currency === currency && canPayWith(a))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const source = sources.find((a) => a.id === sourceId);
+  // Read once, so the row that asks only when there is something to ask about never throws on half-typed money.
+  const typedBalance = (() => {
+    try {
+      return balance.trim() ? parseMajor(balance, currency) : 0;
+    } catch {
+      return 0;
+    }
+  })();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -85,6 +105,7 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
         maturesOn: locked ? maturesOn : undefined,
         // A rate is stored in basis points, so 6,25% is 625 and nothing is lost to a fraction of a percent.
         rateBps: locked && rate.trim() ? Math.round(parseRate(rate) * 100) : undefined,
+        sourceAccountId: source?.id,
       });
       await invalidate();
       await navigate({ to: '/accounts' });
@@ -114,12 +135,28 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
             label="Balance now"
             aria-describedby={balanceHint}
             /* The sentence keeps its id, so the box still says out loud which line explains it. */
-            hint={<span id={balanceHint}>Optional. Posted as an opening balance.</span>}
+            hint={<span id={balanceHint}>{source ? `Optional. Moves from ${source.name} as a transfer.` : 'Optional. Posted as an opening balance.'}</span>}
             value={balance}
             onChange={(e) => setBalance(e.target.value)}
             inputMode="decimal"
             placeholder="0"
           />
+        )}
+        {/* Only worth asking when a figure has been typed: nothing moves into an account opened at zero. */}
+        {asks.includes('balance') && !pocketed && typedBalance > 0 && (
+          <SelectRow
+            label="Where the money comes from"
+            hint="An account here makes this a transfer from it, so its balance drops too."
+            value={sourceId}
+            onChange={(e) => setSourceId(e.target.value)}
+          >
+            <option value="">Already there (opening balance)</option>
+            {sources.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </SelectRow>
         )}
         {asks.includes('bank') && <TextRow label="Bank" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="BCA" />}
         {canPocket && (
@@ -137,7 +174,16 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
           />
         )}
         {asks.includes('currency') && !pocketed && (
-          <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+          <SelectRow
+            label="Currency"
+            value={currency}
+            onChange={(e) => {
+              const next = e.target.value;
+              setCurrency(next);
+              // A source that does not hold what this account will: the answer no longer stands, so it is cleared.
+              if (source && source.currency !== next) setSourceId('');
+            }}
+          >
             {CURRENCIES.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.code} — {c.name}

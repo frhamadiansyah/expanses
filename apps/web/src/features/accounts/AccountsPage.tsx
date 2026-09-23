@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { ACCOUNT_TYPES, SUBTYPE_LABELS } from '../../lib/account-types';
+import { ACCOUNT_TYPES, canPayWith, SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
 import { depositLine } from '../networth/deposit-terms';
@@ -33,6 +33,7 @@ function AddAccountForm() {
   const [subtype, setSubtype] = useState<AccountSubtype>('bank');
   const [currency, setCurrency] = useState(ws.baseCurrency);
   const [balance, setBalance] = useState('');
+  const [sourceId, setSourceId] = useState('');
   const [maturesOn, setMaturesOn] = useState('');
   const [openedOn, setOpenedOn] = useState(isoDate());
   const [manualRate, setManualRate] = useState('');
@@ -48,6 +49,19 @@ function AddAccountForm() {
   const isDeposit = subtype === 'time_deposit';
   const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
   const chosenIssuer = issuer === OTHER ? otherIssuer : issuer;
+  // Where a typed balance can move from, for the money accounts this form can open: same currency, and spendable.
+  const sources = (useAccounts().data ?? [])
+    .filter((a) => !a.archivedAt && a.currency === currency && canPayWith(a))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const source = sources.find((a) => a.id === sourceId);
+  // Read before the write, so the row that asks only when there is something to ask about never throws mid-typing.
+  const typedBalance = (() => {
+    try {
+      return balance.trim() ? parseMajor(balance, currency) : 0;
+    } catch {
+      return 0;
+    }
+  })();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -60,7 +74,7 @@ function AddAccountForm() {
         await createCardAccount(database, ws, { name, subtype: 'credit_card', currency, issuer: chosenIssuer, last4, openingBalanceMinor, openedOn, openingRateToBase });
       } else if (isCashSubtype(subtype)) {
         // Money opened here files under the same code the picker would have given it, and a deposit keeps its terms.
-        await openCashAccount(database, ws, { item: subtype, name, currency, openingBalanceMinor, openedOn, openingRateToBase, maturesOn: maturesOn || undefined });
+        await openCashAccount(database, ws, { item: subtype, name, currency, openingBalanceMinor, openedOn, openingRateToBase, maturesOn: maturesOn || undefined, sourceAccountId: source?.id });
       } else {
         await createAccount(database, ws, { name, kind, subtype, currency, openingBalanceMinor, openedOn, openingRateToBase });
       }
@@ -119,7 +133,12 @@ function AddAccountForm() {
             placeholder="1467"
           />
         )}
-        <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+        <SelectRow label="Currency" value={currency} onChange={(e) => {
+          const next = e.target.value;
+          setCurrency(next);
+          // A source that does not hold what this account will: the answer no longer stands, so it is cleared.
+          if (source && source.currency !== next) setSourceId('');
+        }}>
           {CURRENCIES.map((c) => (
             <option key={c.code} value={c.code}>
               {c.code} — {c.name}
@@ -128,12 +147,28 @@ function AddAccountForm() {
         </SelectRow>
         <TextRow
           label={kind === 'liability' ? 'Amount owed now' : 'Current balance'}
-          hint="Optional. Posted as an opening balance."
+          hint={source ? `Optional. Moves from ${source.name} as a transfer.` : 'Optional. Posted as an opening balance.'}
           value={balance}
           onChange={(e) => setBalance(e.target.value)}
           inputMode="decimal"
           placeholder="0"
         />
+        {/* Only worth asking when a figure has been typed, and only a money account can be funded this way. */}
+        {isCashSubtype(subtype) && typedBalance > 0 && (
+          <SelectRow
+            label="Where the money comes from"
+            hint="An account here makes this a transfer from it, so its balance drops too."
+            value={sourceId}
+            onChange={(e) => setSourceId(e.target.value)}
+          >
+            <option value="">Already there (opening balance)</option>
+            {sources.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </SelectRow>
+        )}
         {isDeposit && (
           <TextRow
             label="Matures on"

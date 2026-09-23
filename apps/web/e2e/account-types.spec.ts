@@ -36,3 +36,37 @@ test('a digital wallet and a fund account hold money, and the wallet pays for lu
   await page.goto('/');
   await expect(page.getByTestId('net-worth')).toContainText('8.455.000');
 });
+
+test('a deposit funded from an account moves the money, and says where it came from', async ({ page }) => {
+  await page.goto('/accounts');
+  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
+  await page.getByLabel('Current balance').fill('100000000');
+  await page.getByRole('button', { name: 'Add account' }).click();
+  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+
+  await page.getByLabel('Name', { exact: true }).fill('bluuu');
+  await page.getByLabel('Type').selectOption('time_deposit');
+  await page.getByLabel('Current balance').fill('50000000');
+  // The question is asked only once there is a figure to ask about, and the account it names is the answer.
+  await page.getByLabel('Where the money comes from').selectOption({ label: 'BCA Tahapan' });
+  await page.getByLabel('Matures on').fill('2026-12-02');
+  await page.getByRole('button', { name: 'Add account' }).click();
+
+  // Both balances moved: the bank lost what the deposit holds, and net worth did not gain the money twice.
+  const bank = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) });
+  await expect(bank).toContainText('50.000.000');
+  const deposit = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'bluuu', exact: true }) });
+  await expect(deposit).toContainText('50.000.000');
+  await page.goto('/');
+  await expect(page.getByTestId('net-worth')).toContainText('100.000.000');
+
+  // Its history says Transfer and names both accounts — not an opening balance appearing out of nowhere.
+  await page.goto('/accounts');
+  await page.getByRole('link', { name: 'bluuu', exact: true }).click();
+  const row = page.getByRole('main').getByRole('listitem');
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('Transfer');
+  await expect(row).toContainText('bluuu');
+  await expect(row).toContainText('BCA Tahapan');
+  await expect(row).not.toContainText('Opening balance');
+});
