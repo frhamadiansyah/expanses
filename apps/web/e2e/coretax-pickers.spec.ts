@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openDeposit } from './deposit-maturity';
 
 /**
  * The three ways in, by mouse: an account, an asset, a debt — each chosen in words, each filed under a code
@@ -35,9 +36,9 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   const deposito = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true }) });
   await expect(deposito).toContainText('Matures 1 Mar 2027 · 6,25%');
 
-  // And it can be put right, because a date typed off a certificate is a date that can be mistyped.
-  // Read by the words on it, not by its accessible name: the link names the filing in full for a screen reader.
-  await deposito.getByRole('link').filter({ hasText: /^0104/ }).click();
+  // And it can be put right, because a date typed off a certificate is a date that can be mistyped. The way in is
+  // the deposit's own page, reached from the asset list: the Accounts list shows no tax line to click any more.
+  await openDeposit(page, 'Deposito BCA 6 bulan');
   await expect(page.getByText('Matures 1 Mar 2027 · 6,25%')).toBeVisible();
   await page.getByRole('button', { name: 'Change' }).click();
   await page.getByLabel('Matures on').fill('2027-12-01');
@@ -166,16 +167,23 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true })).toBeVisible();
 
-  await page.goto('/accounts');
-  await expect(page.getByText(/0109 · Setara kas lainnya/)).toBeVisible();
-  await page.getByRole('link', { name: /Setara kas lainnya/ }).click();
-  // The code boxes live on the asset's settings page, behind its gear.
+  // The code boxes live on the asset's settings page, behind its gear — reached from the asset list now that the
+  // Accounts list carries no tax line.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('What it is').selectOption({ label: 'Saving account' });
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Saved.')).toBeVisible();
-  await page.goto('/accounts');
-  await expect(page.getByText(/0102 · Tabungan/)).toBeVisible();
+
+  // 0102 is a current *or* a saving account, and the code itself is what changed. A code is read on the report,
+  // so that is where the change is checked — the same fact the Accounts list used to carry in a second line.
+  const year = new Date().getFullYear();
+  await page.goto('/tax-report');
+  await page.getByLabel('Tax year').selectOption(String(year));
+  await page.getByRole('button', { name: `Start the ${year} report` }).click();
+  await expect(page.getByText('0102').first()).toBeVisible();
+  await expect(page.getByText('0109')).toHaveCount(0);
 });
 
 test('a thing sharing its code with another reads back as itself', async ({ page }) => {
@@ -185,8 +193,9 @@ test('a thing sharing its code with another reads back as itself', async ({ page
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'BCA Tahapan Berjangka', exact: true })).toBeVisible();
 
-  // 0102 is both a current account and a saving account. The account itself says which, and the list opens on it.
-  await page.getByRole('link', { name: /0102 · Tabungan/ }).click();
+  // 0102 is both a current account and a saving account. The account itself says which, and its settings open on it.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: /^BCA Tahapan Berjangka/ }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByLabel('What it is')).toHaveValue('savings');
 

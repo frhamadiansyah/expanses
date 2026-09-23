@@ -7,8 +7,8 @@ import { ROW_PAD_X, ROW_PAD_Y, rowHeight, tapReach } from './metrics';
  * A line of a list whose row carries more than one action, and the actions it carries.
  *
  * The kit's `InsetRow` is one tap target and forbids a button inside itself, which is right for a list of places
- * to go and wrong for a list of things to manage: a category carries four to six actions, an account carries its
- * tax code, the door to its points and Rename/Archive. So those lists are lines on a `Panel` drawn on the kit's
+ * to go and wrong for a list of things to manage: a category carries four to six actions, an account carries the
+ * door to its points and Rename/Archive. So those lists are lines on a `Panel` drawn on the kit's
  * own padding, height, hairline and inks — the same shape to the eye, with the actions wrapping under the name
  * on a phone instead of scrolling sideways, which is what the tables they replaced did.
  *

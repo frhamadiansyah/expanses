@@ -28,7 +28,6 @@ test('restore replaces data only after a safety copy downloads and is confirmed'
   await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
 
   await page.goto('/accounts');
-  // Exact: the account's own "Filed as" line names it too, and a loose name matches both.
   await expect(page.getByRole('link', { name: 'Before backup', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'After backup', exact: true })).toHaveCount(0);
 });

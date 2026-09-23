@@ -56,7 +56,6 @@ test('the backup screen lists the copies the app keeps, and restores one', async
 
   // What the copy held is back, and what was entered after it was taken is not.
   await page.goto('/accounts');
-  // Exact: the row's own "Filed as" link carries the name in its label too.
   await expect(page.getByRole('link', { name: 'In the copy', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Added afterwards', exact: true })).toHaveCount(0);
 

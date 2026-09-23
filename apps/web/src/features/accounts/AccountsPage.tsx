@@ -1,28 +1,27 @@
-import { CASH_ITEMS, cashCodeForSubtype, displayAmount, hartaLabel, type MoneyAccountSubtype } from '@expanses/core';
-import { type AccountRow, type AccountSubtype, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
+import { displayAmount } from '@expanses/core';
+import { type AccountRow, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { depositLine } from '../networth/deposit-terms';
-import { useAssetProfiles, useAssetValues, useDepositTerms } from '../networth/queries';
+import { useAssetValues, useDepositTerms } from '../networth/queries';
 import { Empty, errorMessage, Money } from '../../ui';
 import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, LargeTitle, LineAction, Panel, SCREEN } from '../../ui/native';
 import { moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
 
-/** The seven kinds of account that hold money, as the catalogue names them. Their `id` is the ledger's subtype. */
-const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
-const isCashSubtype = (subtype: AccountSubtype): subtype is MoneyAccountSubtype => CASH_SUBTYPES.has(subtype);
-
 /**
  * One section of the account list.
  *
  * A native list: one group, a line per account with its balance on the right, and the things that can be done to
- * it — the tax code it files under, the points door, Rename and Archive — wrapped under the name rather than
- * pushed into a fifth and sixth column. The table this replaces scrolled sideways on a phone, and a list of what
- * you own is the one place that must not.
+ * it — the points door, Rename and Archive — wrapped under the name rather than pushed into a fifth and sixth
+ * column. The table this replaces scrolled sideways on a phone, and a list of what you own is the one place that
+ * must not.
+ *
+ * The tax code an account files under is *not* here. It is a figure for the report, not for this page, and a row
+ * of four-digit codes under every balance read as noise; the asset's own page still names it, and still changes it.
  */
 function AccountList({
   title,
@@ -51,24 +50,12 @@ function AccountList({
   };
   const invalidate = useInvalidateAll();
   const values = useAssetValues();
-  const profiles = useAssetProfiles();
   const deposits = useDepositTerms();
   const valued = (id: string) => (values.data ?? []).find((row) => row.accountId === id && row.mode !== 'derived');
   /** A deposit's own two facts, the same short line its page prints: the day it comes back and what it pays. */
   const terms = (id: string) => {
     const row = (deposits.data ?? []).find((entry) => entry.accountId === id);
     return row ? depositLine(row) : null;
-  };
-  /**
-   * The code this account files under in the tax report, and what the form calls it. The owner's own choice when
-   * there is a profile; otherwise the default its kind of money account carries, which is what the report uses too.
-   * Nothing for a card or a loan: those are a debt's code, which the debt's own page shows.
-   */
-  const filedAs = (account: AccountRow) => {
-    const chosen = (profiles.data ?? []).find((row) => row.accountId === account.id)?.coretaxCode;
-    const code = chosen ?? (isCashSubtype(account.subtype) ? cashCodeForSubtype(account.subtype) : null);
-    const label = code ? hartaLabel(code) : '';
-    return label ? `${code} · ${label}` : null;
   };
   if (accounts.length === 0) return null;
 
@@ -132,14 +119,7 @@ function AccountList({
                 )
               }
             >
-              {parents.has(account.id) ? (
-                <span className="shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]">Each pocket files its own row</span>
-              ) : filedAs(account) ? (
-                /* The code is never shown while choosing; here it is, and this is where it can be changed. */
-                <LineAction to="/net-worth/assets/$accountId" params={{ accountId: account.id }} label={`Filed as ${filedAs(account)} — ${account.name}`}>
-                  {filedAs(account)}
-                </LineAction>
-              ) : null}
+              {parents.has(account.id) && <span className="shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]">Each pocket files its own row</span>}
               {account.subtype === 'credit_card' && (
                 <LineAction to="/cards/$cardId" params={{ cardId: account.id }}>
                   Set up points

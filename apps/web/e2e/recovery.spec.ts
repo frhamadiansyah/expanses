@@ -59,7 +59,6 @@ test('restore the last good copy brings the data back after corruption', async (
   await Promise.all([page.waitForEvent('load'), restore.click()]);
 
   await page.goto('/accounts');
-  // Exact: the same account's "Filed as" link names it in its own label.
   await expect(page.getByRole('link', { name: 'Rescue me', exact: true })).toBeVisible();
 });
 
