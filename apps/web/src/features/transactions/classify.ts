@@ -7,6 +7,12 @@ export interface Classified {
   amountMinor: number;
   currency: string;
   categoryIds: string[];
+  /**
+   * The money accounts, in the order the money moved: what it left first, what it landed in second. A row
+   * joining these with an arrow reads the way a statement does, and it is the signs that decide, never the
+   * order the entries happen to be written in — a transfer posts [into, out of], a cross-currency one [out of,
+   * into], and a buy [holding, cash], while the money only ever went one way.
+   */
   moneyAccountNames: string[];
 }
 
@@ -15,7 +21,8 @@ export function classify(tx: TransactionView): Classified {
   const expenses = tx.entries.filter((e) => e.accountKind === 'expense');
   const incomes = tx.entries.filter((e) => e.accountKind === 'income');
   const equity = tx.entries.filter((e) => e.accountKind === 'equity');
-  const names = [...new Set(money.map((e) => e.accountName))];
+  // Sorted by sign: the credit (the account the money came out of) first, then the debit it reached.
+  const names = [...new Set([...money].sort((a, b) => a.amountMinor - b.amountMinor).map((e) => e.accountName))];
 
   if (expenses.length > 0) {
     return { type: 'expense', amountMinor: expenses.reduce((s, e) => s + e.amountMinor, 0), currency: expenses[0]!.currency, categoryIds: expenses.map((e) => e.accountId), moneyAccountNames: names };

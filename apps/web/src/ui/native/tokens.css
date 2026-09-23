@@ -38,6 +38,12 @@
   --ph-chevron: #c6c6c8;
 
   /*
+   * The switch's knob: white on the tinted track and white on the grey one, the way iOS keeps it — so it is not
+   * redefined in the dark block, and not the surface token either, which turns near-black at night.
+   */
+  --ph-knob: #ffffff;
+
+  /*
    * A panel that says something in a tone: the banner the install hint sits in, a warning to back up, an error,
    * a confirmation. The inks above are the colours for a statement on the page; these are the colours for a
    * statement on its own tinted ground, which need a different value in the dark — a warning at #b25000 on black

@@ -11,6 +11,7 @@ const accounts = [
   account('bca', 'asset', 'bank', { name: 'BCA Tahapan' }),
   account('octo', 'liability', 'credit_card', { name: 'CIMB Octo' }),
   account('friend', 'asset', 'receivable', { name: 'Dina' }),
+  account('ibkr', 'asset', 'investment', { name: 'Interactive Brokers' }),
   account('food', 'expense', 'category', { name: 'Food & Beverage', systemKey: 'food_beverage' }),
   account('groceries', 'expense', 'category', { name: 'Groceries', parentId: 'food', systemKey: 'groceries' }),
   account('salary', 'income', 'category', { name: 'Salary', systemKey: 'salary' }),
@@ -59,7 +60,22 @@ describe('buildRows', () => {
 
   it('calls money lent to a person lending, not a transfer, and gives it no base amount', () => {
     expect(find(lend.id)).toMatchObject({ type: 'debt', baseMinor: 0 });
-    expect(find(pay.id)).toMatchObject({ type: 'transfer', accountLabel: 'CIMB Octo → BCA Tahapan' });
+    // The two-account line reads the way the money went — what lost it first — whatever order the entries were
+    // written in: a transfer posts [into, out of] and a buy posts [holding, cash].
+    expect(find(pay.id)).toMatchObject({ type: 'transfer', accountLabel: 'BCA Tahapan → CIMB Octo' });
+    expect(find(lend.id)).toMatchObject({ accountLabel: 'BCA Tahapan → Dina' });
+    const flows = buildRows(
+      [
+        tx('2026-09-10', 'Borrowed from Dina', [['bca', 10000000], ['friend', -10000000]]),
+        tx('2026-09-09', 'Bought shares', [['ibkr', 30000000], ['bca', -30100000]]),
+      ],
+      [],
+      accounts,
+      cards,
+    );
+    const label = (description: string) => flows.find((row) => row.description === description)!.accountLabel;
+    expect(label('Borrowed from Dina')).toBe('Dina → BCA Tahapan');
+    expect(label('Bought shares')).toBe('BCA Tahapan → Interactive Brokers');
   });
 
   it('carries a draft with what it still needs', () => {

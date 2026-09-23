@@ -4,7 +4,6 @@ import { cx } from '../index';
 import { type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { type GroupChild, toneClass } from './InsetList';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
-
 /**
  * Primitive 6: the form row.
  *
@@ -17,6 +16,10 @@ import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
  */
 
 const LABEL = 'shrink-0 text-[15px] leading-[20px] text-[var(--ph-ink)]';
+
+/** The switch's capsule, iOS's own size: 51 × 31 with a 27 px knob inset 2 px — the shape a thumb knows. */
+const SWITCH_W = 51;
+const SWITCH_H = 31;
 
 function shell(hasSubtitle: boolean) {
   return { minHeight: rowHeight(hasSubtitle), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` } as const;
@@ -213,13 +216,15 @@ export function DestructiveRow({ label, onClick, position }: GroupChild & { labe
 }
 
 /**
- * A yes-or-no row: the question on the left, the box that answers it on the right.
+ * A yes-or-no row: the question on the left, the pill that answers it on the right.
  *
- * The kit's other form rows put a word, a field or a picker on the right; this one puts the control itself,
- * which is the only shape a checkbox has that is not "a box floating loose on the page beside its sentence" —
- * the shape the kit exists to remove. It lived in `features/networth` because the kit had no toggle and three
- * checkboxes had nowhere to go; being the seventh form row is where it belongs, on the same height, the same
- * separator inset and the same inks as the six above it.
+ * The kit's other form rows put a word, a field or a picker on the right; this one puts the control itself, and
+ * the control is the shape iOS draws a switch in — a capsule with a knob, tinted when on — never a box with a
+ * tick in it, which is a checklist and says “choose me” rather than “this is on”.
+ *
+ * The checkbox is still the real control, laid invisibly over the whole pill exactly as `SelectRow` lays its select
+ * over the word it shows: the label still toggles it, a keyboard still reaches it, and a reader still hears a
+ * checked or unchecked box. What is drawn is the pill.
  */
 export function SwitchRow({
   label,
@@ -234,18 +239,34 @@ export function SwitchRow({
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
-      <div className="flex items-center gap-3" style={{ minHeight: plan.minHeight, padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}>
+      {/* The pill is the row's content, and 31 px of it inside the row's 44 leaves less air above and below than
+          a line of text would: the padding is what keeps a switch row the height of every other row. */}
+      <div className="flex items-center gap-3" style={{ minHeight: plan.minHeight, padding: `${(TAP - SWITCH_H) / 2}px ${ROW_PAD_X}px` }}>
         <label htmlFor={id} className={cx('min-w-0 flex-1 text-[15px] leading-[20px]', toneClass(plan.labelTone))}>
           {label}
         </label>
-        <input
-          id={id}
-          type="checkbox"
-          checked={checked}
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.checked)}
-          className="ph-focus h-[20px] w-[20px] shrink-0 accent-[var(--ph-tint)]"
-        />
+        <span
+          className={cx(
+            'ph-focus-within relative shrink-0 rounded-full transition-colors',
+            checked ? 'bg-[var(--ph-tint)]' : 'bg-[var(--ph-track)]',
+            disabled && 'opacity-40',
+          )}
+          style={{ height: SWITCH_H, width: SWITCH_W }}
+        >
+          <span
+            aria-hidden
+            className={cx('absolute top-[2px] left-[2px] rounded-full bg-[var(--ph-knob)] shadow-[0_2px_5px_rgba(0,0,0,0.18)] transition-transform', checked && 'translate-x-[20px]')}
+            style={{ height: SWITCH_H - 4, width: SWITCH_W - 4 }}
+          />
+          <input
+            id={id}
+            type="checkbox"
+            checked={checked}
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.checked)}
+            className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-full opacity-0 disabled:cursor-default"
+          />
+        </span>
       </div>
       {plan.hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
     </div>
