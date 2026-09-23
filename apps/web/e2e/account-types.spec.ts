@@ -47,7 +47,9 @@ test('a deposit funded from an account moves the money, and says where it came f
 
   // And its ledger shows one transfer naming both accounts, not an opening balance.
   await page.goto('/accounts');
+  // The name opens the deposit's own page; its ledger is the row on it that says so.
   await page.getByRole('link', { name: 'bluuu', exact: true }).click();
+  await page.getByRole('link', { name: /Its transactions/ }).click();
   const row = page.getByRole('main').getByRole('listitem');
   await expect(row).toHaveCount(1);
   await expect(row).toContainText('Transfer');
