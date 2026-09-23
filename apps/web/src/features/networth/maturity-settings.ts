@@ -4,10 +4,10 @@ import { rateBpsFrom, termLabel } from './deposit-terms';
 
 export { termLabel };
 
-export const MATURITY_CHOICES: readonly { id: MaturityChoice; title: string; /** What the deposit's own row reads once this is the answer. */ row: string; subtitle: (payout: string | null) => string }[] = [
-  { id: 'principal', title: 'Roll over the principal', row: 'Roll over, interest out', subtitle: (payout) => `Interest lands in ${payout ?? 'the account below'}` },
-  { id: 'principal_interest', title: 'Roll over principal + interest', row: 'Roll over in full', subtitle: () => 'Nothing lands; the deposit grows' },
-  { id: 'close', title: "Don't roll over", row: "Don't roll over", subtitle: (payout) => `Everything lands in ${payout ?? 'the account below'}` },
+export const MATURITY_CHOICES: readonly { id: MaturityChoice; title: string; subtitle: (payout: string | null) => string }[] = [
+  { id: 'principal', title: 'Roll over the principal', subtitle: (payout) => `Interest lands in ${payout ?? 'the account below'}` },
+  { id: 'principal_interest', title: 'Roll over principal + interest', subtitle: () => 'Nothing lands; the deposit grows' },
+  { id: 'close', title: "Don't roll over", subtitle: (payout) => `Everything lands in ${payout ?? 'the account below'}` },
 ];
 
 /**

@@ -107,21 +107,11 @@ export async function openDeposit(page: Page, name: string) {
   await page.getByRole('link', { name: new RegExp(`^${name}`) }).click();
 }
 
-/**
- * The deposit's "At maturity" row is the door now: the switch and the choices live in the sheet it opens. The row
- * itself reads off or the chosen answer.
- */
-export async function openMaturitySheet(page: Page) {
-  await page.getByTestId('maturity-row').click();
-  await expect(page.getByRole('dialog', { name: 'At maturity' })).toBeVisible();
-}
-
 export async function automate(page: Page, c: Pick<Combo, 'choice' | 'paid' | 'exempt'>, termMonths = '3') {
-  // Interest paid and the term are the deposit's own rows on the page; the sheet holds the decision itself.
+  // Everything is on the deposit's page: the two facts first, then the switch and what its choice needs.
   await page.getByLabel('Interest paid').selectOption(c.paid);
   await page.getByLabel('Term', { exact: true }).selectOption(termMonths);
-  await openMaturitySheet(page);
-  await page.getByLabel('Automate').check();
+  await page.getByLabel('Automate at maturity').check();
   await expect(page.getByTestId('maturity-principal')).toBeVisible();
   await page.getByTestId(`maturity-${c.choice}`).click();
   await expect(page.getByTestId(`maturity-${c.choice}`).getByLabel('Chosen')).toBeVisible();

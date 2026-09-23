@@ -3,7 +3,6 @@ import { type DepositAutomationRow, saveDepositAutomation } from '@expanses/db';
 import { Check } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { Sheet } from '../../app/Sheet';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
@@ -12,9 +11,8 @@ import { MATURITY_CHOICES, payoutChoices, saveQueue, taxBpsFrom, termLabel } fro
 import { useDepositAutomation } from './queries';
 
 /**
- * S1: what happens at maturity is one row on the deposit, reading off or the chosen answer; tapping it opens the
- * sheet that holds the switch and the choices — where this used to lay them all out on the page for a decision
- * made once a year. Off is one row and changes nothing anywhere.
+ * What happens at maturity, on the deposit's own page: one switch, and what the choice needs under it as soon as
+ * it is on. Off is one row and changes nothing anywhere.
  */
 export function MaturitySettings({ accountId, currency }: { accountId: string; currency: string }) {
   const automation = useDepositAutomation(accountId);
@@ -31,7 +29,6 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
    * one save after another, so two quick changes can never send the older settings last.
    */
   const [settings, setSettings] = useState(saved);
-  const [open, setOpen] = useState(false);
   const [taxText, setTaxText] = useState(rateInputText(saved.taxBps) || '0');
   const [error, setError] = useState<unknown>(null);
   // Saves still on their way to the database: the group says so (aria-busy), so nothing reads it half-written.
@@ -83,11 +80,10 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
   }
 
   // Rows as an array: InsetGroup numbers its children with Children.toArray, which does not look inside a fragment.
-  // The sheet holds the decision itself — the switch and the three choices — and what only the choice needs.
   const rows = [
     <SwitchRow
       key="automate"
-      label="Automate"
+      label="Automate at maturity"
       checked={settings.enabled}
       hint="Propose it on the day; nothing posts until you confirm."
       onChange={(enabled) => save({ enabled, payoutAccountId: latest.current.payoutAccountId ?? (enabled ? (choices[0]?.id ?? null) : null) })}
@@ -139,37 +135,24 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
     }
   }
 
+  // The deposit's own facts close the group whatever the switch says; the choice's settings only exist once it is on.
+  rows.push(
+    <SelectRow key="paid" label="Interest paid" value={settings.interestPaid} onChange={(e) => save({ interestPaid: e.target.value as DepositAutomationRow['interestPaid'] })}>
+      <option value="monthly">Monthly</option>
+      <option value="at_maturity">At maturity</option>
+    </SelectRow>,
+    <SelectRow key="term" label="Term" value={String(settings.termMonths)} onChange={(e) => save({ termMonths: Number(e.target.value) as TermMonths })}>
+      {TERM_MONTHS.map((months) => (
+        <option key={months} value={months}>
+          {termLabel(months)}
+        </option>
+      ))}
+    </SelectRow>,
+  );
+
   return (
     <div data-testid="maturity-settings" aria-busy={saving > 0}>
-      {/*
-       * What the deposit pays out and for how long are the deposit's own facts, so they are chosen here, on the
-       * page; the sheet is kept for the decision itself — what happens at maturity.
-       */}
-      <InsetGroup>
-        <InsetRow
-          testId="maturity-row"
-          title="At maturity"
-          value={settings.enabled ? (MATURITY_CHOICES.find((choice) => choice.id === settings.atMaturity)?.row ?? 'On') : 'Off'}
-          valueTone={settings.enabled ? 'tint' : 'ink-3'}
-          onClick={() => setOpen(true)}
-        />
-        <SelectRow label="Interest paid" value={settings.interestPaid} onChange={(e) => save({ interestPaid: e.target.value as DepositAutomationRow['interestPaid'] })}>
-          <option value="monthly">Monthly</option>
-          <option value="at_maturity">At maturity</option>
-        </SelectRow>
-        <SelectRow label="Term" value={String(settings.termMonths)} onChange={(e) => save({ termMonths: Number(e.target.value) as TermMonths })}>
-          {TERM_MONTHS.map((months) => (
-            <option key={months} value={months}>
-              {termLabel(months)}
-            </option>
-          ))}
-        </SelectRow>
-      </InsetGroup>
-      {open && (
-        <Sheet title="At maturity" onClose={() => setOpen(false)} grouped>
-          <InsetGroup>{rows}</InsetGroup>
-        </Sheet>
-      )}
+      <InsetGroup>{rows}</InsetGroup>
       <ErrorBox error={error} />
     </div>
   );

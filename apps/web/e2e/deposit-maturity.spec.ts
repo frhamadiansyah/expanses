@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { at, automate, COMBOS, comboName, confirmEach, expectBalance, HAND_COMBOS, openDeposit, openMaturitySheet, settingsSaved, setUp, startReport, typeInto, walk } from './deposit-maturity';
+import { at, automate, COMBOS, comboName, confirmEach, expectBalance, HAND_COMBOS, openDeposit, settingsSaved, setUp, startReport, typeInto, walk } from './deposit-maturity';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -8,10 +8,8 @@ test.beforeEach(({ page }) => {
 test('is off by default and changes nothing', async ({ page }) => {
   const s = await setUp(page, 'IDR');
   await openDeposit(page, s.depositName);
-  // The row says so without opening anything; the switch behind it says the same.
-  await expect(page.getByTestId('maturity-row')).toContainText('Off');
-  await openMaturitySheet(page);
-  await expect(page.getByLabel('Automate')).not.toBeChecked();
+  // Off is one switch and nothing revealed; the choices are not on the page at all.
+  await expect(page.getByLabel('Automate at maturity')).not.toBeChecked();
   await expect(page.getByTestId('maturity-principal')).toHaveCount(0);
   await page.clock.setSystemTime(at(s.matures));
   await page.goto('/net-worth/assets');
@@ -50,14 +48,11 @@ test('keeps its settings across a reload, and a typed withholding', async ({ pag
   await page.getByLabel('Tax withheld %').press('Tab');
   await settingsSaved(page);
   await page.reload();
-  // The page's own rows read the saved answers without opening anything…
-  await expect(page.getByTestId('maturity-row')).toContainText("Don't roll over");
+  // The switch and the rows read the saved answers, all of them on the page.
+  await expect(page.getByLabel('Automate at maturity')).toBeChecked();
+  await expect(page.getByTestId('maturity-close').getByLabel('Chosen')).toBeVisible();
   await expect(page.getByLabel('Interest paid')).toHaveValue('monthly');
   await expect(page.getByLabel('Term', { exact: true })).toHaveValue('3');
-  // …and the sheet holds the decision itself.
-  await openMaturitySheet(page);
-  await expect(page.getByLabel('Automate')).toBeChecked();
-  await expect(page.getByTestId('maturity-close').getByLabel('Chosen')).toBeVisible();
   await expect(page.getByLabel('Lands in')).toHaveValue(/.+/);
   await expect(page.getByLabel('Tax withheld %')).toHaveValue('12,5');
 });
