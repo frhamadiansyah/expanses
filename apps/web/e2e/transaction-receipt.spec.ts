@@ -1,16 +1,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount, openCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
+import { openNewAsset } from './add-asset';
 import { addTransaction, closeDetails, shareWith } from './add-transaction';
 
 /** A credit card, so there is something to charge a purchase to. */
 async function addCard(page: Page, name = 'BCA Visa') {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openCard(page, { name });
 }
 
 /** One purchase on that card, through the form a user uses. */
@@ -34,11 +32,7 @@ async function openReceipt(page: Page, description: string) {
  * already there, rather than inventing one beside it.
  */
 test('the ⓘ on a row opens the receipt, and the row itself still edits in place', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Visa');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+  await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Visa', category: 'Groceries', amount: '500000' });
@@ -81,16 +75,9 @@ test('the ⓘ on a row opens the receipt, and the row itself still edits in plac
 test('the receipt refuses what every other screen refuses: a trade, and an opening balance', async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('gold');
+  await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await page.getByLabel('Bought on').fill('2026-03-09');
   await page.getByLabel('How much').fill('10');
@@ -183,16 +170,9 @@ test('an edit from the receipt lands on the list, because the edit replaces the 
 /** The purchase a receipt can still turn into a holding, which is the third of the three actions it offers. */
 test('a purchase becomes a holding from the receipt', async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('gold');
+  await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await page.getByLabel('Bought on').fill('2026-03-09');
   await page.getByLabel('How much').fill('10');

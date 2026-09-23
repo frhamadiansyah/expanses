@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -9,12 +10,7 @@ test.beforeEach(({ page }) => {
 const CSV = ['Date,Description,Amount', '09/09/2026,SUPERINDO KEBAYORAN,-250000', '10/09/2026,APOTEK K24,-75000'].join('\n');
 
 async function addAccount(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 }
 
 async function loadCsv(page: Page) {

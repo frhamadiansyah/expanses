@@ -1,12 +1,8 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 async function addBank(page: Page, name: string, balance: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill(balance);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name, balance });
 }
 
 test('restore replaces data only after a safety copy downloads and is confirmed', async ({ page }) => {
@@ -32,6 +28,7 @@ test('restore replaces data only after a safety copy downloads and is confirmed'
   await expect(page.getByRole('heading', { name: 'Backup', exact: true })).toBeVisible();
 
   await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Before backup' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'After backup' })).toHaveCount(0);
+  // Exact: the account's own "Filed as" line names it too, and a loose name matches both.
+  await expect(page.getByRole('link', { name: 'Before backup', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'After backup', exact: true })).toHaveCount(0);
 });

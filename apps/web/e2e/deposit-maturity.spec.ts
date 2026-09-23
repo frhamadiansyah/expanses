@@ -8,9 +8,10 @@ test.beforeEach(({ page }) => {
 test('is off by default and changes nothing', async ({ page }) => {
   const s = await setUp(page, 'IDR');
   await openDeposit(page, s.depositName);
-  // Off is one switch and nothing revealed; the choices are not on the page at all.
+  // Off is the switch alone; nothing it reveals is on the page at all.
   await expect(page.getByLabel('Automate at maturity')).not.toBeChecked();
-  await expect(page.getByTestId('maturity-principal')).toHaveCount(0);
+  await expect(page.getByLabel('At maturity', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Interest paid')).toHaveCount(0);
   await page.clock.setSystemTime(at(s.matures));
   await page.goto('/net-worth/assets');
   await expect(page.getByRole('link', { name: /^BCA Deposito/ })).not.toContainText('Due');
@@ -50,47 +51,61 @@ test('keeps its settings across a reload, and a typed withholding', async ({ pag
   await page.reload();
   // The switch and the rows read the saved answers, all of them on the page.
   await expect(page.getByLabel('Automate at maturity')).toBeChecked();
-  await expect(page.getByTestId('maturity-close').getByLabel('Chosen')).toBeVisible();
+  await expect(page.getByLabel('At maturity', { exact: true })).toHaveValue('close');
   await expect(page.getByLabel('Interest paid')).toHaveValue('monthly');
   await expect(page.getByLabel('Term', { exact: true })).toHaveValue('3');
   await expect(page.getByLabel('Lands in')).toHaveValue(/.+/);
   await expect(page.getByLabel('Tax withheld %')).toHaveValue('12,5');
 });
 
-test('everything rolling over pins interest paid, the tax is its own group, and the term sits with the deposit terms', async ({ page }) => {
+test('the switch opens one picker per question, and an answer that cannot apply is frozen, not removed', async ({ page }) => {
   const s = await setUp(page, 'IDR');
   await openDeposit(page, s.depositName);
   const group = page.getByTestId('maturity-settings');
 
-  // The term is the deposit's own fact now: it reads and writes on the terms card, not in this group.
-  await expect(group).not.toContainText('Term');
-  await page.getByLabel('Term', { exact: true }).selectOption('6');
-  await expect(page.getByTestId('deposit-term')).toHaveAttribute('aria-busy', 'false');
-  await page.reload();
-  await expect(page.getByLabel('Term', { exact: true })).toHaveValue('6');
+  // Off: the switch alone, and the term still a fact of the deposit, on its own card.
+  await expect(group).not.toContainText('At maturity');
+  await expect(group).not.toContainText('Interest paid');
+  await expect(page.getByLabel('Term', { exact: true })).toBeVisible();
 
   await page.getByLabel('Automate at maturity').check();
   await settingsSaved(page);
-  // The tax is asked in its own section, under the switch that is the only thing that makes it matter.
+  // One picker for the three answers, one for the interest, one for where it lands — and the tax in its own group.
+  await expect(page.getByLabel('At maturity', { exact: true })).toHaveValue('principal');
+  await expect(page.getByLabel('Interest paid')).toHaveValue('at_maturity');
+  await expect(page.getByLabel('Lands in')).toBeVisible();
+  await expect(page.getByLabel('Keep the rate when it rolls over')).toBeVisible();
   await expect(group).toContainText('Tax-free deposit');
-  await expect(page.getByLabel('Tax withheld %')).toHaveValue('20');
 
-  // Monthly is on offer while interest is paid out…
+  // Monthly is pickable while something can be paid out…
   await page.getByLabel('Interest paid').selectOption('monthly');
   await settingsSaved(page);
-  // …and everything rolling over leaves nothing to pay during the term, so the row states the only answer there is.
-  await page.getByTestId('maturity-principal_interest').click();
-  await settingsSaved(page);
-  await expect(page.getByLabel('Interest paid')).toHaveCount(0);
-  await expect(group).toContainText('Interest paid');
-  await expect(group).toContainText('At maturity');
-
-  // Pinned in the database, not just hidden on the screen: a choice that pays out again shows what was stored.
-  await page.reload();
-  await expect(page.getByLabel('Interest paid')).toHaveCount(0);
-  await page.getByTestId('maturity-close').click();
+  // …and freezes — still listed, not pickable — once everything rolls over; nothing lands anywhere, and it says so.
+  await page.getByLabel('At maturity', { exact: true }).selectOption('principal_interest');
   await settingsSaved(page);
   await expect(page.getByLabel('Interest paid')).toHaveValue('at_maturity');
+  await expect(page.getByLabel('Interest paid').locator('option[value="monthly"]')).toBeDisabled();
+  await expect(page.getByLabel('Lands in')).toContainText('Nothing lands');
+  await expect(page.getByLabel('Lands in')).toBeDisabled();
+  // A roll-over still asks about the rate.
+  await expect(page.getByLabel('Keep the rate when it rolls over')).toBeVisible();
+
+  // A close rolls nothing over, so the rate question stands down and the payout comes back.
+  await page.getByLabel('At maturity', { exact: true }).selectOption('close');
+  await settingsSaved(page);
+  await expect(page.getByLabel('Keep the rate when it rolls over')).toHaveCount(0);
+  await expect(page.getByLabel('Lands in')).toBeEnabled();
+  await expect(page.getByLabel('Interest paid').locator('option[value="monthly"]')).toBeEnabled();
+
+  // The freeze is a stored answer, not a drawn one: it survives the reload, and monthly can be picked again after.
+  await page.reload();
+  await expect(page.getByLabel('At maturity', { exact: true })).toHaveValue('close');
+  await expect(page.getByLabel('Interest paid')).toHaveValue('at_maturity');
+  await expect(page.getByLabel('Lands in')).toHaveValue(/.+/);
+  await page.getByLabel('Interest paid').selectOption('monthly');
+  await settingsSaved(page);
+  await page.reload();
+  await expect(page.getByLabel('Interest paid')).toHaveValue('monthly');
 });
 
 test('proposes on the day and posts what was confirmed, with a new term', async ({ page }) => {

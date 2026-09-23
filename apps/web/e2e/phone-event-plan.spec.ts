@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { expectCover, expectKitFigures, fillItem, TODAY } from './event-plan';
 import { addTransaction } from './add-transaction';
 
@@ -40,12 +41,7 @@ test.beforeEach(({ page }) => {
 });
 
 test('an event is planned, bought from and settled with a thumb', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 
   // Recorded before the event exists, so there is a real receipt to share out between two items later on.
   await page.goto('/cards');
@@ -182,12 +178,7 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
  * to a screen that never needed it.
  */
 test('a receipt answering more items than a phone row can hold says three and counts the rest', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 
   await page.goto('/cards');
   await settle(page);

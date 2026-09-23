@@ -4,10 +4,11 @@ import { rateBpsFrom, termLabel } from './deposit-terms';
 
 export { termLabel };
 
-export const MATURITY_CHOICES: readonly { id: MaturityChoice; title: string; subtitle: (payout: string | null) => string }[] = [
-  { id: 'principal', title: 'Roll over the principal', subtitle: (payout) => `Interest lands in ${payout ?? 'the account below'}` },
-  { id: 'principal_interest', title: 'Roll over principal + interest', subtitle: () => 'Nothing lands; the deposit grows' },
-  { id: 'close', title: "Don't roll over", subtitle: (payout) => `Everything lands in ${payout ?? 'the account below'}` },
+/** The three things that can happen when the term ends: the picker's own options, in the order it lists them. */
+export const MATURITY_CHOICES: readonly { id: MaturityChoice; title: string }[] = [
+  { id: 'principal', title: 'Roll over the principal' },
+  { id: 'principal_interest', title: 'Roll over principal + interest' },
+  { id: 'close', title: "Don't roll over" },
 ];
 
 /**

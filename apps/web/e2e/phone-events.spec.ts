@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { planFor, TODAY } from './event-plan';
 
 test.beforeEach(({ page }) => {
@@ -15,12 +16,7 @@ async function record(page: Page, description: string, category: string, amount:
 }
 
 test('an event reads like Cashflow: where it went, and a swipe to what it planned', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('90000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '90000000' });
 
   await page.goto('/events');
   await page.getByRole('button', { name: 'New event' }).click();

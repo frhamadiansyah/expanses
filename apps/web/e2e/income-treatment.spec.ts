@@ -1,4 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
+import { openNewAsset } from './add-asset';
+import { addHoldingFlow } from './securities';
 
 /** Trades recorded by these tests are dated this year, so this is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -8,20 +11,19 @@ test.beforeEach(({ page }) => {
 });
 
 async function addBankAsset(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('cash');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Open date').fill(`${YEAR}-01-02`);
-  await page.getByLabel(/Balance today/).fill('50000000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
-  await expect(page.getByRole('link', { name: /BCA Tahapan/ })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000', opened: `${YEAR}-01-02` });
 }
 
-async function addHolding(page: Page, kind: string, name: string, cost: string) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption(kind);
+/** A listed holding owned before the app, paid from Opening Balances. */
+async function addStock(page: Page) {
+  await addHoldingFlow(page, { search: 'BBRI', pick: 'BBRI', broker: 'No broker', quantity: '100', price: '19.000', paidFrom: 'Owned before this app', date: `${YEAR}-02-10` });
+  await page.getByRole('button', { name: 'Add holding' }).click();
+  await expect(page.getByRole('link', { name: /BBRI/ })).toBeVisible();
+}
+
+/** A bond named by hand, through the picker's own form. */
+async function addBond(page: Page, name: string, cost: string) {
+  await openNewAsset(page, 'Government bonds (ORI, SBSN)');
   await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Bought on').fill(`${YEAR}-02-10`);
   await page.getByLabel('How much').fill('100');
@@ -34,7 +36,7 @@ async function addHolding(page: Page, kind: string, name: string, cost: string) 
 async function recordDividend(page: Page) {
   await page.goto('/net-worth/trades');
   await page.getByLabel('What happened').selectOption('income');
-  await page.getByLabel('Holding').selectOption({ label: 'BBRI shares' });
+  await page.getByLabel('Holding').selectOption({ label: 'BBRI' });
   await page.getByLabel('Date').fill(`${YEAR}-06-10`);
   await page.getByLabel('Money account').selectOption({ label: 'BCA Tahapan' });
   await page.getByLabel('Amount before tax (IDR)').fill('1000000');
@@ -52,7 +54,7 @@ async function startReport(page: Page) {
 
 test('a dividend whose holding says nothing is set apart, not counted into a band', async ({ page }) => {
   await addBankAsset(page);
-  await addHolding(page, 'stock', 'BBRI shares', '1900000');
+  await addStock(page);
   await recordDividend(page);
 
   await startReport(page);
@@ -64,12 +66,12 @@ test('a dividend whose holding says nothing is set apart, not counted into a ban
 
 test('a reinvested part leaves the tax behind on the rest', async ({ page }) => {
   await addBankAsset(page);
-  await addHolding(page, 'stock', 'BBRI shares', '1900000');
-  await addHolding(page, 'bond', 'SBN ORI025', '5000000');
+  await addStock(page);
+  await addBond(page, 'SBN ORI025', '5000000');
 
   // How its income is taxed belongs to the holding: this one is final. It is set on the holding's own settings page.
   await page.goto('/net-worth/assets');
-  await page.getByRole('link', { name: /BBRI shares/ }).click();
+  await page.getByRole('link', { name: /BBRI/ }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('How its income is taxed').selectOption('final');
   await page.getByRole('button', { name: 'Save settings' }).click();
@@ -87,7 +89,7 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
 
   // The reinvested part is reported with no tax; the rest keeps the holding's treatment and all of it.
   // An income line is a row of the kit's group now, not a list item, so the row is named rather than the tag.
-  const notObject = page.getByTestId('income-row').filter({ hasText: 'BBRI shares' }).filter({ hasText: 'reinvested into SBN ORI025' });
+  const notObject = page.getByTestId('income-row').filter({ hasText: 'BBRI' }).filter({ hasText: 'reinvested into SBN ORI025' });
   await expect(notObject).toContainText('400.000');
   // Coretax works the tax out from the gross, so no row carries a tax figure of its own.
   await expect(notObject).not.toContainText('tax');
@@ -95,7 +97,7 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
   await expect(page.getByRole('heading', { name: /Tidak termasuk objek pajak/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Final tax/ })).toBeVisible();
 
-  const final = page.getByTestId('income-row').filter({ hasText: 'BBRI shares' }).filter({ hasNotText: 'reinvested into' });
+  const final = page.getByTestId('income-row').filter({ hasText: 'BBRI' }).filter({ hasNotText: 'reinvested into' });
   await expect(final).toContainText('600.000');
 
   // All of the withheld tax stays with the part still taxable, and only the band subtotal shows it.

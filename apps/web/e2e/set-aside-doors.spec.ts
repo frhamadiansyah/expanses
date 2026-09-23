@@ -1,4 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { openAccount, openCard } from './accounts';
+import { openNewAsset } from './add-asset';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
 
 /*
@@ -33,11 +35,7 @@ async function borrowFromEmergencyFund(scope: ReturnType<Page['locator']>) {
 // ── Cards ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 async function addCard(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('BCA Visa');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+  await openCard(page, { name: 'BCA Visa' });
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   // The 31st is clamped to each month's last day, so today is always inside the current statement.
@@ -60,7 +58,7 @@ async function buyOnCard(page: Page, note: string, amount: string, on: string) {
   await expect(form).toHaveCount(0);
 }
 
-async function openCard(page: Page) {
+async function openCardPage(page: Page) {
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
 }
@@ -69,7 +67,7 @@ test('paying the card bill from Jenius asks, and the Emergency fund lends the 1.
   await jeniusWithTwoGoals(page);
   await addCard(page);
   await buyOnCard(page, 'Laptop', '6800000', LAST_MONTH);
-  await openCard(page);
+  await openCardPage(page);
 
   const tile = page.getByTestId('tile-left-to-pay');
   // Opened from the Wallet stack, the Unpaid tile's own Pay opens the payment form inside the tile.
@@ -88,7 +86,7 @@ test('paying chosen purchases now from Jenius asks the same question', async ({ 
   await jeniusWithTwoGoals(page);
   await addCard(page);
   await buyOnCard(page, 'Laptop', '6800000', TODAY);
-  await openCard(page);
+  await openCardPage(page);
 
   await page.getByLabel('Pay Laptop').check();
   await expect(page.getByText(/1\.800\.000 more than is free/)).toBeVisible();
@@ -191,12 +189,7 @@ test('paying several bills with "Yes" counts the whole paid total against the go
 // ── Loans ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 async function addKpr(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('KPR Bintaro');
-  await page.getByLabel('Type').selectOption('loan');
-  await page.getByLabel('Amount owed now').pressSequentially('700000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'KPR Bintaro', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'loan', name: 'KPR Bintaro', balance: '700000000' });
   // The terms are written on the loan's own page; the list is how the loan is reached, and the page it ends on.
   await page.goto('/net-worth/loans');
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
@@ -310,9 +303,7 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
 // ── Buys ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 async function addGold(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('gold');
+  await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).pressSequentially('Antam gold bars');
   await page.getByLabel('Bought on').fill('2026-03-09');
   await page.getByLabel('How much').pressSequentially('10');

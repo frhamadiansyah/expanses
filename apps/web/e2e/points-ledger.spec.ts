@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardSection } from './card-section';
 
@@ -8,11 +9,7 @@ test.beforeEach(({ page }) => {
 
 /** A card earning 1 point per Rp 2.500, with one purchase on it. */
 async function cardWithAPurchase(page: Page, on?: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('CIMB Octo');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'CIMB Octo' })).toBeVisible();
+  await openCard(page, { name: 'CIMB Octo' });
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'CIMB Octo' }).click();

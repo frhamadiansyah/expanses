@@ -1,16 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
 async function addWallet(page: Page, name: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name, balance: '20000000' });
 }
 
 /** Bills are set up on their own page. Out on the 1st unless told otherwise, so the bill is always out. */
@@ -299,12 +295,7 @@ test('Pay several names the bill it recorded, not the one first picked', async (
 
 test('a bill paid from a dollar account keeps its amount through an edit', async ({ page }) => {
   await addWallet(page, 'BCA Tahapan');
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('Wise USD');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Currency').selectOption('USD');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Wise USD', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD' });
 
   await page.goto('/bills/new');
   await page.getByLabel('Name', { exact: true }).fill('Cloud storage');

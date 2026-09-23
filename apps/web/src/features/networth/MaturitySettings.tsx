@@ -1,11 +1,10 @@
-import { isoDate, needsPayout } from '@expanses/core';
+import { isoDate } from '@expanses/core';
 import { type DepositAutomationRow, saveDepositAutomation } from '@expanses/db';
-import { Check } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, ReadOnlyRow, SelectRow, SwitchRow, TextRow } from '../../ui/native';
+import { InsetGroup, SelectRow, SwitchRow, TextRow } from '../../ui/native';
 import { rateInputText } from './deposit-terms';
 import { MATURITY_CHOICES, payoutChoices, saveQueue, taxBpsFrom } from './maturity-settings';
 import { useDepositAutomation } from './queries';
@@ -38,7 +37,6 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
   const latest = useRef(saved);
 
   const choices = payoutChoices(accounts.data ?? [], currency, settings.accountId);
-  const payoutName = choices.find((account) => account.id === settings.payoutAccountId)?.name ?? null;
 
   function save(change: Partial<DepositAutomationRow>) {
     const next = { ...latest.current, ...change };
@@ -90,59 +88,63 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
   ];
   if (settings.enabled) {
     rows.push(
-      ...MATURITY_CHOICES.map((choice) => (
-        <InsetRow
-          key={choice.id}
-          testId={`maturity-${choice.id}`}
-          title={choice.title}
-          subtitle={choice.subtitle(payoutName)}
-          value={settings.atMaturity === choice.id ? <Check size={18} aria-label="Chosen" className="text-[var(--ph-tint)]" /> : undefined}
-          chevron={false}
-          onClick={() =>
-            save({
-              atMaturity: choice.id,
-              // Everything rolls over, so nothing can be paid out during the term: the two answers cannot disagree.
-              ...(choice.id === 'principal_interest' ? { interestPaid: 'at_maturity' as const } : {}),
-            })
-          }
-        />
-      )),
-    );
-    if (needsPayout(settings.atMaturity)) {
-      rows.push(
-        <SelectRow key="payout" label="Lands in" value={settings.payoutAccountId ?? ''} onChange={(e) => save({ payoutAccountId: e.target.value || null })}>
-          {/* Nothing chosen yet reads as nothing chosen, not as the first account, which was never saved. */}
-          {(choices.length === 0 || settings.payoutAccountId === null) && (
-            <option value="">{choices.length === 0 ? `No account holds ${currency}` : 'Choose one'}</option>
-          )}
-          {choices.map((account) => (
+      // One picker for the three things that can happen, instead of three rows claiming to be a list.
+      <SelectRow
+        key="maturity"
+        label="At maturity"
+        value={settings.atMaturity}
+        onChange={(e) => {
+          const atMaturity = e.target.value as DepositAutomationRow['atMaturity'];
+          // Everything rolling over leaves nothing to pay out during the term: the interest answer is pinned by it.
+          save({ atMaturity, ...(atMaturity === 'principal_interest' ? { interestPaid: 'at_maturity' as const } : {}) });
+        }}
+      >
+        {MATURITY_CHOICES.map((choice) => (
+          <option key={choice.id} value={choice.id}>
+            {choice.title}
+          </option>
+        ))}
+      </SelectRow>,
+      <SelectRow
+        key="paid"
+        label="Interest paid"
+        value={settings.interestPaid}
+        onChange={(e) => save({ interestPaid: e.target.value as DepositAutomationRow['interestPaid'] })}
+      >
+        {/* Frozen, not hidden: with everything rolling over there is nothing to pay out during the term. */}
+        <option value="monthly" disabled={settings.atMaturity === 'principal_interest'}>
+          Monthly
+        </option>
+        <option value="at_maturity">At maturity</option>
+      </SelectRow>,
+      // Shown whatever the choice, as one answer or the other: an account it lands in, or nothing that lands.
+      <SelectRow
+        key="payout"
+        label="Lands in"
+        value={settings.atMaturity === 'principal_interest' ? '' : (settings.payoutAccountId ?? '')}
+        disabled={settings.atMaturity === 'principal_interest'}
+        onChange={(e) => save({ payoutAccountId: e.target.value || null })}
+      >
+        {settings.atMaturity === 'principal_interest' && <option value="">Nothing lands</option>}
+        {/* Nothing chosen yet reads as nothing chosen, not as the first account, which was never saved. */}
+        {settings.atMaturity !== 'principal_interest' && (choices.length === 0 || settings.payoutAccountId === null) && (
+          <option value="">{choices.length === 0 ? `No account holds ${currency}` : 'Choose one'}</option>
+        )}
+        {settings.atMaturity !== 'principal_interest' &&
+          choices.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
             </option>
           ))}
-        </SelectRow>,
+      </SelectRow>,
+    );
+    // Nothing rolls over on a close, so there is no rate to carry: the question stands only for the two roll-overs.
+    if (settings.atMaturity !== 'close') {
+      rows.push(
+        <SwitchRow key="keep" label="Keep the rate when it rolls over" checked={settings.keepRate} onChange={(keepRate) => save({ keepRate })} />,
       );
     }
-    rows.push(
-      <SwitchRow key="keep" label="Keep the rate when it rolls over" checked={settings.keepRate} onChange={(keepRate) => save({ keepRate })} />,
-    );
   }
-
-  /*
-   * The deposit's own facts close the group whatever the switch says; the choice's settings only exist once it is
-   * on. Interest paid is the one of the two the choice can answer by itself: with everything rolling over there is
-   * no monthly payout to choose, so the row states the answer instead of offering one that would contradict it.
-   */
-  rows.push(
-    settings.atMaturity === 'principal_interest' ? (
-      <ReadOnlyRow key="paid" label="Interest paid" value="At maturity" />
-    ) : (
-      <SelectRow key="paid" label="Interest paid" value={settings.interestPaid} onChange={(e) => save({ interestPaid: e.target.value as DepositAutomationRow['interestPaid'] })}>
-        <option value="monthly">Monthly</option>
-        <option value="at_maturity">At maturity</option>
-      </SelectRow>
-    ),
-  );
 
   // The tax the bank withholds is the deposit's own, not a part of what its maturity does: its own group, under the
   // switch that is the only thing that can make it matter (interest is posted by the automation, and nothing else).
@@ -161,6 +163,12 @@ function SettingsGroup({ saved, currency }: { saved: DepositAutomationRow; curre
       ]
     : null;
 
+  /*
+   * The decision, and only the decision: the switch, then one picker per question it raises — what happens at
+   * maturity, how the interest is paid during the term, where the money lands, and whether the rate carries on.
+   * The deposit's own facts (its rate, its date, its term) live on the Deposit terms card, and what the bank
+   * withholds under Tax: a row belongs to the question it answers, and none of these three answer each other's.
+   */
   return (
     <div data-testid="maturity-settings" aria-busy={saving > 0}>
       <InsetGroup>{rows}</InsetGroup>

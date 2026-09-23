@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 /**
  * Lend & borrow at 390 px: the mockup's segmented control, one side at a time.
@@ -18,12 +19,7 @@ async function type(page: Page, label: string | RegExp, value: string) {
 
 /** One person each way: Andi owes you Rp 1.000.000, you owe Dewi Rp 750.000. */
 async function twoPeople(page: Page) {
-  await page.goto('/accounts');
-  await type(page, 'Name', 'BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await type(page, 'Current balance', '50000000');
-  await page.getByRole('button', { name: 'Add account' }).tap();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 
   await page.goto('/net-worth/lend-borrow');
   await page.getByRole('button', { name: 'Add a loan' }).tap();

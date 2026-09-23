@@ -59,7 +59,8 @@ test('restore the last good copy brings the data back after corruption', async (
   await Promise.all([page.waitForEvent('load'), restore.click()]);
 
   await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Rescue me' })).toBeVisible();
+  // Exact: the same account's "Filed as" link names it in its own label.
+  await expect(page.getByRole('link', { name: 'Rescue me', exact: true })).toBeVisible();
 });
 
 /**
@@ -81,7 +82,7 @@ test('the last good copy skips the copy taken of the corruption', async ({ page 
   await expect(page.getByRole('heading', { name: CORRUPT_HEADLINE, exact: true })).toBeVisible();
   await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: /Restore the last good copy/ }).click()]);
   await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Rescue me' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Rescue me', exact: true })).toBeVisible();
   // Two copies now: the day's, and the undo taken of the corrupt file a moment ago. Both have to be copies
   // that could actually be put back — a name with nothing behind it would satisfy a count and no user.
   await expect.poll(async () => (await restorableCopies(page)).length).toBeGreaterThanOrEqual(2);
@@ -100,7 +101,7 @@ test('the last good copy skips the copy taken of the corruption', async ({ page 
   // And the big button hands back the data, not the copy of the corruption taken since.
   await Promise.all([page.waitForEvent('load'), restore.click()]);
   await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Rescue me' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Rescue me', exact: true })).toBeVisible();
 });
 
 /**
@@ -129,7 +130,7 @@ test('a second tab says so plainly, and offers nothing that cannot work', async 
 
   // And the first tab was never disturbed by any of it.
   await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Open in the first tab' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open in the first tab', exact: true })).toBeVisible();
   await second.close();
 });
 
@@ -171,8 +172,9 @@ test('start fresh still empties the device when the engine will not do the wipe'
   // opened on may have had a copy of its own taken since; that one is not it.)
   expect(await safetyCopies(page)).not.toContain(copy);
   await page.goto('/accounts');
-  await expect(page.getByRole('button', { name: 'Add account' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'About to go' })).toHaveCount(0);
+  // The corner action is a link to the picker: the inline form that used to make it a button is gone.
+  await expect(page.getByRole('link', { name: 'Add account' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'About to go', exact: true })).toHaveCount(0);
 });
 
 /**
@@ -201,8 +203,8 @@ test('start fresh needs two presses, says what it deletes, and empties the devic
   await Promise.all([page.waitForEvent('load'), confirm.click()]);
 
   await page.goto('/accounts');
-  await expect(page.getByRole('button', { name: 'Add account' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'About to go' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Add account' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'About to go', exact: true })).toHaveCount(0);
 });
 
 test('start fresh from the recovery tools empties a device whose file will not open', async ({ page }) => {
@@ -221,8 +223,8 @@ test('start fresh from the recovery tools empties a device whose file will not o
 
   await page.goto('/accounts');
   // The app opens rather than falling back into recovery: a device that has never run Expanses.
-  await expect(page.getByRole('button', { name: 'Add account' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'About to go' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Add account' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'About to go', exact: true })).toHaveCount(0);
   // A clean slate is clean: the copy of the old data went with the pool, not just the database the VFS
   // owns. (A fresh copy of the new, empty database may already have been taken — that one is not it.)
   expect(await safetyCopies(page)).not.toContain(copy);
@@ -352,11 +354,14 @@ test('a long update says which step it is on, then offers a backup of the update
    * promise is for.
    */
   await page.getByRole('navigation').getByRole('link', { name: 'Accounts', exact: true }).click();
-  await page.getByLabel('Name', { exact: true }).fill('Entered after the update');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('1000000');
+  // Deliberately not the shared walk: that one is a `goto`, and a reload is the very thing this test is about.
+  // The link is walked in-app, so the open that entered the money is still the open the card belongs to.
+  await page.getByRole('link', { name: 'Add account' }).click();
+  await page.getByRole('button', { name: 'Current account' }).click();
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Entered after the update');
+  await page.getByLabel('Balance now').pressSequentially('1000000');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Entered after the update' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Entered after the update', exact: true })).toBeVisible();
 
   const reminder = page.getByText('You have not backed up yet.');
   await expect(reminder).toHaveCount(0);
@@ -378,10 +383,12 @@ test('an open with nothing to update shows no progress screen', async ({ page })
   await addBank(page, 'Nothing to do', '1000000');
 
   await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Nothing to do' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Nothing to do', exact: true })).toBeVisible();
   const seen = await whatWasOnScreen(page);
   // The watcher was awake for this load — otherwise the three assertions below would pass on an empty list.
-  expect(seen.some((text) => text.includes('Add account')), `screens seen: ${seen.join(' | ')}`).toBe(true);
+  // The list's own row is the proof: the corner's `+` is a glyph with a label, so "Add account" is not on screen
+  // to look for any more.
+  expect(seen.some((text) => text.includes('Nothing to do')), `screens seen: ${seen.join(' | ')}`).toBe(true);
   expect(seen.filter((text) => text.includes('Updating your data…')), `screens seen: ${seen.join(' | ')}`).toEqual([]);
   expect(seen.filter((text) => text.includes('Taking a copy first…'))).toEqual([]);
   expect(seen.filter((text) => text.includes('Checking your data…'))).toEqual([]);
@@ -551,6 +558,6 @@ test('a screen that crashes lets go of the engine, so the copy it offers can rea
   // The copy really went back: the app reopens on it, with the row that predates the copy and without
   // the one entered after it. No OPFS exception, and nothing left on the screen to say there was one.
   await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Entered before the copy' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Entered after the copy' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Entered before the copy', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Entered after the copy', exact: true })).toHaveCount(0);
 });

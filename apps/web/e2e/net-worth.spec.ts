@@ -1,23 +1,19 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
+import { openNewAsset } from './add-asset';
 import { forgetRates } from './pockets';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
+/** The label the old inline form used went with it; the kind decides what the picker asks for now. */
 async function addAccount(page: Page, name: string, type: string, balanceLabel: string, amount: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption(type);
-  await page.getByLabel(balanceLabel).fill(amount);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: type, name, balance: amount });
 }
 
 async function addGold(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('gold');
+  await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await page.getByLabel('Bought on').fill('2026-03-09');
   await page.getByLabel('How much').fill('10');
@@ -107,15 +103,8 @@ test('every net-worth section tab is a real link, so it can be opened in a new t
 test('an empty account in a currency with no rate does not stop net worth: zero needs no rate', async ({ page }) => {
   // Offline: no rate can be fetched, and none was ever typed for USD — nor is one needed for an empty account.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Rupiah Saver');
-  await page.getByLabel('Current balance').pressSequentially('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Rupiah Saver', exact: true })).toBeVisible();
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Dollar Saver', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'Rupiah Saver', balance: '50000000' });
+  await openAccount(page, { subtype: 'bank', name: 'Dollar Saver', currency: 'USD' });
 
   await page.goto('/');
   await expect(page.getByTestId('net-worth')).toContainText('50.000.000');
@@ -129,17 +118,8 @@ test('an empty account in a currency with no rate does not stop net worth: zero 
 
 test('a currency with no rate stops net worth, the balance sheet and the ratios, and is named — never counted as 0', async ({ page }, testInfo) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Rupiah Saver');
-  await page.getByLabel('Current balance').pressSequentially('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Rupiah Saver', exact: true })).toBeVisible();
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
-  await page.getByLabel('Current balance').pressSequentially('1000');
-  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Dollar Saver', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'Rupiah Saver', balance: '50000000' });
+  await openAccount(page, { subtype: 'bank', name: 'Dollar Saver', currency: 'USD', balance: '1000', rate: '16250' });
   // $1.000 held, and then no USD rate anywhere on the device.
   await forgetRates(page, testInfo.outputPath('no-rates.sqlite3'));
 

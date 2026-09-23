@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openAccount } from './accounts';
 import { openAmount } from './add-transaction';
 import { openGoalForm } from './goals';
 
@@ -44,15 +45,9 @@ export async function typeAmount(page: Page, form: Locator, amount: string) {
   await input.press('Tab');
 }
 
+/** A money account, opened through the picker — the same walk the Accounts page's `+` takes. */
 export async function addMoneyAccount(page: Page, name: string, subtype: string, balance: string, currency = 'IDR', rate?: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially(name);
-  await page.getByLabel('Type').selectOption(subtype);
-  if (currency !== 'IDR') await page.getByLabel('Currency').selectOption(currency);
-  await page.getByLabel('Current balance').pressSequentially(balance);
-  if (rate) await page.getByLabel(/^Rate:/).pressSequentially(rate);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype, name, balance, currency, rate });
 }
 
 export async function addGoal(page: Page, name: string, amount: string, dueOn = '2027-12-31') {

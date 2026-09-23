@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { MORE_GROUPS, REACHABLE, TABS } from '../src/app/nav';
+import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 
 /** Anything a finger is meant to hit must be at least this tall or wide. */
@@ -57,12 +58,7 @@ test('the account sheet opens a screen that had no phone route before, and closi
 });
 
 test('a purchase is recorded from the add button without leaving the screen', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('5000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '5000000' });
 
   await page.goto('/cards');
   await settle(page);
@@ -102,12 +98,7 @@ test('the phone header adds, searches and filters from three round buttons', asy
 });
 
 test('the month’s chart leads the list, and a category opens as its own screen', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('9000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '9000000' });
 
   await page.goto('/transactions');
   await settle(page);

@@ -56,8 +56,9 @@ test('the backup screen lists the copies the app keeps, and restores one', async
 
   // What the copy held is back, and what was entered after it was taken is not.
   await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'In the copy' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Added afterwards' })).toHaveCount(0);
+  // Exact: the row's own "Filed as" link carries the name in its label too.
+  await expect(page.getByRole('link', { name: 'In the copy', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Added afterwards', exact: true })).toHaveCount(0);
 
   /*
    * And the restore itself is undoable. A restore from the working app is the common one — the recovery

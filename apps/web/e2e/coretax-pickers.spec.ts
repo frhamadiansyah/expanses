@@ -25,18 +25,19 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByLabel('Name', { exact: true }).fill('Deposito BCA 6 bulan');
   await page.getByLabel('Balance now').fill('100000000');
   // Every money account is asked which currency it holds, a deposit included: money abroad is ordinary.
-  await expect(page.getByLabel('Currency')).toBeVisible();
+  await expect(page.getByLabel('Currency', { exact: true })).toBeVisible();
   await page.getByLabel('Matures on').fill('2027-03-01');
   await page.getByLabel('Interest rate').fill('6,25');
   await page.getByRole('button', { name: 'Add account' }).click();
   await expect(page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true })).toBeVisible();
 
   // What was typed on the way in is said back: the day the money comes back, and what it pays for waiting.
-  const deposito = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true }) });
+  const deposito = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true }) });
   await expect(deposito).toContainText('Matures 1 Mar 2027 · 6,25%');
 
   // And it can be put right, because a date typed off a certificate is a date that can be mistyped.
-  await deposito.getByRole('link', { name: /^0104/ }).click();
+  // Read by the words on it, not by its accessible name: the link names the filing in full for a screen reader.
+  await deposito.getByRole('link').filter({ hasText: /^0104/ }).click();
   await expect(page.getByText('Matures 1 Mar 2027 · 6,25%')).toBeVisible();
   await page.getByRole('button', { name: 'Change' }).click();
   await page.getByLabel('Matures on').fill('2027-12-01');
@@ -73,7 +74,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await expect(form).toHaveCount(0);
   await page.goto('/accounts');
   await expect(
-    page.getByRole('row').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) }),
+    page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) }),
   ).toContainText('120.000.000');
 });
 

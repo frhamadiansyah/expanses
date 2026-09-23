@@ -77,7 +77,7 @@ test('a restore of data from a newer app is refused before it is adopted, and th
   await expect(page.getByRole('button', { name: 'Download backup' })).toBeEnabled();
 
   await page.goto('/accounts');
-  await expect(page.getByRole('link', { name: 'Still here' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Still here', exact: true })).toBeVisible();
 });
 
 test('a database already at a newer version refuses to open, and offers export but never deletion', async ({ page }, testInfo) => {

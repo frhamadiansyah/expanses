@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 
 test.beforeEach(({ page }) => {
@@ -6,13 +7,7 @@ test.beforeEach(({ page }) => {
 });
 
 async function addCardAccount(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('Mandiri Bonvoy');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByLabel('Bank', { exact: true }).selectOption('Mandiri');
-  await page.getByLabel('Last 4 digits').fill('1467');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Mandiri Bonvoy', exact: true })).toBeVisible();
+  await openCard(page, { name: 'Mandiri Bonvoy', bank: 'Mandiri', last4: '1467' });
 }
 
 async function openTheCard(page: Page) {

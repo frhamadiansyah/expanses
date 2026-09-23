@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -35,20 +36,9 @@ export async function oneOfEach(page: Page) {
   await page.getByRole('button', { name: 'Add debt' }).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
 
-  await page.goto('/accounts');
-  await type(page, 'Name', 'Dollar car loan');
-  await page.getByLabel('Type').selectOption('loan');
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
-  await type(page, 'Amount owed now', '1000.00');
-  await type(page, /^Rate: IDR per 1 USD$/, '16250');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Dollar car loan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'loan', name: 'Dollar car loan', currency: 'USD', balance: '1000.00', rate: '16250' });
 
-  await type(page, 'Name', 'BCA Visa');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByLabel('Currency', { exact: true }).selectOption('IDR');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+  await openCard(page, { name: 'BCA Visa' });
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   // The 31st is clamped to each month's last day, so today is always inside the current statement.

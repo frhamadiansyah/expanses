@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { figure, firstLevel, neededAMonth, planTotal, row1, row5, row8, todayFigures } from './calculator-walk';
 import { addEducationGoal, stageLines, typeInto } from './education-walk';
 import { openGoalForm, openWorking } from './goals';
@@ -9,13 +10,9 @@ test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
+/** The label and the typing helper went with the old form; the kind decides what the picker asks for now. */
 async function addAccount(page: Page, name: string, type: string, balanceLabel: string, amount: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption(type);
-  await typeInto(page, balanceLabel, amount);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: type, name, balance: amount });
 }
 
 const yearsAhead = (years: number, months = 0) => {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { digits, oneOfEach } from './debts-page';
 import { forgetRates, openWithPockets } from './pockets';
@@ -117,12 +118,7 @@ test('the old Lend & borrow address still opens it, with its search', async ({ p
 });
 
 test('a loan with no terms says so, and its terms are written from the loan itself', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('KPR Bintaro');
-  await page.getByLabel('Type').selectOption('loan');
-  await page.getByLabel('Amount owed now').pressSequentially('700000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'KPR Bintaro', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'loan', name: 'KPR Bintaro', balance: '700000000' });
 
   await page.goto('/net-worth/loans');
   // A loan account with no terms is still owed, so it is listed — and says what it lacks.
@@ -180,12 +176,7 @@ test('an asset whose rate is missing does not hide the due split, which is made 
 });
 
 test('a loan paid off leaves the list and the total, and waits under the paid-off loans', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').pressSequentially('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 
   await page.goto('/debts/new');
   await page.getByRole('button', { name: 'Personal loan' }).click();
@@ -214,17 +205,8 @@ test('a loan paid off leaves the list and the total, and waits under the paid-of
 });
 
 test('a card paid past its bill holds the surplus: Unpaid at nothing, and the credit named on both screens', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').pressSequentially('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
-
-  await page.getByLabel('Name', { exact: true }).pressSequentially('BCA Visa');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
+  await openCard(page, { name: 'BCA Visa' });
 
   // Rp 100.000 bought on the card, then Rp 350.000 paid on it: the bank holds the difference for you.
   await page.goto('/transactions');

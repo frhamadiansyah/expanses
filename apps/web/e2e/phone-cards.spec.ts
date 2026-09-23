@@ -1,14 +1,11 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openCard } from './accounts';
 
 test('the three card screens draw at 390px without scrolling sideways', async ({ page }) => {
   const crashes: string[] = [];
   page.on('pageerror', (e) => crashes.push(String(e)));
 
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA KrisFlyer Visa Signature');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA KrisFlyer Visa Signature', exact: true })).toBeVisible();
+  await openCard(page, { name: 'BCA KrisFlyer Visa Signature' });
 
   await page.goto('/cards');
   const card = page.getByRole('link', { name: 'BCA KrisFlyer Visa Signature', exact: true });
@@ -38,11 +35,7 @@ test('the three card screens draw at 390px without scrolling sideways', async ({
 
 /** A credit card with a billing date, a points program and a rule, so its band has a figure to carry. */
 async function addEarningCard(page: Page, name: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openCard(page, { name });
   await page.goto('/cards');
   await page.getByRole('region', { name: 'Your cards' }).getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await page.getByLabel('Billing date').fill('25');

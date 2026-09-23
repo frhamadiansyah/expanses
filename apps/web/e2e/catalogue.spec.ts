@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardSection } from './card-section';
 
@@ -8,14 +9,10 @@ test.beforeEach(({ page }) => {
 });
 
 async function addCard(page: Page, name: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openCard(page, { name });
 }
 
-async function openCard(page: Page, name: string) {
+async function openCardPage(page: Page, name: string) {
   await page.goto('/cards');
   await page.getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await expect(page.getByRole('heading', { name })).toBeVisible();
@@ -23,7 +20,7 @@ async function openCard(page: Page, name: string) {
 
 /** Saves statement and due days, then applies the catalogue entry found by `search`. */
 async function applyCatalogue(page: Page, card: string, search: string, entryName: string) {
-  await openCard(page, card);
+  await openCardPage(page, card);
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -65,7 +62,7 @@ test('BCA KrisFlyer Visa Signature earns base miles and the cycle bonus with ful
   await applyCatalogue(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
   await buy(page, { card: 'KF Signature', description: 'Anniversary dinner', category: 'Restaurants', amount: '21000000' });
 
-  await openCard(page, 'KF Signature');
+  await openCardPage(page, 'KF Signature');
   await cardSection(page, 'Points');
   const cycle = thisCycle(page);
   // Rp 21.000.000 / 13.500 = 1.555,5 → 1.555 miles, plus 1.000 for reaching Rp 20.000.000.
@@ -82,7 +79,7 @@ test('BCA UnionPay doubles points on an SGD purchase billed in rupiah', async ({
   await buy(page, { card: 'UnionPay', description: 'Din Tai Fung Orchard', category: 'Restaurants', amount: '540000', original: ['SGD', '45,20'] });
   await expect(page.getByText(/SGD\s45,20/)).toBeVisible();
 
-  await openCard(page, 'UnionPay');
+  await openCardPage(page, 'UnionPay');
   await cardSection(page, 'Points');
   const cycle = thisCycle(page);
   // 54 base points plus 54 for spending in SGD; 100 of them transfer in steps of 20 to 50 KrisFlyer miles.
@@ -128,7 +125,7 @@ test('Mandiri World Prioritas earns per Rp 20.000 multiple, and a CNY taxi earns
   await buy(page, { card: 'Mandiri Prioritas', description: 'Kopi Kenangan', category: 'Cafe & dessert', amount: '25000' });
   await buy(page, { card: 'Mandiri Prioritas', description: 'Didi Shanghai', category: 'Ride hailing', amount: '250000', original: ['CNY', '55,00'] });
 
-  await openCard(page, 'Mandiri Prioritas');
+  await openCardPage(page, 'Mandiri Prioritas');
   await cardSection(page, 'Points');
   const cycle = thisCycle(page);
   // Rp 25.000 counts as one Rp 20.000 multiple: 3 points. The taxi earns 1 per Rp 100.000, not the overseas 4 per Rp 20.000.
@@ -139,7 +136,7 @@ test('Mandiri World Prioritas earns per Rp 20.000 multiple, and a CNY taxi earns
 
 test('CIMB Niaga World ALL Accor pre-fills billing date 22 and earns 2,5 points on Rp 60.000', async ({ page }) => {
   await addCard(page, 'CIMB Accor');
-  await openCard(page, 'CIMB Accor');
+  await openCardPage(page, 'CIMB Accor');
   await page.getByLabel('Search catalogue').fill('accor');
   await page.getByRole('button', { name: 'CIMB Niaga World ALL Accor Live Limitless', exact: true }).click();
   await expect(page.getByLabel('Billing date')).toHaveValue('22');
@@ -149,7 +146,7 @@ test('CIMB Niaga World ALL Accor pre-fills billing date 22 and earns 2,5 points 
   await expect(page.getByText('From catalogue · Linked')).toBeVisible();
 
   await buy(page, { card: 'CIMB Accor', description: 'Superindo', category: 'Groceries', amount: '60000' });
-  await openCard(page, 'CIMB Accor');
+  await openCardPage(page, 'CIMB Accor');
   await cardSection(page, 'Points');
   await expect(thisCycle(page)).toContainText(/Other domestic transactions\s*Rp\s60\.000 → 2,5 points/);
 });
@@ -171,7 +168,7 @@ test('a spend bonus can be added by hand, and a catalogue one keeps what the for
 
   // Electricity is excluded by the catalogue, and that exclusion is not on the form: it must survive.
   await buy(page, { card: 'BCA KrisFlyer', description: 'PLN token', category: 'Electricity', amount: '21000000' });
-  await openCard(page, 'BCA KrisFlyer');
+  await openCardPage(page, 'BCA KrisFlyer');
   await cardSection(page, 'Points');
   await expect(thisCycle(page).getByRole('progressbar', { name: 'Monthly spend bonus progress' })).toHaveAttribute('aria-valuenow', '0');
 });

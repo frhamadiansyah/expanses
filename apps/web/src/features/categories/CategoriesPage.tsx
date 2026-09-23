@@ -16,73 +16,14 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import { type CSSProperties, type ReactNode, useState } from 'react';
+import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { isCategoryOf, useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
-import { cx, Empty, ErrorBox } from '../../ui';
-import { type CornerAction, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN, SegmentedControl, tapReach } from '../../ui/native';
+import { Empty, ErrorBox } from '../../ui';
+import { type CornerAction, ActionLine, InsetGroup, InsetRow, LargeTitle, LineAction, Panel, PanelHeader, SCREEN, SegmentedControl } from '../../ui/native';
 import { categoryMcc } from './category-mcc';
 import { useCategoryNeeds } from './need-queries';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
-
-/** The height a bare text action is drawn at, before `ph-tap` grows its target back to the kit's 44 pt floor. */
-const ACTION_HEIGHT = 20;
-
-/**
- * One action on a line: the kit's tint, at the kit's reach, without the box the kit exists to remove.
- *
- * Drawn small because there are four to six of these on every line; hit at 44 pt because `ph-tap` grows the
- * target around the picture rather than the picture itself, exactly as the segmented control does.
- */
-function LineAction({ label, onClick, children }: { label?: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className="ph-focus ph-tap shrink-0 rounded text-[13px] leading-[20px] font-medium whitespace-nowrap text-[var(--ph-tint)]"
-      style={{ '--ph-tap-y': `${tapReach(ACTION_HEIGHT)}px` } as CSSProperties}
-    >
-      {children}
-    </button>
-  );
-}
-
-/**
- * A line of the tree: what it is called, what card code it carries, and everything you can do to it.
- *
- * This is deliberately **not** an `InsetRow`. The kit's row is one tap target and forbids a button inside
- * itself, and every node here carries four to six actions — so a row cannot hold this line without either
- * losing actions or putting six targets inside one 44 pt box. It is instead a line on a `Panel`, the kit's
- * surface for what is not rows, drawn on the kit's own `ROW_PAD_X/Y`, `rowHeight` and hairline. There is one
- * of these for the whole screen: the monthly tree and the sets below it are the same shape.
- */
-function ActionLine({
-  name,
-  depth = 0,
-  separator,
-  meta,
-  children,
-}: { name: ReactNode; depth?: number; separator: boolean; meta?: ReactNode; children?: ReactNode }) {
-  return (
-    <div className="relative" style={{ paddingLeft: depth * 20 }}>
-      {separator && (
-        <span aria-hidden className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X }} />
-      )}
-      {/* Name, code and four actions do not fit a phone in one line, so the actions wrap under the name. */}
-      <div
-        className="flex flex-wrap items-center gap-x-[12px] gap-y-[2px]"
-        style={{ minHeight: rowHeight(false), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
-      >
-        <span className={cx('min-w-0 flex-1 basis-full text-[15px] leading-[20px] text-[var(--ph-ink)] sm:basis-auto', depth === 0 && 'font-medium')}>
-          {name}
-        </span>
-        {meta}
-        {children}
-      </div>
-    </div>
-  );
-}
 
 /** What card code a category carries, and where it came from. The quiet ink the kit gives a subtitle. */
 function MccNote({ mcc, source }: { mcc: string | null; source?: string | null }) {

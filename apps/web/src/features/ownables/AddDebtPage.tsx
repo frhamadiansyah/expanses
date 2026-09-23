@@ -1,10 +1,11 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
-import { debtItem, isoDate } from '@expanses/core';
+import { CURRENCIES, debtItem, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
-import { useInvalidateAll } from '../../lib/queries';
+import { useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { openingRateFor, ratePreview } from '../../lib/rates';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { issuerChoices, useWorkspaceIssuers } from '../cards/card-queries';
@@ -50,8 +51,15 @@ function DebtItemForm({ item }: { item: string }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
+  const resolveRates = useResolveRates();
   const today = isoDate();
   const [draft, setDraft] = useState<DebtItemDraft>(() => emptyDebtItemDraft(item, today));
+  // A debt in another currency is ordinary — a dollar car loan is a dollar car loan — so the workspace's own is
+  // only the answer already filled in. The figure is read in whichever currency is chosen.
+  const [currency, setCurrency] = useState(ws.baseCurrency);
+  // A debt in a currency the device holds no rate for: the same row the money accounts ask for, for the same
+  // reason — the ledger converts with a rate, and a typed one is stored for the day it is owed from.
+  const [manualRate, setManualRate] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
@@ -60,13 +68,15 @@ function DebtItemForm({ item }: { item: string }) {
   const chosen = debtItem(item);
   const asks = fieldsFor('debt', item);
   const owedToAPerson = asks.includes('person');
+  const opensLoan = chosen.behaviour.opens === 'loan';
+  const foreign = currency !== ws.baseCurrency;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      const plan = planNewDebt(draft, ws.baseCurrency, today);
+      const plan = planNewDebt(draft, currency, today);
       if (plan.person) {
         // Money owed to a person is the ledger's, which opens the account and its profile itself.
         await openDebtBalance(database, ws, {
@@ -83,6 +93,15 @@ function DebtItemForm({ item }: { item: string }) {
       }
       // Only a card leaves the account out, and a card never reaches this form.
       if (!plan.account) throw new Error(`“${chosen.label}” is not opened here`);
+      const openingRateToBase = await openingRateFor({
+        database,
+        ws,
+        currency,
+        openedOn: draft.openedOn,
+        openingBalanceMinor: plan.account.openingBalanceMinor,
+        typed: manualRate,
+        resolveRates,
+      });
       const account = await createAccount(database, ws, {
         name: plan.account.name,
         kind: plan.account.kind,
@@ -90,6 +109,7 @@ function DebtItemForm({ item }: { item: string }) {
         currency: plan.account.currency,
         openingBalanceMinor: plan.account.openingBalanceMinor,
         openedOn: plan.account.openedOn,
+        openingRateToBase,
       });
       if (plan.terms) await saveLoanTerms(database, ws, { accountId: account.id, ...plan.terms });
       await invalidate();
@@ -118,6 +138,22 @@ function DebtItemForm({ item }: { item: string }) {
         {/* A person's debt is filed under their name, so there is nothing else to call it. */}
         {!owedToAPerson && <TextRow label="Name" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="KPR BTN Bintaro" />}
         <TextRow label="Owed now" value={draft.owed} onChange={(e) => set({ owed: e.target.value })} inputMode="decimal" placeholder="0" required />
+        <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+          {CURRENCIES.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.code} — {c.name}
+            </option>
+          ))}
+        </SelectRow>
+        {opensLoan && foreign && (
+          <TextRow
+            label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+            hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
+            value={manualRate}
+            onChange={(e) => setManualRate(e.target.value)}
+            inputMode="decimal"
+          />
+        )}
         {asks.includes('lender') && <TextRow label="Lender" value={draft.lender} onChange={(e) => set({ lender: e.target.value })} placeholder="Bank BTN" required />}
         {asks.includes('person') && <TextRow label="Who" value={draft.person} onChange={(e) => set({ person: e.target.value })} placeholder="Ibu" required />}
         {asks.includes('rate') && <TextRow label="Interest rate" value={draft.rate} onChange={(e) => set({ rate: e.target.value })} inputMode="decimal" placeholder="9,25" />}
@@ -161,12 +197,16 @@ function NewCardForm() {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
+  const resolveRates = useResolveRates();
   const today = isoDate();
   const [query, setQuery] = useState('');
   const [entryId, setEntryId] = useState('');
   const [name, setName] = useState('');
   const [issuer, setIssuer] = useState('');
   const [otherIssuer, setOtherIssuer] = useState('');
+  // A hand-typed card in another currency is ordinary, and the figure is read in whichever currency is chosen.
+  const [currency, setCurrency] = useState(ws.baseCurrency);
+  const [manualRate, setManualRate] = useState('');
   const [last4, setLast4] = useState('');
   const [owed, setOwed] = useState('');
   const [memberLevel, setMemberLevel] = useState('');
@@ -184,6 +224,7 @@ function NewCardForm() {
   const options = entry && !matches.includes(entry) ? [entry, ...matches] : matches;
   const levels = entry ? memberLevelsOf(entry) : [];
   const banks = issuerChoices(useWorkspaceIssuers().data ?? []);
+  const foreign = currency !== ws.baseCurrency;
 
   /** Picking a product names the card. Some issuers close every cardholder's statement on the same day. */
   function choose(id: string) {
@@ -206,7 +247,17 @@ function NewCardForm() {
         { name, issuer: issuer === OTHER ? otherIssuer : issuer, last4, owed, memberLevel, statementDay, dueDay },
         entry,
         ws.baseCurrency,
+        currency,
       );
+      const openingRateToBase = await openingRateFor({
+        database,
+        ws,
+        currency: plan.currency,
+        openedOn: today,
+        openingBalanceMinor: plan.openingBalanceMinor,
+        typed: manualRate,
+        resolveRates,
+      });
       const account = await createCardAccount(database, ws, {
         name: plan.name,
         subtype: 'credit_card',
@@ -216,6 +267,7 @@ function NewCardForm() {
         last4: plan.last4,
         openingBalanceMinor: plan.openingBalanceMinor,
         openedOn: today,
+        openingRateToBase,
       });
       // The terms row has to exist before the catalogue can write the published fee onto it.
       if (plan.terms) {
@@ -275,6 +327,15 @@ function NewCardForm() {
           </SelectRow>
         )}
         {!entry && issuer === OTHER && <TextRow label="Bank name" value={otherIssuer} onChange={(e) => setOtherIssuer(e.target.value)} placeholder="Bank Mega" />}
+        {!entry && (
+          <SelectRow label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.code} — {c.name}
+              </option>
+            ))}
+          </SelectRow>
+        )}
         {levels.length > 0 && (
           <SelectRow label={`${entry?.program.name} level`} value={memberLevel} onChange={(e) => setMemberLevel(e.target.value)}>
             <option value="">Choose your level</option>
@@ -287,6 +348,15 @@ function NewCardForm() {
         )}
         <TextRow label="Last 4 digits" value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} placeholder="1467" />
         <TextRow label="Owed now" value={owed} onChange={(e) => setOwed(e.target.value)} inputMode="decimal" placeholder="0" />
+        {!entry && foreign && (
+          <TextRow
+            label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
+            hint={ratePreview(manualRate, currency, ws.baseCurrency) ?? 'Leave empty to fetch the daily rate.'}
+            value={manualRate}
+            onChange={(e) => setManualRate(e.target.value)}
+            inputMode="decimal"
+          />
+        )}
         {/* The card's own page calls these the billing and due dates; the same words here, so nothing is renamed halfway. */}
         <TextRow label="Billing date" value={statementDay} onChange={(e) => setStatementDay(e.target.value)} inputMode="numeric" placeholder="25" required={Boolean(entry)} />
         <TextRow label="Due date" value={dueDay} onChange={(e) => setDueDay(e.target.value)} inputMode="numeric" placeholder="12" required={Boolean(entry)} />

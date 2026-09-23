@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardSection } from './card-section';
 
@@ -7,21 +8,17 @@ test.beforeEach(({ page }) => {
 });
 
 async function addCard(page: Page, name: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openCard(page, { name });
 }
 
-async function openCard(page: Page, name: string) {
+async function openCardPage(page: Page, name: string) {
   await page.goto('/cards');
   await page.getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
   await expect(page.getByRole('heading', { name })).toBeVisible();
 }
 
 async function applyCatalogue(page: Page, card: string, search: string, entryName: string) {
-  await openCard(page, card);
+  await openCardPage(page, card);
   await page.getByLabel('Billing date').fill('25');
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
@@ -90,14 +87,14 @@ test('remembering a merchant MCC removes the Maybank Platinum extra from past pu
   await applyCatalogue(page, 'Maybank Platinum', 'platinum', 'Maybank Kartu Kredit Visa Platinum');
   await buy(page, { card: 'Maybank Platinum', description: 'BURGER BANGOR KEMANG', category: 'Restaurants', amount: '60000' });
 
-  await openCard(page, 'Maybank Platinum');
+  await openCardPage(page, 'Maybank Platinum');
   await cardSection(page, 'Points');
   // Restaurants defaults to MCC 5812: 3 base plus 6 extra at restaurants.
   await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('9 points');
   await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('MCC 5812 · category guess');
 
   await buy(page, { card: 'Maybank Platinum', description: 'BURGER BANGOR PIM', category: 'Restaurants', amount: '60000', mcc: '5814', remember: 'burger bangor' });
-  await openCard(page, 'Maybank Platinum');
+  await openCardPage(page, 'Maybank Platinum');
   await cardSection(page, 'Points');
   await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('0 points');
   await expect(purchaseRow(page, 'BURGER BANGOR KEMANG')).toContainText('MCC 5814 · yours');
@@ -108,7 +105,7 @@ test('a per-purchase actual of 0 suggests fast food, and remembering it matches 
   await applyCatalogue(page, 'Maybank Platinum', 'platinum', 'Maybank Kartu Kredit Visa Platinum');
   await buy(page, { card: 'Maybank Platinum', description: 'WARUNG STEAK JKT', category: 'Restaurants', amount: '60000' });
 
-  await openCard(page, 'Maybank Platinum');
+  await openCardPage(page, 'Maybank Platinum');
   await cardSection(page, 'Points');
   const row = purchaseRow(page, 'WARUNG STEAK JKT');
   await row.getByLabel('Actual points for WARUNG STEAK JKT').fill('0');
@@ -123,7 +120,7 @@ test('a BMW dealer purchase earns 1 TREATS Point per Rp 3.333', async ({ page })
   await addCard(page, 'BMW Card');
   await applyCatalogue(page, 'BMW Card', 'bmw', 'BMW Maybank Kartu Kredit');
   await buy(page, { card: 'BMW Card', description: 'BMW ASTRA CILANDAK', category: 'Miscellaneous', amount: '3333000' });
-  await openCard(page, 'BMW Card');
+  await openCardPage(page, 'BMW Card');
   await cardSection(page, 'Points');
   await expect(thisCycle(page)).toContainText(/At BMW dealers\s*Rp\s3\.333\.000 → 1\.000 points/);
 });
@@ -132,7 +129,7 @@ test('a shoe store purchase typed as MCC 5661 earns the Manchester United sports
   await addCard(page, 'MU Card');
   await applyCatalogue(page, 'MU Card', 'manchester', 'Maybank Kartu Kredit Manchester United');
   await buy(page, { card: 'MU Card', description: 'SEPATU KITA', category: 'Clothing', amount: '200000', mcc: '5661' });
-  await openCard(page, 'MU Card');
+  await openCardPage(page, 'MU Card');
   await cardSection(page, 'Points');
   await expect(thisCycle(page)).toContainText(/3x at sports merchants\s*Rp\s200\.000 → 20 points/);
   await expect(purchaseRow(page, 'SEPATU KITA')).toContainText('30 points');
@@ -143,7 +140,7 @@ test('a BCA statement total that differs lists likely causes', async ({ page }) 
   await applyCatalogue(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
   await buy(page, { card: 'KF Signature', description: 'PANTI ASUHAN KASIH', category: 'Gift giving', amount: '1350000', on: lastCycleDate() });
 
-  await openCard(page, 'KF Signature');
+  await openCardPage(page, 'KF Signature');
   await cardSection(page, 'Points');
   const check = page.locator('section', { has: page.getByRole('heading', { name: /^Check against statement:/ }) });
   await expect(check).toContainText('Projected 100 miles');

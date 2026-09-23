@@ -1,4 +1,4 @@
-import { HelpCircle, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
@@ -6,7 +6,6 @@ import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
 import { pocketCount } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
-import { AddAssetForm } from './AddAssetForm';
 import { NetWorthTabs } from './NetWorthTabs';
 import { UpdatePricesSheet } from './UpdatePricesSheet';
 import { type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
@@ -61,7 +60,6 @@ export function AssetsPage() {
   const accounts = useAccounts();
   const held = useHeldRates((values.data ?? []).map((row) => row.currency));
   const [showSold, setShowSold] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [updatingPrices, setUpdatingPrices] = useState(false);
 
   const due = useDueDeposits();
@@ -78,15 +76,11 @@ export function AssetsPage() {
 
   /*
    * The title row used to carry the running total, a text link and a dark rectangle at once, which at 390 px was
-   * four things fighting for one line. The total is the page's figure, so it is the hero; the two actions are
-   * corner glyphs. The inline form is still one click away; the picker is for when you do not know what to call it.
+   * four things fighting for one line. The total is the page's figure, so it is the hero; adding is one corner
+   * glyph, and it opens the add-asset page — the picker that asks what you own and then draws the form that
+   * choice needs — rather than unfolding every field of every kind over the list you came to read.
    */
-  const actions: CornerAction[] = adding
-    ? []
-    : [
-        { key: 'add', label: 'Add asset', glyph: <Plus size={20} aria-hidden />, run: () => setAdding(true) },
-        { key: 'pick', label: 'What do you own?', glyph: <HelpCircle size={20} aria-hidden />, to: '/net-worth/assets/new' },
-      ];
+  const actions: CornerAction[] = [{ key: 'add', label: 'Add asset', glyph: <Plus size={20} aria-hidden />, to: '/net-worth/assets/new' }];
 
   return (
     <div className={SCREEN}>
@@ -97,7 +91,6 @@ export function AssetsPage() {
       ) : (
         <Empty>No {total.missing.join(', ')} rate yet, so your assets cannot be added up. Each figure below is exact.</Empty>
       )}
-      {adding && <AddAssetForm onDone={() => setAdding(false)} />}
       <ErrorBox error={values.error ?? profiles.error ?? accounts.error ?? held.error} />
 
       {updatingPrices && (

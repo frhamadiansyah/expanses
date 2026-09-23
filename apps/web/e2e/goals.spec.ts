@@ -1,4 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
+import { openNewAsset } from './add-asset';
 import { openGoalForm, openWorking, workingSettled } from './goals';
 import { goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
@@ -8,18 +10,11 @@ test.beforeEach(({ page }) => {
 });
 
 async function addBank(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 }
 
 async function addGold(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('gold');
+  await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await page.getByLabel('Bought on').fill('2026-03-09');
   await page.getByLabel('How much').fill('10');
@@ -273,14 +268,7 @@ test('typing an amount by hand stops the goal being worked out', async ({ page }
  */
 test('money set aside on a foreign account is typed, saved and read back in that currency', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('Wise USD');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Currency').selectOption('USD');
-  await page.getByLabel('Current balance').fill('500');
-  await page.getByLabel(/Rate: IDR per 1 USD/).fill('16000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Wise USD', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD', balance: '500', rate: '16000' });
 
   await addGoal(page, 'education', 'University for Aisyah', '350000000', '2038-07-31');
 

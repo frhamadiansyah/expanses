@@ -33,6 +33,10 @@ export async function addHoldingFlow(
     fee?: string;
     paidFrom: string;
     charged?: string;
+    /** The day it was bought, when it was not today. */
+    date?: string;
+    /** The day's rate, for a foreign buy the device holds no rate for. */
+    rate?: string;
   },
 ) {
   await page.goto('/net-worth/investments/new');
@@ -57,8 +61,16 @@ export async function addHoldingFlow(
   await page.getByLabel(/^(Lots|Shares)$/).pressSequentially(o.quantity);
   await page.getByLabel(/^Price per share/).pressSequentially(o.price);
   if (o.fee) await page.getByLabel(/^Fee/).pressSequentially(o.fee);
+  if (o.date) await page.getByLabel('Date', { exact: true }).fill(o.date);
   await page.getByLabel('Paid from').selectOption({ label: o.paidFrom });
   if (o.charged) await page.getByLabel(/^Charged in/).pressSequentially(o.charged);
+  if (o.rate) {
+    // A day the device holds no rate for is only asked once the form has looked: the first save says what is
+    // missing and turns the read-only line into a field. The caller's own "Add holding" then saves it.
+    await page.getByRole('button', { name: 'Add holding' }).click();
+    await expect(page.getByRole('alert')).toContainText('Rate that day');
+    await page.getByLabel('Rate that day').pressSequentially(o.rate);
+  }
 }
 
 /** The token as a computed colour — moved here from phone-dark-shell.spec.ts, which now imports it. */

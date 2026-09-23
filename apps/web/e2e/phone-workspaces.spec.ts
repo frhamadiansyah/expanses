@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 /**
  * On a phone the ⋯ menu is the only room left for anything that is not the list itself, so the workspace sits
@@ -60,11 +61,7 @@ test('a workspace is made from ⋯ and starts with none of the other’s categor
 
 /** One account of each kind, so there is somewhere to move money from and somewhere for it to land. */
 async function addAccount(page: Page, name: string, type: string, balance: string) {
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption(type);
-  await page.getByLabel('Current balance').fill(balance);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: type, name, balance });
 }
 
 /**

@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { openAccount } from './accounts';
+import { openNewAsset } from './add-asset';
 import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
 
 test.beforeEach(({ page }) => {
@@ -20,7 +22,7 @@ test('an account with pockets is one row that adds them up, and opens to each po
   await openWithPockets(page, VALAS);
 
   // P1: one row, the converted total, no pocket rows of their own.
-  const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Valas Plus', exact: true }) });
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Valas Plus', exact: true }) });
   await expect(row).toContainText('3 pockets');
   await expect(row).toContainText('58.982.000');
   await expect(page.getByRole('link', { name: 'Valas Plus · USD' })).toHaveCount(0);
@@ -54,7 +56,7 @@ test('a single-currency account is exactly what it was', async ({ page }) => {
   await page.getByLabel('Currency', { exact: true }).selectOption('USD');
   await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('15720');
   await page.getByRole('button', { name: 'Add account' }).click();
-  const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Dollar Saver', exact: true }) });
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Dollar Saver', exact: true }) });
   await expect(row).toContainText('1.800,00');
   await expect(row).not.toContainText('pockets');
 });
@@ -65,8 +67,8 @@ test('a pocket can be added, in a currency with no decimals, at a typed rate', a
   await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
   await page.getByRole('link', { name: /Add a pocket/ }).click();
   // Currencies it already has are not offered.
-  await expect(page.getByLabel('Currency').locator('option[value="USD"]')).toHaveCount(0);
-  await page.getByLabel('Currency').selectOption('JPY');
+  await expect(page.getByLabel('Currency', { exact: true }).locator('option[value="USD"]')).toHaveCount(0);
+  await page.getByLabel('Currency', { exact: true }).selectOption('JPY');
   await page.getByLabel('Opening JPY').pressSequentially('30000');
   await page.getByLabel('Rate: IDR per 1 JPY').pressSequentially('108,3');
   await page.getByRole('button', { name: 'Add pocket' }).click();
@@ -126,11 +128,9 @@ test('Lend & borrow adds each side in rupiah at the held rate, and names a rate 
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   // Money already owed, opened through Add asset: the Lend & borrow form records a loan in the base currency only.
   const owed = async (who: string, currency: string, amount: string, rate?: string) => {
-    await page.goto('/net-worth/assets');
-    await page.getByRole('button', { name: 'Add asset' }).click();
-    await page.getByLabel('What is it?').selectOption('other_receivable');
+    await openNewAsset(page, 'Other receivables');
     await page.getByLabel('Name', { exact: true }).pressSequentially(`Owed by ${who}`);
-    await page.getByLabel('Currency').selectOption(currency);
+    await page.getByLabel('Currency', { exact: true }).selectOption(currency);
     if (rate) await page.getByLabel('Opening rate').pressSequentially(rate);
     await page.getByLabel('Who').pressSequentially(who);
     await page.getByLabel(/^Owed now/).pressSequentially(amount);
@@ -372,7 +372,7 @@ test('the Money tile names the rate it lacks instead of adding up the rest', asy
   await expect(page.getByText(/No USD rate yet, so 1 account in 2 currencies cannot be added up/)).toBeVisible();
   await expect(page.getByText(/Money ≈/)).toHaveCount(0);
   // The account's own row names it too, in place of a total.
-  const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Unpriced Valas', exact: true }) });
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Unpriced Valas', exact: true }) });
   await expect(row).toContainText('No USD rate yet');
 });
 
@@ -381,7 +381,7 @@ test('a USD pocket added to an account reads its opening balance in dollars, not
   await openWithPockets(page, { name: 'Two Pocket', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'SGD', balance: '1150' }] });
   await page.getByRole('link', { name: 'Two Pocket', exact: true }).click();
   await page.getByRole('link', { name: /Add a pocket/ }).click();
-  await page.getByLabel('Currency').selectOption('USD');
+  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
   await page.getByLabel('Opening USD').pressSequentially('2400');
   await page.getByLabel('Rate: IDR per 1 USD').pressSequentially('16250');
   await page.getByRole('button', { name: 'Add pocket' }).click();
@@ -409,16 +409,18 @@ test('Add a pocket says so when the account already holds every currency (P2-M5)
 
 test('Add asset reads a typed rate of 16.500 as 16,5, key by key (P2-I1)', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('cash');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Broker Cash');
-  await page.getByLabel('Currency').selectOption('USD');
-  await page.getByLabel('Opening rate').pressSequentially('16.500');
-  await expect(page.getByText('Reads as 1 USD = 16,5 IDR')).toBeVisible();
-  await page.getByLabel(/Balance today/).pressSequentially('10000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
-  await expect(page.getByRole('link', { name: /Broker Cash/ })).toBeVisible();
+  // Money is an account, not an asset: a fund account in USD, opened at a rate typed as a person types it.
+  await openAccount(page, {
+    subtype: 'fund',
+    name: 'Broker Cash',
+    currency: 'USD',
+    balance: '10000',
+    rate: '16.500',
+    // The preview is the old reader's failure, checked where the rate is typed.
+    extra: async (page) => {
+      await expect(page.getByText('Reads as 1 USD = 16,5 IDR')).toBeVisible();
+    },
+  });
   // $10.000 at 16,5 is Rp 165.000. The old reader took "16.500" as 16500: Rp 165.000.000.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('165.000');
@@ -427,14 +429,8 @@ test('Add asset reads a typed rate of 16.500 as 16,5, key by key (P2-I1)', async
 
 test('Add asset with a blank foreign rate takes the day’s rate', async ({ page }) => {
   await mockRates(page, { USD: 16_250 });
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('cash');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Broker Cash');
-  await page.getByLabel('Currency').selectOption('USD');
-  await page.getByLabel(/Balance today/).pressSequentially('10000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
-  await expect(page.getByRole('link', { name: /Broker Cash/ })).toBeVisible();
+  // Money is an account, not an asset: a fund account in USD, its rate resolved for the day.
+  await openAccount(page, { subtype: 'fund', name: 'Broker Cash', currency: 'USD', balance: '10000' });
   // $10.000 at the mocked 16.250.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('162.500.000');

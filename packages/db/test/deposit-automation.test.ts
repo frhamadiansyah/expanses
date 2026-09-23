@@ -136,25 +136,26 @@ describe('the switch', () => {
 });
 
 /**
- * The term is edited beside the deposit's rate and date now, not in the settings group, so it is written on a
+ * The term is edited beside the deposit's own rate and date now, not in the settings group, so it is written on a
  * column of its own: two writers, two fields, and neither save can put back the other's older answer.
  */
 describe('the term on its own', () => {
   it('keeps the stored term when a settings save leaves it out', async () => {
     await saveDepositAutomation(database, ws, on(depositoId, bcaId, { termMonths: 6 }));
-    // Exactly what the group sends now: every answer it owns, and no term at all.
+    // Exactly what the group sends now: every answer it owns, and no term at all — the copy it read when it mounted
+    // must not undo what the terms card has written since.
     await saveDepositAutomation(database, ws, {
       accountId: depositoId,
       enabled: true,
       atMaturity: 'principal',
-      interestPaid: 'at_maturity',
+      interestPaid: 'monthly',
       payoutAccountId: bcaId,
       keepRate: true,
       taxBps: 1_000,
       taxExempt: false,
       today: '2026-07-15',
     });
-    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ termMonths: 6, taxBps: 1_000 });
+    expect(await getDepositAutomation(database, ws, depositoId)).toMatchObject({ termMonths: 6, interestPaid: 'monthly', taxBps: 1_000 });
   });
 
   it('writes only the term, on a deposit that has no settings at all', async () => {

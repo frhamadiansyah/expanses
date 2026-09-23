@@ -24,7 +24,10 @@ export function tapReach(drawn: number): number {
 /** A phone's width in CSS pixels, and the width every phone-side decision is taken at unless told otherwise. */
 export const PHONE_WIDTH = 390;
 
-/** Row padding: 11 px down, 13 px in. The 13 is also where a separator starts on a row with no icon. */
+/**
+ * Row padding: 11 px down, 13 px in. The 13 is also the separator's own inset: a hairline starts level with the
+ * text and stops the same distance short of the other edge, so it never runs into the group's rounded corner.
+ */
 export const ROW_PAD_Y = 11;
 export const ROW_PAD_X = 13;
 

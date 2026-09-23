@@ -1,19 +1,12 @@
 import { expect, test } from '@playwright/test';
+import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 
 test('card purchase counts once as spending; statement payment is a transfer', async ({ page }) => {
   await page.goto('/accounts');
 
-  await page.getByLabel('Name', { exact: true }).fill('BCA Checking');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Checking' })).toBeVisible();
-
-  await page.getByLabel('Name', { exact: true }).fill('BCA Visa');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Visa' })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Checking', balance: '20000000' });
+  await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Visa', category: 'Groceries', amount: '500000' });

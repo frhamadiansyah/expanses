@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { addPurchase } from './add-transaction';
 import { expectBalance } from './deposit-maturity';
+import { addHoldingFlow } from './securities';
 import { addMoneyAccount, goalCard, jeniusWithTwoGoals } from './set-aside';
 
 test.beforeEach(({ page }) => {
@@ -8,18 +9,19 @@ test.beforeEach(({ page }) => {
   void page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
 });
 
-/** A USD stock owned before the app, through the inline Add asset form that exists today. */
+/** A USD stock owned before the app, bought through the ticker finder's own by-hand door. */
 async function addUsdStock(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('stock');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('AAPL');
-  await page.getByLabel('Currency').selectOption('USD');
-  await page.getByLabel('Opening rate').pressSequentially('15800');
-  await page.getByLabel('Bought on').fill('2025-03-08');
-  await page.getByLabel('How much').pressSequentially('10');
-  await page.getByLabel('Total cost (USD)').pressSequentially('1825');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await addHoldingFlow(page, {
+    search: 'AAPL',
+    nameIt: { ticker: 'AAPL', name: 'Apple', market: 'NASDAQ', currency: 'USD' },
+    broker: 'No broker',
+    quantity: '10',
+    price: '182,50',
+    paidFrom: 'Owned before this app',
+    date: '2025-03-08',
+    rate: '15800',
+  });
+  await page.getByRole('button', { name: 'Add holding' }).click();
   await expect(page.getByRole('link', { name: /AAPL/ })).toBeVisible();
 }
 
@@ -42,8 +44,9 @@ test('the Buy / sell tab asks what the rupiah account was charged for a USD buy'
   await addMoneyAccount(page, 'BCA Tahapan', 'bank', '50000000');
   await addUsdStock(page);
   await page.goto('/transactions');
-  // The inline form gives a stock a lot size of 100, so the tab asks for lots; the figures are the same.
-  await addPurchase(page, { what: 'AAPL', amount: '214,30', lots: '1', paidWith: 'BCA Tahapan (IDR)', charged: '3.482.375' });
+  // A hand-named US stock carries no lot size, so the tab asks for shares: 100 of them, as a lot of an IDX
+  // stock would have been. The money is what the tab must get right, and it is the same as before.
+  await addPurchase(page, { what: 'AAPL', amount: '214,30', units: '100', paidWith: 'BCA Tahapan (IDR)', charged: '3.482.375' });
   await expectBalance(page, 'BCA Tahapan', '46.517.625'); // 50.000.000 − 3.482.375
 });
 
@@ -78,7 +81,7 @@ test('the Buy / sell tab also asks which goal paid for the rupiah that left, on 
   await form.getByRole('radio', { name: 'Buy / sell' }).click();
   await form.getByLabel('What you bought or sold').selectOption({ label: 'Investments › AAPL' });
   await form.getByLabel(/^What it cost, before fees/).fill('418,50');
-  await form.getByLabel('Lots').fill('1'); // the inline Add asset form gives AAPL a lot size of 100
+  await form.getByLabel('Shares').fill('100'); // no lot size on a hand-named US stock: 100 shares, as before
   await form.getByLabel('Paid with').selectOption({ label: 'Jenius (IDR)' });
   await form.getByLabel(/^Charged in /).pressSequentially('6.800.000');
   // 6.800.000 − 5.000.000 free. Read off the dollar figure, 41.850 "rupiah" would have fitted and asked nothing.

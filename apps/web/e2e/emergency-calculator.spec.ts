@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { openGoalForm, openWorking } from './goals';
 import { goalCard } from './set-aside';
@@ -8,12 +9,7 @@ test.beforeEach(({ page }) => {
 });
 
 test('two answers prefill the months, say why, and size the goal on a month of spending', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '1000000' });
 

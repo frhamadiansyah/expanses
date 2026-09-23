@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { openAccount } from './accounts';
 import { QUICK_CHECK_LIMIT_BYTES } from '../src/db/size-guard';
 
 // Not a spec: shared by `recovery.spec.ts` (chromium) and `phone-recovery.spec.ts` (phone), because
@@ -83,12 +84,7 @@ export async function forgetSafetyCopies(page: Page) {
 }
 
 export async function addBank(page: Page, name: string, balance: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill(balance);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name, balance });
 }
 
 /** Where the SAH pool's own header ends and the database's first page begins, in every slot file. */

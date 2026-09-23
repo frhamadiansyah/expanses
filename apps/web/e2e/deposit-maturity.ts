@@ -103,15 +103,15 @@ export async function openDeposit(page: Page, name: string) {
 }
 
 export async function automate(page: Page, c: Pick<Combo, 'choice' | 'paid' | 'exempt'>, termMonths = '3') {
-  // The term answers on the deposit's own terms card; everything else is under the switch, on the same page.
+  // The deposit's own term first, on its terms card…
   await page.getByLabel('Term', { exact: true }).selectOption(termMonths);
   await expect(page.getByTestId('deposit-term')).toHaveAttribute('aria-busy', 'false');
+  // …then the decision, one picker at a time under the switch.
   await page.getByLabel('Automate at maturity').check();
-  await expect(page.getByTestId('maturity-principal')).toBeVisible();
-  // Everything rolling over pays nothing out during the term, so the row is not offered to it: it states at maturity.
+  await expect(page.getByLabel('At maturity', { exact: true })).toBeVisible();
+  // Monthly first: choosing everything rolling over freezes it, and the walk must set it before that.
   if (c.choice !== 'principal_interest') await page.getByLabel('Interest paid').selectOption(c.paid);
-  await page.getByTestId(`maturity-${c.choice}`).click();
-  await expect(page.getByTestId(`maturity-${c.choice}`).getByLabel('Chosen')).toBeVisible();
+  await page.getByLabel('At maturity', { exact: true }).selectOption(c.choice);
   if (c.exempt) await page.getByLabel('Tax-free deposit').check();
   await settingsSaved(page);
 }
@@ -145,7 +145,8 @@ export async function startReport(page: Page, year: number) {
 
 export async function expectBalance(page: Page, name: string, figure: string) {
   await page.goto('/accounts');
-  const row = page.getByRole('row').filter({ has: page.getByRole('link', { name, exact: true }) });
+  // The accounts page is the kit's list now, not a table: each account is a line, and the name is its link.
+  const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name, exact: true }) });
   await expect(row).toContainText(figure);
 }
 

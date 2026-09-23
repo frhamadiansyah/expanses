@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
+import { setBudget } from './budget';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -10,21 +12,14 @@ async function spend(page: Page, what: string, category: string, amount: string)
 }
 
 test('a budget row leads with what is left or over, then what was spent and its share of the budget', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   await page.goto('/transactions');
   await spend(page, 'Warung Steak', 'Restaurants', '500000');
   await spend(page, 'Grab', 'Ride hailing', '120000');
 
   await page.goto('/budget');
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: 'Food and beverage' });
-  await page.getByLabel('Monthly amount (IDR)').fill('300000');
-  await page.getByRole('button', { name: 'Set budget' }).click();
+  await setBudget(page, 'Food and beverage', '300000');
   // Saved before leaving: the budget screen already shows the month past it.
   await expect(page.getByTestId('line-Food and beverage')).toContainText('Over by');
 

@@ -1,4 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { openAccount, openCard } from './accounts';
+import { openNewAsset } from './add-asset';
 import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
 import { todayIn } from './today';
 
@@ -25,12 +27,7 @@ const face = (page: Page, what: string, category: string) => row(page, what).get
 const toast = (page: Page) => page.getByRole('status').filter({ has: page.getByRole('button', { name: 'Undo' }) });
 
 test('a row opens its receipt, swipes to Edit and Delete, and its icon fixes the category', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   await page.goto('/transactions');
   await record(page, 'Warung Steak', 'Restaurants', '120000');
@@ -99,12 +96,7 @@ test('a row opens its receipt, swipes to Edit and Delete, and its icon fixes the
  * refuses in the same place, by the same test.
  */
 test('a phone refuses what a desktop refuses, and still lets the row be read', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   await page.goto('/transactions');
   const opening = row(page, 'Opening balance');
@@ -134,18 +126,11 @@ test('a phone refuses what a desktop refuses, and still lets the row be read', a
  * keeps. A second copy of either is how this branch has broken itself six times.
  */
 test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ holds the rest', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   // Something to convert into, so ⋯ can offer "This was a purchase" at all: the sheet carries the receipt's own
   // gate, and a conversion with nothing to convert into is a form whose Save can never be pressed.
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('gold');
+  await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await page.getByLabel('Bought on').fill('2026-03-09');
   await page.getByLabel('How much').fill('10');
@@ -220,12 +205,7 @@ test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ hold
  */
 test('a foreign purchase falls back to the in-place editor, because the sheet cannot hold it', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Visa');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByLabel('Amount owed now').fill('0');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+  await openCard(page, { name: 'BCA Visa', owed: '0' });
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -287,16 +267,8 @@ test('the rate typed into the edit sheet is the rate the edit sheet saves', asyn
   // for, and the account below stores its rate under today.
   const earlier = await todayIn(page, 3);
 
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('Alipay');
-  await page.getByLabel('Type').selectOption('cash');
-  await page.getByLabel('Currency').selectOption('CNY');
   // The rate is stored as the opening balance's own conversion, so there has to be a balance to convert.
-  await page.getByLabel('Current balance').fill('1000');
-  await page.getByLabel('Balance as of').fill(today);
-  await page.getByLabel('Rate: IDR per 1 CNY').fill('2270');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Alipay', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'cash', name: 'Alipay', currency: 'CNY', balance: '1000', opened: today, rate: '2270' });
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Luckin', paidWith: 'Alipay', category: 'Restaurants', amount: '120' });
@@ -340,12 +312,7 @@ test('the rate typed into the edit sheet is the rate the edit sheet saves', asyn
  * the truth is what data loss looks like from the outside, and there was no way to see or remove it from here.
  */
 test('the edit sheet shows the receipt the transaction already has', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
@@ -391,12 +358,7 @@ test('the edit sheet shows the receipt the transaction already has', async ({ pa
  * height beneath it. Nothing here is about how the row looks.
  */
 test('a row scrolled to the foot of the screen is clear of the tab bar, and still swipes', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   await page.goto('/transactions');
   for (const name of ['Warung Steak', 'Superindo', 'Kopi Kenangan', 'Indomaret', 'Alfamart', 'Sate Khas Senayan', 'Bakmi GM', 'Pertamina']) {

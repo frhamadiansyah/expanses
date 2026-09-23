@@ -1,4 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
+import { openNewAsset } from './add-asset';
 import { forgetRates } from './pockets';
 
 /** Accounts created by these tests are opened today, so this year is the year that holds them. */
@@ -8,31 +10,18 @@ test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
+/** The label the old inline form used went with it; the kind decides what the picker asks for now. */
 async function addAccount(page: Page, name: string, type: string, balanceLabel: string, amount: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption(type);
-  await page.getByLabel(balanceLabel).fill(amount);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: type, name, balance: amount });
 }
 
 /** A bank account added as an asset, so it carries a tax-report section and its fields can be filled. */
 async function addBankAsset(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('cash');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Open date').fill(`${YEAR}-01-02`);
-  await page.getByLabel(/Balance today/).fill('50000000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
-  await expect(page.getByRole('link', { name: /BCA Tahapan/ })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000', opened: `${YEAR}-01-02` });
 }
 
 async function addGold(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('gold');
+  await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await page.getByLabel('Bought on').fill(`${YEAR}-03-09`);
   await page.getByLabel('How much').fill('10');
@@ -218,12 +207,7 @@ test('downloads the converter file once the sheet has everything it needs', asyn
 test('the report is not compared with a balance sheet that lacks a rate: the currency is named instead', async ({ page }, testInfo) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addBankAsset(page);
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar Saver');
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
-  await page.getByLabel('Current balance').pressSequentially('1000');
-  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
-  await page.getByRole('button', { name: 'Add account' }).click();
+  await openAccount(page, { subtype: 'bank', name: 'Dollar Saver', currency: 'USD', balance: '1000', rate: '16250' });
   await expect(page.getByRole('link', { name: 'Dollar Saver', exact: true })).toBeVisible();
   await startReport(page);
   await expect(page.getByText(/your balance sheet on 31 December/)).toBeVisible();

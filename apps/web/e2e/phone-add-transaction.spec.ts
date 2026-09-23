@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
 import { todayIn } from './today';
 
@@ -7,11 +8,7 @@ test.beforeEach(({ page }) => {
 });
 
 async function addWallet(page: import('@playwright/test').Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan' });
 }
 
 test('the phone types money on the dock, and has four ways off it', async ({ page }) => {
@@ -198,15 +195,7 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addWallet(page);
   // A CNY account opened today stores today's CNY→IDR rate; that is the only rate this device will have.
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('Alipay');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Currency').selectOption('CNY');
-  await page.getByLabel('Current balance').fill('1000');
-  await page.getByLabel('Balance as of').fill(TODAY);
-  await page.getByLabel('Rate: IDR per 1 CNY').fill('2270');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Alipay', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'Alipay', currency: 'CNY', balance: '1000', rate: '2270', opened: TODAY });
 
   await page.goto('/transactions/new');
   await page.getByRole('button', { name: 'Paid with' }).click();

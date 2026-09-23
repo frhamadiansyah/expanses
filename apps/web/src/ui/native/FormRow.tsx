@@ -17,17 +17,22 @@ import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
 
 const LABEL = 'shrink-0 text-[15px] leading-[20px] text-[var(--ph-ink)]';
 
-/** The switch's capsule, iOS's own size: 51 × 31 with a 27 px knob inset 2 px — the shape a thumb knows. */
+/** The switch's capsule, iOS's own size: 51 × 31, with a 27 px round knob inset 2 px — the shape a thumb knows. */
 const SWITCH_W = 51;
 const SWITCH_H = 31;
+/** The knob is the capsule's height less its 2 px of air on each side, so it is a circle and never an ellipse. */
+const KNOB = SWITCH_H - 4;
+/** How far the knob travels: the capsule less itself, which lands it with the same 2 px of air on the other side. */
+const KNOB_TRAVEL = SWITCH_W - SWITCH_H;
 
 function shell(hasSubtitle: boolean) {
   return { minHeight: rowHeight(hasSubtitle), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` } as const;
 }
 
+/** The hairline above a row: inset at both ends to the row's own padding, level with the text and clear of the corner. */
 function Separator({ show }: { show: boolean }) {
   if (!show) return null;
-  return <span aria-hidden className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X }} />;
+  return <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />;
 }
 
 /**
@@ -255,8 +260,8 @@ export function SwitchRow({
         >
           <span
             aria-hidden
-            className={cx('absolute top-[2px] left-[2px] rounded-full bg-[var(--ph-knob)] shadow-[0_2px_5px_rgba(0,0,0,0.18)] transition-transform', checked && 'translate-x-[20px]')}
-            style={{ height: SWITCH_H - 4, width: SWITCH_W - 4 }}
+            className="absolute top-[2px] left-[2px] rounded-full bg-[var(--ph-knob)] shadow-[0_2px_5px_rgba(0,0,0,0.18)] transition-transform"
+            style={{ height: KNOB, width: KNOB, transform: checked ? `translateX(${KNOB_TRAVEL}px)` : undefined }}
           />
           <input
             id={id}

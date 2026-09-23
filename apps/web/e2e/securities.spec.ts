@@ -101,19 +101,23 @@ test('6 & 10: the switched-on list fills AAPL in; a missing day rate is asked fo
 
 test('11: a holding recorded before is given its ticker and broker; its lot setting goes to the security', async ({ page }) => {
   await addMoneyAccount(page, 'Stockbit', 'fund', '0');
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('stock');
-  await page.getByLabel('Name', { exact: true }).fill('BBCA old');
-  await page.getByLabel('Bought on').fill(await todayIn(page, 200));
-  await page.getByLabel('How much').pressSequentially('100');
-  await page.getByLabel('Total cost (IDR)').pressSequentially('875.000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // Recorded before its ticker was known: named by hand through the ticker finder's own door, then linked.
+  await addHoldingFlow(page, {
+    search: 'BBCA old',
+    nameIt: { ticker: '', name: 'BBCA old', market: '', currency: 'IDR' },
+    broker: 'No broker',
+    quantity: '100',
+    price: '8.750',
+    paidFrom: 'Owned before this app',
+    date: await todayIn(page, 200),
+  });
+  await page.getByRole('button', { name: 'Add holding' }).click();
   await page.getByRole('link', { name: /BBCA old/ }).click();
-  await expect(page.getByLabel('Shares in a lot')).toHaveCount(1); // shown while it has no security
   await page.getByRole('link', { name: /Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
-  await page.getByRole('button', { name: /^BBCA\b/ }).first().click();
+  // The list leads with what is held — which is this asset's own unlisted name — so the ticker to link to is the
+  // listed BBCA, the only result with a market behind it.
+  await page.getByRole('button', { name: /^BBCA\b.*IDX/ }).click();
   await page.getByLabel('Kept at').selectOption({ label: 'Stockbit' });
   await expect(page.getByText(/The price is BBCA’s/)).toBeVisible();
   await expect(page.getByLabel('Shares in a lot')).toHaveCount(0); // set by BBCA now
@@ -170,14 +174,16 @@ test('a buy with no broker names the holding it adds to — and, with two, which
   await expect(page.getByText('This adds to BBCA, your BBCA with no broker named.')).toBeVisible();
 
   // A holding from before, linked to BBCA with no broker: now there are two, and the form never picks silently.
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('stock');
-  await page.getByLabel('Name', { exact: true }).fill('BBCA old');
-  await page.getByLabel('Bought on').fill(await todayIn(page, 200));
-  await page.getByLabel('How much').pressSequentially('100');
-  await page.getByLabel('Total cost (IDR)').pressSequentially('875.000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await addHoldingFlow(page, {
+    search: 'BBCA old',
+    nameIt: { ticker: '', name: 'BBCA old', market: '', currency: 'IDR' },
+    broker: 'No broker',
+    quantity: '100',
+    price: '8.750',
+    paidFrom: 'Owned before this app',
+    date: await todayIn(page, 200),
+  });
+  await page.getByRole('button', { name: 'Add holding' }).click();
   await page.getByRole('link', { name: /BBCA old/ }).click();
   await page.getByRole('link', { name: /Ticker/ }).click();
   await page.getByLabel('Ticker or name').pressSequentially('BBCA');
@@ -209,20 +215,14 @@ test('every way in reaches Investments and Add a holding: Buy & sell, the Assets
   await page.getByRole('link', { name: 'By stock and broker' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments$/);
 
-  // §7.5: Listed shares in the Add asset picker starts from a ticker.
-  await page.goto('/net-worth/assets/new');
+  // §7.5: the corner on the Assets page opens the picker itself — no form unrolled over the list — and Listed
+  // shares starts from a ticker.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: 'Add asset' }).click();
   await page.getByPlaceholder('Search everything you can own').pressSequentially('Listed shares');
   await page.getByRole('button', { name: 'Listed shares' }).click();
   await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
   await expect(page.getByLabel('Ticker or name')).toBeVisible();
-
-  // …and the inline Add asset form keeps its fields, with Find it by ticker above them.
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('stock');
-  await expect(page.getByLabel('How much')).toBeVisible();
-  await page.getByRole('link', { name: 'Find it by ticker' }).click();
-  await expect(page).toHaveURL(/\/net-worth\/investments\/new$/);
 });
 
 test.describe('with the list unreadable', () => {

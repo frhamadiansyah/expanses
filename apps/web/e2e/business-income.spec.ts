@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 
 /** Sales recorded by these tests are dated today, so this is the year that holds them. */
@@ -9,12 +10,7 @@ test.beforeEach(({ page }) => {
 });
 
 async function addWallet(page: Page, name: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('0');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name, balance: '0' });
 }
 
 /** A sale: money into a wallet against an income category, which is what makes it turnover. */

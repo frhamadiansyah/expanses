@@ -1,4 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
+import { openNewAsset } from './add-asset';
 import { addTransfer } from './add-transaction';
 
 test.beforeEach(({ page }) => {
@@ -6,18 +8,11 @@ test.beforeEach(({ page }) => {
 });
 
 async function addBank(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 }
 
 async function addGold(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('gold');
+  await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await page.getByLabel('Bought on').fill('2024-02-03');
   await page.getByLabel('How much').fill('10');
@@ -99,17 +94,9 @@ test('renames an account from its settings page, and every list reads the new na
 
 test('an account opened by mistake deletes, armed on the first tap; one with entries refuses and says why', async ({ page }) => {
   await addBank(page);
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('Jenius');
-  await page.getByLabel('Type').selectOption('savings');
-  await page.getByLabel('Current balance').fill('0');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Jenius', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'savings', name: 'Jenius', balance: '0' });
   // A third account, opened and never touched again: this one can go.
-  await page.getByLabel('Name', { exact: true }).fill('Hana');
-  await page.getByLabel('Current balance').fill('1000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Hana', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'savings', name: 'Hana', balance: '1000000' });
   // One transfer in, and Jenius is no longer an account that was only opened.
   await page.goto('/transactions');
   await addTransfer(page, { from: 'BCA Tahapan', to: 'Jenius (IDR)', amount: '5000000' });

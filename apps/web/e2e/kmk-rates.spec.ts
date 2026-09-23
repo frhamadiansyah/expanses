@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 /** Accounts created here are opened today, so this is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -8,17 +9,8 @@ test.beforeEach(({ page }) => {
 });
 
 async function addUsdAsset(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('cash');
-  await page.getByLabel('Name', { exact: true }).fill('Interactive Brokers');
-  await page.getByLabel('Currency').selectOption('USD');
-  // The ledger needs a rate to hold one running total. It is not the tax report's KMK rate.
-  await page.getByLabel('Opening rate').fill('16000');
-  await page.getByLabel('Open date').fill(`${YEAR}-01-02`);
-  await page.getByLabel(/Balance today/).fill('10000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
-  await expect(page.getByRole('link', { name: /Interactive Brokers/ })).toBeVisible();
+  // Money is an account, not an asset: a fund account in USD, opened at its day's own rate.
+  await openAccount(page, { subtype: 'fund', name: 'Interactive Brokers', currency: 'USD', balance: '10000', rate: '16000', opened: `${YEAR}-01-02` });
 }
 
 async function startReport(page: Page) {
@@ -61,13 +53,7 @@ test('a rate typed from the wrong week can be corrected', async ({ page }) => {
 });
 
 test('a report with nothing held abroad never asks for a rate', async ({ page }) => {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('cash');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Open date').fill(`${YEAR}-01-02`);
-  await page.getByLabel(/Balance today/).fill('50000000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000', opened: `${YEAR}-01-02` });
 
   await startReport(page);
 

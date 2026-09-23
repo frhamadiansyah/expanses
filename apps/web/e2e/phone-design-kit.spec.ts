@@ -31,14 +31,19 @@ test('separators are inset to the text, not run full-bleed across the group', as
   await expect(rows).toHaveCount(4);
 
   const surfaceBox = (await surface.boundingBox())!;
-  // Every row but the first draws a hairline; each starts where its row's text starts, past the 28px icon.
-  const insets = await surface.evaluate((node) =>
+  // Every row but the first draws a hairline; each starts where its row's text starts, past the 28px icon, and
+  // stops the same distance short of the group's other edge rather than meeting its rounded corner.
+  const hairlines = await surface.evaluate((node) =>
     [...node.querySelectorAll<HTMLElement>('span[aria-hidden]')]
       .filter((span) => Math.round(span.getBoundingClientRect().height) <= 1 && span.getBoundingClientRect().width > 0)
-      .map((span) => span.getBoundingClientRect().left),
+      .map((span) => ({ left: span.getBoundingClientRect().left, right: span.getBoundingClientRect().right })),
   );
-  expect(insets).toHaveLength(3);
-  for (const left of insets) expect(left - surfaceBox.x).toBeGreaterThan(40);
+  expect(hairlines).toHaveLength(3);
+  const surfaceRight = surfaceBox.x + surfaceBox.width;
+  for (const hairline of hairlines) {
+    expect(hairline.left - surfaceBox.x).toBeGreaterThan(40);
+    expect(surfaceRight - hairline.right).toBeGreaterThan(8);
+  }
 });
 
 test('every row clears the tap target, and the row itself is the target — no button inside it', async ({ page }) => {

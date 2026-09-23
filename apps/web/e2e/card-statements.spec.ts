@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 import { cardSection } from './card-section';
 
@@ -10,16 +11,8 @@ const TODAY = local(now);
 const LAST_MONTH = local(new Date(now.getFullYear(), now.getMonth() - 1, 15));
 
 async function setUp(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
-  await page.getByLabel('Name', { exact: true }).fill('BCA Visa');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
@@ -38,7 +31,7 @@ async function buy(page: Page, description: string, amount: string, on: string) 
   await addTransaction(page, { description, paidWith: 'BCA Visa', category: 'Groceries', amount, date: on });
 }
 
-async function openCard(page: Page) {
+async function openCardPage(page: Page) {
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();
 }
@@ -46,7 +39,7 @@ async function openCard(page: Page) {
 test('a purchase the bank billed a statement late moves to the next one', async ({ page }) => {
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
-  await openCard(page);
+  await openCardPage(page);
 
   await expect(page.getByTestId('tile-left-to-pay')).toContainText('2.000.000');
   await page.getByRole('button', { name: 'Earlier statement' }).click();
@@ -64,7 +57,7 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   await setUp(page);
   await buy(page, 'Superindo', '450000', TODAY);
   await buy(page, 'Ranch Market', '80000', TODAY);
-  await openCard(page);
+  await openCardPage(page);
 
   await page.getByLabel('Pay Superindo').check();
   await page.getByLabel('Pay Ranch Market').check();
@@ -86,7 +79,7 @@ test('chosen purchases are paid before the statement, and show as paid', async (
   // Wait for the delete to land: the open form hides the row's text before anything is saved.
   await expect(page.getByRole('button', { name: 'Click again to delete' })).toHaveCount(0);
   await expect(page.locator('li', { hasText: /BCA Visa payment/ })).toHaveCount(0);
-  await openCard(page);
+  await openCardPage(page);
   await expect(page.getByLabel('Pay Superindo')).toBeEnabled();
   await expect(page.getByLabel('Pay Superindo')).not.toBeChecked();
 });
@@ -95,7 +88,7 @@ test('the totals band splits the previous bill from what is unbilled, and names 
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await buy(page, 'Superindo', '450000', TODAY);
-  await openCard(page);
+  await openCardPage(page);
 
   // Nothing paid yet: the previous bill stands whole beside what this cycle has gathered.
   const band = page.getByTestId('statement-band');
@@ -126,7 +119,7 @@ test('the totals band splits the previous bill from what is unbilled, and names 
 test('the last statement is paid from the card’s Current bill tile', async ({ page }) => {
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
-  await openCard(page);
+  await openCardPage(page);
 
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile).toContainText('2.000.000');
@@ -141,7 +134,7 @@ test('the last statement is paid from the card’s Current bill tile', async ({ 
 
 test('the tab you chose survives a reload', async ({ page }) => {
   await setUp(page);
-  await openCard(page);
+  await openCardPage(page);
   await cardSection(page, 'Card');
   await expect(page.getByRole('button', { name: 'Save terms' })).toBeVisible();
   await page.reload();
@@ -153,7 +146,7 @@ test('searching finds a purchase on an earlier statement and opens that statemen
   await setUp(page);
   await buy(page, 'Hotel Mulia', '2000000', LAST_MONTH);
   await buy(page, 'Superindo', '450000', TODAY);
-  await openCard(page);
+  await openCardPage(page);
 
   await page.getByLabel('Search statements').fill('mulia');
   const results = page.getByTestId('statement-search-results');
@@ -167,7 +160,7 @@ test('searching finds a purchase on an earlier statement and opens that statemen
 
 test('on a desktop the section control and the section it switches share one column', async ({ page }) => {
   await setUp(page);
-  await openCard(page);
+  await openCardPage(page);
   await cardSection(page, 'Card');
   const control = await page.getByRole('radiogroup', { name: 'Card sections' }).boundingBox();
   const section = await page.locator('section', { has: page.getByRole('heading', { name: 'Card terms' }) }).first().boundingBox();

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 /** Accounts created by these tests are opened today, so this year is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -8,14 +9,7 @@ test.beforeEach(({ page }) => {
 });
 
 async function addBankAsset(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('cash');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Open date').fill(`${YEAR}-01-02`);
-  await page.getByLabel(/Balance today/).fill('50000000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
-  await expect(page.getByRole('link', { name: /BCA Tahapan/ })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000', opened: `${YEAR}-01-02` });
 }
 
 async function openSettings(page: Page) {

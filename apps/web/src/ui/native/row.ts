@@ -40,7 +40,7 @@ export interface RowLayout {
   textWidth: number;
   /** Width reserved for the trailing figure — its natural width, since it may not shrink. */
   valueWidth: number;
-  /** Where the separator starts: level with the text, never at the row's own edge. */
+  /** Where the separator starts: level with the text, never at the row's own edge. It ends at the same padding. */
   separatorInset: number;
   /** The title will be clipped at this width. A caller that can shorten its subtitle should. */
   overflowing: boolean;

@@ -211,7 +211,7 @@ function dayOfMonth(typed: string, label: string): number {
  * check on the last four digits — leaving no way to finish. So every refusal the steps after it could raise is
  * raised here instead, with the entry's own conditions among them.
  */
-export function planNewCard(draft: NewCardDraft, entry: CatalogEntry | null, baseCurrency: string): NewCardPlan {
+export function planNewCard(draft: NewCardDraft, entry: CatalogEntry | null, baseCurrency: string, typedCurrency = baseCurrency): NewCardPlan {
   const name = draft.name.trim();
   if (!name) throw new Error('Give the card a name');
 
@@ -222,7 +222,8 @@ export function planNewCard(draft: NewCardDraft, entry: CatalogEntry | null, bas
     throw new Error(`This card earns by ${entry?.program.name} level. Choose the level you are on before adding it.`);
   }
 
-  const currency = entry?.currency ?? baseCurrency;
+  // The catalogue knows which currency the card is issued in; a card typed by hand is told it.
+  const currency = entry?.currency ?? typedCurrency;
   let openingBalanceMinor = 0;
   if (draft.owed.trim() !== '') {
     try {

@@ -1,13 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { openCard } from './accounts';
 
 test('card setup guides billing date, then rewards, then a suggested base rule', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('Step Card');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-
-  const accountRow = page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Step Card', exact: true }) });
-  await accountRow.getByRole('link', { name: 'Set up points' }).click();
+  // The card's own page is where a card taken from the catalogue is finished; this one is typed by hand.
+  await openCard(page, { name: 'Step Card' });
 
   // Step 1: only card terms until the billing date exists.
   await expect(page.getByText('Step 1 of 3')).toBeVisible();

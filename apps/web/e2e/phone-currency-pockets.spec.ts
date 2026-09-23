@@ -38,7 +38,7 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   await expect(page.getByText(/across 1 account · 2 currencies/)).toBeVisible();
   await page.getByRole('link', { name: 'Thumb Valas', exact: true }).tap();
   await page.getByRole('link', { name: /Add a pocket/ }).tap();
-  await page.getByLabel('Currency').selectOption('IDR');
+  await page.getByLabel('Currency', { exact: true }).selectOption('IDR');
   await page.getByLabel('Opening IDR').pressSequentially('5400000');
   await page.getByRole('button', { name: 'Add pocket' }).tap();
   await expect(page.getByTestId('pocket-IDR')).toContainText('5.400.000');

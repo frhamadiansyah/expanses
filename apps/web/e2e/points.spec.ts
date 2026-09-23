@@ -1,16 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openCard } from './accounts';
 import { addTransaction } from './add-transaction';
 
 async function addCard(page: Page, name: string) {
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name })).toBeVisible();
+  await openCard(page, { name });
 }
 
 test('points: bonus cap cascades to base rule and the recommender ranks by value', async ({ page }) => {
-  await page.goto('/accounts');
-  await addCard(page, 'CIMB Octo');
+  await openCard(page, { name: 'CIMB Octo' });
   await addCard(page, 'BCA Visa');
 
   await page.goto('/cards');

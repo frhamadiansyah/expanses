@@ -1,25 +1,22 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
+import { openNewAsset } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto } from './add-transaction';
 import { cardSection } from './card-section';
 import { openGoalForm } from './goals';
+import { addHoldingFlow } from './securities';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
+/** The label the old inline form used went with it; the kind decides what the picker asks for now. */
 async function addAccount(page: Page, name: string, type: string, balanceLabel: string, amount: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption(type);
-  await page.getByLabel(balanceLabel).fill(amount);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: type, name, balance: amount });
 }
 
 async function addGold(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('gold');
+  await openNewAsset(page, 'Gold bullion');
   await page.getByLabel('Name', { exact: true }).fill('Antam gold bars');
   await page.getByLabel('Bought on').fill('2026-03-09');
   await page.getByLabel('How much').fill('10');
@@ -29,16 +26,10 @@ async function addGold(page: Page) {
 }
 
 async function addStock(page: Page) {
-  await page.goto('/net-worth/assets');
-  await page.getByRole('button', { name: 'Add asset' }).click();
-  await page.getByLabel('What is it?').selectOption('stock');
-  await page.getByLabel('Name', { exact: true }).fill('BBRI shares');
-  // Two lots owned before today, so the holding is listed; they are paid from Opening Balances.
-  await page.getByLabel('Bought on').fill('2026-03-09');
-  await page.getByLabel('How much').fill('200');
-  await page.getByLabel('Total cost (IDR)').fill('1900000');
-  await page.getByRole('button', { name: 'Add asset' }).last().click();
-  await expect(page.getByRole('link', { name: /BBRI shares/ })).toBeVisible();
+  // Shares come from the ticker list now: bought before the app, they are paid from Opening Balances.
+  await addHoldingFlow(page, { search: 'BBRI', pick: 'BBRI', broker: 'No broker', quantity: '200', price: '9.500', paidFrom: 'Owned before this app', date: '2026-03-09' });
+  await page.getByRole('button', { name: 'Add holding' }).click();
+  await expect(page.getByRole('link', { name: /BBRI/ })).toBeVisible();
 }
 
 test('records a purchase from the transaction window, and it never counts as spending', async ({ page }) => {
@@ -166,14 +157,14 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const buying = page.getByRole('dialog', { name: 'Add a transaction' });
   await buying.getByRole('radio', { name: 'Buy / sell' }).click();
-  await buying.getByLabel('What you bought or sold').selectOption({ label: 'Investments › BBRI shares' });
+  await buying.getByLabel('What you bought or sold').selectOption({ label: 'Investments › BBRI' });
   await buying.getByLabel('Lots').fill('1');
   await buying.getByLabel(/What it cost, before fees/).fill('988981');
   await buying.getByLabel('Paid with').first().selectOption({ label: 'RDN Stockbit (IDR)' });
   await buying.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
   await buying.getByRole('button', { name: 'Save' }).click();
   await expect(buying).toHaveCount(0);
-  await expect(page.getByText('Bought 100 BBRI shares')).toBeVisible();
+  await expect(page.getByText('Bought 100 BBRI')).toBeVisible();
 
   // The leftover Rp 1.011.019 is still set aside for University, so none of it is idle: RDN holds 1.011.019 and promises
   // 1.011.019, and only what is free (nought) waits to be invested (Task 4: idle = free, not balance).
@@ -240,8 +231,8 @@ test('a card purchase with a fee, tagged to a goal, moves the units, the goal an
   // The card owes the cost **and the fee** — 3.980.000 + 15.000 — and the bank was never touched.
   await page.goto('/accounts');
   // An account is a row of the table now, not a list item — see `add-transaction.spec.ts` for the whole note.
-  await expect(page.getByRole('row').filter({ hasText: 'BCA KrisFlyer' }).first()).toContainText('3.995.000');
-  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('50.000.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA KrisFlyer' }).first()).toContainText('3.995.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('50.000.000');
 
   // And the refusals come with it: a trade's money half is corrected on Buy & sell or not at all. The receipt is
   // reached by the ⓘ at the end of the row — clicking the row itself edits in place on a desktop and opens
@@ -272,7 +263,7 @@ test('a sale pays its proceeds into a bank account and takes the units back out'
   await page.goto('/net-worth/trades');
   await expect(page.getByText('8 g').first()).toBeVisible();
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('54.200.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('54.200.000');
 });
 
 test('a purchase paid by card reaches the points engine with the MCC and category it was given', async ({ page }) => {

@@ -245,8 +245,8 @@ export function InsetRow({
   const separator = position?.separator ? (
     <span
       aria-hidden
-      className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]"
-      style={{ height: 0.5, left: destructive ? 0 : plan.separatorInset }}
+      className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]"
+      style={{ height: 0.5, left: destructive ? 0 : plan.separatorInset, right: ROW_PAD_X }}
     />
   ) : null;
   const slides = !disabled && (onSwipeRight !== undefined || leftAction !== undefined);

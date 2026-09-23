@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 
 // Local time, like every date field in the app: toISOString() is UTC, so between midnight and 07:00
@@ -150,12 +151,7 @@ export async function moneyIn(scope: Locator): Promise<number[]> {
 }
 
 export async function addWallet(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('50000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 }
 
 /** Spending against the Food and beverage parent, which the event can then be planned against. */

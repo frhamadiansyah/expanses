@@ -16,6 +16,7 @@ export { DestructiveRow, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitR
 export { CardStack, type WalletCard } from './CardStack';
 export { useWalletSlot, type WalletSlot } from './wallet-slot';
 export { Panel, PanelHeader, SCREEN } from './Panel';
+export { ActionLine, LineAction } from './ActionLine';
 export { Figure, RecordTable, type RecordColumn, type RecordDetail, type RecordShape } from './RecordTable';
 /* The shared parts for a figure in another currency and a row that adds its children up (pockets, then securities). */
 export { ApproxFigure, GroupedRow } from './Grouped';

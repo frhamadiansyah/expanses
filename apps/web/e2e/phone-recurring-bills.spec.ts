@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 /** Anything a finger is meant to hit must be at least this tall or wide. */
 const TAP = 44;
@@ -8,12 +9,7 @@ test.beforeEach(({ page }) => {
 });
 
 async function addWallet(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 }
 
 async function addBill(page: Page, name: string, amount: string) {

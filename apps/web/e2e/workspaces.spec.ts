@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount, openCard } from './accounts';
 import { addItem, moneyIn, planFor } from './event-plan';
 import { addTransaction } from './add-transaction';
 
@@ -7,12 +8,7 @@ import { addTransaction } from './add-transaction';
  * belongs to — unless there is only one workspace, when the badge would say the same word on every row.
  */
 test('an account’s history opens from Accounts, and badges nothing while there is one workspace', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Supplier dinner', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '640000' });
@@ -51,12 +47,7 @@ test('the sidebar names the open workspace and opens the switcher', async ({ pag
 
 /** A bank account to pay from, since every flow below needs somewhere for the money to come out of. */
 async function addBank(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 }
 
 async function spend(page: Page, description: string, amount: string) {
@@ -217,11 +208,7 @@ test('an account’s history holds every workspace, each row saying which', asyn
 
 /** A credit card with a statement day, so there is a statement to read the purchases off. */
 async function addCard(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Visa');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+  await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/cards');
   await page.getByRole('link', { name: 'BCA Visa' }).click();

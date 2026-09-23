@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { zipStore, unzipStore } from '@expanses/core';
 import { expect, type Page, test } from '@playwright/test';
+import { openCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
 import { addTransaction } from './add-transaction';
 
@@ -64,11 +65,7 @@ function plantPhoto(page: Page, name: string, text: string): Promise<void> {
 
 /** One posted transaction, so there is something for a photo row to hang off. */
 async function aTransaction(page: Page) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Visa');
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Visa', exact: true })).toBeVisible();
+  await openCard(page, { name: 'BCA Visa' });
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Visa', category: 'Groceries', amount: '500000' });

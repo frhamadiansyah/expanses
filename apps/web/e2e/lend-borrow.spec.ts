@@ -1,17 +1,14 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { closeDetails, shareWith } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
+/** The label the old inline form used went with it; the kind decides what the picker asks for now. */
 async function addAccount(page: Page, name: string, type: string, balanceLabel: string, amount: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption(type);
-  await page.getByLabel(balanceLabel).fill(amount);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: type, name, balance: amount });
 }
 
 async function lend(page: Page, person: string, amount: string, from: string) {
@@ -151,13 +148,7 @@ test('the desktop keeps both sides in front of you, side by side', async ({ page
  */
 async function emptyDollarAccount(page: Page) {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('Wise USD');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
-  await page.getByLabel('Current balance').fill('0');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Wise USD', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD' });
 }
 
 test('lends US$100 with no dollar rate stored: the form asks for it and the loan records', async ({ page }) => {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -31,12 +32,7 @@ test('the period is chosen from the chart, and its arrows step by that period', 
 });
 
 test('⋯ narrows the list by what paid, and a chip takes it off again', async ({ page }) => {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Tahapan');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Filters' }).click();

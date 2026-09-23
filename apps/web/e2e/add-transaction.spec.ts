@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
@@ -39,12 +40,7 @@ test.beforeEach(({ page }) => {
 });
 
 async function addAccount(page: Page, name: string, type: string, extra?: (page: Page) => Promise<void>) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption(type);
-  if (extra) await extra(page);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: type, name, extra });
 }
 
 test('an expense goes in through the card and comes out in the list', async ({ page }) => {
@@ -72,9 +68,9 @@ test('income lands in the account it was received into', async ({ page }) => {
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Freelance' })).toContainText('7.500.000');
   // Received, not spent: the account is 7.500.000 richer, which is what tells income from an expense.
   await page.goto('/accounts');
-  // An account is a row of the table now, not a list item: the same five columns, scrolling sideways at 390 px
-  // rather than wrapping the name into the balance. Every assertion below is the same fact, on the row that has it.
-  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('7.500.000');
+  // An account is a line of the kit's list now, not a row of a table: the name and its balance on one line,
+  // the actions under them. Every assertion below is the same fact, on the line that has it.
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('7.500.000');
 });
 
 test('Paid with names each card by its digits, and choosing one sets the account and the card together', async ({ page }) => {
@@ -164,15 +160,7 @@ test('a desktop types the amount into a real input, and the keyboard does what t
 
 /** A foreign account opened with a balance stores that day's rate, which is what a cross-currency save then needs. */
 async function addForeignAccount(page: Page, name: string, currency: string, balance: string, rate: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Currency').selectOption(currency);
-  await page.getByLabel('Current balance').fill(balance);
-  await page.getByLabel('Balance as of').fill(await todayIn(page));
-  await page.getByLabel(`Rate: IDR per 1 ${currency}`).fill(rate);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name, currency, balance, rate, opened: await todayIn(page) });
 }
 
 async function addGoal(page: Page, name: string, amount: string, dueOn: string) {
@@ -187,10 +175,10 @@ async function addGoal(page: Page, name: string, amount: string, dueOn: string) 
 
 test('a transfer moves money between two accounts and is filed in no workspace', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Current balance').fill('20000000');
+    await page.getByLabel('Balance now').fill('20000000');
   });
   await addAccount(page, 'Jenius', 'savings', async () => {
-    await page.getByLabel('Current balance').fill('0');
+    await page.getByLabel('Balance now').fill('0');
   });
   await page.goto('/transactions');
 
@@ -208,8 +196,8 @@ test('a transfer moves money between two accounts and is filed in no workspace',
 
   // Out of one, into the other, to the rupiah.
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.500.000');
-  await expect(page.getByRole('row').filter({ hasText: 'Jenius' }).first()).toContainText('500.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.500.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Jenius' }).first()).toContainText('500.000');
 });
 
 /**
@@ -226,10 +214,10 @@ test('a transfer moves money between two accounts and is filed in no workspace',
 test('a transfer offers no currency of its own, and moves the figure its row shows', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Current balance').fill('20000000');
+    await page.getByLabel('Balance now').fill('20000000');
   });
   await addAccount(page, 'Jago', 'bank', async () => {
-    await page.getByLabel('Current balance').fill('0');
+    await page.getByLabel('Balance now').fill('0');
   });
   // A USD account opened with a balance stores today's USD→IDR rate, which is what used to fill the row in.
   await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
@@ -272,14 +260,14 @@ test('a transfer offers no currency of its own, and moves the figure its row sho
   await expect(moved).toContainText('Rp 100');
   await expect(moved).not.toContainText('1.600.000');
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.999.900');
-  await expect(page.getByRole('row').filter({ hasText: 'Jago' }).first()).toContainText('100');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('19.999.900');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Jago' }).first()).toContainText('100');
 });
 
 test('a transfer into a USD account asks for the received amount, and will not save without it', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Current balance').fill('20000000');
+    await page.getByLabel('Balance now').fill('20000000');
   });
   // USD has exponent 2, so a figure read in the wrong currency lands 100× out rather than looking identical.
   // The rate is stored as the opening balance's own conversion, so the balance has to be worth converting.
@@ -305,16 +293,16 @@ test('a transfer into a USD account asks for the received amount, and will not s
   // USD 100 landed as USD 100 on top of the opening 10 — not 10.000, which is what reading the second figure in
   // the wrong currency does.
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ hasText: 'Wise USD' }).first()).toContainText('110,00');
-  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Wise USD' }).first()).toContainText('110,00');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
 });
 
 test('a transfer tagged For goal parks the money against the goal', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Current balance').fill('20000000');
+    await page.getByLabel('Balance now').fill('20000000');
   });
   await addAccount(page, 'Jenius', 'savings', async () => {
-    await page.getByLabel('Current balance').fill('0');
+    await page.getByLabel('Balance now').fill('0');
   });
   await addGoal(page, 'University for Aisyah', '350000000', '2038-07-31');
 
@@ -351,16 +339,7 @@ test('"Charged in" opens filled in at the rate this device stored for the day', 
   await expect(page.getByText(/No CNY→IDR rate is known/)).toBeVisible();
 
   // A CNY account opened today stores today's CNY→IDR rate.
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('Alipay');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Currency').selectOption('CNY');
-  // The rate is stored as the balance's own conversion, so there has to be a balance to convert.
-  await page.getByLabel('Current balance').fill('1000');
-  await page.getByLabel('Balance as of').fill(TODAY);
-  await page.getByLabel('Rate: IDR per 1 CNY').fill('2200');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Alipay', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'Alipay', currency: 'CNY', balance: '1000', rate: '2200', opened: TODAY });
 
   // Now the day has a rate, so the row opens with the estimate already in it — and it is a figure worked out
   // from the rate, not the figure typed: CNY 100 at 2.200 is Rp 220.000, and CNY 250 is Rp 550.000.
@@ -450,7 +429,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
     await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
     await page.getByLabel('Last 4 digits').fill('1467');
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Owed now').fill('0');
   });
   // A second card on the same account, so "which card" has a wrong answer available to be caught at.
   await page.goto('/cards');
@@ -504,7 +483,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
 test('a transfer that crosses currencies can be tagged to a goal', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Current balance').fill('20000000');
+    await page.getByLabel('Balance now').fill('20000000');
   });
   await addForeignAccount(page, 'Wise USD', 'USD', '10', '16000');
   await addGoal(page, 'University for Aisyah', '350000000', '2038-07-31');
@@ -524,8 +503,8 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
 
   // What left and what landed, each in its own account's own money.
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ hasText: 'Wise USD' }).first()).toContainText('110,03');
-  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Wise USD' }).first()).toContainText('110,03');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('18.400.000');
 
   // And the goal is funded out of the account the money landed in, for what that set-aside *is*: US$100,03,
   // not the Rp 1.600.000 that left, and not the `Rp 10.003` this page used to paint by printing the account's
@@ -559,7 +538,7 @@ async function catalogueCard(page: Page, name: string, search: string, entryName
 
 test('every extra survives the save, and leaving it out of the report leaves only the chart and the budgets', async ({ page }) => {
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Owed now').fill('0');
   });
   await catalogueCard(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
   await addEvent(page, 'Lebaran');
@@ -653,7 +632,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   // …and still on the card: the statement, the balance and the points all still hold both of them, which is the
   // whole asymmetry exclusion exists for. 85.000 at MCC 5411, typed here rather than guessed from the category.
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardSection(page, 'Points');
@@ -664,8 +643,8 @@ test('every extra survives the save, and leaving it out of the report leaves onl
 test('a split is read in the paying account’s own currency, exponent and all', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'Wise Card', 'credit_card', async () => {
-    await page.getByLabel('Currency').selectOption('USD');
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Currency', { exact: true }).selectOption('USD');
+    await page.getByLabel('Owed now').fill('0');
   });
 
   await page.goto('/transactions');
@@ -706,7 +685,7 @@ test('a split is read in the paying account’s own currency, exponent and all',
  */
 test('a split by category posts one line per category, each with its own figure', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Current balance').fill('50000000');
+    await page.getByLabel('Balance now').fill('50000000');
   });
 
   await page.goto('/transactions');
@@ -732,7 +711,7 @@ test('a split by category posts one line per category, each with its own figure'
 
   // The whole bill left the account, once.
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('49.915.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Tahapan' }).first()).toContainText('49.915.000');
 
   // And the month knows which 40.000 was groceries and which 45.000 was a restaurant: Groceries sits under
   // Household and Restaurants under Food and beverage, so the two figures cannot hide in one row.
@@ -753,7 +732,7 @@ test('a split by category posts one line per category, each with its own figure'
  */
 test('Split by category and With refuse each other in words, before Save', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Current balance').fill('50000000');
+    await page.getByLabel('Balance now').fill('50000000');
   });
 
   await page.goto('/transactions');
@@ -814,7 +793,7 @@ test('a missing rate is asked for under Add more details, and the save then goes
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   // No balance, so nothing stores a USD→IDR rate on the way in: the save is the first thing to want one.
   await addAccount(page, 'Wise USD', 'bank', async () => {
-    await page.getByLabel('Currency').selectOption('USD');
+    await page.getByLabel('Currency', { exact: true }).selectOption('USD');
   });
 
   await page.goto('/transactions');
@@ -857,7 +836,7 @@ test('a missing rate is asked for under Add more details, and the save then goes
  */
 test('a bill split equally between three people leaves each of them owing their share', async ({ page }) => {
   await addAccount(page, 'BCA Visa', 'credit_card', async () => {
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Owed now').fill('0');
   });
 
   await page.goto('/transactions');
@@ -898,7 +877,7 @@ test('a bill split equally between three people leaves each of them owing their 
 
   // The card was charged the whole 400.000 — what the restaurant took, not what the dinner cost the owner.
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ hasText: 'BCA Visa' }).first()).toContainText('400.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'BCA Visa' }).first()).toContainText('400.000');
 
   // …and only the owner's own quarter is spending. The month's total is the figure the ring is drawn from, so
   // a split that posted the whole bill to Restaurants would read 400.000 here.
@@ -915,7 +894,7 @@ test('a bill split equally between three people leaves each of them owing their 
  */
 test('a typed share leaves the rest of the bill as your own spending', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', async () => {
-    await page.getByLabel('Current balance').fill('50000000');
+    await page.getByLabel('Balance now').fill('50000000');
   });
 
   await page.goto('/transactions');
@@ -955,7 +934,7 @@ test('a typed share leaves the rest of the bill as your own spending', async ({ 
  */
 test('a photograph attached to a purchase is on its receipt, and ✕ takes it off again', async ({ page }) => {
   await addAccount(page, 'BCA Visa', 'credit_card', async () => {
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Owed now').fill('0');
   });
 
   await page.goto('/transactions');
@@ -1125,7 +1104,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
     await page.getByLabel('Bank', { exact: true }).selectOption('BCA');
     await page.getByLabel('Last 4 digits').fill('1467');
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Owed now').fill('0');
   });
   // A second card on the same account, so "which card" is a real question with a wrong answer available.
   await page.goto('/cards');
@@ -1233,7 +1212,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
 test('a split by category refuses a foreign amount in words, and the way out works', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await addAccount(page, 'BCA Visa', 'credit_card', async () => {
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Owed now').fill('0');
   });
 
   await page.goto('/transactions');
@@ -1290,7 +1269,7 @@ test('a split by category refuses a foreign amount in words, and the way out wor
  */
 test('an excluded purchase leaves the chart and the budget, keeps the statement and the points, and says so', async ({ page }) => {
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Owed now').fill('0');
   });
   await catalogueCard(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
 
@@ -1343,7 +1322,7 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
   // …while the balance, the statement and the points all still hold both. This is the half the switch must not
   // touch, and the half a "leave it out of everything" reading of the switch would break.
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
+  await expect(page.getByRole('listitem').filter({ hasText: 'KF Signature' }).first()).toContainText('135.000');
   await page.goto('/cards');
   await page.getByRole('link', { name: /^KF Signature(,|$)/ }).click();
   await cardSection(page, 'Points');
@@ -1424,7 +1403,7 @@ test('the keyboard alone records a purchase, and evaluating is not saving', asyn
  */
 test('an event, a photograph and the exclusion survive one save together', async ({ page }) => {
   await addAccount(page, 'BCA Visa', 'credit_card', async () => {
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Owed now').fill('0');
   });
   await addEvent(page, 'Lebaran');
 
@@ -1468,7 +1447,7 @@ test('an event, a photograph and the exclusion survive one save together', async
  */
 test('an edit that turns a purchase into income drops the card’s facts and keeps the rest', async ({ page }) => {
   await addAccount(page, 'KF Signature', 'credit_card', async () => {
-    await page.getByLabel('Amount owed now').fill('0');
+    await page.getByLabel('Owed now').fill('0');
   });
   // Real terms, so the Points tab has a scheme to list the purchase against — and so the MCC is readable there.
   await catalogueCard(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');

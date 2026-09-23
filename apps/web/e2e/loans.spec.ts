@@ -1,16 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
+/** The label the old inline form used went with it; the kind decides what the picker asks for now. */
 async function addAccount(page: Page, name: string, type: string, balanceLabel: string, amount: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption(type);
-  await page.getByLabel(balanceLabel).fill(amount);
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name, exact: true })).toBeVisible();
+  await openAccount(page, { subtype: type, name, balance: amount });
 }
 
 /** Onboards a KPR already running: the account holds what is still owed, the terms say on what basis. */
@@ -192,14 +189,8 @@ test('a card purchase turned into instalments splits into billed and unbilled', 
 
 test('a loan in another currency is printed in its own currency, and the monthly total is converted', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar car loan');
-  await page.getByLabel('Type').selectOption('loan');
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
-  await page.getByLabel('Amount owed now').pressSequentially('20000.00');
-  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Dollar car loan', exact: true })).toBeVisible();
+  // A liability account in dollars, opened at the rate typed for the day it is owed from.
+  await openAccount(page, { subtype: 'loan', name: 'Dollar car loan', currency: 'USD', balance: '20000.00', rate: '16250' });
 
   // The terms are written on the loan's own page; the list is how the loan is reached.
   await page.goto('/net-worth/loans');
@@ -233,22 +224,8 @@ test('a loan in another currency is printed in its own currency, and the monthly
 test('an extra payment reads its penalty in the loan’s own money, cents and all', async ({ page }) => {
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   // A dollar account to pay from, and a dollar loan with the terms its schedule is worked out from.
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Wise USD');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
-  await page.getByLabel('Current balance').pressSequentially('2400.00');
-  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Wise USD', exact: true })).toBeVisible();
-
-  await page.getByLabel('Name', { exact: true }).pressSequentially('Dollar car loan');
-  await page.getByLabel('Type').selectOption('loan');
-  await page.getByLabel('Currency', { exact: true }).selectOption('USD');
-  await page.getByLabel('Amount owed now').pressSequentially('20000.00');
-  await page.getByLabel(/^Rate: IDR per 1 USD$/).pressSequentially('16250');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'Dollar car loan', exact: true })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD', balance: '2400.00', rate: '16250' });
+  await openAccount(page, { subtype: 'loan', name: 'Dollar car loan', currency: 'USD', balance: '20000.00', rate: '16250' });
 
   // The terms are written on the loan's own page; the list is how the loan is reached.
   await page.goto('/net-worth/loans');
@@ -284,5 +261,5 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   // extra, is exactly what left the dollar account: 2.400 − 500 − 12,50.
   await expect(page.getByText(/19\.500,00/).first()).toBeVisible();
   await page.goto('/accounts');
-  await expect(page.getByRole('row').filter({ has: page.getByRole('link', { name: 'Wise USD', exact: true }) })).toContainText('1.887,50');
+  await expect(page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Wise USD', exact: true }) })).toContainText('1.887,50');
 });

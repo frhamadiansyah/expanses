@@ -16,7 +16,7 @@ import { GROUP_GAP, GROUP_RADIUS, type GroupChild, InsetRow, type InsetRowProps,
 
 function Separator({ show }: { show: boolean | undefined }) {
   if (!show) return null;
-  return <span aria-hidden className="pointer-events-none absolute top-0 right-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X }} />;
+  return <span aria-hidden className="pointer-events-none absolute top-0 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />;
 }
 
 const ROW_BOX = (subtitle: boolean): CSSProperties => ({ minHeight: rowHeight(subtitle), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` });
@@ -391,7 +391,7 @@ export function ColumnGroup({
             <div key={index} className="relative min-w-0">
               {index > 0 && (
                 <>
-                  <span aria-hidden className="pointer-events-none absolute top-0 right-0 z-[1] bg-[var(--ph-hair)] md:hidden" style={{ height: 0.5, left: ROW_PAD_X }} />
+                  <span aria-hidden className="pointer-events-none absolute top-0 z-[1] bg-[var(--ph-hair)] md:hidden" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />
                   <span aria-hidden className="pointer-events-none absolute top-[11px] bottom-[11px] left-0 hidden bg-[var(--ph-hair)] md:block" style={{ width: 0.5 }} />
                 </>
               )}

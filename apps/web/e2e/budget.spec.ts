@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
+import { setBudget } from './budget';
 import { openGoalForm } from './goals';
 
 test.beforeEach(({ page }) => {
@@ -7,24 +9,11 @@ test.beforeEach(({ page }) => {
 });
 
 async function spendOnDinner(page: Page, amount: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill('BCA Checking');
-  await page.getByLabel('Type').selectOption('bank');
-  await page.getByLabel('Current balance').fill('20000000');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'BCA Checking' })).toBeVisible();
+  await openAccount(page, { subtype: 'bank', name: 'BCA Checking', balance: '20000000' });
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Checking', category: 'Restaurants', amount: amount });
   await expect(page.getByText('Warung Steak')).toBeVisible();
-}
-
-async function setBudget(page: Page, category: string, amount: string, thisMonthOnly = false) {
-  await page.getByLabel('Category', { exact: true }).selectOption({ label: category });
-  await page.getByLabel('Monthly amount (IDR)').fill(amount);
-  if (thisMonthOnly) await page.getByLabel('Just this month').check();
-  else await page.getByLabel('Just this month').uncheck();
-  await page.getByRole('button', { name: 'Set budget' }).click();
 }
 
 test('a cap on a parent counts what its children spent', async ({ page }) => {

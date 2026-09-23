@@ -1,11 +1,8 @@
 import { expect, type Page, test } from '@playwright/test';
+import { openCard } from './accounts';
 
 async function addCard(page: Page, name: string) {
-  await page.goto('/accounts');
-  await page.getByLabel('Name', { exact: true }).fill(name);
-  await page.getByLabel('Type').selectOption('credit_card');
-  await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name })).toBeVisible();
+  await openCard(page, { name });
 }
 
 // The menu is the navigation landmark: a card page's own way back is also named "Cards", above its title.
