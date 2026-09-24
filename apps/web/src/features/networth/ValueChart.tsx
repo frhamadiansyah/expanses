@@ -1,12 +1,5 @@
 import { formatMinor } from '@expanses/core';
-import { chartGeometry } from './value-chart';
-
-const short = (minor: number, currency: string): string => {
-  const abs = Math.abs(minor);
-  if (abs >= 1e9) return `${(minor / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 2 })} M`;
-  if (abs >= 1e6) return `${(minor / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`;
-  return formatMinor(minor, currency);
-};
+import { chartGeometry, shortMoney } from './value-chart';
 
 /** Month-end values as a small area chart. Hand-drawn SVG: no chart library in this app. */
 export function ValueChart({ values, labels, currency }: { values: number[]; labels: string[]; currency: string }) {
@@ -18,7 +11,7 @@ export function ValueChart({ values, labels, currency }: { values: number[]; lab
         <g key={tick.value}>
           <line x1={74} x2={chart.width - 16} y1={tick.y} y2={tick.y} stroke="#e2e8f0" strokeWidth={1} fill="none" />
           <text x={66} y={tick.y + 4} textAnchor="end" fill="#64748b" fontSize={11}>
-            {short(tick.value, currency)}
+            {shortMoney(tick.value, currency)}
           </text>
         </g>
       ))}

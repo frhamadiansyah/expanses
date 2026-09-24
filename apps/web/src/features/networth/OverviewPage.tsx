@@ -3,9 +3,11 @@ import { categoryTotalsBetween, expiringSoonAcross, nativeBalances, ownerScope, 
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Gauge } from 'lucide-react';
+import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
+import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
+import { NetWorthChart } from './NetWorthChart';
 import { attentionItems } from './overview-rows';
 import { ShareBar, ShareLegend } from './ShareBar';
 import { useGoalPlans, useSetAsideViews } from '../goals/queries';
@@ -14,10 +16,23 @@ import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries'
 import { loanAttention } from '../loans/attention';
 import { useInstallments, useLoans } from '../loans/queries';
 import { useAssetValues, useDueTemplates, useIdleCash, useNetWorthSeries, useSheet } from './queries';
-import { ValueChart } from './ValueChart';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 const sum = (rows: { amountBaseMinor: number }[]) => rows.reduce((total, row) => total + row.amountBaseMinor, 0);
+
+/** How much of the year the chart is read over. Three, six or the whole twelve: every range the snapshots can answer. */
+type Span = '3m' | '6m' | '1y';
+const SPAN_MONTHS: Record<Span, number> = { '3m': 3, '6m': 6, '1y': 12 };
+/*
+ * Named the way Health names a range: three letters over a track, not three sentences. The control's own label is
+ * what a screen reader hears first, so "3M" beside "Range" reads as a range and not as a code.
+ */
+const RANGES = [
+  { key: '3m', label: '3M' },
+  { key: '6m', label: '6M' },
+  { key: '1y', label: '1Y' },
+] as const satisfies readonly Segment[];
+
 const GROUP_COLORS: Record<string, string> = {
   liquid: 'bg-cyan-600',
   invest: 'bg-emerald-600',
@@ -99,8 +114,12 @@ export function OverviewPage() {
   const setAsideViews = useSetAsideViews();
 
   const points = series.data ?? [];
-  // Every rate or no figure: a point, or the balance sheet, that lacks one names it instead of counting that money as 0.
-  const charted = points.flatMap((point) => (point.netWorthMinor === null ? [] : [point.netWorthMinor]));
+  // The range the chart is read over, out of the same snapshots the figure is: what is drawn is what is summed.
+  const [span, setSpan] = useState<Span>('6m');
+  const shown = points.slice(-SPAN_MONTHS[span]);
+  const from = shown[0];
+  const to = shown[shown.length - 1];
+  const rangeLabel = from && to ? `${MONTH_LABEL(from.month)} – ${MONTH_LABEL(to.month)} ${to.month.slice(0, 4)}` : undefined;
   // The hero is today's figure, so only today's missing rates hide it; an earlier month's hides that month's point.
   const sheetMissing = sheetInputs.data?.missing ?? [];
   const unchartable = [...new Set(points.flatMap((point) => point.missing))].sort();
@@ -241,24 +260,37 @@ export function OverviewPage() {
          * the section row to the chart scrolled sideways with it.
          */}
         <div className="min-w-0">
-          <Panel
-          wide
-          header="Net worth"
-        >
-          <div data-testid="net-worth">
-            {sheetMissing.length > 0 ? (
-              <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
-            ) : (
-            <Hero minor={sheet.netWorthMinor} currency={ws.baseCurrency} />
+          {/*
+           * Apple Health's metric: the range it is read over, the figure, and the months drawn across the whole screen.
+           * A full-bleed white band rather than a card the graph sits inside — the screen's own gutter is not a box, and
+           * the grid runs to both edges so the months read as a shape. On a wide screen the band stops at its column,
+           * because a graph that runs under the second column is not full-bleed, it is in the way.
+           */}
+          <section className="-mx-4 mb-[18px] bg-[var(--ph-surface)] pb-[6px] md:mx-0">
+            <div className="px-4 md:px-0">
+              <SegmentedControl
+                className="mb-[16px]"
+                label="Range"
+                segments={RANGES}
+                value={span}
+                onChange={(key) => setSpan(key as Span)}
+                max={RANGES.length}
+              />
+              <div data-testid="net-worth">
+                {sheetMissing.length > 0 ? (
+                  <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
+                ) : (
+                  <Hero minor={sheet.netWorthMinor} currency={ws.baseCurrency} caption={rangeLabel} />
+                )}
+              </div>
+            </div>
+            <NetWorthChart values={shown.map((point) => point.netWorthMinor)} labels={shown.map((point) => MONTH_LABEL(point.month))} currency={ws.baseCurrency} />
+            {sheetMissing.length === 0 && unchartable.length > 0 && (
+              <p data-testid="chart-missing" className="px-4 pt-[8px] text-[13px] leading-[17px] text-[var(--ph-warn)] md:px-0">
+                No {unchartable.join(', ')} rate for an earlier month, so the year cannot be charted.
+              </p>
             )}
-          </div>
-          {points.length > 0 && charted.length === points.length && (
-            <ValueChart values={charted} labels={points.map((point) => MONTH_LABEL(point.month))} currency={ws.baseCurrency} />
-          )}
-          {sheetMissing.length === 0 && unchartable.length > 0 && (
-            <p data-testid="chart-missing" className="text-[13px] leading-[17px] text-[var(--ph-warn)]">No {unchartable.join(', ')} rate for an earlier month, so the year cannot be charted.</p>
-          )}
-          </Panel>
+          </section>
         </div>
 
         <div className="min-w-0">
