@@ -1,6 +1,7 @@
-import { CASH_ITEMS, displayAmount, formatMinor, periodLabel, sumToBase } from '@expanses/core';
-import { type AccountRow, type AccountSubtype, pocketParentIds } from '@expanses/db';
+import { CASH_ITEMS, displayAmount, formatMinor, isoDate, periodLabel, sumToBase } from '@expanses/core';
+import { type AccountRow, type AccountSubtype, listTransactionsIn, pocketParentIds } from '@expanses/db';
 import { Link, type LinkProps } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -13,7 +14,8 @@ import { useAssetValues } from '../networth/queries';
 import { cx, Empty, Money } from '../../ui';
 import { type CornerAction, ActionLine, Figure, groupedFigure, LargeTitle, Panel, ROW_PAD_X, ROW_PAD_Y, heroFigure, rowHeight, SCREEN } from '../../ui/native';
 import { SPENDABLE_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
-import { SpendRing } from './SpendRing';
+import { BalanceSpark } from './BalanceSpark';
+import { balanceSeries, crossing, daysBefore } from './balance-series';
 import { useHeldRates } from './queries';
 
 /**
@@ -84,6 +86,9 @@ const GROUPS: {
     order: ['loan', 'card', 'person'],
   },
 ];
+
+/** How many days of history the tile's line is drawn over. */
+const SPARK_DAYS = 30;
 
 /** Every subtype this page can list, so an account it does not list is never counted or drawn. */
 const LISTED = new Set<AccountSubtype>(GROUPS.flatMap((group) => group.subtypes));
@@ -356,7 +361,7 @@ function SpendRow({ colour, label, value, currency, separator = false }: { colou
 }
 
 export function AccountsPage() {
-  const { ws } = useApp();
+  const { database, ws } = useApp();
   const accounts = useAccounts();
   const balances = useBalances();
   const everything = accounts.data ?? [];
@@ -462,6 +467,33 @@ export function AccountsPage() {
    * rate is the day's own.
    */
   const estimated = spendable.converted || [...promiseAmounts, ...askedAmounts].some((amount) => amount.currency !== ws.baseCurrency);
+  /**
+   * The money accounts the tile counts — a parent's pockets rather than the parent itself, the way `moneySummary`
+   * reads them — so the line behind the figure is drawn from the same money the figure is made of.
+   */
+  const countedIds = money
+    .filter((account) => account.parentId === null && SPENDABLE_KINDS.has(account.subtype))
+    .flatMap((account) => {
+      const pockets = pocketsOf(account.id, everything);
+      return pockets.length > 0 ? pockets.map((pocket) => pocket.id) : [account.id];
+    });
+  const today = isoDate();
+  /** What moved in and out of that money each day: the ledger's own conversion, so the line needs no rate of its own. */
+  const flows = useQuery({
+    queryKey: ['account-flows', ws.workspaceId, today],
+    enabled: accounts.isSuccess,
+    queryFn: async () => {
+      const { transactions } = await listTransactionsIn(database, ws, { from: daysBefore(today, SPARK_DAYS), to: today });
+      const counted = new Set(countedIds);
+      return transactions.flatMap((transaction) => {
+        const minor = transaction.entries.reduce((sum, entry) => (counted.has(entry.accountId) ? sum + entry.amountBaseMinor : sum), 0);
+        return minor === 0 ? [] : [{ on: transaction.occurredOn, minor }];
+      });
+    },
+  });
+  /* The month behind the figure, ending on it: nothing to draw until the money has a history to walk back through. */
+  const series = flows.data && free.freeMinor !== null ? balanceSeries({ todayMinor: free.freeMinor, today, days: SPARK_DAYS, flows: flows.data }) : null;
+  const crossed = series ? crossing(series) : null;
   /** A group's drawers, in the group's own order, each holding the accounts that fell into it. */
   const drawersOf = (group: (typeof GROUPS)[number], rows: AccountRow[]) => {
     const found = new Map<string, Drawer & { rows: AccountRow[] }>();
@@ -497,26 +529,17 @@ export function AccountsPage() {
       {accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
         (free.freeMinor !== null && unclaimed.freeMinor !== null ? (
           <Panel className="space-y-3">
-            <div className="flex items-center gap-3">
-              <SpendRing
-                size={68}
-                thickness={9}
-                segments={[
-                  { key: 'free', label: 'Balance', minor: free.freeMinor, colour: 'var(--ph-tint)' },
-                  ...(free.dueMinor !== null && free.dueMinor > 0 ? [{ key: 'due', label: 'Debt owed', minor: free.dueMinor, colour: 'var(--ph-alarm)' }] : []),
-                ]}
-              />
-              <div className="min-w-0">
-                <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Balance</p>
-                {/* One line, whatever the amount is: a figure that wraps reads as two figures where there is one. */}
-                <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em]">
-                  {estimated && <span className="text-[var(--ph-ink-3)]">≈ </span>}
-                  {heroFigure(free.freeMinor, ws.baseCurrency).text}
-                </p>
-              </div>
+            <div>
+              <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Balance</p>
+              {/* One line, whatever the amount is: a figure that wraps reads as two figures where there is one. */}
+              <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em]">
+                {estimated && <span className="text-[var(--ph-ink-3)]">≈ </span>}
+                {heroFigure(free.freeMinor, ws.baseCurrency).text}
+              </p>
             </div>
-            {/* The ring's legend: the same two shares, each with the figure it is drawn from, and a hairline between
-             * them — the way iOS separates the rows under a ring, so each reads as its own line. */}
+            {/* The month behind the figure: what moved, and the day the money went below nothing. */}
+            {series && <BalanceSpark series={series} currency={ws.baseCurrency} crossing={crossed} className="pt-1" />}
+            {/* The two numbers the figure is made of, each with the dot the line would have used for it. */}
             <div className="border-t-[0.5px] border-[var(--ph-hair)] pt-3">
               <SpendRow
                 colour="var(--ph-tint)"
