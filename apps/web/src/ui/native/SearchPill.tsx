@@ -22,7 +22,7 @@ export function SearchPill({
   label?: string;
 }) {
   return (
-    <div className="flex h-11 items-center gap-2.5 rounded-full bg-[var(--ph-corner)] px-4 shadow-[var(--ph-lift)]">
+    <div className="flex h-11 items-center gap-2.5 rounded-full bg-[var(--ph-corner)] px-4">
       <Search size={18} className="shrink-0 text-[var(--ph-ink-3)]" aria-hidden />
       <input
         // biome-ignore lint/a11y/noAutofocus: the field was asked for by tapping search, so it should be ready to type in

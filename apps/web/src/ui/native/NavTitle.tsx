@@ -17,8 +17,8 @@ import { backLabel, type CornerAction, planCornerActions, titleSteps } from './t
  */
 
 /**
- * A circular 44 pt corner button: white, glyph in the ink, and a shadow lifting it off the page. The one shape every
- * screen's actions take.
+ * A circular 44 pt corner button: white, glyph in the ink, standing on the page's own ground with no edge of its own
+ * beyond the fill — the same one step a list box takes. The one shape every screen's actions take.
  *
  * An action that goes somewhere is drawn as a real link rather than a button that navigates, so a desktop keeps
  * its middle-click and its "open in a new tab" — the shape is the same either way, and the reach is not taken
@@ -53,7 +53,7 @@ export function CornerButton({
   className?: string;
 }) {
   const shell = cx(
-    'ph-focus flex shrink-0 items-center justify-center rounded-full shadow-[var(--ph-lift)]',
+    'ph-focus flex shrink-0 items-center justify-center rounded-full',
     pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : destructive ? 'bg-[var(--ph-corner)] text-[var(--ph-alarm)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
     disabled && 'opacity-40',
     className,
