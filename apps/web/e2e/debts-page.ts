@@ -64,3 +64,9 @@ export async function oneOfEach(page: Page) {
 
 /** The digits of a figure, as a number: `Rp 731.950.000` → 731950000. */
 export const digits = (text: string) => Number(text.replace(/[^\d]/g, ''));
+
+/**
+ * The first money a block of text says, as written: the figure a heading carries, without the words and the dates under
+ * it. The space after `Rp` is the app's own nbsp, so it is matched rather than assumed.
+ */
+export const moneyIn = (text: string) => text.match(/Rp[\s\u00a0][\d.]+/i)?.[0] ?? '';

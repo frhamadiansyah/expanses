@@ -147,15 +147,22 @@ test('an extra payment says what it saves before it is written', async ({ page }
   await expect(page.getByText(/650\.000\.000/).first()).toBeVisible();
 });
 
-test('the balance sheet splits a loan into this year and later', async ({ page }) => {
+test('a loan falls due this year and later, and the balance sheet names it once', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '200000000');
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '700000000');
   await addKpr(page);
 
+  // The split is the debts screen's reading: the next twelve months of principal, and the rest behind it.
+  await page.goto('/net-worth/loans');
+  await expect(page.getByTestId('debts-due')).toContainText('Due within a year');
+  await expect(page.getByTestId('debts-due')).toContainText('the rest is long term');
+
+  // The balance sheet reads what is owed by kind, so the same loan is one row with the whole of it — the sheet splits
+  // it into two groups underneath, and a list built from both of those named it twice.
   await page.goto('/net-worth');
-  await expect(page.getByText('Due within a year').first()).toBeVisible();
-  await expect(page.getByText('Long-term').first()).toBeVisible();
-  // Only the next twelve months of principal fall due this year, so both columns carry something.
+  await expect(page.getByText('Due within a year')).toHaveCount(0);
+  await expect(page.getByText('KPR Bintaro')).toHaveCount(1);
+  // 200.000.000 owned against 700.000.000 owed: the figure the whole balance is read against, not a part of it.
   await expect(page.getByTestId('net-worth')).toContainText('500.000.000');
 });
 

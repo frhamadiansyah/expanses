@@ -17,10 +17,10 @@ import { isMoneyAccount, useAccounts } from '../../lib/queries';
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 
 /**
- * A month as the axis names it: the name alone over a few of them, and the year beside it once the range runs past
- * one, where "Jan" on its own could be any of five.
+ * A month as the chart's reading names it: the month and the year, because the reading is asked for one month at a time
+ * and "Apr" on its own could be any of five.
  */
-const axisLabel = (month: string, months: number) => (months > 12 ? `${MONTH_LABEL(month)} ${month.slice(2, 4)}` : MONTH_LABEL(month));
+const monthLabel = (month: string) => `${MONTH_LABEL(month)} ${month.slice(0, 4)}`;
 
 /**
  * The months a range covers, told once: "Apr – Sept 2026", and the year at both ends when they are not the same year,
@@ -231,8 +231,11 @@ export function OverviewPage() {
    * What you owe, as one group: a debt is read by what it *is* — a card, a loan, money owed to a person — and not by
    * when it falls due. "Due within a year" and "long-term" are a schedule, and beside a column of asset types the two
    * of them read as the answer to a different question.
+   *
+   * `sheet.debts` and not the two schedule groups side by side: the sheet names a debt with a schedule in *both* of
+   * them, each holding its own part of the money, so listing the two together named a mortgage twice.
    */
-  const owed: SheetGroup = { key: 'debts', label: 'Debts', totalMinor: sheet.liabilitiesTotalMinor, rows: [...sheet.shortTerm.rows, ...sheet.longTerm.rows] };
+  const owed = sheet.debts;
   // The bar divides into the kinds the column's drawers hold: the same arithmetic, from the same fold.
   const owedBar: ShareSegment[] = sheetDrawers(owed.rows, subtypes).map((drawer) => ({
     key: drawer.key,
@@ -306,11 +309,7 @@ export function OverviewPage() {
             )}
           </div>
         </div>
-        <NetWorthChart
-          values={shown.map((point) => point.netWorthMinor)}
-          labels={shown.map((point) => axisLabel(point.month, shown.length))}
-          currency={ws.baseCurrency}
-        />
+        <NetWorthChart values={shown.map((point) => point.netWorthMinor)} labels={shown.map((point) => monthLabel(point.month))} currency={ws.baseCurrency} />
         {sheetMissing.length === 0 && unchartable.length > 0 && (
           <p data-testid="chart-missing" className="px-4 pt-[8px] text-[13px] leading-[17px] text-[var(--ph-warn)] md:px-0">
             No {unchartable.join(', ')} rate for an earlier month, so the line breaks there.
@@ -334,7 +333,7 @@ export function OverviewPage() {
 
       <section className="mb-[18px]">
         <PanelHeader title="Balance sheet" />
-        <p className="px-[4px] pb-[10px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">Assets at today's value · debts at what you still owe</p>
+        <p className="px-[4px] pb-[10px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">At today's value · debts at what you still owe</p>
         {/* A row with no rate reads 0 here, so its totals would be short: the missing rate is named instead. */}
         {sheetMissing.length > 0 ? (
           <Panel wide>
@@ -344,7 +343,7 @@ export function OverviewPage() {
         <>
         <div className="grid gap-6 md:grid-cols-2">
           <SheetColumn
-            title="What you own"
+            title="Assets"
             groups={sheet.assetGroups}
             bar={assetBar}
             totalMinor={sheet.assetsTotalMinor}
@@ -354,7 +353,7 @@ export function OverviewPage() {
             onToggle={toggleDrawer}
           />
           <SheetColumn
-            title="What you owe"
+            title="Liabilities"
             groups={owed.rows.length > 0 ? [owed] : []}
             bar={owedBar}
             totalMinor={sheet.liabilitiesTotalMinor}

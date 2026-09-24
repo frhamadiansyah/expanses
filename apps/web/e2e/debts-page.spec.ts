@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
-import { digits, oneOfEach } from './debts-page';
+import { digits, moneyIn, oneOfEach } from './debts-page';
 import { forgetRates, openWithPockets } from './pockets';
 
 /**
@@ -52,14 +52,15 @@ test('Debts shows all three groups with the right figures, and the due split is 
   await expect(debtRow(page, 'KPR BCA')).toContainText('BCA · 9% · 180 months');
 
   /*
-   * Due within a year is the balance sheet's own figure, named under the list — and what within a year and long
-   * term add up to is `groupDebts`' own arithmetic, held to the total by `debt-rows.test.ts`.
+   * Due within a year is this screen's own reading. What the balance sheet says of the same debts is the whole of
+   * them — it reads them by kind, so the figure the two screens share is what is owed in total.
    */
   const within = digits(await page.getByTestId('debts-due').innerText());
   expect(within).toBeGreaterThan(3_200_000);
+  const owed = digits(moneyIn(await page.getByTestId('debts-total').innerText()));
   await page.goto('/net-worth');
-  const sheetWithin = page.getByRole('heading', { name: 'Due within a year' }).locator('xpath=..');
-  expect(digits(await sheetWithin.innerText())).toBe(within);
+  const owedOnSheet = digits(moneyIn(await page.getByRole('heading', { name: 'Debts', exact: true }).locator('xpath=..').innerText()));
+  expect(owedOnSheet).toBe(owed);
 });
 
 test('＋ on Debts opens the chooser that adds every kind of debt', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { textWidth } from '../../ui/native';
-import { type ChartPoint, chartGeometry } from './value-chart';
+import { type ChartPoint, chartGeometry, nearestIndex } from './value-chart';
 
 const MONTHS = ['Oct', 'Nov', 'Dec', 'Jan'];
 const pointsOf = (chart: ReturnType<typeof chartGeometry>) => chart.points.filter((point): point is ChartPoint => point !== null);
@@ -95,30 +95,39 @@ describe('a figure that can be owed', () => {
     expect(chart.last!.value).toBe(3_000_000);
   });
 
-  it('keeps the name of a month with no figure, because the month is still a month', () => {
+  it('keeps a month with no figure in the series, because the month is still a month', () => {
     const chart = chartGeometry([1_000_000, null, 3_000_000], ['Jun', 'Jul', 'Aug']);
-    expect(chart.names.map((name) => name.label)).toEqual(['Jun', 'Jul', 'Aug']);
+    expect(chart.points).toHaveLength(3);
+    expect(chart.points[1]).toBeNull();
   });
 
-  it('names as many months as fit, so five years of them do not run together', () => {
-    const many = Array.from({ length: 60 }, (_, index) => `M${index}`);
-    expect(chartGeometry(new Array(60).fill(1_000_000), many).names.length).toBeLessThanOrEqual(7);
-    expect(chartGeometry(new Array(6).fill(1_000_000), many.slice(0, 6)).names).toHaveLength(6);
+  it('writes nothing outside the line when the drawing has no axis', () => {
+    const chart = chartGeometry([1_000_000, 2_000_000], ['Aug', 'Sep'], { width: 390, left: 0, right: 0 });
+    expect(chart.plotRight).toBe(390);
+    for (const point of pointsOf(chart)) expect(point.x).toBeLessThanOrEqual(chart.plotRight);
+  });
+});
+
+describe('nearestIndex', () => {
+  const chart = chartGeometry([1_000_000, 2_000_000, 3_000_000], ['Jun', 'Jul', 'Aug'], { left: 0, right: 0, width: 300 });
+
+  it('reads the month a tap landed on', () => {
+    expect(nearestIndex(chart.points, 0)).toBe(0);
+    expect(nearestIndex(chart.points, 150)).toBe(1);
+    expect(nearestIndex(chart.points, 299)).toBe(2);
   });
 
-  it('drops a name that would touch the one before it, however many months the range holds', () => {
-    const name = textWidth('Aug 24', 11);
-    const months = Array.from({ length: 26 }, () => 'Aug 24');
-    const chart = chartGeometry(new Array(26).fill(1_000_000), months, { width: 390, left: 0, right: 46, nameWidth: name });
-    expect(chart.names.length).toBeLessThan(7);
-    for (let index = 1; index < chart.names.length; index += 1) {
-      expect(chart.names[index]!.x - chart.names[index - 1]!.x).toBeGreaterThanOrEqual(name);
-    }
+  it('rounds to the nearer of two months rather than always the earlier', () => {
+    expect(nearestIndex(chart.points, 70)).toBe(0);
+    expect(nearestIndex(chart.points, 80)).toBe(1);
   });
 
-  it('keeps the names clear of the gutter the figures are written in', () => {
-    const chart = chartGeometry([1_000_000, 2_000_000], ['Aug', 'Sep'], { width: 390, right: 46 });
-    expect(chart.plotRight).toBe(344);
-    for (const name of chart.names) expect(name.x).toBeLessThanOrEqual(chart.plotRight);
+  it('passes over a month with no figure, because there is nothing there to read', () => {
+    const gap = chartGeometry([1_000_000, null, 3_000_000], ['Jun', 'Jul', 'Aug'], { left: 0, right: 0, width: 300 });
+    expect(nearestIndex(gap.points, 150)).toBe(0);
+  });
+
+  it('answers nothing when no month has a figure at all', () => {
+    expect(nearestIndex([null, null], 100)).toBeNull();
   });
 });

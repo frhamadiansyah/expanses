@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openLoan } from './accounts';
 import { openNewAsset } from './add-asset';
 import { forgetRates } from './pockets';
 
@@ -108,16 +108,22 @@ test('folds each side of the balance sheet by kind, shut to begin with', async (
 test('reads what you owe by kind rather than by when it falls due', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
-  await addAccount(page, 'Car loan', 'loan', 'Amount owed now', '25000000');
+  // A mortgage with months left falls partly within the year and partly later: the sheet splits it into two groups,
+  // and the list of what is owed must still name it once.
+  await openLoan(page, { kind: 'Multi-purpose loan', name: 'KPR BCA', owed: '250000000', months: '60', lender: 'Bank' });
 
   await page.goto('/net-worth');
   await expect(page.getByText('Due within a year')).toHaveCount(0);
   await expect(page.getByText('Long-term', { exact: true })).toHaveCount(0);
 
-  // One group for the side, with a drawer a kind under it, each carrying its own figure.
+  // One group for the side, with a drawer a kind under it, each carrying the whole of what that kind is owed.
   await expect(page.getByText('Debts', { exact: true })).toBeVisible();
   await expect(page.getByTestId('type-drawer-debts:credit_card')).toContainText('10.000.000');
-  await expect(page.getByTestId('type-drawer-debts:loan')).toContainText('25.000.000');
+  await expect(page.getByTestId('type-drawer-debts:loan')).toContainText('250.000.000');
+
+  // Opening the loan's drawer shows the debt itself: one row, not one row per part of its schedule.
+  await page.getByTestId('type-drawer-debts:loan').click();
+  await expect(page.getByText('KPR BCA')).toHaveCount(1);
 
   // And the bar above them divides into the same kinds, as shares.
   await expect(page.getByText(/Credit card \d+%/)).toBeVisible();
@@ -136,19 +142,47 @@ test('reads the figure over a range chosen under the line', async ({ page }) => 
   await expect(ranges.getByRole('radio')).toHaveCount(6);
   await expect(ranges.getByRole('radio', { name: '6M' })).toHaveAttribute('aria-checked', 'true');
 
-  // Half a year of months, named by their name alone: nothing in six months needs a year beside it.
-  const names = page.getByTestId('net-worth-months').locator('text');
-  await expect(names).toHaveCount(6);
-  await expect(names.first()).toHaveText(/^[A-Z][a-z]{2}$/);
+  // Half a year of months is half a year of points on the line, and the range is what decides how many.
+  const points = async () => ((await page.getByTestId('net-worth-line').first().getAttribute('points')) ?? '').split(' ').length;
+  expect(await points()).toBe(6);
 
-  // Five years of them, named with the year, because "Jan" on its own could be any of five.
   await ranges.getByRole('radio', { name: '5Y' }).click();
   await expect(ranges.getByRole('radio', { name: '5Y' })).toHaveAttribute('aria-checked', 'true');
-  await expect(names.first()).toHaveText(/^[A-Z][a-z]{2} \d{2}$/);
+  await expect.poll(points).toBe(60);
 
   // And the change the figure has made is under it: the arrow says which way it went, and the word beside the arrow is
   // what a screen reader is given in its place.
   await expect(page.getByTestId('net-worth')).toContainText(/[▲▼] (Up|Down) Rp/);
+});
+
+/**
+ * The chart prints no axis at all: what a grid and a pair of axes would have said is asked for instead, a month at a
+ * time — a tap on any part of the drawing reads the month nearest it, with the figure, and the arrows and Escape do the
+ * same from a keyboard. One number read on demand beats thirty printed small enough to be none.
+ */
+test('reads a month from the part of the line that was tapped', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+
+  await page.goto('/net-worth');
+  // Nothing is read until it is asked for: no gridline, no axis figure, no month name on the drawing.
+  await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
+
+  const plot = page.getByTestId('net-worth-plot');
+  const box = (await plot.boundingBox())!;
+  await plot.click({ position: { x: box.width - 6, y: box.height / 2 } });
+
+  const reading = page.getByTestId('net-worth-reading');
+  await expect(reading).toBeVisible();
+  await expect(reading).toContainText(/Rp/);
+  // The last month drawn is the month we are in, and a tap at the line's own end reads it.
+  await expect(reading).toContainText(new Date().toLocaleDateString('en-GB', { month: 'short' }));
+
+  // The keyboard walks the same months, and Escape lets go.
+  const chart = page.getByRole('group', { name: /Net worth by month/ });
+  await chart.press('ArrowLeft');
+  await expect(reading).toBeVisible();
+  await chart.press('Escape');
+  await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
 });
 
 test('says it does not know the cash-flow ratios until there are transactions', async ({ page }) => {

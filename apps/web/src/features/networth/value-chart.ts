@@ -25,13 +25,6 @@ export interface ChartGeometry {
   areas: string[];
   points: (ChartPoint | null)[];
   ticks: ChartTick[];
-  /**
-   * The names under the axis, thinned to as many as fit.
-   *
-   * Returned rather than placed by the caller because the spacing is the chart's own arithmetic — and because a
-   * month with no figure keeps its name even though it has no point to hang it on.
-   */
-  names: { x: number; label: string }[];
   /** Where nothing is drawn: the line above it is money held and below it money owed. */
   zeroY: number;
   /** The last month with a figure: the end of the line, and where a dot is drawn for today. */
@@ -62,11 +55,6 @@ export interface ChartOptions {
    * and nothing is the money itself, and its sign is read off which side of the line it is on.
    */
   fillTo?: 'floor' | 'zero';
-  /**
-   * How wide the widest name under the axis is drawn, in px, so that two of them never touch. Zero when the caller
-   * writes none: the names are then thinned by how many there are and nothing else.
-   */
-  nameWidth?: number;
 }
 
 /**
@@ -87,15 +75,6 @@ function niceStep(range: number): number {
   const scaled = range / power;
   return (scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 2.5 ? 2.5 : scaled <= 5 ? 5 : 10) * power;
 }
-
-/** A name a month until there are more names than fit, then the fewest step that leaves six of them. */
-function labelStep(count: number): number {
-  for (const step of [1, 2, 3, 4, 6, 12]) if (count / step <= 7) return step;
-  return 12;
-}
-
-/** The room two names need between them, so that a row of them reads as names rather than as one long word. */
-const NAME_GAP = 12;
 
 /**
  * Places a series of values in an SVG box. Every tick sits inside the drawing, and a flat
@@ -150,28 +129,6 @@ export function chartGeometry(values: readonly (number | null)[], labels: readon
   const ticks: ChartTick[] = [];
   for (let value = low; value <= high + step / 2; value += step) ticks.push({ y: y(value), value });
 
-  const every = labelStep(values.length);
-  const nameWidth = options.nameWidth ?? 0;
-  const names: { x: number; label: string }[] = [];
-  let named = Number.NEGATIVE_INFINITY;
-  for (let index = 0; index < values.length; index += every) {
-    const label = labels[index];
-    if (!label) continue;
-    const at = x(index);
-    /*
-     * The name at the drawing's own edge is read inward from it — a name centred on the edge hangs half of itself off
-     * the screen — so where it starts is the edge and where it ends is a whole name along. Every other is centred on
-     * its month.
-     */
-    const from = at === 0 ? 0 : at - nameWidth / 2;
-    const to = at === 0 ? nameWidth : at + nameWidth / 2;
-    // A name with no room beside the one before it is dropped, and the one after it is measured against that one
-    // instead: the row stays evenly spaced because it is the same step all the way along.
-    if (nameWidth > 0 && from < named + NAME_GAP) continue;
-    names.push({ x: at, label });
-    named = to;
-  }
-
   return {
     width,
     height,
@@ -179,11 +136,30 @@ export function chartGeometry(values: readonly (number | null)[], labels: readon
     areas,
     points,
     ticks,
-    names,
     zeroY: y(0),
     last: [...points].reverse().find((point) => point !== null) ?? null,
     plotRight: width - right,
     plotBottom: height - bottom,
   };
+}
+
+/**
+ * The month nearest a place on the drawing: what a tap on the chart asks for.
+ *
+ * A month with no figure is not a month anyone can read, so it is passed over rather than answered with an empty
+ * reading. Null when no month has a figure at all.
+ */
+export function nearestIndex(points: readonly (ChartPoint | null)[], x: number): number | null {
+  let best: number | null = null;
+  let closest = Number.POSITIVE_INFINITY;
+  points.forEach((point, index) => {
+    if (!point) return;
+    const gap = Math.abs(point.x - x);
+    if (gap < closest) {
+      closest = gap;
+      best = index;
+    }
+  });
+  return best;
 }
 

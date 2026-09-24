@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { digits, oneOfEach } from './debts-page';
+import { digits, moneyIn, oneOfEach } from './debts-page';
 
 /** Debts at 390 px: the same three groups as rows, a trailing figure each, and the due split as a footer. */
 
@@ -27,14 +27,17 @@ test('by thumb: Debts shows all three groups with the right figures, each debt i
   // One line per debt on the phone too: no bill and no unbilled part on the row.
   await expect(card.getByText(/unbilled|due \d/)).toHaveCount(0);
 
-  // The due split sits under the list; within a year is the balance sheet's own figure.
+  // The due split sits under the list, on this screen: the balance sheet reads what is owed by kind, and the two
+  // screens share the whole rather than the split.
   const due = page.getByTestId('debts-due');
   await expect(due).toContainText('Due within a year');
   await expect(due).toContainText('the rest is long term');
   const within = digits(await due.innerText());
+  expect(within).toBeGreaterThan(0);
+  const owed = digits(moneyIn(await page.getByTestId('debts-total').innerText()));
   await page.goto('/net-worth');
-  const sheetWithin = page.getByRole('heading', { name: 'Due within a year' }).locator('xpath=..');
-  expect(digits(await sheetWithin.innerText())).toBe(within);
+  const owedOnSheet = digits(moneyIn(await page.getByRole('heading', { name: 'Debts', exact: true }).locator('xpath=..').innerText()));
+  expect(owedOnSheet).toBe(owed);
 
   // Nothing scrolls sideways at 390 px.
   await page.goto('/net-worth/loans');
