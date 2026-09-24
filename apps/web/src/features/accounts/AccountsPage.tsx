@@ -227,6 +227,9 @@ function AccountList({
     const converted = pockets.some((pocket) => pocket.currency !== ws.baseCurrency);
     return groupedFigure(parentTotal(pockets, balances, ws.baseCurrency, rates), ws.baseCurrency, converted);
   };
+  /** What a row under a drawer says: the drawer names the type and the figure carries the currency, so neither is
+   * repeated. A pocket parent keeps the one thing neither of them says — how many pockets it holds. */
+  const drawerLine = (account: AccountRow) => (parents.has(account.id) ? pocketCount(pocketsOf(account.id, everything).length) : undefined);
   const kindLine = (account: AccountRow) =>
     parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, everything).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`;
   const parentFigure = (account: AccountRow) => {
@@ -273,9 +276,10 @@ function AccountList({
    * One account's line: what it is called, what type it is, and its figure. Nothing is done to an account from here —
    * not renamed, not archived, and a card's points set up nowhere but on the card. Its own page carries every one of
    * those, in the two corners beside its name, and the name is the door to it. A function rather than a map inline,
-   * because a type's drawer draws its own rows under itself.
+   * because a type's drawer draws its own rows under itself — and those rows are inside the drawer, so they do not
+   * say their type again.
    */
-  const line = (account: AccountRow, separator: boolean, depth = 0) => (
+  const line = (account: AccountRow, separator: boolean, depth = 0, inDrawer = false) => (
     <li key={account.id}>
       <ActionLine
         separator={separator}
@@ -287,7 +291,7 @@ function AccountList({
             {account.name}
           </Link>
         }
-        subtitle={kindLine(account)}
+        subtitle={inDrawer ? drawerLine(account) : kindLine(account)}
         figure={rowFigure(account)}
       >
         {parents.has(account.id) && <span className="shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]">Each pocket files its own row</span>}
@@ -325,7 +329,7 @@ function AccountList({
                     onToggle={() => onToggle(key)}
                   />
                 </li>,
-                ...(shown ? drawer.rows.map((account) => line(account, true, 1)) : []),
+                ...(shown ? drawer.rows.map((account) => line(account, true, 1, true)) : []),
               ];
             })}
       </ul>
