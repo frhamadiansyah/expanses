@@ -8,7 +8,7 @@ import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl } from '../../ui/native';
 import { useAttention } from './attention';
 import { NetWorthChart } from './NetWorthChart';
-import { ShareBar, ShareLegend } from './ShareBar';
+import { ShareBar, ShareLegend, type ShareSegment } from './ShareBar';
 import { sheetDrawers } from './sheet-drawers';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
 import { useNetWorthSeries, useSheet } from './queries';
@@ -41,6 +41,18 @@ const GROUP_COLORS: Record<string, string> = {
 };
 
 /**
+ * What each kind of debt is drawn in, so a bar of what you owe says what the money is owed *on*.
+ *
+ * One family in three sizes, because these three are amounts of the same thing — the assets beside them are where the
+ * colours have to tell different things apart.
+ */
+const LIABILITY_COLORS: Record<string, string> = {
+  credit_card: 'bg-rose-500',
+  loan: 'bg-rose-800',
+  payable: 'bg-rose-300',
+};
+
+/**
  * One side of the balance sheet: its share bar and legend on a panel, then a group per plan group.
  *
  * Each group's label is its own header, outside and above its rows, rather than a heading line inside one long card.
@@ -54,6 +66,7 @@ const GROUP_COLORS: Record<string, string> = {
 function SheetColumn({
   title,
   groups,
+  bar,
   totalMinor,
   currency,
   subtypes,
@@ -62,6 +75,12 @@ function SheetColumn({
 }: {
   title: string;
   groups: SheetGroup[];
+  /**
+   * What the bar divides into: the groups themselves where each group is one kind of thing, and the kinds themselves
+   * where one group holds several. The bar and the columns beside it answer the same question, so a side whose groups
+   * are a schedule rather than a kind says so with its bar.
+   */
+  bar: ShareSegment[];
   totalMinor: number;
   currency: string;
   /** What kind of account each row is, which is what the drawers fold by. */
@@ -70,15 +89,14 @@ function SheetColumn({
   open: ReadonlySet<string>;
   onToggle: (key: string) => void;
 }) {
-  const segments = groups.map((group) => ({ key: group.key, label: group.label, minor: group.totalMinor, className: GROUP_COLORS[group.key] ?? 'bg-slate-400' }));
   return (
     // `min-w-0`: a column in a grid is as wide as its widest row unless it is told it may be narrower, and a row whose
     // title truncates is still as wide as the whole title — which is what pushed this page sideways.
     <div className="min-w-0">
       <PanelHeader title={title} trailing={<Money minor={totalMinor} currency={currency} />} />
       <Panel wide className="space-y-2">
-        <ShareBar segments={segments} totalMinor={totalMinor} />
-        <ShareLegend segments={segments} totalMinor={totalMinor} />
+        <ShareBar segments={bar} totalMinor={totalMinor} />
+        <ShareLegend segments={bar} totalMinor={totalMinor} />
       </Panel>
       {groups.map((group) =>
         group.rows.length === 0 ? (
@@ -209,6 +227,25 @@ export function OverviewPage() {
       else next.add(key);
       return next;
     });
+  /*
+   * What you owe, as one group: a debt is read by what it *is* — a card, a loan, money owed to a person — and not by
+   * when it falls due. "Due within a year" and "long-term" are a schedule, and beside a column of asset types the two
+   * of them read as the answer to a different question.
+   */
+  const owed: SheetGroup = { key: 'debts', label: 'Debts', totalMinor: sheet.liabilitiesTotalMinor, rows: [...sheet.shortTerm.rows, ...sheet.longTerm.rows] };
+  // The bar divides into the kinds the column's drawers hold: the same arithmetic, from the same fold.
+  const owedBar: ShareSegment[] = sheetDrawers(owed.rows, subtypes).map((drawer) => ({
+    key: drawer.key,
+    label: drawer.label,
+    minor: drawer.totalMinor,
+    className: LIABILITY_COLORS[drawer.key] ?? 'bg-rose-500',
+  }));
+  const assetBar: ShareSegment[] = sheet.assetGroups.map((group) => ({
+    key: group.key,
+    label: group.label,
+    minor: group.totalMinor,
+    className: GROUP_COLORS[group.key] ?? 'bg-slate-400',
+  }));
 
   /*
    * With no money accounts and nothing on the sheet there is nothing to add up, so the screen asks for the two things
@@ -306,10 +343,20 @@ export function OverviewPage() {
         ) : (
         <>
         <div className="grid gap-6 md:grid-cols-2">
-          <SheetColumn title="What you own" groups={sheet.assetGroups} totalMinor={sheet.assetsTotalMinor} currency={ws.baseCurrency} subtypes={subtypes} open={openDrawers} onToggle={toggleDrawer} />
+          <SheetColumn
+            title="What you own"
+            groups={sheet.assetGroups}
+            bar={assetBar}
+            totalMinor={sheet.assetsTotalMinor}
+            currency={ws.baseCurrency}
+            subtypes={subtypes}
+            open={openDrawers}
+            onToggle={toggleDrawer}
+          />
           <SheetColumn
             title="What you owe"
-            groups={[sheet.shortTerm, sheet.longTerm].filter((group) => group.rows.length > 0)}
+            groups={owed.rows.length > 0 ? [owed] : []}
+            bar={owedBar}
             totalMinor={sheet.liabilitiesTotalMinor}
             currency={ws.baseCurrency}
             subtypes={subtypes}

@@ -67,7 +67,9 @@ test('shows net worth, the balance sheet and both sides of it', async ({ page })
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
   await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
-  await expect(page.getByText('Due within a year').first()).toBeVisible();
+  // The debts are one group a side, drawn by kind rather than by when each one falls due.
+  await expect(page.getByText('Debts', { exact: true })).toBeVisible();
+  await expect(page.getByText('BCA KrisFlyer')).toBeVisible();
 });
 
 /**
@@ -96,6 +98,30 @@ test('folds each side of the balance sheet by kind, shut to begin with', async (
 
   // A saving account is a kind of its own, so it sits behind its own drawer rather than under the bank.
   await expect(page.getByTestId('type-drawer-liquid:savings')).toContainText('1 account');
+});
+
+/**
+ * A debt is read by what it *is* — a card, a loan, a person — and not by when it falls due: "due within a year" and
+ * "long-term" are a schedule, and beside a column of asset kinds the two of them answer a different question. The bar
+ * divides the same way the drawers do, so the side reads the same from either end.
+ */
+test('reads what you owe by kind rather than by when it falls due', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
+  await addAccount(page, 'Car loan', 'loan', 'Amount owed now', '25000000');
+
+  await page.goto('/net-worth');
+  await expect(page.getByText('Due within a year')).toHaveCount(0);
+  await expect(page.getByText('Long-term', { exact: true })).toHaveCount(0);
+
+  // One group for the side, with a drawer a kind under it, each carrying its own figure.
+  await expect(page.getByText('Debts', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('type-drawer-debts:credit_card')).toContainText('10.000.000');
+  await expect(page.getByTestId('type-drawer-debts:loan')).toContainText('25.000.000');
+
+  // And the bar above them divides into the same kinds, as shares.
+  await expect(page.getByText(/Credit card \d+%/)).toBeVisible();
+  await expect(page.getByText(/Loan \d+%/)).toBeVisible();
 });
 
 /**
