@@ -29,7 +29,6 @@ export function AddDebtPage() {
       flow="debt"
       title="New debt"
       searchPlaceholder="Search everything you can owe"
-      hint={<>A credit card keeps everything it has today: statement, bill, points and instalments.</>}
       chosen={chosen}
       onChoose={setChosen}
       handOver={handOverRows('debt')}

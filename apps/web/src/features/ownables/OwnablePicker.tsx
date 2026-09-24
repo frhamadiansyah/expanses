@@ -26,9 +26,7 @@ const BACK_TO: Record<OwnableFlow, string> = { account: 'Accounts', asset: 'Asse
 export function OwnablePicker({
   flow,
   title,
-  kicker,
   searchPlaceholder,
-  hint,
   moreHint,
   chosen,
   onChoose,
@@ -38,11 +36,7 @@ export function OwnablePicker({
   flow: OwnableFlow;
   /** The screen's own heading — "New account", "New asset", "New debt". */
   title: string;
-  /** The small heading over the list, when the list is one named group. */
-  kicker?: string;
   searchPlaceholder: string;
-  /** The sentence under the list, saying what does not belong here. */
-  hint?: ReactNode;
   /** The sentence above the "Something else" list, given the open family's name to put in it. */
   moreHint?: (familyLabel: string) => ReactNode;
   /** The item id whose form is open, or null while nobody has chosen. */
@@ -97,19 +91,14 @@ export function OwnablePicker({
   }
 
   /*
-   * The two sentences that sit around the list. `moreHint` explains what "Something else" is showing; `hint`
-   * says what does not belong on this screen at all. Both belong to the group, so they are its header and its
-   * footer — the kit's own places for them — rather than paragraphs floating above and below a card. A search
-   * narrows the list to what was typed, and neither sentence is about that, so both stand down while one runs.
+   * The one sentence the list still carries: what "Something else" is showing. It belongs to the group, so it is
+   * the group's footer — the kit's own place for it — rather than a paragraph floating under a card. A search
+   * narrows the list to what was typed, and the sentence is not about that, so it stands down while one runs.
+   *
+   * The group has no header. Three flows wear this one list, and the name in the bar above it already says which
+   * list this is, so a second name over the box was the screen introducing itself twice.
    */
-  const listHeader = !searching && !family ? kicker : undefined;
-  const listFooter = searching
-    ? undefined
-    : more && family && moreHint
-      ? moreHint(assetFamily(family).label)
-      : !family
-        ? hint
-        : undefined;
+  const listFooter = searching ? undefined : more && family && moreHint ? moreHint(assetFamily(family).label) : undefined;
 
   const list = (
     <>
@@ -121,7 +110,7 @@ export function OwnablePicker({
       )}
       {/* The list is the answer to what is typed above it, so a screen reader hears it change, not only sees it. */}
       <div aria-live="polite">
-        <InsetGroup header={listHeader} footer={listFooter}>
+        <InsetGroup footer={listFooter}>
           {rows.length > 0 ? (
             rows.map((row) => <PickerInsetRow key={row.id} row={row} onClick={() => choose(row.id)} />)
           ) : (
@@ -188,7 +177,9 @@ export function OwnablePicker({
  * the emoji, which is what actually identifies the family, carries it alone.
  */
 function PickerInsetRow({ row, onClick, to }: { row: PickerRow; onClick?: () => void; to?: TypedHandOver }) {
-  return <InsetRow icon={row.icon} title={row.label} subtitle={row.sub} chevron onClick={onClick} to={to} />;
+  // The row's kind, drawn in the kit's own circle: one stroke, in the ink the circle already sets.
+  const Glyph = row.icon;
+  return <InsetRow icon={<Glyph size={16} aria-hidden />} title={row.label} subtitle={row.sub} chevron onClick={onClick} to={to} />;
 }
 
 /** The pickers that exist as routes today. A hand-over anywhere else falls back to a push until its route lands. */

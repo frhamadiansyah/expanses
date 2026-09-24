@@ -19,6 +19,29 @@ import {
   searchTokens,
   somethingElse,
 } from '@expanses/core';
+import {
+  Banknote,
+  Building2,
+  Car,
+  ChartLine,
+  CreditCard,
+  Gem,
+  Handshake,
+  House,
+  Landmark,
+  Lock,
+  type LucideIcon,
+  Package,
+  PiggyBank,
+  Pin,
+  Plus,
+  ReceiptText,
+  Smartphone,
+  TrendingUp,
+  User,
+  Users,
+  Wallet,
+} from 'lucide-react';
 
 /**
  * What a picker screen draws, read off the one catalogue.
@@ -36,10 +59,8 @@ export interface PickerRow {
   id: string;
   label: string;
   sub: string;
-  /** One emoji, drawn in the tile. Decoration: the label is the accessible name. */
-  icon: string;
-  /** The tile's background, as a Tailwind class, so a family's things read as that family's. */
-  tint: string;
+  /** The glyph in the row's tile. Decoration: the label is the accessible name. */
+  icon: LucideIcon;
 }
 
 /** A row that hands the whole question over to another screen — money is an account, a house is not. */
@@ -57,47 +78,56 @@ export interface PickerQuery {
   more?: boolean;
 }
 
-/** The tile each money account is drawn with, in the order the screen lists them. */
-const CASH_TILES: Record<MoneyAccountSubtype, { icon: string; tint: string }> = {
-  cash: { icon: '💵', tint: 'bg-green-100' },
-  bank: { icon: '🏦', tint: 'bg-blue-100' },
-  savings: { icon: '🐖', tint: 'bg-amber-100' },
-  time_deposit: { icon: '🔒', tint: 'bg-indigo-100' },
-  ewallet: { icon: '📱', tint: 'bg-violet-100' },
-  fund: { icon: '📈', tint: 'bg-cyan-100' },
-  other_cash: { icon: '🧾', tint: 'bg-slate-100' },
+/**
+ * The tiles, out of the one set of drawings the app has.
+ *
+ * These were emoji once — a pig for a savings account, a house for a mortgage — and an emoji is a full-colour
+ * picture from somebody else's system. Inside the kit's own 28 px circle it read as a sticker on a grey button,
+ * and it made these rows the only place in the app where a glyph was not a stroke. Every other glyph a row or a
+ * corner draws is one of these, at the size a row draws them, so these are too — and in the ink, so a tile says
+ * which kind of thing it is rather than which country's vendor drew it.
+ */
+const CASH_TILES: Record<MoneyAccountSubtype, LucideIcon> = {
+  cash: Banknote,
+  bank: Landmark,
+  savings: PiggyBank,
+  time_deposit: Lock,
+  ewallet: Smartphone,
+  fund: TrendingUp,
+  other_cash: Wallet,
 };
 
 /** The tile each family is drawn with. Its things share it, so a row says which family it came out of. */
-const FAMILY_TILES: Record<OwnableFamily, { icon: string; tint: string }> = {
-  receivable: { icon: '🤝', tint: 'bg-red-100' },
-  invest: { icon: '📊', tint: 'bg-blue-100' },
-  movable: { icon: '🚗', tint: 'bg-amber-100' },
-  immovable: { icon: '🏠', tint: 'bg-rose-100' },
-  other: { icon: '💎', tint: 'bg-violet-100' },
+const FAMILY_TILES: Record<OwnableFamily, LucideIcon> = {
+  receivable: Handshake,
+  invest: ChartLine,
+  movable: Car,
+  immovable: House,
+  other: Gem,
 };
 
-/** The tile each debt is drawn with, by the item's own id. */
-const DEBT_TILES: Record<string, { icon: string; tint: string }> = {
-  home_mortgage: { icon: '🏠', tint: 'bg-rose-100' },
-  apartment_mortgage: { icon: '🏢', tint: 'bg-rose-100' },
-  vehicle_leasing: { icon: '🚗', tint: 'bg-amber-100' },
-  credit_card: { icon: '💳', tint: 'bg-blue-100' },
-  multi_purpose_loan: { icon: '🧾', tint: 'bg-indigo-100' },
-  personal_loan: { icon: '👤', tint: 'bg-green-100' },
-  online_loan: { icon: '📲', tint: 'bg-violet-100' },
-  affiliate_debt: { icon: '👨‍👩‍👧', tint: 'bg-red-100' },
-  other_debt: { icon: '📌', tint: 'bg-slate-100' },
+/** The tile each debt is drawn with, by the item's own id — the same drawings the Debts page gives the same kinds. */
+const DEBT_TILES: Record<string, LucideIcon> = {
+  home_mortgage: House,
+  apartment_mortgage: Building2,
+  vehicle_leasing: Car,
+  credit_card: CreditCard,
+  multi_purpose_loan: ReceiptText,
+  personal_loan: User,
+  online_loan: Smartphone,
+  affiliate_debt: Users,
+  other_debt: Pin,
 };
 
-const PLAIN = { icon: '📦', tint: 'bg-slate-100' };
+/** A thing these tables do not name: a rare kind out of the catalogue, or a row that hands the flow over. */
+const PLAIN = Package;
 
 /** Which family an asset item came out of, so a search result is drawn in that family's colours. */
 const FAMILY_OF_ITEM = new Map<string, OwnableFamily>(
   ASSET_FAMILIES.flatMap((family) => family.items.map((item) => [item.id, family.id] as const)),
 );
 
-function tileFor(flow: OwnableFlow, item: OwnableItem, family?: OwnableFamily): { icon: string; tint: string } {
+function tileFor(flow: OwnableFlow, item: OwnableItem, family?: OwnableFamily): LucideIcon {
   if (flow === 'account') return CASH_TILES[item.id as MoneyAccountSubtype] ?? PLAIN;
   if (flow === 'debt') return DEBT_TILES[item.id] ?? PLAIN;
   const from = family ?? FAMILY_OF_ITEM.get(item.id);
@@ -108,7 +138,7 @@ const rowOf = (flow: OwnableFlow, item: OwnableItem, family?: OwnableFamily): Pi
   id: item.id,
   label: item.label,
   sub: item.sub,
-  ...tileFor(flow, item, family),
+  icon: tileFor(flow, item, family),
 });
 
 /** The id the "Something else" row carries, which is not an item: it opens the rest of the family's table. */
@@ -125,12 +155,12 @@ export function pickerRows({ flow, query, family, more }: PickerQuery): PickerRo
   const offered = (items: readonly OwnableItem[]) => items.filter((item) => item.inPicker !== false);
   if (searching) return offered(searchOwnables(query, flow)).map((item) => rowOf(flow, item));
   if (flow !== 'asset') return offered(searchOwnables('', flow)).map((item) => rowOf(flow, item));
-  if (!family) return ASSET_FAMILIES.map((entry) => ({ id: entry.id, label: entry.label, sub: entry.sub, ...FAMILY_TILES[entry.id] }));
+  if (!family) return ASSET_FAMILIES.map((entry) => ({ id: entry.id, label: entry.label, sub: entry.sub, icon: FAMILY_TILES[entry.id] }));
   const spare = somethingElse(family);
   if (more) return spare.map((entry) => rowOf(flow, elseItem(family, entry.code), family));
   const rows = assetFamily(family).items.map((item) => rowOf(flow, item, family));
   if (spare.length === 0) return rows;
-  return [...rows, { id: MORE_ROW_ID, label: 'Something else', sub: `${spare.length} more kinds the form knows`, icon: '＋', tint: 'bg-slate-100' }];
+  return [...rows, { id: MORE_ROW_ID, label: 'Something else', sub: `${spare.length} more kinds the form knows`, icon: Plus }];
 }
 
 /** The two rows at the foot of a picker, saying where the thing it does not handle belongs instead. */
@@ -139,17 +169,15 @@ export function handOverRows(flow: OwnableFlow): HandOverRow[] {
     id: 'asset',
     label: 'Add an asset instead',
     sub: 'property, gold, shares, receivables',
-    icon: '💎',
-    tint: 'bg-violet-100',
+    icon: Gem,
     to: '/net-worth/assets/new',
   };
-  const toDebt: HandOverRow = { id: 'debt', label: 'Add a debt instead', sub: 'card, mortgage, loan', icon: '💳', tint: 'bg-red-100', to: '/debts/new' };
+  const toDebt: HandOverRow = { id: 'debt', label: 'Add a debt instead', sub: 'card, mortgage, loan', icon: CreditCard, to: '/debts/new' };
   const toAccount: HandOverRow = {
     id: 'account',
     label: 'Add an account instead',
     sub: 'cash, bank, e-wallet, deposit',
-    icon: '🏦',
-    tint: 'bg-blue-100',
+    icon: Landmark,
     to: '/accounts/new',
   };
   if (flow === 'account') return [toAsset, toDebt];

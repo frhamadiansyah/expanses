@@ -19,11 +19,6 @@ export function AddAssetPage() {
       flow="asset"
       title="New asset"
       searchPlaceholder="Search everything you can own"
-      hint={
-        <>
-          Money you can spend — cash, bank, e-wallet, broker cash — is an <b>account</b>, not an asset.
-        </>
-      }
       moreHint={(family) => `Anything here is recorded as a thing you give a value to, and files under ${family.toLowerCase()} in the tax report.`}
       chosen={chosen}
       // Listed shares start from a ticker (spec §7.5); everything else opens the form here, as before.

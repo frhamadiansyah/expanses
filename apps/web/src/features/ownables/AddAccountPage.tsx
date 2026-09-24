@@ -17,14 +17,7 @@ export function AddAccountPage() {
     <OwnablePicker
       flow="account"
       title="New account"
-      kicker="Cash and cash equivalents"
       searchPlaceholder="Search"
-      hint={
-        <>
-          Only money lives here: what you can spend, or will spend once it matures. A house, gold or shares go under <b>Add asset</b>; a card or a loan under{' '}
-          <b>Add debt</b>.
-        </>
-      }
       chosen={chosen}
       onChoose={setChosen}
       handOver={handOverRows('account')}
