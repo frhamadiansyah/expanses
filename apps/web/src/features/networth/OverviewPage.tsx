@@ -1,6 +1,6 @@
-import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type ScheduleRow, type SheetGroup } from '@expanses/core';
-import { scheduleFor } from '@expanses/db';
-import { useQueries } from '@tanstack/react-query';
+import { addMonths, balanceSheet, displayAmount, formatMinor, isoDate, lastNMonths, monthOf, monthRange, type ScheduleRow, type SheetGroup } from '@expanses/core';
+import { categoryTotalsBetween, expiringSoonAcross, nativeBalances, ownerScope, scheduleFor } from '@expanses/db';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -13,12 +13,16 @@ import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows'
 import { ShareBar, ShareLegend } from './ShareBar';
 import { useGoalPlans, useSetAsideViews } from '../goals/queries';
 import { usePeopleDebts } from '../debts/queries';
+import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
 import { loanAttention } from '../loans/attention';
 import { useInstallments, useLoans } from '../loans/queries';
 import { useAssetValues, useDueTemplates, useIdleCash, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
 import { ValueChart } from './ValueChart';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
+/** A month whose rate was missing is named rather than summed as zero — the rule every figure on this page keeps. */
+const noRate = (missing: readonly string[]) => `No ${missing.join(', ')} rate yet`;
+const sum = (rows: { amountBaseMinor: number }[]) => rows.reduce((total, row) => total + row.amountBaseMinor, 0);
 const GROUP_COLORS: Record<string, string> = {
   liquid: 'bg-cyan-600',
   invest: 'bg-emerald-600',
@@ -82,7 +86,7 @@ function useLoanSchedules(loans: { accountId: string }[], today: string): Record
 }
 
 export function OverviewPage() {
-  const { ws } = useApp();
+  const { database, ws } = useApp();
   const today = isoDate();
   const months = lastNMonths(monthOf(today), 12);
   const series = useNetWorthSeries(months);
@@ -142,6 +146,81 @@ export function OverviewPage() {
 
   const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
 
+  /*
+   * What the Dashboard drew, on the same page: the month's two figures, what the cards owe, and the lines that say
+   * something needs doing. Net worth is one subject, so it is one screen — the figure, the year behind it, the
+   * balance sheet under it, the ratios beside it, and what the month and the cards have done to it.
+   */
+  const accounts = useAccounts();
+  const money = (accounts.data ?? []).filter(isMoneyAccount);
+  const cards = money.filter((account) => account.subtype === 'credit_card');
+  const resolveRates = useResolveRates();
+  const thisMonth = monthOf(today);
+
+  const balances = useQuery({
+    queryKey: ['net-worth-balances', ws.workspaceId, today, money.length],
+    enabled: accounts.isSuccess,
+    queryFn: async () => {
+      const rows = await nativeBalances(database, ws);
+      // The rates are read here only for whether they have gone stale: the figures themselves are the sheet's.
+      const rates = await resolveRates(money.map((account) => account.currency!), today);
+      return { rows, stale: rates.stale };
+    },
+  });
+
+  const monthFlows = useQuery({
+    queryKey: ['month-flows', ws.workspaceId, thisMonth],
+    queryFn: async () => {
+      const current = monthRange(thisMonth);
+      const previous = monthRange(addMonths(thisMonth, -1));
+      // The owner's own spending and income: every book together, as net worth itself is.
+      const owner = ownerScope(ws);
+      return {
+        spending: sum(await categoryTotalsBetween(database, owner, 'expense', current.from, current.to, { billMonths: true })),
+        income: sum(await categoryTotalsBetween(database, owner, 'income', current.from, current.to)),
+        lastSpending: sum(await categoryTotalsBetween(database, owner, 'expense', previous.from, previous.to, { billMonths: true })),
+      };
+    },
+  });
+
+  // Reporting only: dead points are written off when a card is opened, never by looking at a summary.
+  const expiring = useQuery({ queryKey: ['points-expiring', ws.workspaceId, today], queryFn: () => expiringSoonAcross(database, ws, today) });
+
+  /*
+   * A rate that has gone stale, and points about to lapse. A *missing* rate is not among them: the hero and the
+   * chart already name every rate they lack, and saying the same thing twice reads as two problems.
+   */
+  const warnings = [
+    ...(balances.data?.stale ?? []).map((currency) => `${currency} rate is out of date`),
+    ...(expiring.data ?? []).map((row) => `${row.expiringSoon.toLocaleString('id-ID')} ${row.unit} on ${row.cardName} expire on ${row.nextExpiryOn}`),
+  ];
+
+  // The six most recent snapshots printed as well as drawn: the line says the shape of the year, these say what each month came to.
+  const six = points.slice(-6);
+  const biggestMonth = Math.max(1, ...six.map((point) => Math.abs(point.netWorthMinor ?? 0)));
+
+  /*
+   * With no money accounts and nothing on the sheet there is nothing to add up, so the screen asks for the two things
+   * it reads rather than drawing a page of zeroes. Assets on their own still get the page below.
+   */
+  if (accounts.isSuccess && money.length === 0 && nothingYet) {
+    return (
+      <div className={SCREEN}>
+        <LargeTitle title="Net worth" />
+        <NetWorthTabs />
+        <Panel wide>
+          <Empty>
+            Start by adding your bank accounts and credit cards on the{' '}
+            <Link to="/accounts" className="font-medium underline">
+              Accounts
+            </Link>{' '}
+            page.
+          </Empty>
+        </Panel>
+      </div>
+    );
+  }
+
   return (
     <div className={SCREEN}>
       <LargeTitle title="Net worth" />
@@ -191,26 +270,110 @@ export function OverviewPage() {
           {sheetMissing.length === 0 && unchartable.length > 0 && (
             <p data-testid="chart-missing" className="text-[13px] leading-[17px] text-[var(--ph-warn)]">No {unchartable.join(', ')} rate for an earlier month, so the year cannot be charted.</p>
           )}
+          {/*
+           * The same snapshots printed, not only drawn. The line says the shape of the year; these six say what each
+           * month came to, which a chart's axis cannot — the Dashboard printed them and the year was drawn here, so
+           * both readings stay.
+           */}
+          {six.length > 0 && (
+            <div className="mt-[14px] border-t-[0.5px] border-[var(--ph-hair)] pt-[12px]">
+              <PanelHeader title="Last 6 months" />
+              <ul className="space-y-[10px]">
+                {six.map((point) => (
+                  <li key={point.month} className="grid grid-cols-[4.5rem_1fr_9rem] items-center gap-3 text-[13px] leading-[17px]">
+                    <span className="text-[var(--ph-ink-3)]">
+                      {new Date(`${point.month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })}
+                    </span>
+                    <span className="block h-[7px] overflow-hidden bg-[var(--ph-track)]" style={{ borderRadius: 99 }}>
+                      <span
+                        className="block h-full"
+                        style={{
+                          width: `${Math.round((Math.abs(point.netWorthMinor ?? 0) / biggestMonth) * 100)}%`,
+                          borderRadius: 99,
+                          background: (point.netWorthMinor ?? 0) < 0 ? 'var(--ph-alarm)' : 'var(--ph-tint)',
+                        }}
+                      />
+                    </span>
+                    {point.netWorthMinor !== null ? (
+                      <Money minor={point.netWorthMinor} currency={ws.baseCurrency} className="text-right text-[var(--ph-ink)]" />
+                    ) : (
+                      <span className="text-right text-[var(--ph-warn)]">{noRate(point.missing)}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Panel>
 
         <div>
           <PanelHeader title="Needs attention" />
-          {attention.length === 0 ? (
+          {attention.length === 0 && warnings.length === 0 ? (
             <Panel wide>
               <p className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing waiting. Prices and estimates are fresh.</p>
             </Panel>
           ) : (
-            <InsetGroup wide>
-              {attention.map((item) => (
-                /* The row is the link it used to hold; what it was called stays, on the right, in the tint. */
+            <>
+              {attention.length > 0 && (
+                <InsetGroup wide>
+                  {attention.map((item) => (
+                    /* The row is the link it used to hold; what it was called stays, on the right, in the tint. */
+                    <InsetRow
+                      key={item.key}
+                      to={item.to}
+                      params={item.params}
+                      title={item.text}
+                      value={item.action}
+                      valueTone={item.tone === 'warn' ? 'warn' : 'tint'}
+                      chevron={false}
+                    />
+                  ))}
+                </InsetGroup>
+              )}
+              {/*
+               * The Dashboard's two lines, which the attention rows cannot hold: neither is a row with a screen
+               * behind it — one is a rate to refresh, the other points that will lapse on a day.
+               */}
+              {warnings.length > 0 && (
+                <div className="px-[4px] pt-[8px]">
+                  {warnings.map((warning) => (
+                    <p key={warning} className="pb-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">
+                      {warning}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* What the month has done, and what the cards still owe: the Dashboard's own two questions, kept. */}
+          <InsetGroup wide header="This month">
+            <InsetRow
+              title="Spent"
+              subtitle={monthFlows.data ? <>Last month <Money minor={monthFlows.data.lastSpending} currency={ws.baseCurrency} /></> : undefined}
+              value={monthFlows.data ? <Money minor={monthFlows.data.spending} currency={ws.baseCurrency} /> : '…'}
+              valueTone="alarm"
+              chevron={false}
+            />
+            <InsetRow
+              title="Income"
+              value={monthFlows.data ? <Money minor={monthFlows.data.income} currency={ws.baseCurrency} /> : '…'}
+              valueTone="ink"
+              chevron={false}
+            />
+          </InsetGroup>
+
+          {cards.length > 0 && (
+            <InsetGroup wide header="Credit cards owed">
+              {cards.map((card) => (
+                /* The line is the link: it lands on that card's own transactions. */
                 <InsetRow
-                  key={item.key}
-                  to={item.to}
-                  params={item.params}
-                  title={item.text}
-                  value={item.action}
-                  valueTone={item.tone === 'warn' ? 'warn' : 'tint'}
-                  chevron={false}
+                  key={card.id}
+                  to="/transactions"
+                  search={{ account: card.id }}
+                  title={card.name}
+                  value={<Money minor={displayAmount('liability', balances.data?.rows[card.id] ?? 0)} currency={card.currency!} />}
+                  valueTone="ink"
                 />
               ))}
             </InsetGroup>

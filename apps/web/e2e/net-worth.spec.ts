@@ -22,6 +22,37 @@ async function addGold(page: Page) {
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 }
 
+/**
+ * The Dashboard and this page were one subject drawn twice: the figure and the year behind it, what the month has
+ * done, what the cards owe, what waits to be refreshed, the balance sheet under it and the ratios beside it. They are
+ * one page now, and this is the list that says nothing was dropped on the way — every heading the two screens had.
+ */
+test('the two pages are one, and neither one lost a block', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
+
+  // The home route hands over, so an old link, a bookmark and the PWA's own start page all land here.
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/net-worth$/);
+
+  // What the Dashboard had.
+  await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
+  await expect(page.getByRole('heading', { name: 'Last 6 months' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'This month' })).toBeVisible();
+  const month = page.locator('section').filter({ hasText: 'This month' });
+  await expect(month.getByText('Spent')).toBeVisible();
+  await expect(month.getByText('Income')).toBeVisible();
+  const owed = page.locator('section').filter({ hasText: 'Credit cards owed' });
+  await expect(owed.getByText('BCA KrisFlyer')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Needs attention' })).toBeVisible();
+
+  // What the Overview had.
+  await expect(page.getByRole('radiogroup', { name: 'Net worth sections' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Balance sheet' })).toBeVisible();
+  await expect(page.getByText(/Net worth =/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Financial health' })).toBeVisible();
+});
+
 test('shows net worth, the balance sheet and both sides of it', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');

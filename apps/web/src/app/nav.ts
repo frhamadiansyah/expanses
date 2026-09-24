@@ -7,7 +7,6 @@ import {
   CheckCheck,
   CreditCard,
   FileSpreadsheet,
-  House,
   Landmark,
   PiggyBank,
   Scale,
@@ -58,7 +57,6 @@ export const MORE_GROUPS: readonly NavGroup[] = [
   {
     title: 'Money',
     items: [
-      { to: '/', label: 'Dashboard', icon: House },
       { to: '/budget', label: 'Budget', icon: PiggyBank },
       { to: '/bills', label: 'Recurring', icon: Bell },
       { to: '/events', label: 'Events', icon: CalendarRange },

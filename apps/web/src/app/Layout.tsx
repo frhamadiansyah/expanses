@@ -17,7 +17,6 @@ import { TabBar } from './TabBar';
 import { usePhone } from './use-phone';
 
 const NAV = [
-  { to: '/', label: 'Dashboard' },
   { to: '/transactions', label: 'Transactions' },
   { to: '/cards', label: 'Cards' },
   { to: '/budget', label: 'Budget' },
@@ -112,7 +111,6 @@ export function Layout() {
               to={item.to}
               className="block rounded-lg px-3 py-2 text-sm text-[var(--ph-ink-2)] hover:bg-[var(--ph-fill)]"
               activeProps={{ className: 'bg-[var(--ph-fill)] font-medium text-[var(--ph-ink)]' }}
-              activeOptions={{ exact: item.to === '/' }}
             >
               {item.label}
             </Link>

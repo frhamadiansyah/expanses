@@ -24,7 +24,6 @@ import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardsPage } from '../features/cards/CardsPage';
 import { RecommendPage } from '../features/cards/RecommendPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
-import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { KitPage } from '../features/design/KitPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { AddAccountPage } from '../features/ownables/AddAccountPage';
@@ -102,7 +101,17 @@ const rootRoute = createRootRoute({ component: Layout });
 const cardsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage });
 
 const routeTree = rootRoute.addChildren([
-  createRoute({ getParentRoute: () => rootRoute, path: '/', component: DashboardPage }),
+  /*
+   * The Dashboard and the Net worth overview were one subject drawn twice, so they are one page now: the home route
+   * hands over to it, and old links, bookmarks and the PWA's own start page land where they always did.
+   */
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/',
+    beforeLoad: () => {
+      throw redirect({ to: '/net-worth' });
+    },
+  }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/transactions',
