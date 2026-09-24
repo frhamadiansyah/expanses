@@ -75,9 +75,18 @@ export function Field({ label, hint, children, className }: { label: string; hin
   );
 }
 
+/**
+ * A box on the page: the kit's surface, quietly.
+ *
+ * It carried a hairline ring and a shadow — a card, drawn as a card — and that ring is what made a screen built on
+ * this box look different from a screen built on the kit's own group: a flat white shape on grey, with hairlines
+ * between rows and none around the outside. The fill is the whole edge, as it is for a group, a panel and a bar
+ * button. Nineteen screens still draw with this box, so the flattening lands on all of them at once rather than
+ * nineteen times.
+ */
 export function Card({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {
   return (
-    <section id={id} className={cx('rounded-xl bg-[var(--ph-surface)] p-4 shadow-sm ring-1 ring-[var(--ph-hair)]', className)}>
+    <section id={id} className={cx('rounded-xl bg-[var(--ph-surface)] p-4', className)}>
       {children}
     </section>
   );
