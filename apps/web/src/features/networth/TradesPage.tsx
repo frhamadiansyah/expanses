@@ -5,8 +5,7 @@ import { useApp } from '../../app/context';
 import { MONEY_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Empty, ErrorBox, Money } from '../../ui';
-import { Figure, GROUP_GAP, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, type RecordColumn, RecordTable, SCREEN, SelectRow } from '../../ui/native';
-import { NetWorthTabs } from './NetWorthTabs';
+import { Figure, GROUP_GAP, InsetGroup, InsetRow, Panel, PanelHeader, PushedTitle, type RecordColumn, RecordTable, SCREEN, SelectRow } from '../../ui/native';
 import { ReinvestCell } from './ReinvestCell';
 import { useAssetProfiles, useAssetValues, usePositions, useTradeTemplates, useTrades, useDueTemplates } from './queries';
 import { useGoals } from '../goals/queries';
@@ -171,8 +170,7 @@ export function TradesPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Buy & sell" />
-      <NetWorthTabs />
+      <PushedTitle title="Buy & sell" back="Net worth" backTo="/net-worth" />
       <InsetGroup>
         <InsetRow title="Investments" subtitle="By stock and by broker" to="/net-worth/investments" />
       </InsetGroup>

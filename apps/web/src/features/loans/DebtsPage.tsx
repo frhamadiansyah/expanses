@@ -5,10 +5,9 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { ApproxFigure, approxLine, type CornerAction, Figure, Hero, InsetGroup, InsetRow, LargeTitle, SCREEN } from '../../ui/native';
+import { ApproxFigure, approxLine, type CornerAction, Figure, Hero, InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
 import { useHeldRates } from '../accounts/queries';
 import { usePeopleDebts } from '../debts/queries';
-import { NetWorthTabs } from '../networth/NetWorthTabs';
 import { bareFigure, type DebtGroup, type DebtIcon, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
 import { useSheet } from '../networth/queries';
 import { monthlyInstalments } from './instalments';
@@ -199,8 +198,7 @@ export function DebtsPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Debts" actions={actions} />
-      <NetWorthTabs />
+      <PushedTitle title="Debts" back="Net worth" backTo="/net-worth" actions={actions} />
       <ErrorBox error={accounts.error ?? balances.error ?? loans.error ?? payments.error ?? people.error ?? cards.error ?? held.error ?? sheet.error} />
 
       {nothing && (

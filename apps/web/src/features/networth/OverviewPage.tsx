@@ -6,7 +6,6 @@ import { Gauge } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
-import { NetWorthTabs } from './NetWorthTabs';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
 import { ShareBar, ShareLegend } from './ShareBar';
 import { useGoalPlans, useSetAsideViews } from '../goals/queries';
@@ -133,7 +132,17 @@ export function OverviewPage() {
    * The ratios are a screen of their own now, behind the corner glyph: a question of how you are doing rather than
    * what you have, and the period they are read over belongs to that screen with them.
    */
-  const actions: CornerAction[] = [{ key: 'health', label: 'Financial health', glyph: <Gauge size={18} aria-hidden />, to: '/net-worth/health' }];
+  const actions: CornerAction[] = [
+    { key: 'health', label: 'Financial health', glyph: <Gauge size={18} aria-hidden />, to: '/net-worth/health' },
+    /*
+     * The three sections this page used to tab between are sub-pages now, and the rows in the `…` are their door:
+     * one corner for the screen worth a tap of its own, and the rest one tap further. A section row at the top of
+     * every one of the four screens was four names for four pages, and the row took the room the figure wanted.
+     */
+    { key: 'assets', label: 'Assets', to: '/net-worth/assets' },
+    { key: 'trades', label: 'Buy & sell', to: '/net-worth/trades' },
+    { key: 'debts', label: 'Debts', to: '/net-worth/loans' },
+  ];
 
   const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
 
@@ -193,8 +202,7 @@ export function OverviewPage() {
   if (accounts.isSuccess && money.length === 0 && nothingYet) {
     return (
       <div className={SCREEN}>
-        <LargeTitle title="Net worth" />
-        <NetWorthTabs />
+        <LargeTitle title="Net worth" actions={actions} />
         <Panel wide>
           <Empty>
             Start by adding your bank accounts and credit cards on the{' '}
@@ -211,7 +219,6 @@ export function OverviewPage() {
   return (
     <div className={SCREEN}>
       <LargeTitle title="Net worth" actions={actions} />
-      <NetWorthTabs />
       <ErrorBox error={series.error ?? sheetInputs.error ?? values.error} />
 
       {nothingYet && (

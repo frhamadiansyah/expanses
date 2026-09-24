@@ -45,8 +45,8 @@ test('the two pages are one, and neither one lost a block', async ({ page }) => 
   await expect(owed.getByText('BCA KrisFlyer')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Needs attention' })).toBeVisible();
 
-  // What the Overview had, with the ratios one tap away in the corner.
-  await expect(page.getByRole('radiogroup', { name: 'Net worth sections' })).toBeVisible();
+  // What the Overview had, with the ratios one tap away in the corner and the three sections behind the `…` beside it.
+  await expect(page.getByRole('button', { name: 'More' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Balance sheet' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Financial health' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Financial health' }).click();
@@ -110,43 +110,21 @@ test('moves net worth by the price difference only', async ({ page }) => {
 });
 
 /**
- * The five section tabs are the app's main navigation, and a desktop is its highest tier: middle click and
- * "open link in new tab" have to work on them. Only a real `<a href>` gives a browser that — a radio button
- * that calls `navigate` looks identical and answers none of it — so the href is what is asserted.
+ * The three sections are the corner's `…`, and a desktop is this app's highest tier: middle click and "open link in
+ * new tab" have to work on them. Only a real `<a href>` gives a browser that — a row that calls `navigate` looks
+ * identical and answers none of it — so the href is what is asserted.
  */
-test('every net-worth section tab is a real link, so it can be opened in a new tab', async ({ page }) => {
+test('every net-worth section is a real link in the corner menu, so it can be opened in a new tab', async ({ page }) => {
   await page.goto('/net-worth');
-  const tabs = page.getByRole('radiogroup', { name: 'Net worth sections' }).getByRole('radio');
-  await expect(tabs).toHaveCount(4);
-  const hrefs = await tabs.evaluateAll((nodes) => nodes.map((node) => [node.tagName, node.getAttribute('href')]));
-  expect(hrefs).toEqual([
-    ['A', '/net-worth'],
-    ['A', '/net-worth/assets'],
-    ['A', '/net-worth/trades'],
-    ['A', '/net-worth/loans'],
-  ]);
-  await expect(tabs).toHaveText(['Overview', 'Assets', 'Buy & sell', 'Debts']);
+  await page.getByRole('button', { name: 'More' }).click();
+  const items = page.getByRole('menuitem');
+  await expect(items).toHaveText(['Assets', 'Buy & sell', 'Debts']);
+  expect(await items.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('href')))).toEqual(['/net-worth/assets', '/net-worth/trades', '/net-worth/loans']);
 
-  // Still a segmented control: clicking one selects it and takes the page with it, exactly as before.
-  await page.getByRole('radio', { name: 'Debts' }).click();
+  // And each one goes there: the section opens as its own screen, with Net worth as the way back.
+  await page.getByRole('menuitem', { name: 'Debts' }).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
-  await expect(page.getByRole('radio', { name: 'Debts' })).toHaveAttribute('aria-checked', 'true');
-});
-
-/**
- * Assets and Debts carry a `+` in the title row; Overview and Trades carry none. A row that is as tall as its
- * corners made the section row sit 8 px lower on the two that have one — so moving between sections moved the
- * tabs, and everything under them. The bar is a corner's height whatever it holds.
- */
-test('the section row sits at the same height on all four sections', async ({ page }) => {
-  const tops: number[] = [];
-  for (const path of ['/net-worth', '/net-worth/assets', '/net-worth/trades', '/net-worth/loans']) {
-    await page.goto(path);
-    const tabs = page.getByRole('radiogroup', { name: 'Net worth sections' });
-    await expect(tabs).toBeVisible();
-    tops.push(Math.round((await tabs.boundingBox())!.y));
-  }
-  expect(new Set(tops).size, `the row moved between sections: ${tops.join(', ')}`).toBe(1);
+  await expect(page.getByRole('heading', { name: 'Debts', level: 1 })).toBeVisible();
 });
 
 test('an empty account in a currency with no rate does not stop net worth: zero needs no rate', async ({ page }) => {

@@ -102,9 +102,10 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
 
 test('the renames are in place: Debts for everything owed, Lend & borrow for people', async ({ page }) => {
   await page.goto('/net-worth');
-  const tabs = page.getByRole('radiogroup', { name: 'Net worth sections' }).getByRole('radio');
-  await expect(tabs).toHaveText(['Overview', 'Assets', 'Buy & sell', 'Debts']);
-  await page.getByRole('radio', { name: 'Debts' }).click();
+  // The sections are the corner's `…` now, three rows that are links, each opening a screen of its own.
+  await page.getByRole('button', { name: 'More' }).click();
+  await expect(page.getByRole('menuitem')).toHaveText(['Assets', 'Buy & sell', 'Debts']);
+  await page.getByRole('menuitem', { name: 'Debts' }).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
   await expect(page.getByRole('heading', { name: 'Debts', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Loans', level: 1 })).toHaveCount(0);

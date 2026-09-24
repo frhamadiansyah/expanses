@@ -4,10 +4,9 @@ import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, LargeTitle, Panel, SCREEN } from '../../ui/native';
+import { type CornerAction, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN } from '../../ui/native';
 import { pocketCount } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
-import { NetWorthTabs } from './NetWorthTabs';
 import { UpdatePricesSheet } from './UpdatePricesSheet';
 import { type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
 import { useAssetProfiles, useAssetValues, useDueDeposits } from './queries';
@@ -97,8 +96,7 @@ export function AssetsPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Assets" actions={actions} />
-      <NetWorthTabs />
+      <PushedTitle title="Assets" back="Net worth" backTo="/net-worth" actions={actions} />
       {total.totalMinor !== null ? (
         <Hero minor={total.totalMinor} currency={baseCurrency} caption="Everything you own" />
       ) : (
