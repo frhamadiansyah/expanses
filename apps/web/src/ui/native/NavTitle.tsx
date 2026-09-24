@@ -295,36 +295,49 @@ export function PushedTitle({
   const plan = planCornerActions(actions, max);
   return (
     <header className="mb-[14px] md:max-w-4xl">
-      <div className="flex items-center gap-[8px]">
-        <div className="flex flex-1 items-center">
-          <CornerButton label={back} to={backTo} params={backParams} search={backSearch} onClick={backTo ? undefined : onBack}>
-            <ChevronLeft size={22} aria-hidden />
-          </CornerButton>
-        </div>
-        {/* A name that does not fit steps down to an ellipsis rather than wrapping: the bar is one line tall. */}
-        {field ?? (
-          <h1 className="min-w-0 truncate text-center text-[22px] font-semibold leading-[28px] tracking-tight text-[var(--ph-ink)]">{title}</h1>
+      {/* The same 8 px of air the large title's row has, so a corner sits at the same height on both bars. */}
+      <div className="flex items-center gap-[8px]" style={{ paddingTop: 8 }}>
+        {field ? (
+          <>
+            {/* A field takes the row rather than the name's column: the way back stays where it is, and the field
+             * ends where every box below it ends. */}
+            <div className="flex shrink-0 items-center">
+              <CornerButton label={back} to={backTo} params={backParams} search={backSearch} onClick={backTo ? undefined : onBack}>
+                <ChevronLeft size={22} aria-hidden />
+              </CornerButton>
+            </div>
+            <div className="min-w-0 flex-1">{field}</div>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-1 items-center">
+              <CornerButton label={back} to={backTo} params={backParams} search={backSearch} onClick={backTo ? undefined : onBack}>
+                <ChevronLeft size={22} aria-hidden />
+              </CornerButton>
+            </div>
+            {/* A name that does not fit steps down to an ellipsis rather than wrapping: the bar is one line tall. */}
+            <h1 className="min-w-0 truncate text-center text-[22px] font-semibold leading-[28px] tracking-tight text-[var(--ph-ink)]">{title}</h1>
+            <div className="flex flex-1 items-center justify-end gap-[8px]">
+              {plan.inline.map((action) => (
+                <CornerButton
+                  key={action.key}
+                  label={action.label}
+                  to={action.to}
+                  params={action.params}
+                  search={action.search}
+                  onClick={action.to ? undefined : () => action.run?.()}
+                  destructive={action.destructive}
+                  disabled={action.disabled}
+                  pressed={action.pressed}
+                  expanded={action.expanded}
+                >
+                  {action.glyph}
+                </CornerButton>
+              ))}
+              {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
+            </div>
+          </>
         )}
-        <div className="flex flex-1 items-center justify-end gap-[8px]">
-          {!field &&
-            plan.inline.map((action) => (
-            <CornerButton
-              key={action.key}
-              label={action.label}
-              to={action.to}
-              params={action.params}
-              search={action.search}
-              onClick={action.to ? undefined : () => action.run?.()}
-              destructive={action.destructive}
-              disabled={action.disabled}
-              pressed={action.pressed}
-              expanded={action.expanded}
-            >
-              {action.glyph}
-            </CornerButton>
-          ))}
-          {!field && plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
-        </div>
       </div>
     </header>
   );
