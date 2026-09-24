@@ -10,6 +10,23 @@
 export const TAP = 44;
 
 /**
+ * What a glyph in a 44 pt circle is drawn at.
+ *
+ * Lucide's drawings are not optically harmonised: some art fills its 24-unit box edge to edge and some leaves air
+ * around itself, so one number for all of them draws the same circle with different-sized pictures in it. Measured
+ * with `getBBox`, in a 24 box: `Search` covers 18 units, `Store`, `Sparkles`, `Pencil`, `Archive`, `Tag`, `Trash2`
+ * and `Filter` cover 20, `Plus` 14, a chevron 12. At the 20 a corner used to be drawn at, that came to 15 px of
+ * magnifier beside 16.7 px of shop — which is what made the Cards page's corners look like a different set from
+ * Cashflow's.
+ *
+ * So: a glyph whose art fills its box is drawn at 18, one with margins around it at 20, and a bare cross or
+ * chevron — a thin mark with little ink — at 22. 15 px of ink is the target, which is what `Search` at 20 gives.
+ */
+export const GLYPH_FILLS_BOX = 18;
+export const GLYPH_IN_BOX = 20;
+export const GLYPH_SPARSE = 22;
+
+/**
  * How far past what it draws a control's hit area has to reach, on each side, to clear the tap floor.
  *
  * Not everything native is 44 tall: iOS genuinely draws a segmented control at about 32, and drawing ours at 44

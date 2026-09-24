@@ -67,7 +67,7 @@ export function ItemPage() {
   const edit: CornerAction = {
     key: 'edit',
     label: 'Edit',
-    glyph: <Pencil size={20} aria-hidden />,
+    glyph: <Pencil size={18} aria-hidden />,
     to: '/events/$eventId/plan/$itemId/edit',
     params: { eventId, itemId },
     search,

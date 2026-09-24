@@ -126,8 +126,8 @@ export function GoalPage({ goalId }: { goalId: string }) {
 
   // The page's two corners: edit — the fields, and the working behind the amount inside them — and archive.
   const actions: CornerAction[] = [
-    { key: 'edit', label: 'Edit', glyph: <Pencil size={20} aria-hidden />, run: () => setEditing(true) },
-    { key: 'archive', label: 'Archive', glyph: <Archive size={20} aria-hidden />, run: () => void archive(card.name) },
+    { key: 'edit', label: 'Edit', glyph: <Pencil size={18} aria-hidden />, run: () => setEditing(true) },
+    { key: 'archive', label: 'Archive', glyph: <Archive size={18} aria-hidden />, run: () => void archive(card.name) },
   ];
 
   return (

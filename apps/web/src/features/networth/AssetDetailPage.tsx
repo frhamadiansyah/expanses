@@ -102,7 +102,7 @@ export function AssetDetailPage() {
   const actions: CornerAction[] = value
     ? [
         { key: 'settings', label: 'Settings', glyph: <Settings size={22} aria-hidden />, to: '/net-worth/assets/$accountId/settings', params: { accountId } },
-        { key: 'archive', label: 'Archive', glyph: <Archive size={20} aria-hidden />, disabled: !canArchive, run: () => void archive() },
+        { key: 'archive', label: 'Archive', glyph: <Archive size={18} aria-hidden />, disabled: !canArchive, run: () => void archive() },
       ]
     : [];
 

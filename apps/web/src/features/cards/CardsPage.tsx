@@ -117,10 +117,11 @@ export function CardsPage() {
     if (raisedKey) header.current?.querySelector<HTMLElement>('h1')?.focus({ preventScroll: true });
   }, [raisedKey]);
 
-  // Corner actions are glyphs at every width, including desktop, and the journeys stay links.
+  // Corner actions are glyphs at every width, including desktop, and the journeys stay links. Both of these fill
+  // their 24-unit box edge to edge, so they are drawn at 18 — the size a magnifier's own ink comes to at 20.
   const actions: CornerAction[] = [
-    { key: 'merchants', label: 'Merchants & MCCs', glyph: <Store size={20} aria-hidden />, to: '/cards/merchants' },
-    { key: 'recommend', label: 'Which card?', glyph: <Sparkles size={20} aria-hidden />, to: '/recommend' },
+    { key: 'merchants', label: 'Merchants & MCCs', glyph: <Store size={18} aria-hidden />, to: '/cards/merchants' },
+    { key: 'recommend', label: 'Which card?', glyph: <Sparkles size={18} aria-hidden />, to: '/recommend' },
   ];
   /*
    * An open card's sections — what the segmented tabs held on the card's page — are behind ⋯, each its own screen

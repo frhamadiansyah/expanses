@@ -49,7 +49,7 @@ function usePageActions(account: AccountRow, onError: (error: unknown) => void):
     {
       key: 'edit',
       label: 'Edit',
-      glyph: <Pencil size={20} aria-hidden />,
+      glyph: <Pencil size={18} aria-hidden />,
       run: () => {
         const next = window.prompt('Rename account', account.name);
         if (!next || next.trim() === '' || next === account.name) return;
@@ -62,7 +62,7 @@ function usePageActions(account: AccountRow, onError: (error: unknown) => void):
     {
       key: 'archive',
       label: 'Archive',
-      glyph: <Archive size={20} aria-hidden />,
+      glyph: <Archive size={18} aria-hidden />,
       run: () => {
         if (!window.confirm(`Archive ${account.name}? It leaves the list; its history stays in reports.`)) return;
         void (async () => {
