@@ -38,4 +38,10 @@ describe('a grouped row’s figure', () => {
     expect(groupedFigure({ totalMinor: 58_982_000, missing: [] }, 'IDR')).toEqual({ text: `≈ ${rupiah(58_982_000)}`, complete: true });
     expect(groupedFigure({ totalMinor: null, missing: ['JPY', 'SGD'] }, 'IDR')).toEqual({ text: 'No JPY, SGD rate yet', complete: false });
   });
+
+  it('wears the ≈ only when a rate was used: a sum in the base currency is exact', () => {
+    expect(groupedFigure({ totalMinor: 58_982_000, missing: [] }, 'IDR', false)).toEqual({ text: rupiah(58_982_000), complete: true });
+    // A figure it could not work out at all says so the same way, converted or not.
+    expect(groupedFigure({ totalMinor: null, missing: ['JPY'] }, 'IDR', false)).toEqual({ text: 'No JPY rate yet', complete: false });
+  });
 });

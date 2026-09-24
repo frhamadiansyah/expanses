@@ -257,10 +257,15 @@ describe('the Money tile', () => {
     // 39.000.000 + 14.582.000 + 5.400.000 + 29.250.000 + 15.750.000 − 100.000 — the mockup's Rp 103.882.000.
     // Wrong answers it rules out: Math.abs on the overdrawn account (104.082.000), the holding counted (+16.250.000),
     // the card counted, the archived JPY pocket counted, the parent's own zero counted as an account of its own.
-    expect(moneySummary(book, balances, 'IDR', rates)).toEqual({ totalMinor: 103_882_000, missing: [], accounts: 4, currencies: 3 });
+    expect(moneySummary(book, balances, 'IDR', rates)).toEqual({ totalMinor: 103_882_000, missing: [], accounts: 4, currencies: 3, converted: true });
   });
 
   it('gives no figure when a rate is missing, and names it — not the sum of the rest, not raw minor units', () => {
-    expect(moneySummary(book, balances, 'IDR', { USD: 16_250 })).toEqual({ totalMinor: null, missing: ['SGD'], accounts: 4, currencies: 3 });
+    expect(moneySummary(book, balances, 'IDR', { USD: 16_250 })).toEqual({ totalMinor: null, missing: ['SGD'], accounts: 4, currencies: 3, converted: true });
+  });
+
+  it('says nothing was converted when every account is in the base currency', () => {
+    const rupiahBook = [{ id: 'bca', name: 'BCA', parentId: null, kind: 'asset', subtype: 'bank', currency: 'IDR', archivedAt: null, sortOrder: 0 }] as AccountRow[];
+    expect(moneySummary(rupiahBook, { bca: 5_000_000 }, 'IDR', {})).toEqual({ totalMinor: 5_000_000, missing: [], accounts: 1, currencies: 1, converted: false });
   });
 });

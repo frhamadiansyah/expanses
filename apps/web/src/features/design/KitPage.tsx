@@ -1,4 +1,4 @@
-import { Fuel, Plus, Search, ShoppingBasket, Smartphone, Utensils } from 'lucide-react';
+import { Fuel, HelpCircle, Plus, Search, ShoppingBasket, Smartphone, Utensils } from 'lucide-react';
 import { useState } from 'react';
 import {
   CardStack,
@@ -13,6 +13,7 @@ import {
   PHONE_MAX,
   PickerRow,
   ProgressBar,
+  PushedTitle,
   ReadOnlyRow,
   RecordTable,
   SegmentedControl,
@@ -127,6 +128,13 @@ export function KitPage() {
     { key: 'delete', label: 'Delete this month', destructive: true, run: () => {} },
   ];
 
+  /* The pushed title's own corners, named as the page that wears it names them, so the specimen is not a second
+   * set of words for the same two actions. */
+  const PUSHED_ACTIONS: CornerAction[] = [
+    { key: 'add', label: 'Add a loan', glyph: <Plus size={20} aria-hidden />, run: () => {} },
+    { key: 'pick', label: 'What do you owe?', glyph: <HelpCircle size={20} aria-hidden />, run: () => {} },
+  ];
+
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">
       <LargeTitle
@@ -139,6 +147,12 @@ export function KitPage() {
       <Note>
         {`3 · Large title and corner buttons — ${actions.length} actions, ${CORNER_MAX} corners: the second becomes a …`}
       </Note>
+
+      <Note>
+        3 · A pushed screen's title — the way back in the corner's own circle, the name centred between the corners,
+        for a subpage rather than a section
+      </Note>
+      <PushedTitle title="Lend & borrow" back="Cashflow" backTo="/transactions" actions={PUSHED_ACTIONS} />
 
       <Note>4 · Segmented control — the card page's four tabs, with “Rewards rules” shortened so all four fit</Note>
       <div className="mb-[18px]">

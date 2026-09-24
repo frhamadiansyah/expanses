@@ -9,7 +9,7 @@ import './tokens.css';
 
 /* The primitives. */
 export { InsetGroup, InsetRow, toneClass, useWide, WideColumn, type GroupChild, type InsetRowProps } from './InsetList';
-export { CornerButton, LargeTitle, OverflowMenu } from './NavTitle';
+export { CornerButton, LargeTitle, OverflowMenu, PushedTitle } from './NavTitle';
 export { SegmentedControl } from './Segmented';
 export { Hero, ProgressBar } from './Hero';
 export { DestructiveRow, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';

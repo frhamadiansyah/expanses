@@ -1,5 +1,5 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { MoreHorizontal } from 'lucide-react';
+import { ChevronLeft, MoreHorizontal } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { cx } from '../index';
@@ -227,6 +227,75 @@ export function LargeTitle({
             {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
           </div>
         )}
+      </div>
+    </header>
+  );
+}
+
+/**
+ * A pushed screen's title: the way back in the corner's own circle, and the name centred between.
+ *
+ * A screen reached from a section draws the bar iOS draws for a pushed screen — a chevron in a circle at the top
+ * left, the page's name in the middle — rather than `LargeTitle`'s name large in the page's own ink with the
+ * destination named in a line above it. Which of the two a screen gets is not a matter of taste: a section of the
+ * app is a top level, and a subpage is something you came into from one.
+ *
+ * The name is centred in the *screen*, not in whatever the buttons leave: the two outer columns are equal, so two
+ * corner buttons move it no more than none does.
+ */
+export function PushedTitle({
+  title,
+  back,
+  onBack,
+  backTo,
+  backParams,
+  backSearch,
+  actions = [],
+  max,
+}: {
+  title: string;
+  /** Where the way back goes, and what a screen reader hears — `Cashflow`, never "Back". */
+  back: string;
+  /** What back does, when it is not a journey: a sheet closing, a step going back. */
+  onBack?: () => void;
+  /** Where back goes. Given a route it is a link, so the circle keeps its middle-click and its new tab. */
+  backTo?: LinkProps['to'];
+  backParams?: LinkProps['params'];
+  backSearch?: LinkProps['search'];
+  actions?: CornerAction[];
+  /** How many corners this screen has. A wide screen has more; the phone has two. */
+  max?: number;
+}) {
+  const plan = planCornerActions(actions, max);
+  return (
+    <header className="mb-[14px] md:max-w-4xl">
+      <div className="flex items-center gap-[8px]">
+        <div className="flex flex-1 items-center">
+          <CornerButton label={back} to={backTo} params={backParams} search={backSearch} onClick={backTo ? undefined : onBack}>
+            <ChevronLeft size={22} aria-hidden />
+          </CornerButton>
+        </div>
+        {/* A name that does not fit steps down to an ellipsis rather than wrapping: the bar is one line tall. */}
+        <h1 className="min-w-0 truncate text-center text-[22px] font-semibold leading-[28px] tracking-tight text-[var(--ph-ink)]">
+          {title}
+        </h1>
+        <div className="flex flex-1 items-center justify-end gap-[8px]">
+          {plan.inline.map((action) => (
+            <CornerButton
+              key={action.key}
+              label={action.label}
+              to={action.to}
+              params={action.params}
+              search={action.search}
+              onClick={action.to ? undefined : () => action.run?.()}
+              destructive={action.destructive}
+              disabled={action.disabled}
+            >
+              {action.glyph}
+            </CornerButton>
+          ))}
+          {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
+        </div>
       </div>
     </header>
   );

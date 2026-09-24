@@ -214,5 +214,8 @@ export function moneySummary(accounts: readonly AccountRow[], balances: Readonly
   const tops = accounts.filter((a) => a.kind === 'asset' && a.archivedAt === null && a.parentId === null && kinds.has(a.subtype));
   const held = tops.flatMap((a) => (parents.has(a.id) ? pocketsOf(a.id, accounts) : [a]));
   const amounts = held.map((a) => ({ minor: balances[a.id] ?? 0, currency: a.currency! }));
-  return { ...sumToBase({ amounts, baseCurrency, ratesToBase }), accounts: tops.length, currencies: new Set(amounts.map((a) => a.currency)).size };
+  /* Whether any of it came from another currency: money held only in the base currency adds up exactly, and the
+   * screen above should not question a figure that no rate touched. */
+  const converted = amounts.some((amount) => amount.currency !== baseCurrency);
+  return { ...sumToBase({ amounts, baseCurrency, ratesToBase }), accounts: tops.length, currencies: new Set(amounts.map((a) => a.currency)).size, converted };
 }

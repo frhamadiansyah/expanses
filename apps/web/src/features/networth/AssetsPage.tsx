@@ -21,7 +21,8 @@ function staleNote(stale: AssetRow[]): string {
 }
 
 function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string; money: Set<string> }) {
-  // An account with pockets: one row at their ≈ total (or the missing rate named), opening to the pockets.
+  // An account with pockets: one row at their total (or the missing rate named), opening to the pockets — with the
+  // ≈ on its figure only when a pocket is held in another currency.
   if (row.pockets !== null)
     return (
       <GroupedRow
@@ -29,7 +30,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
         params={{ accountId: row.accountId }}
         title={row.name}
         subtitle={`${pocketCount(row.pockets)} · each files its own row`}
-        figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency)}
+        figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency, row.converted)}
       />
     );
   /*

@@ -129,9 +129,13 @@ function amountsOf(rows: AccountRow[], everything: AccountRow[], balances: Recor
 /**
  * What a set of accounts comes to at today's rates — or the rate one of them lacks, named instead. Never a partial
  * sum, and never a different answer for a group than for a drawer inside it.
+ *
+ * The ≈ goes on only where a rate was used: a group whose rows are all in the base currency is exact.
  */
 function totalOf(rows: AccountRow[], everything: AccountRow[], balances: Record<string, number>, baseCurrency: string, rates: Record<string, number>, read?: RowRead): string {
-  return groupedFigure(sumToBase({ amounts: amountsOf(rows, everything, balances, read), baseCurrency, ratesToBase: rates }), baseCurrency).text;
+  const amounts = amountsOf(rows, everything, balances, read);
+  const converted = amounts.some((amount) => amount.currency !== baseCurrency);
+  return groupedFigure(sumToBase({ amounts, baseCurrency, ratesToBase: rates }), baseCurrency, converted).text;
 }
 
 /**
@@ -213,8 +217,13 @@ function AccountList({
   readOf?: RowRead;
 }) {
   const { ws } = useApp();
-  // The kit's grouped figure: the ≈ total, or the missing rate named — never a partial sum.
-  const totalText = (account: AccountRow) => groupedFigure(parentTotal(pocketsOf(account.id, everything), balances, ws.baseCurrency, rates), ws.baseCurrency);
+  // The kit's grouped figure: the ≈ total, or the missing rate named — never a partial sum. A parent holding only
+  // the base currency is exact, so it draws a plain figure like any other account's row.
+  const totalText = (account: AccountRow) => {
+    const pockets = pocketsOf(account.id, everything);
+    const converted = pockets.some((pocket) => pocket.currency !== ws.baseCurrency);
+    return groupedFigure(parentTotal(pockets, balances, ws.baseCurrency, rates), ws.baseCurrency, converted);
+  };
   const kindLine = (account: AccountRow) =>
     parents.has(account.id) ? `${SUBTYPE_LABELS[account.subtype]} · ${pocketCount(pocketsOf(account.id, everything).length)}` : `${SUBTYPE_LABELS[account.subtype]} · ${account.currency}`;
   const parentFigure = (account: AccountRow) => {
@@ -307,10 +316,12 @@ function AccountList({
                     count={drawer.ask ? `${plural(drawer.rows.length, 'account')} · ${drawer.ask}` : plural(drawer.rows.length, 'account')}
                     figure={
                       drawer.figure ?? (
-                        <>
+                        /* A drawer that adds instalments up says the word under the figure, where a row says its own
+                         * second line: "a month" beside a sum reads as part of the number. */
+                        <span className="block shrink-0 text-right">
                           <Figure>{drawerTotal(drawer.rows)}</Figure>
-                          {drawer.unit && <span className="ml-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{drawer.unit}</span>}
-                        </>
+                          {drawer.unit && <span className="block text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{drawer.unit}</span>}
+                        </span>
                       )
                     }
                     open={shown}
@@ -403,10 +414,14 @@ export function AccountsPage() {
    */
   const spareOn: RowRead = (account) => {
     if (!SPENDABLE_KINDS.has(account.subtype)) return null;
-    const read = freeOn(account, pocketsOf(account.id, everything), all, owed.data ?? {}, ws.baseCurrency, held);
+    const pockets = pocketsOf(account.id, everything);
+    const read = freeOn(account, pockets, all, owed.data ?? {}, ws.baseCurrency, held);
     if (read.freeMinor === null || read.balanceMinor === null || read.setAsideMinor === 0) return null;
-    const whole = parents.has(account.id) ? groupedFigure({ totalMinor: read.balanceMinor, missing: [] }, read.currency).text : <Money minor={read.balanceMinor} currency={read.currency} />;
-    return { minor: read.freeMinor, currency: read.currency, under: <>of {whole} held</>, approximate: parents.has(account.id) };
+    /* A parent holding only the base currency adds up exactly, so it draws a plain figure — and the line beneath it
+     * names what it holds the same way. Only a conversion earns the kit's ≈. */
+    const converted = pockets.some((pocket) => pocket.currency !== ws.baseCurrency);
+    const whole = parents.has(account.id) ? groupedFigure({ totalMinor: read.balanceMinor, missing: [] }, read.currency, converted).text : <Money minor={read.balanceMinor} currency={read.currency} />;
+    return { minor: read.freeMinor, currency: read.currency, under: <>of {whole} held</>, approximate: parents.has(account.id) && converted };
   };
   /** What one card's row says under its balance: the bill that is out, the day it falls due, what is not on it yet. */
   const askOn = (account: AccountRow): ReactNode => {
@@ -485,7 +500,7 @@ export function AccountsPage() {
             label="Free to spend"
             minor={free.freeMinor}
             currency={ws.baseCurrency}
-            caption={`Spending money ≈ at today's rates · across ${plural(spendable.accounts, 'account')} · ${plural(spendable.currencies, 'currency', 'currencies')}`}
+            caption={`Spending money${spendable.converted ? " ≈ at today's rates" : ''} · across ${plural(spendable.accounts, 'account')} · ${plural(spendable.currencies, 'currency', 'currencies')}`}
           />
         ) : (
           <Panel header="Free to spend">

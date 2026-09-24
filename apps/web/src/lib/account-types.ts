@@ -42,10 +42,10 @@ export const SUBTYPE_LABELS: Record<AccountSubtype, string> = {
   investment: 'Investment',
   property: 'Property',
   vehicle: 'Vehicle',
-  receivable: 'Money owed to me',
+  receivable: 'Receivables',
   credit_card: 'Credit card',
   loan: 'Loan',
-  payable: 'Money I owe',
+  payable: 'Payables',
   category: 'Category',
   equity: 'Equity',
 };

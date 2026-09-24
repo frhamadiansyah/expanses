@@ -19,11 +19,13 @@ export interface AssetRow {
   due: boolean;
   /**
    * How many pockets this row adds up, or null for an ordinary asset. A row with pockets is their account: its
-   * `valueMinor` is their ≈ total in the base currency, for display only — no total ever re-adds it.
+   * `valueMinor` is their total in the base currency, for display only — no total ever re-adds it.
    */
   pockets: number | null;
   /** The rates the row could not be added up without (a row with pockets only). */
   missing: string[];
+  /** Whether any pocket is held in another currency, so the figure above was reached at a rate. */
+  converted: boolean;
 }
 
 export interface AssetGroup {
@@ -50,6 +52,7 @@ function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: 
     due,
     pockets: null,
     missing: [],
+    converted: false,
   };
 }
 
@@ -104,6 +107,8 @@ export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[]
       due: false,
       pockets: pockets.length,
       missing: total.missing,
+      // A pockets row in one currency adds up exactly; only a conversion earns the ≈ its figure wears.
+      converted: pockets.some((pocket) => pocket.currency !== baseCurrency),
     });
   }
 

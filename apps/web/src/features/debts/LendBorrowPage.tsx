@@ -1,12 +1,12 @@
 import type { PersonDebtRow } from '@expanses/db';
-import { ChevronLeft, HelpCircle, Plus } from 'lucide-react';
-import { Link, useSearch } from '@tanstack/react-router';
+import { HelpCircle, Plus } from 'lucide-react';
+import { useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { useHeldRates } from '../accounts/queries';
-import { type CornerAction, Figure, InsetGroup, InsetRow, LargeTitle, PanelHeader, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
+import { type CornerAction, Figure, InsetGroup, InsetRow, PanelHeader, PushedTitle, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
 import { DebtForm } from './DebtForm';
 import { PersonCard } from './PersonCard';
 import { usePeopleDebts } from './queries';
@@ -82,15 +82,13 @@ export function LendBorrowPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Lend & borrow" actions={actions} />
       {/*
-       * No section strip: this page left Net worth for Cashflow, because money between you and people is money
-       * moving. The way back is the list it moves with, and one honest line says more than a strip with nothing lit.
+       * A subpage of Cashflow, drawn as one: the circle at the top left is the way back to the list this moves
+       * with, and its name sits in the middle of the bar. No section strip: this page left Net worth for Cashflow,
+       * because money between you and people is money moving, and one honest way back says more than a strip with
+       * nothing lit in it.
        */}
-      <Link to="/transactions" className="-mt-1 mb-[18px] flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
-        <ChevronLeft size={16} aria-hidden />
-        Cashflow
-      </Link>
+      <PushedTitle title="Lend & borrow" back="Cashflow" backTo="/transactions" actions={actions} />
       <ErrorBox error={people.error} />
 
       {adding && <DebtForm onDone={() => setAdding(false)} />}
