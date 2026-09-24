@@ -1,7 +1,8 @@
 import { cashCodeForSubtype, CASH_ITEMS, hartaLabel, isoDate, lastNMonths, monthOf } from '@expanses/core';
-import { type AccountRow, pocketParentIds, renameAccount, SPENDABLE_SUBTYPES } from '@expanses/db';
+import { type AccountRow, archiveAccount, pocketParentIds, renameAccount, SPENDABLE_SUBTYPES } from '@expanses/db';
 import { useParams, useNavigate } from '@tanstack/react-router';
-import { Pencil, Settings } from 'lucide-react';
+import { Archive, Pencil, Settings } from 'lucide-react';
+import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
@@ -23,14 +24,20 @@ const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 
 /**
- * The page's corners: what the account files under, and its name.
+ * The page's corners: what the account files under, its name, and the way out of it.
  *
- * The gear is the asset settings the account already had — the tax section, the plan group, the reportable flag —
- * kept here as well as on the row that names the code, because an account page is where someone looks for it.
+ * They live here rather than on the Accounts list, which used to carry Rename and Archive on every row: a list of
+ * what you own is for reading, and both of those are edits. The gear is the asset settings the account already had
+ * — the tax section, the plan group, the reportable flag — and it stays first because it is the one people come
+ * looking for; three actions make the kit fold the last two behind a `…`, which is the shape it was built for.
+ *
+ * Archiving a parent that still has pockets is refused by the database, and its answer — which pockets are left —
+ * is shown where the ask was made, which is why this stays enabled instead of hiding whenever it could not work.
  */
-function usePageActions(account: AccountRow): CornerAction[] {
+function usePageActions(account: AccountRow, onError: (error: unknown) => void): CornerAction[] {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
+  const navigate = useNavigate();
   return [
     {
       key: 'settings',
@@ -49,6 +56,23 @@ function usePageActions(account: AccountRow): CornerAction[] {
         void (async () => {
           await renameAccount(database, ws, account.id, next);
           await invalidate();
+        })();
+      },
+    },
+    {
+      key: 'archive',
+      label: 'Archive',
+      glyph: <Archive size={20} aria-hidden />,
+      run: () => {
+        if (!window.confirm(`Archive ${account.name}? It leaves the list; its history stays in reports.`)) return;
+        void (async () => {
+          try {
+            await archiveAccount(database, ws, account.id);
+            await invalidate();
+            await navigate({ to: '/accounts' });
+          } catch (e) {
+            onError(e);
+          }
         })();
       },
     },
@@ -114,12 +138,13 @@ export function PocketsPage() {
   const total = parentTotal(pockets, balances.data ?? {}, ws.baseCurrency, held);
   const foreign = pockets.filter((p) => p.currency !== ws.baseCurrency && held[p.currency!] !== undefined);
   const spendable = SPENDABLE_SUBTYPES.includes(parent.subtype);
-  const actions = usePageActions(parent);
+  const [actionError, setActionError] = useState<unknown>(null);
+  const actions = usePageActions(parent, setActionError);
 
   return (
     <div className={SCREEN}>
       <LargeTitle title={parent.name} back="Accounts" backTo="/accounts" actions={actions} />
-      <ErrorBox error={accounts.error ?? balances.error ?? rates.error} />
+      <ErrorBox error={actionError ?? accounts.error ?? balances.error ?? rates.error} />
       {total.totalMinor !== null ? (
         <Hero
           label="In the account"
@@ -180,7 +205,8 @@ function AccountPage({ account }: { account: AccountRow }) {
   const navigate = useNavigate();
   const balances = useBalances();
   const profiles = useAssetProfiles();
-  const actions = usePageActions(account);
+  const [actionError, setActionError] = useState<unknown>(null);
+  const actions = usePageActions(account, setActionError);
   const minor = balances.data?.[account.id] ?? 0;
   const chosen = (profiles.data ?? []).find((row) => row.accountId === account.id)?.coretaxCode;
   const code = chosen ?? (CASH_SUBTYPES.has(account.subtype) ? cashCodeForSubtype(account.subtype) : null);
@@ -189,7 +215,7 @@ function AccountPage({ account }: { account: AccountRow }) {
   return (
     <div className={SCREEN}>
       <LargeTitle title={account.name} back="Accounts" backTo="/accounts" actions={actions} />
-      <ErrorBox error={balances.error ?? profiles.error} />
+      <ErrorBox error={actionError ?? balances.error ?? profiles.error} />
       <Hero
         label="In the account"
         minor={minor}

@@ -769,11 +769,13 @@ export function TransactionsPage() {
           aria-label={text}
           onClick={() => chooseView(value)}
           className={cx(
-            'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium sm:px-3',
+            // A phone draws this as the grouping switcher's twin — the same 28px segment in the same 32px track,
+            // with the same 15px glyph. A wide screen has room for each segment's label, so the box widens for it.
+            'inline-flex h-7 w-8 items-center justify-center gap-1.5 rounded-md text-sm font-medium sm:w-auto sm:px-3',
             view === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
           )}
         >
-          <Icon size={16} aria-hidden />
+          <Icon size={15} aria-hidden />
           <span className="hidden sm:inline">{text}</span>
         </button>
       ))}
@@ -1072,8 +1074,8 @@ export function TransactionsPage() {
             <div className="flex items-center justify-end gap-2">
               {/* Names the list under the chart, and fills the row the two controls would otherwise leave empty. */}
               <h2 className="mr-auto text-base font-semibold">Transaction history</h2>
-              <div role="group" aria-label="Group by">
-              <div className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
+              {/* Grouping is the view switcher's twin: the same 28px segment, the same 32px track, the same glyph. */}
+              <div role="group" aria-label="Group by" className="inline-flex gap-0.5 rounded-lg bg-slate-200 p-0.5">
                 {(
                   [
                     // "Categories", not "By category": the form on this page has a field called Category.
@@ -1089,13 +1091,12 @@ export function TransactionsPage() {
                     onClick={() => chooseGrouping(value)}
                     className={cx(
                       'flex h-7 w-8 items-center justify-center rounded-md',
-                      grouping === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
+                      grouping === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
                     )}
                   >
                     <Icon size={15} aria-hidden />
                   </button>
                 ))}
-                </div>
               </div>
               {/* What the list was paid with — the list's own filter, beside the sort it shares a row with. */}
               <ChipMenu

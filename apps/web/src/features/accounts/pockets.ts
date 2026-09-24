@@ -138,10 +138,10 @@ export interface FreeToSpend {
  * What is left to spend: the money that can be moved, less what is promised to goals, less what each debt asks for
  * before the month is out.
  *
- * Three things are deliberately not in it. Money that cannot be moved — a deposit until it matures — is not
- * spending money at all. A long-term principal is not money you must find this month: a mortgage's balance belongs
- * to the balance sheet, where it is read against a year's schedule. And a debt with no schedule — a friend you owe —
- * is a promise rather than a due date, so it is named on the list and not withheld here.
+ * Two things are deliberately not in it: money that cannot be moved — a deposit until it matures — and the long part
+ * of a debt, which is a balance-sheet fact rather than a claim on this month. What `due` holds is what the debts ask
+ * of you: each loan's instalment, each card's whole balance (billed or not, because that money is already spent), and
+ * what you owe people.
  *
  * One rate short and there is no figure: the missing currency is named instead, as every other total in the app
  * does. Adding up the rest and calling it free to spend would be the one answer that is certainly wrong.

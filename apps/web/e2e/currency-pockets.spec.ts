@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAccount } from './accounts';
+import { openAccount, openTypes } from './accounts';
 import { openNewAsset } from './add-asset';
 import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
 
@@ -342,16 +342,20 @@ test('the Transfer tab between two pockets posts what the Move screen posts', as
 test('the parent archives only after its pockets, and renaming it renames them', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  const alerts: string[] = [];
+  // Both edits are on the account's own page now, not on the Accounts list. Three corners fold the last two behind
+  // the kit's `…`: the gear stays out, and Rename and Archive wait inside.
+  await page.getByRole('link', { name: 'Valas Plus', exact: true }).click();
   page.removeAllListeners('dialog');
-  page.on('dialog', (dialog) => {
-    if (dialog.type() === 'alert') alerts.push(dialog.message());
-    if (dialog.type() === 'prompt') return void dialog.accept('Multi Plus');
-    return void dialog.accept();
-  });
-  await page.getByRole('button', { name: 'Archive Valas Plus' }).click();
-  await expect.poll(() => alerts.join()).toContain('Valas Plus still has pockets: USD, SGD, IDR');
-  await page.getByRole('button', { name: 'Rename Valas Plus' }).click();
+  page.on('dialog', (dialog) => void dialog.accept('Multi Plus'));
+  const more = page.getByRole('button', { name: 'More', exact: true });
+  await more.click();
+  await page.getByRole('menuitem', { name: 'Archive' }).click();
+  await expect(page.getByText(/Valas Plus still has pockets: USD, SGD, IDR/)).toBeVisible();
+  await more.click();
+  await page.getByRole('menuitem', { name: 'Edit' }).click();
+  await expect(page.getByRole('heading', { name: 'Multi Plus', exact: true })).toBeVisible();
+  await page.goto('/accounts');
+  await openTypes(page);
   await page.getByRole('link', { name: 'Multi Plus', exact: true }).click();
   await page.getByTestId('pocket-USD').click();
   await expect(page.getByRole('heading', { name: 'Multi Plus · USD' })).toBeVisible();

@@ -1,19 +1,18 @@
-import { CASH_ITEMS, displayAmount, formatMinor, isoDate, sumToBase } from '@expanses/core';
-import { type AccountRow, type AccountSubtype, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
+import { CASH_ITEMS, displayAmount, formatMinor, isoDate, periodLabel, sumToBase } from '@expanses/core';
+import { type AccountRow, type AccountSubtype, pocketParentIds } from '@expanses/db';
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
-import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
+import { isMoneyAccount, useAccounts, useBalances } from '../../lib/queries';
 import { useSetAsideViews } from '../goals/queries';
-import { monthlyInstalments } from '../loans/instalments';
-import { useCardFacts, useLoans, useScheduledPayments } from '../loans/queries';
-import { DEBT_GROUP_LABELS, dayMonth } from '../networth/debt-rows';
+import { useCardFacts, useScheduledAsks } from '../loans/queries';
+import { DEBT_GROUP_LABELS, dayMonth, owedMinor } from '../networth/debt-rows';
 import { PLAN_GROUP_LABELS } from '../networth/labels';
-import { useAssetValues, useSheet } from '../networth/queries';
+import { useAssetValues } from '../networth/queries';
 import { ShareBar } from '../networth/ShareBar';
-import { cx, Empty, errorMessage, Money } from '../../ui';
+import { cx, Empty, Money } from '../../ui';
 import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, LineAction, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
 import { SPENDABLE_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
@@ -26,7 +25,9 @@ interface Drawer {
   label: string;
   /** The figure the drawer carries, when the group's own arithmetic is not the one that belongs on it. */
   figure?: ReactNode;
-  /** The line under the count: what this kind of debt asks, in its own words ("Rp 14.950.000 a month"). */
+  /** A unit printed after the drawer's own figure, when what its rows ask is a rate rather than an amount. */
+  unit?: string;
+  /** The line under the count: what this kind of debt says about itself in words. */
   ask?: string;
 }
 
@@ -53,21 +54,17 @@ const GROUPS: {
   {
     key: 'cash',
     label: PLAN_GROUP_LABELS.liquid,
+    /* Money, and the money you are owed, in one section — because what you owe is in one section too. A person you
+     * lent to and a person you borrowed from are the same kind of fact read from opposite sides, and they used to
+     * sit at different depths: Receivables was a section of its own while Payables was a drawer under Debts. Now
+     * each side is one section with its kinds inside it, and the pair is symmetric. */
     /* No deposits here. A deposit holds money it cannot be paid from, so it belongs where it is priced and where its
      * maturity is read — Net worth's Assets, beside the holdings — and the tile's Spending money already leaves it
-     * out. With it gone from this list, the section and the tile count the same accounts again. */
-    subtypes: ['cash', 'bank', 'savings', 'ewallet', 'fund', 'other_cash'],
+     * out. */
+    subtypes: ['cash', 'bank', 'savings', 'ewallet', 'fund', 'other_cash', 'receivable'],
     drawer: (account) => ({ key: account.subtype, label: SUBTYPE_LABELS[account.subtype] }),
-    order: CASH_ITEMS.map((item) => item.id),
-  },
-  {
-    key: 'owed',
-    label: PLAN_GROUP_LABELS.owed,
-    /* Money you lent is settled by a transaction, so it is managed here — one side of the same page as the
-     * people you owe. */
-    subtypes: ['receivable'],
-    drawer: (account) => ({ key: account.subtype, label: SUBTYPE_LABELS[account.subtype] }),
-    order: ['receivable'],
+    /* Money first, in the order the cash picker lists it, and what you are owed after it. */
+    order: [...CASH_ITEMS.map((item) => item.id), 'receivable'],
   },
   {
     key: 'debts',
@@ -114,21 +111,27 @@ function destination(account: AccountRow): Pick<LinkProps, 'to' | 'params' | 'se
 type RowRead = (account: AccountRow) => { minor: number; currency: string; under?: ReactNode; approximate?: boolean } | null;
 
 /**
- * What a set of accounts comes to at today's rates — or the rate one of them lacks, named instead. Never a partial
- * sum, and never a different answer for a group than for a drawer inside it.
+ * The amounts a set of accounts adds up to, row by row: the reading its group gave a row, or the balance that row
+ * would have drawn with none.
  *
- * `read` is the group's own reading of a row: a drawer's figure is the sum of the numbers its rows draw, so the
- * three figures the page puts one above the other — the row, the drawer over it and the section over that — are one
- * arithmetic rather than three that happen to look alike.
+ * `totalOf` and the tile's third line both call this, so the figure a section shows and the figure the tile works
+ * from can never be two different sums.
  */
-function totalOf(rows: AccountRow[], everything: AccountRow[], balances: Record<string, number>, baseCurrency: string, rates: Record<string, number>, read?: RowRead): string {
-  const amounts = rows.flatMap((account) => {
+function amountsOf(rows: AccountRow[], everything: AccountRow[], balances: Record<string, number>, read?: RowRead): { minor: number; currency: string }[] {
+  return rows.flatMap((account) => {
     const own = read?.(account);
     if (own) return [{ minor: own.minor, currency: own.currency }];
     const its = pocketsOf(account.id, everything);
     return (its.length > 0 ? its : [account]).map((row) => ({ minor: displayAmount(row.kind, balances[row.id] ?? 0), currency: row.currency! }));
   });
-  return groupedFigure(sumToBase({ amounts, baseCurrency, ratesToBase: rates }), baseCurrency).text;
+}
+
+/**
+ * What a set of accounts comes to at today's rates — or the rate one of them lacks, named instead. Never a partial
+ * sum, and never a different answer for a group than for a drawer inside it.
+ */
+function totalOf(rows: AccountRow[], everything: AccountRow[], balances: Record<string, number>, baseCurrency: string, rates: Record<string, number>, read?: RowRead): string {
+  return groupedFigure(sumToBase({ amounts: amountsOf(rows, everything, balances, read), baseCurrency, ratesToBase: rates }), baseCurrency).text;
 }
 
 /**
@@ -168,10 +171,10 @@ function TypeDrawer({ label, count, figure, open, separator, testId, onToggle }:
 /**
  * One section of the account list.
  *
- * A native list: one group, a line per account with its balance on the right, and the things that can be done to
- * it — the points door, Rename and Archive — wrapped under the name rather than pushed into a fifth and sixth
- * column. The table this replaces scrolled sideways on a phone, and a list of what you own is the one place that
- * must not.
+ * A native list: one group, a line per account with its figure on the right, and the one thing that can be done to
+ * it — a card's points door — wrapped under the name rather than pushed into a fifth and sixth column. Renaming and
+ * archiving are not offered here: an account's own page has both. The table this replaces scrolled sideways on a
+ * phone, and a list of what you own is the one place that must not.
  *
  * The tax code an account files under is *not* here. It is a figure for the report, not for this page, and a row
  * of four-digit codes under every balance read as noise; the asset's own page still names it, and still changes it.
@@ -209,7 +212,7 @@ function AccountList({
   /** The group's own reading of a row, where its rows do not draw plain balances — see `RowRead`. */
   readOf?: RowRead;
 }) {
-  const { database, ws } = useApp();
+  const { ws } = useApp();
   // The kit's grouped figure: the ≈ total, or the missing rate named — never a partial sum.
   const totalText = (account: AccountRow) => groupedFigure(parentTotal(pocketsOf(account.id, everything), balances, ws.baseCurrency, rates), ws.baseCurrency);
   const kindLine = (account: AccountRow) =>
@@ -218,7 +221,6 @@ function AccountList({
     const figure = totalText(account);
     return <Figure tone={figure.complete ? 'ink' : 'warn'}>{figure.text}</Figure>;
   };
-  const invalidate = useInvalidateAll();
   const values = useAssetValues();
   const valued = (id: string) => (values.data ?? []).find((row) => row.accountId === id && row.mode !== 'derived');
   if (accounts.length === 0) return null;
@@ -256,27 +258,13 @@ function AccountList({
     );
   };
 
-  async function rename(account: AccountRow) {
-    const next = window.prompt('Rename account', account.name);
-    if (next && next.trim() !== account.name) {
-      await renameAccount(database, ws, account.id, next);
-      await invalidate();
-    }
-  }
-  async function archive(account: AccountRow) {
-    if (window.confirm(`Archive ${account.name}? Its history stays in reports.`)) {
-      try {
-        await archiveAccount(database, ws, account.id);
-        await invalidate();
-      } catch (e) {
-        window.alert(errorMessage(e));
-      }
-    }
-  }
-
   /**
-   * One account's line: what it is called, what type it is, its figure, and the things that can be done to it.
-   * A function rather than a map inline, because a type's drawer draws its own rows under itself.
+   * One account's line: what it is called, what type it is, its figure, and the one thing that can be done to it
+   * from here — the points door a card carries.
+   *
+   * Renaming and archiving are deliberately not here. An account's own page already carries both, in the two
+   * corners beside its name, and a list of what you own is not the place to be editing it by accident. A function
+   * rather than a map inline, because a type's drawer draws its own rows under itself.
    */
   const line = (account: AccountRow, separator: boolean, depth = 0) => (
     <li key={account.id}>
@@ -299,12 +287,6 @@ function AccountList({
             Set up points
           </LineAction>
         )}
-        <LineAction label={`Rename ${account.name}`} onClick={() => void rename(account)}>
-          Rename
-        </LineAction>
-        <LineAction label={`Archive ${account.name}`} onClick={() => void archive(account)}>
-          Archive
-        </LineAction>
       </ActionLine>
     </li>
   );
@@ -323,7 +305,14 @@ function AccountList({
                   <TypeDrawer
                     label={drawer.label}
                     count={drawer.ask ? `${plural(drawer.rows.length, 'account')} · ${drawer.ask}` : plural(drawer.rows.length, 'account')}
-                    figure={drawer.figure ?? <Figure>{drawerTotal(drawer.rows)}</Figure>}
+                    figure={
+                      drawer.figure ?? (
+                        <>
+                          <Figure>{drawerTotal(drawer.rows)}</Figure>
+                          {drawer.unit && <span className="ml-[4px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{drawer.unit}</span>}
+                        </>
+                      )
+                    }
                     open={shown}
                     separator={index > 0}
                     testId={`type-drawer-${drawer.key}`}
@@ -351,10 +340,8 @@ export function AccountsPage() {
   const all = balances.data ?? {};
   const parents = pocketParentIds(everything);
   const byId = new Map(everything.map((account) => [account.id, account]));
-  const loans = useLoans();
-  const payments = useScheduledPayments();
+  const asks = useScheduledAsks();
   const owed = useSetAsideViews();
-  const sheet = useSheet();
   const cardIds = money.filter((account) => account.subtype === 'credit_card').map((account) => account.id);
   const cards = useCardFacts(cardIds, today);
   // Every currency this page converts: the money's own, and the debts' — a card's bill and a loan's instalment too.
@@ -384,10 +371,13 @@ export function AccountsPage() {
   const groupTotal = (rows: AccountRow[], read?: RowRead) => totalOf(rows, everything, all, ws.baseCurrency, held, read);
   /**
    * Free to spend, and the three parts it is read from: money that can be moved, what goals have claimed of it, and
-   * what the debts ask before the month is out — a card's billed bill, a loan's next instalment. Three things are
-   * deliberately outside it: money that cannot be moved (a deposit until it matures), a debt's long-term principal
-   * (a mortgage's balance is not money you must find this month — it is read against a year, on Net worth), and a
-   * debt with no schedule at all (a friend you owe is a promise, and its row says so).
+   * what the debts ask of it.
+   *
+   * The debts are read as what each of them wants, not as what they cost in total: a loan wants its instalment, a
+   * card wants everything it has taken — billed or not, because that money is already spent — and a person wants
+   * what you owe them. Two things are deliberately outside it: money that cannot be moved (a deposit until it
+   * matures), and the long part of a debt, which is a balance-sheet fact rather than a claim on this month — a
+   * mortgage's principal is read on Net worth, against a year's schedule, and never here.
    */
   const spendable = moneySummary(everything, all, ws.baseCurrency, held, SPENDABLE_KINDS);
   const promised = sumToBase({
@@ -397,78 +387,13 @@ export function AccountsPage() {
     baseCurrency: ws.baseCurrency,
     ratesToBase: held,
   });
-  const openLoans = (loans.data ?? []).filter((loan) => loan.status === 'open');
-  const instalments = monthlyInstalments(openLoans, everything, payments.data ?? {}, ws.baseCurrency, held);
-  const billed = sumToBase({
-    amounts: cardIds.map((id) => ({ minor: cards.data?.[id]?.leftToPayMinor ?? 0, currency: byId.get(id)?.currency ?? ws.baseCurrency })),
+  /** What the cards have charged that no bill has carried yet: the figure their drawer explains its total with. */
+  const unbilled = sumToBase({
+    amounts: cardIds.map((id) => ({ minor: Math.max(0, owedMinor(all, id) - (cards.data?.[id]?.leftToPayMinor ?? 0)), currency: byId.get(id)?.currency ?? ws.baseCurrency })),
     baseCurrency: ws.baseCurrency,
     ratesToBase: held,
   });
-  const asked = {
-    totalMinor: instalments.total.totalMinor === null || billed.totalMinor === null ? null : instalments.total.totalMinor + billed.totalMinor,
-    missing: [...new Set([...instalments.total.missing, ...billed.missing])].sort(),
-  };
-  const free = freeToSpend(spendable, promised, asked);
-  /** What the loans ask each month, and the bills the cards have billed and not yet paid: each drawer's own line. */
-  const perMonth = instalments.total.totalMinor === null || instalments.total.totalMinor <= 0 ? null : `${formatMinor(instalments.total.totalMinor, ws.baseCurrency)} a month`;
-  const billDates = cardIds.flatMap((id) => {
-    const facts = cards.data?.[id];
-    return facts && facts.leftToPayMinor > 0 && facts.dueOn ? [facts.dueOn] : [];
-  });
-  const oneBillDate = billDates.length > 0 && billDates.every((date) => date === billDates[0]) ? billDates[0]! : null;
-  const cardAsk =
-    billed.totalMinor === null || billed.totalMinor <= 0
-      ? null
-      : oneBillDate
-        ? `${formatMinor(billed.totalMinor, ws.baseCurrency)} due ${dayMonth(oneBillDate)}`
-        : `${formatMinor(billed.totalMinor, ws.baseCurrency)} billed`;
-  /**
-   * What each kind of debt asks within a year — the balance sheet's own reading of a debt, and the figure `/net-worth`
-   * shows: a loan gives the principal its schedule names over twelve months, a card everything except a long plan's
-   * tail, a person the whole promise. The rest of a loan is a schedule, and a schedule is the balance sheet's.
-   */
-  const withinYear = (subtype: AccountSubtype) =>
-    (sheet.data?.liabilities ?? []).filter((row) => row.subtype === subtype).reduce((total, row) => total + row.dueWithinYearMinor, 0);
-  const sheetMissing = sheet.data?.missing ?? [];
-  const debtsTotal = withinYear('credit_card') + withinYear('loan') + withinYear('payable');
-  const debtFigure = (subtype: AccountSubtype) =>
-    sheetMissing.length > 0 ? <Figure tone="warn">{`No ${sheetMissing.join(', ')} rate yet`}</Figure> : <Money minor={withinYear(subtype)} currency={ws.baseCurrency} />;
-  /** Each kind of debt, with what it asks here rather than the principal it owes. */
-  const DEBT_ASKS: Record<string, { subtype: AccountSubtype; ask: string | null }> = {
-    loan: { subtype: 'loan', ask: perMonth },
-    card: { subtype: 'credit_card', ask: cardAsk },
-    person: { subtype: 'payable', ask: null },
-  };
-  /** What one debt asks next, in the debt's own terms: a card's billed bill and the day it falls due, a loan's
-   * instalment. A person has no schedule, which is why nothing is said under their name. */
-  const askOn = (account: AccountRow): ReactNode => {
-    if (account.subtype === 'credit_card') {
-      const facts = cards.data?.[account.id];
-      if (!facts || facts.leftToPayMinor <= 0) return null;
-      return `${formatMinor(facts.leftToPayMinor, account.currency ?? ws.baseCurrency)}${facts.dueOn ? ` due ${dayMonth(facts.dueOn)}` : ' billed'}`;
-    }
-    if (account.subtype === 'loan') {
-      const instalment = payments.data?.[account.id] ?? 0;
-      return instalment > 0 ? `${formatMinor(instalment, account.currency ?? ws.baseCurrency)} a month` : null;
-    }
-    return null;
-  };
-  /**
-   * One debt's row: what it asks within a year, and what it asks next under it.
-   *
-   * The balance sheet's own reading of a debt, the same one its "Due within a year" group is built from: a loan
-   * gives the principal its schedule names over twelve months, a card everything except a plan's tail beyond the
-   * year, a person the whole promise. The long part of a mortgage is nowhere on this page; it is a schedule, and a
-   * schedule belongs to the balance sheet. A rate missing anywhere on that sheet leaves the rows as they were — the
-   * drawer above them already names what is missing.
-   */
-  const debtRead: RowRead = (account) => {
-    if (sheetMissing.length > 0) return null;
-    const row = (sheet.data?.liabilities ?? []).find((entry) => entry.accountId === account.id);
-    if (!row) return null;
-    const under = askOn(account);
-    return { minor: row.dueWithinYearMinor, currency: ws.baseCurrency, under: under ?? undefined, approximate: account.currency !== ws.baseCurrency };
-  };
+  const cardAsk = unbilled.totalMinor !== null && unbilled.totalMinor > 0 ? `${formatMinor(unbilled.totalMinor, ws.baseCurrency)} unbilled` : null;
   /**
    * One money account's row: what is free on it — what it holds, less what goals have claimed of it — with what it
    * holds named underneath, so the subtraction can be read rather than trusted.
@@ -483,6 +408,46 @@ export function AccountsPage() {
     const whole = parents.has(account.id) ? groupedFigure({ totalMinor: read.balanceMinor, missing: [] }, read.currency).text : <Money minor={read.balanceMinor} currency={read.currency} />;
     return { minor: read.freeMinor, currency: read.currency, under: <>of {whole} held</>, approximate: parents.has(account.id) };
   };
+  /** What one card's row says under its balance: the bill that is out, the day it falls due, what is not on it yet. */
+  const askOn = (account: AccountRow): ReactNode => {
+    if (account.subtype !== 'credit_card') return null;
+    const facts = cards.data?.[account.id];
+    if (!facts) return null;
+    const currency = account.currency ?? ws.baseCurrency;
+    const whole = owedMinor(all, account.id);
+    if (facts.leftToPayMinor <= 0) return `${formatMinor(whole, currency)} not billed yet`;
+    const tail = Math.max(0, whole - facts.leftToPayMinor);
+    return `${formatMinor(facts.leftToPayMinor, currency)}${facts.dueOn ? ` due ${dayMonth(facts.dueOn)}` : ' billed'}${tail > 0 ? ` · ${formatMinor(tail, currency)} unbilled` : ''}`;
+  };
+  /**
+   * What one debt's row reads as: what it asks you to pay, with the facts that explain it underneath.
+   *
+   * A loan wants its instalment — its principal is a balance-sheet fact and appears nowhere on this page — and the
+   * line under it says when the debt ends, which is how a balloon inside the term shows itself without a principal
+   * being printed. A card wants everything it has taken, billed or not: that money is already spent, and a page that
+   * showed only the bill would flatter the reader. A person wants what you owe them, and nothing more is said
+   * because a promise has no schedule.
+   *
+   * Null for a debt with nothing to ask: a loan whose schedule cannot be read draws its balance instead, as it always
+   * did, and a card paid past its bill owes nothing.
+   */
+  const debtRead: RowRead = (account) => {
+    const currency = account.currency ?? ws.baseCurrency;
+    if (account.subtype === 'loan') {
+      const ask = asks.data?.[account.id];
+      if (!ask || ask.paymentMinor <= 0) return null;
+      return { minor: ask.paymentMinor, currency, under: `a month${ask.paysOffOn ? ` · pays off ${periodLabel(ask.paysOffOn)}` : ''}` };
+    }
+    const owes = owedMinor(all, account.id);
+    if (owes <= 0) return null;
+    return { minor: owes, currency, under: (account.subtype === 'credit_card' ? askOn(account) : null) ?? undefined };
+  };
+  /** What each kind of debt says beside its drawer's count: the cards' unbilled total, and nothing for the rest. */
+  const DEBT_ASKS: Record<string, string | null> = { loan: null, card: cardAsk, person: null };
+  /** What every listed debt asks — the very readings its own row draws, so the section and the tile agree. */
+  const debtRows = money.filter((account) => account.parentId === null && GROUPS.some((group) => group.key === 'debts' && group.subtypes.includes(account.subtype)));
+  const asked = sumToBase({ amounts: amountsOf(debtRows, everything, all, debtRead), baseCurrency: ws.baseCurrency, ratesToBase: held });
+  const free = freeToSpend(spendable, promised, asked);
   /** A group's drawers, in the group's own order, each holding the accounts that fell into it. */
   const drawersOf = (group: (typeof GROUPS)[number], rows: AccountRow[]) => {
     const found = new Map<string, Drawer & { rows: AccountRow[] }>();
@@ -510,8 +475,9 @@ export function AccountsPage() {
       <LargeTitle title="Accounts" actions={actions} />
       {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add one with the + above: money you can spend, or money you are owed.</Empty>}
       {/*
-       * Free to spend: money that can be moved, less what goals have claimed, less what the debts ask before the
-       * month is out. The three lines under it are the working, so the figure can be checked rather than trusted.
+       * Free to spend: money that can be moved, less what goals have claimed, less what the debts ask. The three
+       * lines under it are the working, so the figure can be checked rather than trusted — and the third of them is
+       * the very number the Debts section below adds up to, row by row.
        */}
       {accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
         (free.freeMinor !== null ? (
@@ -533,14 +499,14 @@ export function AccountsPage() {
           <InsetGroup>
             <InsetRow title="Spending money" value={<Money minor={free.spendableMinor} currency={ws.baseCurrency} />} valueTone="ink" chevron={false} />
             <InsetRow title="Set aside for goals" value={<Money minor={-(free.setAsideMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
-            <InsetRow title="Due before the month is out" value={<Money minor={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
+            <InsetRow title="What the debts ask" value={<Money minor={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
           </InsetGroup>
           <Panel className="space-y-2">
             <ShareBar
               segments={[
                 ...(free.freeMinor > 0 ? [{ key: 'free', label: 'Free', minor: free.freeMinor, className: 'bg-emerald-600' }] : []),
                 ...(free.setAsideMinor !== null && free.setAsideMinor > 0 ? [{ key: 'set-aside', label: 'Set aside', minor: free.setAsideMinor, className: 'bg-slate-400' }] : []),
-                ...(free.dueMinor !== null && free.dueMinor > 0 ? [{ key: 'due', label: 'Due', minor: free.dueMinor, className: 'bg-rose-500' }] : []),
+                ...(free.dueMinor !== null && free.dueMinor > 0 ? [{ key: 'due', label: 'Debts', minor: free.dueMinor, className: 'bg-rose-500' }] : []),
               ]}
               totalMinor={Math.max(free.spendableMinor, (free.setAsideMinor ?? 0) + (free.dueMinor ?? 0))}
             />
@@ -556,24 +522,24 @@ export function AccountsPage() {
          * only kind of thing in the panel says nothing the panel's own header has not already said.
          */
         const debts = group.key === 'debts';
-        /* What this group's rows read as: money says what is free on it, a debt what it asks within a year. */
+        /* What this group's rows read as: money says what is free on it, a debt what it asks you to pay. */
         const read: RowRead | undefined = group.key === 'cash' ? spareOn : debts ? debtRead : undefined;
         const drawers = drawersOf(group, rows).map((drawer) => {
-          const asks = debts ? DEBT_ASKS[drawer.key] : undefined;
-          return asks ? { ...drawer, figure: debtFigure(asks.subtype), ask: asks.ask ?? undefined } : drawer;
+          if (!debts) return drawer;
+          /* A loan drawer adds up instalments, so its figure needs the word beside it; the others are amounts. */
+          return { ...drawer, ask: DEBT_ASKS[drawer.key] ?? undefined, unit: drawer.key === 'loan' ? 'a month' : undefined };
         });
         return (
           <AccountList
             key={group.key}
             groupKey={group.key}
             title={group.label}
-            /* Normal case: the header shouts in capitals, and a currency symbol must not. A debt's figure is what it
-             * asks within a year, so the long part of a loan is nowhere on this page. */
+            /* Normal case: the header shouts in capitals, and a currency symbol must not. A debt's figure is what its
+             * rows ask — an instalment, a card's whole balance, what you owe a person — so no principal is on this
+             * page, and the section's own total is the sum of those same rows. */
             trailing={
               <span className="tracking-normal normal-case">
-                <Figure tone={debts && sheetMissing.length > 0 ? 'warn' : 'ink'}>
-                  {debts ? (sheetMissing.length > 0 ? `No ${sheetMissing.join(', ')} rate yet` : <Money minor={debtsTotal} currency={ws.baseCurrency} />) : groupTotal(rows, read)}
-                </Figure>
+                <Figure>{groupTotal(rows, read)}</Figure>
               </span>
             }
             accounts={rows}

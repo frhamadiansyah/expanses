@@ -86,33 +86,43 @@ export function ChipMenu({
 
   return (
     <div ref={box} className="relative" onKeyDown={onKey}>
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen((was) => !was);
-          setQuery('');
-          setIndex(Math.max(0, options.findIndex((option) => option.value === value)));
-        }}
-        className={cx(
-          'inline-flex max-w-64 items-center gap-1.5 rounded-lg text-sm ring-1',
-          // An icon sits beside a heading, so it is sized to the heading rather than to a row of named chips.
-          iconOnly ? 'h-8 w-8 justify-center' : 'h-9 px-2.5',
-          active ? 'bg-slate-900 text-slate-300 ring-slate-900 hover:bg-slate-700' : 'bg-white text-slate-500 ring-slate-300 hover:bg-slate-100',
-        )}
-      >
-        {/* Named in text rather than aria-label, so a form's own "Category" field keeps its label to itself. */}
-        {shown ? (
-          <>
-            <span className="sr-only">{name}: </span>
-            {shown}
-          </>
-        ) : (
-          name
-        )}
-        {!iconOnly && <ChevronDown size={14} aria-hidden />}
-      </button>
+      {/*
+       * The same shell the view and grouping switchers wear: one 32px grey track with a 28px pill resting in it, so
+       * every control on this row is the same shape and the same height. There used to be a white chip with a
+       * hairline ring here instead, and beside a switcher's soft grey it read as a different family of control.
+       *
+       * A pill that is set goes white with a shadow — the very way a chosen segment says it is chosen. Off, the pill
+       * *is* the track, as an unchosen segment is: the grey is the shell, not a state.
+       */}
+      <div className="inline-flex items-center rounded-lg bg-slate-200 p-0.5">
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          onClick={() => {
+            setOpen((was) => !was);
+            setQuery('');
+            setIndex(Math.max(0, options.findIndex((option) => option.value === value)));
+          }}
+          className={cx(
+            'inline-flex max-w-64 items-center gap-1.5 rounded-md text-sm',
+            // An icon sits beside a heading, so it is sized to the heading rather than to a row of named chips.
+            iconOnly ? 'h-7 w-7 justify-center' : 'h-7 px-2.5',
+            active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
+          )}
+        >
+          {/* Named in text rather than aria-label, so a form's own "Category" field keeps its label to itself. */}
+          {shown ? (
+            <>
+              <span className="sr-only">{name}: </span>
+              {shown}
+            </>
+          ) : (
+            name
+          )}
+          {!iconOnly && <ChevronDown size={14} aria-hidden />}
+        </button>
+      </div>
       {open && (
         <div
           className={cx(

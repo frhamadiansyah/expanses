@@ -39,18 +39,17 @@ test('a deposit funded from an account moves the money, and says where it came f
   await openAccount(page, { subtype: 'time_deposit', name: 'bluuu', balance: '50000000', from: 'BCA Tahapan', matures: '2026-12-02' });
 
   // Both balances moved: the bank lost what the deposit holds, and net worth did not gain the money twice.
-  const bank = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'BCA Tahapan', exact: true }) });
-  await expect(bank).toContainText('50.000.000');
-  const deposit = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'bluuu', exact: true }) });
-  await expect(deposit).toContainText('50.000.000');
+  // Both rows are on the asset list, where a row's own name carries its figure — "BCA Tahapan · Ledger balance ·
+  // 0102 · … Rp 50.000.000" — so the name is a prefix and the figure is read off the row.
+  await expect(page.getByRole('link', { name: /^BCA Tahapan/ })).toContainText('50.000.000');
+  await expect(page.getByRole('link', { name: /^bluuu/ })).toContainText('50.000.000');
   await page.goto('/');
   await expect(page.getByTestId('net-worth')).toContainText('100.000.000');
 
   // And its ledger shows one transfer naming both accounts, not an opening balance.
-  await page.goto('/accounts');
-  await openTypes(page);
-  // The name opens the deposit's own page; its ledger is the row on it that says so.
-  await page.getByRole('link', { name: 'bluuu', exact: true }).click();
+  // A deposit is a row on the asset list, not on Accounts: it holds money it cannot be paid from.
+  await page.goto('/net-worth/assets');
+  await page.getByRole('link', { name: /^bluuu/ }).click();
   await page.getByRole('link', { name: /Its transactions/ }).click();
   const row = page.getByRole('main').getByRole('listitem');
   await expect(row).toHaveCount(1);

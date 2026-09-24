@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { cardStatement, installmentTotals, listCards, listCardTerms, listInstallments, listLoans, loanFor, nextPaymentDue, scheduledPayments, scheduleFor } from '@expanses/db';
+import { cardStatement, installmentTotals, listCards, listCardTerms, listInstallments, listLoans, loanFor, nextPaymentDue, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { cycleBack, dueDateAfter } from '../cards/statement-dates';
@@ -37,6 +37,18 @@ export function useScheduledPayments(date?: string) {
   const { database, ws } = useApp();
   const fromDate = date ?? isoDate();
   return useQuery({ queryKey: ['loan-payments', ws.workspaceId, fromDate], queryFn: () => scheduledPayments(database, ws, fromDate) });
+}
+
+/**
+ * What each loan asks next, by account: its instalment, the day it falls due, and when the debt ends.
+ *
+ * The same schedules `useScheduledPayments` reads, so a screen that wants the day and the end date does not pay
+ * for a second read of the same thing.
+ */
+export function useScheduledAsks(date?: string) {
+  const { database, ws } = useApp();
+  const fromDate = date ?? isoDate();
+  return useQuery({ queryKey: ['loan-asks', ws.workspaceId, fromDate], queryFn: () => scheduledAsks(database, ws, fromDate) });
 }
 
 export function useInstallments(cardAccountId?: string) {

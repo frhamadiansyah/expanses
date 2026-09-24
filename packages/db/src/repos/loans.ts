@@ -463,6 +463,36 @@ export async function nextPaymentDue(database: Database, ws: WorkspaceContext, a
   return (await scheduleFor(database, ws, accountId, fromDate))[0];
 }
 
+/** What one loan asks next, and when it ends — the facts a list prints for it instead of its principal. */
+export interface LoanAsk {
+  accountId: string;
+  /** The instalment due next, or the figure the bank named when nothing is left to schedule. */
+  paymentMinor: number;
+  /** The month of the last payment, `2027-08`. Null when nothing is scheduled. */
+  paysOffOn: string | null;
+}
+
+/**
+ * What every loan asks next, by account: its instalment, and when the debt ends.
+ *
+ * One schedule per loan, the same read the loan's own page makes — which is why a loan with nothing left to
+ * schedule still answers with the figure the bank named rather than a nought.
+ */
+export async function scheduledAsks(database: Database, ws: WorkspaceContext, fromDate: string): Promise<Record<string, LoanAsk>> {
+  const loans = await loansWith(database, ws);
+  const asks: Record<string, LoanAsk> = {};
+  for (const loan of loans) {
+    const rows = await scheduleFor(database, ws, loan.accountId, fromDate);
+    const last = rows.at(-1);
+    asks[loan.accountId] = {
+      accountId: loan.accountId,
+      paymentMinor: rows[0]?.paymentMinor ?? periodOn(loan.periods, fromDate)?.paymentMinor ?? 0,
+      paysOffOn: last ? last.onDate.slice(0, 7) : null,
+    };
+  }
+  return asks;
+}
+
 /**
  * What each loan is due to pay next, by account — the instalment, worked out from the balance the ledger
  * holds, exactly as the detail screen and the attention rows already do.
@@ -474,11 +504,6 @@ export async function nextPaymentDue(database: Database, ws: WorkspaceContext, a
  * the bank named, so a screen never shows less than what is known.
  */
 export async function scheduledPayments(database: Database, ws: WorkspaceContext, fromDate: string): Promise<Record<string, number>> {
-  const loans = await loansWith(database, ws);
-  const payments: Record<string, number> = {};
-  for (const loan of loans) {
-    const next = await nextPaymentDue(database, ws, loan.accountId, fromDate);
-    payments[loan.accountId] = next?.paymentMinor ?? periodOn(loan.periods, fromDate)?.paymentMinor ?? 0;
-  }
-  return payments;
+  const asks = await scheduledAsks(database, ws, fromDate);
+  return Object.fromEntries(Object.entries(asks).map(([accountId, ask]) => [accountId, ask.paymentMinor]));
 }

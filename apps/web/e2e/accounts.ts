@@ -88,6 +88,19 @@ export async function openAccount(page: Page, o: NewAccount) {
   if (o.opened) await page.getByLabel('Balance as of').fill(o.opened);
   if (o.extra) await o.extra(page);
   await page.getByRole('button', { name: 'Add account' }).click();
+  /*
+   * A time deposit is a row on no list of money, and no drawer of one: it holds money it cannot be paid from, so it
+   * is waited for where it is priced — the asset list. Its row there reads "BCA Deposito · Time deposit · …", as
+   * every row on that list does, so the name is a prefix rather than the whole accessible name.
+   */
+  if (o.subtype === 'time_deposit') {
+    /* The form navigates to the money list once the write is done, so that is what the save is waited for first:
+     * leaving for the asset list any earlier abandons the write, and no deposit is ever made. */
+    await expect(page).toHaveURL(/\/accounts$/);
+    await page.goto('/net-worth/assets');
+    await expect(page.getByRole('link', { name: new RegExp(`^${o.name}`) })).toBeVisible();
+    return;
+  }
   /* The row it just made sits inside its type's drawer, and the list opens with those closed. */
   await openTypes(page);
   await expect(page.getByRole('link', { name: o.name, exact: true })).toBeVisible();
