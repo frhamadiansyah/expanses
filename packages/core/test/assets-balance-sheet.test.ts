@@ -54,6 +54,21 @@ describe('balanceSheet', () => {
     expect(sheet.liabilitiesTotalMinor).toBe(742_300_000);
   });
 
+  it('names a debt once in the list of what is owed, whole, however its schedule splits it', () => {
+    const split: SheetLiability = { ...kpr, dueWithinYearMinor: 30_000_000, note: '174 months left' };
+    const sheet = balanceSheet(assets, [card, split]);
+
+    // Both halves are in the split, and the debt is one row: a mortgage read twice reads as two mortgages.
+    expect(sheet.shortTerm.rows).toHaveLength(2);
+    expect(sheet.longTerm.rows).toHaveLength(1);
+    expect(sheet.debts.rows).toEqual([
+      { accountId: 'card', name: 'BCA KrisFlyer', amountMinor: 14_820_000, note: 'Statement 28 Aug' },
+      { accountId: 'kpr', name: 'KPR Bintaro', amountMinor: 742_300_000, note: '174 months left' },
+    ]);
+    // What is owed on each is what the split comes to: one money, told two ways.
+    expect(sheet.debts.totalMinor).toBe(sheet.liabilitiesTotalMinor);
+  });
+
   it('caps the part due within a year at what is owed', () => {
     const sheet = balanceSheet(assets, [{ ...kpr, dueWithinYearMinor: 999_000_000_000 }]);
     expect(sheet.shortTerm.totalMinor).toBe(742_300_000);
@@ -75,12 +90,14 @@ describe('balanceSheet', () => {
   it('leaves an empty sheet at zero with no groups', () => {
     const sheet = balanceSheet([], []);
     expect(sheet).toMatchObject({ assetGroups: [], assetsTotalMinor: 0, liabilitiesTotalMinor: 0, netWorthMinor: 0 });
+    expect(sheet.debts.rows).toEqual([]);
     expect(sheet.shortTerm.rows).toEqual([]);
     expect(sheet.longTerm.rows).toEqual([]);
   });
 
   it('ignores a debt that is already paid off', () => {
     const sheet = balanceSheet(assets, [{ ...card, balanceMinor: 0, dueWithinYearMinor: 0 }]);
+    expect(sheet.debts.rows).toEqual([]);
     expect(sheet.shortTerm.rows).toEqual([]);
     expect(sheet.liabilitiesTotalMinor).toBe(0);
   });
