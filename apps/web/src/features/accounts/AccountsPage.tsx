@@ -340,19 +340,15 @@ function AccountList({
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /**
- * One share of the tile: a dot in the ring's own colour, what it is called, and its figure on the right — with the
- * quieter line under the name, the way iOS draws the rows beneath a ring. The legend and the picture are one thing,
- * so the dot's colour is the ring's colour and never a colour of its own.
+ * One share of the tile: a dot in the ring's own colour, what it is called, and its figure on the right. The legend
+ * and the picture are one thing, so the dot's colour is the ring's colour and never a colour of its own.
  */
-function SpendRow({ colour, label, value, currency, under, separator = false }: { colour: string; label: string; value: number; currency: string; under: string; separator?: boolean }) {
+function SpendRow({ colour, label, value, currency, separator = false }: { colour: string; label: string; value: number; currency: string; separator?: boolean }) {
   return (
-    <div className={cx('flex items-start justify-between gap-[10px]', separator && 'mt-3 border-t-[0.5px] border-[var(--ph-hair)] pt-3')}>
-      <span className="min-w-0">
-        <span className="flex items-center gap-[7px]">
-          <span aria-hidden className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: colour }} />
-          <span className="text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{label}</span>
-        </span>
-        <span className="mt-[1px] block pl-[16px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{under}</span>
+    <div className={cx('flex items-center justify-between gap-[10px]', separator && 'mt-3 border-t-[0.5px] border-[var(--ph-hair)] pt-3')}>
+      <span className="flex min-w-0 items-center gap-[7px]">
+        <span aria-hidden className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: colour }} />
+        <span className="truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{label}</span>
       </span>
       <span className="shrink-0 tabular text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{formatMinor(value, currency)}</span>
     </div>
@@ -527,9 +523,8 @@ export function AccountsPage() {
                 label="Spending money"
                 value={unclaimed.freeMinor}
                 currency={ws.baseCurrency}
-                under={`across ${plural(spendable.accounts, 'account')} · ${plural(spendable.currencies, 'currency', 'currencies')}`}
               />
-              <SpendRow separator colour="var(--ph-alarm)" label="Debt owed" value={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} under={plural(debtRows.length, 'debt')} />
+              <SpendRow separator colour="var(--ph-alarm)" label="Debt owed" value={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />
             </div>
           </Panel>
         ) : (

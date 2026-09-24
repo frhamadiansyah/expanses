@@ -1,9 +1,10 @@
 import { assetFamily, type OwnableFamily, type OwnableFlow } from '@expanses/core';
+import { Search } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { usePhone } from '../../app/use-phone';
 import { cx } from '../../ui';
-import { InsetGroup, InsetRow, PushedTitle, SCREEN, SearchField } from '../../ui/native';
+import { InsetGroup, InsetRow, PushedTitle, SCREEN, SearchField, SearchPill } from '../../ui/native';
 import { type HandOverRow, MORE_ROW_ID, type PickerRow, pickerRows } from './catalogue-view';
 
 /**
@@ -54,6 +55,11 @@ export function OwnablePicker({
   const phone = usePhone();
   const router = useRouter();
   const [query, setQuery] = useState('');
+  /*
+   * On a phone the search box stands down and a corner takes its place, the way Cashflow's does: the field is in the
+   * bar where a thumb already is, and the list below it never loses its first row to a control nobody is using.
+   */
+  const [showSearch, setShowSearch] = useState(false);
   const [family, setFamily] = useState<OwnableFamily | null>(null);
   const [more, setMore] = useState(false);
 
@@ -68,11 +74,14 @@ export function OwnablePicker({
    */
   const back = () => {
     if (chosen) onChoose(null);
-    else if (searching) setQuery('');
+    else if (showSearch) {
+      setQuery('');
+      setShowSearch(false);
+    } else if (searching) setQuery('');
     else if (more) setMore(false);
     else if (family) setFamily(null);
   };
-  const canGoBack = Boolean(chosen || searching || more || family);
+  const canGoBack = Boolean(chosen || showSearch || searching || more || family);
 
   function choose(id: string) {
     if (id === MORE_ROW_ID) {
@@ -104,9 +113,12 @@ export function OwnablePicker({
 
   const list = (
     <>
-      <div className="mb-[12px]">
-        <SearchField value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
-      </div>
+      {/* The box is a wide screen's: a phone gives the bar a corner instead, and the field takes the name's place. */}
+      {!phone && (
+        <div className="mb-[12px]">
+          <SearchField value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
+        </div>
+      )}
       {/* The list is the answer to what is typed above it, so a screen reader hears it change, not only sees it. */}
       <div aria-live="polite">
         <InsetGroup header={listHeader} footer={listFooter}>
@@ -132,8 +144,33 @@ export function OwnablePicker({
 
   return (
     <div className={SCREEN}>
-      {/* The step back is an undo of one step, not a destination, so it is named for what it does. */}
-      <PushedTitle title={more ? 'Something else' : title} back={BACK_TO[flow]} onBack={() => (canGoBack ? back() : router.history.back())} />
+      {/*
+       * A subpage's bar: the circle names the list this came from, and one tap undoes one step of this screen first.
+       * Searching takes the name's place rather than the list's first row.
+       */}
+      <PushedTitle
+        title={more ? 'Something else' : title}
+        back={BACK_TO[flow]}
+        onBack={() => (canGoBack ? back() : router.history.back())}
+        field={
+          phone && showSearch ? (
+            <SearchPill
+              value={query}
+              onChange={setQuery}
+              onClose={() => {
+                setQuery('');
+                setShowSearch(false);
+              }}
+              placeholder={searchPlaceholder}
+            />
+          ) : undefined
+        }
+        actions={
+          phone
+            ? [{ key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) }]
+            : []
+        }
+      />
       {/* One screen at a time on a phone; both at once on anything wider, the list on the left. */}
       <div className={cx('gap-6', chosen ? 'md:grid md:grid-cols-2 md:items-start' : '')}>
         <div className={cx(phone && chosen && 'hidden')}>{list}</div>

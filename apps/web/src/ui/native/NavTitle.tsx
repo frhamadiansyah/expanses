@@ -272,6 +272,7 @@ export function PushedTitle({
   backSearch,
   actions = [],
   max,
+  field,
 }: {
   title: string;
   /** Where the way back goes, and what a screen reader hears — `Cashflow`, never "Back". */
@@ -285,6 +286,11 @@ export function PushedTitle({
   actions?: CornerAction[];
   /** How many corners this screen has. A wide screen has more; the phone has two. */
   max?: number;
+  /**
+   * A field drawn where the name goes, keeping the way back where it is — a search bar, on a phone, in a bar that
+   * already carries a circle. The outer columns are equal, so the field stops short of the circle on its own.
+   */
+  field?: ReactNode;
 }) {
   const plan = planCornerActions(actions, max);
   return (
@@ -296,11 +302,12 @@ export function PushedTitle({
           </CornerButton>
         </div>
         {/* A name that does not fit steps down to an ellipsis rather than wrapping: the bar is one line tall. */}
-        <h1 className="min-w-0 truncate text-center text-[22px] font-semibold leading-[28px] tracking-tight text-[var(--ph-ink)]">
-          {title}
-        </h1>
+        {field ?? (
+          <h1 className="min-w-0 truncate text-center text-[22px] font-semibold leading-[28px] tracking-tight text-[var(--ph-ink)]">{title}</h1>
+        )}
         <div className="flex flex-1 items-center justify-end gap-[8px]">
-          {plan.inline.map((action) => (
+          {!field &&
+            plan.inline.map((action) => (
             <CornerButton
               key={action.key}
               label={action.label}
@@ -316,7 +323,7 @@ export function PushedTitle({
               {action.glyph}
             </CornerButton>
           ))}
-          {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
+          {!field && plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
         </div>
       </div>
     </header>

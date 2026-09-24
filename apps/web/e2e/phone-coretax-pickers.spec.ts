@@ -28,6 +28,8 @@ test('two levels by thumb: a family, the thing, and the way back', async ({ page
 
 test('a phone finds a thing by typing, without knowing its family', async ({ page }) => {
   await page.goto('/net-worth/assets/new');
+  // Searching is a corner on a phone, and the field takes the name's place in the bar rather than the list's first row.
+  await page.getByRole('button', { name: 'Search' }).click();
   await page.getByPlaceholder('Search everything you can own').fill('patent');
   await page.getByRole('button', { name: 'Patent' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Paten alat panen');

@@ -222,9 +222,8 @@ test('a pocket’s ≈ line marks a rate held for an earlier day as last known (
 test('the Money tile adds every account and pocket at today’s rates', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  // The ring reads what it divides, and its legend says what the share is spread across. The ≈ goes on the figure
-  // itself when a rate was needed, which this one was.
-  await expect(page.getByText(/across 1 account · 3 currencies/)).toBeVisible();
+  // The legend is two rows and nothing under them: what the money is spread across is not part of the figure.
+  await expect(page.getByText(/across 1 account/)).toHaveCount(0);
   // Three times, and each is a different sentence: the tile's own figure, the share it is made of, and the account's
   // own row. No section carries it a fourth time.
   await expect(page.getByText(/58\.982\.000/)).toHaveCount(3);
@@ -367,7 +366,7 @@ test('an empty foreign pocket needs no rate: the Money tile still adds up', asyn
   // Offline, and USD opened with nothing in it, so no USD rate is ever typed or fetched — and none is needed for 0.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openWithPockets(page, { name: 'Unpriced Valas', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'USD', balance: '' }] });
-  await expect(page.getByText(/across 1 account · 2 currencies/)).toBeVisible();
+  await expect(page.getByText(/across 1 account/)).toHaveCount(0);
   // Three times, as in the pockets test above: the tile's figure, the share it is made of, the account's own row.
   await expect(page.getByText(/5\.400\.000/)).toHaveCount(3);
   await expect(page.getByText(/No USD rate yet/)).toHaveCount(0);

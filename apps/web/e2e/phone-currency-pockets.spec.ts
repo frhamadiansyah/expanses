@@ -35,8 +35,8 @@ test('the account page reads in the dark', async ({ page }) => {
 test('by thumb: add a pocket, then see the account once on Assets at its ≈ total', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, { name: 'Thumb Valas', pockets: [{ currency: 'USD', balance: '2400.00', rate: '16250' }, { currency: 'SGD', balance: '1150.00' }] });
-  // The legend under the ring says what the money is spread across, on a phone too.
-  await expect(page.getByText(/across 1 account · 2 currencies/)).toBeVisible();
+  // Two rows and nothing under them, on a phone too.
+  await expect(page.getByText(/across 1 account/)).toHaveCount(0);
   await page.getByRole('link', { name: 'Thumb Valas', exact: true }).tap();
   await page.getByRole('link', { name: /Add a pocket/ }).tap();
   await page.getByLabel('Currency', { exact: true }).selectOption('IDR');

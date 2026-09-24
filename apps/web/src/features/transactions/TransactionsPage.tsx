@@ -30,7 +30,7 @@ import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
 import { useDrafts } from '../review/queries';
 import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
-import { LargeTitle } from '../../ui/native';
+import { LargeTitle, SearchPill } from '../../ui/native';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { ConvertForm } from './ConvertForm';
 import { EditSheet } from './EditSheet';
@@ -786,35 +786,20 @@ export function TransactionsPage() {
   const rowView = (row: ListRow, withDate = false) => (row.kind === 'draft' ? draftRow(row) : recordedRow(row, withDate));
 
   /**
-   * Searching, on a phone: one field and a way out, drawn in the title's row by `LargeTitle`'s own `field` — a corner's
-   * 44 px tall, so the field takes the header over without moving the chart below it.
+   * Searching, on a phone: the kit's own pill, drawn in the title's row by `LargeTitle`'s `field` — a corner's 44 px
+   * tall, so the field takes the header over without moving the chart below it.
    */
   const searchField = (
-    <div className="flex h-11 items-center gap-2.5 rounded-full bg-[var(--ph-corner)] px-4 shadow-[var(--ph-lift)]">
-      <Search size={18} className="shrink-0 text-slate-400" aria-hidden />
-      <input
-        // biome-ignore lint/a11y/noAutofocus: the field was asked for by tapping search, so it should be ready to type in
-        autoFocus
-        type="search"
-        value={filters.q}
-        onChange={(event) => setFilter('q', event.target.value)}
-        placeholder="Search transactions…"
-        aria-label="Search transactions"
-        autoComplete="off"
-        className="min-w-0 flex-1 bg-transparent text-base focus:outline-none"
-      />
-      <button
-        type="button"
-        aria-label="Close search"
-        onClick={() => {
-          setFilter('q', '');
-          setShowSearch(false);
-        }}
-        className="-mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500"
-      >
-        <X size={18} aria-hidden />
-      </button>
-    </div>
+    <SearchPill
+      value={filters.q}
+      onChange={(value) => setFilter('q', value)}
+      onClose={() => {
+        setFilter('q', '');
+        setShowSearch(false);
+      }}
+      placeholder="Search transactions…"
+      label="Search transactions"
+    />
   );
 
   return (
