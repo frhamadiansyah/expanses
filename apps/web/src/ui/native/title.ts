@@ -20,6 +20,13 @@ export interface CornerAction {
   /** True while the action cannot be taken: the corner dims and refuses, instead of failing when it is tapped. */
   disabled?: boolean;
   /**
+   * The action is a switch rather than a journey: search and filters, which stay on until they are turned off. Drawn
+   * filled, and carried as `aria-pressed`, so the corner says what state it is in and not only what it does.
+   */
+  pressed?: boolean;
+  /** The action opens something: carried as `aria-expanded`, for the corner that is a menu in disguise. */
+  expanded?: boolean;
+  /**
    * Where the action goes, when it goes somewhere.
    *
    * An action that is a journey is drawn as a link, so a desktop keeps the middle-click and the new tab it has

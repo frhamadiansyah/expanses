@@ -33,6 +33,8 @@ export function CornerButton({
   children,
   destructive = false,
   disabled = false,
+  pressed,
+  expanded,
   className,
 }: {
   label: string;
@@ -44,11 +46,15 @@ export function CornerButton({
   destructive?: boolean;
   /** An action that cannot work yet says so by being dimmed and refusing the tap, rather than by explaining after. */
   disabled?: boolean;
+  /** A switch that is on: filled with the ink, as the segmented control's chosen segment is its track's opposite. */
+  pressed?: boolean;
+  /** The action opens something, and says whether it is open. */
+  expanded?: boolean;
   className?: string;
 }) {
   const shell = cx(
-    'ph-focus flex shrink-0 items-center justify-center rounded-full bg-[var(--ph-corner)] text-[var(--ph-ink)] shadow-[var(--ph-lift)]',
-    destructive && 'text-[var(--ph-alarm)]',
+    'ph-focus flex shrink-0 items-center justify-center rounded-full shadow-[var(--ph-lift)]',
+    pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : destructive ? 'bg-[var(--ph-corner)] text-[var(--ph-alarm)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
     disabled && 'opacity-40',
     className,
   );
@@ -60,7 +66,7 @@ export function CornerButton({
     );
   }
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} className={shell} style={{ width: 44, height: 44 }}>
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={pressed} aria-expanded={expanded} aria-label={label} className={shell} style={{ width: 44, height: 44 }}>
       {children}
     </button>
   );
@@ -221,6 +227,8 @@ export function LargeTitle({
                 onClick={action.to ? undefined : () => action.run?.()}
                 destructive={action.destructive}
                 disabled={action.disabled}
+                pressed={action.pressed}
+                expanded={action.expanded}
               >
                 {action.glyph}
               </CornerButton>
@@ -291,6 +299,8 @@ export function PushedTitle({
               onClick={action.to ? undefined : () => action.run?.()}
               destructive={action.destructive}
               disabled={action.disabled}
+              pressed={action.pressed}
+              expanded={action.expanded}
             >
               {action.glyph}
             </CornerButton>

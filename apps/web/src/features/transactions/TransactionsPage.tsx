@@ -29,7 +29,8 @@ import { useCategorySetMembership } from '../categories/set-queries';
 import { useCards } from '../cards/card-queries';
 import { formatPoints } from '../cards/useCardPoints';
 import { useDrafts } from '../review/queries';
-import { Button, Card, cx, Empty, ErrorBox, Money, PageHeader, RoundButton } from '../../ui';
+import { Button, Card, cx, Empty, ErrorBox, Money } from '../../ui';
+import { LargeTitle } from '../../ui/native';
 import { ChipMenu, type ChipOption } from './ChipMenu';
 import { ConvertForm } from './ConvertForm';
 import { EditSheet } from './EditSheet';
@@ -815,56 +816,43 @@ export function TransactionsPage() {
           </button>
         </div>
       ) : (
-      <PageHeader
-        title={inCategory ? scope!.name : 'Cashflow'}
-        controls={
-          <>
-            <RoundButton label="Add a transaction" onClick={() => { close(); setAdding(true); }}>
-              <Plus size={22} aria-hidden />
-            </RoundButton>
-            {/* Searching and filtering are about what is already here, so they share one pill. */}
-            <span className="flex items-center rounded-full bg-[var(--ph-corner)] shadow-[var(--ph-lift)]">
-              <button
-                type="button"
-                aria-label="Search"
-                aria-pressed={showSearch}
-                onClick={() => setShowSearch((was) => !was)}
-                className={cx('flex h-11 w-11 items-center justify-center rounded-full', showSearch && 'bg-slate-900 text-white')}
-              >
-                <Search size={19} aria-hidden />
-              </button>
-              <button
-                type="button"
-                aria-label="Filters"
-                aria-pressed={showFilters}
-                aria-expanded={showFilters}
-                onClick={() => setShowFilters((was) => !was)}
-                className={cx(
-                  '-ml-1 flex h-11 w-11 items-center justify-center rounded-full',
-                  showFilters && 'bg-slate-900 text-white',
-                )}
-              >
-                <Ellipsis size={19} aria-hidden />
-              </button>
-            </span>
-          </>
-        }
-        action={
-          <div className="flex flex-wrap items-center gap-2.5">
-            {viewSwitcher}
-            {!adding && (
-              <Button
-                onClick={() => {
-                  close();
-                  setAdding(true);
-                }}
-              >
-                Add transaction
-              </Button>
-            )}
-          </div>
-        }
-      />
+        <>
+          {/*
+           * The kit's own title, so this page's name sits where every other page's does — same face, same size, same
+           * corner rhythm. Three corners, because the screen has three controls and the `…` would otherwise swallow
+           * the search a thumb reaches for most: the `max` says how many, rather than a second header shape.
+           */}
+          <LargeTitle
+            title={inCategory ? scope!.name : 'Cashflow'}
+            oneLine
+            max={3}
+            actions={
+              phone
+                ? [
+                    { key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); setAdding(true); } },
+                    { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
+                    { key: 'filters', label: 'Filters', glyph: <Ellipsis size={20} aria-hidden />, pressed: showFilters, expanded: showFilters, run: () => setShowFilters((was) => !was) },
+                  ]
+                : []
+            }
+          />
+          {/* A wide screen has room for the switcher and a named button, so its corners stay empty. */}
+          {!phone && (
+            <div className="mb-3 flex flex-wrap items-center justify-end gap-2.5">
+              {viewSwitcher}
+              {!adding && (
+                <Button
+                  onClick={() => {
+                    close();
+                    setAdding(true);
+                  }}
+                >
+                  Add transaction
+                </Button>
+              )}
+            </div>
+          )}
+        </>
       )}
       {phone && showFilters && (
         <>

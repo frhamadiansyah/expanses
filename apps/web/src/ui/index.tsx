@@ -83,35 +83,6 @@ export function Card({ children, className, id }: { children: ReactNode; classNa
   );
 }
 
-export function PageHeader({ title, action, controls }: { title: string; action?: ReactNode; controls?: ReactNode }) {
-  return (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      {/* A phone gives the title room and puts its actions in round buttons beside it, as iOS does. */}
-      <h1 className={cx('font-semibold', controls ? 'text-3xl tracking-tight md:text-xl' : 'text-xl')}>{title}</h1>
-      {controls && <span className="flex items-center gap-2 md:hidden">{controls}</span>}
-      {action && <span className={cx(Boolean(controls) && 'hidden md:flex')}>{action}</span>}
-    </div>
-  );
-}
-
-/** A round button for the phone header: one action, no label, 44px of target. */
-export function RoundButton({ label, onClick, children, pressed }: { label: string; onClick: () => void; children: ReactNode; pressed?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={pressed}
-      className={cx(
-        'flex h-11 w-11 items-center justify-center rounded-full shadow-[var(--ph-lift)]',
-        pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 export function Money({ minor, currency, className, tone }: { minor: number; currency: string; className?: string; tone?: 'auto' | 'none' }) {
   const color = tone === 'auto' ? (minor < 0 ? 'text-[var(--ph-alarm)]' : minor > 0 ? 'text-[var(--ph-tint)]' : '') : '';
   return <span className={cx('tabular whitespace-nowrap', color, className)}>{formatMinor(minor, currency)}</span>;
