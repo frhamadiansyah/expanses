@@ -2,12 +2,10 @@ import { addMonths, balanceSheet, displayAmount, formatMinor, isoDate, lastNMont
 import { categoryTotalsBetween, expiringSoonAcross, nativeBalances, ownerScope, scheduleFor } from '@expanses/db';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useState } from 'react';
+import { Gauge } from 'lucide-react';
 import { useApp } from '../../app/context';
-import { HealthRatios } from './HealthRatios';
-import { periodRange, type RatioPeriod, ratioTotals } from './health-cards';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
+import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
 import { NetWorthTabs } from './NetWorthTabs';
 import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
 import { ShareBar, ShareLegend } from './ShareBar';
@@ -16,12 +14,10 @@ import { usePeopleDebts } from '../debts/queries';
 import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
 import { loanAttention } from '../loans/attention';
 import { useInstallments, useLoans } from '../loans/queries';
-import { useAssetValues, useDueTemplates, useIdleCash, useNetWorthSeries, usePeriodFlows, useSheet } from './queries';
+import { useAssetValues, useDueTemplates, useIdleCash, useNetWorthSeries, useSheet } from './queries';
 import { ValueChart } from './ValueChart';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
-/** A month whose rate was missing is named rather than summed as zero — the rule every figure on this page keeps. */
-const noRate = (missing: readonly string[]) => `No ${missing.join(', ')} rate yet`;
 const sum = (rows: { amountBaseMinor: number }[]) => rows.reduce((total, row) => total + row.amountBaseMinor, 0);
 const GROUP_COLORS: Record<string, string> = {
   liquid: 'bg-cyan-600',
@@ -103,11 +99,6 @@ export function OverviewPage() {
   const goalSummary = useGoalPlans(today);
   const setAsideViews = useSetAsideViews();
 
-  const [period, setPeriod] = useState<RatioPeriod>({ key: 'ttm' });
-  const range = periodRange(period, today);
-  const flows = usePeriodFlows({ from: range.from, to: range.to });
-  const periodSheetInputs = useSheet(range.balanceDate);
-
   const points = series.data ?? [];
   // Every rate or no figure: a point, or the balance sheet, that lacks one names it instead of counting that money as 0.
   const charted = points.flatMap((point) => (point.netWorthMinor === null ? [] : [point.netWorthMinor]));
@@ -138,13 +129,11 @@ export function OverviewPage() {
   const sinceLastMonth = deltaSince(points, 1);
   const januaryMonths = monthsSinceJanuary(points);
   const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);
-  // The ratios read the balance sheet on the period's balance date: every rate on that date, or no ratios.
-  const periodTotals = ratioTotals(periodSheetInputs.data);
-  const monthsWithData = flows.data?.months ?? 0;
-  const monthsNote =
-    monthsWithData === 0
-      ? 'No transactions in this period yet, so the ratios that need cash flow stay empty.'
-      : `${range.label}: ${monthsWithData === 1 ? '1 month' : `${monthsWithData} months`} of transactions, with balances as of ${range.balanceDate}.`;
+  /*
+   * The ratios are a screen of their own now, behind the corner glyph: a question of how you are doing rather than
+   * what you have, and the period they are read over belongs to that screen with them.
+   */
+  const actions: CornerAction[] = [{ key: 'health', label: 'Financial health', glyph: <Gauge size={18} aria-hidden />, to: '/net-worth/health' }];
 
   const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
 
@@ -197,10 +186,6 @@ export function OverviewPage() {
     ...(expiring.data ?? []).map((row) => `${row.expiringSoon.toLocaleString('id-ID')} ${row.unit} on ${row.cardName} expire on ${row.nextExpiryOn}`),
   ];
 
-  // The six most recent snapshots printed as well as drawn: the line says the shape of the year, these say what each month came to.
-  const six = points.slice(-6);
-  const biggestMonth = Math.max(1, ...six.map((point) => Math.abs(point.netWorthMinor ?? 0)));
-
   /*
    * With no money accounts and nothing on the sheet there is nothing to add up, so the screen asks for the two things
    * it reads rather than drawing a page of zeroes. Assets on their own still get the page below.
@@ -225,7 +210,7 @@ export function OverviewPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Net worth" />
+      <LargeTitle title="Net worth" actions={actions} />
       <NetWorthTabs />
       <ErrorBox error={series.error ?? sheetInputs.error ?? values.error} />
 
@@ -278,40 +263,6 @@ export function OverviewPage() {
           )}
           {sheetMissing.length === 0 && unchartable.length > 0 && (
             <p data-testid="chart-missing" className="text-[13px] leading-[17px] text-[var(--ph-warn)]">No {unchartable.join(', ')} rate for an earlier month, so the year cannot be charted.</p>
-          )}
-          {/*
-           * The same snapshots printed, not only drawn. The line says the shape of the year; these six say what each
-           * month came to, which a chart's axis cannot — the Dashboard printed them and the year was drawn here, so
-           * both readings stay.
-           */}
-          {six.length > 0 && (
-            <div className="mt-[14px] border-t-[0.5px] border-[var(--ph-hair)] pt-[12px]">
-              <PanelHeader title="Last 6 months" />
-              <ul className="space-y-[10px]">
-                {six.map((point) => (
-                  <li key={point.month} className="grid grid-cols-[4.5rem_1fr_9rem] items-center gap-3 text-[13px] leading-[17px]">
-                    <span className="text-[var(--ph-ink-3)]">
-                      {new Date(`${point.month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })}
-                    </span>
-                    <span className="block h-[7px] overflow-hidden bg-[var(--ph-track)]" style={{ borderRadius: 99 }}>
-                      <span
-                        className="block h-full"
-                        style={{
-                          width: `${Math.round((Math.abs(point.netWorthMinor ?? 0) / biggestMonth) * 100)}%`,
-                          borderRadius: 99,
-                          background: (point.netWorthMinor ?? 0) < 0 ? 'var(--ph-alarm)' : 'var(--ph-tint)',
-                        }}
-                      />
-                    </span>
-                    {point.netWorthMinor !== null ? (
-                      <Money minor={point.netWorthMinor} currency={ws.baseCurrency} className="text-right text-[var(--ph-ink)]" />
-                    ) : (
-                      <span className="text-right text-[var(--ph-warn)]">{noRate(point.missing)}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
           )}
           </Panel>
         </div>
@@ -410,28 +361,9 @@ export function OverviewPage() {
             currency={ws.baseCurrency}
           />
         </div>
-        <Panel wide>
-          <div className="flex flex-wrap items-baseline justify-between gap-2 text-[15px] leading-[20px] font-medium">
-            <span>
-              Net worth = <Money minor={sheet.assetsTotalMinor} currency={ws.baseCurrency} /> − <Money minor={sheet.liabilitiesTotalMinor} currency={ws.baseCurrency} />
-            </span>
-            <Money minor={sheet.netWorthMinor} currency={ws.baseCurrency} />
-          </div>
-        </Panel>
         </>
         )}
       </section>
-
-      <HealthRatios
-        flows={flows.data}
-        totals={periodTotals.totals}
-        missing={periodTotals.missing}
-        period={period}
-        onPeriod={setPeriod}
-        today={today}
-        earliestYear={Number((points[0]?.month ?? today).slice(0, 4))}
-        monthsNote={monthsNote}
-      />
     </div>
   );
 }

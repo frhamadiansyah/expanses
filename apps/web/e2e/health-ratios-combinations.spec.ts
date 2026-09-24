@@ -67,7 +67,7 @@ async function cap(page: Page, option: string, line: string, every: string, figu
 
 test('row 1 — nothing marked: essential and all read the same months', async ({ page }) => {
   await setUp(page);
-  await page.goto('/net-worth');
+  await page.goto('/net-worth/health');
   const card = emergencyCard(page);
   await expect(card).toContainText('5,7 months');
   // No goal, so the flat guide: 5,7 is inside it.
@@ -81,7 +81,7 @@ test('row 1 — nothing marked: essential and all read the same months', async (
 test('row 2 — Food and beverage lifestyle: essential counts groceries only', async ({ page }) => {
   await setUp(page);
   await markFoodLifestyle(page);
-  await page.goto('/net-worth');
+  await page.goto('/net-worth/health');
   // Rp 17 jt against Rp 2 jt of essential spending.
   await expect(emergencyCard(page)).toContainText('8,5 months');
 });
@@ -89,7 +89,7 @@ test('row 2 — Food and beverage lifestyle: essential counts groceries only', a
 test('row 3 — the same marks, counting all spending', async ({ page }) => {
   await setUp(page);
   await markFoodLifestyle(page);
-  await page.goto('/net-worth');
+  await page.goto('/net-worth/health');
   await expect(emergencyCard(page)).toContainText('8,5 months');
   await emergencyBase(page).getByRole('radio', { name: 'All spending' }).click();
   await expect(emergencyCard(page)).toContainText('5,7 months');
@@ -100,7 +100,7 @@ test('row 4 — Restaurants keeps its own essential mark under a lifestyle paren
   await markFoodLifestyle(page);
   await page.getByRole('button', { name: 'Mark Restaurants essential' }).click();
   await expect(page.getByTestId('need-Restaurants')).toHaveText('Essential');
-  await page.goto('/net-worth');
+  await page.goto('/net-worth/health');
   await expect(emergencyCard(page)).toContainText('5,7 months');
 });
 
@@ -246,7 +246,7 @@ test('row 13 — the card grades against the household’s own months', async ({
   // 12 months of Rp 3 jt, under the figure on the goal's own page.
   await expect(page.getByTestId('goal-page')).toContainText('36.000.000');
 
-  await page.goto('/net-worth');
+  await page.goto('/net-worth/health');
   const card = emergencyCard(page);
   await expect(card).toContainText('5,7 months');
   await expect(card).toContainText('12 months · your household');

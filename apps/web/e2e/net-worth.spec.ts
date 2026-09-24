@@ -37,7 +37,6 @@ test('the two pages are one, and neither one lost a block', async ({ page }) => 
 
   // What the Dashboard had.
   await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
-  await expect(page.getByRole('heading', { name: 'Last 6 months' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'This month' })).toBeVisible();
   const month = page.locator('section').filter({ hasText: 'This month' });
   await expect(month.getByText('Spent')).toBeVisible();
@@ -46,10 +45,12 @@ test('the two pages are one, and neither one lost a block', async ({ page }) => 
   await expect(owed.getByText('BCA KrisFlyer')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Needs attention' })).toBeVisible();
 
-  // What the Overview had.
+  // What the Overview had, with the ratios one tap away in the corner.
   await expect(page.getByRole('radiogroup', { name: 'Net worth sections' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Balance sheet' })).toBeVisible();
-  await expect(page.getByText(/Net worth =/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Financial health' })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Financial health' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/health$/);
   await expect(page.getByRole('heading', { name: 'Financial health' })).toBeVisible();
 });
 
@@ -61,14 +62,16 @@ test('shows net worth, the balance sheet and both sides of it', async ({ page })
   await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
   await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
   await expect(page.getByText('Due within a year').first()).toBeVisible();
-  await expect(page.getByText(/Net worth =/)).toBeVisible();
 });
 
 test('says it does not know the cash-flow ratios until there are transactions', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
 
+  // The ratios are a screen of their own, one tap from Net worth's top corner.
   await page.goto('/net-worth');
-  await expect(page.getByText('Financial health')).toBeVisible();
+  await page.getByRole('link', { name: 'Financial health' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/health$/);
+  await expect(page.getByRole('heading', { name: 'Financial health' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Savings ratio' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Surplus' })).toBeVisible();
   await expect(page.getByText('Not enough data').first()).toBeVisible();
@@ -78,7 +81,7 @@ test('says it does not know the cash-flow ratios until there are transactions', 
 test('switches the ratios between the rolling year and a calendar year', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
 
-  await page.goto('/net-worth');
+  await page.goto('/net-worth/health');
   // The period switch is the kit's segmented control: a radio group, so the chosen one says `aria-checked`.
   await page.getByRole('radio', { name: 'Last 12 months' }).click();
   await expect(page.getByRole('radio', { name: 'Last 12 months' })).toHaveAttribute('aria-checked', 'true');
@@ -158,6 +161,8 @@ test('an empty account in a currency with no rate does not stop net worth: zero 
 
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('50.000.000');
+  // The ratios are a screen of their own and read the same rows: an empty account needs no rate there either.
+  await page.goto('/net-worth/health');
   await expect(page.getByTestId('ratios-missing')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Debt to assets' })).toBeVisible();
 });
@@ -177,9 +182,10 @@ test('a currency with no rate stops net worth, the balance sheet and the ratios,
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('No USD rate yet');
   await expect(page.getByTestId('net-worth')).not.toContainText('50.000.000');
-  // The balance sheet and the ratios read the same rows, with USD at 0: they name the rate instead of a figure.
+  // The balance sheet reads the same rows, with USD at 0: it names the rate instead of a figure.
   await expect(page.getByTestId('balance-sheet-missing')).toContainText('No USD rate yet');
-  await expect(page.getByText(/Net worth =/)).toHaveCount(0);
+  // And so do the ratios, on their own screen.
+  await page.goto('/net-worth/health');
   await expect(page.getByTestId('ratios-missing')).toContainText('No USD rate yet, so the ratios cannot be worked out.');
   await expect(page.getByRole('heading', { name: 'Debt to assets' })).toHaveCount(0);
 });

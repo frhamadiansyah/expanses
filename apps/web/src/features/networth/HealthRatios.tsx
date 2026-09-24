@@ -90,7 +90,8 @@ export function HealthRatios({
 
   return (
     <section className="mb-[18px]">
-      <PanelHeader title="Financial health" />
+      {/* No heading of its own: the screen this is on is called Financial health already, and a section repeating
+       * the name in the bar is the screen introducing itself twice. */}
       <SegmentedControl
         className="mb-[10px] md:max-w-2xl"
         label="Period"

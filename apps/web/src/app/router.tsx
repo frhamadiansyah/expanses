@@ -32,6 +32,7 @@ import { AddDebtPage } from '../features/ownables/AddDebtPage';
 import { AssetDetailPage } from '../features/networth/AssetDetailPage';
 import { AssetSettingsRoute } from '../features/networth/AssetSettingsPage';
 import { AssetsPage } from '../features/networth/AssetsPage';
+import { FinancialHealthPage } from '../features/networth/FinancialHealthPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
 import { GoalRoute } from '../features/goals/GoalPage';
 import { LendBorrowPage } from '../features/debts/LendBorrowPage';
@@ -184,6 +185,8 @@ const routeTree = rootRoute.addChildren([
   // A static segment, so it outranks the wallet's `$cardId` however the two are nested.
   createRoute({ getParentRoute: () => rootRoute, path: '/cards/merchants', component: MerchantsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth', component: OverviewPage }),
+  // The ratios, on a screen of their own: Net worth's corner glyph opens it.
+  createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/health', component: FinancialHealthPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/assets', component: AssetsPage }),
   // The Assets page's Investments group, read by stock and by broker.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/investments', component: InvestmentsPage }),
