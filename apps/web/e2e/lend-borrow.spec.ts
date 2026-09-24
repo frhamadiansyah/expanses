@@ -40,7 +40,7 @@ test('lending on a credit card raises the card, earns points, and is never spend
   // The bank never moved, the card owes it, and net worth is unchanged: a loan is not spending.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('50.000.000');
-  await expect(page.getByText('Owed to you').first()).toBeVisible();
+  await expect(page.getByText('Receivables').first()).toBeVisible();
   await expect(page.getByText('Due within a year').first()).toBeVisible();
 
   // Spending stays empty, because no expense category was touched. `/spending` is the transactions list now, and
@@ -114,7 +114,7 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
   await expect(page.getByText(/300\.000/).first()).toBeVisible();
 });
 
-/** The other direction: money taken from a person, which lands under "You owe". */
+/** The other direction: money taken from a person, which lands under "Payables". */
 async function borrow(page: Page, person: string, amount: string, into: string) {
   await page.goto('/net-worth/lend-borrow');
   await page.getByRole('button', { name: 'Add a loan' }).click();
@@ -134,12 +134,12 @@ test('the desktop keeps both sides in front of you, side by side', async ({ page
   await page.goto('/net-worth/lend-borrow');
   // Both group headers, both figures and both people at once: the phone's one-list-at-a-time control is not here,
   // so nothing the desktop could see before this is behind a tap now.
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Owed to you', 'You owe']);
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Receivables', 'Payables']);
   await expect(page.getByRole('radiogroup', { name: 'Lend & borrow' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
-  await expect(page.getByTestId('debts-total-Owed to you')).toHaveText('Rp 1.000.000');
-  await expect(page.getByTestId('debts-total-You owe')).toHaveText('Rp 750.000');
+  await expect(page.getByTestId('debts-total-Receivables')).toHaveText('Rp 1.000.000');
+  await expect(page.getByTestId('debts-total-Payables')).toHaveText('Rp 750.000');
 });
 
 /**
@@ -166,7 +166,7 @@ test('lends US$100 with no dollar rate stored: the form asks for it and the loan
   await expect(page.getByText(/No USD.IDR rate/)).toHaveCount(0);
   // Printed in dollars on their card, and converted at the typed rate in the side's total.
   await expect(page.getByText(/US\$\s?100/).first()).toBeVisible();
-  await expect(page.getByTestId('debts-total-Owed to you')).toContainText('1.625.000');
+  await expect(page.getByTestId('debts-total-Receivables')).toContainText('1.625.000');
 });
 
 test('borrows US$50 with no dollar rate stored: the form asks for it and the debt records', async ({ page }) => {
@@ -187,5 +187,5 @@ test('borrows US$50 with no dollar rate stored: the form asks for it and the deb
 
   await expect(page.getByRole('heading', { name: 'Budi' })).toBeVisible();
   await expect(page.getByText(/US\$\s?50/).first()).toBeVisible();
-  await expect(page.getByTestId('debts-total-You owe')).toContainText('800.000');
+  await expect(page.getByTestId('debts-total-Payables')).toContainText('800.000');
 });

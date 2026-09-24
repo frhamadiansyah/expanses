@@ -98,7 +98,7 @@ export interface DebtInputs {
   ratesToBase: Readonly<Record<string, number>>;
 }
 
-export const DEBT_GROUP_LABELS: Record<DebtKind, string> = { loan: 'Loans', card: 'Credit cards', person: 'You owe people' };
+export const DEBT_GROUP_LABELS: Record<DebtKind, string> = { loan: 'Loans', card: 'Credit cards', person: 'Payables' };
 const ORDER: DebtKind[] = ['loan', 'card', 'person'];
 
 /** A figure without its symbol, in its currency's decimals: `712.500.000`, `40,00`. For a row under a header that names the currency. */
@@ -108,7 +108,7 @@ export function bareFigure(minor: number, currency: string, locale = 'id-ID'): s
 }
 
 /** `2 Sep`: day first, and the three-letter month on every engine (en-GB writes "Sept" on some). */
-const dayMonth = (iso: string) => `${Number(iso.slice(8, 10))} ${new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short' })}`;
+export const dayMonth = (iso: string) => `${Number(iso.slice(8, 10))} ${new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short' })}`;
 const percent = (bps: number) => `${(bps / 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`;
 
 function converted(minor: number, currency: string, baseCurrency: string, rates: Readonly<Record<string, number>>) {

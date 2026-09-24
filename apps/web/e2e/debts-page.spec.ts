@@ -5,7 +5,7 @@ import { digits, oneOfEach } from './debts-page';
 import { forgetRates, openWithPockets } from './pockets';
 
 /**
- * Debts: everything owed, one list in three groups — Loans, Credit cards, You owe people — with one converted
+ * Debts: everything owed, one list in three groups — Loans, Credit cards, Payables — with one converted
  * total, each group's own total, and the split by due date the balance sheet already makes. One list at every
  * width, the way Assets draws what is owned: its own currency on the row, and what that comes to beneath.
  */
@@ -30,7 +30,7 @@ test('Debts shows all three groups with the right figures, and the due split is 
   await expect(page.getByTestId('debts-total')).toContainText('You owe, in Rupiah');
 
   // Each group in its own header, in the Assets page's order, with its own total on the header.
-  await expect(page.getByRole('heading', { level: 2 })).toContainText(['Loans', 'Credit cards', 'You owe people']);
+  await expect(page.getByRole('heading', { level: 2 })).toContainText(['Loans', 'Credit cards', 'Payables']);
   await expect(page.getByTestId('debts-group-total-loan')).toHaveText('Rp 728.750.000');
   await expect(page.getByTestId('debts-group-total-card')).toHaveText('Rp 2.450.000');
   await expect(page.getByTestId('debts-group-total-person')).toHaveText('Rp 750.000');

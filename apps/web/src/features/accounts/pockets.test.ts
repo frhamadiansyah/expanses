@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { bankRateText, choosePocketCurrency, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
+import { bankRateText, choosePocketCurrency, freeToSpend, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -36,6 +36,36 @@ describe('the pockets of an account', () => {
     const balances = { 'c-usd': 240_000, 'a-sgd': 115_000, 'b-idr': 5_400_000 };
     expect(parentTotal(pocketsOf('v', accounts), balances, 'IDR', rates)).toEqual({ totalMinor: 58_982_000, missing: [] });
     expect(parentTotal(pocketsOf('v', accounts), balances, 'IDR', { USD: 16_250 })).toEqual({ totalMinor: null, missing: ['SGD'] });
+  });
+});
+
+describe('what is left to spend', () => {
+  const spent = { totalMinor: 66_380_500, missing: [] };
+
+  it('is spending money, less what is promised to goals, less what the debts ask for', () => {
+    expect(freeToSpend(spent, { totalMinor: 30_000_000, missing: [] }, { totalMinor: 27_350_000, missing: [] })).toEqual({
+      spendableMinor: 66_380_500,
+      setAsideMinor: 30_000_000,
+      dueMinor: 27_350_000,
+      freeMinor: 9_030_500,
+      missing: [],
+    });
+  });
+
+  it('goes below nothing rather than stopping there: a promise can outrun the money', () => {
+    expect(freeToSpend({ totalMinor: 1_000_000, missing: [] }, { totalMinor: 4_000_000, missing: [] }, { totalMinor: 0, missing: [] }).freeMinor).toBe(-3_000_000);
+  });
+
+  it('is no figure at all when a rate is missing, naming the currency instead — the parts are still handed back', () => {
+    const out = freeToSpend(spent, { totalMinor: null, missing: ['USD'] }, { totalMinor: 0, missing: [] });
+    expect(out.freeMinor).toBeNull();
+    expect(out.missing).toEqual(['USD']);
+    expect(out.spendableMinor).toBe(66_380_500);
+  });
+
+  it('names each missing currency once, sorted', () => {
+    const out = freeToSpend({ totalMinor: null, missing: ['SGD'] }, { totalMinor: null, missing: ['USD', 'SGD'] }, { totalMinor: null, missing: ['USD'] });
+    expect(out.missing).toEqual(['SGD', 'USD']);
   });
 });
 

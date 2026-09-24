@@ -3,7 +3,7 @@ import type { AssetKind, PlanGroup, UnitKind, ValuationMode } from '@expanses/co
 export const PLAN_GROUP_LABELS: Record<PlanGroup, string> = {
   liquid: 'Cash & equivalents',
   invest: 'Investments',
-  owed: 'Owed to you',
+  owed: 'Receivables',
   use: 'Personal use',
 };
 

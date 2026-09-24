@@ -13,7 +13,7 @@ test('by thumb: Debts shows all three groups with the right figures, each debt i
 
   await expect(page.getByTestId('debts-total')).toContainText('Rp 731.950.000');
   const headers = page.getByRole('heading', { level: 2 });
-  await expect(headers).toContainText(['Loans', 'Credit cards', 'You owe people']);
+  await expect(headers).toContainText(['Loans', 'Credit cards', 'Payables']);
   await expect(page.getByTestId('debts-group-total-loan')).toHaveText('Rp 728.750.000');
   await expect(page.getByTestId('debts-group-total-card')).toHaveText('Rp 2.450.000');
   await expect(page.getByTestId('debts-group-total-person')).toHaveText('Rp 750.000');

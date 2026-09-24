@@ -1,5 +1,5 @@
 import { CASH_ITEMS, CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, type ExchangeCost, formatMinor, impliedRate, isoDate, parseMajor, sumToBase } from '@expanses/core';
-import { type AccountRow, pocketParentIds } from '@expanses/db';
+import { type AccountRow, SPENDABLE_SUBTYPES, pocketParentIds } from '@expanses/db';
 import { amountFields, emptyForm, type FormDraft, type MoneyFieldSpec, receivedField } from '../transactions/tx-form';
 
 type Rates = Readonly<Record<string, number>>;
@@ -108,12 +108,66 @@ export const currencyName = (code: string) => currencyInfo(code).name;
 const MONEY_KINDS = new Set<string>(CASH_ITEMS.map((item) => item.id));
 
 /**
+ * The kinds of money that can be spent straight out of the account — what the ledger calls spendable, and the same
+ * set the picker behind "Paid with" offers. A time deposit is deliberately not one: it holds money it cannot be
+ * paid from, and the money leaves by a transfer when it matures.
+ */
+export const SPENDABLE_KINDS = new Set<string>(SPENDABLE_SUBTYPES);
+
+/** One side of the arithmetic below: a figure in the base currency, or the rate it is missing. */
+interface BaseTotal {
+  totalMinor: number | null;
+  missing: readonly string[];
+}
+
+/** What is left to spend, and the three parts it is read from, so a screen can show its own arithmetic. */
+export interface FreeToSpend {
+  /** Money that can be moved, before anything is promised or due. */
+  spendableMinor: number | null;
+  /** What goals have claimed of it. */
+  setAsideMinor: number | null;
+  /** What the debts ask before the month is out: a card's billed bill, a loan's next instalment. */
+  dueMinor: number | null;
+  /** Spendable, less what is set aside, less what is due — null when a rate is missing, never a partial sum. */
+  freeMinor: number | null;
+  /** The currencies no rate could be found for, named once. */
+  missing: string[];
+}
+
+/**
+ * What is left to spend: the money that can be moved, less what is promised to goals, less what each debt asks for
+ * before the month is out.
+ *
+ * Three things are deliberately not in it. Money that cannot be moved — a deposit until it matures — is not
+ * spending money at all. A long-term principal is not money you must find this month: a mortgage's balance belongs
+ * to the balance sheet, where it is read against a year's schedule. And a debt with no schedule — a friend you owe —
+ * is a promise rather than a due date, so it is named on the list and not withheld here.
+ *
+ * One rate short and there is no figure: the missing currency is named instead, as every other total in the app
+ * does. Adding up the rest and calling it free to spend would be the one answer that is certainly wrong.
+ */
+export function freeToSpend(spendable: BaseTotal, setAside: BaseTotal, due: BaseTotal): FreeToSpend {
+  const missing = [...new Set([...spendable.missing, ...setAside.missing, ...due.missing])].sort();
+  const left = (a: number | null, b: number | null) => (a === null || b === null ? null : a - b);
+  return {
+    spendableMinor: spendable.totalMinor,
+    setAsideMinor: setAside.totalMinor,
+    dueMinor: due.totalMinor,
+    freeMinor: missing.length > 0 ? null : left(left(spendable.totalMinor, setAside.totalMinor), due.totalMinor),
+    missing,
+  };
+}
+
+/**
  * The Money tile: every money account and every pocket in the base currency, or no figure with the missing rate
  * named. An account with pockets is one account; its pockets are the amounts. Holdings and debts are not money here.
+ *
+ * `kinds` lets a caller ask the same question over a narrower set of money: the Accounts page reads its *spending*
+ * money with `SPENDABLE_KINDS`, which leaves out the deposits it cannot spend from.
  */
-export function moneySummary(accounts: readonly AccountRow[], balances: Readonly<Record<string, number>>, baseCurrency: string, ratesToBase: Rates) {
+export function moneySummary(accounts: readonly AccountRow[], balances: Readonly<Record<string, number>>, baseCurrency: string, ratesToBase: Rates, kinds: ReadonlySet<string> = MONEY_KINDS) {
   const parents = pocketParentIds(accounts);
-  const tops = accounts.filter((a) => a.kind === 'asset' && a.archivedAt === null && a.parentId === null && MONEY_KINDS.has(a.subtype));
+  const tops = accounts.filter((a) => a.kind === 'asset' && a.archivedAt === null && a.parentId === null && kinds.has(a.subtype));
   const held = tops.flatMap((a) => (parents.has(a.id) ? pocketsOf(a.id, accounts) : [a]));
   const amounts = held.map((a) => ({ minor: balances[a.id] ?? 0, currency: a.currency! }));
   return { ...sumToBase({ amounts, baseCurrency, ratesToBase }), accounts: tops.length, currencies: new Set(amounts.map((a) => a.currency)).size };

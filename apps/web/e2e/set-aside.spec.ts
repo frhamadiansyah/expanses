@@ -70,9 +70,11 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   // The shortfall sits on the goal that lent, not on Umrah below it.
   await expect(page.getByRole('link', { name: /^Emergency fund.*Short by Rp.1\.800\.000.*30\.000\.000/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /^Umrah 2027.*Covered.*7\.500\.000/ })).toBeVisible();
-  // And the list is unchanged: the bank's figure, nothing about goals.
+  // And the list now says so in the account's own terms: the tile is what is left to spend once the goals have had
+  // their share, and the working under it names the goal money rather than dropping it silently.
   await page.goto('/accounts');
-  await expect(page.getByText(/free to spend/i)).toHaveCount(0);
+  await expect(page.getByText('Free to spend')).toBeVisible();
+  await expect(page.getByText('Set aside for goals')).toBeVisible();
 });
 
 test('Umrah tickets from the Umrah fund: the goal is done, not short', async ({ page }) => {

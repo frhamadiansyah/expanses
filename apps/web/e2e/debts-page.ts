@@ -19,7 +19,7 @@ const type = (page: Page, label: string | RegExp, value: string) => page.getByLa
  *   16.250 = Rp 16.250.000) — Rp 728.750.000;
  * - Credit cards: a card billed Rp 2.000.000 last statement with Rp 450.000 bought since — Rp 2.450.000, the
  *   whole of what is not yet paid;
- * - You owe people: Rp 750.000 borrowed from Dewi through the debt picker.
+ * - Payables: Rp 750.000 borrowed from Dewi through the debt picker.
  *
  * Rp 731.950.000 in all. No rate is fetched: the dollar rate is the one typed.
  */

@@ -286,7 +286,7 @@ export const UTANG_CHOICES: readonly CodeChoice[] = [
  * because there is nothing to narrow by and a house must still be reachable.
  */
 export function codeChoices(flow: OwnableFlow, code: string): CodeChoiceGroup[] {
-  if (flow === 'debt') return [{ label: 'What you owe', choices: [...UTANG_CHOICES] }];
+  if (flow === 'debt') return [{ label: 'Payables', choices: [...UTANG_CHOICES] }];
   const family = familyOfCode(code);
   if (!family) {
     return HARTA_FAMILIES.map((one) => ({ label: FAMILY_LABELS[one], choices: [...namedChoices(one), ...spareCodes(one)] })).filter((group) => group.choices.length > 0);

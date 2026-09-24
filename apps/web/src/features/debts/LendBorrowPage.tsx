@@ -16,7 +16,7 @@ import { sideTotal } from './totals';
 /**
  * One side of the ledger.
  *
- * "Owed to you" and "You owe" were headings *inside* cards; they are group headers now, outside and above what
+ * "Receivables" and "Payables" were headings *inside* cards; they are group headers now, outside and above what
  * they name, with the side's total beside them. That is the one thing the audit asks of this screen.
  */
 function Column({ title, people, emptyText, currency, rates }: { title: string; people: PersonDebtRow[]; emptyText: string; currency: string; rates: Record<string, number> | undefined }) {
@@ -39,10 +39,10 @@ function Column({ title, people, emptyText, currency, rates }: { title: string; 
   );
 }
 
-/** The phone draws one side at a time; the two names are the mockup's own words. */
+/** The phone draws one side at a time. The ledger's own names for the two sides, as the report files them. */
 const SIDES: readonly Segment[] = [
-  { key: 'owed', label: 'Owed to you' },
-  { key: 'owe', label: 'You owe' },
+  { key: 'owed', label: 'Receivables' },
+  { key: 'owe', label: 'Payables' },
 ];
 type Side = 'owed' | 'owe';
 
@@ -65,7 +65,7 @@ export function LendBorrowPage() {
   const rates = held.data?.rates;
   const nothingYet = people.isSuccess && owedToYou.length === 0 && youOwe.length === 0 && settled.length === 0;
   /*
-   * Which side the phone opens on. The mockup's first segment — "Owed to you" — unless a person was named (the
+   * Which side the phone opens on. The first segment — Receivables — unless a person was named (the
    * way in from their row on Debts), where it is the side that person is on: opening Dewi's row must show Dewi,
    * not an empty list. Never derived from how many rows each side has, so a reader who forgives their last
    * borrower does not have the list switch sides under them.
@@ -97,7 +97,7 @@ export function LendBorrowPage() {
 
       {nothingYet && !adding && (
         <Empty>
-          Nothing lent or borrowed yet. Money you lend leaves your cash and waits under "Owed to you"; money you borrow shows as a debt until you pay it back.
+          Nothing lent or borrowed yet. Money you lend leaves your cash and waits under Receivables; money you borrow shows as a debt until you pay it back.
         </Empty>
       )}
 
@@ -107,15 +107,15 @@ export function LendBorrowPage() {
             {/* The phone shows one list at a time, as the mockup draws it; the desktop keeps both side by side. */}
             <SegmentedControl segments={SIDES} value={shown} onChange={(key) => setSide(key as Side)} label="Lend & borrow" className="mb-[18px]" />
             {shown === 'owed' ? (
-              <Column title="Owed to you" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
+              <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
             ) : (
-              <Column title="You owe" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
+              <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
             )}
           </>
         ) : (
           <div className="grid gap-6 md:grid-cols-2">
-            <Column title="Owed to you" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
-            <Column title="You owe" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
+            <Column title="Receivables" people={owedToYou} emptyText="Nobody owes you anything." currency={ws.baseCurrency} rates={rates} />
+            <Column title="Payables" people={youOwe} emptyText="You owe nobody." currency={ws.baseCurrency} rates={rates} />
           </div>
         ))}
 

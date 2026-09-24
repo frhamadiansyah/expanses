@@ -86,12 +86,12 @@ function sample(overrides: Partial<DebtInputs> = {}): DebtInputs {
 }
 
 describe('groupDebts', () => {
-  it('groups by kind in the order Loans, Credit cards, You owe people, each with its subtotal and the whole converted', () => {
+  it('groups by kind in the order Loans, Credit cards, Payables, each with its subtotal and the whole converted', () => {
     const debts = groupDebts(sample());
     expect(debts.groups.map((group) => [group.label, group.totalMinor])).toEqual([
       ['Loans', 731_250_000],
       ['Credit cards', 8_460_000],
-      ['You owe people', 750_000],
+      ['Payables', 750_000],
     ]);
     expect(debts.total).toEqual({ totalMinor: 740_460_000, missing: [] });
     expect(debts.groups[0]!.rows.map((row) => [row.name, row.minor, row.icon])).toEqual([
@@ -209,7 +209,7 @@ describe('groupDebts', () => {
     expect(debts.groups[0]!.rows.map((row) => row.detail)).toEqual(['BCA · 4,75% · 180 months · mortgage', 'Adira · 4,75% · 36 months']);
   });
 
-  it('files an owed-to-someone account no person holds under You owe people, by its own name', () => {
+  it('files an owed-to-someone account no person holds under Payables, by its own name', () => {
     const debts = groupDebts(sample({ accounts: [account({ id: 'misc', name: 'Other debts', subtype: 'payable' })], balances: { misc: -300_000 }, loans: [], cards: {}, people: [] }));
     expect(debts.groups[0]).toMatchObject({ kind: 'person', totalMinor: 300_000 });
     expect(debts.groups[0]!.rows[0]).toMatchObject({ name: 'Other debts', personName: null, accountId: 'misc' });

@@ -18,7 +18,7 @@ async function type(page: Page, label: string | RegExp, value: string) {
 }
 
 /** Turn the phone's segmented control over to the side a borrow lands on. */
-const turnOver = (page: Page) => page.getByRole('radiogroup', { name: 'Lend & borrow' }).getByRole('radio', { name: 'You owe' }).tap();
+const turnOver = (page: Page) => page.getByRole('radiogroup', { name: 'Lend & borrow' }).getByRole('radio', { name: 'Payables' }).tap();
 
 /** One person each way: Andi owes you Rp 1.000.000, you owe Dewi Rp 750.000. */
 async function twoPeople(page: Page) {
@@ -54,7 +54,7 @@ async function twoPeople(page: Page) {
   }
   // Back to a freshly opened page, so each spec starts where a reader starts: on the segment the page chooses.
   await page.goto('/net-worth/lend-borrow');
-  await expect(page.getByTestId('debts-total-Owed to you')).toBeVisible();
+  await expect(page.getByTestId('debts-total-Receivables')).toBeVisible();
 }
 
 const sides = (page: Page) => page.getByRole('radiogroup', { name: 'Lend & borrow' });
@@ -63,18 +63,18 @@ test('by thumb: the mockup’s control shows one side at a time, and one tap tur
   await twoPeople(page);
 
   // The mockup's own reading: the first segment, and only the list that belongs to it.
-  await expect(sides(page).getByRole('radio', { name: 'Owed to you' })).toBeChecked();
+  await expect(sides(page).getByRole('radio', { name: 'Receivables' })).toBeChecked();
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
-  await expect(page.getByTestId('debts-total-Owed to you')).toHaveText('Rp 1.000.000');
-  await expect(page.getByRole('heading', { name: 'You owe', level: 2 })).toHaveCount(0);
+  await expect(page.getByTestId('debts-total-Receivables')).toHaveText('Rp 1.000.000');
+  await expect(page.getByRole('heading', { name: 'Payables', level: 2 })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Dewi' })).toHaveCount(0);
-  await expect(page.getByTestId('debts-total-You owe')).toHaveCount(0);
+  await expect(page.getByTestId('debts-total-Payables')).toHaveCount(0);
 
-  await sides(page).getByRole('radio', { name: 'You owe' }).tap();
-  await expect(page.getByTestId('debts-total-You owe')).toHaveText('Rp 750.000');
+  await sides(page).getByRole('radio', { name: 'Payables' }).tap();
+  await expect(page.getByTestId('debts-total-Payables')).toHaveText('Rp 750.000');
   await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Owed to you', level: 2 })).toHaveCount(0);
-  await expect(page.getByTestId('debts-total-Owed to you')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Receivables', level: 2 })).toHaveCount(0);
+  await expect(page.getByTestId('debts-total-Receivables')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -87,10 +87,10 @@ test('by thumb: a person opened from Debts opens on the side they are on', async
   await expect(page.getByRole('heading', { name: 'Only Dewi' })).toBeVisible();
   // Dewi is someone you owe, so the control opens on that side: the way in never lands on an empty list.
   await expect(page.getByRole('heading', { name: 'Dewi', exact: true })).toBeVisible();
-  await expect(page.getByTestId('debts-total-You owe')).toBeVisible();
+  await expect(page.getByTestId('debts-total-Payables')).toBeVisible();
 
   await page.getByRole('link', { name: 'Show everyone' }).tap();
-  await expect(page.getByTestId('debts-total-Owed to you')).toHaveText('Rp 1.000.000');
+  await expect(page.getByTestId('debts-total-Receivables')).toHaveText('Rp 1.000.000');
 });
 
 test('by thumb: settled items stay where they were, under the switch', async ({ page }) => {
@@ -98,7 +98,7 @@ test('by thumb: settled items stay where they were, under the switch', async ({ 
 
   await page.getByRole('button', { name: 'Forgive rest' }).tap();
   // Andi is settled now: the switch stays on the side the reader was reading rather than turning itself over.
-  await expect(sides(page).getByRole('radio', { name: 'Owed to you' })).toBeChecked();
+  await expect(sides(page).getByRole('radio', { name: 'Receivables' })).toBeChecked();
   await page.getByRole('button', { name: /Show settled/ }).tap();
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Hide settled/ })).toBeVisible();

@@ -1,4 +1,4 @@
-import { CASH_ITEMS, displayAmount, sumToBase } from '@expanses/core';
+import { CASH_ITEMS, displayAmount, formatMinor, isoDate, sumToBase } from '@expanses/core';
 import { type AccountRow, type AccountSubtype, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
@@ -6,19 +6,29 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
+import { useSetAsideViews } from '../goals/queries';
+import { monthlyInstalments } from '../loans/instalments';
+import { useCardFacts, useLoans, useScheduledPayments } from '../loans/queries';
 import { depositLine } from '../networth/deposit-terms';
-import { DEBT_GROUP_LABELS } from '../networth/debt-rows';
+import { DEBT_GROUP_LABELS, dayMonth } from '../networth/debt-rows';
 import { PLAN_GROUP_LABELS } from '../networth/labels';
-import { useAssetValues, useDepositTerms } from '../networth/queries';
+import { useAssetValues, useDepositTerms, useSheet } from '../networth/queries';
+import { ShareBar } from '../networth/ShareBar';
 import { cx, Empty, errorMessage, Money } from '../../ui';
-import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, LargeTitle, LineAction, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
-import { moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
+import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, LineAction, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
+import { SPENDABLE_KINDS, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
 
-/** One drawer of a group: what it is called, and what it is known by. */
+/**
+ * One drawer of a group: what it is called, what it is known by, and — where its group is the debts — what it asks.
+ */
 interface Drawer {
   key: string;
   label: string;
+  /** The figure the drawer carries, when the group's own arithmetic is not the one that belongs on it. */
+  figure?: ReactNode;
+  /** The line under the count: what this kind of debt asks, in its own words ("Rp 14.950.000 a month"). */
+  ask?: string;
 }
 
 /**
@@ -290,8 +300,8 @@ function AccountList({
                 <li key={drawer.key}>
                   <TypeDrawer
                     label={drawer.label}
-                    count={plural(drawer.rows.length, 'account')}
-                    figure={<Figure>{drawerTotal(drawer.rows)}</Figure>}
+                    count={drawer.ask ? `${plural(drawer.rows.length, 'account')} · ${drawer.ask}` : plural(drawer.rows.length, 'account')}
+                    figure={drawer.figure ?? <Figure>{drawerTotal(drawer.rows)}</Figure>}
                     open={shown}
                     separator={index > 0}
                     testId={`type-drawer-${drawer.key}`}
@@ -310,6 +320,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 export function AccountsPage() {
   const { ws } = useApp();
+  const today = isoDate();
   const accounts = useAccounts();
   const balances = useBalances();
   const everything = accounts.data ?? [];
@@ -317,10 +328,19 @@ export function AccountsPage() {
   const money = everything.filter((account) => LISTED.has(account.subtype) && isMoneyAccount(account));
   const all = balances.data ?? {};
   const parents = pocketParentIds(everything);
-  // Every money account's currency, not only the pockets': the Money tile converts them all.
-  const rates = useHeldRates(everything.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!));
+  const byId = new Map(everything.map((account) => [account.id, account]));
+  const loans = useLoans();
+  const payments = useScheduledPayments();
+  const owed = useSetAsideViews();
+  const sheet = useSheet();
+  const cardIds = money.filter((account) => account.subtype === 'credit_card').map((account) => account.id);
+  const cards = useCardFacts(cardIds, today);
+  // Every currency this page converts: the money's own, and the debts' — a card's bill and a loan's instalment too.
+  const rates = useHeldRates([
+    ...everything.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!),
+    ...everything.filter((a) => a.kind === 'liability' && a.archivedAt === null).map((a) => a.currency ?? ws.baseCurrency),
+  ]);
   const held = rates.data?.rates ?? {};
-  const summary = moneySummary(everything, all, ws.baseCurrency, held);
   /**
    * Which type drawers are open, by `group:type`. Closed to begin with: the page opens as a list of sums, and the
    * balances inside a type are one tap away rather than a wall of rows nobody asked for.
@@ -339,6 +359,63 @@ export function AccountsPage() {
    * own row shows.
    */
   const groupTotal = (rows: AccountRow[]) => totalOf(rows, everything, all, ws.baseCurrency, held);
+  /**
+   * Free to spend, and the three parts it is read from: money that can be moved, what goals have claimed of it, and
+   * what the debts ask before the month is out — a card's billed bill, a loan's next instalment. Three things are
+   * deliberately outside it: money that cannot be moved (a deposit until it matures), a debt's long-term principal
+   * (a mortgage's balance is not money you must find this month — it is read against a year, on Net worth), and a
+   * debt with no schedule at all (a friend you owe is a promise, and its row says so).
+   */
+  const spendable = moneySummary(everything, all, ws.baseCurrency, held, SPENDABLE_KINDS);
+  const promised = sumToBase({
+    amounts: Object.values(owed.data ?? {})
+      .filter((row) => SPENDABLE_KINDS.has(byId.get(row.accountId)?.subtype ?? ''))
+      .map((row) => ({ minor: row.setAsideMinor, currency: row.currency })),
+    baseCurrency: ws.baseCurrency,
+    ratesToBase: held,
+  });
+  const openLoans = (loans.data ?? []).filter((loan) => loan.status === 'open');
+  const instalments = monthlyInstalments(openLoans, everything, payments.data ?? {}, ws.baseCurrency, held);
+  const billed = sumToBase({
+    amounts: cardIds.map((id) => ({ minor: cards.data?.[id]?.leftToPayMinor ?? 0, currency: byId.get(id)?.currency ?? ws.baseCurrency })),
+    baseCurrency: ws.baseCurrency,
+    ratesToBase: held,
+  });
+  const asked = {
+    totalMinor: instalments.total.totalMinor === null || billed.totalMinor === null ? null : instalments.total.totalMinor + billed.totalMinor,
+    missing: [...new Set([...instalments.total.missing, ...billed.missing])].sort(),
+  };
+  const free = freeToSpend(spendable, promised, asked);
+  /** What the loans ask each month, and the bills the cards have billed and not yet paid: each drawer's own line. */
+  const perMonth = instalments.total.totalMinor === null || instalments.total.totalMinor <= 0 ? null : `${formatMinor(instalments.total.totalMinor, ws.baseCurrency)} a month`;
+  const billDates = cardIds.flatMap((id) => {
+    const facts = cards.data?.[id];
+    return facts && facts.leftToPayMinor > 0 && facts.dueOn ? [facts.dueOn] : [];
+  });
+  const oneBillDate = billDates.length > 0 && billDates.every((date) => date === billDates[0]) ? billDates[0]! : null;
+  const cardAsk =
+    billed.totalMinor === null || billed.totalMinor <= 0
+      ? null
+      : oneBillDate
+        ? `${formatMinor(billed.totalMinor, ws.baseCurrency)} due ${dayMonth(oneBillDate)}`
+        : `${formatMinor(billed.totalMinor, ws.baseCurrency)} billed`;
+  /**
+   * What each kind of debt asks within a year — the balance sheet's own reading of a debt, and the figure `/net-worth`
+   * shows: a loan gives the principal its schedule names over twelve months, a card everything except a long plan's
+   * tail, a person the whole promise. The rest of a loan is a schedule, and a schedule is the balance sheet's.
+   */
+  const withinYear = (subtype: AccountSubtype) =>
+    (sheet.data?.liabilities ?? []).filter((row) => row.subtype === subtype).reduce((total, row) => total + row.dueWithinYearMinor, 0);
+  const sheetMissing = sheet.data?.missing ?? [];
+  const debtsTotal = withinYear('credit_card') + withinYear('loan') + withinYear('payable');
+  const debtFigure = (subtype: AccountSubtype) =>
+    sheetMissing.length > 0 ? <Figure tone="warn">{`No ${sheetMissing.join(', ')} rate yet`}</Figure> : <Money minor={withinYear(subtype)} currency={ws.baseCurrency} />;
+  /** Each kind of debt, with what it asks here rather than the principal it owes. */
+  const DEBT_ASKS: Record<string, { subtype: AccountSubtype; ask: string | null }> = {
+    loan: { subtype: 'loan', ask: perMonth },
+    card: { subtype: 'credit_card', ask: cardAsk },
+    person: { subtype: 'payable', ask: null },
+  };
   /** A group's drawers, in the group's own order, each holding the accounts that fell into it. */
   const drawersOf = (group: (typeof GROUPS)[number], rows: AccountRow[]) => {
     const found = new Map<string, Drawer & { rows: AccountRow[] }>();
@@ -365,22 +442,44 @@ export function AccountsPage() {
     <div className={SCREEN}>
       <LargeTitle title="Accounts" actions={actions} />
       {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add one with the + above: money you can spend, or will spend once it matures.</Empty>}
-      {/* The Money tile: every money account and pocket at today's rates, or the rate it lacks named — never a partial sum. */}
-      {accounts.isSuccess && balances.isSuccess && rates.isSuccess && summary.accounts > 0 &&
-        (summary.totalMinor !== null ? (
+      {/*
+       * Free to spend: money that can be moved, less what goals have claimed, less what the debts ask before the
+       * month is out. The three lines under it are the working, so the figure can be checked rather than trusted.
+       */}
+      {accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
+        (free.freeMinor !== null ? (
           <Hero
-            minor={summary.totalMinor}
+            label="Free to spend"
+            minor={free.freeMinor}
             currency={ws.baseCurrency}
-            caption={`Money ≈ at today's rates · across ${plural(summary.accounts, 'account')} · ${plural(summary.currencies, 'currency', 'currencies')}`}
+            caption={`Spending money ≈ at today's rates · across ${plural(spendable.accounts, 'account')} · ${plural(spendable.currencies, 'currency', 'currencies')}`}
           />
         ) : (
-          <Panel header="Money">
+          <Panel header="Free to spend">
             <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
-              No {summary.missing.join(', ')} rate yet, so {plural(summary.accounts, 'account')} in {plural(summary.currencies, 'currency', 'currencies')} cannot be added up. Each balance below is
-              exact.
+              No {free.missing.join(', ')} rate yet, so what is left to spend cannot be worked out. Each balance below is exact.
             </p>
           </Panel>
         ))}
+      {free.freeMinor !== null && free.spendableMinor !== null && (
+        <>
+          <InsetGroup>
+            <InsetRow title="Spending money" value={<Money minor={free.spendableMinor} currency={ws.baseCurrency} />} valueTone="ink" chevron={false} />
+            <InsetRow title="Set aside for goals" value={<Money minor={-(free.setAsideMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
+            <InsetRow title="Due before the month is out" value={<Money minor={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
+          </InsetGroup>
+          <Panel className="space-y-2">
+            <ShareBar
+              segments={[
+                ...(free.freeMinor > 0 ? [{ key: 'free', label: 'Free', minor: free.freeMinor, className: 'bg-emerald-600' }] : []),
+                ...(free.setAsideMinor !== null && free.setAsideMinor > 0 ? [{ key: 'set-aside', label: 'Set aside', minor: free.setAsideMinor, className: 'bg-slate-400' }] : []),
+                ...(free.dueMinor !== null && free.dueMinor > 0 ? [{ key: 'due', label: 'Due', minor: free.dueMinor, className: 'bg-rose-500' }] : []),
+              ]}
+              totalMinor={Math.max(free.spendableMinor, (free.setAsideMinor ?? 0) + (free.dueMinor ?? 0))}
+            />
+          </Panel>
+        </>
+      )}
       {/* A pocket is never a row of its own: its account's row adds it up (P1). */}
       {GROUPS.map((group) => {
         const rows = money.filter((account) => account.parentId === null && group.subtypes.includes(account.subtype));
@@ -389,16 +488,23 @@ export function AccountsPage() {
          * What this group divides into. One drawer is no division at all, and gets no divider: a line naming the
          * only kind of thing in the panel says nothing the panel's own header has not already said.
          */
-        const drawers = drawersOf(group, rows);
+        const debts = group.key === 'debts';
+        const drawers = drawersOf(group, rows).map((drawer) => {
+          const asks = debts ? DEBT_ASKS[drawer.key] : undefined;
+          return asks ? { ...drawer, figure: debtFigure(asks.subtype), ask: asks.ask ?? undefined } : drawer;
+        });
         return (
           <AccountList
             key={group.key}
             groupKey={group.key}
             title={group.label}
-            /* Normal case: the header shouts in capitals, and a currency symbol must not. */
+            /* Normal case: the header shouts in capitals, and a currency symbol must not. A debt's figure is what it
+             * asks within a year, so the long part of a loan is nowhere on this page. */
             trailing={
               <span className="tracking-normal normal-case">
-                <Figure>{groupTotal(rows)}</Figure>
+                <Figure tone={debts && sheetMissing.length > 0 ? 'warn' : 'ink'}>
+                  {debts ? (sheetMissing.length > 0 ? `No ${sheetMissing.join(', ')} rate yet` : <Money minor={debtsTotal} currency={ws.baseCurrency} />) : groupTotal(rows)}
+                </Figure>
               </span>
             }
             accounts={rows}

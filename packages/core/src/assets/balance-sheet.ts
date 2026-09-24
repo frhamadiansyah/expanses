@@ -45,7 +45,7 @@ export interface BalanceSheet {
 export const SHEET_GROUP_LABELS: Record<PlanGroup, string> = {
   liquid: 'Cash & equivalents',
   invest: 'Investments',
-  owed: 'Owed to you',
+  owed: 'Receivables',
   use: 'Personal use',
 };
 const GROUP_ORDER: PlanGroup[] = ['liquid', 'invest', 'owed', 'use'];
