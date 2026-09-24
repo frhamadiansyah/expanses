@@ -1,4 +1,4 @@
-import { CASH_ITEMS, displayAmount, periodLabel, sumToBase } from '@expanses/core';
+import { CASH_ITEMS, displayAmount, formatMinor, periodLabel, sumToBase } from '@expanses/core';
 import { type AccountRow, type AccountSubtype, pocketParentIds } from '@expanses/db';
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
@@ -10,10 +10,10 @@ import { useSetAsideViews } from '../goals/queries';
 import { useScheduledAsks } from '../loans/queries';
 import { DEBT_GROUP_LABELS, owedMinor } from '../networth/debt-rows';
 import { useAssetValues } from '../networth/queries';
-import { ShareBar } from '../networth/ShareBar';
 import { cx, Empty, Money } from '../../ui';
-import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
+import { type CornerAction, ActionLine, Figure, groupedFigure, LargeTitle, Panel, ROW_PAD_X, ROW_PAD_Y, heroFigure, rowHeight, SCREEN } from '../../ui/native';
 import { SPENDABLE_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
+import { SpendRing } from './SpendRing';
 import { useHeldRates } from './queries';
 
 /**
@@ -339,6 +339,26 @@ function AccountList({
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/**
+ * One share of the tile: a dot in the ring's own colour, what it is called, and its figure on the right — with the
+ * quieter line under the name, the way iOS draws the rows beneath a ring. The legend and the picture are one thing,
+ * so the dot's colour is the ring's colour and never a colour of its own.
+ */
+function SpendRow({ colour, label, value, currency, under }: { colour: string; label: string; value: number; currency: string; under: string }) {
+  return (
+    <div className="flex items-start justify-between gap-[10px]">
+      <span className="min-w-0">
+        <span className="flex items-center gap-[7px]">
+          <span aria-hidden className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: colour }} />
+          <span className="text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{label}</span>
+        </span>
+        <span className="mt-[1px] block pl-[16px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{under}</span>
+      </span>
+      <span className="shrink-0 tabular text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{formatMinor(value, currency)}</span>
+    </div>
+  );
+}
+
 export function AccountsPage() {
   const { ws } = useApp();
   const accounts = useAccounts();
@@ -473,36 +493,48 @@ export function AccountsPage() {
       <LargeTitle title="Accounts" actions={actions} />
       {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add one with the + above: money you can spend, or money you are owed.</Empty>}
       {/*
-       * Free to spend: money that can be moved, less what goals have claimed, less what the debts ask. The goal
-       * subtraction is folded into the first line — that line is what the rows below show, and they already draw
-       * each account free of its promises — so the two lines still add up to the figure above them.
+       * Free to spend, and the two numbers it is made of, as one block: a ring, the figure, and the rows that are the
+       * ring's legend — the shape iOS draws a metric in, where the figure answers "how much" and the ring answers "of
+       * what". The goals are already subtracted in the first row: an account's own row below draws itself free of its
+       * promises, so the two rows still add up to the figure above them.
        */}
       {accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
-        (free.freeMinor !== null ? <Hero label="Free to spend" minor={free.freeMinor} currency={ws.baseCurrency} approximate={estimated} /> : (
+        (free.freeMinor !== null && unclaimed.freeMinor !== null ? (
+          <Panel className="space-y-3">
+            <div className="flex items-center gap-4">
+              <SpendRing
+                segments={[
+                  { key: 'free', label: 'Free to spend', minor: free.freeMinor, colour: 'var(--ph-tint)' },
+                  ...(free.dueMinor !== null && free.dueMinor > 0 ? [{ key: 'due', label: 'Owed', minor: free.dueMinor, colour: 'var(--ph-alarm)' }] : []),
+                ]}
+              />
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Free to spend</p>
+                <p className="tabular text-[32px] leading-[38px] font-bold tracking-[-0.02em]">
+                  {estimated && <span className="text-[var(--ph-ink-3)]">≈ </span>}
+                  {heroFigure(free.freeMinor, ws.baseCurrency).text}
+                </p>
+              </div>
+            </div>
+            {/* The ring's legend: the same two shares, each with the figure it is drawn from. */}
+            <div className="space-y-3 border-t-[0.5px] border-[var(--ph-hair)] pt-3">
+              <SpendRow
+                colour="var(--ph-tint)"
+                label="Spending money"
+                value={unclaimed.freeMinor}
+                currency={ws.baseCurrency}
+                under={`across ${plural(spendable.accounts, 'account')} · ${plural(spendable.currencies, 'currency', 'currencies')}`}
+              />
+              <SpendRow colour="var(--ph-alarm)" label="What the debts ask" value={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} under={plural(debtRows.length, 'debt')} />
+            </div>
+          </Panel>
+        ) : (
           <Panel header="Free to spend">
             <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
               No {free.missing.join(', ')} rate yet, so what is left to spend cannot be worked out. Each balance below is exact.
             </p>
           </Panel>
         ))}
-      {free.freeMinor !== null && unclaimed.freeMinor !== null && (
-        <>
-          <InsetGroup>
-            <InsetRow title="Spending money" value={<Money minor={unclaimed.freeMinor} currency={ws.baseCurrency} />} valueTone="ink" chevron={false} />
-            <InsetRow title="What the debts ask" value={<Money minor={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
-          </InsetGroup>
-          <Panel className="space-y-2">
-            {/* What is free of the debts against what the debts ask, out of the money this tile is dividing. */}
-            <ShareBar
-              segments={[
-                ...(free.freeMinor > 0 ? [{ key: 'free', label: 'Free', minor: free.freeMinor, className: 'bg-emerald-600' }] : []),
-                ...(free.dueMinor !== null && free.dueMinor > 0 ? [{ key: 'due', label: 'Owed', minor: free.dueMinor, className: 'bg-rose-500' }] : []),
-              ]}
-              totalMinor={Math.max(unclaimed.freeMinor, free.dueMinor ?? 0)}
-            />
-          </Panel>
-        </>
-      )}
       {/* A pocket is never a row of its own: its account's row adds it up (P1). */}
       {GROUPS.map((group) => {
         const rows = money.filter((account) => account.parentId === null && group.subtypes.includes(account.subtype));
