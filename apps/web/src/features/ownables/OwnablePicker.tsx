@@ -36,7 +36,7 @@ export function OwnablePicker({
   children,
 }: {
   flow: OwnableFlow;
-  /** The screen's own heading — "New account", "What do you own?", "New debt". */
+  /** The screen's own heading — "New account", "New asset", "New debt". */
   title: string;
   /** The small heading over the list, when the list is one named group. */
   kicker?: string;

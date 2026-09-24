@@ -17,7 +17,7 @@ export function AddAssetPage() {
   return (
     <OwnablePicker
       flow="asset"
-      title="What do you own?"
+      title="New asset"
       searchPlaceholder="Search everything you can own"
       hint={
         <>
