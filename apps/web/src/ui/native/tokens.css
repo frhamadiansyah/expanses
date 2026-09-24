@@ -35,6 +35,14 @@
   --ph-track: #e3e3e8;
   /* The pill that marks the chosen segment. */
   --ph-selected: #ffffff;
+  /*
+   * A circular bar button: a lit surface lifted off the page by this shadow. iOS 26 draws a bar button this way,
+   * where iOS 15 drew a grey disc with a tinted glyph — and the shadow is the whole edge, so no hairline goes round
+   * a button. Grey stays for the track behind a segmented control and for chips inside rows, which are not buttons
+   * with a life of their own.
+   */
+  --ph-corner: #ffffff;
+  --ph-lift: 0 6px 16px -4px rgb(0 0 0 / 0.2), 0 1px 2px rgb(0 0 0 / 0.05);
   --ph-chevron: #c6c6c8;
 
   /*
@@ -112,6 +120,9 @@
     --ph-fill: #2c2c2e;
     --ph-track: #2c2c2e;
     --ph-selected: #636366;
+    /* A lit surface on a black ground: the same fill a grey button already used, with a deeper shadow under it. */
+    --ph-corner: #2c2c2e;
+    --ph-lift: 0 6px 16px -4px rgb(0 0 0 / 0.6), 0 1px 2px rgb(0 0 0 / 0.4);
     --ph-chevron: #5a5a5e;
 
     /* A tinted panel is lifted rather than inverted: a dark amber ground with a bright amber figure on it. */

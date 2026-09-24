@@ -103,8 +103,8 @@ export function RoundButton({ label, onClick, children, pressed }: { label: stri
       aria-label={label}
       aria-pressed={pressed}
       className={cx(
-        'flex h-11 w-11 items-center justify-center rounded-full shadow-sm ring-1 ring-[var(--ph-hair)]',
-        pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-surface)] text-[var(--ph-ink)]',
+        'flex h-11 w-11 items-center justify-center rounded-full shadow-[var(--ph-lift)]',
+        pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
       )}
     >
       {children}

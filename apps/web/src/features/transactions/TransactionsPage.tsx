@@ -789,7 +789,7 @@ export function TransactionsPage() {
     <div className="relative space-y-4">
       {/* On a phone, searching takes the whole header: the title and its buttons give way to one field and a way out. */}
       {phone && showSearch ? (
-        <div className="flex h-12 items-center gap-2.5 rounded-full bg-white px-4 shadow-sm ring-1 ring-slate-200/70">
+        <div className="flex h-12 items-center gap-2.5 rounded-full bg-[var(--ph-corner)] px-4 shadow-[var(--ph-lift)]">
           <Search size={18} className="shrink-0 text-slate-400" aria-hidden />
           <input
             // biome-ignore lint/a11y/noAutofocus: the field was asked for by tapping search, so it should be ready to type in
@@ -823,7 +823,7 @@ export function TransactionsPage() {
               <Plus size={22} aria-hidden />
             </RoundButton>
             {/* Searching and filtering are about what is already here, so they share one pill. */}
-            <span className="flex items-center rounded-full bg-white shadow-sm ring-1 ring-slate-200/70">
+            <span className="flex items-center rounded-full bg-[var(--ph-corner)] shadow-[var(--ph-lift)]">
               <button
                 type="button"
                 aria-label="Search"

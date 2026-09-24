@@ -9,7 +9,7 @@ import { cx } from '../ui';
  * fourth screen would have held a fourth: shared, they cannot drift.
  */
 export const ROUND =
-  'flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-ink)] shadow-sm ring-1 ring-[var(--ph-hair)] focus-visible:outline-2 focus-visible:outline-[var(--ph-focus)]';
+  'flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ph-corner)] text-[var(--ph-ink)] shadow-[var(--ph-lift)] focus-visible:outline-2 focus-visible:outline-[var(--ph-focus)]';
 
 /**
  * The way back a screen owes its user: where it was opened from, or `fallback` when it was opened cold.
