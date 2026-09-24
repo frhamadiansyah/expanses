@@ -382,7 +382,7 @@ test('the tile names the rate it lacks instead of adding up the rest', async ({ 
   await expect(page.getByText(/No USD rate yet, so what is left to spend cannot be worked out/)).toBeVisible();
   // No figure and no working either: a spendable total that leaves the dollars out would be a lie with a number on it.
   await expect(page.getByText('Spending money')).toHaveCount(0);
-  await expect(page.getByText('What the debts ask')).toHaveCount(0);
+  await expect(page.getByText('Debt owed')).toHaveCount(0);
   // The account's own row names it too, in place of a total.
   const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Unpriced Valas', exact: true }) });
   await expect(row).toContainText('No USD rate yet');

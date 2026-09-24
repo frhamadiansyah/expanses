@@ -344,9 +344,9 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
  * quieter line under the name, the way iOS draws the rows beneath a ring. The legend and the picture are one thing,
  * so the dot's colour is the ring's colour and never a colour of its own.
  */
-function SpendRow({ colour, label, value, currency, under }: { colour: string; label: string; value: number; currency: string; under: string }) {
+function SpendRow({ colour, label, value, currency, under, separator = false }: { colour: string; label: string; value: number; currency: string; under: string; separator?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-[10px]">
+    <div className={cx('flex items-start justify-between gap-[10px]', separator && 'mt-3 border-t-[0.5px] border-[var(--ph-hair)] pt-3')}>
       <span className="min-w-0">
         <span className="flex items-center gap-[7px]">
           <span aria-hidden className="h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: colour }} />
@@ -493,7 +493,7 @@ export function AccountsPage() {
       <LargeTitle title="Accounts" actions={actions} />
       {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add one with the + above: money you can spend, or money you are owed.</Empty>}
       {/*
-       * Free to spend, and the two numbers it is made of, as one block: a ring, the figure, and the rows that are the
+       * Balance, and the two numbers it is made of, as one block: a ring, the figure, and the rows that are the
        * ring's legend — the shape iOS draws a metric in, where the figure answers "how much" and the ring answers "of
        * what". The goals are already subtracted in the first row: an account's own row below draws itself free of its
        * promises, so the two rows still add up to the figure above them.
@@ -501,23 +501,27 @@ export function AccountsPage() {
       {accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
         (free.freeMinor !== null && unclaimed.freeMinor !== null ? (
           <Panel className="space-y-3">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <SpendRing
+                size={68}
+                thickness={9}
                 segments={[
-                  { key: 'free', label: 'Free to spend', minor: free.freeMinor, colour: 'var(--ph-tint)' },
-                  ...(free.dueMinor !== null && free.dueMinor > 0 ? [{ key: 'due', label: 'Owed', minor: free.dueMinor, colour: 'var(--ph-alarm)' }] : []),
+                  { key: 'free', label: 'Balance', minor: free.freeMinor, colour: 'var(--ph-tint)' },
+                  ...(free.dueMinor !== null && free.dueMinor > 0 ? [{ key: 'due', label: 'Debt owed', minor: free.dueMinor, colour: 'var(--ph-alarm)' }] : []),
                 ]}
               />
               <div className="min-w-0">
-                <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Free to spend</p>
-                <p className="tabular text-[32px] leading-[38px] font-bold tracking-[-0.02em]">
+                <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">Balance</p>
+                {/* One line, whatever the amount is: a figure that wraps reads as two figures where there is one. */}
+                <p className="tabular truncate text-[26px] leading-[32px] font-bold tracking-[-0.02em]">
                   {estimated && <span className="text-[var(--ph-ink-3)]">≈ </span>}
                   {heroFigure(free.freeMinor, ws.baseCurrency).text}
                 </p>
               </div>
             </div>
-            {/* The ring's legend: the same two shares, each with the figure it is drawn from. */}
-            <div className="space-y-3 border-t-[0.5px] border-[var(--ph-hair)] pt-3">
+            {/* The ring's legend: the same two shares, each with the figure it is drawn from, and a hairline between
+             * them — the way iOS separates the rows under a ring, so each reads as its own line. */}
+            <div className="border-t-[0.5px] border-[var(--ph-hair)] pt-3">
               <SpendRow
                 colour="var(--ph-tint)"
                 label="Spending money"
@@ -525,11 +529,11 @@ export function AccountsPage() {
                 currency={ws.baseCurrency}
                 under={`across ${plural(spendable.accounts, 'account')} · ${plural(spendable.currencies, 'currency', 'currencies')}`}
               />
-              <SpendRow colour="var(--ph-alarm)" label="What the debts ask" value={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} under={plural(debtRows.length, 'debt')} />
+              <SpendRow separator colour="var(--ph-alarm)" label="Debt owed" value={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} under={plural(debtRows.length, 'debt')} />
             </div>
           </Panel>
         ) : (
-          <Panel header="Free to spend">
+          <Panel header="Balance">
             <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
               No {free.missing.join(', ')} rate yet, so what is left to spend cannot be worked out. Each balance below is exact.
             </p>

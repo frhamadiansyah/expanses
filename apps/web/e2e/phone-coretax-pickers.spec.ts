@@ -10,7 +10,9 @@ test('two levels by thumb: a family, the thing, and the way back', async ({ page
   await expect(page.getByRole('heading', { name: 'What do you own?' })).toBeVisible();
   await page.getByRole('button', { name: 'Investments' }).click();
   await expect(page.getByRole('button', { name: 'Mutual fund (reksadana)' })).toBeVisible();
-  await page.getByRole('button', { name: 'Back' }).click();
+  // The circle at the top left is the destination, named — "Assets" — not the word "Back": this screen was opened
+  // from that list, and one tap undoes one step of this screen before it goes anywhere.
+  await page.getByRole('button', { name: 'Assets' }).click();
   await expect(page.getByRole('button', { name: /^Movable property/ })).toBeVisible();
 
   // Money is an account, not an asset, and the screen says where to go instead — as a link, so a long press

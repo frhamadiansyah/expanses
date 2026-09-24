@@ -3,8 +3,14 @@ import { type ReactNode, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { usePhone } from '../../app/use-phone';
 import { cx } from '../../ui';
-import { InsetGroup, InsetRow, LargeTitle, SCREEN, SearchField } from '../../ui/native';
+import { InsetGroup, InsetRow, PushedTitle, SCREEN, SearchField } from '../../ui/native';
 import { type HandOverRow, MORE_ROW_ID, type PickerRow, pickerRows } from './catalogue-view';
+
+/**
+ * Where the circle at the top left goes, named: the list this screen was opened from. A screen reached from two
+ * places cannot just say "Back" — and when there is still a step to undo inside this screen, Back does that first.
+ */
+const BACK_TO: Record<OwnableFlow, string> = { account: 'Accounts', asset: 'Assets', debt: 'Debts' };
 
 /**
  * Two levels and a search box: the family, then the thing, the way the category picker already works.
@@ -127,7 +133,7 @@ export function OwnablePicker({
   return (
     <div className={SCREEN}>
       {/* The step back is an undo of one step, not a destination, so it is named for what it does. */}
-      <LargeTitle title={more ? 'Something else' : title} back={canGoBack ? 'Back' : undefined} onBack={back} />
+      <PushedTitle title={more ? 'Something else' : title} back={BACK_TO[flow]} onBack={() => (canGoBack ? back() : router.history.back())} />
       {/* One screen at a time on a phone; both at once on anything wider, the list on the left. */}
       <div className={cx('gap-6', chosen ? 'md:grid md:grid-cols-2 md:items-start' : '')}>
         <div className={cx(phone && chosen && 'hidden')}>{list}</div>

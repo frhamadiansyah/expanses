@@ -73,7 +73,7 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   // And the list now says so in the account's own terms: the tile is what is left to spend once the goals have had
   // their share, and the working under it names the goal money rather than dropping it silently.
   await page.goto('/accounts');
-  await expect(page.getByText('Free to spend')).toBeVisible();
+  await expect(page.getByText('Balance')).toBeVisible();
   // The tile's first line is what the rows below already show: money that can be moved, less what goals claimed it.
   // Nothing under it says so in words any more — the account's own page takes a promise apart goal by goal — and the
   // line carries no caption either: an estimate says so with the kit's ≈ on the figure itself.
