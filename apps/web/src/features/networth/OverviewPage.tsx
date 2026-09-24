@@ -1,4 +1,4 @@
-import { addMonths, balanceSheet, displayAmount, formatMinor, isoDate, lastNMonths, monthOf, monthRange, type ScheduleRow, type SheetGroup } from '@expanses/core';
+import { addMonths, balanceSheet, displayAmount, isoDate, lastNMonths, monthOf, monthRange, type ScheduleRow, type SheetGroup } from '@expanses/core';
 import { categoryTotalsBetween, expiringSoonAcross, nativeBalances, ownerScope, scheduleFor } from '@expanses/db';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -6,7 +6,7 @@ import { Gauge } from 'lucide-react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN } from '../../ui/native';
-import { attentionItems, deltaSince, monthsSinceJanuary } from './overview-rows';
+import { attentionItems } from './overview-rows';
 import { ShareBar, ShareLegend } from './ShareBar';
 import { useGoalPlans, useSetAsideViews } from '../goals/queries';
 import { usePeopleDebts } from '../debts/queries';
@@ -125,9 +125,6 @@ export function OverviewPage() {
     ),
     Object.values(setAsideViews.data ?? {}),
   );
-  const sinceLastMonth = deltaSince(points, 1);
-  const januaryMonths = monthsSinceJanuary(points);
-  const sinceJanuary = januaryMonths === null ? null : deltaSince(points, januaryMonths);
   /*
    * The ratios are a screen of their own now, behind the corner glyph: a question of how you are doing rather than
    * what you have, and the period they are read over belongs to that screen with them.
@@ -247,22 +244,12 @@ export function OverviewPage() {
           <Panel
           wide
           header="Net worth"
-          footer="Month-end snapshots. Home and vehicles use your latest estimate; funds, shares and gold use the last price you entered."
         >
           <div data-testid="net-worth">
             {sheetMissing.length > 0 ? (
               <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
             ) : (
-            <Hero
-              minor={sheet.netWorthMinor}
-              currency={ws.baseCurrency}
-              caption={
-                <>
-                  {sinceLastMonth !== null && <>{formatMinor(sinceLastMonth, ws.baseCurrency)} since last month</>}
-                  {sinceJanuary !== null && <> · {formatMinor(sinceJanuary, ws.baseCurrency)} since January</>}
-                </>
-              }
-            />
+            <Hero minor={sheet.netWorthMinor} currency={ws.baseCurrency} />
             )}
           </div>
           {points.length > 0 && charted.length === points.length && (

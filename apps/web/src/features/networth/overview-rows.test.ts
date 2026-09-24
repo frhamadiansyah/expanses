@@ -1,7 +1,7 @@
 import { formatMinor } from '@expanses/core';
 import type { AssetValueRow, GoalPlanRow, GoalRow, IdleCashRow, NetWorthPoint, PersonDebtRow, PersonLoanRow, TradeTemplateRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { attentionItems, deltaSince, type LoanAttention, monthsSinceJanuary } from './overview-rows';
+import { attentionItems, type LoanAttention } from './overview-rows';
 
 const value = (partial: Partial<AssetValueRow> & Pick<AssetValueRow, 'accountId' | 'name' | 'mode'>): AssetValueRow => ({
   valueMinor: 1_000_000,
@@ -268,37 +268,5 @@ describe('attentionItems with loans', () => {
 
     expect(items).toHaveLength(3);
     expect(new Set(items.map((item) => item.key)).size).toBe(3);
-  });
-});
-
-describe('deltaSince', () => {
-  const points = [point('2026-06', 1_000_000_000), point('2026-07', 1_100_000_000), point('2026-08', 1_150_000_000), point('2026-09', 1_200_000_000)];
-
-  it('measures against the month asked for', () => {
-    expect(deltaSince(points, 1)).toBe(50_000_000);
-    expect(deltaSince(points, 3)).toBe(200_000_000);
-  });
-
-  it('is null when the series does not reach back that far', () => {
-    expect(deltaSince(points, 12)).toBeNull();
-    expect(deltaSince([], 1)).toBeNull();
-  });
-
-  it('is nothing when either end has no figure for want of a rate — not a change measured from 0', () => {
-    const unpriced: NetWorthPoint = { ...point('2026-08', 0), assetsMinor: null, netWorthMinor: null, missing: ['USD'] };
-    expect(deltaSince([point('2026-07', 1_100_000_000), unpriced], 1)).toBeNull();
-    expect(deltaSince([unpriced, point('2026-09', 1_200_000_000)], 1)).toBeNull();
-  });
-});
-
-describe('monthsSinceJanuary', () => {
-  it('counts back to January of the last point year', () => {
-    const points = ['2026-01', '2026-02', '2026-03'].map((month) => point(month, 1));
-    expect(monthsSinceJanuary(points)).toBe(2);
-  });
-
-  it('is null when January is not in the series', () => {
-    const points = ['2025-11', '2025-12'].map((month) => point(month, 1));
-    expect(monthsSinceJanuary(points)).toBeNull();
   });
 });

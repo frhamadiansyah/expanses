@@ -123,23 +123,3 @@ export function attentionItems(
   }
   return items;
 }
-
-/** Change in net worth against the point this many months before the last one. */
-export function deltaSince(points: NetWorthPoint[], monthsBack: number): number | null {
-  if (points.length === 0) return null;
-  const index = points.length - 1 - monthsBack;
-  if (index < 0) return null;
-  const last = points[points.length - 1]!.netWorthMinor;
-  const then = points[index]!.netWorthMinor;
-  // A point without a figure (a rate missing) measures nothing: no change is better than a change from 0.
-  return last === null || then === null ? null : last - then;
-}
-
-/** Months from January of the last point's year, for the "since January" figure. */
-export function monthsSinceJanuary(points: NetWorthPoint[]): number | null {
-  const last = points[points.length - 1];
-  if (!last) return null;
-  const january = `${last.month.slice(0, 4)}-01`;
-  const index = points.findIndex((point) => point.month === january);
-  return index === -1 ? null : points.length - 1 - index;
-}
