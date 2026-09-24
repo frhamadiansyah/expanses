@@ -3,10 +3,10 @@ import { PHONE_WIDTH, textWidth } from './metrics';
 import { type Direction, moneyTone, type Tone } from './row';
 
 /**
- * The figure that is the point of the page, and the bar under it.
+ * The figure that is the point of the page, the change under it, and the bar under that.
  *
- * Both are arithmetic over integer minor units. Nothing here divides money: a progress bar is a ratio, worked
- * out once, and the money either side of it stays whole.
+ * All three are arithmetic over integer minor units. Nothing here divides money: a progress bar and a share of a
+ * range are ratios, worked out once, and the money either side of them stays whole.
  */
 
 export interface HeroFigure {
@@ -45,6 +45,35 @@ export const FIGURE_WIDTH = Math.round((PHONE_WIDTH - 4 * 16) * 0.85);
  */
 export function figureSize(text: string): number {
   return FIGURE_STEPS.find((size) => textWidth(text, size) <= FIGURE_WIDTH) ?? FIGURE_FLOOR;
+}
+
+/** A change a figure has made across the range it is read over, as the line drawn under it. */
+export interface HeroChange {
+  /** The change itself, as money, without a sign of its own: the arrow says which way it went. */
+  text: string;
+  /** The same change as a share of where the range started, or `null` when it started at nothing. */
+  percent: string | null;
+  direction: 'up' | 'down' | 'flat';
+  tone: Tone;
+}
+
+/**
+ * How far the figure has moved over the range it is read over.
+ *
+ * The arrow carries the sign, so the money does not repeat it: "▲ Rp 8.400 · 7,73%" is read in one pass, where
+ * "▲ +Rp 8.400 · +7,73%" makes the reader work out what the two plus signs are about. A share of nothing is not a
+ * share, so a range whose first month was worth nothing keeps the money and drops the percent rather than printing
+ * a share of zero as though it meant something.
+ */
+export function heroChange(fromMinor: number, toMinor: number, currency: string): HeroChange {
+  const change = toMinor - fromMinor;
+  const direction = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+  return {
+    text: formatMinor(Math.abs(change), currency),
+    percent: fromMinor === 0 ? null : `${((change / Math.abs(fromMinor)) * 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`,
+    direction,
+    tone: direction === 'up' ? 'tint' : direction === 'down' ? 'alarm' : 'ink-3',
+  };
 }
 
 /**

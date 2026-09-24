@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIGURE_WIDTH, figureSize, heroFigure, progressFraction, progressPercent, progressTone } from './hero-figure';
+import { FIGURE_WIDTH, figureSize, heroChange, heroFigure, progressFraction, progressPercent, progressTone } from './hero-figure';
 import { textWidth } from './metrics';
 
 describe('figureSize', () => {
@@ -81,5 +81,37 @@ describe('progressTone', () => {
 
   it('is quiet when there is no target to be over', () => {
     expect(progressTone(12_400_000, 0)).toBe('ink-3');
+  });
+});
+
+describe('heroChange', () => {
+  it('says how much the figure moved, and which way, in the colour it went', () => {
+    expect(heroChange(50_000_000, 58_400_000, 'IDR')).toEqual({
+      text: 'Rp\u00a08.400.000',
+      percent: '16,8%',
+      direction: 'up',
+      tone: 'tint',
+    });
+    expect(heroChange(58_400_000, 50_000_000, 'IDR')).toEqual({
+      text: 'Rp\u00a08.400.000',
+      percent: '-14,38%',
+      direction: 'down',
+      tone: 'alarm',
+    });
+  });
+
+  it('leaves the sign to the arrow, so the money is drawn without one', () => {
+    expect(heroChange(50_000_000, 48_000_000, 'IDR').text).not.toContain('-');
+  });
+
+  it('states no share of nothing: a range that started at nothing has no percent', () => {
+    const move = heroChange(0, 50_000_000, 'IDR');
+    expect(move.percent).toBeNull();
+    expect(move.text).toBe('Rp\u00a050.000.000');
+    expect(move.direction).toBe('up');
+  });
+
+  it('makes no move when the ends are the same, and keeps the account of it quiet', () => {
+    expect(heroChange(50_000_000, 50_000_000, 'IDR')).toEqual({ text: 'Rp\u00a00', percent: '0%', direction: 'flat', tone: 'ink-3' });
   });
 });

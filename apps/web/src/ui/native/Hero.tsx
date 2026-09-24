@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { cx } from '../index';
-import { heroFigure, figureSize, progressFraction, progressPercent, progressTone } from './hero-figure';
+import { heroChange, heroFigure, figureSize, progressFraction, progressPercent, progressTone } from './hero-figure';
 
 /**
  * The figure's sizes, largest first: `figureSize` says which, from how wide the figure turns out to be.
@@ -76,6 +76,7 @@ export function Hero({
   direction = 'neutral',
   approximate = false,
   empty = '—',
+  change,
   caption,
   progress,
   align = 'start',
@@ -92,6 +93,13 @@ export function Hero({
   approximate?: boolean;
   empty?: string;
   direction?: Direction;
+  /**
+   * How far the figure has moved across the range it is read over: the arrow, the money and the share of it.
+   *
+   * The two figures rather than the change, so the caller hands over what it measured — a range whose ends are
+   * months, months and not a number worked out twice.
+   */
+  change?: { fromMinor: number; toMinor: number } | null;
   caption?: ReactNode;
   /** The bar under the figure, when the figure is part of the way to something. */
   progress?: { targetMinor: number; label: string };
@@ -100,6 +108,7 @@ export function Hero({
   className?: string;
 }) {
   const figure = minor === null ? ({ text: empty, tone: 'ink-3' } as const) : heroFigure(minor, currency, direction);
+  const move = change ? heroChange(change.fromMinor, change.toMinor, currency) : null;
   return (
     <div
       className={cx('flex flex-col', align === 'start' ? 'items-start text-left' : 'items-center text-center', className)}
@@ -117,6 +126,19 @@ export function Hero({
         {approximate && minor !== null && <span className="text-[var(--ph-ink-3)]">≈ </span>}
         {figure.text}
       </p>
+      {move && (
+        /* The arrow says which way and the money says how much, so neither carries a sign the other repeats. */
+        <p className={cx('tabular mt-[2px] text-[15px] leading-[20px] font-medium', toneClass(move.tone))}>
+          {move.direction !== 'flat' && (
+            <>
+              <span aria-hidden>{move.direction === 'up' ? '▲' : '▼'}</span>{' '}
+              <span className="sr-only">{move.direction === 'up' ? 'Up' : 'Down'} </span>
+            </>
+          )}
+          {move.text}
+          {move.percent && ` · ${move.percent}`}
+        </p>
+      )}
       {caption && <p className="mt-[1px] text-[15px] leading-[20px] text-[var(--ph-ink-3)]">{caption}</p>}
       {progress && minor !== null && (
         <ProgressBar

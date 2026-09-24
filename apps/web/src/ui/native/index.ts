@@ -15,6 +15,7 @@ export { Hero, ProgressBar } from './Hero';
 export { SearchPill } from './SearchPill';
 export { DestructiveRow, PickerRow, ReadOnlyRow, SearchField, SelectRow, SubmitRow, SwitchRow, TextRow, FORM_KINDS } from './FormRow';
 export { CardStack, type WalletCard } from './CardStack';
+export { Drawer } from './Drawer';
 export { useWalletSlot, type WalletSlot } from './wallet-slot';
 export { Panel, PanelHeader, SCREEN } from './Panel';
 export { ActionLine, LineAction } from './ActionLine';

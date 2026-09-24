@@ -15,13 +15,30 @@ export interface ChartTick {
 export interface ChartGeometry {
   width: number;
   height: number;
-  /** Polyline points, "x,y x,y". */
-  line: string;
-  /** Closed path under the line, for the soft fill. */
-  area: string;
-  points: ChartPoint[];
+  /**
+   * One polyline per run of months that have a figure. A month with no figure — a rate missing that month — breaks
+   * the line instead of being drawn as nothing: a gap is a fact about the data, and a line drawn through it says the
+   * figure was there all along.
+   */
+  runs: string[];
+  /** The fill under each run, closed against the floor, so a gap is a gap in the fill too. */
+  areas: string[];
+  points: (ChartPoint | null)[];
   ticks: ChartTick[];
-  last: ChartPoint;
+  /**
+   * The names under the axis, thinned to as many as fit.
+   *
+   * Returned rather than placed by the caller because the spacing is the chart's own arithmetic — and because a
+   * month with no figure keeps its name even though it has no point to hang it on.
+   */
+  names: { x: number; label: string }[];
+  /** Where nothing is drawn: the line above it is money held and below it money owed. */
+  zeroY: number;
+  /** The last month with a figure: the end of the line, and where a dot is drawn for today. */
+  last: ChartPoint | null;
+  /** Where the plot stops, so a caller can write its figures in the gutter beyond and its names in the foot below. */
+  plotRight: number;
+  plotBottom: number;
 }
 
 export interface ChartOptions {
@@ -31,6 +48,25 @@ export interface ChartOptions {
   right?: number;
   top?: number;
   bottom?: number;
+  /**
+   * Whether nothing is always in range.
+   *
+   * No for a series of values, where reaching below nothing is an error rather than a reading; yes for net worth,
+   * where the line crossing it is the whole of what the chart is for.
+   */
+  throughZero?: boolean;
+  /**
+   * What the fill reaches down to: the floor of the axis, or nothing.
+   *
+   * A value has climbed from somewhere and the area says how far; a balance is held, so the area between the line
+   * and nothing is the money itself, and its sign is read off which side of the line it is on.
+   */
+  fillTo?: 'floor' | 'zero';
+  /**
+   * How wide the widest name under the axis is drawn, in px, so that two of them never touch. Zero when the caller
+   * writes none: the names are then thinned by how many there are and nothing else.
+   */
+  nameWidth?: number;
 }
 
 /**
@@ -52,21 +88,35 @@ function niceStep(range: number): number {
   return (scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 2.5 ? 2.5 : scaled <= 5 ? 5 : 10) * power;
 }
 
+/** A name a month until there are more names than fit, then the fewest step that leaves six of them. */
+function labelStep(count: number): number {
+  for (const step of [1, 2, 3, 4, 6, 12]) if (count / step <= 7) return step;
+  return 12;
+}
+
+/** The room two names need between them, so that a row of them reads as names rather than as one long word. */
+const NAME_GAP = 12;
+
 /**
  * Places a series of values in an SVG box. Every tick sits inside the drawing, and a flat
  * series still gets a line through the middle instead of collapsing onto an edge.
  */
-export function chartGeometry(values: number[], labels: string[], options: ChartOptions = {}): ChartGeometry {
+export function chartGeometry(values: readonly (number | null)[], labels: readonly string[], options: ChartOptions = {}): ChartGeometry {
   const width = options.width ?? 640;
   const height = options.height ?? 180;
   const left = options.left ?? 74;
   const right = options.right ?? 16;
   const top = options.top ?? 18;
   const bottom = options.bottom ?? 26;
-  const series = values.length > 0 ? values : [0];
+  const known = values.filter((value): value is number => value !== null);
+  const series = known.length > 0 ? known : [0];
 
   let low = Math.min(...series);
   let high = Math.max(...series);
+  if (options.throughZero) {
+    low = Math.min(low, 0);
+    high = Math.max(high, 0);
+  }
   if (low === high) {
     const pad = Math.abs(high) * 0.1 || 1;
     low -= pad;
@@ -77,96 +127,63 @@ export function chartGeometry(values: number[], labels: string[], options: Chart
   high = Math.ceil(high / step) * step;
   if (low < 0 && Math.min(...series) >= 0) low = 0;
 
-  const x = (index: number) => (series.length === 1 ? left : left + (index * (width - left - right)) / (series.length - 1));
+  const x = (index: number) => (values.length === 1 ? left : left + (index * (width - left - right)) / (values.length - 1));
   const y = (value: number) => top + (height - top - bottom) * (1 - (value - low) / (high - low));
 
-  const points: ChartPoint[] = series.map((value, index) => ({ x: x(index), y: y(value), value, label: labels[index] ?? '' }));
-  const line = points.map((point) => `${point.x},${point.y}`).join(' ');
-  const area = `M${x(0)},${y(low)} L${points.map((point) => `${point.x},${point.y}`).join(' L')} L${x(series.length - 1)},${y(low)} Z`;
-
-  const ticks: ChartTick[] = [];
-  for (let value = low; value <= high + step / 2; value += step) ticks.push({ y: y(value), value });
-
-  return { width, height, line, area, points, ticks, last: points[points.length - 1]! };
-}
-
-export interface ChartBar {
-  /** The bar's box. */
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  /** Its centre: where the month's gridline and its label go. */
-  center: number;
-  value: number;
-  label: string;
-}
-
-export interface BarChart {
-  width: number;
-  height: number;
-  bars: ChartBar[];
-  /** The horizontal gridlines the axis is drawn from, nothing among them. */
-  ticks: ChartTick[];
-  /** How many months apart the labels under the axis are drawn. One a month until there are too many to read. */
-  labelEvery: number;
-  /** Where the bars stop: the axis labels are written in the gutter to the right of it, as Health writes them. */
-  plotWidth: number;
-}
-
-/**
- * A bar a month, growing from nothing, with the axis always through it.
- *
- * A month with no figure — a rate missing that month — draws no bar and keeps its gridline and its name: a gap in a
- * chart is a fact about the data, and a bar of nothing would be a fact that is not true. Nothing is always in range,
- * so a bar below the line is money owed and a bar above it is money held, which is the whole point of the drawing.
- */
-export function barGeometry(values: readonly (number | null)[], labels: readonly string[], options: ChartOptions = {}): BarChart {
-  const width = options.width ?? 390;
-  const height = options.height ?? 200;
-  const top = options.top ?? 16;
-  // The month names sit inside the box at its foot, as the day names do in Health's chart.
-  const bottom = options.bottom ?? 22;
-  // And the figures the axis is read by sit in a gutter at its right, clear of the bars they measure.
-  const right = options.right ?? 46;
-  const plot = height - top - bottom;
-  const plotWidth = Math.max(1, width - right);
-  const known = values.filter((value): value is number => value !== null);
-
-  let low = Math.min(0, ...known);
-  let high = Math.max(0, ...known);
-  if (low === high) {
-    // Nothing known, or every month the same: an axis needs a height even so, or the maths divides by zero.
-    const pad = Math.abs(high) * 0.1 || 1;
-    low -= pad;
-    high += pad;
+  const points: (ChartPoint | null)[] = values.map((value, index) => (value === null ? null : { x: x(index), y: y(value), value, label: labels[index] ?? '' }));
+  const floor = options.fillTo === 'zero' ? y(0) : y(low);
+  const runs: string[] = [];
+  const areas: string[] = [];
+  let run: ChartPoint[] = [];
+  const close = () => {
+    if (run.length === 0) return;
+    runs.push(run.map((point) => `${point.x},${point.y}`).join(' '));
+    areas.push(`M${run[0]!.x},${floor} L${run.map((point) => `${point.x},${point.y}`).join(' L')} L${run[run.length - 1]!.x},${floor} Z`);
+    run = [];
+  };
+  for (const point of points) {
+    if (point) run.push(point);
+    else close();
   }
-  const step = niceStep((high - low) / 3);
-  low = Math.floor(low / step) * step;
-  high = Math.ceil(high / step) * step;
-
-  const y = (value: number) => top + plot * (1 - (value - low) / (high - low));
-  const pitch = plotWidth / Math.max(1, values.length);
-  const barWidth = Math.max(3, pitch * 0.62);
-  const bars: ChartBar[] = values.flatMap((value, index) => {
-    if (value === null) return [];
-    const zero = y(0);
-    const at = y(value);
-    return [
-      {
-        x: index * pitch + (pitch - barWidth) / 2,
-        y: Math.min(zero, at),
-        width: barWidth,
-        height: Math.abs(at - zero),
-        center: index * pitch + pitch / 2,
-        value,
-        label: labels[index] ?? '',
-      },
-    ];
-  });
+  close();
 
   const ticks: ChartTick[] = [];
   for (let value = low; value <= high + step / 2; value += step) ticks.push({ y: y(value), value });
 
-  return { width, height, bars, ticks, labelEvery: values.length > 8 ? 2 : 1, plotWidth };
+  const every = labelStep(values.length);
+  const nameWidth = options.nameWidth ?? 0;
+  const names: { x: number; label: string }[] = [];
+  let named = Number.NEGATIVE_INFINITY;
+  for (let index = 0; index < values.length; index += every) {
+    const label = labels[index];
+    if (!label) continue;
+    const at = x(index);
+    /*
+     * The name at the drawing's own edge is read inward from it — a name centred on the edge hangs half of itself off
+     * the screen — so where it starts is the edge and where it ends is a whole name along. Every other is centred on
+     * its month.
+     */
+    const from = at === 0 ? 0 : at - nameWidth / 2;
+    const to = at === 0 ? nameWidth : at + nameWidth / 2;
+    // A name with no room beside the one before it is dropped, and the one after it is measured against that one
+    // instead: the row stays evenly spaced because it is the same step all the way along.
+    if (nameWidth > 0 && from < named + NAME_GAP) continue;
+    names.push({ x: at, label });
+    named = to;
+  }
+
+  return {
+    width,
+    height,
+    runs,
+    areas,
+    points,
+    ticks,
+    names,
+    zeroY: y(0),
+    last: [...points].reverse().find((point) => point !== null) ?? null,
+    plotRight: width - right,
+    plotBottom: height - bottom,
+  };
 }
+

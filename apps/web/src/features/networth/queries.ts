@@ -123,6 +123,10 @@ export function useNetWorthSeries(months: string[]) {
       const rates = await resolveRates(currencies, today);
       return netWorthSeries(database, ws, months, rates.rates, today);
     },
+    //
+    // A longer range is more month-end snapshots to work out, so the months already read stay on screen until the
+    // new ones arrive: a figure that empties itself for a moment is read as the money having gone somewhere.
+    placeholderData: (previous) => previous,
   });
 }
 

@@ -12,7 +12,7 @@ import { useScheduledAsks } from '../loans/queries';
 import { DEBT_GROUP_LABELS, owedMinor } from '../networth/debt-rows';
 import { useAssetValues } from '../networth/queries';
 import { cx, Empty, Money } from '../../ui';
-import { type CornerAction, ActionLine, Figure, groupedFigure, LargeTitle, Panel, ROW_PAD_X, ROW_PAD_Y, heroFigure, rowHeight, SCREEN } from '../../ui/native';
+import { type CornerAction, ActionLine, Drawer, Figure, groupedFigure, LargeTitle, Panel, ROW_PAD_X, ROW_PAD_Y, heroFigure, rowHeight, SCREEN } from '../../ui/native';
 import { SPENDABLE_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { BalanceSpark } from './BalanceSpark';
 import { balanceSeries, crossing, daysBefore } from './balance-series';
@@ -145,40 +145,6 @@ function totalOf(rows: AccountRow[], everything: AccountRow[], balances: Record<
   const amounts = amountsOf(rows, everything, balances, read);
   const converted = amounts.some((amount) => amount.currency !== baseCurrency);
   return groupedFigure(sumToBase({ amounts, baseCurrency, ratesToBase: rates }), baseCurrency, converted).text;
-}
-
-/**
- * One type of account, folded away: the line that names it, how many it holds and what they come to.
- *
- * Drawn on the kit's own padding, height, hairline and inks — the same shape to the eye as the rows it hides — and
- * the whole line is the target, because a drawer that opens only when its words are hit is a drawer a thumb
- * misses. It lives in the feature rather than the kit for the reason `BillRow` does: "a type of account" is this
- * page's idea, where the kit holds the shapes more than one screen draws.
- */
-function TypeDrawer({ label, count, figure, open, separator, testId, onToggle }: { label: string; count: string; figure: ReactNode; open: boolean; separator: boolean; testId: string; onToggle: () => void }) {
-  return (
-    <div className="relative">
-      {separator && <span aria-hidden className="pointer-events-none absolute top-0 z-10 bg-[var(--ph-hair)]" style={{ height: 0.5, left: ROW_PAD_X, right: ROW_PAD_X }} />}
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        data-testid={testId}
-        className="ph-focus-inset flex w-full items-center gap-[10px] text-left"
-        style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
-      >
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{label}</span>
-          <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{count}</span>
-        </span>
-        {figure}
-        {/* The kit's chevron, turned over to say which way the drawer is: down when it is open, along when it is not. */}
-        <span aria-hidden className={cx('shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]', open && 'rotate-90')}>
-          {'›'}
-        </span>
-      </button>
-    </div>
-  );
 }
 
 /**
@@ -315,9 +281,9 @@ function AccountList({
               const shown = open.has(key);
               return [
                 <li key={drawer.key}>
-                  <TypeDrawer
+                  <Drawer
                     label={drawer.label}
-                    count={plural(drawer.rows.length, 'account')}
+                    under={plural(drawer.rows.length, 'account')}
                     figure={
                       drawer.figure ?? (
                         /* A drawer that adds instalments up says the word under the figure, where a row says its own

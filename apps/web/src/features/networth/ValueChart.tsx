@@ -1,10 +1,12 @@
 import { formatMinor } from '@expanses/core';
-import { chartGeometry, shortMoney } from './value-chart';
+import { type ChartPoint, chartGeometry, shortMoney } from './value-chart';
 
 /** Month-end values as a small area chart. Hand-drawn SVG: no chart library in this app. */
 export function ValueChart({ values, labels, currency }: { values: number[]; labels: string[]; currency: string }) {
   if (values.length === 0) return null;
   const chart = chartGeometry(values, labels);
+  // Every month of a value has a figure — the gaps are a net-worth thing — so the geometry hands back one run.
+  const points = chart.points.filter((point): point is ChartPoint => point !== null);
   return (
     <svg viewBox={`0 0 ${chart.width} ${chart.height}`} className="h-auto w-full" role="img" aria-label="Value over the last 12 months">
       {chart.ticks.map((tick) => (
@@ -15,15 +17,19 @@ export function ValueChart({ values, labels, currency }: { values: number[]; lab
           </text>
         </g>
       ))}
-      {chart.points.map((point) => (
+      {points.map((point) => (
         <text key={point.label + point.x} x={point.x} y={chart.height - 8} textAnchor="middle" fill="#64748b" fontSize={11}>
           {point.label}
         </text>
       ))}
-      <path d={chart.area} fill="#047857" fillOpacity={0.12} stroke="none" />
-      <polyline points={chart.line} fill="none" stroke="#047857" strokeWidth={2} />
-      <circle cx={chart.last.x} cy={chart.last.y} r={4} fill="#047857" stroke="#ffffff" strokeWidth={2} />
-      {chart.points.map((point) => (
+      {chart.areas.map((area, index) => (
+        <path key={`area-${index}`} d={area} fill="#047857" fillOpacity={0.12} stroke="none" />
+      ))}
+      {chart.runs.map((run, index) => (
+        <polyline key={`run-${index}`} points={run} fill="none" stroke="#047857" strokeWidth={2} />
+      ))}
+      {chart.last && <circle cx={chart.last.x} cy={chart.last.y} r={4} fill="#047857" stroke="#ffffff" strokeWidth={2} />}
+      {points.map((point) => (
         <title key={`t-${point.label}`}>{`${point.label}: ${formatMinor(point.value, currency)}`}</title>
       ))}
     </svg>

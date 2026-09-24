@@ -1,37 +1,35 @@
-import { addMonths, balanceSheet, displayAmount, isoDate, lastNMonths, monthOf, monthRange, type ScheduleRow, type SheetGroup } from '@expanses/core';
-import { categoryTotalsBetween, expiringSoonAcross, nativeBalances, ownerScope, scheduleFor } from '@expanses/db';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { balanceSheet, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetRow } from '@expanses/core';
+import type { AccountSubtype } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { Gauge } from 'lucide-react';
+import { BellRing, Gauge } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { type CornerAction, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
+import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl } from '../../ui/native';
+import { useAttention } from './attention';
 import { NetWorthChart } from './NetWorthChart';
-import { attentionItems } from './overview-rows';
 import { ShareBar, ShareLegend } from './ShareBar';
-import { useGoalPlans, useSetAsideViews } from '../goals/queries';
-import { usePeopleDebts } from '../debts/queries';
-import { isMoneyAccount, useAccounts, useResolveRates } from '../../lib/queries';
-import { loanAttention } from '../loans/attention';
-import { useInstallments, useLoans } from '../loans/queries';
-import { useAssetValues, useDueTemplates, useIdleCash, useNetWorthSeries, useSheet } from './queries';
+import { sheetDrawers } from './sheet-drawers';
+import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
+import { useNetWorthSeries, useSheet } from './queries';
+import { isMoneyAccount, useAccounts } from '../../lib/queries';
 
 const MONTH_LABEL = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
-const sum = (rows: { amountBaseMinor: number }[]) => rows.reduce((total, row) => total + row.amountBaseMinor, 0);
 
-/** How much of the year the chart is read over. Three, six or the whole twelve: every range the snapshots can answer. */
-type Span = '3m' | '6m' | '1y';
-const SPAN_MONTHS: Record<Span, number> = { '3m': 3, '6m': 6, '1y': 12 };
-/*
- * Named the way Health names a range: three letters over a track, not three sentences. The control's own label is
- * what a screen reader hears first, so "3M" beside "Range" reads as a range and not as a code.
+/**
+ * A month as the axis names it: the name alone over a few of them, and the year beside it once the range runs past
+ * one, where "Jan" on its own could be any of five.
  */
-const RANGES = [
-  { key: '3m', label: '3M' },
-  { key: '6m', label: '6M' },
-  { key: '1y', label: '1Y' },
-] as const satisfies readonly Segment[];
+const axisLabel = (month: string, months: number) => (months > 12 ? `${MONTH_LABEL(month)} ${month.slice(2, 4)}` : MONTH_LABEL(month));
+
+/**
+ * The months a range covers, told once: "Apr – Sept 2026", and the year at both ends when they are not the same year,
+ * because "Aug – Sept 2026" is a sentence about two months that does not say which August.
+ */
+const rangeLabel = (from: string, to: string) => {
+  const sameYear = from.slice(0, 4) === to.slice(0, 4);
+  return `${MONTH_LABEL(from)}${sameYear ? '' : ` ${from.slice(0, 4)}`} – ${MONTH_LABEL(to)} ${to.slice(0, 4)}`;
+};
 
 const GROUP_COLORS: Record<string, string> = {
   liquid: 'bg-cyan-600',
@@ -45,10 +43,33 @@ const GROUP_COLORS: Record<string, string> = {
 /**
  * One side of the balance sheet: its share bar and legend on a panel, then a group per plan group.
  *
- * Each group's label is its own header, outside and above its rows, rather than a heading line inside one long
- * card. The two columns stay two columns on a desktop — this and `/` are the only real grids in the app.
+ * Each group's label is its own header, outside and above its rows, rather than a heading line inside one long card.
+ * A group whose accounts are of more than one kind folds them into a drawer a kind — current accounts with current
+ * accounts — because a list of everything you own is as long as the accounts you have opened, and the answer to what
+ * you have is a handful of types. A group of one kind is drawn plainly: one drawer is no division at all, and a
+ * drawer over a single account hides one figure to save one line.
+ *
+ * The two columns stay two columns on a desktop — this and `/` are the only real grids in the app.
  */
-function SheetColumn({ title, groups, totalMinor, currency }: { title: string; groups: SheetGroup[]; totalMinor: number; currency: string }) {
+function SheetColumn({
+  title,
+  groups,
+  totalMinor,
+  currency,
+  subtypes,
+  open,
+  onToggle,
+}: {
+  title: string;
+  groups: SheetGroup[];
+  totalMinor: number;
+  currency: string;
+  /** What kind of account each row is, which is what the drawers fold by. */
+  subtypes: ReadonlyMap<string, AccountSubtype>;
+  /** The drawers that are open, by `group:kind`. Shut to begin with. */
+  open: ReadonlySet<string>;
+  onToggle: (key: string) => void;
+}) {
   const segments = groups.map((group) => ({ key: group.key, label: group.label, minor: group.totalMinor, className: GROUP_COLORS[group.key] ?? 'bg-slate-400' }));
   return (
     // `min-w-0`: a column in a grid is as wide as its widest row unless it is told it may be narrower, and a row whose
@@ -64,16 +85,7 @@ function SheetColumn({ title, groups, totalMinor, currency }: { title: string; g
           <PanelHeader key={group.key} title={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />} />
         ) : (
           <InsetGroup key={group.key} wide header={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />}>
-            {group.rows.map((row) => (
-              <InsetRow
-                key={`${group.key}-${row.accountId}`}
-                title={row.name}
-                subtitle={row.note ?? undefined}
-                value={<Money minor={row.amountMinor} currency={currency} />}
-                valueTone="ink"
-                chevron={false}
-              />
-            ))}
+            {fold(group, subtypes, open, onToggle, currency)}
           </InsetGroup>
         ),
       )}
@@ -81,78 +93,92 @@ function SheetColumn({ title, groups, totalMinor, currency }: { title: string; g
   );
 }
 
-/** Each open loan's schedule, keyed by account, so the attention rows can read the next payment. */
-function useLoanSchedules(loans: { accountId: string }[], today: string): Record<string, ScheduleRow[]> {
-  const { database, ws } = useApp();
-  const results = useQueries({
-    queries: loans.map((loan) => ({
-      queryKey: ['loan-schedule', ws.workspaceId, loan.accountId, today],
-      queryFn: () => scheduleFor(database, ws, loan.accountId, today),
-    })),
+/** One account's line in the sheet: its name, and what it is worth or what it owes. */
+function sheetLine(row: SheetRow, currency: string) {
+  return <InsetRow key={row.accountId} title={row.name} subtitle={row.note ?? undefined} value={<Money minor={row.amountMinor} currency={currency} />} valueTone="ink" chevron={false} />;
+}
+
+/** A group's rows, folded by kind where there is more than one kind to tell apart. */
+function fold(group: SheetGroup, subtypes: ReadonlyMap<string, AccountSubtype>, open: ReadonlySet<string>, onToggle: (key: string) => void, currency: string) {
+  const drawers = sheetDrawers(group.rows, subtypes);
+  // One kind is no division at all: a drawer over it would hide every row it has to name one type.
+  if (drawers.length <= 1) return group.rows.map((row) => sheetLine(row, currency));
+  return drawers.flatMap((drawer, index) => {
+    const key = `${group.key}:${drawer.key}`;
+    const shown = open.has(key);
+    return [
+      <Drawer
+        key={key}
+        label={drawer.label}
+        /* A count, because a drawer is only drawn where there are two kinds: "2 accounts" says what is inside it. */
+        under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'account' : 'accounts'}`}
+        figure={<Money minor={drawer.totalMinor} currency={currency} />}
+        open={shown}
+        separator={index > 0}
+        testId={`type-drawer-${key}`}
+        onToggle={() => onToggle(key)}
+      />,
+      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency)) : []),
+    ];
   });
-  const byAccount: Record<string, ScheduleRow[]> = {};
-  loans.forEach((loan, index) => {
-    byAccount[loan.accountId] = (results[index]?.data as ScheduleRow[] | undefined) ?? [];
-  });
-  return byAccount;
 }
 
 export function OverviewPage() {
-  const { database, ws } = useApp();
+  const { ws } = useApp();
   const today = isoDate();
-  const months = lastNMonths(monthOf(today), 12);
+  /*
+   * The range is chosen first because it decides how much is read: a snapshot a month, so six months are six of them
+   * and five years are sixty. The page opens on the shortest and cheapest, and each range that has been read once is
+   * kept, so going back to it is instant.
+   */
+  const [span, setSpan] = useState<Span>('6m');
+  const months = lastNMonths(monthOf(today), SPAN_MONTHS[span]);
   const series = useNetWorthSeries(months);
   const sheetInputs = useSheet();
-  const values = useAssetValues();
-  const due = useDueTemplates();
-  const idle = useIdleCash();
-  const people = usePeopleDebts(today);
-  const loans = useLoans();
-  const installments = useInstallments();
-  const schedules = useLoanSchedules(loans.data ?? [], today);
-  const goalSummary = useGoalPlans(today);
-  const setAsideViews = useSetAsideViews();
+  const waiting = useAttention(today);
 
   const points = series.data ?? [];
-  // The range the chart is read over, out of the same snapshots the figure is: what is drawn is what is summed.
-  const [span, setSpan] = useState<Span>('6m');
-  const shown = points.slice(-SPAN_MONTHS[span]);
+  // The range the line is drawn over, out of the same snapshots the figure is: what is drawn is what is summed.
+  const shown = spanSlice(points, span);
   const from = shown[0];
   const to = shown[shown.length - 1];
-  const rangeLabel = from && to ? `${MONTH_LABEL(from.month)} – ${MONTH_LABEL(to.month)} ${to.month.slice(0, 4)}` : undefined;
+  const covered = from && to ? rangeLabel(from.month, to.month) : undefined;
   // The hero is today's figure, so only today's missing rates hide it; an earlier month's hides that month's point.
   const sheetMissing = sheetInputs.data?.missing ?? [];
   const unchartable = [...new Set(points.flatMap((point) => point.missing))].sort();
   const sheet = balanceSheet(sheetInputs.data?.assets ?? [], sheetInputs.data?.liabilities ?? []);
-  const attention = attentionItems(
-    values.data ?? [],
-    due.data ?? [],
-    goalSummary.data?.plans ?? [],
-    idle.data ?? [],
-    [...(people.data?.owedToYou ?? []), ...(people.data?.youOwe ?? [])],
-    (loans.data ?? []).map((loan) =>
-      loanAttention(
-        {
-          loan,
-          name: loan.lenderName,
-          currency: ws.baseCurrency,
-          schedule: schedules[loan.accountId] ?? [],
-          installments: installments.data ?? [],
-        },
-        today,
-      ),
-    ),
-    Object.values(setAsideViews.data ?? {}),
-  );
+
+  const waitingCount = waiting.items.length + waiting.warnings.length;
   /*
-   * The ratios are a screen of their own now, behind the corner glyph: a question of how you are doing rather than
-   * what you have, and the period they are read over belongs to that screen with them.
+   * The corners, in the order the page is about them: what is waiting, then how the figure is doing, then the
+   * journeys. Three of them on a phone, which is one more than the kit's own two — and the two of them are the two
+   * questions the figure raises, so the third is a `…` rather than a fourth thing.
    */
   const actions: CornerAction[] = [
+    /*
+     * It was the right-hand column of this page, which on a phone is under the balance sheet: a thing to do, below the
+     * answer to what you have. The dot is what the move keeps — a corner that opens a screen of warnings must not look
+     * like a corner that opens nothing — and the name carries the count for a screen reader.
+     */
+    {
+      key: 'attention',
+      label: waitingCount > 0 ? `Needs attention, ${waitingCount} waiting` : 'Needs attention',
+      glyph: (
+        <span className="relative flex items-center justify-center">
+          <BellRing size={18} aria-hidden />
+          {waitingCount > 0 && <span aria-hidden className="absolute top-[-2px] right-[-2px] h-[7px] w-[7px] rounded-full bg-[var(--ph-alarm)]" />}
+        </span>
+      ),
+      to: '/net-worth/attention',
+    },
+    /*
+     * The ratios are a screen of their own too: a question of how you are doing rather than what you have, and the
+     * period they are read over belongs to that screen with them.
+     */
     { key: 'health', label: 'Financial health', glyph: <Gauge size={18} aria-hidden />, to: '/net-worth/health' },
     /*
      * The three sections this page used to tab between are sub-pages now, and the rows in the `…` are their door:
-     * one corner for the screen worth a tap of its own, and the rest one tap further. A section row at the top of
+     * the screens worth a corner of their own have one, and the rest are one tap further. A section row at the top of
      * every one of the four screens was four names for four pages, and the row took the room the figure wanted.
      */
     { key: 'assets', label: 'Assets', to: '/net-worth/assets' },
@@ -162,54 +188,27 @@ export function OverviewPage() {
 
   const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
 
-  /*
-   * What the Dashboard drew, on the same page: the month's two figures, what the cards owe, and the lines that say
-   * something needs doing. Net worth is one subject, so it is one screen — the figure, the year behind it, the
-   * balance sheet under it, the ratios beside it, and what the month and the cards have done to it.
-   */
+  // The two things the empty state reads: whether there is any money account to add up at all.
   const accounts = useAccounts();
   const money = (accounts.data ?? []).filter(isMoneyAccount);
-  const cards = money.filter((account) => account.subtype === 'credit_card');
-  const resolveRates = useResolveRates();
-  const thisMonth = monthOf(today);
-
-  const balances = useQuery({
-    queryKey: ['net-worth-balances', ws.workspaceId, today, money.length],
-    enabled: accounts.isSuccess,
-    queryFn: async () => {
-      const rows = await nativeBalances(database, ws);
-      // The rates are read here only for whether they have gone stale: the figures themselves are the sheet's.
-      const rates = await resolveRates(money.map((account) => account.currency!), today);
-      return { rows, stale: rates.stale };
-    },
-  });
-
-  const monthFlows = useQuery({
-    queryKey: ['month-flows', ws.workspaceId, thisMonth],
-    queryFn: async () => {
-      const current = monthRange(thisMonth);
-      const previous = monthRange(addMonths(thisMonth, -1));
-      // The owner's own spending and income: every book together, as net worth itself is.
-      const owner = ownerScope(ws);
-      return {
-        spending: sum(await categoryTotalsBetween(database, owner, 'expense', current.from, current.to, { billMonths: true })),
-        income: sum(await categoryTotalsBetween(database, owner, 'income', current.from, current.to)),
-        lastSpending: sum(await categoryTotalsBetween(database, owner, 'expense', previous.from, previous.to, { billMonths: true })),
-      };
-    },
-  });
-
-  // Reporting only: dead points are written off when a card is opened, never by looking at a summary.
-  const expiring = useQuery({ queryKey: ['points-expiring', ws.workspaceId, today], queryFn: () => expiringSoonAcross(database, ws, today) });
-
   /*
-   * A rate that has gone stale, and points about to lapse. A *missing* rate is not among them: the hero and the
-   * chart already name every rate they lack, and saying the same thing twice reads as two problems.
+   * What kind of account each row of the balance sheet is. The sheet does not carry it — a row is a name and a figure,
+   * which is all the total needs — and the account list is already read on this page, so the drawers cost no second
+   * read of anything.
    */
-  const warnings = [
-    ...(balances.data?.stale ?? []).map((currency) => `${currency} rate is out of date`),
-    ...(expiring.data ?? []).map((row) => `${row.expiringSoon.toLocaleString('id-ID')} ${row.unit} on ${row.cardName} expire on ${row.nextExpiryOn}`),
-  ];
+  const subtypes = new Map<string, AccountSubtype>((accounts.data ?? []).map((account) => [account.id, account.subtype]));
+  /*
+   * Which drawers are open, by `group:kind`, and shut to begin with: the point of folding a page of account names away
+   * is that what you have reads as a handful of types, and a drawer that opens itself is that answer hidden again.
+   */
+  const [openDrawers, setOpenDrawers] = useState<ReadonlySet<string>>(new Set());
+  const toggleDrawer = (key: string) =>
+    setOpenDrawers((was) => {
+      const next = new Set(was);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   /*
    * With no money accounts and nothing on the sheet there is nothing to add up, so the screen asks for the two things
@@ -218,7 +217,7 @@ export function OverviewPage() {
   if (accounts.isSuccess && money.length === 0 && nothingYet) {
     return (
       <div className={SCREEN}>
-        <LargeTitle title="Net worth" actions={actions} />
+        <LargeTitle title="Net worth" actions={actions} max={3} />
         <Panel wide>
           <Empty>
             Start by adding your bank accounts and credit cards on the{' '}
@@ -234,8 +233,8 @@ export function OverviewPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Net worth" actions={actions} />
-      <ErrorBox error={series.error ?? sheetInputs.error ?? values.error} />
+      <LargeTitle title="Net worth" actions={actions} max={3} />
+      <ErrorBox error={series.error ?? sheetInputs.error ?? waiting.error} />
 
       {nothingYet && (
         <Empty>
@@ -251,122 +250,50 @@ export function OverviewPage() {
         </Empty>
       )}
 
-      {/* The one real desktop grid in the app, kept: the figure and its year on the left, what waits on the right. */}
-      <div className="grid gap-4 md:grid-cols-[1.7fr_1fr]">
-        {/*
-         * `min-w-0` on both columns, and the same on the two balance-sheet columns: a grid item is as wide as its
-         * widest row unless it is told it may be narrower, and a row title that truncates still measures as the whole
-         * title — so "CIMB Niaga World ALL Accor" beside its figure set the page's minimum width and everything from
-         * the section row to the chart scrolled sideways with it.
-         */}
-        <div className="min-w-0">
-          {/*
-           * Apple Health's metric: the range it is read over, the figure, and the months drawn across the whole screen.
-           * A full-bleed white band rather than a card the graph sits inside — the screen's own gutter is not a box, and
-           * the grid runs to both edges so the months read as a shape. On a wide screen the band stops at its column,
-           * because a graph that runs under the second column is not full-bleed, it is in the way.
-           */}
-          <section className="-mx-4 mb-[18px] bg-[var(--ph-surface)] pb-[6px] md:mx-0">
-            <div className="px-4 md:px-0">
-              <SegmentedControl
-                className="mb-[16px]"
-                label="Range"
-                segments={RANGES}
-                value={span}
-                onChange={(key) => setSpan(key as Span)}
-                max={RANGES.length}
-              />
-              <div data-testid="net-worth">
-                {sheetMissing.length > 0 ? (
-                  <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
-                ) : (
-                  <Hero minor={sheet.netWorthMinor} currency={ws.baseCurrency} caption={rangeLabel} />
-                )}
-              </div>
-            </div>
-            <NetWorthChart values={shown.map((point) => point.netWorthMinor)} labels={shown.map((point) => MONTH_LABEL(point.month))} currency={ws.baseCurrency} />
-            {sheetMissing.length === 0 && unchartable.length > 0 && (
-              <p data-testid="chart-missing" className="px-4 pt-[8px] text-[13px] leading-[17px] text-[var(--ph-warn)] md:px-0">
-                No {unchartable.join(', ')} rate for an earlier month, so the year cannot be charted.
-              </p>
+      {/*
+       * Apple Health's metric: the figure, the months drawn across the whole screen, and the range they are read over
+       * beneath them. A full-bleed white band rather than a card the drawing sits inside — the screen's own gutter is
+       * not a box, and the line runs to both edges so the months read as a shape.
+       *
+       * And one column now, with nothing beside it: what waited on the right is a screen of its own behind the corner,
+       * and the two-column grid that held it was the reason the band stopped short of the right-hand gutter — a line
+       * that runs under a second column is not full-bleed, it is in the way.
+       */}
+      <section className="-mx-4 mb-[18px] bg-[var(--ph-surface)] pt-[2px] pb-[10px] md:mx-0">
+        <div className="px-4 md:px-0">
+          <div data-testid="net-worth">
+            {sheetMissing.length > 0 ? (
+              <p className="py-6 text-center text-[15px] leading-[20px] text-[var(--ph-warn)]">No {sheetMissing.join(', ')} rate yet, so net worth cannot be added up.</p>
+            ) : (
+              <Hero minor={sheet.netWorthMinor} currency={ws.baseCurrency} change={rangeChange(shown)} caption={covered} />
             )}
-          </section>
+          </div>
         </div>
-
-        <div className="min-w-0">
-          <PanelHeader title="Needs attention" />
-          {attention.length === 0 && warnings.length === 0 ? (
-            <Panel wide>
-              <p className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">Nothing waiting. Prices and estimates are fresh.</p>
-            </Panel>
-          ) : (
-            <>
-              {attention.length > 0 && (
-                <InsetGroup wide>
-                  {attention.map((item) => (
-                    /* The row is the link it used to hold; what it was called stays, on the right, in the tint. */
-                    <InsetRow
-                      key={item.key}
-                      to={item.to}
-                      params={item.params}
-                      title={item.text}
-                      value={item.action}
-                      valueTone={item.tone === 'warn' ? 'warn' : 'tint'}
-                      chevron={false}
-                    />
-                  ))}
-                </InsetGroup>
-              )}
-              {/*
-               * The Dashboard's two lines, which the attention rows cannot hold: neither is a row with a screen
-               * behind it — one is a rate to refresh, the other points that will lapse on a day.
-               */}
-              {warnings.length > 0 && (
-                <div className="px-[4px] pt-[8px]">
-                  {warnings.map((warning) => (
-                    <p key={warning} className="pb-[4px] text-[12.5px] leading-[16px] text-[var(--ph-warn)]">
-                      {warning}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* What the month has done, and what the cards still owe: the Dashboard's own two questions, kept. */}
-          <InsetGroup wide header="This month">
-            <InsetRow
-              title="Spent"
-              subtitle={monthFlows.data ? <>Last month <Money minor={monthFlows.data.lastSpending} currency={ws.baseCurrency} /></> : undefined}
-              value={monthFlows.data ? <Money minor={monthFlows.data.spending} currency={ws.baseCurrency} /> : '…'}
-              valueTone="alarm"
-              chevron={false}
-            />
-            <InsetRow
-              title="Income"
-              value={monthFlows.data ? <Money minor={monthFlows.data.income} currency={ws.baseCurrency} /> : '…'}
-              valueTone="ink"
-              chevron={false}
-            />
-          </InsetGroup>
-
-          {cards.length > 0 && (
-            <InsetGroup wide header="Credit cards owed">
-              {cards.map((card) => (
-                /* The line is the link: it lands on that card's own transactions. */
-                <InsetRow
-                  key={card.id}
-                  to="/transactions"
-                  search={{ account: card.id }}
-                  title={card.name}
-                  value={<Money minor={displayAmount('liability', balances.data?.rows[card.id] ?? 0)} currency={card.currency!} />}
-                  valueTone="ink"
-                />
-              ))}
-            </InsetGroup>
-          )}
+        <NetWorthChart
+          values={shown.map((point) => point.netWorthMinor)}
+          labels={shown.map((point) => axisLabel(point.month, shown.length))}
+          currency={ws.baseCurrency}
+        />
+        {sheetMissing.length === 0 && unchartable.length > 0 && (
+          <p data-testid="chart-missing" className="px-4 pt-[8px] text-[13px] leading-[17px] text-[var(--ph-warn)] md:px-0">
+            No {unchartable.join(', ')} rate for an earlier month, so the line breaks there.
+          </p>
+        )}
+        {/*
+         * The range sits under the drawing it governs, as it does in Health: the figure and its line are read first,
+         * and the control under them says how far back they were read.
+         */}
+        <div className="px-4 pt-[14px] md:px-0">
+          <SegmentedControl
+            width={PHONE_WIDTH - 32}
+            label="Range"
+            segments={RANGES}
+            value={span}
+            onChange={(key) => setSpan(key as Span)}
+            max={RANGES.length}
+          />
         </div>
-      </div>
+      </section>
 
       <section className="mb-[18px]">
         <PanelHeader title="Balance sheet" />
@@ -379,12 +306,15 @@ export function OverviewPage() {
         ) : (
         <>
         <div className="grid gap-6 md:grid-cols-2">
-          <SheetColumn title="What you own" groups={sheet.assetGroups} totalMinor={sheet.assetsTotalMinor} currency={ws.baseCurrency} />
+          <SheetColumn title="What you own" groups={sheet.assetGroups} totalMinor={sheet.assetsTotalMinor} currency={ws.baseCurrency} subtypes={subtypes} open={openDrawers} onToggle={toggleDrawer} />
           <SheetColumn
             title="What you owe"
             groups={[sheet.shortTerm, sheet.longTerm].filter((group) => group.rows.length > 0)}
             totalMinor={sheet.liabilitiesTotalMinor}
             currency={ws.baseCurrency}
+            subtypes={subtypes}
+            open={openDrawers}
+            onToggle={toggleDrawer}
           />
         </div>
         </>

@@ -23,11 +23,15 @@ async function addGold(page: Page) {
 }
 
 /**
- * The Dashboard and this page were one subject drawn twice: the figure and the year behind it, what the month has
- * done, what the cards owe, what waits to be refreshed, the balance sheet under it and the ratios beside it. They are
- * one page now, and this is the list that says nothing was dropped on the way — every heading the two screens had.
+ * The Dashboard and this page were one subject drawn twice: the figure and the year behind it, what waits to be
+ * refreshed, the balance sheet under it and the ratios beside it. They are one page now, and this is the list that
+ * says nothing was dropped on the way — every heading that is still this page's to say.
+ *
+ * The month's own spending and income and what the cards owe are not on it any more, and this says so: the Cashflow
+ * screen answers the first two questions and the Cards screen the third, and a figure drawn on two screens is a
+ * figure that can disagree with itself.
  */
-test('the two pages are one, and neither one lost a block', async ({ page }) => {
+test('the two pages are one, and what is left of them is all here', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
 
@@ -37,13 +41,15 @@ test('the two pages are one, and neither one lost a block', async ({ page }) => 
 
   // What the Dashboard had.
   await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
-  await expect(page.getByRole('heading', { name: 'This month' })).toBeVisible();
-  const month = page.locator('section').filter({ hasText: 'This month' });
-  await expect(month.getByText('Spent')).toBeVisible();
-  await expect(month.getByText('Income')).toBeVisible();
-  const owed = page.locator('section').filter({ hasText: 'Credit cards owed' });
-  await expect(owed.getByText('BCA KrisFlyer')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Needs attention' })).toBeVisible();
+  // Both of these are the Cashflow screen's and the Cards screen's subject now, and are on neither this page nor
+  // the figure that repeats them.
+  await expect(page.getByRole('heading', { name: 'This month' })).toHaveCount(0);
+  await expect(page.getByText('Credit cards owed')).toHaveCount(0);
+
+  // What waits is a screen of its own behind a corner glyph, and the glyph is not this page's heading either: the
+  // page is about a figure, and the corner carries the count rather than the list.
+  await expect(page.getByRole('heading', { name: 'Needs attention' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Needs attention' })).toBeVisible();
 
   // What the Overview had, with the ratios one tap away in the corner and the three sections behind the `…` beside it.
   await expect(page.getByRole('button', { name: 'More' })).toBeVisible();
@@ -62,6 +68,61 @@ test('shows net worth, the balance sheet and both sides of it', async ({ page })
   await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
   await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
   await expect(page.getByText('Due within a year').first()).toBeVisible();
+});
+
+/**
+ * A list of everything you own is as long as the accounts you have opened, so the balance sheet folds it by what each
+ * account *is*: current accounts with current accounts. The drawer carries what it holds and what it comes to, so a
+ * type reads without being opened — and it is shut to begin with, because the point of folding a page of names away is
+ * that what you have reads as a handful of types.
+ */
+test('folds each side of the balance sheet by kind, shut to begin with', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await addAccount(page, 'Jenius', 'bank', 'Current balance', '20000000');
+  await addAccount(page, 'BCA Dollar', 'savings', 'Current balance', '5000000');
+
+  await page.goto('/net-worth');
+  const drawer = page.getByTestId('type-drawer-liquid:bank');
+  await expect(drawer).toContainText('Current account');
+  await expect(drawer).toContainText('2 accounts');
+  await expect(drawer).toContainText('70.000.000');
+  await expect(drawer).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText('BCA Tahapan')).toHaveCount(0);
+
+  await drawer.click();
+  await expect(drawer).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('BCA Tahapan')).toBeVisible();
+  await expect(page.getByText('Jenius')).toBeVisible();
+
+  // A saving account is a kind of its own, so it sits behind its own drawer rather than under the bank.
+  await expect(page.getByTestId('type-drawer-liquid:savings')).toContainText('1 account');
+});
+
+/**
+ * The figure is read over a range, and the range is chosen under the line it governs: six of them, from the half year
+ * the page opens on to everything the snapshots hold.
+ */
+test('reads the figure over a range chosen under the line', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+
+  await page.goto('/net-worth');
+  const ranges = page.getByRole('radiogroup', { name: 'Range' });
+  await expect(ranges.getByRole('radio')).toHaveCount(6);
+  await expect(ranges.getByRole('radio', { name: '6M' })).toHaveAttribute('aria-checked', 'true');
+
+  // Half a year of months, named by their name alone: nothing in six months needs a year beside it.
+  const names = page.getByTestId('net-worth-months').locator('text');
+  await expect(names).toHaveCount(6);
+  await expect(names.first()).toHaveText(/^[A-Z][a-z]{2}$/);
+
+  // Five years of them, named with the year, because "Jan" on its own could be any of five.
+  await ranges.getByRole('radio', { name: '5Y' }).click();
+  await expect(ranges.getByRole('radio', { name: '5Y' })).toHaveAttribute('aria-checked', 'true');
+  await expect(names.first()).toHaveText(/^[A-Z][a-z]{2} \d{2}$/);
+
+  // And the change the figure has made is under it: the arrow says which way it went, and the word beside the arrow is
+  // what a screen reader is given in its place.
+  await expect(page.getByTestId('net-worth')).toContainText(/[▲▼] (Up|Down) Rp/);
 });
 
 test('says it does not know the cash-flow ratios until there are transactions', async ({ page }) => {
