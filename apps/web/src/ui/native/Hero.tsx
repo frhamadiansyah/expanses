@@ -1,6 +1,19 @@
 import type { ReactNode } from 'react';
 import { cx } from '../index';
-import { heroFigure, progressFraction, progressPercent, progressTone } from './hero-figure';
+import { heroFigure, figureSize, progressFraction, progressPercent, progressTone } from './hero-figure';
+
+/**
+ * The figure's sizes, largest first: `figureSize` says which, from how wide the figure turns out to be.
+ *
+ * Each step carries its own line box, a shade under the iOS ratio the 40 px one is drawn on, because the figure is
+ * the only thing in that line.
+ */
+const FIGURE_SIZE_CLASS: Record<number, string> = {
+  40: 'text-[40px] leading-[46px]',
+  34: 'text-[34px] leading-[40px]',
+  30: 'text-[30px] leading-[36px]',
+  26: 'text-[26px] leading-[32px]',
+};
 import { toneClass } from './InsetList';
 import type { Direction } from './row';
 
@@ -99,7 +112,7 @@ export function Hero({
         </span>
       )}
       {label && <p className="mb-[2px] text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">{label}</p>}
-      <p className={cx('tabular text-[40px] leading-[46px] font-bold tracking-[-0.02em]', toneClass(figure.tone))}>
+      <p className={cx('tabular font-bold tracking-[-0.02em]', FIGURE_SIZE_CLASS[figureSize(figure.text)], toneClass(figure.tone))}>
         {/* The estimate sign is a caveat, not part of the figure: it wears the quiet ink, as the label does. */}
         {approximate && minor !== null && <span className="text-[var(--ph-ink-3)]">≈ </span>}
         {figure.text}

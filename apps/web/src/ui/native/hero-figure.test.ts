@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { heroFigure, progressFraction, progressPercent, progressTone } from './hero-figure';
+import { FIGURE_WIDTH, figureSize, heroFigure, progressFraction, progressPercent, progressTone } from './hero-figure';
+import { textWidth } from './metrics';
+
+describe('figureSize', () => {
+  it('draws a figure that fits the column at the kit 40', () => {
+    expect(figureSize('Rp 45.000')).toBe(40);
+    expect(figureSize('Rp 4.250.000')).toBe(40);
+  });
+
+  it('steps a long figure down, rather than letting it run off the screen', () => {
+    // A Jakarta house and a mortgage: twelve digits at 40 px is wider than a phone's panel, and the page went with it.
+    expect(figureSize('Rp 171.274.729')).toBe(34);
+    expect(figureSize('Rp 1.023.015.200')).toBe(30);
+  });
+
+  it('never picks a size that does not fit, for as long as the floor can hold it', () => {
+    for (const minor of [45_000, 4_250_000, 171_274_729, 1_023_015_200, 12_345_678_901]) {
+      const { text } = heroFigure(minor, 'IDR');
+      expect(textWidth(text, figureSize(text)), text).toBeLessThanOrEqual(FIGURE_WIDTH);
+    }
+  });
+
+  it('stops at the floor rather than shrinking money into a caption', () => {
+    expect(figureSize('Rp 12.345.678.901.234.567')).toBe(26);
+  });
+});
 
 describe('heroFigure', () => {
   it('draws a purchase in alarm, formatted with no decimals for IDR', () => {
