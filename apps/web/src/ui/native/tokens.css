@@ -95,10 +95,11 @@
 
   /*
    * A card laid over another in the Wallet stack: a soft shadow cast up along its top edge onto the card beneath,
-   * which is what makes a pile of bands read as a pile of cards. And the front card's own lift off the page.
+   * which is what makes a pile of bands read as a pile of cards — two cards touching rather than a card floating.
+   * There is no second token for lifting the pile off the page: a card is art lying on the ground, and the halo
+   * under the pile was the one shadow in the app with nothing beneath it to cast it.
    */
   --ph-card-edge: 0 -3px 8px -2px rgb(0 0 0 / 0.28), 0 -0.5px 0 rgb(0 0 0 / 0.12);
-  --ph-card-lift: 0 10px 24px -10px rgb(0 0 0 / 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -141,7 +142,6 @@
 
     /* On black a shadow alone vanishes, so the edge also catches a hairline of light, as a card does at night. */
     --ph-card-edge: 0 -3px 10px -2px rgb(0 0 0 / 0.7), 0 -0.5px 0 rgb(255 255 255 / 0.14);
-    --ph-card-lift: 0 10px 24px -10px rgb(0 0 0 / 0.9);
   }
 }
 

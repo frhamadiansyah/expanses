@@ -798,7 +798,9 @@ export function CardFace({
       aria-label={hidden ? undefined : `${name}${last4 ? ` ending ${last4}` : ''}${holderName ? `, ${holderName}` : ''}`}
       data-testid="card-face"
       className={cx(
-        'relative shrink-0 overflow-hidden rounded-[0.9rem] shadow-[0_8px_20px_-6px_rgb(0_0_0/0.45)] select-none',
+        // A face is art, not a surface lifted off the page: it casts nothing. The seams between the cards in a
+        // pile belong to the stack, which knows where the card beneath it is.
+        'relative shrink-0 overflow-hidden rounded-[0.9rem] select-none',
         // Fixed print, never Tailwind's white or slate: those are theme tokens now, and a card does not change colour at night.
         dark ? 'text-[var(--ph-print-dark)]' : 'text-[var(--ph-print-light)]',
         portrait ? 'aspect-[0.6305]' : 'aspect-[1.586]',

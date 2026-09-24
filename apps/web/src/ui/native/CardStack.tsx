@@ -224,8 +224,8 @@ export function CardStack({
                     width: layout.cardWidth,
                     height: layout.cardHeight,
                     borderRadius: radius,
-                    // A soft shadow cast up along each card's top edge onto the card beneath: the pile reads as cards.
-                    boxShadow: 'var(--ph-card-edge), var(--ph-card-lift)',
+                    // The seam where this card meets the one beneath it: what makes a pile of bands read as cards.
+                    boxShadow: 'var(--ph-card-edge)',
                     pointerEvents: 'none',
                   }}
                 >
