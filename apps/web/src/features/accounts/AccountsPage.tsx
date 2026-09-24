@@ -1,5 +1,5 @@
-import { ASSET_ITEMS, CASH_ITEMS, type AssetKind, displayAmount, presetFor, sumToBase } from '@expanses/core';
-import { type AccountRow, type AccountSubtype, type AssetProfileRow, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
+import { CASH_ITEMS, displayAmount, sumToBase } from '@expanses/core';
+import { type AccountRow, type AccountSubtype, archiveAccount, pocketParentIds, renameAccount } from '@expanses/db';
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -9,7 +9,7 @@ import { isMoneyAccount, useAccounts, useBalances, useInvalidateAll } from '../.
 import { depositLine } from '../networth/deposit-terms';
 import { DEBT_GROUP_LABELS } from '../networth/debt-rows';
 import { PLAN_GROUP_LABELS } from '../networth/labels';
-import { useAssetProfiles, useAssetValues, useDepositTerms } from '../networth/queries';
+import { useAssetValues, useDepositTerms } from '../networth/queries';
 import { cx, Empty, errorMessage, Money } from '../../ui';
 import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, LargeTitle, LineAction, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
 import { moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
@@ -21,26 +21,24 @@ interface Drawer {
   label: string;
 }
 
-/** The catalogue item a Coretax code names, so a holding can be drawn in the report's own words. */
-const ITEM_BY_CODE = new Map(ASSET_ITEMS.map((item) => [item.code, item]));
-
 /**
- * The kinds of account, gathered the way the Assets page gathers what you own and the Debts page gathers what you
- * owe: money first, then what is invested, what is for use, what is owed to you — and under them everything you owe,
- * in one section, as the Debts page tells it.
+ * What this page lists: the accounts the ledger posts against.
  *
- * The words are the plan groups the Assets page already names its groups by, and the debts are the Debts page's own
- * three, so the same account is called the same thing on every page that lists it.
+ * Money you can move, money you lent, the cards you spend with, the loans you pay, the people you settle with —
+ * every account a transaction can name, which is the same set the picker behind "Paid with" offers. What you merely
+ * own and value is not one of them: shares, gold, art, a house and a car never take a transaction, and they are
+ * listed where they are priced, on Net worth's Assets. The two lists are meant to differ: a page whose tile says
+ * "Money" over a list that also holds a gold bar and a car is saying two things at once.
  *
- * Each group divides into drawers by what an account *is*: money by its type, a holding by the thing it holds, a
- * debt by which kind of debt it is. `order` is the order the drawers read in — the catalogue's own where there is
- * one, so cash comes before the account that holds it.
+ * Each group divides into drawers by what an account *is*: money by its type, a debt by which kind of debt it is.
+ * `order` is the order the drawers read in — the catalogue's own for money, so cash comes before the account that
+ * holds it, and the Debts page's own for the debts.
  */
 const GROUPS: {
   key: string;
   label: string;
   subtypes: AccountSubtype[];
-  drawer: (account: AccountRow, profile: AssetProfileRow | undefined) => Drawer;
+  drawer: (account: AccountRow) => Drawer;
   order: readonly string[];
 }[] = [
   {
@@ -52,29 +50,10 @@ const GROUPS: {
     order: CASH_ITEMS.map((item) => item.id),
   },
   {
-    key: 'invest',
-    label: PLAN_GROUP_LABELS.invest,
-    subtypes: ['investment'],
-    /* Gold and shares are both `investment` accounts, so the type says nothing. The drawer is the thing itself,
-     * taken from the profile the asset's own page keeps: its catalogue item where one is set — "Gold bullion",
-     * "Listed shares" — and the kind of asset it is otherwise. */
-    drawer: (account, profile) => {
-      const item = profile?.coretaxCode ? ITEM_BY_CODE.get(profile.coretaxCode) : undefined;
-      if (item) return { key: `item:${item.id}`, label: item.label };
-      return { key: `kind:${profile?.assetKind ?? 'other'}`, label: profile ? presetFor(profile.assetKind).label : SUBTYPE_LABELS.investment };
-    },
-    order: ASSET_ITEMS.map((item) => `item:${item.id}`),
-  },
-  {
-    key: 'use',
-    label: PLAN_GROUP_LABELS.use,
-    subtypes: ['property', 'vehicle'],
-    drawer: (account) => ({ key: account.subtype, label: SUBTYPE_LABELS[account.subtype] }),
-    order: ['property', 'vehicle'],
-  },
-  {
     key: 'owed',
     label: PLAN_GROUP_LABELS.owed,
+    /* Money you lent is settled by a transaction, so it is managed here — one side of the same page as the
+     * people you owe. */
     subtypes: ['receivable'],
     drawer: (account) => ({ key: account.subtype, label: SUBTYPE_LABELS[account.subtype] }),
     order: ['receivable'],
@@ -93,6 +72,9 @@ const GROUPS: {
     order: ['loan', 'card', 'person'],
   },
 ];
+
+/** Every subtype this page can list, so an account it does not list is never counted or drawn. */
+const LISTED = new Set<AccountSubtype>(GROUPS.flatMap((group) => group.subtypes));
 
 /** The kinds of account whose own page is on `/accounts`: money, not things. */
 const CASH_SUBTYPES = new Set<string>(CASH_ITEMS.map((item) => item.id));
@@ -331,16 +313,14 @@ export function AccountsPage() {
   const accounts = useAccounts();
   const balances = useBalances();
   const everything = accounts.data ?? [];
-  const money = everything.filter(isMoneyAccount);
+  /* What this page lists, and what it does not: money, the money you lent, and what you owe. See `GROUPS`. */
+  const money = everything.filter((account) => LISTED.has(account.subtype) && isMoneyAccount(account));
   const all = balances.data ?? {};
   const parents = pocketParentIds(everything);
   // Every money account's currency, not only the pockets': the Money tile converts them all.
   const rates = useHeldRates(everything.filter((a) => a.kind === 'asset' && a.archivedAt === null).map((a) => a.currency!));
   const held = rates.data?.rates ?? {};
   const summary = moneySummary(everything, all, ws.baseCurrency, held);
-  /* What a holding *is* lives on its asset profile, not on the account: a drawer asks it. */
-  const profiles = useAssetProfiles();
-  const profileOf = (id: string) => (profiles.data ?? []).find((row) => row.accountId === id);
   /**
    * Which type drawers are open, by `group:type`. Closed to begin with: the page opens as a list of sums, and the
    * balances inside a type are one tap away rather than a wall of rows nobody asked for.
@@ -363,7 +343,7 @@ export function AccountsPage() {
   const drawersOf = (group: (typeof GROUPS)[number], rows: AccountRow[]) => {
     const found = new Map<string, Drawer & { rows: AccountRow[] }>();
     for (const account of rows) {
-      const drawer = group.drawer(account, profileOf(account.id));
+      const drawer = group.drawer(account);
       const at = found.get(drawer.key);
       if (at) at.rows.push(account);
       else found.set(drawer.key, { ...drawer, rows: [account] });
