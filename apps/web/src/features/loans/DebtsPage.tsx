@@ -160,7 +160,7 @@ export function DebtsPage() {
       </>
     ) : null;
 
-  const actions: CornerAction[] = [{ key: 'add', label: 'Add a debt', glyph: <Plus size={20} aria-hidden />, to: '/debts/new' }];
+  const actions: CornerAction[] = [{ key: 'add', label: 'Add a debt', glyph: <Plus size={22} aria-hidden />, to: '/debts/new' }];
 
   const due = debts?.due;
   const dueLine =

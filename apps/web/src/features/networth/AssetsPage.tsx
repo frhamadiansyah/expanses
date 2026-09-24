@@ -93,7 +93,7 @@ export function AssetsPage() {
    * glyph, and it opens the add-asset page — the picker that asks what you own and then draws the form that
    * choice needs — rather than unfolding every field of every kind over the list you came to read.
    */
-  const actions: CornerAction[] = [{ key: 'add', label: 'Add asset', glyph: <Plus size={20} aria-hidden />, to: '/net-worth/assets/new' }];
+  const actions: CornerAction[] = [{ key: 'add', label: 'Add asset', glyph: <Plus size={22} aria-hidden />, to: '/net-worth/assets/new' }];
 
   return (
     <div className={SCREEN}>

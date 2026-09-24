@@ -131,7 +131,7 @@ export function KitPage() {
   /* The pushed title's own corner, named as the page that wears it names it, so the specimen is not a second set of
    * words for the same action. One action, because that is all Lend & borrow has: a second and a third would fold
    * behind a `…`, exactly as the large title above demonstrates. */
-  const PUSHED_ACTIONS: CornerAction[] = [{ key: 'add', label: 'Add a loan', glyph: <Plus size={20} aria-hidden />, run: () => {} }];
+  const PUSHED_ACTIONS: CornerAction[] = [{ key: 'add', label: 'Add a loan', glyph: <Plus size={22} aria-hidden />, run: () => {} }];
 
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">

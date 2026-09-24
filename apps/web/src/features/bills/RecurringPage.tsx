@@ -101,7 +101,7 @@ export function RecurringPage() {
   const title = selecting ? `${picked.size} selected` : 'Recurring';
   // Glyphs at every width, with the names they always had: a screen reader and a test still hear "New bill".
   const actions: CornerAction[] = selecting
-    ? [{ key: 'done', label: 'Done', glyph: <Check size={20} aria-hidden />, run: doneSelecting }]
+    ? [{ key: 'done', label: 'Done', glyph: <Check size={22} aria-hidden />, run: doneSelecting }]
     : [
         { key: 'select', label: 'Select bills to pay', glyph: <ListChecks size={20} aria-hidden />, run: () => setSelecting(true) },
         { key: 'new', label: 'New bill', glyph: <Plus size={22} aria-hidden />, to: '/bills/new' },

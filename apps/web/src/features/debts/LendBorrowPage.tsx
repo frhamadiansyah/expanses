@@ -72,7 +72,7 @@ export function LendBorrowPage() {
   const shown: Side = side ?? (only && owedToYou.length === 0 ? 'owe' : 'owed');
 
   // While the inline form is open there is no action to show, and an empty corner would still take its gap.
-  const actions: CornerAction[] = adding ? [] : [{ key: 'add', label: 'Add a loan', glyph: <Plus size={20} aria-hidden />, run: () => setAdding(true) }];
+  const actions: CornerAction[] = adding ? [] : [{ key: 'add', label: 'Add a loan', glyph: <Plus size={22} aria-hidden />, run: () => setAdding(true) }];
 
   return (
     <div className={SCREEN}>

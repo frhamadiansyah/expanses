@@ -515,7 +515,7 @@ export function AccountsPage() {
    * account — a page whose corner offers what the page is not reads as a menu of everything. Both keep their own
    * addresses, `/import` and `/backup`.
    */
-  const actions: CornerAction[] = [{ key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={20} aria-hidden /> }];
+  const actions: CornerAction[] = [{ key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={22} aria-hidden /> }];
   return (
     <div className={SCREEN}>
       <LargeTitle title="Accounts" actions={actions} />

@@ -105,7 +105,7 @@ export function BillFormPage({ billId }: { billId?: string }) {
         back={billId ? 'Bill' : 'Bills'}
         backTo={backTo}
         backParams={backParams}
-        actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, run: () => form.current?.requestSubmit() }]}
+        actions={[{ key: 'save', label: 'Save', glyph: <Check size={22} aria-hidden />, run: () => form.current?.requestSubmit() }]}
       />
       {waiting ? (
         <p className="text-sm text-[var(--ph-ink-3)]">Loading…</p>
