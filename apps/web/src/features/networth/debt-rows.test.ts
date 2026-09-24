@@ -138,12 +138,13 @@ describe('groupDebts', () => {
     expect(people.totalMinor).toBe(1_398_000);
   });
 
-  it('owes a card everything not yet paid — billed and unbilled — as its ledger balance says, and says which is which', () => {
+  it('owes a card everything not yet paid — billed and unbilled — as its ledger balance says, and says nothing more', () => {
     const debts = groupDebts(sample());
     const [row] = debts.groups.find((group) => group.kind === 'card')!.rows;
     // 6.360.000 billed and unpaid, 2.100.000 bought since: the balance is both, read and not rebuilt.
     expect(row).toMatchObject({ name: 'BCA KrisFlyer', minor: 8_460_000, last4: '4417', icon: 'card' });
-    expect(row!.detail).toBe('due 5 Oct · 2.100.000 unbilled');
+    // Which part is billed, and the day the bill falls due, is the card's own page: the row draws one line.
+    expect(row!.detail).toBe('');
   });
 
   it('lists a card at the very figure its own page reads for the Unpaid tile and the current balance', () => {
@@ -166,10 +167,10 @@ describe('groupDebts', () => {
     expect(group.totalMinor).toBe(0);
   });
 
-  it('says a card with nothing billed yet has nothing billed, and still owes what it has bought', () => {
+  it('lists a card with nothing billed yet at what it has bought, and says nothing extra', () => {
     const debts = groupDebts(sample({ cards: { kris: card({ last4: '3091', billedMinor: 0 }) } }));
     const [row] = debts.groups.find((group) => group.kind === 'card')!.rows;
-    expect(row).toMatchObject({ minor: 8_460_000, detail: 'nothing billed' });
+    expect(row).toMatchObject({ minor: 8_460_000, detail: '' });
   });
 
   it('leaves a cleared loan out of the list and the totals, and keeps it for the cleared list', () => {

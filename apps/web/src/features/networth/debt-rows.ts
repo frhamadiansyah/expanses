@@ -124,15 +124,6 @@ function loanDetail(terms: LoanTermsRow | undefined, today: string): string {
   return [terms.lenderName, percent(rate), `${terms.tenorMonths} months`, terms.isHomeLoan ? 'mortgage' : null].filter(Boolean).join(' · ');
 }
 
-function cardDetail(facts: CardFacts | undefined, owedMinor: number, currency: string): string {
-  if (!facts || !facts.hasTerms) return 'add the billing date';
-  if (facts.billedMinor <= 0) return 'nothing billed';
-  const unbilled = owedMinor - facts.leftToPayMinor;
-  const tail = unbilled > 0 ? ` · ${bareFigure(unbilled, currency)} unbilled` : '';
-  if (facts.leftToPayMinor > 0 && facts.dueOn) return `due ${dayMonth(facts.dueOn)}${tail}`;
-  return `bill paid${tail}`;
-}
-
 /**
  * What a loan or a card owes: the ledger's balance, billed and unbilled, instalments included, and never below
  * nothing (a card paid past its bill owes nothing). The card's own page reads its Unpaid tile and its current
@@ -183,7 +174,13 @@ export function groupDebts(input: DebtInputs, today: string = new Date().toISOSt
       const minor = owed(account.id);
       const facts = cards[account.id];
       const credit = creditMinor(balances, account.id);
-      const detail = credit > 0 ? creditLine(credit, currency) : cardDetail(facts, minor, currency);
+      /*
+       * A card's row says nothing under its name but the credit the bank holds for an overpaid one. Which part of
+       * what it owes is billed, and the day the bill falls due, belongs to the card's own page: its statements band
+       * is the whole explanation, and the words here wrapped the row onto a second line while every other debt's row
+       * was one.
+       */
+      const detail = credit > 0 ? creditLine(credit, currency) : '';
       rows.push({ key: account.id, kind: 'card', accountId: account.id, personName: null, name: account.name, detail, icon: 'card', last4: facts?.last4 ?? null, minor, currency, ...converted(minor, currency, baseCurrency, ratesToBase) });
     }
   }

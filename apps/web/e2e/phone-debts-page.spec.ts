@@ -24,7 +24,8 @@ test('by thumb: Debts shows all three groups with the right figures, each debt i
   await expect(dollar).toContainText('≈ Rp 16.250.000');
   const card = page.getByRole('link', { name: /BCA Visa/ });
   await expect(card).toContainText('2.450.000');
-  await expect(card).toContainText('450.000 unbilled');
+  // One line per debt on the phone too: no bill and no unbilled part on the row.
+  await expect(card.getByText(/unbilled|due \d/)).toHaveCount(0);
 
   // The due split sits under the list; within a year is the balance sheet's own figure.
   const due = page.getByTestId('debts-due');

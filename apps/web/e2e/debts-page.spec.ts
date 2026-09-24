@@ -45,7 +45,8 @@ test('Debts shows all three groups with the right figures, and the due split is 
   // The figure is bare, as the group's header names the currency — the same way Assets draws its rows.
   const card = debtRow(page, 'BCA Visa');
   await expect(card).toContainText('2.450.000');
-  await expect(card).toContainText(/due \d+ \w{3} · 450\.000 unbilled/);
+  // One line per debt: which part is billed, and the day the bill falls due, is the card's own page.
+  await expect(card.getByText(/unbilled|due \d/)).toHaveCount(0);
 
   // The mortgage says what it is, the way the Loans page did.
   await expect(debtRow(page, 'KPR BCA')).toContainText('BCA · 9% · 180 months');
@@ -81,8 +82,8 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await page.getByRole('link', { name: 'Debts', exact: true }).first().click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
 
-  // A tap anywhere on a row, not only on its name: the row itself is the target.
-  await debtRow(page, 'BCA Visa').getByText(/unbilled/).click();
+  // A tap anywhere on a row, not only on its name: its own figure opens it.
+  await debtRow(page, 'BCA Visa').getByText('2.450.000').click();
   await expect(page).toHaveURL(/\/cards\/[^/?]+/);
   await expect(page.getByRole('heading', { name: 'BCA Visa' })).toBeVisible();
   // It opens raised out of the Wallet stack, and its Unpaid tile is the very figure the Debts row showed.

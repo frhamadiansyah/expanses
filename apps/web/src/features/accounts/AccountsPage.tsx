@@ -8,12 +8,12 @@ import { SUBTYPE_LABELS } from '../../lib/account-types';
 import { isMoneyAccount, useAccounts, useBalances } from '../../lib/queries';
 import { useSetAsideViews } from '../goals/queries';
 import { useCardFacts, useScheduledAsks } from '../loans/queries';
-import { DEBT_GROUP_LABELS, dayMonth, owedMinor } from '../networth/debt-rows';
+import { DEBT_GROUP_LABELS, owedMinor } from '../networth/debt-rows';
 import { PLAN_GROUP_LABELS } from '../networth/labels';
 import { useAssetValues } from '../networth/queries';
 import { ShareBar } from '../networth/ShareBar';
 import { cx, Empty, Money } from '../../ui';
-import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, LineAction, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
+import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
 import { SPENDABLE_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
 
@@ -176,10 +176,10 @@ function TypeDrawer({ label, count, figure, open, separator, testId, onToggle }:
 /**
  * One section of the account list.
  *
- * A native list: one group, a line per account with its figure on the right, and the one thing that can be done to
- * it — a card's points door — wrapped under the name rather than pushed into a fifth and sixth column. Renaming and
- * archiving are not offered here: an account's own page has both. The table this replaces scrolled sideways on a
- * phone, and a list of what you own is the one place that must not.
+ * A native list: one group, and a line per account with its figure on the right. Nothing can be done to an account
+ * from here — no rename, no archive, no card's points to set up: its own page carries all three, and its name opens
+ * it. The table this replaces scrolled sideways on a phone, and a list of what you own is the one place that must
+ * not.
  *
  * The tax code an account files under is *not* here. It is a figure for the report, not for this page, and a row
  * of four-digit codes under every balance read as noise; the asset's own page still names it, and still changes it.
@@ -269,12 +269,10 @@ function AccountList({
   };
 
   /**
-   * One account's line: what it is called, what type it is, its figure, and the one thing that can be done to it
-   * from here — the points door a card carries.
-   *
-   * Renaming and archiving are deliberately not here. An account's own page already carries both, in the two
-   * corners beside its name, and a list of what you own is not the place to be editing it by accident. A function
-   * rather than a map inline, because a type's drawer draws its own rows under itself.
+   * One account's line: what it is called, what type it is, and its figure. Nothing is done to an account from here —
+   * not renamed, not archived, and a card's points set up nowhere but on the card. Its own page carries every one of
+   * those, in the two corners beside its name, and the name is the door to it. A function rather than a map inline,
+   * because a type's drawer draws its own rows under itself.
    */
   const line = (account: AccountRow, separator: boolean, depth = 0) => (
     <li key={account.id}>
@@ -292,11 +290,6 @@ function AccountList({
         figure={rowFigure(account)}
       >
         {parents.has(account.id) && <span className="shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]">Each pocket files its own row</span>}
-        {account.subtype === 'credit_card' && (
-          <LineAction to="/cards/$cardId" params={{ cardId: account.id }}>
-            Set up points
-          </LineAction>
-        )}
       </ActionLine>
     </li>
   );
@@ -424,25 +417,17 @@ export function AccountsPage() {
     const whole = parents.has(account.id) ? groupedFigure({ totalMinor: read.balanceMinor, missing: [] }, read.currency, converted).text : <Money minor={read.balanceMinor} currency={read.currency} />;
     return { minor: read.freeMinor, currency: read.currency, under: <>of {whole} held</>, approximate: parents.has(account.id) && converted };
   };
-  /** What one card's row says under its balance: the bill that is out, the day it falls due, what is not on it yet. */
-  const askOn = (account: AccountRow): ReactNode => {
-    if (account.subtype !== 'credit_card') return null;
-    const facts = cards.data?.[account.id];
-    if (!facts) return null;
-    const currency = account.currency ?? ws.baseCurrency;
-    const whole = owedMinor(all, account.id);
-    if (facts.leftToPayMinor <= 0) return `${formatMinor(whole, currency)} not billed yet`;
-    const tail = Math.max(0, whole - facts.leftToPayMinor);
-    return `${formatMinor(facts.leftToPayMinor, currency)}${facts.dueOn ? ` due ${dayMonth(facts.dueOn)}` : ' billed'}${tail > 0 ? ` · ${formatMinor(tail, currency)} unbilled` : ''}`;
-  };
+
   /**
-   * What one debt's row reads as: what it asks you to pay, with the facts that explain it underneath.
+   * What one debt's row reads as: what it asks you to pay. Only a loan says anything underneath it.
    *
    * A loan wants its instalment — its principal is a balance-sheet fact and appears nowhere on this page — and the
    * line under it says when the debt ends, which is how a balloon inside the term shows itself without a principal
    * being printed. A card wants everything it has taken, billed or not: that money is already spent, and a page that
-   * showed only the bill would flatter the reader. A person wants what you owe them, and nothing more is said
-   * because a promise has no schedule.
+   * showed only the bill would flatter the reader. Which part of it is billed, and the day the bill falls due, is
+   * the card's own page — its statements band is the whole explanation — so the row says nothing more: a figure with
+   * words under it reads as two debts where there is one, and a row that wraps is a row that no longer lines up. A
+   * person wants what you owe them, and nothing more is said because a promise has no schedule.
    *
    * Null for a debt with nothing to ask: a loan whose schedule cannot be read draws its balance instead, as it always
    * did, and a card paid past its bill owes nothing.
@@ -456,7 +441,7 @@ export function AccountsPage() {
     }
     const owes = owedMinor(all, account.id);
     if (owes <= 0) return null;
-    return { minor: owes, currency, under: (account.subtype === 'credit_card' ? askOn(account) : null) ?? undefined };
+    return { minor: owes, currency };
   };
   /** What each kind of debt says beside its drawer's count: the cards' unbilled total, and nothing for the rest. */
   const DEBT_ASKS: Record<string, string | null> = { loan: null, card: cardAsk, person: null };
