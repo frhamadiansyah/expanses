@@ -75,9 +75,10 @@ test('the laptop: pick a goal, say it is borrowing, and the goal and the account
   await page.goto('/accounts');
   await expect(page.getByText('Free to spend')).toBeVisible();
   // The tile's first line is what the rows below already show: money that can be moved, less what goals claimed it.
-  // The promise is not a line of its own — a row draws its free figure with the balance under it, and the account's
-  // own page takes a promise apart goal by goal.
-  await expect(page.getByText('free of what goals claimed')).toBeVisible();
+  // Nothing under it says so in words any more — the account's own page takes a promise apart goal by goal — and the
+  // line carries no caption either: an estimate says so with the kit's ≈ on the figure itself.
+  await expect(page.getByText('Spending money')).toBeVisible();
+  await expect(page.getByText('free of what goals claimed')).toHaveCount(0);
 });
 
 test('Umrah tickets from the Umrah fund: the goal is done, not short', async ({ page }) => {

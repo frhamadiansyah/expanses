@@ -190,7 +190,6 @@ function TypeDrawer({ label, count, figure, open, separator, testId, onToggle }:
 function AccountList({
   groupKey,
   title,
-  trailing,
   accounts,
   drawers,
   open,
@@ -239,7 +238,6 @@ function AccountList({
   if (accounts.length === 0) return null;
   /** A drawer's own figure, added exactly as its group's is: what its rows come to, or the rate one lacks named. */
   const drawerTotal = (rows: AccountRow[]) => totalOf(rows, everything, balances, ws.baseCurrency, rates, readOf);
-
   /**
    * One row's figure. A group that reads its rows its own way has already said what the number is; everything else
    * draws what it always drew — a pocket parent its ≈ total, a holding what it is worth, an account its balance.
@@ -298,7 +296,7 @@ function AccountList({
   );
 
   return (
-    <Panel wide pad={false} header={title} trailing={trailing}>
+    <Panel wide pad={false} header={title}>
       <ul>
         {/* One drawer is no division at all: those rows are drawn on their own, with no drawer over them. */}
         {drawers.length <= 1
@@ -368,13 +366,6 @@ export function AccountsPage() {
       return next;
     });
   /**
-   * A group's own figure: what its rows add up to at today's rates, or the rate one of them lacks, named instead —
-   * never a partial sum. Liabilities are added up as what is owed, so a card reads as the same positive figure its
-   * own row shows.
-   */
-  /** A group's own figure: the sum of the numbers its rows draw, in that same reading. */
-  const groupTotal = (rows: AccountRow[], read?: RowRead) => totalOf(rows, everything, all, ws.baseCurrency, held, read);
-  /**
    * Free to spend, and the three parts it is read from: money that can be moved, what goals have claimed of it, and
    * what the debts ask of it.
    *
@@ -385,13 +376,10 @@ export function AccountsPage() {
    * mortgage's principal is read on Net worth, against a year's schedule, and never here.
    */
   const spendable = moneySummary(everything, all, ws.baseCurrency, held, SPENDABLE_KINDS);
-  const promised = sumToBase({
-    amounts: Object.values(owed.data ?? {})
-      .filter((row) => SPENDABLE_KINDS.has(byId.get(row.accountId)?.subtype ?? ''))
-      .map((row) => ({ minor: row.setAsideMinor, currency: row.currency })),
-    baseCurrency: ws.baseCurrency,
-    ratesToBase: held,
-  });
+  const promiseAmounts = Object.values(owed.data ?? {})
+    .filter((row) => SPENDABLE_KINDS.has(byId.get(row.accountId)?.subtype ?? ''))
+    .map((row) => ({ minor: row.setAsideMinor, currency: row.currency }));
+  const promised = sumToBase({ amounts: promiseAmounts, baseCurrency: ws.baseCurrency, ratesToBase: held });
   /**
    * One money account's row: what is free on it — what it holds, less what goals have claimed of it — with what it
    * holds named underneath, so the subtraction can be read rather than trusted.
@@ -445,8 +433,15 @@ export function AccountsPage() {
   const unclaimed = freeToSpend(spendable, promised, { totalMinor: 0, missing: [] });
   /** What every listed debt asks — the very readings its own row draws, so the section and the tile agree. */
   const debtRows = money.filter((account) => account.parentId === null && GROUPS.some((group) => group.key === 'debts' && group.subtypes.includes(account.subtype)));
-  const asked = sumToBase({ amounts: amountsOf(debtRows, everything, all, debtRead), baseCurrency: ws.baseCurrency, ratesToBase: held });
+  const askedAmounts = amountsOf(debtRows, everything, all, debtRead);
+  const asked = sumToBase({ amounts: askedAmounts, baseCurrency: ws.baseCurrency, ratesToBase: held });
   const free = freeToSpend(spendable, promised, asked);
+  /**
+   * Whether any figure the tile is worked from came from another currency. Only such a total wears the kit's ≈: money
+   * held, promised and owed all in rupiah adds up exactly, and a figure that needed a rate is an estimate until the
+   * rate is the day's own.
+   */
+  const estimated = spendable.converted || [...promiseAmounts, ...askedAmounts].some((amount) => amount.currency !== ws.baseCurrency);
   /** A group's drawers, in the group's own order, each holding the accounts that fell into it. */
   const drawersOf = (group: (typeof GROUPS)[number], rows: AccountRow[]) => {
     const found = new Map<string, Drawer & { rows: AccountRow[] }>();
@@ -463,12 +458,12 @@ export function AccountsPage() {
     };
     return [...found.values()].sort((a, b) => rank(a.key) - rank(b.key));
   };
-  /* Three journeys, two corners: the `…` keeps Import CSV and Backup reachable and named in words. */
-  const actions: CornerAction[] = [
-    { key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={20} aria-hidden /> },
-    { key: 'import', label: 'Import CSV', to: '/import' },
-    { key: 'backup', label: 'Backup', to: '/backup' },
-  ];
+  /*
+   * One corner: adding an account. Import CSV and Backup used to sit behind a `…` here, and neither is about an
+   * account — a page whose corner offers what the page is not reads as a menu of everything. Both keep their own
+   * addresses, `/import` and `/backup`.
+   */
+  const actions: CornerAction[] = [{ key: 'new', label: 'Add account', to: '/accounts/new', glyph: <Plus size={20} aria-hidden /> }];
   return (
     <div className={SCREEN}>
       <LargeTitle title="Accounts" actions={actions} />
@@ -479,14 +474,7 @@ export function AccountsPage() {
        * each account free of its promises — so the two lines still add up to the figure above them.
        */}
       {accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
-        (free.freeMinor !== null ? (
-          <Hero
-            label="Free to spend"
-            minor={free.freeMinor}
-            currency={ws.baseCurrency}
-            caption={`Spending money${spendable.converted ? " ≈ at today's rates" : ''} · across ${plural(spendable.accounts, 'account')} · ${plural(spendable.currencies, 'currency', 'currencies')}`}
-          />
-        ) : (
+        (free.freeMinor !== null ? <Hero label="Free to spend" minor={free.freeMinor} currency={ws.baseCurrency} approximate={estimated} /> : (
           <Panel header="Free to spend">
             <p className="text-[13px] leading-[17px] text-[var(--ph-ink-2)]">
               No {free.missing.join(', ')} rate yet, so what is left to spend cannot be worked out. Each balance below is exact.
@@ -496,13 +484,7 @@ export function AccountsPage() {
       {free.freeMinor !== null && unclaimed.freeMinor !== null && (
         <>
           <InsetGroup>
-            <InsetRow
-              title="Spending money"
-              subtitle="free of what goals claimed"
-              value={<Money minor={unclaimed.freeMinor} currency={ws.baseCurrency} />}
-              valueTone="ink"
-              chevron={false}
-            />
+            <InsetRow title="Spending money" value={<Money minor={unclaimed.freeMinor} currency={ws.baseCurrency} />} valueTone="ink" chevron={false} />
             <InsetRow title="What the debts ask" value={<Money minor={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
           </InsetGroup>
           <Panel className="space-y-2">
@@ -537,14 +519,6 @@ export function AccountsPage() {
             key={group.key}
             groupKey={group.key}
             title={group.label}
-            /* Normal case: the header shouts in capitals, and a currency symbol must not. A debt's figure is what its
-             * rows ask — an instalment, a card's whole balance, what you owe a person — so no principal is on this
-             * page, and the section's own total is the sum of those same rows. */
-            trailing={
-              <span className="tracking-normal normal-case">
-                <Figure>{groupTotal(rows, read)}</Figure>
-              </span>
-            }
             accounts={rows}
             drawers={drawers}
             open={openTypes}

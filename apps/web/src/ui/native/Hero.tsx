@@ -70,7 +70,7 @@ export function Hero({
   /** Null when there is no figure to show yet — a bill whose amount varies. `empty` is drawn in its place, quietly. */
   minor: number | null;
   currency: string;
-  /** A figure that is an estimate, drawn with a leading `~` so it never reads as a sum already known. */
+  /** A figure that is an estimate, drawn with a leading `≈` so it never reads as a sum already known. */
   approximate?: boolean;
   empty?: string;
   direction?: Direction;
@@ -96,7 +96,7 @@ export function Hero({
       )}
       {label && <p className="mb-[2px] text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{label}</p>}
       <p className={cx('tabular text-[34px] leading-[40px] font-extrabold tracking-[-0.03em]', toneClass(figure.tone))}>
-        {approximate && minor !== null && '~'}
+        {approximate && minor !== null && '≈'}
         {figure.text}
       </p>
       {caption && <p className="mt-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{caption}</p>}

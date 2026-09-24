@@ -222,10 +222,12 @@ test('a pocket’s ≈ line marks a rate held for an earlier day as last known (
 test('the Money tile adds every account and pocket at today’s rates', async ({ page }) => {
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
-  await expect(page.getByText(/across 1 account · 3 currencies/)).toBeVisible();
-  // Four times, and each is a different sentence: the tile (nothing is promised and nothing is owed here, so free to
-  // spend *is* the money), the working's first line, the group's own total, and the account's own row.
-  await expect(page.getByText(/58\.982\.000/)).toHaveCount(4);
+  // No caption under the tile: an estimate says so on the figure itself, with the kit's ≈.
+  await expect(page.getByText(/across 1 account/)).toHaveCount(0);
+  // Three times, and each is a different sentence: the tile (nothing is promised and nothing is owed here, so free
+  // to spend *is* the money), the working's first line, and the account's own row. No section carries it a fourth
+  // time: the tile's own lines are that sum.
+  await expect(page.getByText(/58\.982\.000/)).toHaveCount(3);
 });
 
 test('net worth’s Assets list shows the account once, at the ≈ total, and opens to its pockets', async ({ page }) => {
@@ -365,9 +367,9 @@ test('an empty foreign pocket needs no rate: the Money tile still adds up', asyn
   // Offline, and USD opened with nothing in it, so no USD rate is ever typed or fetched — and none is needed for 0.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
   await openWithPockets(page, { name: 'Unpriced Valas', pockets: [{ currency: 'IDR', balance: '5400000' }, { currency: 'USD', balance: '' }] });
-  await expect(page.getByText(/across 1 account · 2 currencies/)).toBeVisible();
-  // Four times, as in the pockets test above: tile, the working's first line, group total, the account's row.
-  await expect(page.getByText(/5\.400\.000/)).toHaveCount(4);
+  await expect(page.getByText(/across 1 account/)).toHaveCount(0);
+  // Three times, as in the pockets test above: the tile, the working's first line, the account's own row.
+  await expect(page.getByText(/5\.400\.000/)).toHaveCount(3);
   await expect(page.getByText(/No USD rate yet/)).toHaveCount(0);
 });
 
@@ -379,8 +381,8 @@ test('the tile names the rate it lacks instead of adding up the rest', async ({ 
   await page.goto('/accounts');
   await expect(page.getByText(/No USD rate yet, so what is left to spend cannot be worked out/)).toBeVisible();
   // No figure and no working either: a spendable total that leaves the dollars out would be a lie with a number on it.
-  await expect(page.getByText(/Spending money ≈/)).toHaveCount(0);
-  await expect(page.getByText('Set aside for goals')).toHaveCount(0);
+  await expect(page.getByText('Spending money')).toHaveCount(0);
+  await expect(page.getByText('What the debts ask')).toHaveCount(0);
   // The account's own row names it too, in place of a total.
   const row = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Unpriced Valas', exact: true }) });
   await expect(row).toContainText('No USD rate yet');
