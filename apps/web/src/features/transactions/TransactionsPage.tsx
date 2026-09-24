@@ -785,74 +785,75 @@ export function TransactionsPage() {
 
   const rowView = (row: ListRow, withDate = false) => (row.kind === 'draft' ? draftRow(row) : recordedRow(row, withDate));
 
+  /**
+   * Searching, on a phone: one field and a way out, drawn in the title's row by `LargeTitle`'s own `field` — a corner's
+   * 44 px tall, so the field takes the header over without moving the chart below it.
+   */
+  const searchField = (
+    <div className="flex h-11 items-center gap-2.5 rounded-full bg-[var(--ph-corner)] px-4 shadow-[var(--ph-lift)]">
+      <Search size={18} className="shrink-0 text-slate-400" aria-hidden />
+      <input
+        // biome-ignore lint/a11y/noAutofocus: the field was asked for by tapping search, so it should be ready to type in
+        autoFocus
+        type="search"
+        value={filters.q}
+        onChange={(event) => setFilter('q', event.target.value)}
+        placeholder="Search transactions…"
+        aria-label="Search transactions"
+        autoComplete="off"
+        className="min-w-0 flex-1 bg-transparent text-base focus:outline-none"
+      />
+      <button
+        type="button"
+        aria-label="Close search"
+        onClick={() => {
+          setFilter('q', '');
+          setShowSearch(false);
+        }}
+        className="-mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500"
+      >
+        <X size={18} aria-hidden />
+      </button>
+    </div>
+  );
+
   return (
     // Relative, so the ⋯ menu hangs from the header it opens from.
     <div className="relative space-y-4">
-      {/* On a phone, searching takes the whole header: the title and its buttons give way to one field and a way out. */}
-      {phone && showSearch ? (
-        <div className="flex h-12 items-center gap-2.5 rounded-full bg-[var(--ph-corner)] px-4 shadow-[var(--ph-lift)]">
-          <Search size={18} className="shrink-0 text-slate-400" aria-hidden />
-          <input
-            // biome-ignore lint/a11y/noAutofocus: the field was asked for by tapping search, so it should be ready to type in
-            autoFocus
-            type="search"
-            value={filters.q}
-            onChange={(event) => setFilter('q', event.target.value)}
-            placeholder="Search transactions…"
-            aria-label="Search transactions"
-            autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent text-base focus:outline-none"
-          />
-          <button
-            type="button"
-            aria-label="Close search"
-            onClick={() => {
-              setFilter('q', '');
-              setShowSearch(false);
-            }}
-            className="-mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500"
-          >
-            <X size={18} aria-hidden />
-          </button>
-        </div>
-      ) : (
-        <>
-          {/*
-           * The kit's own title, so this page's name sits where every other page's does — same face, same size, same
-           * corner rhythm. Three corners, because the screen has three controls and the `…` would otherwise swallow
-           * the search a thumb reaches for most: the `max` says how many, rather than a second header shape.
-           */}
-          <LargeTitle
-            title={inCategory ? scope!.name : 'Cashflow'}
-            oneLine
-            max={3}
-            actions={
-              phone
-                ? [
-                    { key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); setAdding(true); } },
-                    { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
-                    { key: 'filters', label: 'Filters', glyph: <Ellipsis size={20} aria-hidden />, pressed: showFilters, expanded: showFilters, run: () => setShowFilters((was) => !was) },
-                  ]
-                : []
-            }
-          />
-          {/* A wide screen has room for the switcher and a named button, so its corners stay empty. */}
-          {!phone && (
-            <div className="mb-3 flex flex-wrap items-center justify-end gap-2.5">
-              {viewSwitcher}
-              {!adding && (
-                <Button
-                  onClick={() => {
-                    close();
-                    setAdding(true);
-                  }}
-                >
-                  Add transaction
-                </Button>
-              )}
-            </div>
+      {/*
+       * The header is always the kit's title: searching swaps the field into the title's own row rather than replacing
+       * the header, so the list and the chart below never move.
+       */}
+      <LargeTitle
+        title={inCategory ? scope!.name : 'Cashflow'}
+        oneLine
+        max={3}
+        field={phone && showSearch ? searchField : undefined}
+        actions={
+          phone
+            ? [
+                { key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); setAdding(true); } },
+                { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
+                { key: 'filters', label: 'Filters', glyph: <Ellipsis size={20} aria-hidden />, pressed: showFilters, expanded: showFilters, run: () => setShowFilters((was) => !was) },
+              ]
+            : []
+        }
+      />
+      {/* A wide screen has room for the switcher and a named button, so its corners stay empty. */}
+      {!phone && (
+        <div className="mb-3 flex flex-wrap items-center justify-end gap-2.5">
+          {viewSwitcher}
+          {!adding && (
+            <Button
+              onClick={() => {
+                close();
+                setAdding(true);
+              }}
+            >
+              Add transaction
+            </Button>
           )}
-        </>
+        </div>
       )}
       {phone && showFilters && (
         <>

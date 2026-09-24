@@ -76,8 +76,18 @@ test('the phone header adds, searches and filters from three round buttons', asy
   await expect(page.getByRole('button', { name: /^Month/ })).not.toBeVisible();
 
   // Search takes the header over: one field and a way out, until closing it gives the title back.
+  const header = page.locator('header').first();
+  const restHeader = (await header.boundingBox())!;
+  const titleAt = (await page.getByRole('heading', { name: 'Cashflow' }).boundingBox())!;
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByLabel('Search transactions')).toBeFocused();
+  // The field is drawn in the title's own row rather than in place of the header, so nothing below it moves: the
+  // header keeps its height and the row its top, which is what keeps the chart and the list where the thumb left
+  // them. (The input's own box is centred inside its 44 px capsule, so the capsule is what is measured.)
+  const openHeader = (await header.boundingBox())!;
+  const fieldAt = (await page.getByLabel('Search transactions').locator('..').boundingBox())!;
+  expect(Math.round(openHeader.height)).toBe(Math.round(restHeader.height));
+  expect(Math.abs(fieldAt.y - titleAt.y)).toBeLessThanOrEqual(1);
   await expect(page.getByRole('button', { name: 'Filters' })).toHaveCount(0);
   await page.getByLabel('Search transactions').fill('nothing like it');
   await page.getByRole('button', { name: 'Close search' }).click();
