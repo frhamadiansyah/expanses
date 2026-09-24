@@ -41,7 +41,9 @@ const GROUP_COLORS: Record<string, string> = {
 function SheetColumn({ title, groups, totalMinor, currency }: { title: string; groups: SheetGroup[]; totalMinor: number; currency: string }) {
   const segments = groups.map((group) => ({ key: group.key, label: group.label, minor: group.totalMinor, className: GROUP_COLORS[group.key] ?? 'bg-slate-400' }));
   return (
-    <div>
+    // `min-w-0`: a column in a grid is as wide as its widest row unless it is told it may be narrower, and a row whose
+    // title truncates is still as wide as the whole title — which is what pushed this page sideways.
+    <div className="min-w-0">
       <PanelHeader title={title} trailing={<Money minor={totalMinor} currency={currency} />} />
       <Panel wide className="space-y-2">
         <ShareBar segments={segments} totalMinor={totalMinor} />
@@ -243,7 +245,14 @@ export function OverviewPage() {
 
       {/* The one real desktop grid in the app, kept: the figure and its year on the left, what waits on the right. */}
       <div className="grid gap-4 md:grid-cols-[1.7fr_1fr]">
-        <Panel
+        {/*
+         * `min-w-0` on both columns, and the same on the two balance-sheet columns: a grid item is as wide as its
+         * widest row unless it is told it may be narrower, and a row title that truncates still measures as the whole
+         * title — so "CIMB Niaga World ALL Accor" beside its figure set the page's minimum width and everything from
+         * the section row to the chart scrolled sideways with it.
+         */}
+        <div className="min-w-0">
+          <Panel
           wide
           header="Net worth"
           footer="Month-end snapshots. Home and vehicles use your latest estimate; funds, shares and gold use the last price you entered."
@@ -304,9 +313,10 @@ export function OverviewPage() {
               </ul>
             </div>
           )}
-        </Panel>
+          </Panel>
+        </div>
 
-        <div>
+        <div className="min-w-0">
           <PanelHeader title="Needs attention" />
           {attention.length === 0 && warnings.length === 0 ? (
             <Panel wide>
