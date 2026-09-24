@@ -31,17 +31,24 @@ test('the period is chosen from the chart, and its arrows step by that period', 
   await expect(page.getByRole('button', { name: 'Earlier period' })).toHaveCount(0);
 });
 
-test('⋯ narrows the list by what paid, and a chip takes it off again', async ({ page }) => {
+test('the list narrows by what paid, beside the sort, and a chip takes it off again', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
 
   await page.goto('/transactions');
+  // The filter is a control of the list itself now: the icon beside the sort it shares a row with, offering only
+  // what can pay — the account's own row is a choice, a locked deposit would not be.
+  await page.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('option', { name: /BCA Tahapan/ }).click();
+
+  // And ⋯ is left with what only ⋯ can do: the workspace, and what the list reveals.
   await page.getByRole('button', { name: 'Filters' }).click();
-  await page.getByTestId('filters-menu').getByRole('menuitem', { name: /Paid with/ }).click();
-  await page.getByTestId('paid-with-sheet').getByRole('button', { name: /BCA Tahapan/ }).click();
+  const menu = page.getByTestId('filters-menu');
+  await expect(menu).not.toContainText('Paid with');
+  await expect(menu).not.toContainText('Not recorded');
+  await page.getByRole('button', { name: 'Close filters' }).click();
 
   const chips = page.getByTestId('active-filters');
   await expect(chips).toContainText('Paid with BCA Tahapan');
-  await expect(page.getByRole('button', { name: 'Filters' })).toHaveAttribute('aria-pressed', 'true');
 
   await chips.getByRole('button', { name: 'Clear paid with' }).click();
   await expect(page.getByTestId('active-filters')).toHaveCount(0);

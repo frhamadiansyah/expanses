@@ -239,8 +239,9 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
   // the sheet does. What opens is the full card, the one screen with a row for each of the two figures.
   await expect(page.getByRole('dialog', { name: 'Edit', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Row description')).toHaveCount(0);
-  // It opens in the row's own place rather than over it, and says what an edit will leave behind.
-  await expect(page.getByText('The original stays under Show deleted')).toBeVisible();
+  // It opens in the row's own place rather than over it, and says what an edit will leave behind — kept, and not
+  // where to look for it: a phone has no door to the deleted rows.
+  await expect(page.getByText('The original is kept')).toBeVisible();
   // Both figures are on it, each in its own currency: the pair survived the trip through `formFromTransaction`,
   // which is the half a sheet showing one figure would have thrown away on its next Save.
   await expect(page.getByLabel('Note')).toHaveValue('Blue Bottle');

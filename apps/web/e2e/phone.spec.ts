@@ -84,11 +84,15 @@ test('the phone header adds, searches and filters from three round buttons', asy
   await expect(page.getByLabel('Search transactions')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Cashflow' })).toBeVisible();
 
-  // ⋯ is a short menu on a phone: the chart already chooses the period and the category.
+  // ⋯ is a short menu on a phone, and it is no longer a filter menu: the chart chooses the period, what paid is a
+  // filter beside the list's own Sort, what is not recorded has the review box above the rows, and revealing
+  // deleted rows is a wide screen's business. What is left is the one thing only this menu can do.
   await page.getByRole('button', { name: 'Filters' }).click();
   const menu = page.getByTestId('filters-menu');
-  await expect(menu.getByRole('menuitem', { name: /Paid with/ })).toBeVisible();
-  await expect(menu.getByRole('menuitemcheckbox', { name: /Show deleted/ })).toBeVisible();
+  await expect(menu.getByTestId('workspace-row')).toBeVisible();
+  await expect(menu.getByRole('menuitemcheckbox', { name: /Show deleted/ })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: /Paid with/ })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: /Not recorded/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Month/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Close filters' }).click();
 

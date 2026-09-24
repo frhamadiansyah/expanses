@@ -158,6 +158,50 @@ export function freeToSpend(spendable: BaseTotal, setAside: BaseTotal, due: Base
   };
 }
 
+/** What one account holds for spending, once the goals that claimed part of it have had their share. */
+export interface AccountFree {
+  /** Balance less what is promised of it. Null when a rate is missing — never a partial subtraction. */
+  freeMinor: number | null;
+  /** What it holds: the figure its row drew before. */
+  balanceMinor: number | null;
+  /** What goals have claimed of this account, and of the pockets under it. */
+  setAsideMinor: number | null;
+  /** The currency both figures are in: the account's own, or the base for a pocket parent. */
+  currency: string;
+}
+
+/**
+ * Free to spend on one account: what it holds, less what goals have claimed of it.
+ *
+ * A plain account is read in its own currency and needs no rate at all — its balance and its promises are already in
+ * the same money. A pocket parent adds its pockets up, as its row already does, so it reads in the base currency and
+ * needs one for every currency under it; a rate missing gives a null free figure rather than a partial one, and the
+ * row goes on drawing the ≈ total it drew before.
+ */
+export function freeOn(
+  account: AccountRow,
+  pockets: readonly AccountRow[],
+  balances: Readonly<Record<string, number>>,
+  setAside: Readonly<Record<string, { setAsideMinor: number }>>,
+  baseCurrency: string,
+  ratesToBase: Rates,
+): AccountFree {
+  const promised = (id: string) => setAside[id]?.setAsideMinor ?? 0;
+  if (pockets.length === 0) {
+    const balanceMinor = balances[account.id] ?? 0;
+    const setAsideMinor = promised(account.id);
+    return { freeMinor: balanceMinor - setAsideMinor, balanceMinor, setAsideMinor, currency: account.currency ?? baseCurrency };
+  }
+  const holds = sumToBase({ amounts: pockets.map((pocket) => ({ minor: balances[pocket.id] ?? 0, currency: pocket.currency ?? baseCurrency })), baseCurrency, ratesToBase });
+  const claimed = sumToBase({ amounts: [account, ...pockets].map((row) => ({ minor: promised(row.id), currency: row.currency ?? baseCurrency })), baseCurrency, ratesToBase });
+  return {
+    freeMinor: holds.totalMinor === null || claimed.totalMinor === null ? null : holds.totalMinor - claimed.totalMinor,
+    balanceMinor: holds.totalMinor,
+    setAsideMinor: claimed.totalMinor,
+    currency: baseCurrency,
+  };
+}
+
 /**
  * The Money tile: every money account and every pocket in the base currency, or no figure with the missing rate
  * named. An account with pockets is one account; its pockets are the amounts. Holdings and debts are not money here.

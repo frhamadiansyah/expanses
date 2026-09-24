@@ -86,8 +86,20 @@ export async function addMoneyAccount(
   if (o.rate) await typeInto(page, 'Interest rate', o.rate);
   await page.getByLabel('Balance as of').fill(o.opened);
   await page.getByRole('button', { name: 'Add account' }).click();
-  /* The row it just made sits inside its type's drawer — and adding this one may be what made the cash group
-   * divide at all, so the drawers are opened after the save, not before it. */
+  /* The form navigates to the money list once the write is done, so that is what the save is waited for first. */
+  await expect(page).toHaveURL(/\/accounts$/);
+  /*
+   * A current account is a row on that list, inside its type's drawer — and adding this one may be what made the
+   * cash group divide at all, so the drawers are opened after the save, not before it. A time deposit is a row on no
+   * such list: it holds money it cannot be paid from, so it is waited for where it is priced, on the asset list.
+   */
+  if (o.kind === 'Time deposit') {
+    await page.goto('/net-worth/assets');
+    // A prefix, not the whole name: an asset row reads "BCA Deposito · Time deposit · …", as every other list
+    // here does, and `openDeposit` matches it the same way.
+    await expect(page.getByRole('link', { name: new RegExp(`^${o.name}`) })).toBeVisible();
+    return;
+  }
   await openTypes(page);
   await expect(page.getByRole('link', { name: o.name, exact: true })).toBeVisible();
 }
@@ -155,6 +167,18 @@ export async function expectBalance(page: Page, name: string, figure: string) {
   await expect(row).toContainText(figure);
 }
 
+/**
+ * A deposit's own balance, on the deposit's own page.
+ *
+ * It is not read on the money list, because a deposit is on no such list: it holds money it cannot be paid from, so
+ * the accounts a ledger spends from are the ones that page lists, and a deposit is reached where it is priced — the
+ * asset list, behind this page.
+ */
+export async function expectDepositBalance(page: Page, name: string, figure: string) {
+  await openDeposit(page, name);
+  await expect(page.getByRole('main')).toContainText(figure);
+}
+
 export async function walk(page: Page, c: Combo, firstByHand = false) {
   const s = await setUp(page, c.currency);
   await openDeposit(page, s.depositName);
@@ -170,7 +194,7 @@ export async function walk(page: Page, c: Combo, firstByHand = false) {
     await expect(page.getByRole('link', { name: new RegExp(`^${s.depositName}`) })).toHaveCount(0);
   } else {
     await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
-    await expectBalance(page, s.depositName, c.deposit);
+    await expectDepositBalance(page, s.depositName, c.deposit);
   }
   await expectBalance(page, s.payoutName, c.payout);
 }

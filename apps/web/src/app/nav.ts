@@ -7,7 +7,6 @@ import {
   CheckCheck,
   CreditCard,
   FileSpreadsheet,
-  HandCoins,
   House,
   Landmark,
   PiggyBank,
@@ -65,9 +64,9 @@ export const MORE_GROUPS: readonly NavGroup[] = [
       { to: '/events', label: 'Events', icon: CalendarRange },
       { to: '/goals', label: 'Goals', icon: Sparkles },
       { to: '/accounts', label: 'Accounts', icon: Landmark },
-      // A debt is not opened from any one screen — a card, a mortgage and money borrowed from family land in three
-      // different places — so the picker that sorts that out is reached from here rather than hidden behind one of them.
-      { to: '/debts/new', label: 'Add a debt', icon: HandCoins },
+      // No "Add a debt" here. This sheet is a list of places, and a debt is added from the two screens that list
+      // debts: the Debts page's own +, and Lend & borrow's "What do you owe?". A door among the places made one
+      // line of this menu open a form where every other line opens a screen.
       { to: '/categories', label: 'Categories', icon: Tags },
     ],
   },

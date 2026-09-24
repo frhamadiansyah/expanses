@@ -1,13 +1,12 @@
 import type { PersonDebtRow } from '@expanses/db';
-import { HelpCircle, Plus } from 'lucide-react';
-import { useSearch } from '@tanstack/react-router';
+import { ChevronLeft, HelpCircle, Plus } from 'lucide-react';
+import { Link, useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { useHeldRates } from '../accounts/queries';
 import { type CornerAction, Figure, InsetGroup, InsetRow, LargeTitle, PanelHeader, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
-import { NetWorthTabs } from '../networth/NetWorthTabs';
 import { DebtForm } from './DebtForm';
 import { PersonCard } from './PersonCard';
 import { usePeopleDebts } from './queries';
@@ -84,7 +83,14 @@ export function LendBorrowPage() {
   return (
     <div className={SCREEN}>
       <LargeTitle title="Lend & borrow" actions={actions} />
-      <NetWorthTabs />
+      {/*
+       * No section strip: this page left Net worth for Cashflow, because money between you and people is money
+       * moving. The way back is the list it moves with, and one honest line says more than a strip with nothing lit.
+       */}
+      <Link to="/transactions" className="-mt-1 mb-[18px] flex min-h-11 items-center gap-1 text-sm font-medium text-emerald-800">
+        <ChevronLeft size={16} aria-hidden />
+        Cashflow
+      </Link>
       <ErrorBox error={people.error} />
 
       {adding && <DebtForm onDone={() => setAdding(false)} />}

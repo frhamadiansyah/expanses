@@ -83,21 +83,20 @@ test('moves net worth by the price difference only', async ({ page }) => {
 test('every net-worth section tab is a real link, so it can be opened in a new tab', async ({ page }) => {
   await page.goto('/net-worth');
   const tabs = page.getByRole('radiogroup', { name: 'Net worth sections' }).getByRole('radio');
-  await expect(tabs).toHaveCount(5);
+  await expect(tabs).toHaveCount(4);
   const hrefs = await tabs.evaluateAll((nodes) => nodes.map((node) => [node.tagName, node.getAttribute('href')]));
   expect(hrefs).toEqual([
     ['A', '/net-worth'],
     ['A', '/net-worth/assets'],
     ['A', '/net-worth/trades'],
     ['A', '/net-worth/loans'],
-    ['A', '/net-worth/lend-borrow'],
   ]);
-  await expect(tabs).toHaveText(['Overview', 'Assets', 'Buy & sell', 'Debts', 'Lend & borrow']);
+  await expect(tabs).toHaveText(['Overview', 'Assets', 'Buy & sell', 'Debts']);
 
   // Still a segmented control: clicking one selects it and takes the page with it, exactly as before.
-  await page.getByRole('radio', { name: 'Lend & borrow' }).click();
-  await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
-  await expect(page.getByRole('radio', { name: 'Lend & borrow' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: 'Debts' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/loans$/);
+  await expect(page.getByRole('radio', { name: 'Debts' })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('an empty account in a currency with no rate does not stop net worth: zero needs no rate', async ({ page }) => {

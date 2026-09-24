@@ -15,11 +15,12 @@ import {
 } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { Link, getRouteApi, useNavigate } from '@tanstack/react-router';
-import { ArrowUpDown, CalendarDays, CalendarX2, Check, ChevronDown, ChevronLeft, CircleAlert, CreditCard, Ellipsis, Trash2, LayoutGrid, List, Pencil, Plus, Search, Table2, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, CalendarX2, ChevronDown, ChevronLeft, CircleAlert, Ellipsis, HandCoins, LayoutGrid, List, ListFilter, Pencil, Plus, Search, Table2, X } from 'lucide-react';
 import type { TransactionsSearch } from '../../app/router';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
+import { canPayWith } from '../../lib/account-types';
 import { loadPurchasePoints } from '../../lib/purchase-points';
 import { isMoneyAccount, moneyHolders, useAccounts, useInOpenBook, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -228,7 +229,6 @@ export function TransactionsPage() {
   const range = period?.from ? { from: period.from, to: period.to! } : {};
   // A day on its own only names a date when a single month is showing.
   const singleMonth = period?.kind === 'month';
-  const [paying, setPaying] = useState(false);
   const scope = search.account ? accounts.find((a) => a.id === search.account) : undefined;
   const inCategory = scope !== undefined && (scope.kind === 'expense' || scope.kind === 'income');
   /** A category and everything under it: opening Property must show the rent booked to its child. */
@@ -285,7 +285,8 @@ export function TransactionsPage() {
   const sum = totals(shown);
 
   const rowOptions = buildRowOptions(accounts, cards, inOpenBook, membership);
-  const money = moneyHolders(accounts);
+  // Only what can pay: the form's own rule, so a locked deposit or a house is not a choice here either.
+  const money = moneyHolders(accounts).filter((account) => canPayWith(account));
   const cardsOf = (accountId: string) => cards.filter((card) => card.accountId === accountId);
   const paidOptions: ChipOption[] = [
     { value: '', label: 'Any account' },
@@ -308,9 +309,10 @@ export function TransactionsPage() {
   const paidPicked = paidOptions.find((option) => option.value === filters.paid && option.value);
   // A category opens as its own screen: its ring, its transactions, and a way back to the month.
 
+  const keptLine = phone ? 'the original is kept' : 'the original stays under Show deleted';
+  const keptSentence = phone ? 'The original is kept' : 'The original stays under Show deleted';
   // The chart carries the month's total and its count, so the line that used to say them is left off.
-  const chartShown = view === 'list' && !filters.onlyDrafts;
-  const sortValue = `${sort.key}:${sort.dir}`;
+  const chartShown = view === 'list' && !filters.onlyDrafts;  const sortValue = `${sort.key}:${sort.dir}`;
   const narrowed = filters.q || filters.paid || filters.cat || filters.type !== 'all' || filters.showDeleted || filters.onlyDrafts || sortValue !== 'date:desc' || search.month || search.account;
 
   function clearAll() {
@@ -590,7 +592,7 @@ export function TransactionsPage() {
           />
           {editHint(
             <>
-              Editing in place · <kbd>Enter</kbd> saves · <kbd>Esc</kbd> cancels · the original stays under Show deleted
+              Editing in place · <kbd>Enter</kbd> saves · <kbd>Esc</kbd> cancels · {keptLine}
             </>,
             <>
               <button
@@ -613,7 +615,7 @@ export function TransactionsPage() {
       return (
         <li key={tx.id} className="py-2">
           <TransactionCard initial={tx} onDone={close} />
-          {editHint(<>The original stays under Show deleted</>, <>{purchaseButton}{deleteButton}</>)}
+          {editHint(<>{keptSentence}</>, <>{purchaseButton}{deleteButton}</>)}
         </li>
       );
     }
@@ -832,12 +834,12 @@ export function TransactionsPage() {
               <button
                 type="button"
                 aria-label="Filters"
-                aria-pressed={showFilters || filters.onlyDrafts || Boolean(filters.paid) || filters.showDeleted}
+                aria-pressed={showFilters}
                 aria-expanded={showFilters}
                 onClick={() => setShowFilters((was) => !was)}
                 className={cx(
                   '-ml-1 flex h-11 w-11 items-center justify-center rounded-full',
-                  (showFilters || filters.onlyDrafts || filters.paid || filters.showDeleted) && 'bg-slate-900 text-white',
+                  showFilters && 'bg-slate-900 text-white',
                 )}
               >
                 <Ellipsis size={19} aria-hidden />
@@ -883,72 +885,24 @@ export function TransactionsPage() {
               <span className="flex-1 truncate font-medium">{openBook?.name ?? workspaceName}</span>
               <span className="text-xs text-slate-500">Workspace ›</span>
             </button>
-            <button
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={filters.onlyDrafts}
-              disabled={pending.length === 0 && !filters.onlyDrafts}
-              onClick={() => {
-                setFilter('onlyDrafts', !filters.onlyDrafts);
-                setShowFilters(false);
-              }}
-              className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm disabled:opacity-40"
-            >
-              <CircleAlert size={17} aria-hidden className="text-amber-700" />
-              <span className="flex-1">Not recorded</span>
-              {filters.onlyDrafts ? <Check size={16} aria-hidden /> : pending.length > 0 && <b className="tabular font-semibold text-amber-700">{pending.length}</b>}
-            </button>
-            <button
-              type="button"
+            {/* Two things, and neither is a filter of this list: what the whole app reads and writes through, and the
+             * one place money lent and borrowed lives — which on a wide screen is under Net worth's Debts, among the
+             * people it names. What the list narrows itself by is on the list's own controls — the period on the
+             * chart, what paid beside the Sort, what is not recorded in the review box above the rows — and revealing
+             * deleted rows waits on the filter bar on a wide screen. */}
+            <Link
+              to="/net-worth/lend-borrow"
               role="menuitem"
-              onClick={() => {
-                setShowFilters(false);
-                setPaying(true);
-              }}
-              className="flex min-h-12 w-full items-center gap-3 border-t border-slate-100 px-4 text-left text-sm"
+              data-testid="lend-borrow-row"
+              onClick={() => setShowFilters(false)}
+              className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm"
             >
-              <CreditCard size={17} aria-hidden className="text-slate-500" />
-              <span className="flex-1">Paid with</span>
-              <span className="max-w-24 truncate text-xs text-slate-500">{paidPicked ? paidPicked.label : 'All'} ›</span>
-            </button>
-            <button
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={filters.showDeleted}
-              onClick={() => {
-                setFilter('showDeleted', !filters.showDeleted);
-                setShowFilters(false);
-              }}
-              className="flex min-h-12 w-full items-center gap-3 border-t border-slate-100 px-4 text-left text-sm"
-            >
-              <Trash2 size={17} aria-hidden className="text-slate-500" />
-              <span className="flex-1">Show deleted</span>
-              {filters.showDeleted && <Check size={16} aria-hidden />}
-            </button>
+              <HandCoins size={17} aria-hidden className="text-slate-500" />
+              <span className="flex-1">Lend &amp; borrow</span>
+              <span className="text-xs text-slate-500">›</span>
+            </Link>
           </div>
         </>
-      )}
-      {paying && (
-        <Sheet title="Paid with" onClose={() => setPaying(false)}>
-          <div className="divide-y divide-slate-100" data-testid="paid-with-sheet">
-            {paidOptions.map((option) => (
-              <button
-                key={option.value || 'any'}
-                type="button"
-                aria-pressed={filters.paid === option.value}
-                onClick={() => {
-                  setFilter('paid', option.value);
-                  setPaying(false);
-                }}
-                className={cx('flex min-h-12 w-full items-center gap-2 text-left text-sm', option.indent && 'pl-5')}
-              >
-                <span className="min-w-0 flex-1 truncate">{option.value ? option.label : 'Everything'}</span>
-                {option.meta && <span className="tabular text-xs text-slate-500">{option.meta}</span>}
-                {filters.paid === option.value && <Check size={16} aria-hidden className="text-emerald-700" />}
-              </button>
-            ))}
-          </div>
-        </Sheet>
       )}
       {choosingWorkspace && <WorkspaceSheet onClose={() => setChoosingWorkspace(false)} />}
       {inCategory && (
@@ -1016,15 +970,6 @@ export function TransactionsPage() {
                   Month <b className="font-semibold text-slate-900">{periodLabel(month)}</b>
                 </>
               }
-            />
-            <ChipMenu
-              name="Paid with"
-              value={filters.paid}
-              active={Boolean(paidPicked)}
-              searchable
-              options={paidOptions}
-              onPick={(value) => setFilter('paid', value)}
-              shown={paidPicked && <b className="truncate font-semibold text-white">{`${paidPicked.label}${paidPicked.meta && paidPicked.meta !== 'all cards' ? ` ${paidPicked.meta}` : ''}`}</b>}
             />
             <ChipMenu
               name="Category"
@@ -1118,15 +1063,9 @@ export function TransactionsPage() {
             ))}
 
           {/* What ⋯ has narrowed the list to, each with its own way out. */}
-          {phone && (filters.onlyDrafts || filters.paid || filters.showDeleted) && (
+          {phone && paidPicked && (
             <div className="flex flex-wrap gap-2" data-testid="active-filters">
-              {filters.onlyDrafts && (
-                <FilterChip label="Not recorded" onClear={() => setFilter('onlyDrafts', false)} />
-              )}
-              {paidPicked && (
-                <FilterChip label={<>Paid with <b className="font-semibold">{paidPicked.label}</b></>} clearLabel="Clear paid with" onClear={() => setFilter('paid', '')} />
-              )}
-              {filters.showDeleted && <FilterChip label="Showing deleted" onClear={() => setFilter('showDeleted', false)} />}
+              <FilterChip label={<>Paid with <b className="font-semibold">{paidPicked.label}</b></>} clearLabel="Clear paid with" onClear={() => setFilter('paid', '')} />
             </div>
           )}
           {shown.length > 0 && (
@@ -1158,6 +1097,18 @@ export function TransactionsPage() {
                 ))}
                 </div>
               </div>
+              {/* What the list was paid with — the list's own filter, beside the sort it shares a row with. */}
+              <ChipMenu
+                name="Paid with"
+                value={filters.paid}
+                active={Boolean(paidPicked)}
+                // A wide screen's list is long enough to want a box to type in; a phone's control is a tap away.
+                searchable={!phone}
+                options={paidOptions}
+                onPick={(value) => setFilter('paid', value)}
+                shown={<ListFilter size={15} aria-hidden />}
+                iconOnly
+              />
               {/* Sorting says itself with an arrow rather than a word, so the two controls read as a pair. */}
               <ChipMenu
                 name="Sort"

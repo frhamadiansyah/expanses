@@ -32,12 +32,11 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByLabel('Matures on').fill('2027-03-01');
   await page.getByLabel('Interest rate').fill('6,25');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await openTypes(page);
-  await expect(page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true })).toBeVisible();
-
-  // What was typed on the way in is said back: the day the money comes back, and what it pays for waiting.
-  const deposito = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'Deposito BCA 6 bulan', exact: true }) });
-  await expect(deposito).toContainText('Matures 1 Mar 2027 · 6,25%');
+  // The form lands on the money list when the save is done — and a deposit is not on that list any more. A deposit
+  // holds money it cannot be paid from, so it is not an account the ledger spends from: it lives where it is priced
+  // and where its maturity is read, on Net worth's Assets.
+  await expect(page).toHaveURL(/\/accounts$/);
+  await expect(page.getByRole('main')).not.toContainText('Deposito BCA 6 bulan');
 
   // And it can be put right, because a date typed off a certificate is a date that can be mistyped. The way in is
   // the deposit's own page, reached from the asset list: the Accounts list shows no tax line to click any more.
@@ -48,9 +47,6 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByLabel('Interest rate').fill('6,75');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await expect(page.getByText('Matures 1 Dec 2027 · 6,75%')).toBeVisible();
-  await page.goto('/accounts');
-  await openTypes(page);
-  await expect(deposito).toContainText('Matures 1 Dec 2027 · 6,75%');
 
   // Money you hold: net worth counts it, and the balance sheet calls it cash.
   await page.goto('/net-worth');

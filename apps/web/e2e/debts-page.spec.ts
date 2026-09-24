@@ -102,14 +102,15 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
 test('the renames are in place: Debts for everything owed, Lend & borrow for people', async ({ page }) => {
   await page.goto('/net-worth');
   const tabs = page.getByRole('radiogroup', { name: 'Net worth sections' }).getByRole('radio');
-  await expect(tabs).toHaveText(['Overview', 'Assets', 'Buy & sell', 'Debts', 'Lend & borrow']);
+  await expect(tabs).toHaveText(['Overview', 'Assets', 'Buy & sell', 'Debts']);
   await page.getByRole('radio', { name: 'Debts' }).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
   await expect(page.getByRole('heading', { name: 'Debts', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Loans', level: 1 })).toHaveCount(0);
-  await page.getByRole('radio', { name: 'Lend & borrow' }).click();
-  await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
-  await expect(page.getByRole('heading', { name: 'Lend & borrow', level: 1 })).toBeVisible();
+  // Lend & borrow is not one of these sections any more: it left for Cashflow, where the lending happens, and a
+  // phone reaches it from that page's ⋯ (`phone-debts-page.spec.ts`). A wide screen has no ⋯ there, so its doors are
+  // the ones it always had — a person's row on this page, the Overview's own row, and adding a debt, which lands
+  // there.
 });
 
 test('the old Lend & borrow address still opens it, with its search', async ({ page }) => {

@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { bankRateText, choosePocketCurrency, freeToSpend, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
+import { bankRateText, choosePocketCurrency, freeOn, freeToSpend, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -66,6 +66,40 @@ describe('what is left to spend', () => {
   it('names each missing currency once, sorted', () => {
     const out = freeToSpend({ totalMinor: null, missing: ['SGD'] }, { totalMinor: null, missing: ['USD', 'SGD'] }, { totalMinor: null, missing: ['USD'] });
     expect(out.missing).toEqual(['SGD', 'USD']);
+  });
+});
+
+describe('free to spend on one account', () => {
+  const saver = { id: 'maxi', name: 'Jenius Maxi Saver', parentId: null, kind: 'asset', subtype: 'savings', currency: 'IDR', archivedAt: null, sortOrder: 0 } as AccountRow;
+  const parent = accounts[0]!;
+  const balances = { 'c-usd': 240_000, 'a-sgd': 115_000, 'b-idr': 5_400_000 };
+
+  it('is what it holds, less what goals have claimed of it — 92.460.000 with 32.000.000 promised is 60.460.000', () => {
+    expect(freeOn(saver, [], { maxi: 92_460_000 }, { maxi: { setAsideMinor: 32_000_000 } }, 'IDR', rates)).toEqual({
+      freeMinor: 60_460_000,
+      balanceMinor: 92_460_000,
+      setAsideMinor: 32_000_000,
+      currency: 'IDR',
+    });
+  });
+
+  it('is the balance itself when nothing is promised, so its row is drawn exactly as it was', () => {
+    const read = freeOn(saver, [], { maxi: 92_460_000 }, {}, 'IDR', rates);
+    expect([read.freeMinor, read.setAsideMinor]).toEqual([92_460_000, 0]);
+  });
+
+  it('takes a pocket’s promise off the parent’s whole, in the base currency the parent already reads in', () => {
+    expect(freeOn(parent, pocketsOf('v', accounts), balances, { 'b-idr': { setAsideMinor: 1_000_000 } }, 'IDR', rates)).toEqual({
+      freeMinor: 57_982_000,
+      balanceMinor: 58_982_000,
+      setAsideMinor: 1_000_000,
+      currency: 'IDR',
+    });
+  });
+
+  it('is no figure at all while a rate it needs is missing, rather than a partial one', () => {
+    const read = freeOn(parent, pocketsOf('v', accounts), balances, {}, 'IDR', { USD: 16_250 });
+    expect([read.freeMinor, read.balanceMinor]).toEqual([null, null]);
   });
 });
 

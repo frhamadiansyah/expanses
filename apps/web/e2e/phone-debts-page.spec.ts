@@ -63,18 +63,24 @@ test('by thumb: ＋ opens the chooser, and each row opens its own place', async 
   await expect(page.getByRole('heading', { name: 'Only Dewi' })).toBeVisible();
 });
 
-test('by thumb: the renames are in place, and Lend & borrow waits behind the …', async ({ page }) => {
+test('by thumb: the four sections fit the strip, and Lend & borrow is not one of them', async ({ page }) => {
   await page.goto('/net-worth');
   const group = page.getByRole('radiogroup', { name: 'Net worth sections' });
+  await expect(group.getByRole('radio')).toHaveCount(4);
   await expect(group.getByRole('radio', { name: 'Debts' })).toBeVisible();
   await expect(group.getByRole('radio', { name: 'Loans' })).toHaveCount(0);
+  // Nothing waits behind a … any more: the fifth label that used to is on Cashflow's ⋯ now, where the lending is.
+  await expect(page.getByRole('button', { name: 'More Net worth sections' })).toHaveCount(0);
   await group.getByRole('radio', { name: 'Debts' }).tap();
   await expect(page.getByRole('heading', { name: 'Debts', level: 1 })).toBeVisible();
-  await page.getByRole('button', { name: 'More Net worth sections' }).tap();
-  await page.getByRole('menu', { name: 'More Net worth sections' }).getByRole('menuitem', { name: 'Lend & borrow' }).tap();
+
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: 'Filters' }).tap();
+  await page.getByTestId('lend-borrow-row').tap();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
   await expect(page.getByRole('heading', { name: 'Lend & borrow', level: 1 })).toBeVisible();
 
+  // The address it used to be drawn at still answers.
   await page.goto('/net-worth/debts');
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow$/);
 });
