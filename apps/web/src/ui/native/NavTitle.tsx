@@ -4,6 +4,7 @@ import { type ReactNode, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { cx } from '../index';
 import { backLabel, type CornerAction, planCornerActions, titleSteps } from './title';
+import { TAP } from './metrics';
 
 /**
  * Primitive 3: the large title, and the corner buttons beside it.
@@ -206,7 +207,13 @@ export function LargeTitle({
             {backLabel(back)}
           </button>
         ))}
-      <div className="flex items-start justify-between gap-3" style={{ paddingTop: 8 }}>
+      {/*
+       * A corner's 44 px of height whether or not the screen has corners, so the row is the same height on every
+       * screen. Without it a title alone is 36, a title with one corner button 44 — and the 8 px difference walks
+       * everything below the bar up and down as you move between screens or between one screen's own tabs.
+       * `items-start` keeps the title itself where it was: the row grows downwards, under the name.
+       */}
+      <div className="flex items-start justify-between gap-3" style={{ paddingTop: 8, minHeight: 8 + TAP }}>
         <div className="min-w-0 flex-1">
           {field ?? (
             <>

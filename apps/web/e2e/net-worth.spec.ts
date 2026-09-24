@@ -99,6 +99,22 @@ test('every net-worth section tab is a real link, so it can be opened in a new t
   await expect(page.getByRole('radio', { name: 'Debts' })).toHaveAttribute('aria-checked', 'true');
 });
 
+/**
+ * Assets and Debts carry a `+` in the title row; Overview and Trades carry none. A row that is as tall as its
+ * corners made the section row sit 8 px lower on the two that have one — so moving between sections moved the
+ * tabs, and everything under them. The bar is a corner's height whatever it holds.
+ */
+test('the section row sits at the same height on all four sections', async ({ page }) => {
+  const tops: number[] = [];
+  for (const path of ['/net-worth', '/net-worth/assets', '/net-worth/trades', '/net-worth/loans']) {
+    await page.goto(path);
+    const tabs = page.getByRole('radiogroup', { name: 'Net worth sections' });
+    await expect(tabs).toBeVisible();
+    tops.push(Math.round((await tabs.boundingBox())!.y));
+  }
+  expect(new Set(tops).size, `the row moved between sections: ${tops.join(', ')}`).toBe(1);
+});
+
 test('an empty account in a currency with no rate does not stop net worth: zero needs no rate', async ({ page }) => {
   // Offline: no rate can be fetched, and none was ever typed for USD — nor is one needed for an empty account.
   await page.route('https://api.frankfurter.dev/**', (route) => void route.abort());
