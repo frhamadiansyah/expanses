@@ -1,8 +1,9 @@
+import { ASSET_FAMILIES } from '@expanses/core';
 import { describe, expect, it } from 'vitest';
-import { choiceForCode, codeChoices, fieldsFor, personCodeChoices, pickerRows } from './catalogue-view';
+import { ASSET_TILES, choiceForCode, codeChoices, fieldsFor, personCodeChoices, type PickerRow, pickerRows } from './catalogue-view';
 
 describe('the rows a picker draws', () => {
-  it('shows the seven money accounts under one kicker, and never a code', () => {
+  it('shows the seven money accounts, and never a code', () => {
     const rows = pickerRows({ flow: 'account', query: '' });
     expect(rows.map((row) => row.label)).toEqual([
       'Cash',
@@ -143,5 +144,33 @@ describe('changing the code afterwards', () => {
     expect(codeChoices('debt', '101')[0]!.choices.map((choice) => choice.code)).toEqual(['101', '102', '103', '109']);
     expect(personCodeChoices('lent').map((choice) => choice.code)).toEqual(['0201', '0202', '0209']);
     expect(personCodeChoices('borrowed').map((choice) => choice.code)).toEqual(['101', '103', '109']);
+  });
+});
+
+/**
+ * A tile that repeats is decoration. Where a screen offers a set of things to choose between, each row's tile has
+ * to be its own — which is why the asset table names every kind rather than giving a whole family one drawing.
+ */
+describe('the tiles a picker draws', () => {
+  const families = pickerRows({ flow: 'asset', query: '' });
+
+  it('draws a different tile on every row of a screen', () => {
+    const screens: readonly (readonly [string, PickerRow[]])[] = [
+      ['New account', pickerRows({ flow: 'account', query: '' })],
+      ['New debt', pickerRows({ flow: 'debt', query: '' })],
+      ['the five families', families],
+      ...ASSET_FAMILIES.map((family) => [`the ${family.label} family`, pickerRows({ flow: 'asset', query: '', family: family.id })] as const),
+    ];
+    for (const [screen, rows] of screens) {
+      const tiles = rows.map((row) => row.icon);
+      const repeated = tiles.filter((tile, index) => tiles.indexOf(tile) !== index);
+      expect(repeated, `${screen} draws the same tile twice`).toEqual([]);
+    }
+  });
+
+  it('names a tile for every kind the catalogue offers, so a new kind cannot arrive without one', () => {
+    for (const { items } of ASSET_FAMILIES) {
+      for (const item of items) expect(ASSET_TILES[item.id], `${item.label} (${item.id}) has no tile of its own`).toBeTruthy();
+    }
   });
 });

@@ -20,27 +20,50 @@ import {
   somethingElse,
 } from '@expanses/core';
 import {
+  Activity,
+  BadgeCheck,
   Banknote,
+  Bike,
+  Boxes,
+  Briefcase,
   Building2,
   Car,
+  ChartCandlestick,
   ChartLine,
+  Coins,
   CreditCard,
+  Diamond,
+  Frame,
   Gem,
+  HandCoins,
   Handshake,
   House,
+  KeyRound,
   Landmark,
+  LandPlot,
+  Laptop,
+  Lightbulb,
   Lock,
   type LucideIcon,
   Package,
+  PieChart,
   PiggyBank,
   Pin,
   Plus,
+  Printer,
   ReceiptText,
+  ScrollText,
   Smartphone,
+  Sofa,
+  Sparkles,
+  Store,
   TrendingUp,
+  Umbrella,
   User,
   Users,
   Wallet,
+  Watch,
+  Waypoints,
 } from 'lucide-react';
 
 /**
@@ -97,13 +120,65 @@ const CASH_TILES: Record<MoneyAccountSubtype, LucideIcon> = {
   other_cash: Wallet,
 };
 
-/** The tile each family is drawn with. Its things share it, so a row says which family it came out of. */
+/** The tile each family is drawn with — for the family's own row, and for a kind no table below names. */
 const FAMILY_TILES: Record<OwnableFamily, LucideIcon> = {
   receivable: Handshake,
   invest: ChartLine,
   movable: Car,
   immovable: House,
   other: Gem,
+};
+
+/**
+ * The tile each asset is drawn with, by the item's own id, in the catalogue's own order.
+ *
+ * A family has one drawing, and a screen that gave every row of one family that same drawing said nothing on
+ * any of them: eight rows of `ChartLine` is eight rows of decoration. Each kind carries its own mark instead —
+ * bars for listed shares, a plot for empty land, a key for what is rented out, an umbrella for insurance — so a
+ * row's tile is the kind of thing it is, at the level where a person is choosing between them.
+ *
+ * Exported because a test holds it against the catalogue: a kind added there and not named here would fall back
+ * to its family's drawing, which is the repetition this table exists to remove.
+ */
+export const ASSET_TILES: Record<string, LucideIcon> = {
+  // Receivables: money owed to you, by whom.
+  trade_receivable: Store,
+  affiliate_receivable: Users,
+  other_receivable: Boxes,
+  // Investments.
+  stock: ChartCandlestick,
+  unlisted_stock: Briefcase,
+  fund: PieChart,
+  corporate_bond: ScrollText,
+  bond: Landmark,
+  derivative: Waypoints,
+  endowment_insurance: Umbrella,
+  unit_link: Activity,
+  // Movable property.
+  motorcycle: Bike,
+  vehicle: Car,
+  other_movable: Package,
+  // Immovable property.
+  property: House,
+  apartment: Building2,
+  empty_land: LandPlot,
+  business_property: Store,
+  rented_property: KeyRound,
+  other_immovable: Package,
+  // Intangible and other.
+  gold: Coins,
+  gold_jewellery: Sparkles,
+  non_gold_bullion: Boxes,
+  non_gold_jewellery: Watch,
+  gemstone: Diamond,
+  art: Frame,
+  electronics: Laptop,
+  furniture: Sofa,
+  office_equipment: Printer,
+  patent: Lightbulb,
+  royalty: HandCoins,
+  trademark: BadgeCheck,
+  other: Package,
 };
 
 /** The tile each debt is drawn with, by the item's own id — the same drawings the Debts page gives the same kinds. */
@@ -130,8 +205,10 @@ const FAMILY_OF_ITEM = new Map<string, OwnableFamily>(
 function tileFor(flow: OwnableFlow, item: OwnableItem, family?: OwnableFamily): LucideIcon {
   if (flow === 'account') return CASH_TILES[item.id as MoneyAccountSubtype] ?? PLAIN;
   if (flow === 'debt') return DEBT_TILES[item.id] ?? PLAIN;
+  // A kind the asset table does not name — one of the rare codes under "Something else" — falls back to its
+  // family's own drawing, which is the most that can honestly be said about it.
   const from = family ?? FAMILY_OF_ITEM.get(item.id);
-  return from ? FAMILY_TILES[from] : PLAIN;
+  return ASSET_TILES[item.id] ?? (from ? FAMILY_TILES[from] : PLAIN);
 }
 
 const rowOf = (flow: OwnableFlow, item: OwnableItem, family?: OwnableFamily): PickerRow => ({
