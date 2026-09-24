@@ -1,5 +1,5 @@
 import type { PersonDebtRow } from '@expanses/db';
-import { HelpCircle, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
@@ -72,13 +72,7 @@ export function LendBorrowPage() {
   const shown: Side = side ?? (only && owedToYou.length === 0 ? 'owe' : 'owed');
 
   // While the inline form is open there is no action to show, and an empty corner would still take its gap.
-  const actions: CornerAction[] = adding
-    ? []
-    : [
-        { key: 'add', label: 'Add a loan', glyph: <Plus size={20} aria-hidden />, run: () => setAdding(true) },
-        // The inline form is still one tap away; the picker is for when you do not know what to call it.
-        { key: 'pick', label: 'What do you owe?', glyph: <HelpCircle size={20} aria-hidden />, to: '/debts/new' },
-      ];
+  const actions: CornerAction[] = adding ? [] : [{ key: 'add', label: 'Add a loan', glyph: <Plus size={20} aria-hidden />, run: () => setAdding(true) }];
 
   return (
     <div className={SCREEN}>

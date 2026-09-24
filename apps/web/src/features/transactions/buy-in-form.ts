@@ -138,6 +138,10 @@ export function purchaseDraftToInput(draft: PurchaseDraft, currency: string, tod
 /**
  * Where a transfer may land. Holdings measured in units are left out: moving money into one
  * records no units, so the value would drop out of your net worth.
+ *
+ * Everything else lands, and the debts are the point of it: paying a card's statement is a transfer *into* the card,
+ * paying an instalment is a transfer into the loan, and settling with a person is a transfer into their account. The
+ * asymmetry is deliberate — a debt may **receive** money, and can never be where money comes *from*.
  */
 export function transferTargets(accounts: AccountRow[], values: AssetValueRow[]): AccountRow[] {
   const unitPriced = new Set(values.filter((value) => value.mode === 'market').map((value) => value.accountId));

@@ -1,8 +1,8 @@
 import { CASH_ITEMS } from '@expanses/core';
 import type { AccountRow, AccountSubtype } from '@expanses/db';
-import { BALANCE_SUBTYPES, SPENDABLE_SUBTYPES as LEDGER_SPENDABLE } from '@expanses/db';
+import { BALANCE_SUBTYPES, MONEY_SUBTYPES as LEDGER_MONEY, SPENDABLE_SUBTYPES as LEDGER_SPENDABLE } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { ACCOUNT_TYPES, canPayWith, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
+import { ACCOUNT_TYPES, canPayWith, canReceiveInto, canTransferWith, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, SUBTYPE_LABELS, WALLET_SUBTYPES } from './account-types';
 
 describe('the account types someone can open', () => {
   /**
@@ -42,9 +42,16 @@ describe('the account types someone can open', () => {
 });
 
 describe('what can pay', () => {
-  it('offers the same accounts the ledger lets money be set aside on', () => {
+  it('is the ledger’s own two lists, in step with it', () => {
     expect([...SPENDABLE_SUBTYPES].sort()).toEqual([...LEDGER_SPENDABLE].sort());
+    expect([...MONEY_SUBTYPES].sort()).toEqual([...LEDGER_MONEY].sort());
   });
+
+  /*
+   * The owner's rule, and the reason the two lists exist: money parked in an RDN cannot be spent from. It has to be
+   * moved to a current or savings account first — so a transaction, a bill, a card and an instalment are never paid
+   * with it. It is still money the ledger moves: a buy is paid out of it, and a goal may wait there.
+   */
 
   it('adds a credit card to pay a bill with, and nothing else', () => {
     expect([...WALLET_SUBTYPES].sort()).toEqual([...SPENDABLE_SUBTYPES, 'credit_card'].sort());
@@ -65,12 +72,14 @@ describe('what can pay', () => {
 describe('what a picker may offer as a way to pay', () => {
   const account = (subtype: AccountRow['subtype'], kind: AccountRow['kind'] = 'asset') => ({ id: subtype, kind, subtype }) as AccountRow;
 
-  it('offers money the owner can move, and never a locked deposit', () => {
+  it('offers money that can be paid from — never a broker’s cash, never a locked deposit', () => {
     expect(canPayWith(account('bank'))).toBe(true);
     expect(canPayWith(account('cash'))).toBe(true);
     expect(canPayWith(account('ewallet'))).toBe(true);
-    expect(canPayWith(account('fund'))).toBe(true);
     expect(canPayWith(account('other_cash'))).toBe(true);
+    // An RDN cannot be spent from: the money is moved to a bank account first. It is still money the ledger moves.
+    expect(canPayWith(account('fund'))).toBe(false);
+    expect([...MONEY_SUBTYPES]).toContain('fund');
     expect(canPayWith(account('time_deposit'))).toBe(false);
   });
 
@@ -80,10 +89,20 @@ describe('what a picker may offer as a way to pay', () => {
     expect(canPayWith(account('investment'))).toBe(false);
   });
 
-  it('keeps every liability, since a card or a loan settles later rather than holding money now', () => {
+  it('offers a card, and nothing else that settles later: a loan and a person cannot pay for anything', () => {
     expect(canPayWith(account('credit_card', 'liability'))).toBe(true);
-    expect(canPayWith(account('loan', 'liability'))).toBe(true);
-    expect(canPayWith(account('payable', 'liability'))).toBe(true);
+    expect(canPayWith(account('loan', 'liability'))).toBe(false);
+    expect(canPayWith(account('payable', 'liability'))).toBe(false);
+  });
+
+  /* Income is the mirror of paying, and the one place a broker's cash is named: a dividend or a coupon lands there. */
+  it('receives income into money you hold, a broker’s cash included', () => {
+    expect(canReceiveInto(account('bank'))).toBe(true);
+    expect(canReceiveInto(account('savings'))).toBe(true);
+    expect(canReceiveInto(account('fund'))).toBe(true);
+    expect(canReceiveInto(account('time_deposit'))).toBe(false);
+    expect(canReceiveInto(account('credit_card', 'liability'))).toBe(false);
+    expect(canReceiveInto(account('property'))).toBe(false);
   });
 
   it('agrees with the list of what holds spendable money, asset by asset', () => {
@@ -105,5 +124,35 @@ describe('what a picker may offer as a way to pay', () => {
     expect(canPayWith(account('time_deposit'), 'property')).toBe(false);
     expect(canPayWith(account('property'), '')).toBe(false);
     expect(canPayWith(account('property'), null)).toBe(false);
+  });
+});
+
+/**
+ * The owner's rule for transfers, asked on the way money never leaves: ANTAM gold bars, the car, the house, KPR BCA
+ * and a car loan were all on offer as somewhere to transfer *from*, because every picker of money was built from
+ * "every active account".
+ */
+describe('what a transfer may move money between', () => {
+  const account = (subtype: AccountRow['subtype'], kind: AccountRow['kind'] = 'asset') => ({ id: subtype, kind, subtype }) as AccountRow;
+
+  it('offers money you hold, deposits included, and the person-shaped pair', () => {
+    for (const subtype of ['bank', 'cash', 'savings', 'ewallet', 'other_cash', 'fund', 'time_deposit', 'receivable'] as const) {
+      expect(canTransferWith(account(subtype)), subtype).toBe(true);
+    }
+    expect(canTransferWith(account('payable', 'liability'))).toBe(true);
+  });
+
+  it('never offers a thing you own, nor a debt', () => {
+    expect(canTransferWith(account('investment'))).toBe(false); // gold bars, shares
+    expect(canTransferWith(account('property'))).toBe(false); // a house
+    expect(canTransferWith(account('vehicle'))).toBe(false); // a car
+    expect(canTransferWith(account('credit_card', 'liability'))).toBe(false);
+    expect(canTransferWith(account('loan', 'liability'))).toBe(false); // KPR, a car loan
+  });
+
+  it('always keeps the account the row already names', () => {
+    expect(canTransferWith(account('property'), 'property')).toBe(true);
+    expect(canTransferWith(account('loan', 'liability'), 'loan')).toBe(true);
+    expect(canTransferWith(account('property'), 'bank')).toBe(false);
   });
 });

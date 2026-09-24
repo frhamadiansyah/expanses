@@ -2,7 +2,7 @@ import { evaluateAmount } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
 import { formToPost } from '../transactions/tx-form';
-import { bankRateText, choosePocketCurrency, freeOn, freeToSpend, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
+import { PARKED_KINDS, SPENDABLE_KINDS, bankRateText, choosePocketCurrency, freeOn, freeToSpend, moneySummary, moveDraft, moveView, nextPocketCurrency, parentTotal, pocketCount, pocketsOf, readPockets, spreadLine, withPockets } from './pockets';
 
 // Ids deliberately out of order: the pockets were made in one millisecond, so only sort_order says which came first.
 const accounts = [
@@ -36,6 +36,13 @@ describe('the pockets of an account', () => {
     const balances = { 'c-usd': 240_000, 'a-sgd': 115_000, 'b-idr': 5_400_000 };
     expect(parentTotal(pocketsOf('v', accounts), balances, 'IDR', rates)).toEqual({ totalMinor: 58_982_000, missing: [] });
     expect(parentTotal(pocketsOf('v', accounts), balances, 'IDR', { USD: 16_250 })).toEqual({ totalMinor: null, missing: ['SGD'] });
+  });
+});
+
+describe('what can be spent, and what is only parked', () => {
+  it('leaves a broker out of spending money, and names it instead', () => {
+    expect([...SPENDABLE_KINDS]).not.toContain('fund');
+    expect([...PARKED_KINDS]).toEqual(['fund']);
   });
 });
 

@@ -24,14 +24,28 @@ export const BALANCE_SUBTYPES = {
 } as const satisfies Record<'asset' | 'liability', readonly AccountSubtype[]>;
 
 /**
- * Accounts that hold money the owner can move: everyday cash, a wallet, a current or savings account, or
- * cash at a broker. Money can be spent from them, received into them, and set aside on them for a goal —
- * unlike a holding, which is worth what it is worth and is tagged purchase by purchase.
+ * Accounts money can be **paid from**: everyday cash, a wallet, a current or savings account. A transaction, a
+ * bill, a card and an instalment are all paid out of one of these.
  *
- * A time deposit is deliberately not here: it holds money it cannot be paid from, and the money leaves by a
- * transfer when it matures. Other cash equivalents — a cheque, a wesel, commercial paper — can be spent.
+ * A broker's cash is deliberately not here. An RDN cannot be spent from — the money is moved to a current or
+ * savings account first — so it is not offered behind "Paid with", nor as the account a card or a loan is paid
+ * from. It is money all the same: see `MONEY_SUBTYPES`, which is this list plus a broker's cash, and which the
+ * three questions that really mean "money the ledger can move" ask instead.
+ *
+ * A time deposit is in neither list: it holds money it cannot be paid from, and the money leaves by a transfer
+ * when it matures. Other cash equivalents — a cheque, a wesel, commercial paper — can be spent.
  */
-export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['cash', 'bank', 'savings', 'fund', 'ewallet', 'other_cash'];
+export const SPENDABLE_SUBTYPES: readonly AccountSubtype[] = ['cash', 'bank', 'savings', 'ewallet', 'other_cash'];
+
+/**
+ * Money the ledger can move that nobody can spend: cash at a broker, which a buy is paid from and which is moved out
+ * to a bank before it is spent from.
+ *
+ * Asked by exactly two questions — the cash side of a trade, and where a goal's money may wait — and by nothing else:
+ * a deposit's opening balance cannot come from here and its payout cannot land here, so the deposit's own checks ask
+ * `SPENDABLE_SUBTYPES` instead.
+ */
+export const MONEY_SUBTYPES: readonly AccountSubtype[] = [...SPENDABLE_SUBTYPES, 'fund'];
 
 /** A pocket's stored name: the bank and the currency, so every list that prints a name already says both. */
 export const pocketName = (parentName: string, currency: string) => `${parentName} · ${currency}`;

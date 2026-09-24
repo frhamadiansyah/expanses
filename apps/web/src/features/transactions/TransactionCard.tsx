@@ -13,7 +13,7 @@ import { AlignLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Credi
 import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { canPayWith } from '../../lib/account-types';
+import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow, SelectRow } from '../../ui';
 import { SegmentedControl } from '../../ui/native';
@@ -142,7 +142,6 @@ function CardBody({
 
   const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const choices = useMemo(() => buyChoices(assetValues.data ?? [], assetProfiles.data ?? []), [assetValues.data, assetProfiles.data]);
-  const money = moneyHolders(accounts);
   const account = byId.get(draft.moneyId);
   const purchase = draft.purchase;
   const chosen = [...choices.buys, ...choices.sells].find((option) => option.value === `${purchase.mode}:${purchase.accountId}`);
@@ -162,10 +161,19 @@ function CardBody({
   const saved = useSetAsideChoiceOf(initial?.id ?? null);
   const setAside = useSetAside(door, { excludeTransactionId: initial?.id ?? null, initial: saved.data ?? null, toName: toAccount?.name });
 
-  // A transfer may move money between any two money accounts; everything else has to be paid from or into one.
+  /*
+   * One list per question, because the label asks three different things. A purchase is paid with money you can spend
+   * from, or with a card that settles later. Income is received into money you hold — a broker's cash included,
+   * where a dividend or a coupon lands. A transfer moves money between the accounts money can move between. A loan,
+   * a person's account and a thing you own are on none of them: an instalment is paid, a person is settled, a house
+   * is bought through flows of their own. The account the row already names is kept, so an old row opens as saved.
+   */
+  const namedBy = draft.mode === 'transfer' ? canTransferWith : draft.mode === 'income' ? canReceiveInto : canPayWith;
+  const money = moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId));
+  // A card is a way to pay, never somewhere money arrives or moves to.
   const payable: PaymentOption[] = paymentOptions(
-    draft.mode === 'transfer' ? money : money.filter((a) => canPayWith(a, draft.moneyId)),
-    allCards as CardRow[],
+    money,
+    draft.mode === 'expense' || draft.mode === 'trade' ? (allCards as CardRow[]) : [],
   );
 
   /*

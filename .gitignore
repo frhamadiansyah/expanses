@@ -18,3 +18,4 @@ dist-stable/
 
 # SDD ledgers, review packages and design-audit captures — scratch, never committed
 .superpowers/
+.scratch/

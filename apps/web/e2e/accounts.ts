@@ -93,9 +93,15 @@ export async function openAccount(page: Page, o: NewAccount) {
    * is waited for where it is priced — the asset list. Its row there reads "BCA Deposito · Time deposit · …", as
    * every row on that list does, so the name is a prefix rather than the whole accessible name.
    */
-  if (o.subtype === 'time_deposit') {
+  /*
+   * A time deposit and a broker's cash are rows on no list of money and in no drawer of one: neither can be paid
+   * from — a deposit is locked until it matures, and an RDN's money is moved to a bank first — so both are waited
+   * for where they are priced, the asset list. Their rows there read "BCA Deposito · Ledger balance · …", as every
+   * row on that list does, so the name is a prefix rather than the whole accessible name.
+   */
+  if (o.subtype === 'time_deposit' || o.subtype === 'fund') {
     /* The form navigates to the money list once the write is done, so that is what the save is waited for first:
-     * leaving for the asset list any earlier abandons the write, and no deposit is ever made. */
+     * leaving for the asset list any earlier abandons the write, and no account is ever made. */
     await expect(page).toHaveURL(/\/accounts$/);
     await page.goto('/net-worth/assets');
     await expect(page.getByRole('link', { name: new RegExp(`^${o.name}`) })).toBeVisible();

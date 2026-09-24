@@ -2,13 +2,18 @@ import { expect, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
 import { addTransaction } from './add-transaction';
 
-test('a digital wallet and a fund account hold money, and the wallet pays for lunch', async ({ page }) => {
+test('a digital wallet and a fund account hold money, and only the wallet is spending money', async ({ page }) => {
   await openAccount(page, { subtype: 'ewallet', name: 'GoPay', balance: '500000' });
   await openAccount(page, { subtype: 'fund', name: 'RDN Mandiri Sekuritas', balance: '8000000' });
 
-  // Both are named the way the type list names them.
-  await expect(page.getByText('Digital wallet · IDR')).toBeVisible();
-  await expect(page.getByText('Fund account · IDR')).toBeVisible();
+  // The broker's cash is a row on no money list: an RDN cannot be paid from, so the list the ledger pays out of
+  // does not carry it. It is priced on the asset list — which is where the helper above left us — and named on the
+  // tile as money that is parked rather than spendable.
+  const broker = page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ });
+  await expect(broker).toContainText('8.000.000');
+  await page.goto('/accounts');
+  await expect(page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Parked at brokers')).toBeVisible();
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Warung Tegal', paidWith: 'GoPay', category: 'Groceries', amount: '45000' });
@@ -16,12 +21,8 @@ test('a digital wallet and a fund account hold money, and the wallet pays for lu
 
   await page.goto('/accounts');
   await openTypes(page);
-  // An account is a table row now — the same five columns, scrollable at 390 px rather than wrapping the name
-  // into the balance. The row still holds the name as a link into its history, so the locator is the same fact.
   const wallet = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'GoPay', exact: true }) });
   await expect(wallet).toContainText('455.000');
-  const fund = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true }) });
-  await expect(fund).toContainText('8.000.000');
 
   // Both are money the owner holds, so net worth counts them and the wallet's spending came off it.
   await page.goto('/');

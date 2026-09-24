@@ -34,11 +34,11 @@ const profile = (accountId: string, partial: Partial<AssetProfileRow> = {}): Ass
   ...partial,
 });
 
-const account = (id: string, name: string, subtype: AccountRow['subtype']): AccountRow => ({
+const account = (id: string, name: string, subtype: AccountRow['subtype'], kind: AccountRow['kind'] = 'asset'): AccountRow => ({
   id,
   workspaceId: 'ws',
   parentId: null,
-  kind: 'asset',
+  kind,
   subtype,
   name,
   icon: null,
@@ -132,9 +132,23 @@ describe('purchaseDraftToInput', () => {
 });
 
 describe('transferTargets', () => {
-  it('drops holdings measured in units but keeps the house and the bank', () => {
-    const accounts = [account('bca', 'BCA Tahapan', 'bank'), account('gold', 'Antam gold bars', 'investment'), account('bbri', 'BBRI shares', 'investment'), account('house', 'House in Bintaro', 'property')];
+  /*
+   * The destination side is the mirror of the source, and deliberately wider: a debt may receive money — paying a
+   * card's statement, an instalment or a person is a transfer *into* them — while nothing may come out of one. Only
+   * a holding measured in units is left out, because money moved into one records no units.
+   */
+  it('lets money land anywhere but a holding measured in units, the debts included', () => {
+    const accounts = [
+      account('bca', 'BCA Tahapan', 'bank'),
+      account('gold', 'Antam gold bars', 'investment'), // units: left out
+      account('bbri', 'BBRI shares', 'investment'),
+      account('house', 'House in Bintaro', 'property'), // what a purchase is recorded into
+      account('card', 'BCA Visa', 'credit_card', 'liability'), // paying its statement
+      account('kpr', 'KPR BCA', 'loan', 'liability'), // an instalment
+      account('dewi', 'Dewi', 'receivable'), // settling with her
+      account('andi', 'Andi', 'payable', 'liability'),
+    ];
 
-    expect(transferTargets(accounts, values).map((row) => row.id)).toEqual(['bca', 'house']);
+    expect(transferTargets(accounts, values).map((row) => row.id)).toEqual(['bca', 'house', 'card', 'kpr', 'dewi', 'andi']);
   });
 });

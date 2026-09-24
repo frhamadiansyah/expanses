@@ -2,7 +2,7 @@ import { bandHint, type GoalKind, isoDate, minorToMajorString, monthsUntil, pars
 import { type EarmarkRow, type GoalRow, removeEarmark, saveEarmark, saveGoal } from '@expanses/db';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
-import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
+import { MONEY_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useBalances, useInvalidateAll } from '../../lib/queries';
 import { Button, Card, ErrorBox, Field, Input, Select } from '../../ui';
 import { Calculator, calculatorKindOf } from './Calculator';
@@ -69,7 +69,7 @@ export function GoalForm({ goal, startKind, earmarks, onDone }: { goal?: GoalRow
   const [working, setWorking] = useState(false);
 
   const template = GOAL_TEMPLATES.find((row) => row.kind === kind);
-  const savingsAccounts = moneyHolders(accounts.data ?? []).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
+  const savingsAccounts = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
 
   /**
    * A set-aside is in the account's own money, so the box is labelled, read and written in that currency.

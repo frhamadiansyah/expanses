@@ -14,7 +14,7 @@ import { useAssetValues } from '../networth/queries';
 import { ShareBar } from '../networth/ShareBar';
 import { cx, Empty, Money } from '../../ui';
 import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, LineAction, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
-import { SPENDABLE_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
+import { SPENDABLE_KINDS, PARKED_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
 
 /**
@@ -58,13 +58,14 @@ const GROUPS: {
      * lent to and a person you borrowed from are the same kind of fact read from opposite sides, and they used to
      * sit at different depths: Receivables was a section of its own while Payables was a drawer under Debts. Now
      * each side is one section with its kinds inside it, and the pair is symmetric. */
-    /* No deposits here. A deposit holds money it cannot be paid from, so it belongs where it is priced and where its
-     * maturity is read — Net worth's Assets, beside the holdings — and the tile's Spending money already leaves it
-     * out. */
-    subtypes: ['cash', 'bank', 'savings', 'ewallet', 'fund', 'other_cash', 'receivable'],
+    /* No deposits here, and no broker's cash either. Neither can be paid from: a deposit is locked until it matures,
+     * and money in an RDN is moved to a bank account before it is spent. Both belong where they are priced — Net
+     * worth's Assets, a broker beside its own holdings — and the tile names what is parked at a broker rather than
+     * counting it as spending money. This list is what the ledger can pay out of. */
+    subtypes: ['cash', 'bank', 'savings', 'ewallet', 'other_cash', 'receivable'],
     drawer: (account) => ({ key: account.subtype, label: SUBTYPE_LABELS[account.subtype] }),
     /* Money first, in the order the cash picker lists it, and what you are owed after it. */
-    order: [...CASH_ITEMS.map((item) => item.id), 'receivable'],
+    order: [...CASH_ITEMS.filter((item) => item.id !== 'fund').map((item) => item.id), 'receivable'],
   },
   {
     key: 'debts',
@@ -391,6 +392,13 @@ export function AccountsPage() {
    * mortgage's principal is read on Net worth, against a year's schedule, and never here.
    */
   const spendable = moneySummary(everything, all, ws.baseCurrency, held, SPENDABLE_KINDS);
+  /**
+   * Money parked at a broker. It is outside the working above on purpose — an RDN cannot be paid from, so it is not
+   * "Spending money" — and it is named below the tile anyway, because money that is invisible reads as money that
+   * is gone. Nothing is subtracted here: a goal parked on the RDN is left out of both sides, so no rupiah counts
+   * twice.
+   */
+  const parked = moneySummary(everything, all, ws.baseCurrency, held, PARKED_KINDS);
   const promised = sumToBase({
     amounts: Object.values(owed.data ?? {})
       .filter((row) => SPENDABLE_KINDS.has(byId.get(row.accountId)?.subtype ?? ''))
@@ -516,6 +524,15 @@ export function AccountsPage() {
             <InsetRow title="Set aside for goals" value={<Money minor={-(free.setAsideMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
             <InsetRow title="What the debts ask" value={<Money minor={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
           </InsetGroup>
+          {/*
+           * Money at a broker, under the working rather than inside it: it is not part of the subtraction, because
+           * nothing could be paid from it. Shown only once a rate is held for every currency under the broker.
+           */}
+          {parked.accounts > 0 && parked.totalMinor !== null && (
+            <InsetGroup footer="Not spending money: an RDN cannot be paid from, so the money is moved to a bank first. It is not in the figure above.">
+              <InsetRow title="Parked at brokers" subtitle="waiting to be invested" value={<Money minor={parked.totalMinor} currency={ws.baseCurrency} />} valueTone="ink" chevron={false} />
+            </InsetGroup>
+          )}
           <Panel className="space-y-2">
             <ShareBar
               segments={[

@@ -5,7 +5,7 @@ import type { Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { assetProfiles } from '../schema-assets';
 import { goalDraws, goalEarmarks, goalStages, goals } from '../schema-goals';
-import { SPENDABLE_SUBTYPES } from './accounts';
+import { MONEY_SUBTYPES } from './accounts';
 
 /**
  * Whether migration 0050 has run on this database. Every read and write of goal_draws asks first, so a database stopped
@@ -62,7 +62,7 @@ export interface SetAsideChoice {
 
 /** Money can wait for a goal wherever it can be set aside, or in a holding the owner groups as investments. */
 export function isSetAsideHolder(subtype: string, planGroup: string | null): boolean {
-  return (SPENDABLE_SUBTYPES as readonly string[]).includes(subtype) || planGroup === 'invest';
+  return (MONEY_SUBTYPES as readonly string[]).includes(subtype) || planGroup === 'invest';
 }
 
 /** Whether an account is a pocket parent: it holds no money of its own, only adds its pockets up (currency pockets). */

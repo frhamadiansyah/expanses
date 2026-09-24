@@ -1,4 +1,4 @@
-import { Fuel, HelpCircle, Plus, Search, ShoppingBasket, Smartphone, Utensils } from 'lucide-react';
+import { Fuel, Plus, Search, ShoppingBasket, Smartphone, Utensils } from 'lucide-react';
 import { useState } from 'react';
 import {
   CardStack,
@@ -128,12 +128,10 @@ export function KitPage() {
     { key: 'delete', label: 'Delete this month', destructive: true, run: () => {} },
   ];
 
-  /* The pushed title's own corners, named as the page that wears it names them, so the specimen is not a second
-   * set of words for the same two actions. */
-  const PUSHED_ACTIONS: CornerAction[] = [
-    { key: 'add', label: 'Add a loan', glyph: <Plus size={20} aria-hidden />, run: () => {} },
-    { key: 'pick', label: 'What do you owe?', glyph: <HelpCircle size={20} aria-hidden />, run: () => {} },
-  ];
+  /* The pushed title's own corner, named as the page that wears it names it, so the specimen is not a second set of
+   * words for the same action. One action, because that is all Lend & borrow has: a second and a third would fold
+   * behind a `…`, exactly as the large title above demonstrates. */
+  const PUSHED_ACTIONS: CornerAction[] = [{ key: 'add', label: 'Add a loan', glyph: <Plus size={20} aria-hidden />, run: () => {} }];
 
   return (
     <div className="ph-screen -m-4 min-h-dvh p-4 md:-m-8 md:p-8">

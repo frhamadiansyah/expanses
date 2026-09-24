@@ -166,7 +166,9 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   await page.getByLabel('Name', { exact: true }).fill('RDN Mandiri Sekuritas');
   await page.getByLabel('Balance now').fill('8000000');
   await page.getByRole('button', { name: 'Add account' }).click();
-  await expect(page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/accounts$/);
+  /* A broker's cash is on no money list — it cannot be paid from — so it is looked for where it is priced, below. */
+  await expect(page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true })).toHaveCount(0);
 
   // The code boxes live on the asset's settings page, behind its gear — reached from the asset list now that the
   // Accounts list carries no tax line.

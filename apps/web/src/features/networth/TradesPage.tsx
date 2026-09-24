@@ -2,7 +2,7 @@ import { averagePriceMicro, formatMinor, formatPriceMicro, formatUnits, isoDate,
 import { declareReinvestment, deleteTrade, retagTrade, type TradeRow } from '@expanses/db';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
-import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
+import { MONEY_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll } from '../../lib/queries';
 import { Button, Empty, ErrorBox, Money } from '../../ui';
 import { Figure, GROUP_GAP, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, type RecordColumn, RecordTable, SCREEN, SelectRow } from '../../ui/native';
@@ -38,7 +38,12 @@ export function TradesPage() {
   const holdings = (values.data ?? [])
     .filter((row) => row.mode === 'market')
     .map((row) => ({ accountId: row.accountId, name: row.name, currency: row.currency }));
-  const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
+  /*
+   * The cash side of a trade, and the reason this set is not the payable one: a buy is paid out of the broker's own
+   * cash, and a coupon or a dividend lands back in it. That money cannot be spent from directly — it is moved to a
+   * bank first — so it is offered here, where a trade asks, and never behind "Paid with".
+   */
+  const cashAccounts = moneyHolders(accounts.data ?? []).filter((account) => MONEY_SUBTYPES.includes(account.subtype));
   const nameOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.name ?? 'Holding';
   const currencyOf = (accountId: string) => (values.data ?? []).find((row) => row.accountId === accountId)?.currency ?? ws.baseCurrency;
   const unitLabelOf = (accountId: string) => {

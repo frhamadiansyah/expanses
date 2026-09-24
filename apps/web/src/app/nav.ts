@@ -64,9 +64,9 @@ export const MORE_GROUPS: readonly NavGroup[] = [
       { to: '/events', label: 'Events', icon: CalendarRange },
       { to: '/goals', label: 'Goals', icon: Sparkles },
       { to: '/accounts', label: 'Accounts', icon: Landmark },
-      // No "Add a debt" here. This sheet is a list of places, and a debt is added from the two screens that list
-      // debts: the Debts page's own +, and Lend & borrow's "What do you owe?". A door among the places made one
-      // line of this menu open a form where every other line opens a screen.
+      // No "Add a debt" here. This sheet is a list of places, and a debt is added from the screens that list debts:
+      // the Debts page's own +, and Lend & borrow's Add a loan. A door among the places made one line of this menu
+      // open a form where every other line opens a screen.
       { to: '/categories', label: 'Categories', icon: Tags },
     ],
   },

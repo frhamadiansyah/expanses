@@ -6,7 +6,7 @@ import { accounts } from '../schema';
 import { goalCalculators } from '../schema-budget';
 import { goalEarmarks, goalStages, goals } from '../schema-goals';
 import { goalStageTerms } from '../schema-health';
-import { SPENDABLE_SUBTYPES } from './accounts';
+import { MONEY_SUBTYPES } from './accounts';
 import { recordContributionTx } from './goal-contributions';
 import { healthTablesExist } from './health-tables';
 import { isPocketParentTx } from './set-aside-tx';
@@ -254,7 +254,7 @@ export async function saveEarmark(database: Database, ws: WorkspaceContext, inpu
       .from(accounts)
       .where(and(eq(accounts.id, input.accountId), eq(accounts.workspaceId, ws.workspaceId)));
     if (!account) throw new GoalDbError('Account not found in this workspace');
-    if (!SPENDABLE_SUBTYPES.includes(account.subtype)) {
+    if (!MONEY_SUBTYPES.includes(account.subtype)) {
       throw new GoalDbError('Only accounts that hold money can be set aside; a holding is tagged on each purchase instead');
     }
     // A pocket parent holds no money of its own (currency pockets, ruling I5): set aside on one of its pockets.

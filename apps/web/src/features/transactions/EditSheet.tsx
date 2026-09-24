@@ -5,7 +5,7 @@ import { Ellipsis } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
-import { canPayWith } from '../../lib/account-types';
+import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, ErrorBox, InputRow, RowGroup } from '../../ui';
 import { useCards } from '../cards/card-queries';
@@ -90,11 +90,13 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
   const saved = useSetAsideChoiceOf(tx.id);
   const setAside = useSetAside(post ? doorOfForm(draft, post, accounts, canHold) : null, { excludeTransactionId: tx.id, initial: saved.data ?? null });
 
-  // The same list the card offers, built the same way: every money account this one could be paid from, one row
-  // per card on it. `canPayWith` keeps the account already chosen even when it is no longer spendable.
+  // The same list the card offers, built by the same rule: what the row's own label asks — a purchase paid with
+  // money you can spend from or a card, income received into money you hold, a transfer's source. `canPayWith` and
+  // friends keep the account already chosen even when the list no longer offers it.
+  const namedBy = draft.mode === 'transfer' ? canTransferWith : draft.mode === 'income' ? canReceiveInto : canPayWith;
   const payable: PaymentOption[] = paymentOptions(
-    moneyHolders(accounts).filter((a) => canPayWith(a, draft.moneyId)),
-    allCards as CardRow[],
+    moneyHolders(accounts).filter((a) => namedBy(a, draft.moneyId)),
+    draft.mode === 'expense' || draft.mode === 'trade' ? (allCards as CardRow[]) : [],
   );
   const categoryName = draft.categoryId ? (accounts.find((a) => a.id === draft.categoryId)?.name ?? '') : '';
   // Rates are resolved no later than today, exactly as the card resolves them.

@@ -3,7 +3,7 @@ import { type AccountRow, addHolding, type AddHoldingInput, type RecordTradeInpu
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { useApp } from '../../app/context';
-import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
+import { MONEY_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview } from '../../lib/rates';
 import { InputRow, RowHint, SelectRow } from '../../ui';
@@ -47,8 +47,9 @@ export function AddHoldingForm({ picked, accounts, brokers, heldAt, onCancel }: 
   const positions = usePositions().data ?? {};
   const landsOn = landsOnNote(draft.brokerChoice, brokerless, accounts, positions, security.ticker ?? security.name);
 
-  // Every account that can pay — never a pocket parent, which holds nothing (`moneyHolders`) — as Buy & sell offers them.
-  const money = moneyHolders(accounts).filter((a) => a.kind === 'asset' && SPENDABLE_SUBTYPES.includes(a.subtype));
+  // Every account money can come out of — never a pocket parent, which holds nothing (`moneyHolders`) — as Buy &
+  // sell offers them. A broker's own cash is one of them: parking in the RDN and buying from it is the whole point.
+  const money = moneyHolders(accounts).filter((a) => a.kind === 'asset' && MONEY_SUBTYPES.includes(a.subtype));
   const cash = money.find((a) => a.id === draft.paidFrom);
   const cashCurrency = cash ? (cash.currency ?? ws.baseCurrency) : security.currency;
   const total = totalOf(draft, security.lotSize, security.currency);
