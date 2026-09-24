@@ -7,13 +7,13 @@ test('a digital wallet and a fund account hold money, and only the wallet is spe
   await openAccount(page, { subtype: 'fund', name: 'RDN Mandiri Sekuritas', balance: '8000000' });
 
   // The broker's cash is a row on no money list: an RDN cannot be paid from, so the list the ledger pays out of
-  // does not carry it. It is priced on the asset list — which is where the helper above left us — and named on the
-  // tile as money that is parked rather than spendable.
+  // does not carry it — and the tile does not name it either, because the tile counts the accounts this list shows.
+  // It is priced on the asset list, which is where the helper above left us, and read beside its holdings.
   const broker = page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ });
   await expect(broker).toContainText('8.000.000');
   await page.goto('/accounts');
   await expect(page.getByRole('link', { name: 'RDN Mandiri Sekuritas', exact: true })).toHaveCount(0);
-  await expect(page.getByText('Parked at brokers')).toBeVisible();
+  await expect(page.getByText('Parked at brokers')).toHaveCount(0);
 
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Warung Tegal', paidWith: 'GoPay', category: 'Groceries', amount: '45000' });

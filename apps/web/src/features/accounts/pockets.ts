@@ -1,5 +1,5 @@
 import { CASH_ITEMS, CURRENCIES, currencyInfo, evaluateAmount, exchangeCost, type ExchangeCost, formatMinor, impliedRate, isoDate, parseMajor, sumToBase } from '@expanses/core';
-import { type AccountRow, MONEY_SUBTYPES, SPENDABLE_SUBTYPES, pocketParentIds } from '@expanses/db';
+import { type AccountRow, SPENDABLE_SUBTYPES, pocketParentIds } from '@expanses/db';
 import { amountFields, emptyForm, type FormDraft, type MoneyFieldSpec, receivedField } from '../transactions/tx-form';
 
 type Rates = Readonly<Record<string, number>>;
@@ -114,12 +114,6 @@ const MONEY_KINDS = new Set<string>(CASH_ITEMS.map((item) => item.id));
  * from, so a transaction paid with it would be a transaction the bank would refuse.
  */
 export const SPENDABLE_KINDS = new Set<string>(SPENDABLE_SUBTYPES);
-
-/**
- * Money the ledger can move but nobody can spend: cash at a broker, which a buy is paid from and which is moved to
- * a bank before anything else. Named on the tile so it is visible rather than merely absent.
- */
-export const PARKED_KINDS = new Set<string>(MONEY_SUBTYPES.filter((subtype) => !SPENDABLE_KINDS.has(subtype)));
 
 /** One side of the arithmetic below: a figure in the base currency, or the rate it is missing. */
 interface BaseTotal {

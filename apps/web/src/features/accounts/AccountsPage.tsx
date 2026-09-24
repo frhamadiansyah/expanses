@@ -14,7 +14,7 @@ import { useAssetValues } from '../networth/queries';
 import { ShareBar } from '../networth/ShareBar';
 import { cx, Empty, Money } from '../../ui';
 import { type CornerAction, ActionLine, Figure, groupedFigure, Hero, InsetGroup, InsetRow, LargeTitle, LineAction, Panel, ROW_PAD_X, ROW_PAD_Y, rowHeight, SCREEN } from '../../ui/native';
-import { SPENDABLE_KINDS, PARKED_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
+import { SPENDABLE_KINDS, freeOn, freeToSpend, moneySummary, parentTotal, pocketCount, pocketsOf } from './pockets';
 import { useHeldRates } from './queries';
 
 /**
@@ -392,13 +392,6 @@ export function AccountsPage() {
    * mortgage's principal is read on Net worth, against a year's schedule, and never here.
    */
   const spendable = moneySummary(everything, all, ws.baseCurrency, held, SPENDABLE_KINDS);
-  /**
-   * Money parked at a broker. It is outside the working above on purpose — an RDN cannot be paid from, so it is not
-   * "Spending money" — and it is named below the tile anyway, because money that is invisible reads as money that
-   * is gone. Nothing is subtracted here: a goal parked on the RDN is left out of both sides, so no rupiah counts
-   * twice.
-   */
-  const parked = moneySummary(everything, all, ws.baseCurrency, held, PARKED_KINDS);
   const promised = sumToBase({
     amounts: Object.values(owed.data ?? {})
       .filter((row) => SPENDABLE_KINDS.has(byId.get(row.accountId)?.subtype ?? ''))
@@ -467,6 +460,13 @@ export function AccountsPage() {
   };
   /** What each kind of debt says beside its drawer's count: the cards' unbilled total, and nothing for the rest. */
   const DEBT_ASKS: Record<string, string | null> = { loan: null, card: cardAsk, person: null };
+  /**
+   * What the rows below already show: money that can be moved, less what goals have claimed of it — the same sum the
+   * sections add up, so the tile and the list agree to the rupiah. The promise is taken out here rather than on a
+   * line of its own: an account's row draws its free figure with the balance under it ("of Rp 5.000.000 held"), and
+   * what a promise is comes apart on the account's own page and on each goal.
+   */
+  const unclaimed = freeToSpend(spendable, promised, { totalMinor: 0, missing: [] });
   /** What every listed debt asks — the very readings its own row draws, so the section and the tile agree. */
   const debtRows = money.filter((account) => account.parentId === null && GROUPS.some((group) => group.key === 'debts' && group.subtypes.includes(account.subtype)));
   const asked = sumToBase({ amounts: amountsOf(debtRows, everything, all, debtRead), baseCurrency: ws.baseCurrency, ratesToBase: held });
@@ -498,9 +498,9 @@ export function AccountsPage() {
       <LargeTitle title="Accounts" actions={actions} />
       {accounts.isSuccess && money.length === 0 && <Empty>No accounts yet. Add one with the + above: money you can spend, or money you are owed.</Empty>}
       {/*
-       * Free to spend: money that can be moved, less what goals have claimed, less what the debts ask. The three
-       * lines under it are the working, so the figure can be checked rather than trusted — and the third of them is
-       * the very number the Debts section below adds up to, row by row.
+       * Free to spend: money that can be moved, less what goals have claimed, less what the debts ask. The goal
+       * subtraction is folded into the first line — that line is what the rows below show, and they already draw
+       * each account free of its promises — so the two lines still add up to the figure above them.
        */}
       {accounts.isSuccess && balances.isSuccess && rates.isSuccess && spendable.accounts > 0 &&
         (free.freeMinor !== null ? (
@@ -517,30 +517,26 @@ export function AccountsPage() {
             </p>
           </Panel>
         ))}
-      {free.freeMinor !== null && free.spendableMinor !== null && (
+      {free.freeMinor !== null && unclaimed.freeMinor !== null && (
         <>
           <InsetGroup>
-            <InsetRow title="Spending money" value={<Money minor={free.spendableMinor} currency={ws.baseCurrency} />} valueTone="ink" chevron={false} />
-            <InsetRow title="Set aside for goals" value={<Money minor={-(free.setAsideMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
+            <InsetRow
+              title="Spending money"
+              subtitle="free of what goals claimed"
+              value={<Money minor={unclaimed.freeMinor} currency={ws.baseCurrency} />}
+              valueTone="ink"
+              chevron={false}
+            />
             <InsetRow title="What the debts ask" value={<Money minor={-(free.dueMinor ?? 0)} currency={ws.baseCurrency} />} chevron={false} />
           </InsetGroup>
-          {/*
-           * Money at a broker, under the working rather than inside it: it is not part of the subtraction, because
-           * nothing could be paid from it. Shown only once a rate is held for every currency under the broker.
-           */}
-          {parked.accounts > 0 && parked.totalMinor !== null && (
-            <InsetGroup footer="Not spending money: an RDN cannot be paid from, so the money is moved to a bank first. It is not in the figure above.">
-              <InsetRow title="Parked at brokers" subtitle="waiting to be invested" value={<Money minor={parked.totalMinor} currency={ws.baseCurrency} />} valueTone="ink" chevron={false} />
-            </InsetGroup>
-          )}
           <Panel className="space-y-2">
+            {/* What is free of the debts against what the debts ask, out of the money this tile is dividing. */}
             <ShareBar
               segments={[
                 ...(free.freeMinor > 0 ? [{ key: 'free', label: 'Free', minor: free.freeMinor, className: 'bg-emerald-600' }] : []),
-                ...(free.setAsideMinor !== null && free.setAsideMinor > 0 ? [{ key: 'set-aside', label: 'Set aside', minor: free.setAsideMinor, className: 'bg-slate-400' }] : []),
                 ...(free.dueMinor !== null && free.dueMinor > 0 ? [{ key: 'due', label: 'Debts', minor: free.dueMinor, className: 'bg-rose-500' }] : []),
               ]}
-              totalMinor={Math.max(free.spendableMinor, (free.setAsideMinor ?? 0) + (free.dueMinor ?? 0))}
+              totalMinor={Math.max(unclaimed.freeMinor, free.dueMinor ?? 0)}
             />
           </Panel>
         </>
