@@ -224,8 +224,13 @@ export function CardStack({
                     width: layout.cardWidth,
                     height: layout.cardHeight,
                     borderRadius: radius,
-                    // The seam where this card meets the one beneath it: what makes a pile of bands read as cards.
-                    boxShadow: 'var(--ph-card-edge)',
+                    /*
+                     * The seam a covering card casts up onto the card it covers — never on a card that has nothing
+                     * above it. That is the rearmost card of the pile, at the top, and a card raised out of it: the
+                     * two cases where the shadow has no card to land on and lands on the page instead, which is
+                     * what made a pile lying on the ground look like a pile hovering over it.
+                     */
+                    boxShadow: placed.place === 'slot' && index > 0 ? 'var(--ph-card-edge)' : undefined,
                     pointerEvents: 'none',
                   }}
                 >
