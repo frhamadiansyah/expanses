@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { cx } from '../index';
 import { heroFigure, progressFraction, progressPercent, progressTone } from './hero-figure';
 import { toneClass } from './InsetList';
-import { iconTint } from './row';
 import type { Direction } from './row';
 
 /**
@@ -10,6 +9,12 @@ import type { Direction } from './row';
  *
  * Money arrives as integer minor units and a currency, never as a string a caller formatted itself: that is how
  * IDR keeps its nought decimal places and how the no-break space after `Rp` survives.
+ *
+ * Its shape is the one iOS draws for a metric, as Health draws Steps and Activity: a small caps label in the quiet
+ * ink, the figure large and bold under it, the sentence that says what the figure is about in the quiet ink once
+ * more, and the whole block reading from the left gutter, on the page rather than in a card. Nothing is centred: a
+ * figure centred over a list makes the eye hunt for the start of the sentence, and the label above it the only
+ * thing that says what it is.
  */
 
 /** The bar under a hero: 7 px, fully rounded, the tint while there is room and alarm once the target is passed. */
@@ -60,7 +65,7 @@ export function Hero({
   empty = '—',
   caption,
   progress,
-  align = 'center',
+  align = 'start',
   className,
 }: {
   icon?: ReactNode;
@@ -77,29 +82,29 @@ export function Hero({
   caption?: ReactNode;
   /** The bar under the figure, when the figure is part of the way to something. */
   progress?: { targetMinor: number; label: string };
-  /** Centred, as a phone's hero is; `start` for a desktop column that reads from the left. */
+  /** Reads from the left gutter, as iOS draws a metric; `center` for the screen that wants its figure centred. */
   align?: 'center' | 'start';
   className?: string;
 }) {
   const figure = minor === null ? ({ text: empty, tone: 'ink-3' } as const) : heroFigure(minor, currency, direction);
-  const tint = icon && iconColour ? iconTint(iconColour) : null;
   return (
-    <div className={cx('flex flex-col', align === 'start' ? 'items-start text-left' : 'items-center text-center', className)} style={{ marginBottom: 18 }}>
+    <div
+      className={cx('flex flex-col', align === 'start' ? 'items-start text-left' : 'items-center text-center', className)}
+      style={{ marginBottom: 12 }}
+    >
       {icon && (
-        <span
-          aria-hidden
-          className="mb-[10px] flex items-center justify-center rounded-full"
-          style={{ width: 44, height: 44, background: tint?.background ?? 'var(--ph-fill)', color: tint?.foreground ?? 'var(--ph-ink-2)' }}
-        >
+        /* The metric's own glyph, in its own colour, on the page: iOS does not put a chip behind it. */
+        <span aria-hidden className="mb-[6px] flex items-center justify-center" style={{ width: 32, height: 32, color: iconColour ?? 'var(--ph-ink-2)' }}>
           {icon}
         </span>
       )}
-      {label && <p className="mb-[2px] text-[11.5px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">{label}</p>}
-      <p className={cx('tabular text-[34px] leading-[40px] font-extrabold tracking-[-0.03em]', toneClass(figure.tone))}>
-        {approximate && minor !== null && '≈'}
+      {label && <p className="mb-[2px] text-[12px] font-semibold tracking-[0.08em] text-[var(--ph-ink-3)] uppercase">{label}</p>}
+      <p className={cx('tabular text-[40px] leading-[46px] font-bold tracking-[-0.02em]', toneClass(figure.tone))}>
+        {/* The estimate sign is a caveat, not part of the figure: it wears the quiet ink, as the label does. */}
+        {approximate && minor !== null && <span className="text-[var(--ph-ink-3)]">≈ </span>}
         {figure.text}
       </p>
-      {caption && <p className="mt-[4px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{caption}</p>}
+      {caption && <p className="mt-[1px] text-[15px] leading-[20px] text-[var(--ph-ink-3)]">{caption}</p>}
       {progress && minor !== null && (
         <ProgressBar
           className="mt-[12px] max-w-[320px]"
