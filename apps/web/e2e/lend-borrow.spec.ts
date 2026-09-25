@@ -40,9 +40,11 @@ test('lending on a credit card raises the card, earns points, and is never spend
   // The bank never moved, the card owes it, and net worth is unchanged: a loan is not spending.
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('50.000.000');
-  // What Andi owes is money owed to you, and the sheet tells it with the cash it sits beside: a kind inside Cash &
-  // equivalents, not a section of its own. The card is a kind too, on the other side.
-  await expect(page.getByTestId('type-drawer-liquid:receivable')).toContainText('Receivables');
+  // What Andi owes is money owed to you, and the sheet draws it in the picker's own category: a section of its own as
+  // Receivables, folded by the sub-category the loan files as — 0201, trade receivables. The card is a kind of debt on
+  // the other side. The sheet folds twice now — a section, then the kinds inside it — so the section is opened first.
+  await page.getByTestId('type-drawer-section-receivable').click();
+  await expect(page.getByTestId('type-drawer-receivable:trade_receivable')).toContainText('Trade receivables');
   await expect(page.getByTestId('type-drawer-debts:credit_card')).toContainText('Credit card');
 
   // Spending stays empty, because no expense category was touched. `/spending` is the transactions list now, and

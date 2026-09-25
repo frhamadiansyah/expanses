@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
+import { openDrawers } from './drawers';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -17,6 +18,8 @@ async function addAccount(page: Page, name: string, type: string, balanceLabel: 
 async function addKpr(page: Page, { asset }: { asset?: string } = {}) {
   // The terms are written on the loan's own page, which already knows which loan this is.
   await page.goto('/net-worth/loans');
+  // The list folds its rows into a drawer per kind of debt, so the row is one tap away — the reader's own tap.
+  await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   await page.getByLabel('Lender').fill('Bank BTN');
@@ -32,6 +35,7 @@ async function addKpr(page: Page, { asset }: { asset?: string } = {}) {
   await expect(page.getByText('Where this loan stands')).toBeVisible();
   // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await expect(debtRow(page, 'KPR Bintaro')).toContainText('Bank BTN');
 }
 
@@ -49,6 +53,7 @@ test('onboards a loan already running and reads its next twelve months', async (
   await expect(instalments).toContainText(/7\.\d{3}\.\d{3}/);
   await expect(instalments).not.toContainText(/Rp\s0(?!\d)/);
 
+  await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await expect(page.getByText('Still owed')).toBeVisible();
   await expect(page.getByText(/700\.000\.000/).first()).toBeVisible();
@@ -63,6 +68,7 @@ test('a loan’s terms are corrected from the loan itself, and the schedule foll
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '700000000');
   await addKpr(page);
 
+  await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await expect(page.getByText('Where this loan stands')).toBeVisible();
 
@@ -77,6 +83,7 @@ test('a loan’s terms are corrected from the loan itself, and the schedule foll
   // The schedule is rebuilt from the new tenor, and the list says the shorter term.
   await expect(page.getByText('Where this loan stands')).toBeVisible();
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await expect(debtRow(page, 'KPR Bintaro')).toContainText('Bank BTN · 9% · 120 months');
 });
 
@@ -101,6 +108,7 @@ test('records the payment the form filled in, and the balance falls', async ({ p
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '700000000');
   await addKpr(page);
 
+  await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await page.getByRole('button', { name: 'Record payment' }).click();
   // The form fills itself in from the next scheduled row; saving it as it stands is the common case.
@@ -118,6 +126,7 @@ test('a rate change moves the payment without posting anything', async ({ page }
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '700000000');
   await addKpr(page);
 
+  await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await page.getByRole('button', { name: 'Rate change' }).click();
   await page.getByLabel('From').fill('2026-02-25');
@@ -136,6 +145,7 @@ test('an extra payment says what it saves before it is written', async ({ page }
   await addAccount(page, 'KPR Bintaro', 'loan', 'Amount owed now', '700000000');
   await addKpr(page);
 
+  await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await page.getByRole('button', { name: 'Extra payment' }).click();
   await page.getByLabel(/How much/).fill('50000000');
@@ -162,8 +172,9 @@ test('a loan falls due this year and later, and the balance sheet names it once'
   await page.goto('/net-worth');
   await expect(page.getByText('Due within a year')).toHaveCount(0);
   // One drawer for the kind, and one loan inside it — shut, so the name is one tap away and the figure on the drawer
-  // is the whole of what is owed on it.
-  const kpr = page.getByTestId('type-drawer-debts:loan');
+  // is the whole of what is owed on it. The kind is the item the picker opened the loan as; a loan opened on Accounts
+  // with no kind of its own folds as a multi-purpose loan, which is the picker's default for a plain loan.
+  const kpr = page.getByTestId('type-drawer-debts:multi_purpose_loan');
   await expect(kpr).toContainText('700.000.000');
   await kpr.click();
   await expect(page.getByText('KPR Bintaro')).toHaveCount(1);
@@ -209,6 +220,7 @@ test('a loan in another currency is printed in its own currency, and the monthly
 
   // The terms are written on the loan's own page; the list is how the loan is reached.
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await page.getByRole('link', { name: 'Dollar car loan' }).click();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   await page.getByLabel('Lender').pressSequentially('Car Finance');
@@ -226,6 +238,7 @@ test('a loan in another currency is printed in its own currency, and the monthly
   // The balance in the loan's own currency — US$20.000,00, not "Rp 2.000.000", which is how 2.000.000 cents
   // would read — and beneath it the same in rupiah at the held rate, naming the rate it used.
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   const row = debtRow(page, 'Dollar car loan');
   await expect(row).toContainText('US$');
   await expect(row).not.toContainText('Rp 2.000.000');
@@ -243,6 +256,7 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
 
   // The terms are written on the loan's own page; the list is how the loan is reached.
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await page.getByRole('link', { name: 'Dollar car loan' }).click();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   await page.getByLabel('Lender').pressSequentially('Car Finance');
@@ -257,6 +271,7 @@ test('an extra payment reads its penalty in the loan’s own money, cents and al
   // The schedule is the write landing; a page load before it does loses the write. See `addKpr`.
   await expect(page.getByText('Where this loan stands')).toBeVisible();
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await expect(debtRow(page, 'Dollar car loan')).toContainText('Car Finance');
 
   await page.getByRole('link', { name: 'Dollar car loan' }).click();

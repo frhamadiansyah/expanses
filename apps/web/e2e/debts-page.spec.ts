@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { addTransaction } from './add-transaction';
+import { openDrawers } from './drawers';
 import { digits, moneyIn, oneOfEach } from './debts-page';
 import { forgetRates, openWithPockets } from './pockets';
 
@@ -20,20 +21,34 @@ test.beforeEach(({ page }) => {
  */
 const debtRow = (page: Page, name: string) => page.getByTestId(/^debt-row-/).filter({ hasText: name });
 
-test('Debts shows all three groups with the right figures, and the due split is the balance sheet’s', async ({ page }) => {
+test('Liabilities shows every kind of debt with the right figures, and the due split is the balance sheet’s', async ({ page }) => {
   await oneOfEach(page);
   await page.goto('/net-worth/loans');
 
-  await expect(page.getByRole('heading', { name: 'Debts', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
   // The whole, converted: 712.500.000 + 16.250.000 + 2.450.000 + 750.000.
   await expect(page.getByTestId('debts-total')).toContainText('Rp 731.950.000');
-  await expect(page.getByTestId('debts-total')).toContainText('You owe, in Rupiah');
+  // The figure is the box's own, at the top of the bar it is divided by: the caption that used to sit under it said
+  // what the page's title already says.
 
-  // Each group in its own header, in the Assets page's order, with its own total on the header.
-  await expect(page.getByRole('heading', { level: 2 })).toContainText(['Loans', 'Credit cards', 'Payables']);
-  await expect(page.getByTestId('debts-group-total-loan')).toHaveText('Rp 728.750.000');
-  await expect(page.getByTestId('debts-group-total-card')).toHaveText('Rp 2.450.000');
-  await expect(page.getByTestId('debts-group-total-person')).toHaveText('Rp 750.000');
+  /*
+   * One box, a drawer per kind of debt — and the loan kinds are the picker's own, so the mortgage and the car loan
+   * are two drawers rather than one "Loans": each says which item it was opened as, and a kind has a key of its own
+   * (`loan:multi_purpose_loan`) so a card and a loan that shared a word could not share a drawer.
+   */
+  await expect(page.locator('[data-testid^="type-drawer-"]')).toHaveCount(4);
+  await expect(page.getByTestId('type-drawer-loan:home_mortgage')).toContainText('Home mortgage');
+  await expect(page.getByTestId('type-drawer-loan:multi_purpose_loan')).toContainText('Multi-purpose loan');
+  await expect(page.getByTestId('type-drawer-card:credit_card')).toContainText('Credit card');
+  await expect(page.getByTestId('type-drawer-person:payable')).toContainText('Payables');
+  await expect(page.getByTestId('debts-kind-total-home_mortgage')).toHaveText('Rp 712.500.000');
+  await expect(page.getByTestId('debts-kind-total-multi_purpose_loan')).toHaveText('Rp 16.250.000');
+  await expect(page.getByTestId('debts-kind-total-credit_card')).toHaveText('Rp 2.450.000');
+  await expect(page.getByTestId('debts-kind-total-payable')).toHaveText('Rp 750.000');
+  // The two loan drawers add up to what the Loans group used to say on its own: 728.750.000.
+
+  // The rows are inside the drawers, as they are for a reader.
+  await openDrawers(page);
 
   // A debt in dollars is a dollar figure, and beneath it the rupiah that comes to — with the rate it was worked at.
   const dollar = debtRow(page, 'Dollar car loan');
@@ -59,7 +74,13 @@ test('Debts shows all three groups with the right figures, and the due split is 
   expect(within).toBeGreaterThan(3_200_000);
   const owed = digits(moneyIn(await page.getByTestId('debts-total').innerText()));
   await page.goto('/net-worth');
-  const owedOnSheet = digits(moneyIn(await page.getByRole('heading', { name: 'Debts', exact: true }).locator('xpath=..').innerText()));
+  /*
+   * The pair above the sheet carries the side's own total; the column is headed once, with the same figure. The
+   * figure is waited for rather than read once: a route that has just landed paints the sheet before its own
+   * ledger read answers, and a read then would compare against the nought the page started with.
+   */
+  await expect(page.getByTestId('sheet-total-liabilities')).toContainText('Rp 731.950.000');
+  const owedOnSheet = digits(await page.getByTestId('sheet-total-liabilities').innerText());
   expect(owedOnSheet).toBe(owed);
 });
 
@@ -76,14 +97,16 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await oneOfEach(page);
 
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await debtRow(page, 'KPR BCA').click();
   await expect(page).toHaveURL(/\/net-worth\/loans\/[^/]+$/);
   await expect(page.getByText('Still owed')).toBeVisible();
   // The loan's own page names where back goes by the page's new name.
-  await page.getByRole('link', { name: 'Debts', exact: true }).first().click();
+  await page.getByRole('link', { name: 'Liabilities', exact: true }).first().click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
 
   // A tap anywhere on a row, not only on its name: its own figure opens it.
+  await openDrawers(page);
   await debtRow(page, 'BCA Visa').getByText('2.450.000').click();
   await expect(page).toHaveURL(/\/cards\/[^/?]+/);
   await expect(page.getByRole('heading', { name: 'BCA Visa' })).toBeVisible();
@@ -92,6 +115,7 @@ test('each debt opens its own place: a loan its schedule, a card the card, a per
   await expect(page.getByTestId('tile-unpaid-balance')).toHaveText('Rp 2.450.000');
 
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await debtRow(page, 'Dewi').click();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?person=Dewi$/);
   await expect(page.getByRole('heading', { name: 'Lend & borrow', level: 1 })).toBeVisible();
@@ -105,10 +129,10 @@ test('the renames are in place: Debts for everything owed, Lend & borrow for peo
   await page.goto('/net-worth');
   // The sections are the corner's `…` now, three rows that are links, each opening a screen of its own.
   await page.getByRole('button', { name: 'More' }).click();
-  await expect(page.getByRole('menuitem')).toHaveText(['Assets', 'Buy & sell', 'Debts']);
-  await page.getByRole('menuitem', { name: 'Debts' }).click();
+  await expect(page.getByRole('menuitem')).toHaveText(['Assets', 'Buy & sell', 'Liabilities']);
+  await page.getByRole('menuitem', { name: 'Liabilities' }).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
-  await expect(page.getByRole('heading', { name: 'Debts', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Loans', level: 1 })).toHaveCount(0);
   // Lend & borrow is not one of these sections any more: it left for Cashflow, where the lending happens, and a
   // phone reaches it from that page's ⋯ (`phone-debts-page.spec.ts`). A wide screen has no ⋯ there, so its doors are
@@ -129,6 +153,7 @@ test('a loan with no terms says so, and its terms are written from the loan itse
 
   await page.goto('/net-worth/loans');
   // A loan account with no terms is still owed, so it is listed — and says what it lacks.
+  await openDrawers(page);
   await expect(debtRow(page, 'KPR Bintaro')).toContainText('no terms yet');
   /*
    * The list keeps no terms tool of its own: the loan's own page already knows which loan this is, so it is where
@@ -150,6 +175,7 @@ test('a loan with no terms says so, and its terms are written from the loan itse
   await expect(page.getByText('Where this loan stands')).toBeVisible();
 
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await expect(debtRow(page, 'KPR Bintaro')).toContainText('Bank BTN · 9% · 180 months');
   await expect(page.getByText('The instalments the banks ask for each month')).toContainText(/7\.\d{3}\.\d{3}/);
 });
@@ -193,6 +219,7 @@ test('a loan paid off leaves the list and the total, and waits under the paid-of
   await page.getByRole('button', { name: 'Add debt' }).click();
   await expect(page.getByTestId('debts-total')).toContainText('Rp 3.000.000');
 
+  await openDrawers(page);
   await debtRow(page, 'Kredit HP').click();
   // A payment of everything that is left clears it: the ledger marks the loan paid off.
   await page.getByRole('button', { name: 'Record payment' }).click();
@@ -218,6 +245,7 @@ test('a card paid past its bill holds the surplus: Unpaid at nothing, and the cr
   await addTransaction(page, { description: 'Coffee', paidWith: 'BCA Visa', category: 'Groceries', amount: '100000', keyByKey: true });
 
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await page.getByRole('link', { name: 'BCA Visa' }).click();
   const tile = page.getByTestId('tile-left-to-pay');
   await expect(tile.getByTestId('tile-unpaid-balance')).toHaveText('Rp 100.000');
@@ -231,8 +259,10 @@ test('a card paid past its bill holds the surplus: Unpaid at nothing, and the cr
 
   // And the Debts row says the same thing the card does.
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   const row = debtRow(page, 'BCA Visa');
   await expect(row).toContainText('Credit Rp 250.000');
   await expect(row).toContainText('0');
-  await expect(page.getByTestId('debts-group-total-card')).toHaveText('Rp 0');
+  // The card's drawer is at nothing, which is what the row and the card's own tile both say.
+  await expect(page.getByTestId('debts-kind-total-credit_card')).toHaveText('Rp 0');
 });

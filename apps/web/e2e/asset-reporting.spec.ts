@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { openAssets } from './drawers';
 
 /** Accounts created by these tests are opened today, so this year is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -13,7 +14,7 @@ async function addBankAsset(page: Page) {
 }
 
 async function openSettings(page: Page) {
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
   // Settings live behind the gear now, on a page of their own — off the chart and the history they sat under.
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();

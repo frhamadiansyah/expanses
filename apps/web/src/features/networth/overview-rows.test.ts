@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { attentionItems, type LoanAttention } from './overview-rows';
 
 const value = (partial: Partial<AssetValueRow> & Pick<AssetValueRow, 'accountId' | 'name' | 'mode'>): AssetValueRow => ({
+  subtype: 'bank',
+  person: null,
   valueMinor: 1_000_000,
   costMinor: 1_000_000,
   source: 'ledger',
@@ -38,7 +40,7 @@ const point = (month: string, netWorthMinor: number): NetWorthPoint => ({
   netWorthMinor,
   missing: [],
   // The stack is the bar view's, and nothing on this page reads it: the row is what the sheet is drawn from.
-  stack: { assets: { liquid: netWorthMinor, invest: 0, use: 0, other: 0 }, liabilities: { credit_card: 0, loan: 0, payable: 0 } },
+  stack: { assets: { liquid: netWorthMinor, receivable: 0, invest: 0, movable: 0, immovable: 0, other: 0 }, liabilities: { credit_card: 0, loan: 0, payable: 0 } },
 });
 
 describe('attentionItems', () => {

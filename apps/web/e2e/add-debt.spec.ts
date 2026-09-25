@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { cardSection } from './card-section';
+import { openDrawers } from './drawers';
 
 /**
  * The debt picker, end to end: the three things a debt turns out to be, and where each one lands.
@@ -21,6 +22,8 @@ test('a mortgage opens a loan account at what is still owed, with the terms that
   await page.getByRole('button', { name: 'Add debt' }).click();
 
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
+  // The row, and the terms line under it, sit inside the kind's own drawer, which the list opens shut.
+  await openDrawers(page);
   // The terms the picker worked out: the lender, the rate as basis points read back, and the months left.
   await expect(page.getByText(/Bank BTN · 9% · 168 months/)).toBeVisible();
 

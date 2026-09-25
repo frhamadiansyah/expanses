@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { openDrawers } from './drawers';
 
 /**
  * Opening an account the way the app opens one now: the picker asks what it is, the form asks only that.
@@ -89,11 +90,6 @@ export async function openAccount(page: Page, o: NewAccount) {
   if (o.extra) await o.extra(page);
   await page.getByRole('button', { name: 'Add account' }).click();
   /*
-   * A time deposit is a row on no list of money, and no drawer of one: it holds money it cannot be paid from, so it
-   * is waited for where it is priced — the asset list. Its row there reads "BCA Deposito · Time deposit · …", as
-   * every row on that list does, so the name is a prefix rather than the whole accessible name.
-   */
-  /*
    * A time deposit and a broker's cash are rows on no list of money and in no drawer of one: neither can be paid
    * from — a deposit is locked until it matures, and an RDN's money is moved to a bank first — so both are waited
    * for where they are priced, the asset list. Their rows there read "BCA Deposito · Ledger balance · …", as every
@@ -104,6 +100,8 @@ export async function openAccount(page: Page, o: NewAccount) {
      * leaving for the asset list any earlier abandons the write, and no account is ever made. */
     await expect(page).toHaveURL(/\/accounts$/);
     await page.goto('/net-worth/assets');
+    /* The asset list folds its rows into a drawer per kind, and opens with them closed. */
+    await openDrawers(page);
     await expect(page.getByRole('link', { name: new RegExp(`^${o.name}`) })).toBeVisible();
     return;
   }
@@ -186,6 +184,8 @@ export async function openLoan(page: Page, o: NewLoan) {
   if (o.interestRate) await page.getByLabel('Interest rate').fill(o.interestRate);
   if (o.months) await page.getByLabel('Months left').fill(o.months);
   await page.getByRole('button', { name: 'Add debt' }).click();
+  // The Debts list folds its rows by kind — a mortgage with the mortgages — so the drawer comes first.
+  await openDrawers(page);
   // Read as text, not as a link: the desk names the debt in its row, while the phone's list makes the whole
   // line the target and the name part of its label.
   await expect(page.getByText(o.name, { exact: true }).first()).toBeVisible();

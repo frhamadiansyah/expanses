@@ -5,18 +5,19 @@ import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
-import { ApproxFigure, approxLine, type CornerAction, Figure, Hero, InsetGroup, InsetRow, PushedTitle, SCREEN } from '../../ui/native';
+import { ApproxFigure, approxLine, type CornerAction, Drawer, Figure, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN, useDrawers } from '../../ui/native';
 import { useHeldRates } from '../accounts/queries';
 import { usePeopleDebts } from '../debts/queries';
-import { bareFigure, type DebtGroup, type DebtIcon, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
+import { bareFigure, type DebtDrawer, type DebtIcon, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
 import { useSheet } from '../networth/queries';
+import { ShareBar, ShareLegend } from '../networth/ShareBar';
+import { debtSegments } from '../networth/share-segments';
 import { monthlyInstalments } from './instalments';
-import { useCardFacts, useLoans, useScheduledPayments } from './queries';
+import { useCardFacts, useLoanItems, useLoans, useScheduledPayments } from './queries';
 
 /**
- * Debts: everything owed, in one list, grouped the way Assets groups what is owned — Loans, Credit cards, and
- * the people you owe. One converted total above, each group's own total in its header, and every debt in its own
- * currency. What the Loans page did — terms, the instalments, the loans paid off — lives under the Loans group.
+ * Liabilities: everything owed, in one box of drawers — a drawer per kind of debt, with its own total, and the debts
+ * themselves inside it. What the Loans page did — terms, the instalments, the loans paid off — lives under them.
  */
 
 const ICONS: Record<DebtIcon, { glyph: ReactNode; colour: string }> = {
@@ -27,21 +28,6 @@ const ICONS: Record<DebtIcon, { glyph: ReactNode; colour: string }> = {
   person: { glyph: null, colour: '#C2417A' },
 };
 
-/** The currency's everyday name, from the platform rather than a list: "Rupiah", "Dollar", "Euro". */
-function currencyWord(code: string): string {
-  try {
-    const name = new Intl.DisplayNames(['en'], { type: 'currency' }).of(code) ?? code;
-    return name.split(' ').at(-1) ?? name;
-  } catch {
-    return code;
-  }
-}
-
-const longDate = (iso: string) => {
-  const d = new Date(`${iso}T00:00:00`);
-  return `${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'short' })} ${d.getFullYear()}`;
-};
-
 /** Where a debt opens: a loan its terms and schedule, a card the card, a person Lend & borrow for them. */
 function destination(row: DebtRow): { to: LinkProps['to']; params?: LinkProps['params']; search?: LinkProps['search'] } {
   if (row.kind === 'loan') return { to: '/net-worth/loans/$accountId', params: { accountId: row.accountId! } };
@@ -49,11 +35,16 @@ function destination(row: DebtRow): { to: LinkProps['to']; params?: LinkProps['p
   return { to: '/net-worth/lend-borrow', search: row.personName ? { person: row.personName } : {} };
 }
 
-/** A header's figure, set as a figure: the kit's header shouts in capitals, a currency symbol must not. */
-function HeaderFigure({ group, baseCurrency }: { group: DebtGroup; baseCurrency: string }) {
+/** A drawer's trailing figure: what the kind comes to here, or the rate it is missing rather than a short total. */
+function DrawerFigure({ drawer, baseCurrency }: { drawer: DebtDrawer; baseCurrency: string }) {
   return (
-    <span className="tracking-normal normal-case" data-testid={`debts-group-total-${group.kind}`}>
-      {group.totalMinor === null ? '—' : <Money minor={group.totalMinor} currency={baseCurrency} />}
+    /* The kit's header shouts in capitals; a currency symbol must not. */
+    <span className="tracking-normal normal-case" data-testid={`debts-kind-total-${drawer.key}`}>
+      {drawer.totalMinor === null ? (
+        <Figure tone="warn">{`No ${drawer.missing.join(', ')} rate`}</Figure>
+      ) : (
+        <Money minor={drawer.totalMinor} currency={baseCurrency} />
+      )}
     </span>
   );
 }
@@ -80,39 +71,25 @@ function subtitleOf(row: DebtRow): string {
   return [row.last4 ? `···· ${row.last4}` : null, row.detail || null].filter(Boolean).join(' · ');
 }
 
-/** A group of debts, as the kit draws a list: a header with the group's own total, and a row per debt. */
-function DebtListGroup({ group, baseCurrency, rates, footer }: { group: DebtGroup; baseCurrency: string; rates: Record<string, number>; footer?: ReactNode }) {
+/** A debt's own line: the drawing its kind wears, its name, what it is, and what is owed. */
+function DebtItem({ row, baseCurrency, rates }: { row: DebtRow; baseCurrency: string; rates: Record<string, number> }) {
+  const icon = ICONS[row.icon];
   return (
-    <InsetGroup header={group.label} trailing={<HeaderFigure group={group} baseCurrency={baseCurrency} />} footer={footer}>
-      {group.rows.map((row) => {
-        const icon = ICONS[row.icon];
-        return (
-          <InsetRow
-            key={row.key}
-            {...destination(row)}
-            testId={`debt-row-${row.key}`}
-            icon={icon.glyph ?? <span className="text-[13px] font-semibold">{row.name.slice(0, 1).toUpperCase()}</span>}
-            iconColour={icon.colour}
-            title={row.name}
-            subtitle={subtitleOf(row) || undefined}
-            value={<RowFigure row={row} baseCurrency={baseCurrency} rates={rates} />}
-            valueTone="ink"
-          />
-        );
-      })}
-    </InsetGroup>
+    <InsetRow
+      {...destination(row)}
+      testId={`debt-row-${row.key}`}
+      icon={icon.glyph ?? <span className="text-[13px] font-semibold">{row.name.slice(0, 1).toUpperCase()}</span>}
+      iconColour={icon.colour}
+      title={row.name}
+      subtitle={subtitleOf(row) || undefined}
+      value={<RowFigure row={row} baseCurrency={baseCurrency} rates={rates} />}
+      valueTone="ink"
+    />
   );
 }
 
-/** The figure the page is for, or — when a rate is missing — the rate named instead of a wrong figure. */
-function Total({ debts, baseCurrency, today }: { debts: DebtSheet; baseCurrency: string; today: string }) {
-  const caption = `You owe, in ${currencyWord(baseCurrency)} · ${longDate(today)}`;
-  if (debts.total.totalMinor !== null)
-    return (
-      <div data-testid="debts-total">
-        <Hero minor={debts.total.totalMinor} currency={baseCurrency} direction="out" caption={caption} />
-      </div>
-    );
+/** The rate that is missing, named where the figure would be — there is no box to put a figure in. */
+function Total({ debts }: { debts: DebtSheet }) {
   return (
     <div data-testid="debts-total" className="flex flex-col items-center text-center" style={{ marginBottom: 18 }}>
       <p className="text-[22px] leading-[28px] font-extrabold tracking-[-0.03em] text-[var(--ph-warn)]">No {debts.total.missing.join(', ')} rate yet</p>
@@ -128,6 +105,7 @@ export function DebtsPage() {
   const accounts = useAccounts();
   const balances = useBalances();
   const loans = useLoans();
+  const items = useLoanItems();
   const payments = useScheduledPayments();
   const people = usePeopleDebts(today);
   const sheet = useSheet();
@@ -139,15 +117,25 @@ export function DebtsPage() {
   const [showCleared, setShowCleared] = useState(false);
 
   const rates = held.data?.rates ?? {};
-  const ready = accounts.data && balances.data && loans.data && people.data && cards.data && held.data;
+  const ready = accounts.data && balances.data && loans.data && people.data && cards.data && held.data && items.data;
   const debts = ready
     ? groupDebts(
-        { accounts: all, balances: balances.data!, loans: loans.data!, cards: cards.data!, people: owedTo, sheet: sheet.data ?? null, baseCurrency, ratesToBase: rates },
+        {
+          accounts: all,
+          balances: balances.data!,
+          loans: loans.data!,
+          cards: cards.data!,
+          people: owedTo,
+          sheet: sheet.data ?? null,
+          baseCurrency,
+          ratesToBase: rates,
+          items: items.data!,
+        },
         today,
       )
     : null;
 
-  // The instalments the banks ask for each month: the Loans page's own figure, now the Loans group's footer.
+  // The instalments the banks ask for each month: the Loans page's own figure, and the box's footer under it.
   const open = (loans.data ?? []).filter((loan) => loan.status === 'open');
   const instalments = monthlyInstalments(open, all, payments.data ?? {}, baseCurrency, rates);
   const instalmentLine =
@@ -172,33 +160,51 @@ export function DebtsPage() {
     );
 
   /**
-   * Under the Loans group: the loans paid off, which the live list cannot show. A loan's terms are written and
-   * corrected on the loan's own page — it already knows which loan it is, and there is no state in which the list
-   * has nothing to offer.
+   * The loans paid off: a row that folds them out, in the box with the debts themselves, and — once it is open —
+   * a box of its own under it. A loan's terms are written and corrected on the loan's own page; there is no state
+   * in which the list has nothing to offer.
    */
-  const loanTools = (
-    <>
-      {(debts?.cleared.length ?? 0) > 0 && (
-        <InsetGroup>
-          <InsetRow title={`${showCleared ? 'Hide' : 'Show'} paid-off loans (${debts!.cleared.length})`} onClick={() => setShowCleared((was) => !was)} chevron={false} />
-        </InsetGroup>
-      )}
-      {showCleared && debts && debts.cleared.length > 0 && (
-        <InsetGroup header="Paid off">
-          {debts.cleared.map((loan) => (
-            <InsetRow key={loan.accountId} title={loan.name} subtitle={loan.clearedOn ? `cleared ${loan.clearedOn}` : 'cleared'} chevron={false} />
-          ))}
-        </InsetGroup>
-      )}
-    </>
+  const paidOff = (debts?.cleared.length ?? 0) > 0 && (
+    <InsetGroup header="Paid off">
+      {debts!.cleared.map((loan) => (
+        <InsetRow key={loan.accountId} title={loan.name} subtitle={loan.clearedOn ? `cleared ${loan.clearedOn}` : 'cleared'} chevron={false} />
+      ))}
+    </InsetGroup>
   );
 
-  const loansGroup = debts?.groups.find((group) => group.kind === 'loan');
+    /*
+   * Every drawer the box holds, in one list: the kinds of loan first — a mortgage with a mortgage, the way the
+   * picker asks them apart — then the cards, then the people.
+   *
+   * Keyed by group as well as kind, so a drawer's own state belongs to one kind of debt: `loan:other_loans` and
+   * `person:payable` cannot collide, and a card and a loan that happened to share a word could not either.
+   */
+  const drawers = (debts?.groups ?? []).flatMap((group, groupIndex) =>
+    group.drawers.map((drawer, index) => ({
+      key: `${group.kind}:${drawer.key}`,
+      drawer,
+      // A hairline above every drawer but the box's first: with the group headers gone, the line is the only thing
+      // that tells one kind of debt from the next.
+      separator: groupIndex > 0 || index > 0,
+    })),
+  );
+
   const nothing = debts !== null && debts.groups.length === 0;
+  const drawersState = useDrawers();
+  /*
+   * What the total is made of: one segment per kind of debt, keyed the way the drawers are so a card and a loan that
+   * shared a word could not share a segment. The same fold the list below makes, drawn above it — the bar is this
+   * page's subject, and it was read as part of a total while it sat on the Overview.
+   */
+  const segments = debtSegments(
+    (debts?.groups ?? []).flatMap((group) =>
+      group.drawers.map((drawer) => ({ key: `${group.kind}:${drawer.key}`, label: drawer.label, totalMinor: drawer.totalMinor, kind: group.kind })),
+    ),
+  );
 
   return (
     <div className={SCREEN}>
-      <PushedTitle title="Debts" back="Net worth" backTo="/net-worth" actions={actions} />
+      <PushedTitle title="Liabilities" back="Net worth" backTo="/net-worth" actions={actions} />
       <ErrorBox error={accounts.error ?? balances.error ?? loans.error ?? payments.error ?? people.error ?? cards.error ?? held.error ?? sheet.error} />
 
       {nothing && (
@@ -221,19 +227,64 @@ export function DebtsPage() {
            * a currency column that only ever had dollars in it. The table's balance/≈ pair is what the row already
            * says, so the rail and the table went and the phone's own list became the page.
            */}
-          {!nothing && <Total debts={debts} baseCurrency={baseCurrency} today={today} />}
-          {debts.groups.map((group) => (
-            <div key={group.kind}>
-              <DebtListGroup group={group} baseCurrency={baseCurrency} rates={rates} footer={group.kind === 'loan' ? instalmentLine : undefined} />
-              {group.kind === 'loan' && loanTools}
-            </div>
-          ))}
+          {/*
+           * One box, and inside it a drawer for every kind of debt: the kinds of loan the picker asks apart — a home
+           * mortgage, a lease, a paylater — then the cards, then the people.
+           *
+           * Three boxes with a header each read as three lists of three different things, and a debt is read by what
+           * it is: a mortgage and a card are both what you owe, and the drawers are where their kinds are told apart.
+           * The instalments sit under the box, in its footer, because they are the one figure only the loans have.
+           */}
+          {/*
+           * The page's figure, inside the box it is made of: the bar under it is that total divided, so the number and
+           * the drawing of it read as one thing rather than a figure with a chart somewhere below it. The caption went
+           * with the move — the page is called Liabilities, and the box sits under that title.
+           */}
+          {!nothing && debts.total.totalMinor === null && <Total debts={debts} />}
+          {!nothing && debts.total.totalMinor !== null && (
+            <Panel wide className="mb-[18px] space-y-2">
+              <div data-testid="debts-total">
+                {/* Owed money is a figure like any other on this page: the box, the drawer and the row all draw it in
+                    the page's own ink, and a red hero was the one place the same number wore a warning. */}
+                <Hero minor={debts.total.totalMinor} currency={baseCurrency} />
+              </div>
+              {segments.length > 0 && (
+                <>
+                  <ShareBar segments={segments} totalMinor={debts.total.totalMinor} />
+                  <ShareLegend segments={segments} totalMinor={debts.total.totalMinor} />
+                </>
+              )}
+            </Panel>
+          )}
+          {(drawers.length > 0 || debts.cleared.length > 0) && (
+            <InsetGroup footer={instalmentLine}>
+              {drawers.flatMap(({ key, drawer, separator }) => {
+                const shown = drawersState.open.has(key);
+                return [
+                  <Drawer
+                    key={key}
+                    label={drawer.label}
+                    under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'debt' : 'debts'}`}
+                    figure={<DrawerFigure drawer={drawer} baseCurrency={baseCurrency} />}
+                    open={shown}
+                    separator={separator}
+                    testId={`type-drawer-${key}`}
+                    onToggle={() => drawersState.toggle(key)}
+                  />,
+                  ...(shown ? drawer.rows.map((row) => <DebtItem key={row.key} row={row} baseCurrency={baseCurrency} rates={rates} />) : []),
+                ];
+              })}
+              {debts.cleared.length > 0 && (
+                <InsetRow title={`${showCleared ? 'Hide' : 'Show'} paid-off loans (${debts.cleared.length})`} onClick={() => setShowCleared((was) => !was)} chevron={false} />
+              )}
+            </InsetGroup>
+          )}
+          {showCleared && paidOff}
           {!nothing && dueLine && (
             <p data-testid="debts-due" className="px-[4px] text-[12px] leading-[16px] text-[var(--ph-ink-3)]" style={{ marginTop: -10, marginBottom: 18 }}>
               {dueLine}
             </p>
           )}
-          {!loansGroup && loanTools}
         </>
       )}
     </div>

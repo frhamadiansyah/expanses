@@ -1,4 +1,5 @@
 import {
+  debtItem,
   extraPaymentEffect,
   type LoanMethod,
   type LoanTerms,
@@ -13,7 +14,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
-import { loanRatePeriods, loanTerms } from '../schema-loans';
+import { loanItems, loanRatePeriods, loanTerms } from '../schema-loans';
 import { categoryIdsByKeyTx } from './categories';
 import { postTransactionTx } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
@@ -169,6 +170,47 @@ export async function setLoanCode(database: Database, ws: WorkspaceContext, acco
       .set({ coretaxCode })
       .where(and(eq(loanTerms.accountId, accountId), eq(loanTerms.workspaceId, ws.workspaceId)));
   });
+}
+
+/**
+ * Which kind of loan a loan is, in the catalogue's own words: a home mortgage, a vehicle lease, a paylater.
+ *
+ * A row of its own and not a field of `saveLoanTerms`, for the same reason `setLoanCode` is: the terms form
+ * sends back everything it holds, and a classification that travelled with it could be rewritten by a change
+ * that was only ever about a tenor. Nothing here needs the terms — a loan opened from the Accounts page, with
+ * no terms at all, still knows what kind of debt it is.
+ *
+ * `null` clears it, and the loan reads as what its own facts say again.
+ */
+export async function setLoanItem(database: Database, ws: WorkspaceContext, accountId: string, itemId: string | null): Promise<void> {
+  if (itemId !== null) {
+    const item = debtItem(itemId);
+    if (item.behaviour.opens !== 'loan') throw new LoanDbError(`“${item.label}” is not a loan`);
+  }
+  await database.transaction(async (tx) => {
+    await loanAccountTx(tx, ws, accountId);
+    if (itemId === null) {
+      await tx.delete(loanItems).where(and(eq(loanItems.accountId, accountId), eq(loanItems.workspaceId, ws.workspaceId)));
+      return;
+    }
+    const row = { accountId, workspaceId: ws.workspaceId, itemId, createdAt: new Date().toISOString() };
+    await tx.insert(loanItems).values(row).onConflictDoUpdate({ target: loanItems.accountId, set: { itemId } });
+  });
+}
+
+/**
+ * Which kind of loan every classified loan is, by account — one read for the whole list.
+ *
+ * Its own read rather than a field of `LoanTermsRow`, because a loan opened from the Accounts page has no terms
+ * yet and still knows what kind of debt it is. A loan with no row here is unclassified, and reads as what its
+ * own facts say.
+ */
+export async function listLoanItems(database: Database, ws: WorkspaceContext): Promise<Record<string, string>> {
+  const rows = await database.db
+    .select({ accountId: loanItems.accountId, itemId: loanItems.itemId })
+    .from(loanItems)
+    .where(eq(loanItems.workspaceId, ws.workspaceId));
+  return Object.fromEntries(rows.map((row) => [row.accountId, row.itemId]));
 }
 
 type TermsDbRow = typeof loanTerms.$inferSelect;

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { openDrawers } from './drawers';
 
 /**
  * Lend & borrow at 390 px: the mockup's segmented control, one side at a time.
@@ -82,6 +83,8 @@ test('by thumb: a person opened from Debts opens on the side they are on', async
   await twoPeople(page);
 
   await page.goto('/net-worth/loans');
+  // A person you owe is a row inside its kind's drawer, which the list opens shut.
+  await openDrawers(page);
   await page.getByRole('link', { name: /Dewi/ }).tap();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?person=Dewi$/);
   await expect(page.getByRole('heading', { name: 'Only Dewi' })).toBeVisible();

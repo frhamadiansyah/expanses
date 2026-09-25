@@ -5,6 +5,7 @@ import { openAccount, openCard } from './accounts';
 import BetterSqlite3 from 'better-sqlite3';
 import { openNewAsset } from './add-asset';
 import { addTransaction, closeDetails, shareWith } from './add-transaction';
+import { openDrawers } from './drawers';
 
 /** A credit card, so there is something to charge a purchase to. */
 async function addCard(page: Page, name = 'BCA Visa') {
@@ -83,6 +84,8 @@ test('the receipt refuses what every other screen refuses: a trade, and an openi
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost (IDR)').fill('18600000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The row is inside its kind's drawer, which the list opens shut.
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 
   await page.goto('/transactions');
@@ -178,6 +181,7 @@ test('a purchase becomes a holding from the receipt', async ({ page }) => {
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost (IDR)').fill('18600000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 
   await page.goto('/transactions');

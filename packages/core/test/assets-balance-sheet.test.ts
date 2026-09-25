@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { balanceSheet, type SheetAsset, type SheetLiability } from '../src/index';
-const asset = (accountId: string, name: string, planGroup: SheetAsset['planGroup'], valueMinor: number): SheetAsset => ({ accountId, name, planGroup, valueMinor });
+const asset = (accountId: string, name: string, planGroup: SheetAsset['planGroup'], valueMinor: number, subtype = 'bank'): SheetAsset => ({ accountId, name, planGroup, valueMinor, subtype });
 
 const assets: SheetAsset[] = [
-  asset('house', 'House in Bintaro', 'use', 1_420_000_000),
+  asset('house', 'House in Bintaro', 'use', 1_420_000_000, 'property'),
   asset('bca', 'BCA Tahapan', 'liquid', 48_250_000),
-  asset('gold', 'Antam gold bars', 'invest', 58_944_000),
-  asset('depo', 'BCA time deposit', 'liquid', 100_000_000),
+  asset('fund', 'Sucorinvest fund', 'invest', 58_944_000, 'investment'),
+  asset('depo', 'BCA time deposit', 'liquid', 100_000_000, 'time_deposit'),
 ];
 
 const card: SheetLiability = { accountId: 'card', name: 'BCA KrisFlyer', subtype: 'credit_card', balanceMinor: 14_820_000, dueWithinYearMinor: 14_820_000, note: 'Statement 28 Aug' };
@@ -15,8 +15,8 @@ const kpr: SheetLiability = { accountId: 'kpr', name: 'KPR Bintaro', subtype: 'l
 describe('balanceSheet', () => {
   it('groups assets in balance-sheet order and drops empty groups', () => {
     const sheet = balanceSheet(assets, []);
-    expect(sheet.assetGroups.map((group) => group.key)).toEqual(['liquid', 'invest', 'use']);
-    expect(sheet.assetGroups.map((group) => group.label)).toEqual(['Cash & equivalents', 'Investments', 'Personal use']);
+    expect(sheet.assetGroups.map((group) => group.key)).toEqual(['liquid', 'invest', 'immovable']);
+    expect(sheet.assetGroups.map((group) => group.label)).toEqual(['Cash & equivalents', 'Investments', 'Immovable property']);
   });
 
   it('adds up each group and the assets total', () => {
@@ -31,28 +31,37 @@ describe('balanceSheet', () => {
     expect(sheet.assetGroups[0]!.rows.map((row) => row.accountId)).toEqual(['bca', 'depo']);
   });
 
-  it('draws the assets in the catalogue’s own families, not the plan groups', () => {
-    const gold: SheetAsset = { accountId: 'gold', name: 'UBS gold 10g', planGroup: 'invest', valueMinor: 49_200_000, code: '0701' };
-    const budi: SheetAsset = { accountId: 'budi', name: 'Budi', planGroup: 'owed', valueMinor: 2_000_000, code: '0201' };
+  it('draws the assets in the catalogue’s own categories, not the plan groups', () => {
+    const gold: SheetAsset = { accountId: 'gold', name: 'UBS gold 10g', planGroup: 'invest', valueMinor: 49_200_000, code: '0701', subtype: 'investment' };
+    const budi: SheetAsset = { accountId: 'budi', name: 'Budi', planGroup: 'owed', valueMinor: 2_000_000, code: '0201', subtype: 'receivable' };
     const sheet = balanceSheet([...assets, gold, budi], []);
 
-    expect(sheet.assetGroups.map((group) => group.label)).toEqual(['Cash & equivalents', 'Investments', 'Personal use', 'Intangible and other']);
-    // Gold leaves Investments for the family the catalogue puts it in, and money owed to you is told with the cash.
+    expect(sheet.assetGroups.map((group) => group.label)).toEqual([
+      'Cash & equivalents',
+      'Receivables',
+      'Investments',
+      'Immovable property',
+      'Intangible and other',
+    ]);
+    // Gold leaves Investments for the family the catalogue puts it in, and money owed to you is a category of its own.
     expect(sheet.assetGroups.find((group) => group.key === 'other')!.rows.map((row) => row.name)).toEqual(['UBS gold 10g']);
-    expect(sheet.assetGroups[0]!.rows.map((row) => row.name)).toContain('Budi');
-    expect(sheet.assetGroups[1]!.rows.map((row) => row.name)).not.toContain('UBS gold 10g');
+    expect(sheet.assetGroups.find((group) => group.key === 'receivable')!.rows.map((row) => row.name)).toEqual(['Budi']);
+    expect(sheet.assetGroups.find((group) => group.key === 'invest')!.rows.map((row) => row.name)).not.toContain('UBS gold 10g');
     // The rows keep the code they were opened under: what a listing groups a share by is this, not "Investment".
     expect(sheet.assetGroups.find((group) => group.key === 'invest')!.rows[0]!.code).toBeNull();
     expect(sheet.assetGroups.find((group) => group.key === 'other')!.rows[0]!.code).toBe('0701');
   });
 
-  it('falls back to the plan group for an asset the catalogue cannot place', () => {
-    const unknown: SheetAsset = { accountId: 'x', name: 'Something', planGroup: 'owed', valueMinor: 1_000, code: '9999' };
-    const sheet = balanceSheet([unknown, { ...unknown, accountId: 'y', code: null }], []);
+  it('reads a row the catalogue cannot name by the kind of account it is', () => {
+    const unknown = (accountId: string, subtype: string, code: string | null): SheetAsset => ({ accountId, name: accountId, planGroup: 'use', valueMinor: 1_000, subtype, code });
+    const sheet = balanceSheet(
+      [unknown('x', 'property', '9999'), unknown('y', 'vehicle', null), unknown('z', 'bank', null)],
+      [],
+    );
 
-    // `owed` is money owed to you wherever it comes from, and its label is the money's own.
-    expect(sheet.assetGroups.map((group) => group.key)).toEqual(['liquid']);
-    expect(sheet.assetGroups[0]!.rows.map((row) => row.name)).toEqual(['Something', 'Something']);
+    // A code nothing knows does not make a house into money: the account it is decides, and a car is movable.
+    expect(sheet.assetGroups.map((group) => group.key)).toEqual(['liquid', 'movable', 'immovable']);
+    expect(sheet.assetGroups.map((group) => group.rows.map((row) => row.name))).toEqual([['z'], ['y'], ['x']]);
   });
 
   it('puts a credit card entirely in due within a year', () => {

@@ -1,6 +1,8 @@
-import { type PlanGroup, sumToBase } from '@expanses/core';
+import { assetItemOfCode, type PlanGroup, SHEET_SECTION_LABELS, SHEET_SECTIONS, type SheetSectionKey, sheetSectionOf, sumToBase } from '@expanses/core';
 import { type AccountRow, type AssetProfileRow, type AssetValueRow, pocketParentIds } from '@expanses/db';
-import { CORETAX_SECTION_LABELS, METHOD_LABELS, PLAN_GROUP_LABELS, PLAN_GROUP_ORDER } from './labels';
+import { SUBTYPE_LABELS } from '../../lib/account-types';
+import { CORETAX_SECTION_LABELS, METHOD_LABELS } from './labels';
+import { type RowKind, rowKindOf } from './sheet-drawers';
 
 export interface AssetRow {
   accountId: string;
@@ -26,19 +28,48 @@ export interface AssetRow {
   missing: string[];
   /** Whether any pocket is held in another currency, so the figure above was reached at a rate. */
   converted: boolean;
+  /**
+   * What kind of thing it is, in the same words the balance sheet folds by: a holding by the catalogue item it was
+   * opened as — "Listed shares", "Gold bullion" — and money by the kind of account it sits in.
+   */
+  kind: RowKind;
+  /** The category it is listed under, in the picker's own words: Investments, Immovable property, and so on. */
+  section: SheetSectionKey;
+  /** Who owes the money on a receivable, which is administrated by the Lend & borrow ledger. Null for the rest. */
+  person: string | null;
 }
 
 export interface AssetGroup {
-  group: PlanGroup;
+  group: SheetSectionKey;
+  /** The category's own name, the one the picker that opens an asset uses. */
   label: string;
   /** The group in the base currency, or null when a rate is missing — never the sum of the rest. */
   totalMinor: number | null;
   missing: string[];
   rows: AssetRow[];
+  /** The group's rows folded by what kind of thing each one is. */
+  drawers: AssetDrawer[];
 }
 
-function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: boolean): AssetRow {
-  const section = profile?.coretaxSection;
+/** One kind of thing inside a group: what it is called, what it holds, and what its rows come to. */
+export interface AssetDrawer {
+  key: string;
+  label: string;
+  rows: AssetRow[];
+  /** The drawer in the base currency, or null when a rate is missing — never the sum of the rest. */
+  totalMinor: number | null;
+  missing: string[];
+}
+
+function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: boolean, subtype: AccountRow['subtype']): AssetRow {
+  /*
+   * The code beside the name comes from the asset's own profile, and — for money owed to you — from the debt's, which
+   * is the only place it was ever written. A code the catalogue knows names its own table, so no second read is needed
+   * to say where it files.
+   */
+  const item = assetItemOfCode(value.coretaxCode);
+  const code = profile?.coretaxCode ?? item?.code ?? null;
+  const filed = profile?.coretaxSection ?? item?.section ?? null;
   return {
     accountId: value.accountId,
     name: value.name,
@@ -46,18 +77,23 @@ function toRow(value: AssetValueRow, profile: AssetProfileRow | undefined, due: 
     valueMinor: value.valueMinor,
     currency: value.currency,
     method: METHOD_LABELS[value.mode],
-    coretax: profile?.coretaxCode && section ? `${profile.coretaxCode} · ${CORETAX_SECTION_LABELS[section] ?? section}` : '',
+    coretax: code && filed ? `${code} · ${CORETAX_SECTION_LABELS[filed] ?? filed}` : '',
     stale: value.stale,
     sold: value.mode === 'market' && value.unitsMicro === 0,
     due,
     pockets: null,
     missing: [],
     converted: false,
+    // The balance sheet's own folding, read off the same two facts it reads: the section the asset is drawn in, and
+    // the catalogue item its code names. Money is told apart by the kind of account it sits in.
+    kind: kindOf(value.coretaxCode, value.accountId, subtype),
+    section: sectionOf(value.coretaxCode, subtype),
+    person: value.person,
   };
 }
 
 export interface AssetGrouping {
-  accounts: readonly Pick<AccountRow, 'id' | 'name' | 'parentId' | 'kind'>[];
+  accounts: readonly Pick<AccountRow, 'id' | 'name' | 'parentId' | 'kind' | 'subtype'>[];
   baseCurrency: string;
   ratesToBase: Readonly<Record<string, number>>;
   /** The deposits with a proposal waiting (spec §7). Every other caller leaves it out, and nothing is due. */
@@ -65,6 +101,42 @@ export interface AssetGrouping {
 }
 
 const isSold = (value: AssetValueRow) => value.mode === 'market' && value.unitsMicro === 0;
+
+/**
+ * What kind of thing a row is, in the balance sheet's own words.
+ *
+ * The same `rowKindOf` the sheet folds by, read off the same two facts it reads: the section the asset is drawn in,
+ * and the catalogue item its code names. A holding keeps the item it was opened as — "Listed shares", not
+ * "Investment" — and money is told apart by the kind of account it sits in.
+ */
+function kindOf(code: string | null, accountId: string, subtype: AccountRow['subtype']): RowKind {
+  return rowKindOf(sectionOf(code, subtype), { accountId, code }, () => subtype);
+}
+
+/** The category an asset is listed under: the catalogue's family, or the kind of account it is for a row with no code. */
+function sectionOf(code: string | null, subtype: string): SheetSectionKey {
+  return sheetSectionOf({ code, subtype });
+}
+
+/**
+ * A group's rows, folded by what each one is: current accounts with current accounts, listed shares with listed
+ * shares. The order is the order the kinds first appear in, which is the order the rows were already in, so folding
+ * changes what is drawn and never what is said.
+ */
+function assetDrawers(rows: readonly AssetRow[], under: ReadonlyMap<string, readonly AssetValueRow[]>, baseCurrency: string, ratesToBase: Readonly<Record<string, number>>): AssetDrawer[] {
+  const drawers = new Map<string, { key: string; label: string; rows: AssetRow[] }>();
+  for (const row of rows) {
+    const drawer = drawers.get(row.kind.key) ?? { ...row.kind, rows: [] };
+    drawer.rows.push(row);
+    drawers.set(row.kind.key, drawer);
+  }
+  return [...drawers.values()].map((drawer) => {
+    // The drawer's figure is the group's arithmetic one level down: the values behind its rows, each pocket on its
+    // own, and the rate named rather than the rest added up when one is missing.
+    const total = sumToBase({ amounts: drawer.rows.flatMap((row) => under.get(row.accountId) ?? []).map((value) => ({ minor: value.valueMinor, currency: value.currency })), baseCurrency, ratesToBase });
+    return { ...drawer, totalMinor: total.totalMinor, missing: total.missing };
+  });
+}
 
 /**
  * Assets in balance-sheet order. Sold holdings are listed but never counted in a total. An account with pockets is
@@ -84,15 +156,21 @@ export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[]
   }
 
   const rows: AssetRow[] = [];
+  /** The values behind each row: the row itself, or — for a row of pockets — each pocket on its own. */
+  const under = new Map<string, AssetValueRow[]>();
   for (const value of values) {
     const parentId = parentOf.get(value.accountId);
     if (!parentId) {
-      rows.push(toRow(value, profileByAccount.get(value.accountId), due.has(value.accountId)));
+      rows.push(toRow(value, profileByAccount.get(value.accountId), due.has(value.accountId), value.subtype));
+      under.set(value.accountId, [value]);
       continue;
     }
     if (rows.some((row) => row.accountId === parentId)) continue;
     const pockets = pocketsUnder.get(parentId)!;
+    // A pocket's account is the parent's account, so the parent's kind is the kind of money this row is.
+    const parentSubtype = byId.get(parentId)?.subtype ?? value.subtype;
     const total = sumToBase({ amounts: pockets.map((p) => ({ minor: p.valueMinor, currency: p.currency })), baseCurrency, ratesToBase });
+    under.set(parentId, pockets);
     rows.push({
       accountId: parentId,
       name: byId.get(parentId)!.name,
@@ -109,21 +187,24 @@ export function groupAssets(values: AssetValueRow[], profiles: AssetProfileRow[]
       missing: total.missing,
       // A pockets row in one currency adds up exactly; only a conversion earns the ≈ its figure wears.
       converted: pockets.some((pocket) => pocket.currency !== baseCurrency),
+      // A row of pockets is the account they sit in, so it is that account's kind of money.
+      kind: kindOf(null, parentId, parentSubtype),
+      section: sectionOf(null, parentSubtype),
+      person: null,
     });
   }
 
-  return PLAN_GROUP_ORDER.map((group) => {
-    const groupRows = rows.filter((row) => row.planGroup === group);
-    const counted = values.filter((value) => groupOf(value, parentOf, rows) === group && !isSold(value));
+  /*
+   * The categories the list is drawn in are the picker's own, in its own order: a page that filed a car and a house
+   * under "Personal use" while the form that opened them asked "Movable property" or "Immovable property" was two
+   * taxonomies for one set of things.
+   */
+  return SHEET_SECTIONS.map((section) => {
+    const groupRows = rows.filter((row) => row.section === section);
+    const counted = values.filter((value) => sectionOf(value.coretaxCode, value.subtype) === section && !isSold(value));
     const total = sumToBase({ amounts: counted.map((value) => ({ minor: value.valueMinor, currency: value.currency })), baseCurrency, ratesToBase });
-    return { group, label: PLAN_GROUP_LABELS[group], totalMinor: total.totalMinor, missing: total.missing, rows: groupRows };
+    return { group: section, label: SHEET_SECTION_LABELS[section], totalMinor: total.totalMinor, missing: total.missing, rows: groupRows, drawers: assetDrawers(groupRows, under, baseCurrency, ratesToBase) };
   }).filter((group) => group.rows.length > 0);
-}
-
-/** The group a value counts in: its own, or — for a pocket — the group its account's row is drawn in. */
-function groupOf(value: AssetValueRow, parentOf: ReadonlyMap<string, string>, rows: readonly AssetRow[]): PlanGroup {
-  const parentId = parentOf.get(value.accountId);
-  return parentId ? rows.find((row) => row.accountId === parentId)!.planGroup : value.planGroup;
 }
 
 export const soldRows = (groups: AssetGroup[]): AssetRow[] => groups.flatMap((group) => group.rows.filter((row) => row.sold));

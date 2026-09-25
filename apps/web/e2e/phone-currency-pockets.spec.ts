@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openAssets } from './drawers';
 import { mockRates, openWithPockets } from './pockets';
 
 test('by thumb: open the account, a pocket, and move between pockets one key at a time', async ({ page }) => {
@@ -43,7 +44,7 @@ test('by thumb: add a pocket, then see the account once on Assets at its ≈ tot
   await page.getByLabel('Opening IDR').pressSequentially('5400000');
   await page.getByRole('button', { name: 'Add pocket' }).tap();
   await expect(page.getByTestId('pocket-IDR')).toContainText('5.400.000');
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   const row = page.getByRole('link', { name: /^Thumb Valas/ });
   await expect(row).toContainText('3 pockets');
   await expect(row).toContainText('58.982.000');

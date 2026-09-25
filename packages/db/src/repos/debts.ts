@@ -197,7 +197,7 @@ async function setStatusTx(tx: Db, ws: WorkspaceContext, accountId: string, stat
 async function openPersonTx(
   tx: Db,
   ws: WorkspaceContext,
-  person: { name: string; direction: DebtDirection; currency: string; personIdNumber?: string | null; reason?: string | null; dueOn?: string | null },
+  person: { name: string; direction: DebtDirection; currency: string; personIdNumber?: string | null; reason?: string | null; dueOn?: string | null; coretaxCode?: string },
 ): Promise<string> {
   const name = person.name.trim();
   if (!name) throw new DebtDbError('A debt needs a name to go with it');
@@ -207,7 +207,12 @@ async function openPersonTx(
     subtype: person.direction === 'lent' ? 'receivable' : 'payable',
     currency: person.currency,
   });
-  await writeProfileTx(tx, ws, { accountId: account.id, personName: name, personIdNumber: person.personIdNumber, reason: person.reason, dueOn: person.dueOn }, person.direction);
+  await writeProfileTx(
+    tx,
+    ws,
+    { accountId: account.id, personName: name, personIdNumber: person.personIdNumber, reason: person.reason, dueOn: person.dueOn, coretaxCode: person.coretaxCode },
+    person.direction,
+  );
   return account.id;
 }
 
@@ -266,6 +271,12 @@ export interface RecordLoanInput {
   /** An account this person already has, or `person` to open one. */
   debtAccountId?: string;
   person?: { name: string; direction: DebtDirection; currency: string; personIdNumber?: string | null; reason?: string | null; dueOn?: string | null };
+  /**
+   * What the debt files as: the piutang code for money owed to you, the utang code for money you owe. Chosen here as
+   * well as on the person's card, because the sub-category is worth asking at the moment the money moves — and it is
+   * the person's profile that keeps it, so a loan added to somebody already on the list sets theirs too.
+   */
+  coretaxCode?: string;
   occurredOn: string;
   amountMinor: number;
   moneyAccountId: string;
@@ -333,8 +344,16 @@ export interface SplitBillInput {
 /** Money handed to a person, from a bank account or on a card. */
 export async function recordLoan(database: Database, ws: WorkspaceContext, input: RecordLoanInput): Promise<{ transactionId: string; debtAccountId: string }> {
   return database.transaction(async (tx) => {
-    const debtAccountId = input.debtAccountId ?? (input.person ? await openPersonTx(tx, ws, input.person) : null);
+    const debtAccountId = input.debtAccountId ?? (input.person ? await openPersonTx(tx, ws, { ...input.person, coretaxCode: input.coretaxCode }) : null);
     if (!debtAccountId) throw new DebtDbError('Say who this debt is with');
+    // A loan added to somebody already on the list still says what it is: the code is the person's, and this is where
+    // it is chosen when the money moves rather than months later from their card.
+    if (input.coretaxCode) {
+      await tx
+        .update(debtProfiles)
+        .set({ coretaxCode: input.coretaxCode })
+        .where(and(eq(debtProfiles.accountId, debtAccountId), eq(debtProfiles.workspaceId, ws.workspaceId)));
+    }
     const { direction, currency } = await debtAccountTx(tx, ws, debtAccountId);
     const categories = await debtCategoriesTx(tx, ws);
     const accountsForPostings = { debtAccountId, moneyAccountId: input.moneyAccountId, ...categories };

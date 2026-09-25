@@ -12,6 +12,8 @@ const value = (partial: Partial<AssetValueRow> & Pick<AssetValueRow, 'accountId'
   asOf: '2026-09-11',
   currency: 'IDR',
   planGroup: 'invest',
+  subtype: 'investment',
+  person: null,
   stale: false,
   unitsMicro: 10_000_000,
   ...partial,

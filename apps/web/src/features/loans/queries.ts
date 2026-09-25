@@ -1,5 +1,5 @@
 import { isoDate } from '@expanses/core';
-import { cardStatement, installmentTotals, listCards, listCardTerms, listInstallments, listLoans, loanFor, nextPaymentDue, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
+import { cardStatement, installmentTotals, listCards, listCardTerms, listInstallments, listLoanItems, listLoans, loanFor, nextPaymentDue, scheduledAsks, scheduledPayments, scheduleFor } from '@expanses/db';
 import { useQuery } from '@tanstack/react-query';
 import { useApp } from '../../app/context';
 import { cycleBack, dueDateAfter } from '../cards/statement-dates';
@@ -8,6 +8,17 @@ import type { CardFacts } from '../networth/debt-rows';
 export function useLoans() {
   const { database, ws } = useApp();
   return useQuery({ queryKey: ['loans', ws.workspaceId], queryFn: () => listLoans(database, ws) });
+}
+
+/**
+ * Which kind of loan each classified loan is, by account — the catalogue item the debt was opened as.
+ *
+ * Read on its own rather than off the loan's terms, because a loan opened from the Accounts page has no terms yet
+ * and still knows what kind of debt it is. An account missing from the map was never classified.
+ */
+export function useLoanItems() {
+  const { database, ws } = useApp();
+  return useQuery({ queryKey: ['loan-items', ws.workspaceId], queryFn: () => listLoanItems(database, ws) });
 }
 
 /** `?? null`: a loan account with no terms yet is not an error, and TanStack Query refuses `undefined`. */

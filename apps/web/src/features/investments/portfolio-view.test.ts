@@ -5,7 +5,7 @@ import { groupAssets } from '../networth/asset-rows';
 import { brokerSubtitle, dayLabel, NO_BROKER, portfolioView, priceChangeLines, putInLine, stockSubtitle } from './portfolio-view';
 
 const value = (accountId: string, currency: string, units: number, valueMinor: number, costMinor: number, stale = false): AssetValueRow =>
-  ({ accountId, name: accountId, currency, planGroup: 'invest', mode: 'market', unitsMicro: units * 1_000_000, stale, valueMinor, costMinor, source: 'price', asOf: '2026-09-19' }) as AssetValueRow;
+  ({ accountId, name: accountId, currency, planGroup: 'invest', subtype: 'investment', mode: 'market', unitsMicro: units * 1_000_000, stale, valueMinor, costMinor, source: 'price', asOf: '2026-09-19' }) as AssetValueRow;
 const profile = (accountId: string, assetKind: AssetProfileRow['assetKind']) => ({ accountId, assetKind }) as AssetProfileRow;
 const account = (id: string, name: string, currency: string) => ({ id, name, currency, kind: 'asset', parentId: null, archivedAt: null }) as AccountRow;
 const security = (id: string, ticker: string, currency: string, lotSize: number | null): SecurityRow => ({ id, ticker, name: ticker, market: currency === 'IDR' ? 'IDX' : 'NASDAQ', currency, lotSize, kind: 'share', source: 'catalogue' });

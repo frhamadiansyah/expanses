@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
 
 const value = (partial: Partial<AssetValueRow> & Pick<AssetValueRow, 'accountId' | 'name' | 'planGroup' | 'mode'>): AssetValueRow => ({
+  subtype: 'bank',
+  person: null,
   valueMinor: 0,
   costMinor: 0,
   source: 'ledger',
@@ -33,21 +35,21 @@ const profile = (accountId: string, partial: Partial<AssetProfileRow> = {}): Ass
 });
 
 const values: AssetValueRow[] = [
-  value({ accountId: 'house', name: 'House in Bintaro', planGroup: 'use', mode: 'snapshot', valueMinor: 1_420_000_000, source: 'valuation', asOf: '2026-01-15' }),
+  value({ accountId: 'house', name: 'House in Bintaro', planGroup: 'use', subtype: 'property', mode: 'snapshot', valueMinor: 1_420_000_000, source: 'valuation', asOf: '2026-01-15' }),
   value({ accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid', mode: 'derived', valueMinor: 48_250_000 }),
-  value({ accountId: 'gold', name: 'Antam gold bars', planGroup: 'invest', mode: 'market', valueMinor: 58_944_000, source: 'price', asOf: '2026-09-11', unitsMicro: 32_000_000 }),
-  value({ accountId: 'tlkm', name: 'TLKM shares', planGroup: 'invest', mode: 'market', valueMinor: 0, source: 'cost', unitsMicro: 0, stale: true }),
+  value({ accountId: 'gold', name: 'Antam gold bars', planGroup: 'invest', subtype: 'investment', mode: 'market', valueMinor: 58_944_000, source: 'price', asOf: '2026-09-11', unitsMicro: 32_000_000 }),
+  value({ accountId: 'tlkm', name: 'TLKM shares', planGroup: 'invest', subtype: 'investment', mode: 'market', valueMinor: 0, source: 'cost', unitsMicro: 0, stale: true }),
 ];
 const idrOnly = { accounts: [], baseCurrency: 'IDR', ratesToBase: {} };
 const profiles = [profile('gold'), profile('bca', { assetKind: 'cash', planGroup: 'liquid', unitKind: null, risk: null, coretaxSection: 'kas', coretaxCode: '0102' })];
 
 describe('groupAssets', () => {
-  it('puts groups in balance-sheet order and drops empty ones', () => {
-    expect(groupAssets(values, profiles, idrOnly).map((group) => group.group)).toEqual(['liquid', 'invest', 'use']);
+  it('puts groups in the catalogue’s own order and drops empty ones', () => {
+    expect(groupAssets(values, profiles, idrOnly).map((group) => group.group)).toEqual(['liquid', 'invest', 'immovable']);
   });
 
-  it('labels each group', () => {
-    expect(groupAssets(values, profiles, idrOnly).map((group) => group.label)).toEqual(['Cash & equivalents', 'Investments', 'Personal use']);
+  it('labels each group with the picker’s own word for it', () => {
+    expect(groupAssets(values, profiles, idrOnly).map((group) => group.label)).toEqual(['Cash & equivalents', 'Investments', 'Immovable property']);
   });
 
   it('adds up the rows it holds', () => {
@@ -84,7 +86,7 @@ describe('groupAssets', () => {
 
 describe('an account with pockets, and totals across currencies', () => {
   const liquid = (accountId: string, name: string, currency: string, valueMinor: number) =>
-    ({ ...values[0]!, accountId, name, currency, valueMinor, planGroup: 'liquid', mode: 'derived', stale: false, unitsMicro: null }) as AssetValueRow;
+    ({ ...values[0]!, accountId, name, currency, valueMinor, planGroup: 'liquid', subtype: 'savings', mode: 'derived', stale: false, unitsMicro: null }) as AssetValueRow;
   const rows = [liquid('usd', 'Valas · USD', 'USD', 240_000), liquid('sgd', 'Valas · SGD', 'SGD', 115_000), liquid('idr', 'Valas · IDR', 'IDR', 5_400_000), liquid('cash', 'Cash', 'IDR', 1_000_000)];
   const accounts = [
     { id: 'valas', name: 'Valas', parentId: null, kind: 'asset', subtype: 'savings', archivedAt: null },

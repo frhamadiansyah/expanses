@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { openNewAsset } from './add-asset';
+import { openAssets, openDrawers } from './drawers';
 import { forgetRates } from './pockets';
 
 /** Accounts created by these tests are opened today, so this year is the year that holds them. */
@@ -27,6 +28,8 @@ async function addGold(page: Page) {
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost (IDR)').fill('18600000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The row is inside its kind's drawer, which the list opens shut.
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 }
 
@@ -49,8 +52,11 @@ test('opens a year with no report yet, and says so instead of erroring', async (
   await page.goto('/tax-report');
 
   // The empty state first: it is what proves the query settled, and only then is "no error box" an assertion
-  // about the settled page rather than about a page that has not finished asking yet.
-  await expect(page.getByText(/Nothing for \d{4} yet/)).toBeVisible();
+  // about the settled page rather than about a page that has not finished asking yet. It gets longer than the
+  // usual five seconds, because this is the one test that reads a page on a database that has never been built:
+  // the device runs every migration first and says "Updating your data…" while it does, which under a full
+  // parallel run is minutes of work rather than an instant.
+  await expect(page.getByText(/Nothing for \d{4} yet/)).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Start the \d{4} report$/ })).toBeVisible();
 
@@ -86,7 +92,7 @@ test('says what is missing before it can be filed, and stops saying it once fixe
   await expect(page.getByText(/needs Atas nama|needs Nama bank/).first()).toBeVisible();
 
   // The tax-report details live on the asset's settings page now, behind its gear.
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('Nomor akun').fill('1234567890');
@@ -186,7 +192,7 @@ test('downloads the converter file once the sheet has everything it needs', asyn
   await expect(page.getByText('Saved')).toBeVisible();
 
   // The kas sheet needs its account number, owner, institution and country before it can be built.
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await page.getByRole('link', { name: /BCA Tahapan/ }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('Nomor akun').fill('1234567890');

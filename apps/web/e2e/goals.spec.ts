@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openGoalForm, openWorking, workingSettled } from './goals';
+import { openDrawers } from './drawers';
 import { goalCard, goalRow } from './set-aside';
 import { localIsoDate } from './today';
 
@@ -20,6 +21,8 @@ async function addGold(page: Page) {
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost (IDR)').fill('18000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The row is inside its kind's drawer, which the list opens shut.
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
   // A price, so a goal funded with gold is worth something today.
   await page.getByRole('button', { name: 'Update prices' }).click();

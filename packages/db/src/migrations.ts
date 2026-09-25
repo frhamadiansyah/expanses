@@ -52,6 +52,7 @@ import goalDrawTables from '../migrations/0050_goal_draws.sql?raw';
 import securitiesTables from '../migrations/0051_securities.sql?raw';
 import healthRatios from '../migrations/0053_health_ratios.sql?raw';
 import depositAutomation from '../migrations/0054_deposit_automation.sql?raw';
+import loanItemsSql from '../migrations/0055_loan_items.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -114,6 +115,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 51, name: 'securities', sql: securitiesTables },
   { version: 53, name: 'health_ratios', sql: healthRatios },
   { version: 54, name: 'deposit_automation', sql: depositAutomation },
+  { version: 55, name: 'loan_items', sql: loanItemsSql },
 ];
 
 /** The highest version this build of the app knows how to produce. */

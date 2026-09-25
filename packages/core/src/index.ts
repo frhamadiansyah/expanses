@@ -205,6 +205,7 @@ export {
   debtItem,
   elseItem,
   HARTA_ENGLISH,
+  LOAN_ITEMS,
   type MoneyAccountSubtype,
   type OwnableBehaviour,
   type OwnableFamily,
@@ -217,6 +218,7 @@ export {
 export {
   type BalanceSheet,
   balanceSheet,
+  type DebtIcon,
   SHEET_SECTION_LABELS,
   SHEET_SECTIONS,
   type SheetSectionKey,

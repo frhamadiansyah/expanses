@@ -122,8 +122,8 @@ describe('reportCheck', () => {
   const bca = row({ key: 'bca' });
   // The balance sheet on 31 December: BCA, plus a USD account whose row reads 0 because USD had no rate.
   const assets = [
-    { accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid' as const, valueMinor: 50_000_000 },
-    { accountId: 'usd', name: 'Dollar Saver', planGroup: 'liquid' as const, valueMinor: 0 },
+    { accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid' as const, subtype: 'bank', valueMinor: 50_000_000 },
+    { accountId: 'usd', name: 'Dollar Saver', planGroup: 'liquid' as const, subtype: 'bank', valueMinor: 0 },
   ];
 
   it('compares the report with the balance sheet when every rate is there', () => {

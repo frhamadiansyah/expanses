@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { openNewAsset } from './add-asset';
 import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
+import { openDrawers } from './drawers';
 import { todayIn } from './today';
 
 /** Today's form, from the phone's tab bar. Task 10 replaces this body with a call to `addTransaction`. */
@@ -136,6 +137,8 @@ test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ hold
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost (IDR)').fill('18600000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The row is inside its kind's drawer, which the list opens shut.
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 
   await page.goto('/transactions');

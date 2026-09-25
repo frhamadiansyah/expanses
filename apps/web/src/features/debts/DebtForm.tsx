@@ -11,7 +11,7 @@ import { InsetGroup, InsetRow, type Segment, SegmentedControl, SelectRow, TextRo
 import { CategoryOptions } from '../cards/options';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { type DebtDraft, debtDraftToInput, emptyDebtDraft, personSuggestions } from './debts-form';
+import { type DebtDraft, DEFAULT_SUB_CATEGORY, debtDraftToInput, emptyDebtDraft, personSuggestions, subCategories, subCategoryGloss } from './debts-form';
 import { useDebtProfiles, usePeopleDebts } from './queries';
 
 /** The two ways money moves between people. A pair of pressed buttons was the shape the kit replaces. */
@@ -67,8 +67,9 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
   }
 
   function directionChosen(direction: DebtDirection) {
-    // The same name can exist on both sides, so the match is looked up again.
-    set({ direction, existingAccountId: '' });
+    // The same name can exist on both sides, so the match is looked up again — and the sub-category belongs to the
+    // side, so a piutang code is never left standing over money you borrowed.
+    set({ direction, existingAccountId: '', subCategory: DEFAULT_SUB_CATEGORY[direction] });
     nameTyped(draft.personName);
   }
 
@@ -178,6 +179,18 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
       )}
 
       <InsetGroup header="The rest of it">
+        <SelectRow
+          label="Sub category"
+          hint={subCategoryGloss(draft.direction, draft.subCategory) || 'What it files as in your tax report.'}
+          value={draft.subCategory}
+          onChange={(e) => set({ subCategory: e.target.value })}
+        >
+          {subCategories(draft.direction).map((choice) => (
+            <option key={choice.code} value={choice.code}>
+              {choice.label}
+            </option>
+          ))}
+        </SelectRow>
         <TextRow
           label="What it is for"
           hint="Shown on their card, so you remember."

@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { openNewAsset } from './add-asset';
+import { openDrawers } from './drawers';
 import { addBill, addMoneyAccount, goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, typeAmount } from './set-aside';
 
 /*
@@ -191,7 +192,9 @@ test('paying several bills with "Yes" counts the whole paid total against the go
 async function addKpr(page: Page) {
   await openAccount(page, { subtype: 'loan', name: 'KPR Bintaro', balance: '700000000' });
   // The terms are written on the loan's own page; the list is how the loan is reached, and the page it ends on.
+  // A loan is a row inside its kind's drawer, which the list opens shut.
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
   await page.getByRole('button', { name: 'Add loan terms' }).click();
   // Some of these come filled in: each is cleared before it is typed.
@@ -206,6 +209,9 @@ async function addKpr(page: Page) {
   await expect(page.getByText('Where this loan stands')).toBeVisible();
   // Debts lists a loan before it has terms, so its link alone does not say the save landed: its terms do.
   await page.goto('/net-worth/loans');
+  // A loan is a row inside its kind's drawer, and the list opens with its drawers shut — the row is not drawn at
+  // all until the drawer is, so the drawer comes first even for a read.
+  await openDrawers(page);
   await expect(page.getByTestId(/^debt-row-/).filter({ hasText: 'KPR Bintaro' })).toContainText('Bank BTN');
   await page.getByRole('link', { name: 'KPR Bintaro' }).click();
 }
@@ -311,6 +317,8 @@ async function addGold(page: Page) {
   // Paid from Opening Balances: nothing left Jenius, so nothing is asked.
   await expect(page.getByText(/more than is free/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The row is inside its kind's drawer, which the list opens shut.
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 }
 

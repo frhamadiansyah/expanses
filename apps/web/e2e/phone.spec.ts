@@ -45,13 +45,13 @@ test('every screen is reachable on a phone, through a tab or through More', asyn
 test('the account sheet opens a screen that had no phone route before, and closing it comes back', async ({ page }) => {
   await page.goto('/');
   await settle(page);
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('dialog', { name: 'Account' }).getByRole('link', { name: 'Tax report' }).click();
   await expect(page.getByRole('heading', { name: /tax/i }).first()).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Account' })).toHaveCount(0);
 
   // And the sheet itself closes without going anywhere.
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Account' })).toBeVisible();
   await page.getByRole('dialog', { name: 'Account' }).getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('dialog', { name: 'Account' })).toHaveCount(0);
@@ -217,13 +217,12 @@ test('the list under the chart is padded like the top of the card', async ({ pag
     if (!card || !pill || rows.length < 2) throw new Error('the card is not showing a list');
     const cardBox = card.getBoundingClientRect();
     // A row's content, not the row's box: the box carries the floor and the thumb's padding around it.
-    const lastContent = rows[rows.length - 1].firstElementChild!.getBoundingClientRect();
+    const content = (row: Element) => row.firstElementChild!.getBoundingClientRect();
+    const lastContent = content(rows[rows.length - 1]!);
     return {
       above: Math.round(pill.getBoundingClientRect().top - cardBox.top),
       below: Math.round(cardBox.bottom - lastContent.bottom),
-      between: Math.round(
-        rows[1].firstElementChild!.getBoundingClientRect().top - rows[0].firstElementChild!.getBoundingClientRect().bottom,
-      ),
+      between: Math.round(content(rows[1]!).top - content(rows[0]!).bottom),
     };
   });
 

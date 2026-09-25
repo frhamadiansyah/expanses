@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { openTypes } from './accounts';
+import { openDrawers } from './drawers';
 
 export type Choice = 'principal' | 'principal_interest' | 'close';
 export interface Combo {
@@ -95,6 +96,8 @@ export async function addMoneyAccount(
    */
   if (o.kind === 'Time deposit') {
     await page.goto('/net-worth/assets');
+    // A deposit's row is folded into its kind's drawer, which the list opens shut.
+    await openDrawers(page);
     // A prefix, not the whole name: an asset row reads "BCA Deposito · Time deposit · …", as every other list
     // here does, and `openDeposit` matches it the same way.
     await expect(page.getByRole('link', { name: new RegExp(`^${o.name}`) })).toBeVisible();
@@ -115,6 +118,8 @@ export async function setUp(page: Page, currency: 'IDR' | 'USD') {
 
 export async function openDeposit(page: Page, name: string) {
   await page.goto('/net-worth/assets');
+  // A deposit sits inside the drawer its kind folds into, so the drawer is opened first.
+  await openDrawers(page);
   await page.getByRole('link', { name: new RegExp(`^${name}`) }).click();
 }
 
@@ -185,7 +190,9 @@ export async function walk(page: Page, c: Combo, firstByHand = false) {
   await automate(page, c);
   // The app goes unopened until the maturity: everything due in the term waits for it.
   await page.clock.setSystemTime(at(s.matures));
+  // The deposit is a row inside its kind's drawer, which the Assets list opens shut.
   await page.goto('/net-worth/assets');
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: new RegExp(`^${s.depositName}`) })).toContainText('Due');
   await page.getByRole('link', { name: new RegExp(`^${s.depositName}`) }).click();
   await confirmEach(page, c.nets, firstByHand);

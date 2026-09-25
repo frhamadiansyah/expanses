@@ -2,6 +2,7 @@ import {
   type AssetValue,
   assetValueAt,
   convertMinor,
+  type DebtIcon,
   isoDate,
   isStaleValue,
   monthOf,
@@ -24,10 +25,11 @@ import type { WorkspaceContext } from '../context';
 import type { Database } from '../database';
 import { accounts } from '../schema';
 import { assetProfiles, prices, valuations } from '../schema-assets';
-import { BALANCE_SUBTYPES, pocketParentIds } from './accounts';
+import { debtProfiles } from '../schema-debts';
+import { BALANCE_SUBTYPES, type AccountSubtype, pocketParentIds } from './accounts';
 import { installmentTotals } from './installments';
 import { nativeBalances } from './ledger';
-import { scheduleFor } from './loans';
+import { listLoanItems, listLoans, scheduleFor, type LoanTermsRow } from './loans';
 import { allSecurityPrices, listHoldingLinks } from './securities';
 import { listTrades } from './trades';
 
@@ -35,6 +37,8 @@ export interface AssetValueRow extends AssetValue {
   name: string;
   currency: string;
   planGroup: PlanGroup;
+  /** The kind of account it is, which is what a row with no catalogue code is read by. */
+  subtype: AccountSubtype;
   mode: ValuationMode;
   /**
    * The catalogue code the asset was opened under — `0303` listed shares, `0701` gold — or null for an account with no
@@ -45,6 +49,11 @@ export interface AssetValueRow extends AssetValue {
   unitsMicro: number | null;
   /** The owner should type a fresh price or estimate. */
   stale: boolean;
+  /**
+   * Who owes the money, for money owed to you: it is kept by the Lend & borrow ledger, which is where the debt — and
+   * the code that says what kind of receivable it is — is administered. Null for everything else.
+   */
+  person: string | null;
 }
 
 const GROUP_BY_SUBTYPE: Record<string, PlanGroup> = {
@@ -85,6 +94,16 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
 
   const profiles = await database.db.select().from(assetProfiles).where(eq(assetProfiles.workspaceId, ws.workspaceId));
   const profileByAccount = new Map(profiles.map((profile) => [profile.accountId, profile]));
+  /*
+   * Money owed to you keeps its code on the debt's own profile rather than on an asset profile — it was never opened
+   * through the asset picker — and that code is what says what kind of receivable it is: a trade debt, an affiliate's,
+   * or something else. Read here so every row's kind has one home, whether the account is a holding or a person.
+   */
+  const debtRows = await database.db
+    .select({ accountId: debtProfiles.accountId, personName: debtProfiles.personName, coretaxCode: debtProfiles.coretaxCode })
+    .from(debtProfiles)
+    .where(eq(debtProfiles.workspaceId, ws.workspaceId));
+  const debtCodeByAccount = new Map(debtRows.map((row) => [row.accountId, row]));
   const balances = await nativeBalances(database, ws, date);
   const trades = await listTrades(database, ws);
   const tradesByAccount = new Map<string, typeof trades>();
@@ -123,8 +142,10 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
       name: account.name,
       currency: account.currency ?? ws.baseCurrency,
       planGroup: profile?.planGroup ?? GROUP_BY_SUBTYPE[account.subtype] ?? 'use',
+      subtype: account.subtype,
       mode,
-      coretaxCode: profile?.coretaxCode ?? null,
+      coretaxCode: profile?.coretaxCode ?? debtCodeByAccount.get(account.id)?.coretaxCode ?? null,
+      person: debtCodeByAccount.get(account.id)?.personName ?? null,
       unitsMicro: position ? position.unitsMicro : null,
       stale: isStaleValue(value, date),
     };
@@ -162,7 +183,7 @@ export interface NetWorthStack {
 
 /** Every key, at nothing — the shape a month is stacked into before its rows are added to it. */
 function emptyAssets(): Record<SheetSectionKey, number> {
-  const held: Record<SheetSectionKey, number> = { liquid: 0, invest: 0, use: 0, other: 0 };
+  const held = {} as Record<SheetSectionKey, number>;
   for (const section of SHEET_SECTIONS) held[section] = 0;
   return held;
 }
@@ -190,7 +211,7 @@ export async function netWorthAt(database: Database, ws: WorkspaceContext, date:
   const stacked = new Set<string>();
   const bySection = emptyAssets();
   for (const row of values) {
-    const section = sheetSectionOf({ planGroup: row.planGroup, code: row.coretaxCode });
+    const section = sheetSectionOf({ code: row.coretaxCode, subtype: row.subtype });
     bySection[section] += toBase(row.valueMinor, row.currency, ws, ratesToBase, stacked);
   }
   const byKind = {} as Record<LiabilityKind, number>;
@@ -285,6 +306,7 @@ export async function sheetInputsAt(
     planGroup: row.planGroup,
     valueMinor: toBase(row.valueMinor, row.currency, ws, ratesToBase, missing),
     code: row.coretaxCode,
+    subtype: row.subtype,
   }));
 
   const liabilitySubtypes = BALANCE_SUBTYPES.liability as readonly string[];
@@ -296,6 +318,14 @@ export async function sheetInputsAt(
   const balances = await nativeBalances(database, ws, date);
 
   const installments = await installmentTotals(database, ws, date);
+  /*
+   * What kind of debt each liability is: the catalogue item it was opened as, and what the money went on. Read here
+   * rather than on the screen, because the same two answers fold the Debts list and the balance sheet's own drawers,
+   * and a mortgage must not read as a mortgage on one page and as a plain loan on the other.
+   */
+  const items = await listLoanItems(database, ws);
+  const assetSubtype = new Map(values.map((row) => [row.accountId, row.subtype]));
+  const loanTerms = new Map((await listLoans(database, ws)).map((terms) => [terms.accountId, terms]));
 
   const liabilities: SheetLiability[] = [];
   for (const row of rows) {
@@ -310,9 +340,25 @@ export async function sheetInputsAt(
       balanceMinor,
       dueWithinYearMinor: await dueWithinYear(database, ws, row.id, subtype, balanceMinor, date, installments),
       note: null,
+      item: items[row.id] ?? null,
+      icon: debtIcon(subtype, loanTerms.get(row.id), assetSubtype),
     });
   }
   return { assets, liabilities, missing: [...missing].sort() };
+}
+
+/**
+ * What a debt is, and what a loan is against: a mortgage is one against a property, a lease one against a vehicle,
+ * and anything else is a loan of no particular kind. Cards and personal debts are their own kind already.
+ */
+function debtIcon(
+  subtype: SheetLiability['subtype'],
+  terms: LoanTermsRow | undefined,
+  assetSubtype: ReadonlyMap<string, AccountSubtype>,
+): DebtIcon {
+  if (subtype !== 'loan') return subtype === 'credit_card' ? 'card' : 'person';
+  if (terms?.isHomeLoan) return 'home';
+  return terms?.assetAccountId && assetSubtype.get(terms.assetAccountId) === 'vehicle' ? 'car' : 'loan';
 }
 
 /**

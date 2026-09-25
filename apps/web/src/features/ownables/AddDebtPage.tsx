@@ -1,6 +1,6 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
 import { CURRENCIES, debtItem, isoDate } from '@expanses/core';
-import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms } from '@expanses/db';
+import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
 import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
@@ -111,6 +111,8 @@ function DebtItemForm({ item }: { item: string }) {
         openingRateToBase,
       });
       if (plan.terms) await saveLoanTerms(database, ws, { accountId: account.id, ...plan.terms });
+      // Which kind of loan it is, in the words of the item that was just chosen: what the Debts page folds by.
+      await setLoanItem(database, ws, account.id, item);
       await invalidate();
       await navigate({ to: '/net-worth/loans' });
     } catch (e) {

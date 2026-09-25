@@ -80,6 +80,13 @@ test('the backup reminder, its button and its ink all move together', async ({ p
 });
 
 test('a screen the decision list left alone follows the reader too', async ({ page }) => {
+  /*
+   * A row is recorded first, because both halves of this test read a *list*: the surface token is painted on the
+   * rows' own card, and the `bg-white` name below is the class that card carries. An empty month draws neither,
+   * and the read would time out on nothing rather than on the wrong colour.
+   */
+  await addBank(page, 'BCA Tahapan', '5000000');
+  await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '150000' });
   await page.goto('/transactions');
   await expect(tabBar(page)).toBeVisible();
 
@@ -132,6 +139,9 @@ test.describe('the same shell in the light', () => {
   test.use({ colorScheme: 'light' });
 
   test('is the palette the light block defines, still read from the tokens', async ({ page }) => {
+    // A row first, for the same reason as the sweep above: the card the `bg-white` read asks for is a row's.
+    await addBank(page, 'BCA Tahapan', '5000000');
+    await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '150000' });
     await page.goto('/transactions');
     const bar = tabBar(page);
     await expect(bar).toBeVisible();

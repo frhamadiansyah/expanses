@@ -92,7 +92,9 @@ test('warns on the dashboard about points that are about to die', async ({ page 
   await page.reload();
   await expect(page.getByTestId('points-balance')).toBeVisible();
 
-  await page.goto('/');
+  // What waits is a screen of its own since the net-worth pages were merged: the dashboard carries the count in its
+  // corner, and the lines are read where they are drawn.
+  await page.goto('/net-worth/attention');
   // One specific line: the card's name alone also matches its link in the account list.
   await expect(page.getByText(/100 points on CIMB Octo expire on/)).toBeVisible();
 });

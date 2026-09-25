@@ -17,6 +17,11 @@ export interface LoanTermsDraft {
   rateKind: 'fixed' | 'floating';
   assetAccountId: string;
   lenderNpwp: string;
+  /**
+   * What kind of loan it is, as the catalogue names it — `home_mortgage`, `vehicle_leasing` — or empty for a loan
+   * nobody has said the kind of. Saved on its own, never with the terms, so one never rewrites the other.
+   */
+  itemId: string;
 }
 
 export const emptyLoanTermsDraft = (accountId: string, today: string): LoanTermsDraft => ({
@@ -33,6 +38,7 @@ export const emptyLoanTermsDraft = (accountId: string, today: string): LoanTerms
   rateKind: 'fixed',
   assetAccountId: '',
   lenderNpwp: '',
+  itemId: '',
 });
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -44,7 +50,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
  * The rate and the payment come from the period in force today rather than the first one: a loan that has had a
  * rate change since should be corrected from what it pays now.
  */
-export function loanTermsDraftFromTerms(terms: LoanTermsRow, currency: string, today: string): LoanTermsDraft {
+export function loanTermsDraftFromTerms(terms: LoanTermsRow, currency: string, today: string, itemId = ''): LoanTermsDraft {
   const current = periodOn(terms.periods, today) ?? terms.periods[terms.periods.length - 1];
   const rate = current ? Number((current.rateBps / 100).toFixed(2)).toString().replace('.', ',') : '';
   return {
@@ -61,6 +67,7 @@ export function loanTermsDraftFromTerms(terms: LoanTermsRow, currency: string, t
     rateKind: current?.kind ?? 'fixed',
     assetAccountId: terms.assetAccountId ?? '',
     lenderNpwp: terms.lenderNpwp ?? '',
+    itemId,
   };
 }
 

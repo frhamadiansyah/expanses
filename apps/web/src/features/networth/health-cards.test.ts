@@ -108,10 +108,10 @@ describe('the base the emergency card opens on', () => {
 
 describe('ratioTotals', () => {
   const assets = [
-    { accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid' as const, valueMinor: 50_000_000 },
-    { accountId: 'fund', name: 'Money market fund', planGroup: 'invest' as const, valueMinor: 20_000_000 },
+    { accountId: 'bca', name: 'BCA Tahapan', planGroup: 'liquid' as const, subtype: 'bank', valueMinor: 50_000_000 },
+    { accountId: 'fund', name: 'Money market fund', planGroup: 'invest' as const, subtype: 'investment', valueMinor: 20_000_000 },
     // A USD account on a day with no USD rate: sheetInputsAt gives its row 0 and names USD.
-    { accountId: 'usd', name: 'Dollar Saver', planGroup: 'liquid' as const, valueMinor: 0 },
+    { accountId: 'usd', name: 'Dollar Saver', planGroup: 'liquid' as const, subtype: 'bank', valueMinor: 0 },
   ];
   const liabilities = [{ accountId: 'card', name: 'Card', subtype: 'credit_card' as const, balanceMinor: 10_000_000, dueWithinYearMinor: 10_000_000, note: null }];
 

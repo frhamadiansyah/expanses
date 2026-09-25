@@ -1,6 +1,7 @@
 import { balanceSheet, convertMinor, currencyInfo, displayAmount, formatMinor, periodOn, type SheetLiability, sumToBase } from '@expanses/core';
 import type { AccountRow, LoanTermsRow, PersonDebtRow } from '@expanses/db';
 import { totalOf } from './asset-rows';
+import { debtKind } from './sheet-drawers';
 
 /**
  * The Debts page: everything owed, grouped the way the Assets page groups what is owned.
@@ -58,6 +59,18 @@ export interface DebtGroup {
   totalMinor: number | null;
   missing: string[];
   rows: DebtRow[];
+  /** The group's rows folded by what kind of debt each one is. */
+  drawers: DebtDrawer[];
+}
+
+/** One kind of debt inside a group: what it is called, what it holds, and what its rows come to. */
+export interface DebtDrawer {
+  key: string;
+  label: string;
+  rows: DebtRow[];
+  /** The drawer in the base currency, or null when a rate is missing — never the sum of the rest. */
+  totalMinor: number | null;
+  missing: string[];
 }
 
 export interface ClearedLoan {
@@ -96,10 +109,44 @@ export interface DebtInputs {
   sheet: { liabilities: readonly SheetLiability[]; missing: readonly string[] } | null;
   baseCurrency: string;
   ratesToBase: Readonly<Record<string, number>>;
+  /**
+   * What kind of loan each classified loan is, by account — the catalogue item the debt was opened as.
+   * Absent, and every loan reads as what its own facts say: the reading the row's icon already makes.
+   */
+  items?: Readonly<Record<string, string>>;
 }
 
 export const DEBT_GROUP_LABELS: Record<DebtKind, string> = { loan: 'Loans', card: 'Credit cards', person: 'Payables' };
 const ORDER: DebtKind[] = ['loan', 'card', 'person'];
+
+/**
+ * A group's rows, folded by what kind of debt each one is.
+ *
+ * Loans are the one group where the kind is a real distinction — the picker asks a mortgage, a lease and a paylater
+ * apart, and a list of five loans reads as three kinds — and cards and payables fold all the same, one drawer each.
+ * A group's rows always live in a drawer, whether or not the group's own name already said what they are: the
+ * alternative is one screen whose rows are behind a drawer and two where they are not.
+ */
+function debtDrawers(group: DebtGroup, items: Readonly<Record<string, string>>): DebtDrawer[] {
+  const drawers = new Map<string, DebtDrawer>();
+  for (const row of group.rows) {
+    const kind = debtKind(items[row.accountId ?? ''] ?? null, row.icon);
+    const drawer = drawers.get(kind.key) ?? { key: kind.key, label: kind.label, rows: [], totalMinor: 0, missing: [] };
+    drawer.rows.push(row);
+    drawers.set(kind.key, drawer);
+  }
+  return [...drawers.values()].map((drawer) => ({
+    ...drawer,
+    ...drawerTotal(drawer.rows),
+  }));
+}
+
+/** What a drawer's rows come to in the base currency, or null with the rate named (sorted, once each). */
+function drawerTotal(rows: readonly DebtRow[]): { totalMinor: number | null; missing: string[] } {
+  const missing = [...new Set(rows.map((row) => row.missing).filter((code): code is string => code !== null))].sort();
+  if (missing.length > 0 || rows.some((row) => row.baseMinor === null)) return { totalMinor: null, missing };
+  return { totalMinor: rows.reduce((sum, row) => sum + (row.baseMinor ?? 0), 0), missing };
+}
 
 /** A figure without its symbol, in its currency's decimals: `712.500.000`, `40,00`. For a row under a header that names the currency. */
 export function bareFigure(minor: number, currency: string, locale = 'id-ID'): string {
@@ -148,7 +195,7 @@ export const creditLine = (minor: number, currency: string) => `Credit ${formatM
  * Everything owed, in three groups. `today` picks each loan's current rate; it defaults to the real today.
  */
 export function groupDebts(input: DebtInputs, today: string = new Date().toISOString().slice(0, 10)): DebtSheet {
-  const { accounts, balances, loans, cards, people, baseCurrency, ratesToBase } = input;
+  const { accounts, balances, loans, cards, people, baseCurrency, ratesToBase, items = {} } = input;
   const termsOf = new Map(loans.map((terms) => [terms.accountId, terms]));
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const owed = (id: string) => owedMinor(balances, id);
@@ -202,7 +249,8 @@ export function groupDebts(input: DebtInputs, today: string = new Date().toISOSt
   const groups = ORDER.map((kind): DebtGroup => {
     const own = rows.filter((row) => row.kind === kind);
     const total = sumToBase({ amounts: own.map((row) => ({ minor: row.minor, currency: row.currency })), baseCurrency, ratesToBase });
-    return { kind, label: DEBT_GROUP_LABELS[kind], totalMinor: total.totalMinor, missing: total.missing, rows: own };
+    const group: DebtGroup = { kind, label: DEBT_GROUP_LABELS[kind], totalMinor: total.totalMinor, missing: total.missing, rows: own, drawers: [] };
+    return { ...group, drawers: debtDrawers(group, items) };
   }).filter((group) => group.rows.length > 0);
 
   return { groups, total: totalOf(groups), cleared, due: dueSplit(input.sheet, missingOf(rows)) };

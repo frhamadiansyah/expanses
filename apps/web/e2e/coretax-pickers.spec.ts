@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openTypes } from './accounts';
 import { openDeposit } from './deposit-maturity';
+import { openDrawers } from './drawers';
 
 /**
  * The three ways in, by mouse: an account, an asset, a debt — each chosen in words, each filed under a code
@@ -88,6 +89,8 @@ test('a family, then the thing: an apartment and gold jewellery file under their
   await page.getByLabel('Bought on').fill('2021-06-01');
   await page.getByLabel('What it cost (IDR)').fill('1150000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The list folds its rows into a drawer per kind, so the row is one tap away.
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Apartemen Taman Anggrek/ })).toBeVisible();
 
   await page.goto('/net-worth/assets/new');
@@ -98,10 +101,12 @@ test('a family, then the thing: an apartment and gold jewellery file under their
   await page.getByLabel('How much').fill('25');
   await page.getByLabel('Total cost (IDR)').fill('35000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Kalung emas/ })).toBeVisible();
 
   // Never a code while choosing; both codes afterwards, each in its own table.
   await page.goto('/net-worth/assets');
+  await openDrawers(page);
   await expect(page.getByText('0503 · Harta Tidak Bergerak')).toBeVisible();
   await expect(page.getByText('0702 · Harta Lainnya')).toBeVisible();
 });
@@ -115,8 +120,10 @@ test('something else reaches a code the five families do not list', async ({ pag
   await page.getByLabel('Bought on').fill('2025-05-05');
   await page.getByLabel('What it cost (IDR)').fill('80000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Kapal nelayan/ })).toBeVisible();
   await page.goto('/net-worth/assets');
+  await openDrawers(page);
   await expect(page.getByText('0409 · Harta Bergerak')).toBeVisible();
 });
 
@@ -136,7 +143,7 @@ test('a mortgage, a wallet and a deposit reach the tax report under the right ko
   await page.getByLabel('Interest rate').fill('9');
   await page.getByLabel('Months left').fill('168');
   await page.getByRole('button', { name: 'Add debt' }).click();
-  await expect(page.getByRole('heading', { name: 'Debts', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Liabilities', exact: true })).toBeVisible();
 
   await page.goto('/tax-report');
   await page.getByLabel('Tax year').selectOption('2026');
@@ -173,6 +180,7 @@ test('a code can be changed afterwards, in the words the form uses', async ({ pa
   // The code boxes live on the asset's settings page, behind its gear — reached from the asset list now that the
   // Accounts list carries no tax line.
   await page.goto('/net-worth/assets');
+  await openDrawers(page);
   await page.getByRole('link', { name: /^RDN Mandiri Sekuritas/ }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('What it is').selectOption({ label: 'Saving account' });
@@ -198,6 +206,7 @@ test('a thing sharing its code with another reads back as itself', async ({ page
 
   // 0102 is both a current account and a saving account. The account itself says which, and its settings open on it.
   await page.goto('/net-worth/assets');
+  await openDrawers(page);
   await page.getByRole('link', { name: /^BCA Tahapan Berjangka/ }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByLabel('What it is')).toHaveValue('savings');

@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
 import { openAmount } from './add-transaction';
+import { openAssets } from './drawers';
 import { openGoalForm } from './goals';
 
 /**
@@ -107,7 +108,7 @@ export async function openExpense(page: Page, paidWith: string) {
 }
 
 export async function openAccountPage(page: Page, name: string) {
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await page.getByRole('link', { name: new RegExp(`^${name}`) }).first().click();
 }
 

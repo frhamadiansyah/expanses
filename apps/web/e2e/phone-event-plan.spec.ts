@@ -51,7 +51,7 @@ test('an event is planned, bought from and settled with a thumb', async ({ page 
   // The way to an event on a phone: the account sheet, where every screen the tab bar cannot hold lives.
   await page.goto('/');
   await settle(page);
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('dialog', { name: 'Account' }).getByRole('link', { name: /^Events/ }).click();
   await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible();
 

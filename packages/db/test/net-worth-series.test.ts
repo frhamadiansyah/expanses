@@ -94,7 +94,7 @@ describe('the stack a month is made of', () => {
   it('splits a month by what the money is held in and what it is owed as', async () => {
     const [point] = await netWorthSeries(database, ws, ['2026-03'], {}, TODAY);
     expect(point!.stack).toEqual({
-      assets: { liquid: 31_400_000, invest: 0, use: 1_150_000_000, other: 18_600_000 },
+      assets: { liquid: 31_400_000, receivable: 0, invest: 0, movable: 0, immovable: 1_150_000_000, other: 18_600_000 },
       liabilities: { credit_card: 14_820_000, loan: 742_300_000, payable: 0 },
     });
     // The parts are the whole: a stack that did not add up to the month's figure would be a shape of something else.

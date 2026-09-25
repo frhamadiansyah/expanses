@@ -11,7 +11,7 @@ import { type HandOverRow, MORE_ROW_ID, type PickerRow, pickerRows } from './cat
  * Where the circle at the top left goes, named: the list this screen was opened from. A screen reached from two
  * places cannot just say "Back" — and when there is still a step to undo inside this screen, Back does that first.
  */
-const BACK_TO: Record<OwnableFlow, string> = { account: 'Accounts', asset: 'Assets', debt: 'Debts' };
+const BACK_TO: Record<OwnableFlow, string> = { account: 'Accounts', asset: 'Assets', debt: 'Liabilities' };
 
 /**
  * Two levels and a search box: the family, then the thing, the way the category picker already works.

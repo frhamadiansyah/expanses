@@ -7,6 +7,7 @@ import {
   createWorkspace,
   type Database,
   homeLoanAccountIds,
+  listLoanItems,
   listLoans,
   loanFor,
   LoanDbError,
@@ -14,6 +15,7 @@ import {
   MIGRATIONS,
   saveLoanTerms,
   setLoanCode,
+  setLoanItem,
   type WorkspaceContext,
 } from '../src/index';
 import { createNodeExecutor } from '../src/node';
@@ -169,5 +171,74 @@ describe('which loans are home loans', () => {
   it('lists nothing for a workspace with no loans', async () => {
     await expect(listLoans(database, ws)).resolves.toEqual([]);
     await expect(homeLoanAccountIds(database, ws)).resolves.toEqual([]);
+  });
+});
+
+/**
+ * What kind of loan a loan is, in the catalogue's words: a home mortgage, a vehicle lease, a paylater.
+ *
+ * A side table of its own, so a loan's own facts — the lender, the tenor, the rate periods — are untouched by
+ * saying what it is, and a database still stopped at an older version keeps working.
+ */
+describe('what kind of loan a loan is', () => {
+  it('opens unclassified, and reads as unclassified again when cleared', async () => {
+    await saveLoanTerms(database, ws, terms(kpr.id));
+    await expect(listLoanItems(database, ws)).resolves.toEqual({});
+
+    await setLoanItem(database, ws, kpr.id, 'home_mortgage');
+    await expect(listLoanItems(database, ws)).resolves.toEqual({ [kpr.id]: 'home_mortgage' });
+
+    await setLoanItem(database, ws, kpr.id, null);
+    await expect(listLoanItems(database, ws)).resolves.toEqual({});
+  });
+
+  it('says what it is without dragging the terms or a rate period along', async () => {
+    await saveLoanTerms(database, ws, terms(kpr.id, { purpose: 'House in Bintaro' }));
+    await addRatePeriod(database, ws, { accountId: kpr.id, fromOn: '2025-12-01', rateBps: 750, kind: 'fixed' });
+    const before = (await loanFor(database, ws, kpr.id))!.periods;
+
+    await setLoanItem(database, ws, kpr.id, 'home_mortgage');
+
+    const after = await loanFor(database, ws, kpr.id);
+    expect(after!.periods).toEqual(before);
+    expect(after).toMatchObject({ lenderName: 'Bank BTN', purpose: 'House in Bintaro', tenorMonths: 180 });
+    await expect(listLoanItems(database, ws)).resolves.toEqual({ [kpr.id]: 'home_mortgage' });
+  });
+
+  it('says it again in place, without a second row', async () => {
+    await setLoanItem(database, ws, kpr.id, 'home_mortgage');
+    await setLoanItem(database, ws, kpr.id, 'apartment_mortgage');
+
+    await expect(listLoanItems(database, ws)).resolves.toEqual({ [kpr.id]: 'apartment_mortgage' });
+  });
+
+  it('needs no terms at all: a loan opened from Accounts still knows what it is', async () => {
+    await setLoanItem(database, ws, carLoan.id, 'vehicle_leasing');
+
+    await expect(listLoans(database, ws)).resolves.toEqual([]);
+    await expect(listLoanItems(database, ws)).resolves.toEqual({ [carLoan.id]: 'vehicle_leasing' });
+  });
+
+  it('refuses a kind that is not a loan, and an account that is not a loan', async () => {
+    await expect(setLoanItem(database, ws, kpr.id, 'credit_card')).rejects.toThrow(/not a loan/i);
+    await expect(setLoanItem(database, ws, kpr.id, 'other_debt')).rejects.toThrow(/not a loan/i);
+    await expect(setLoanItem(database, ws, kpr.id, 'nonsense')).rejects.toThrow(/unknown debt/i);
+    await expect(setLoanItem(database, ws, bca.id, 'home_mortgage')).rejects.toThrow(/only a loan account/i);
+  });
+
+  it('applies 0055 to a database already at 0054, leaving every loan as it read before', async () => {
+    const older = createDatabase(createNodeExecutor());
+    await migrate(older, MIGRATIONS.filter((migration) => migration.version <= 54));
+    const olderWs = await createWorkspace(older, { name: 'Personal', type: 'personal', baseCurrency: 'IDR' });
+    // No opening balance: the ORM always describes the newest columns, and a v54 database has none of 0055's.
+    const loan = await createAccount(older, olderWs, { name: 'KPR Bintaro', kind: 'liability', subtype: 'loan', currency: 'IDR' });
+    await saveLoanTerms(older, olderWs, terms(loan.id));
+
+    await migrate(older);
+
+    // Nothing is backfilled: a loan nobody classified reads exactly as it did, and can be told what it is now.
+    await expect(listLoanItems(older, olderWs)).resolves.toEqual({});
+    await setLoanItem(older, olderWs, loan.id, 'online_loan');
+    await expect(listLoanItems(older, olderWs)).resolves.toEqual({ [loan.id]: 'online_loan' });
   });
 });

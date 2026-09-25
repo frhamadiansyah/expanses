@@ -416,6 +416,14 @@ export const DEBT_ITEMS: readonly OwnableItem[] = [
 
 const DEBT_BY_ID = new Map(DEBT_ITEMS.map((item) => [item.id, item]));
 
+/**
+ * The catalogue's loans, in its own order: a home mortgage, a lease, a paylater and the rest.
+ *
+ * Read off `DEBT_ITEMS` rather than listed again, so an item added to the catalogue is offered everywhere a loan's
+ * kind is asked for — the picker that opens a debt, and the terms form that can tell an older one what it is.
+ */
+export const LOAN_ITEMS: readonly OwnableItem[] = DEBT_ITEMS.filter((item) => item.behaviour.opens === 'loan');
+
 export function debtItem(id: string): OwnableItem {
   const item = DEBT_BY_ID.get(id);
   if (!item) throw new Error(`Unknown debt id "${id}"`);

@@ -16,7 +16,7 @@ import { useSetAside } from '../goals/SetAsideQuestion';
 import { UTANG_CHOICES } from '../ownables/catalogue-view';
 import { type PaymentDraft, extraPaymentMinor, paymentDraftFrom, paymentDraftToInput } from './loan-form';
 import { TermsForm } from './TermsForm';
-import { useLoan, useNextPayment, useSchedule } from './queries';
+import { useLoan, useLoanItems, useNextPayment, useSchedule } from './queries';
 
 /**
  * What this loan files as in Bagian B, changed here rather than only where it was opened.
@@ -415,6 +415,7 @@ export function LoanDetailPage() {
   const accountId = params.accountId ?? '';
   const loan = useLoan(accountId);
   const schedule = useSchedule(accountId);
+  const kinds = useLoanItems();
   const accounts = useAccounts().data ?? [];
   const balances = useBalances();
   const [open, setOpen] = useState<'payment' | 'rate' | 'extra' | null>(null);
@@ -436,9 +437,9 @@ export function LoanDetailPage() {
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title={account?.name ?? 'Loan'} back="Debts" backTo="/net-worth/loans" />
+      <LargeTitle title={account?.name ?? 'Loan'} back="Liabilities" backTo="/net-worth/loans" />
       <ErrorBox error={loan.error ?? schedule.error} />
-      {termsOpen && <TermsForm accountId={accountId} terms={terms ?? undefined} onDone={() => setTermsOpen(false)} />}
+      {termsOpen && <TermsForm accountId={accountId} terms={terms ?? undefined} itemId={kinds.data?.[accountId] ?? ''} onDone={() => setTermsOpen(false)} />}
       {!termsOpen && !terms && !loan.isPending && (
         <>
           <Empty>This loan has no terms yet. Its schedule is worked out from them.</Empty>

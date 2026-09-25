@@ -302,15 +302,15 @@ describe('bands', () => {
 });
 
 describe('sheetTotals', () => {
-  it('reads the five totals from the balance sheet, every account in them — gold and jewellery included', async () => {
+  it('reads the five totals from the balance sheet, every account in them', async () => {
     const { balanceSheet, sheetTotals } = await import('../src/index');
     const sheet = balanceSheet(
       [
-        { accountId: 'bank', name: 'Bank', planGroup: 'liquid', valueMinor: 200_000_000 },
-        { accountId: 'mmf', name: 'Money market', planGroup: 'liquid', valueMinor: 50_000_000 },
-        { accountId: 'gold', name: 'Gold bars', planGroup: 'invest', valueMinor: 90_000_000 },
-        { accountId: 'jewel', name: 'Jewellery', planGroup: 'invest', valueMinor: 10_000_000 },
-        { accountId: 'house', name: 'House', planGroup: 'use', valueMinor: 550_000_000 },
+        { accountId: 'bank', name: 'Bank', planGroup: 'liquid', valueMinor: 200_000_000, subtype: 'bank' },
+        { accountId: 'mmf', name: 'Money market', planGroup: 'liquid', valueMinor: 50_000_000, subtype: 'fund' },
+        { accountId: 'shares', name: 'Listed shares', planGroup: 'invest', valueMinor: 90_000_000, subtype: 'investment' },
+        { accountId: 'jewel', name: 'Jewellery', planGroup: 'invest', valueMinor: 10_000_000, subtype: 'investment' },
+        { accountId: 'house', name: 'House', planGroup: 'use', valueMinor: 550_000_000, subtype: 'property' },
       ],
       [{ accountId: 'loan', name: 'Mortgage', subtype: 'loan', balanceMinor: 300_000_000, dueWithinYearMinor: 24_000_000, note: null }],
     );

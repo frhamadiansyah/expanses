@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { openNewAsset } from './add-asset';
+import { openAssets, openDrawers } from './drawers';
 import { addHoldingFlow } from './securities';
 
 /** Trades recorded by these tests are dated this year, so this is the year that holds them. */
@@ -29,6 +30,8 @@ async function addBond(page: Page, name: string, cost: string) {
   await page.getByLabel('How much').fill('100');
   await page.getByLabel('Total cost (IDR)').fill(cost);
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The row is inside its kind's drawer, which the list opens shut.
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: new RegExp(name) })).toBeVisible();
 }
 
@@ -70,7 +73,7 @@ test('a reinvested part leaves the tax behind on the rest', async ({ page }) => 
   await addBond(page, 'SBN ORI025', '5000000');
 
   // How its income is taxed belongs to the holding: this one is final. It is set on the holding's own settings page.
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await page.getByRole('link', { name: /BBRI/ }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('How its income is taxed').selectOption('final');

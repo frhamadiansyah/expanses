@@ -21,14 +21,17 @@ export interface StackKey {
 /**
  * What the chart stacks, in the order it stacks it: what you own first, out from nothing, then what you owe under it.
  *
- * The assets keep the sheet's own colours, because they are the sheet's own families — the key under the chart is the
- * key beside the columns, and the same money is the same colour on both screens. What is owed is one family in three
- * sizes, so a debt reads as a debt first and as its kind second.
+ * The assets keep the sheet's own colours, because they are the sheet's own categories — the key under the chart is the
+ * key beside the columns, and the same money is the same colour on both screens. One colour a category, and six of
+ * them, because the categories are the catalogue's own: a car and a house are not one shade. What is owed is one
+ * family in three sizes, so a debt reads as a debt first and as its kind second.
  */
 export const ASSET_STACK_KEYS: readonly StackKey[] = [
   { key: 'liquid', label: SHEET_SECTION_LABELS.liquid, className: 'bg-cyan-600', fill: 'fill-cyan-600' },
+  { key: 'receivable', label: SHEET_SECTION_LABELS.receivable, className: 'bg-blue-500', fill: 'fill-blue-500' },
   { key: 'invest', label: SHEET_SECTION_LABELS.invest, className: 'bg-emerald-600', fill: 'fill-emerald-600' },
-  { key: 'use', label: SHEET_SECTION_LABELS.use, className: 'bg-slate-400', fill: 'fill-slate-400' },
+  { key: 'movable', label: SHEET_SECTION_LABELS.movable, className: 'bg-slate-400', fill: 'fill-slate-400' },
+  { key: 'immovable', label: SHEET_SECTION_LABELS.immovable, className: 'bg-violet-600', fill: 'fill-violet-600' },
   { key: 'other', label: SHEET_SECTION_LABELS.other, className: 'bg-amber-500', fill: 'fill-amber-500' },
 ];
 

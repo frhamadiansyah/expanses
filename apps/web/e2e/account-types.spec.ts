@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
 import { addTransaction } from './add-transaction';
+import { openAssets } from './drawers';
 
 test('a digital wallet and a fund account hold money, and only the wallet is spending money', async ({ page }) => {
   await openAccount(page, { subtype: 'ewallet', name: 'GoPay', balance: '500000' });
@@ -29,7 +30,7 @@ test('a digital wallet and a fund account hold money, and only the wallet is spe
   await expect(page.getByTestId('net-worth')).toContainText('8.455.000');
 
   // A wallet has no day the money comes back: the deposit's terms card belongs to deposits only.
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await page.getByRole('link', { name: /^GoPay/ }).first().click();
   await expect(page.getByText('Deposit terms')).toHaveCount(0);
 });
@@ -49,7 +50,7 @@ test('a deposit funded from an account moves the money, and says where it came f
 
   // And its ledger shows one transfer naming both accounts, not an opening balance.
   // A deposit is a row on the asset list, not on Accounts: it holds money it cannot be paid from.
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await page.getByRole('link', { name: /^bluuu/ }).click();
   await page.getByRole('link', { name: /Its transactions/ }).click();
   const row = page.getByRole('main').getByRole('listitem');
@@ -60,7 +61,7 @@ test('a deposit funded from an account moves the money, and says where it came f
   await expect(row).not.toContainText('Opening balance');
 
   // A deposit keeps its own terms card, with the term beside the rate and date; a wallet has neither.
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await page.getByRole('link', { name: /^bluuu/ }).first().click();
   await expect(page.getByText('Deposit terms')).toBeVisible();
   await expect(page.getByLabel('Term', { exact: true })).toBeVisible();

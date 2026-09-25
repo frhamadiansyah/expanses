@@ -109,7 +109,7 @@ describe('netWorthAt', () => {
       missing: [],
       // The parts each convert at the rate the totals did: the dollar is in the cash, the yen in the card.
       stack: {
-        assets: { liquid: 50_000_000 + 16_258_125, invest: 0, use: 1_150_000_000, other: 0 },
+        assets: { liquid: 50_000_000 + 16_258_125, receivable: 0, invest: 0, movable: 0, immovable: 1_150_000_000, other: 0 },
         liabilities: { credit_card: 14_820_000 + 3_249_000, loan: 0, payable: 0 },
       },
     });

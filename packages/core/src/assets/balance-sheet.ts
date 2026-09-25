@@ -1,4 +1,4 @@
-import { assetFamilyOfCode } from './catalogue';
+import { assetFamilyOfCode, type OwnableFamily } from './catalogue';
 import type { PlanGroup } from './presets';
 
 export interface SheetAsset {
@@ -13,7 +13,21 @@ export interface SheetAsset {
    * shares beside gold rather than lumping both into "Investments".
    */
   code?: string | null;
+  /**
+   * The kind of account it is, which is what a row the catalogue cannot name is read by: a house opened from the
+   * Accounts page is still immovable property, and a car is still movable. Required, because a row that does not say
+   * what it is has nowhere to be listed but among the money.
+   */
+  subtype: string;
 }
+
+/**
+ * How a debt is drawn: what it is, and — for a loan — what the money went on.
+ *
+ * A loan against a property is a mortgage and one against a vehicle is a lease, which is what the debt's own row
+ * wears, and which is the closest thing to a kind a loan nobody has classified has.
+ */
+export type DebtIcon = 'home' | 'car' | 'loan' | 'card' | 'person';
 
 export interface SheetLiability {
   accountId: string;
@@ -24,6 +38,13 @@ export interface SheetLiability {
   /** Principal due in the next 12 months. Cards and personal debts owe all of it. */
   dueWithinYearMinor: number;
   note: string | null;
+  /**
+   * The catalogue item the debt was opened as — `home_mortgage`, `vehicle_leasing`, `online_loan` — where it was
+   * opened through the picker. Absent for a debt nobody has classified.
+   */
+  item?: string | null;
+  /** What the debt is, and what a loan is against. Absent for a row read before this was kept. */
+  icon?: DebtIcon;
 }
 
 export interface SheetRow {
@@ -58,16 +79,25 @@ export interface BalanceSheet {
   netWorthMinor: number;
 }
 
-/** The sections the assets side is drawn in, in the order a planner reads them. */
-export type SheetSectionKey = 'liquid' | 'invest' | 'use' | 'other';
+/**
+ * The categories the assets side is drawn in, in the order a planner reads them.
+ *
+ * Four of the six are the catalogue's own families under the names the pickers use — Receivables, Investments,
+ * Movable property, Immovable property, Intangible and other — because a page that says "Personal use" about a list
+ * somebody opened as "a car" and "a house" is a page speaking a language of its own. Money is the sixth: the picker
+ * for it is Add account, and cash is money rather than a thing you own.
+ */
+export type SheetSectionKey = 'liquid' | 'receivable' | 'invest' | 'movable' | 'immovable' | 'other';
 
 export const SHEET_SECTION_LABELS: Record<SheetSectionKey, string> = {
   liquid: 'Cash & equivalents',
+  receivable: 'Receivables',
   invest: 'Investments',
-  use: 'Personal use',
+  movable: 'Movable property',
+  immovable: 'Immovable property',
   other: 'Intangible and other',
 };
-const SECTION_ORDER: SheetSectionKey[] = ['liquid', 'invest', 'use', 'other'];
+const SECTION_ORDER: SheetSectionKey[] = ['liquid', 'receivable', 'invest', 'movable', 'immovable', 'other'];
 
 /**
  * The sections, in the order a planner reads them — and the order a chart stacks them.
@@ -77,19 +107,36 @@ const SECTION_ORDER: SheetSectionKey[] = ['liquid', 'invest', 'use', 'other'];
  */
 export const SHEET_SECTIONS: readonly SheetSectionKey[] = SECTION_ORDER;
 
+/** The section each of the catalogue's families is drawn in: one family, one category, with the same name. */
+const SECTION_BY_FAMILY: Record<OwnableFamily, SheetSectionKey> = {
+  receivable: 'receivable',
+  invest: 'invest',
+  movable: 'movable',
+  immovable: 'immovable',
+  other: 'other',
+};
+
+/** What each kind of account is, where the catalogue cannot name one: the rest is money. */
+const SECTION_BY_SUBTYPE: Record<string, SheetSectionKey> = {
+  vehicle: 'movable',
+  property: 'immovable',
+  receivable: 'receivable',
+  investment: 'invest',
+};
+
 /**
  * The section an asset is drawn in.
  *
- * The catalogue's family decides it wherever the asset's code names one, because the catalogue is where the taxonomy
- * lives and where the asset was opened: gold leaves Investments for "Intangible and other", and money owed to you is
- * told with the cash rather than as a section of its own — the same ruling the Accounts page made for the same pair.
- * Anything the catalogue does not know falls back to the plan group the asset is filed under.
+ * The catalogue decides it wherever the asset's code names a family, because the catalogue is where the taxonomy
+ * lives and where the asset was opened: gold leaves Investments for "Intangible and other", and a house bought as an
+ * immovable is listed as one. A row the catalogue cannot name is read by the kind of account it is — a car is movable
+ * property, a house is immovable, money owed to you is a receivable, a holding is an investment — and every other
+ * account is money.
  */
-export function sheetSectionOf(asset: { planGroup: PlanGroup; code?: string | null }): SheetSectionKey {
-  const family = assetFamilyOfCode(asset.code ?? null);
-  if (family === 'other') return 'other';
-  if (family === 'receivable') return 'liquid';
-  return asset.planGroup === 'owed' ? 'liquid' : asset.planGroup;
+export function sheetSectionOf(asset: { code?: string | null; subtype: string }): SheetSectionKey {
+  const family = assetFamilyOfCode(asset.code ?? null) as OwnableFamily | null;
+  if (family) return SECTION_BY_FAMILY[family];
+  return SECTION_BY_SUBTYPE[asset.subtype] ?? 'liquid';
 }
 
 const total = (rows: SheetRow[]): number => rows.reduce((sum, row) => sum + row.amountMinor, 0);
@@ -105,7 +152,6 @@ export function balanceSheet(assets: SheetAsset[], liabilities: SheetLiability[]
       .map((row) => ({ accountId: row.accountId, name: row.name, amountMinor: row.valueMinor, note: null, code: row.code ?? null }));
     return { key: section, label: SHEET_SECTION_LABELS[section], totalMinor: total(rows), rows };
   }).filter((group) => group.rows.length > 0);
-
   const debtRows: SheetRow[] = [];
   const shortRows: SheetRow[] = [];
   const longRows: SheetRow[] = [];
@@ -116,7 +162,7 @@ export function balanceSheet(assets: SheetAsset[], liabilities: SheetLiability[]
     debtRows.push({ accountId: debt.accountId, name: debt.name, amountMinor: debt.balanceMinor, note: debt.note });
     if (withinYear > 0) shortRows.push({ accountId: debt.accountId, name: debt.name, amountMinor: withinYear, note: debt.note });
     if (later > 0) longRows.push({ accountId: debt.accountId, name: debt.name, amountMinor: later, note: debt.note });  }
-  const debts: SheetGroup = { key: 'debts', label: 'Debts', totalMinor: total(debtRows), rows: debtRows };
+  const debts: SheetGroup = { key: 'debts', label: 'Liabilities', totalMinor: total(debtRows), rows: debtRows };
   const shortTerm: SheetGroup = { key: 'short', label: 'Due within a year', totalMinor: total(shortRows), rows: shortRows };
   const longTerm: SheetGroup = { key: 'long', label: 'Long-term', totalMinor: total(longRows), rows: longRows };
 

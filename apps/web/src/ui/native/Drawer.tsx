@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { cx } from '../index';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight } from './metrics';
 
@@ -17,6 +17,26 @@ import { ROW_PAD_X, ROW_PAD_Y, rowHeight } from './metrics';
  * The chevron is the kit's own, turned over — along when the drawer is shut, down when it is open — because a drawer
  * whose state is only in its contents is a drawer nobody can tell the state of.
  */
+
+/**
+ * Which drawers are open, by key, and shut to begin with.
+ *
+ * The point of folding a list away is that the answer to "what have I got" is a handful of kinds, and a drawer that
+ * opens itself is that answer hidden again. The key is the caller's, because a page with two columns of drawers needs
+ * one that is unique across both — `group:kind` rather than `kind`.
+ */
+export function useDrawers() {
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpen((was) => {
+      const next = new Set(was);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  return { open, toggle };
+}
+
 export function Drawer({
   label,
   under,

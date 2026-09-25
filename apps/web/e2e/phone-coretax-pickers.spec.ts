@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openDrawers } from './drawers';
 
 /**
  * The same three ways in, by thumb. A phone gets one screen at a time, so what has to be proved here is that a
@@ -36,5 +37,7 @@ test('a phone finds a thing by typing, without knowing its family', async ({ pag
   await page.getByLabel('Bought on').fill('2024-08-08');
   await page.getByLabel('What it cost (IDR)').fill('15000000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The list folds its rows into a drawer per kind, so the row is one tap away.
+  await openDrawers(page);
   await expect(page.getByText('0601 · Harta Lainnya')).toBeVisible();
 });

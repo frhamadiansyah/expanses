@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
 import { openNewAsset } from './add-asset';
 import { addTransfer } from './add-transaction';
+import { openDrawers } from './drawers';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -22,6 +23,8 @@ async function addGold(page: Page) {
   await page.getByLabel('How much').nth(1).fill('5');
   await page.getByLabel('Total cost (IDR)').nth(1).fill('9300000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The list folds its rows by kind — gold under "Gold bullion" — so the drawer comes first, as it does for a reader.
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 }
 
@@ -78,6 +81,7 @@ test('updates a price from the assets list and shows the new value', async ({ pa
 
 async function openSettings(page: Page, name: string) {
   await page.goto('/net-worth/assets');
+  await openDrawers(page);
   await page.getByRole('link', { name: new RegExp(`^${name}`) }).first().click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
 }
@@ -91,6 +95,7 @@ test('renames an account from its settings page, and every list reads the new na
   await expect(page.getByText('Saved.')).toBeVisible();
 
   await page.goto('/net-worth/assets');
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /BCA Tahapan Utama/ })).toBeVisible();
 });
 

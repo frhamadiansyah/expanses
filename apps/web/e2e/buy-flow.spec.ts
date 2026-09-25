@@ -3,6 +3,7 @@ import { openAccount, openTypes } from './accounts';
 import { openNewAsset } from './add-asset';
 import { addPurchase, addTransaction, attachPhoto } from './add-transaction';
 import { cardSection } from './card-section';
+import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
 import { addHoldingFlow } from './securities';
 
@@ -22,6 +23,8 @@ async function addGold(page: Page) {
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost (IDR)').fill('18600000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  // The row is inside its kind's drawer, which the list opens shut.
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 }
 
@@ -119,7 +122,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await addStock(page);
 
   // Broker cash is money meant to be invested, not the emergency buffer. Its gear page is where that is said.
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await page.getByRole('link', { name: /RDN Stockbit/ }).click();
   await page.getByRole('main').getByRole('link', { name: 'Settings' }).click();
   await page.getByLabel('Counts as').selectOption('invest');
@@ -168,8 +171,9 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
 
   // The leftover Rp 1.011.019 is still set aside for University, so none of it is idle: RDN holds 1.011.019 and promises
   // 1.011.019, and only what is free (nought) waits to be invested (Task 4: idle = free, not balance).
-  await page.goto('/net-worth');
-  // The attention list has drawn (the goal's own item is in it) before the absence is read.
+  // What waits is a screen of its own behind a corner glyph, so the list is read where it is drawn. The goal's
+  // own item is in it, and what has not happened yet — money waiting in the broker — is absent from it.
+  await page.goto('/net-worth/attention');
   await expect(page.getByText(/University for Aisyah needs more each month/)).toBeVisible();
   await expect(page.getByText(/has been waiting in RDN Stockbit/)).toHaveCount(0);
 
@@ -184,7 +188,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await topUp.getByLabel('Amount', { exact: true }).pressSequentially('250000');
   await topUp.getByRole('button', { name: 'Save' }).click();
   await expect(topUp).toHaveCount(0);
-  await page.goto('/net-worth');
+  await page.goto('/net-worth/attention');
   await expect(page.getByText(/Rp.250\.000 has been waiting in RDN Stockbit/)).toBeVisible();
 });
 

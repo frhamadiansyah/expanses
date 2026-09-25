@@ -1,18 +1,17 @@
-import { balanceSheet, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetRow, type SheetSectionKey } from '@expanses/core';
+import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { BellRing, ChartColumn, ChartLine, Gauge } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
-import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl } from '../../ui/native';
+import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl, useDrawers } from '../../ui/native';
 import { useAttention } from './attention';
 import type { BarMonth } from './bar-chart';
 import { NetWorthBars } from './NetWorthBars';
 import { NetWorthChart } from './NetWorthChart';
-import { ShareBar, ShareLegend, type ShareSegment } from './ShareBar';
-import { sheetDrawers, rowKindOf } from './sheet-drawers';
-import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS, stackColours } from './stack-keys';
+import { debtKind, rowKindOf, type RowKind, sheetDrawers } from './sheet-drawers';
+import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS } from './stack-keys';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
 import { useNetWorthSeries, useSheet } from './queries';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
@@ -67,51 +66,58 @@ function rememberedChartView(): ChartView {
   }
 }
 
-/** What each section of the assets side is drawn in. One colour a family of things, as the catalogue's picker has. */
-const GROUP_COLORS = stackColours(ASSET_STACK_KEYS);
-
 /**
- * What each kind of debt is drawn in, so a bar of what you owe says what the money is owed *on*.
+ * One side of the balance sheet: a heading naming the side, then the sections of the statement inside one box.
  *
- * One family in three sizes, because these three are amounts of the same thing — the assets beside them are where the
- * colours have to tell different things apart.
- */
-const LIABILITY_COLORS = stackColours(DEBT_STACK_KEYS);
-
-/**
- * One side of the balance sheet: its share bar and legend on a panel, then a section per section of the statement.
+ * The heading carries no figure. The side's total is stated twice already — once in the pair above the sheet, where the
+ * two sides are read together, and once in each section's own drawer — and a third telling of it in the heading was the
+ * one line on the page that said nothing the two others did not.
  *
- * Each section's label is its own header, outside and above its rows, rather than a heading line inside one long card.
+ * The sections are drawers of their own — Cash & equivalents, Receivables, Investments and the rest — and the kinds a
+ * section holds are drawers inside it, so the sheet folds twice: a side reads as its sections, a section reads as its
+ * kinds, and only the names themselves are a tap away. Six boxes stacked down the page said what is owned six times
+ * over; one box says it once, and the sections are read as what they are, parts of one figure.
+ *
+ * A side with one section — what is owed is one group of debts — would gain a level that says nothing, so it keeps its
+ * kind drawers alone and reads exactly as it always did.
+ *
  * Every section folds its rows into a drawer a kind — current accounts with current accounts, listed shares with listed
  * shares — because a list of everything you own is as long as the accounts you have opened, and the answer to what you
  * have is a handful of kinds. A section of one kind folds all the same: "Intangible and other" holding nothing but gold
  * must still say that what is inside it is gold, or the one section that cannot name its kind is the one whose rows are
  * hardest to read at a glance.
  *
+ * No share bar: what a side is *made of* is the sub page's subject, where the list it divides is — the bars sit at the
+ * top of Assets and Liabilities, and the side here is read for its own figure and its sections.
+ *
  * The two columns stay two columns on a desktop.
  */
 function SheetColumn({
   title,
   groups,
-  bar,
-  totalMinor,
   currency,
-  subtypes,
+  kindOf,
+  oneGroupOnly = false,
+  nested = false,
   open,
   onToggle,
 }: {
   title: string;
   groups: SheetGroup[];
-  /**
-   * What the bar divides into: the groups themselves where each group is one kind of thing, and the kinds themselves
-   * where one group holds several. The bar and the columns beside it answer the same question, so a side whose groups
-   * are a schedule rather than a kind says so with its bar.
-   */
-  bar: ShareSegment[];
-  totalMinor: number;
   currency: string;
-  /** What kind of account each row is, which is what the drawers fold by. */
-  subtypes: ReadonlyMap<string, AccountSubtype>;
+  /** What kind each row is, which is what the drawers fold by. Read off the row, so a debt is read as a mortgage. */
+  kindOf: (groupKey: string, row: SheetRow) => RowKind;
+  /**
+   * Whether a group's own header is left out. True on the liabilities side, which holds one group: the column is
+   * already headed by that side's name and total, and a second line saying the same thing swallowed a row of the page.
+   */
+  oneGroupOnly?: boolean;
+  /**
+   * Whether the sections are drawers of their own. True for what is owned, which is read in the statement's six
+   * sections: the box holds a drawer a section, and a section holds a drawer a kind. False for what is owed, which is
+   * one group of debts — a section drawer over a single section would be a tap that says nothing.
+   */
+  nested?: boolean;
   /** The drawers that are open, by `group:kind`. Shut to begin with. */
   open: ReadonlySet<string>;
   onToggle: (key: string) => void;
@@ -120,22 +126,47 @@ function SheetColumn({
     // `min-w-0`: a column in a grid is as wide as its widest row unless it is told it may be narrower, and a row whose
     // title truncates is still as wide as the whole title — which is what pushed this page sideways.
     <div className="min-w-0">
-      <PanelHeader title={title} trailing={<Money minor={totalMinor} currency={currency} />} />
-      <Panel wide className="space-y-2">
-        <ShareBar segments={bar} totalMinor={totalMinor} />
-        <ShareLegend segments={bar} totalMinor={totalMinor} />
-      </Panel>
-      {groups.map((group) =>
-        group.rows.length === 0 ? (
-          <PanelHeader key={group.key} title={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />} />
-        ) : (
-          /* Marked by its own key, so a spec can say which section a row was drawn in. */
-          <div key={group.key} data-testid={`sheet-section-${group.key}`}>
-            <InsetGroup wide header={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />}>
-              {fold(group, subtypes, open, onToggle, currency)}
-            </InsetGroup>
-          </div>
-        ),
+      <PanelHeader title={title} />
+      {nested && groups.length > 0 ? (
+        /* The side's sections, each a drawer, all of them in one box — and each section's kinds folded inside it. */
+        <InsetGroup wide>
+          {groups.flatMap((group, index) => {
+            const key = `section:${group.key}`;
+            const shown = open.has(key);
+            const held = group.rows.length;
+            return [
+              <Drawer
+                key={key}
+                label={group.label}
+                /* What is inside, counted — the accounts the section is made of. Which *kinds* they are is what
+                   opening it says, so that is not repeated in the count. */
+                under={`${held} ${held === 1 ? 'account' : 'accounts'}`}
+                figure={<Money minor={group.totalMinor} currency={currency} />}
+                open={shown}
+                /* A hairline above every section but the box's first: with the section headers inside the box, the
+                   line is what tells one section from the next. */
+                separator={index > 0}
+                testId={`type-drawer-section-${group.key}`}
+                onToggle={() => onToggle(key)}
+              />,
+              /* Marked by its own key, so a spec can say which section a row was drawn in. */
+              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, open, onToggle, currency)}</div>] : []),
+            ];
+          })}
+        </InsetGroup>
+      ) : (
+        groups.map((group) =>
+          group.rows.length === 0 ? (
+            !oneGroupOnly && <PanelHeader key={group.key} title={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />} />
+          ) : (
+            /* Marked by its own key, so a spec can say which section a row was drawn in. */
+            <div key={group.key} data-testid={`sheet-section-${group.key}`}>
+              <InsetGroup wide header={oneGroupOnly ? undefined : group.label} trailing={oneGroupOnly ? undefined : <Money minor={group.totalMinor} currency={currency} />}>
+                {fold(group, kindOf, open, onToggle, currency)}
+              </InsetGroup>
+            </div>
+          ),
+        )
       )}
     </div>
   );
@@ -147,8 +178,8 @@ function sheetLine(row: SheetRow, currency: string) {
 }
 
 /** A group's rows, folded by kind: every section says which kinds it holds, even where it holds only one. */
-function fold(group: SheetGroup, subtypes: ReadonlyMap<string, AccountSubtype>, open: ReadonlySet<string>, onToggle: (key: string) => void, currency: string) {
-  const drawers = sheetDrawers(group.rows, (row) => rowKindOf(group.key, row, (accountId) => subtypes.get(accountId)));
+function fold(group: SheetGroup, kindOf: (groupKey: string, row: SheetRow) => RowKind, open: ReadonlySet<string>, onToggle: (key: string) => void, currency: string) {
+  const drawers = sheetDrawers(group.rows, (row) => kindOf(group.key, row));
   return drawers.flatMap((drawer, index) => {
     const key = `${group.key}:${drawer.key}`;
     const shown = open.has(key);
@@ -242,7 +273,7 @@ export function OverviewPage() {
      */
     { key: 'assets', label: 'Assets', to: '/net-worth/assets' },
     { key: 'trades', label: 'Buy & sell', to: '/net-worth/trades' },
-    { key: 'debts', label: 'Debts', to: '/net-worth/loans' },
+    { key: 'debts', label: 'Liabilities', to: '/net-worth/loans' },
   ];
 
   const nothingYet = series.isSuccess && sheetInputs.isSuccess && sheetMissing.length === 0 && sheet.assetsTotalMinor === 0 && sheet.liabilitiesTotalMinor === 0;
@@ -260,14 +291,9 @@ export function OverviewPage() {
    * Which drawers are open, by `group:kind`, and shut to begin with: the point of folding a page of account names away
    * is that what you have reads as a handful of types, and a drawer that opens itself is that answer hidden again.
    */
-  const [openDrawers, setOpenDrawers] = useState<ReadonlySet<string>>(new Set());
-  const toggleDrawer = (key: string) =>
-    setOpenDrawers((was) => {
-      const next = new Set(was);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const drawers = useDrawers();
+  const openDrawers = drawers.open;
+  const toggleDrawer = drawers.toggle;
   /*
    * What you owe, as one group: a debt is read by what it *is* — a card, a loan, money owed to a person — and not by
    * when it falls due. "Due within a year" and "long-term" are a schedule, and beside a column of asset types the two
@@ -278,6 +304,23 @@ export function OverviewPage() {
    */
   const owed = sheet.debts;
   /*
+   * What kind of debt each row is, which the sheet now carries: the item the picker opened it as, and — where nobody
+   * said — what the money went on. A mortgage folds with the mortgages on this page and on the Debts list, not as a
+   * plain "Loan" here and a home mortgage there.
+   */
+  const debts = new Map((sheetInputs.data?.liabilities ?? []).map((row) => [row.accountId, row]));
+  /*
+   * What kind of thing a row is, which is what its drawer is called. An asset is read off the catalogue code it was
+   * opened under and the kind of account it sits in; a debt off its own facts, which is where its kind is kept — so a
+   * mortgage folds with the mortgages here and on the Debts list, rather than as a plain "Loan" on one page and a
+   * home mortgage on the other.
+   */
+  const assetKind = (groupKey: string, row: SheetRow): RowKind => rowKindOf(groupKey, row, (accountId) => subtypes.get(accountId));
+  const debtRowKind = (row: SheetRow): RowKind => {
+    const facts = debts.get(row.accountId);
+    return facts?.icon ? debtKind(facts.item ?? null, facts.icon) : assetKind('debts', row);
+  };
+  /*
    * The same months the line is drawn from, handed to the bars as what each one is made of: the families the assets are
    * held in, out from nothing, and the kinds of debt under them. A month the series could not add up — a rate missing —
    * has no stack, and is handed over empty so nothing is drawn where there is nothing to say.
@@ -287,19 +330,6 @@ export function OverviewPage() {
     netWorthMinor: point.netWorthMinor,
     assets: point.stack === null ? [] : ASSET_STACK_KEYS.map((key) => ({ key: key.key, minor: point.stack?.assets[key.key as SheetSectionKey] ?? 0 })),
     liabilities: point.stack === null ? [] : DEBT_STACK_KEYS.map((key) => ({ key: key.key, minor: point.stack?.liabilities[key.key as LiabilityKind] ?? 0 })),
-  }));
-  // The bar divides into the kinds the column's drawers hold: the same arithmetic, from the same fold.
-  const owedBar: ShareSegment[] = sheetDrawers(owed.rows, (row) => rowKindOf('debts', row, (accountId) => subtypes.get(accountId))).map((drawer) => ({
-    key: drawer.key,
-    label: drawer.label,
-    minor: drawer.totalMinor,
-    className: LIABILITY_COLORS[drawer.key] ?? 'bg-rose-500',
-  }));
-  const assetBar: ShareSegment[] = sheet.assetGroups.map((group) => ({
-    key: group.key,
-    label: group.label,
-    minor: group.totalMinor,
-    className: GROUP_COLORS[group.key] ?? 'bg-slate-400',
   }));
 
   /*
@@ -420,9 +450,38 @@ export function OverviewPage() {
       </section>
 
       {/*
+       * What you own and what you owe, side by side, before the detail: the two figures the page is read for, so the
+       * answer arrives before the page of accounts does. A card a side, as the kit draws a panel, and both figures in
+       * the page's own ink: what is owed is a figure like the other one, not a warning.
+       *
+       * The figure is 17 px rather than the hero's 32: half of 390 px is 174, and a rupiah total at 21 px ran out of the
+       * box it was in. Nothing else is in the card — no sentence under the figure saying which side it is — because the
+       * label above it already says it, and the room the sentence took is room the figure needed.
+       *
+       * Not drawn while a rate is missing: a pair of figures built from rows that read 0 would be two more things to
+       * read past, and the sheet below says which rate it is waiting on.
+       */}
+      {sheetMissing.length === 0 && (
+        <section data-testid="sheet-totals" className="mb-[18px] grid grid-cols-2 gap-2.5">
+          <div className="rounded-[14px] bg-[var(--ph-surface)] px-3 py-[11px]">
+            <p className="text-[11px] leading-[13px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Assets</p>
+            <p data-testid="sheet-total-assets" className="tabular mt-[4px] text-[17px] leading-[22px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">{formatMinor(sheet.assetsTotalMinor, ws.baseCurrency)}</p>
+          </div>
+          <div className="rounded-[14px] bg-[var(--ph-surface)] px-3 py-[11px]">
+            <p className="text-[11px] leading-[13px] font-semibold tracking-[0.06em] text-[var(--ph-ink-3)] uppercase">Liabilities</p>
+            <p data-testid="sheet-total-liabilities" className="tabular mt-[4px] text-[17px] leading-[22px] font-bold tracking-[-0.02em] text-[var(--ph-ink)]">{formatMinor(sheet.liabilitiesTotalMinor, ws.baseCurrency)}</p>
+          </div>
+        </section>
+      )}
+
+      {/*
        * No heading over the sheet and no line under it saying how it was valued: each side is already headed by its own
-       * name and its own total, and "Assets at today's value · debts at what you still owe" sat above two columns
-       * whose captions said the same thing in the language of the thing itself.
+       * name, and "Assets at today's value · debts at what you still owe" sat above two columns whose captions said the
+       * same thing in the language of the thing itself.
+       *
+       * The two sides are 18 px apart — the same distance the pair above them sits from the sheet, and the distance
+       * every other box on this page sits from the next. The grid's own 24 px was the one gutter on the page that
+       * answered to nothing else, and between two boxes of the same kind it read as a space rather than a seam.
        */}
       <section className="mb-[18px]">
         {/* A row with no rate reads 0 here, so its totals would be short: the missing rate is named instead. */}
@@ -432,24 +491,28 @@ export function OverviewPage() {
           </Panel>
         ) : (
         <>
-        <div className="grid gap-6 md:grid-cols-2">
+        {/*
+         * A column gap and no row gap: stacked on a phone, the two sides are told apart by the group's own 18 px
+         * margin — the same breathing room every other seam on this page has — and a grid row gap on top of it made
+         * the line between what is owned and what is owed 36 px, twice everything else. Side by side, that same 18 px
+         * is the two columns' separation.
+         */}
+        <div className="grid gap-x-[18px] md:grid-cols-2">
           <SheetColumn
             title="Assets"
             groups={sheet.assetGroups}
-            bar={assetBar}
-            totalMinor={sheet.assetsTotalMinor}
             currency={ws.baseCurrency}
-            subtypes={subtypes}
+            kindOf={assetKind}
+            nested
             open={openDrawers}
             onToggle={toggleDrawer}
           />
           <SheetColumn
             title="Liabilities"
             groups={owed.rows.length > 0 ? [owed] : []}
-            bar={owedBar}
-            totalMinor={sheet.liabilitiesTotalMinor}
             currency={ws.baseCurrency}
-            subtypes={subtypes}
+            kindOf={(_groupKey, row) => debtRowKind(row)}
+            oneGroupOnly
             open={openDrawers}
             onToggle={toggleDrawer}
           />

@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openLoan } from './accounts';
 import { openNewAsset } from './add-asset';
+import { openDrawers } from './drawers';
 import { forgetRates } from './pockets';
 
 test.beforeEach(({ page }) => {
@@ -19,6 +20,7 @@ async function addGold(page: Page) {
   await page.getByLabel('How much').fill('10');
   await page.getByLabel('Total cost (IDR)').fill('18600000');
   await page.getByRole('button', { name: 'Add asset' }).last().click();
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Antam gold bars/ })).toBeVisible();
 }
 
@@ -70,10 +72,20 @@ test('shows net worth, the balance sheet and both sides of it', async ({ page })
 
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
+  /*
+   * The two totals come first, before the detail: what you own and what you owe, side by side under the drawing, with
+   * the debts in the alarm ink money going out wears.
+   */
+  const totals = page.getByTestId('sheet-totals');
+  await expect(totals).toContainText('Assets');
+  await expect(totals).toContainText('Liabilities');
+  await expect(page.getByTestId('sheet-total-assets')).toContainText('50.000.000');
+  await expect(page.getByTestId('sheet-total-liabilities')).toContainText('10.000.000');
   await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
   // The debts are one group a side, drawn by kind rather than by when each one falls due — and the kind is the drawer
-  // the card sits in, so its name is one tap away rather than on the page.
-  await expect(page.getByText('Debts', { exact: true })).toBeVisible();
+  // the card sits in, so its name is one tap away rather than on the page. The side is headed once: the column says
+  // Liabilities and its total, and the group inside it repeats neither.
+  await expect(page.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
   const card = page.getByTestId('type-drawer-debts:credit_card');
   await expect(card).toContainText('Credit card');
   await expect(card).toContainText('10.000.000');
@@ -93,6 +105,18 @@ test('folds each side of the balance sheet by kind, shut to begin with', async (
   await addAccount(page, 'BCA Dollar', 'savings', 'Current balance', '5000000');
 
   await page.goto('/net-worth');
+  /*
+   * Two levels, one box: Cash & equivalents is a drawer of the sheet's own, and the kinds of account it holds are
+   * drawers inside it. Both are shut to begin with — the point of folding a page of names away is that what you have
+   * reads as a handful of sections, and a section reads as a handful of kinds.
+   */
+  const section = page.getByTestId('type-drawer-section-liquid');
+  await expect(section).toContainText('Cash & equivalents');
+  await expect(section).toContainText('3 accounts');
+  await expect(section).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText('BCA Tahapan')).toHaveCount(0);
+
+  await section.click();
   const drawer = page.getByTestId('type-drawer-liquid:bank');
   await expect(drawer).toContainText('Current account');
   await expect(drawer).toContainText('2 accounts');
@@ -125,18 +149,23 @@ test('reads what you owe by kind rather than by when it falls due', async ({ pag
   await expect(page.getByText('Due within a year')).toHaveCount(0);
   await expect(page.getByText('Long-term', { exact: true })).toHaveCount(0);
 
-  // One group for the side, with a drawer a kind under it, each carrying the whole of what that kind is owed.
-  await expect(page.getByText('Debts', { exact: true })).toBeVisible();
+  // One group for the side, with a drawer a kind under it, each carrying the whole of what that kind is owed. The kind
+  // is the item the picker opened the debt as — this loan was opened as a multi-purpose loan — so a mortgage, a lease
+  // and a paylater are three drawers rather than one.
+  await expect(page.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
   await expect(page.getByTestId('type-drawer-debts:credit_card')).toContainText('10.000.000');
-  await expect(page.getByTestId('type-drawer-debts:loan')).toContainText('250.000.000');
+  await expect(page.getByTestId('type-drawer-debts:multi_purpose_loan')).toContainText('Multi-purpose loan');
+  await expect(page.getByTestId('type-drawer-debts:multi_purpose_loan')).toContainText('250.000.000');
 
   // Opening the loan's drawer shows the debt itself: one row, not one row per part of its schedule.
-  await page.getByTestId('type-drawer-debts:loan').click();
+  await page.getByTestId('type-drawer-debts:multi_purpose_loan').click();
   await expect(page.getByText('KPR BCA')).toHaveCount(1);
 
-  // And the bar above them divides into the same kinds, as shares.
+  // And the bar divides the same kinds into shares — read on the sub page, where the bar and the list it divides are
+  // drawn: the Overview draws a side's sections and its total, and the drawing of what makes it up is that page's.
+  await page.goto('/net-worth/loans');
   await expect(page.getByText(/Credit card \d+%/)).toBeVisible();
-  await expect(page.getByText(/Loan \d+%/)).toBeVisible();
+  await expect(page.getByText(/Multi-purpose loan \d+%/)).toBeVisible();
 });
 
 /**
@@ -151,8 +180,9 @@ test('reads the assets in the catalogue’s families', async ({ page }) => {
   /*
    * Gold is a family of its own, and inside it a kind of its own: the section says "Gold bullion" even though gold is
    * the only thing in it, because that name is the answer the section exists to give — and the holding itself is one
-   * tap away inside the drawer.
+   * tap away inside the drawer inside it.
    */
+  await page.getByTestId('type-drawer-section-other').click();
   const gold = page.getByTestId('type-drawer-other:gold');
   await expect(gold).toContainText('Gold bullion');
   await expect(gold).toContainText('1 account');
@@ -357,13 +387,13 @@ test('every net-worth section is a real link in the corner menu, so it can be op
   await page.goto('/net-worth');
   await page.getByRole('button', { name: 'More' }).click();
   const items = page.getByRole('menuitem');
-  await expect(items).toHaveText(['Assets', 'Buy & sell', 'Debts']);
+  await expect(items).toHaveText(['Assets', 'Buy & sell', 'Liabilities']);
   expect(await items.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('href')))).toEqual(['/net-worth/assets', '/net-worth/trades', '/net-worth/loans']);
 
   // And each one goes there: the section opens as its own screen, with Net worth as the way back.
-  await page.getByRole('menuitem', { name: 'Debts' }).click();
+  await page.getByRole('menuitem', { name: 'Liabilities' }).click();
   await expect(page).toHaveURL(/\/net-worth\/loans$/);
-  await expect(page.getByRole('heading', { name: 'Debts', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
 });
 
 test('an empty account in a currency with no rate does not stop net worth: zero needs no rate', async ({ page }) => {

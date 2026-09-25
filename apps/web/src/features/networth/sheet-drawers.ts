@@ -1,4 +1,4 @@
-import { assetItemOfCode, type SheetRow } from '@expanses/core';
+import { assetItemOfCode, DEBT_ITEMS, type DebtIcon, type SheetRow } from '@expanses/core';
 import type { AccountSubtype } from '@expanses/db';
 import { SUBTYPE_LABELS } from '../../lib/account-types';
 
@@ -22,13 +22,44 @@ const OTHER: RowKind = { key: 'other', label: 'Other' };
  * back to the account's own kind and then to "Other", because a row that vanishes from the list while staying in the
  * total is worse than a row under the wrong name.
  */
-export function rowKindOf(section: string, row: SheetRow, subtypeOf: (accountId: string) => AccountSubtype | undefined): RowKind {
+export function rowKindOf(section: string, row: { accountId: string; code?: string | null }, subtypeOf: (accountId: string) => AccountSubtype | undefined): RowKind {
   if (section !== 'liquid' && row.code) {
     const item = assetItemOfCode(row.code);
     if (item) return { key: item.id, label: item.label };
   }
   const subtype = subtypeOf(row.accountId);
   return subtype === undefined ? OTHER : { key: subtype, label: SUBTYPE_LABELS[subtype] };
+}
+
+/**
+ * The drawer a debt is drawn under when nobody has said what kind it is, by the drawing its row already wears.
+ *
+ * A loan against a property is a home mortgage and one against a vehicle is a lease, which is what the icon says; a
+ * loan against nothing in particular is a loan of no particular kind, and says that rather than borrowing a name it
+ * was never given. Cards and personal debts have nothing finer than their kind, and wear their own name.
+ */
+const PLAIN_KINDS: Record<DebtIcon, RowKind> = {
+  home: { key: 'home_mortgage', label: 'Home mortgage' },
+  car: { key: 'vehicle_leasing', label: 'Vehicle leasing' },
+  loan: { key: 'other_loans', label: 'Other loans' },
+  card: { key: 'credit_card', label: SUBTYPE_LABELS.credit_card },
+  person: { key: 'payable', label: SUBTYPE_LABELS.payable },
+};
+
+/**
+ * Which drawer a debt belongs in: the catalogue item the debt was opened as — "Home mortgage", "Vehicle leasing",
+ * "Online loan or paylater" — or, for a loan nobody has classified, what the loan is against.
+ *
+ * The item is looked up rather than read out of the catalogue by id, because an id the catalogue no longer knows must
+ * leave the loan reading as its own facts rather than vanish from the list.
+ *
+ * One function rather than one per screen: the Debts list and the balance sheet's own drawers fold the same debts,
+ * and a mortgage that read as a home mortgage on one page and as a plain loan on the other would be two taxonomies
+ * for one debt.
+ */
+export function debtKind(itemId: string | null, icon: DebtIcon): RowKind {
+  const item = itemId === null ? undefined : DEBT_ITEMS.find((entry) => entry.id === itemId);
+  return item ? { key: item.id, label: item.label } : PLAIN_KINDS[icon];
 }
 
 /** One kind of thing inside a section: what it is called, what it holds, and what its rows come to. */

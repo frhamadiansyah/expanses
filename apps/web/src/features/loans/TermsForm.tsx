@@ -1,5 +1,5 @@
-import { flatToEffectiveBps, isoDate, type LoanMethod } from '@expanses/core';
-import { saveLoanTerms, type LoanTermsRow } from '@expanses/db';
+import { flatToEffectiveBps, isoDate, LOAN_ITEMS, type LoanMethod } from '@expanses/core';
+import { saveLoanTerms, setLoanItem, type LoanTermsRow } from '@expanses/db';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInvalidateAll } from '../../lib/queries';
@@ -19,8 +19,12 @@ const METHOD_LABELS: Record<LoanMethod, string> = {
  * Opened from the loan's own page, which already knows which loan this is — so there is no `Which loan` picker to
  * answer a second time, and no state in which the form has nothing to do. Given the terms on file it amends them;
  * given none it writes them.
+ *
+ * What kind of loan it is is asked here as well as at the picker, because a loan opened from the Accounts page
+ * never went through the picker: without this row, a mortgage typed in as an account could never say that it is
+ * one, and the Debts list would fold it under "Other loans" for good.
  */
-export function TermsForm({ accountId, terms, onDone }: { accountId: string; terms?: LoanTermsRow; onDone: () => void }) {
+export function TermsForm({ accountId, terms, itemId = '', onDone }: { accountId: string; terms?: LoanTermsRow; itemId?: string; onDone: () => void }) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const accounts = useAccounts().data ?? [];
@@ -29,7 +33,7 @@ export function TermsForm({ accountId, terms, onDone }: { accountId: string; ter
   const currency = account?.currency ?? ws.baseCurrency;
   const assets = accounts.filter((row) => ['property', 'vehicle'].includes(row.subtype) && row.archivedAt === null);
 
-  const [draft, setDraft] = useState<LoanTermsDraft>(() => (terms ? loanTermsDraftFromTerms(terms, currency, today) : emptyLoanTermsDraft(accountId, today)));
+  const [draft, setDraft] = useState<LoanTermsDraft>(() => (terms ? loanTermsDraftFromTerms(terms, currency, today, itemId) : { ...emptyLoanTermsDraft(accountId, today), itemId }));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
@@ -44,6 +48,8 @@ export function TermsForm({ accountId, terms, onDone }: { accountId: string; ter
     setBusy(true);
     try {
       await saveLoanTerms(database, ws, loanTermsDraftToInput(draft, currency));
+      // What kind of loan it is, on its own: a write that never carries the terms with it, and vice versa.
+      await setLoanItem(database, ws, accountId, draft.itemId || null);
       await invalidate();
       onDone();
     } catch (e) {
@@ -126,6 +132,14 @@ export function TermsForm({ accountId, terms, onDone }: { accountId: string; ter
       </InsetGroup>
 
       <InsetGroup header="What it is for">
+        <SelectRow label="What kind of loan" hint="How it is filed on the Debts list: a mortgage with the mortgages." value={draft.itemId} onChange={(e) => set({ itemId: e.target.value })}>
+          <option value="">Not said</option>
+          {LOAN_ITEMS.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
+          ))}
+        </SelectRow>
         <SelectRow
           label="What it bought"
           hint="A property makes this a mortgage, which the debt ratios treat apart."

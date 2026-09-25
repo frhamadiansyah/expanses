@@ -156,7 +156,12 @@ test('an account that promised more than it holds says so on its page, and Net w
   await expect(page.getByRole('link', { name: /^Umrah 2027.*Short by Rp.7\.500\.000/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /^Emergency fund.*Short by Rp.9\.000\.000/ })).toBeVisible();
 
-  await page.goto('/net-worth');
+  /*
+   * What waits is a screen of its own since the net-worth pages were merged: the sheet's own rows are lines to be
+   * read, not doors, so the account that is short is named on the screen that says what to deal with — and its
+   * action is the way back to the account itself.
+   */
+  await page.goto('/net-worth/attention');
   const jeniusRows = page.getByRole('link', { name: /Jenius/ });
   await expect(jeniusRows).toHaveCount(1);
   await expect(jeniusRows).toHaveAccessibleName(/^Jenius: Rp.37\.500\.000 set aside, Rp.21\.000\.000 here/);

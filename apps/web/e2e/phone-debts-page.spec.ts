@@ -1,24 +1,30 @@
 import { expect, test } from '@playwright/test';
 import { digits, moneyIn, oneOfEach } from './debts-page';
+import { openDrawers } from './drawers';
 
-/** Debts at 390 px: the same three groups as rows, a trailing figure each, and the due split as a footer. */
+/** Liabilities at 390 px: one box of drawers, a trailing figure each, and the due split under it. */
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
 });
 
-test('by thumb: Debts shows all three groups with the right figures, each debt in its own currency', async ({ page }) => {
+test('by thumb: Liabilities shows every kind with the right figures, each debt in its own currency', async ({ page }) => {
   await oneOfEach(page);
   await page.goto('/net-worth/loans');
 
   await expect(page.getByTestId('debts-total')).toContainText('Rp 731.950.000');
-  const headers = page.getByRole('heading', { level: 2 });
-  await expect(headers).toContainText(['Loans', 'Credit cards', 'Payables']);
-  await expect(page.getByTestId('debts-group-total-loan')).toHaveText('Rp 728.750.000');
-  await expect(page.getByTestId('debts-group-total-card')).toHaveText('Rp 2.450.000');
-  await expect(page.getByTestId('debts-group-total-person')).toHaveText('Rp 750.000');
+  // One box, a drawer per kind of debt — the mortgage and the multi-purpose loan apart, as the picker asked them.
+  await expect(page.getByTestId('type-drawer-loan:home_mortgage')).toContainText('Home mortgage');
+  await expect(page.getByTestId('type-drawer-loan:multi_purpose_loan')).toContainText('Multi-purpose loan');
+  await expect(page.getByTestId('type-drawer-card:credit_card')).toContainText('Credit card');
+  await expect(page.getByTestId('type-drawer-person:payable')).toContainText('Payables');
+  await expect(page.getByTestId('debts-kind-total-home_mortgage')).toHaveText('Rp 712.500.000');
+  await expect(page.getByTestId('debts-kind-total-multi_purpose_loan')).toHaveText('Rp 16.250.000');
+  await expect(page.getByTestId('debts-kind-total-credit_card')).toHaveText('Rp 2.450.000');
+  await expect(page.getByTestId('debts-kind-total-payable')).toHaveText('Rp 750.000');
+  await openDrawers(page);
 
-  // The dollar loan in dollars, with its rupiah beneath; a rupiah debt bare, as its header names the currency.
+  // The dollar loan in dollars, with its rupiah beneath; a rupiah debt bare, as its drawer's figure names the currency.
   const dollar = page.getByRole('link', { name: /Dollar car loan/ });
   await expect(dollar).toContainText('US$1.000,00');
   await expect(dollar).toContainText('≈ Rp 16.250.000');
@@ -36,7 +42,9 @@ test('by thumb: Debts shows all three groups with the right figures, each debt i
   expect(within).toBeGreaterThan(0);
   const owed = digits(moneyIn(await page.getByTestId('debts-total').innerText()));
   await page.goto('/net-worth');
-  const owedOnSheet = digits(moneyIn(await page.getByRole('heading', { name: 'Debts', exact: true }).locator('xpath=..').innerText()));
+  // The pair carries the side's own total, and it is waited for: the sheet paints before its ledger read answers.
+  await expect(page.getByTestId('sheet-total-liabilities')).toContainText('Rp 731.950.000');
+  const owedOnSheet = digits(await page.getByTestId('sheet-total-liabilities').innerText());
   expect(owedOnSheet).toBe(owed);
 
   // Nothing scrolls sideways at 390 px.
@@ -53,15 +61,18 @@ test('by thumb: ＋ opens the chooser, and each row opens its own place', async 
   await expect(page.getByRole('button', { name: /^Credit card/ })).toBeVisible();
 
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await page.getByRole('link', { name: /KPR BCA/ }).tap();
   await expect(page).toHaveURL(/\/net-worth\/loans\/[^/]+$/);
   await expect(page.getByText('Still owed')).toBeVisible();
 
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await page.getByRole('link', { name: /BCA Visa/ }).tap();
   await expect(page).toHaveURL(/\/cards\/[^/?]+/);
 
   await page.goto('/net-worth/loans');
+  await openDrawers(page);
   await page.getByRole('link', { name: /Dewi/ }).tap();
   await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?person=Dewi$/);
   await expect(page.getByRole('heading', { name: 'Only Dewi' })).toBeVisible();
@@ -73,10 +84,10 @@ test('by thumb: the sections are behind the corner, and Lend & borrow is not one
   await page.getByRole('button', { name: 'More' }).tap();
   const items = page.getByRole('menuitem');
   await expect(items).toHaveCount(3);
-  await expect(items).toHaveText(['Assets', 'Buy & sell', 'Debts']);
+  await expect(items).toHaveText(['Assets', 'Buy & sell', 'Liabilities']);
   await expect(page.getByRole('menuitem', { name: 'Loans' })).toHaveCount(0);
-  await page.getByRole('menuitem', { name: 'Debts' }).tap();
-  await expect(page.getByRole('heading', { name: 'Debts', level: 1 })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Liabilities' }).tap();
+  await expect(page.getByRole('heading', { name: 'Liabilities', level: 1 })).toBeVisible();
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Filters' }).tap();

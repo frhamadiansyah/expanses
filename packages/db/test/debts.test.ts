@@ -147,6 +147,43 @@ describe('recording a loan', () => {
     expect((await listTransactions(database, ws, {}))[0]!.description).toBe('Lent to Andi');
   });
 
+  /**
+   * What the loan files as is asked when the money moves, not only months later from the person's card: the sub-category
+   * is the reason the two of them are worth telling apart — a customer's piutang against a relative's.
+   */
+  it('files a new person’s loan under the sub-category chosen', async () => {
+    const { debtAccountId } = await recordLoan(database, ws, {
+      person: { name: 'Andi', direction: 'lent', currency: 'IDR' },
+      coretaxCode: '0202',
+      occurredOn: '2026-09-05',
+      amountMinor: 10_000_000,
+      moneyAccountId: bca.id,
+    });
+
+    await expect(getDebtProfile(database, ws, debtAccountId)).resolves.toMatchObject({ coretaxCode: '0202' });
+  });
+
+  it('files a loan added to someone already on the list too: the sub-category is theirs, and can change', async () => {
+    const first = await lend(10_000_000);
+    await expect(getDebtProfile(database, ws, first.debtAccountId)).resolves.toMatchObject({ coretaxCode: '0201' });
+
+    await recordLoan(database, ws, {
+      debtAccountId: first.debtAccountId,
+      coretaxCode: '0209',
+      occurredOn: '2026-09-20',
+      amountMinor: 2_000_000,
+      moneyAccountId: bca.id,
+    });
+
+    await expect(getDebtProfile(database, ws, first.debtAccountId)).resolves.toMatchObject({ coretaxCode: '0209' });
+  });
+
+  it('keeps the default the ledger writes when nobody says', async () => {
+    const { debtAccountId } = await lend(10_000_000);
+
+    await expect(getDebtProfile(database, ws, debtAccountId)).resolves.toMatchObject({ coretaxCode: '0201' });
+  });
+
   it('refuses a loan of nothing', async () => {
     await expect(lend(0)).rejects.toThrow(/greater than zero/);
   });

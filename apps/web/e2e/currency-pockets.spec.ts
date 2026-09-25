@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
 import { openNewAsset } from './add-asset';
+import { openDrawers } from './drawers';
 import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
 
 test.beforeEach(({ page }) => {
@@ -135,7 +136,9 @@ test('Lend & borrow adds each side in rupiah at the held rate, and names a rate 
     await page.getByLabel('Who').pressSequentially(who);
     await page.getByLabel(/^Owed now/).pressSequentially(amount);
     await page.getByRole('button', { name: 'Add asset' }).last().click();
-    // Saved once the person is listed under Receivables: leaving earlier loses the write.
+    // Saved once the person is listed under Receivables — inside its drawer, which the list opens shut: leaving
+    // earlier loses the write.
+    await openDrawers(page);
     await expect(page.getByRole('main').getByText(who, { exact: true })).toBeVisible();
   };
   await owed('Andi', 'USD', '100', '16250');
@@ -233,6 +236,7 @@ test('net worth’s Assets list shows the account once, at the ≈ total, and op
   await mockRates(page, { SGD: 12_680 });
   await openWithPockets(page, VALAS);
   await page.goto('/net-worth/assets');
+  await openDrawers(page);
   await expect(page.getByRole('link', { name: /Valas Plus · USD/ })).toHaveCount(0);
   const row = page.getByRole('link', { name: /^Valas Plus/ });
   await expect(row).toContainText('3 pockets');

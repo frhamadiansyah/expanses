@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { at, automate, COMBOS, comboName, confirmEach, expectBalance, HAND_COMBOS, openDeposit, settingsSaved, setUp, startReport, typeInto, walk } from './deposit-maturity';
+import { openAssets } from './drawers';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -13,7 +14,7 @@ test('is off by default and changes nothing', async ({ page }) => {
   await expect(page.getByLabel('At maturity', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Interest paid')).toHaveCount(0);
   await page.clock.setSystemTime(at(s.matures));
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await expect(page.getByRole('link', { name: /^BCA Deposito/ })).not.toContainText('Due');
   await openDeposit(page, s.depositName);
   await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
@@ -25,18 +26,18 @@ test('says Due on the assets row while a proposal waits, and not once it is sett
   await openDeposit(page, s.depositName);
   await automate(page, { choice: 'principal', paid: 'at_maturity', exempt: false });
   const row = page.getByRole('link', { name: /^BCA Deposito/ });
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await expect(row).toContainText('Ledger balance');
   await expect(row).not.toContainText('Due');
   await page.clock.setSystemTime(at(s.matures));
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await expect(row).toContainText(/Ledger balance · .+ · Due/);
   // Nothing else about the row changes, and the payout account is never marked.
   await expect(page.getByRole('link', { name: /^BCA Tahapan/ })).not.toContainText('Due');
   await row.click();
   await page.getByTestId('deposit-proposal').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByTestId('deposit-proposal')).toHaveCount(0);
-  await page.goto('/net-worth/assets');
+  await openAssets(page);
   await expect(row).toContainText('Ledger balance');
   await expect(row).not.toContainText('Due');
 });
