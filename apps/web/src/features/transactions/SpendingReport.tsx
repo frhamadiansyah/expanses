@@ -60,12 +60,22 @@ function Row({
       <ShareLine colour={colour} name={node.name} amountMinor={node.totalMinor} wholeMinor={totalMinor} currency={currency} />
     );
   // A category with children opens into them; one without goes straight to its transactions.
+  /*
+   * The last row of a list hands back its own floor and its own bottom padding, so the list ends where the card's own
+   * padding starts. Without it a row's bottom half sits *inside* the card's padding and the gap under the list is the
+   * card's 16 px plus the row's 10 plus whatever the row's 48 px floor had left over — a strip of white two and a half
+   * times the one above the month pill, which is what the eye reads as the card being unfinished.
+   *
+   * The content is centred in the row's own floor, so the space either side of a divider is the same: a row's floor is
+   * there for a thumb, not for the name to sit at the top of.
+   */
+  const row = 'flex min-h-12 w-full flex-col justify-center py-2.5 text-left last:min-h-0 last:pb-0';
   return onOpen ? (
-    <button type="button" onClick={onOpen} className="flex min-h-12 w-full flex-col py-2.5 text-left" data-testid="report-row">
+    <button type="button" onClick={onOpen} className={row} data-testid="report-row">
       {inside}
     </button>
   ) : (
-    <Link to="/transactions" search={{ account: node.id, month }} className="flex min-h-12 flex-col py-2.5" data-testid="report-row">
+    <Link to="/transactions" search={{ account: node.id, month }} className={row} data-testid="report-row">
       {inside}
     </Link>
   );

@@ -192,6 +192,46 @@ test('the chart card keeps its height when the month is read the other way', asy
   expect(Math.abs(incomeRing.height - expenseRing.height)).toBeLessThanOrEqual(1);
 });
 
+/**
+ * The list under the chart ends where the card's own padding begins.
+ *
+ * A row is floored at 48 so a thumb can find it, and that floor is not all content: the few pixels it has over are a
+ * row's business *between* rows, not under the last one, where they stack on top of the card's padding and leave a strip
+ * of white wider than the one above the month pill. The last row hands back both, so the two strips are the same.
+ */
+test('the list under the chart is padded like the top of the card', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '250000' });
+  await addTransaction(page, { description: 'Kopi Kenangan', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '40000' });
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+
+  const chart = page.getByTestId('spending-report');
+  await chart.getByTestId('see-categories').click();
+  await expect(chart.getByTestId('report-row').first()).toBeVisible();
+
+  const gaps = await chart.evaluate((report) => {
+    const card = report.querySelector('section');
+    const pill = report.querySelector('[data-testid="chart-month"]');
+    const rows = [...report.querySelectorAll('[data-testid="report-row"]')];
+    if (!card || !pill || rows.length < 2) throw new Error('the card is not showing a list');
+    const cardBox = card.getBoundingClientRect();
+    // A row's content, not the row's box: the box carries the floor and the thumb's padding around it.
+    const lastContent = rows[rows.length - 1].firstElementChild!.getBoundingClientRect();
+    return {
+      above: Math.round(pill.getBoundingClientRect().top - cardBox.top),
+      below: Math.round(cardBox.bottom - lastContent.bottom),
+      between: Math.round(
+        rows[1].firstElementChild!.getBoundingClientRect().top - rows[0].firstElementChild!.getBoundingClientRect().bottom,
+      ),
+    };
+  });
+
+  expect(Math.abs(gaps.below - gaps.above), `the strip under the list is ${gaps.below} against the card's ${gaps.above}`).toBeLessThanOrEqual(1);
+  // And the rows keep their own spacing, so the last one handing its floor back changed nothing above it.
+  expect(gaps.between).toBeGreaterThan(gaps.above);
+});
+
 test('everything in the tab bar is big enough to hit', async ({ page }) => {
   await page.goto('/');
   await settle(page);
