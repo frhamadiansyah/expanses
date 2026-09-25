@@ -85,6 +85,32 @@ describe('netWorthSeries', () => {
   });
 });
 
+describe('the stack a month is made of', () => {
+  /*
+   * The parts a bar chart stands on: the assets by the family the sheet draws them in, what is owed by the kind of debt
+   * it is. Gold was opened by its kind alone and still lands in its own family, because the code the catalogue gives
+   * that kind is what travels — so the stack and the sheet's own sections are the same taxonomy, read twice.
+   */
+  it('splits a month by what the money is held in and what it is owed as', async () => {
+    const [point] = await netWorthSeries(database, ws, ['2026-03'], {}, TODAY);
+    expect(point!.stack).toEqual({
+      assets: { liquid: 31_400_000, invest: 0, use: 1_150_000_000, other: 18_600_000 },
+      liabilities: { credit_card: 14_820_000, loan: 742_300_000, payable: 0 },
+    });
+    // The parts are the whole: a stack that did not add up to the month's figure would be a shape of something else.
+    expect(Object.values(point!.stack!.assets).reduce((sum, part) => sum + part, 0)).toBe(point!.assetsMinor);
+    expect(Object.values(point!.stack!.liabilities).reduce((sum, part) => sum + part, 0)).toBe(point!.liabilitiesMinor);
+  });
+
+  it('hands over no stack in a month it could not add up', async () => {
+    await createAccount(database, ws, { name: 'Jenius USD', kind: 'asset', subtype: 'bank', currency: 'USD', openingBalanceMinor: 100_000, openedOn: '2026-01-01', openingRateToBase: 16_000 });
+    const [point] = await netWorthSeries(database, ws, ['2026-03'], {}, TODAY);
+    expect(point!.stack).toBeNull();
+    const [priced] = await netWorthSeries(database, ws, ['2026-03'], { USD: 16_250 }, TODAY);
+    expect(priced!.stack!.assets.liquid).toBe(31_400_000 + 16_250_000);
+  });
+});
+
 describe('netWorthSeries with a currency it has no rate for', () => {
   it('flags every point instead of counting the foreign money as 0', async () => {
     await createAccount(database, ws, { name: 'Jenius USD', kind: 'asset', subtype: 'bank', currency: 'USD', openingBalanceMinor: 100_000, openedOn: '2026-01-01', openingRateToBase: 16_000 });

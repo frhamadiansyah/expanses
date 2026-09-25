@@ -218,6 +218,8 @@ export {
   type BalanceSheet,
   balanceSheet,
   SHEET_SECTION_LABELS,
+  SHEET_SECTIONS,
+  type SheetSectionKey,
   sheetSectionOf,
   type SheetAsset,
   type SheetGroup,

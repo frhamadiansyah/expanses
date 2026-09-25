@@ -1,5 +1,5 @@
-import { balanceSheet, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetRow } from '@expanses/core';
-import type { AccountSubtype } from '@expanses/db';
+import { balanceSheet, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetRow, type SheetSectionKey } from '@expanses/core';
+import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
 import { BellRing, Gauge } from 'lucide-react';
 import { useState } from 'react';
@@ -7,9 +7,12 @@ import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl } from '../../ui/native';
 import { useAttention } from './attention';
+import type { BarMonth } from './bar-chart';
+import { NetWorthBars } from './NetWorthBars';
 import { NetWorthChart } from './NetWorthChart';
 import { ShareBar, ShareLegend, type ShareSegment } from './ShareBar';
 import { sheetDrawers, rowKindOf } from './sheet-drawers';
+import { ASSET_STACK_KEYS, DEBT_STACK_KEYS, STACK_KEYS, stackColours } from './stack-keys';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
 import { useNetWorthSeries, useSheet } from './queries';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
@@ -31,13 +34,32 @@ const rangeLabel = (from: string, to: string) => {
   return `${MONTH_LABEL(from)}${sameYear ? '' : ` ${from.slice(0, 4)}`} – ${MONTH_LABEL(to)} ${to.slice(0, 4)}`;
 };
 
+/**
+ * The two ways the year is drawn: the figure as a line, or as the stacks it is made of.
+ *
+ * The line is what the page opens on, because it is the answer to the question the page asks — where the figure is
+ * going — and the stacks answer the next one, what it is made of. Both are remembered, so a reader who reads the parts
+ * every time opens on the parts.
+ */
+type ChartView = 'line' | 'bars';
+const CHART_VIEWS = [
+  { key: 'line', label: 'Line' },
+  { key: 'bars', label: 'Bars' },
+] as const satisfies readonly { key: ChartView; label: string }[];
+const CHART_VIEW_KEY = 'expanses.networth.chart';
+const CHART_VIEW_WIDTH = 116;
+
+/** Which drawing was chosen last, on this browser. A convenience only: losing it opens the line. */
+function rememberedChartView(): ChartView {
+  try {
+    return localStorage.getItem(CHART_VIEW_KEY) === 'bars' ? 'bars' : 'line';
+  } catch {
+    return 'line';
+  }
+}
+
 /** What each section of the assets side is drawn in. One colour a family of things, as the catalogue's picker has. */
-const GROUP_COLORS: Record<string, string> = {
-  liquid: 'bg-cyan-600',
-  invest: 'bg-emerald-600',
-  use: 'bg-slate-400',
-  other: 'bg-amber-500',
-};
+const GROUP_COLORS = stackColours(ASSET_STACK_KEYS);
 
 /**
  * What each kind of debt is drawn in, so a bar of what you owe says what the money is owed *on*.
@@ -45,11 +67,7 @@ const GROUP_COLORS: Record<string, string> = {
  * One family in three sizes, because these three are amounts of the same thing — the assets beside them are where the
  * colours have to tell different things apart.
  */
-const LIABILITY_COLORS: Record<string, string> = {
-  credit_card: 'bg-rose-500',
-  loan: 'bg-rose-800',
-  payable: 'bg-rose-300',
-};
+const LIABILITY_COLORS = stackColours(DEBT_STACK_KEYS);
 
 /**
  * One side of the balance sheet: its share bar and legend on a panel, then a section per section of the statement.
@@ -151,6 +169,19 @@ export function OverviewPage() {
    * kept, so going back to it is instant.
    */
   const [span, setSpan] = useState<Span>('6m');
+  /*
+   * Which drawing the year is read in. Kept on the device rather than in the workspace, exactly as the transactions
+   * list's own view is: it is a way of looking at the money and not a fact about it.
+   */
+  const [view, setView] = useState<ChartView>(rememberedChartView);
+  const chooseView = (next: ChartView) => {
+    setView(next);
+    try {
+      localStorage.setItem(CHART_VIEW_KEY, next);
+    } catch {
+      // Private windows can refuse storage; the view still switches for this visit.
+    }
+  };
   const months = lastNMonths(monthOf(today), SPAN_MONTHS[span]);
   const series = useNetWorthSeries(months);
   const sheetInputs = useSheet();
@@ -237,6 +268,17 @@ export function OverviewPage() {
    * them, each holding its own part of the money, so listing the two together named a mortgage twice.
    */
   const owed = sheet.debts;
+  /*
+   * The same months the line is drawn from, handed to the bars as what each one is made of: the families the assets are
+   * held in, out from nothing, and the kinds of debt under them. A month the series could not add up — a rate missing —
+   * has no stack, and is handed over empty so nothing is drawn where there is nothing to say.
+   */
+  const barMonths: BarMonth[] = shown.map((point) => ({
+    label: monthLabel(point.month),
+    netWorthMinor: point.netWorthMinor,
+    assets: point.stack === null ? [] : ASSET_STACK_KEYS.map((key) => ({ key: key.key, minor: point.stack?.assets[key.key as SheetSectionKey] ?? 0 })),
+    liabilities: point.stack === null ? [] : DEBT_STACK_KEYS.map((key) => ({ key: key.key, minor: point.stack?.liabilities[key.key as LiabilityKind] ?? 0 })),
+  }));
   // The bar divides into the kinds the column's drawers hold: the same arithmetic, from the same fold.
   const owedBar: ShareSegment[] = sheetDrawers(owed.rows, (row) => rowKindOf('debts', row, (accountId) => subtypes.get(accountId))).map((drawer) => ({
     key: drawer.key,
@@ -310,7 +352,27 @@ export function OverviewPage() {
             )}
           </div>
         </div>
-        <NetWorthChart values={shown.map((point) => point.netWorthMinor)} labels={shown.map((point) => monthLabel(point.month))} currency={ws.baseCurrency} />
+        {/*
+         * The switch sits above the drawing it governs and out of the figure's way: the figure and its change are read
+         * first, and what shape they are drawn in is a preference read after them.
+         */}
+        <div className="flex justify-end px-4 md:px-0">
+          <div style={{ width: CHART_VIEW_WIDTH }}>
+            <SegmentedControl
+              width={CHART_VIEW_WIDTH}
+              label="Chart view"
+              segments={CHART_VIEWS}
+              value={view}
+              onChange={(key) => chooseView(key as ChartView)}
+              max={CHART_VIEWS.length}
+            />
+          </div>
+        </div>
+        {view === 'line' ? (
+          <NetWorthChart values={shown.map((point) => point.netWorthMinor)} labels={shown.map((point) => monthLabel(point.month))} currency={ws.baseCurrency} />
+        ) : (
+          <NetWorthBars months={barMonths} keys={STACK_KEYS} currency={ws.baseCurrency} />
+        )}
         {sheetMissing.length === 0 && unchartable.length > 0 && (
           <p data-testid="chart-missing" className="px-4 pt-[8px] text-[13px] leading-[17px] text-[var(--ph-warn)] md:px-0">
             No {unchartable.join(', ')} rate for an earlier month, so the line breaks there.

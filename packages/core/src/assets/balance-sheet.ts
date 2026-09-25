@@ -70,6 +70,14 @@ export const SHEET_SECTION_LABELS: Record<SheetSectionKey, string> = {
 const SECTION_ORDER: SheetSectionKey[] = ['liquid', 'invest', 'use', 'other'];
 
 /**
+ * The sections, in the order a planner reads them — and the order a chart stacks them.
+ *
+ * Exported because the order is not an implementation detail anywhere it is used: a bar that stacked gold under the
+ * cash one month and over it the next would be a drawing of a different month each time.
+ */
+export const SHEET_SECTIONS: readonly SheetSectionKey[] = SECTION_ORDER;
+
+/**
  * The section an asset is drawn in.
  *
  * The catalogue's family decides it wherever the asset's code names one, because the catalogue is where the taxonomy

@@ -218,6 +218,46 @@ test('reads a month from the part of the line that was tapped', async ({ page })
   await expect(page.getByTestId('net-worth-reading')).toHaveCount(0);
 });
 
+/**
+ * The same series, drawn as what it is made of: a stack a month, what you own above nothing and what you owe below it.
+ *
+ * It is the second view rather than the first — a line answers where the figure is going, which is the question the page
+ * asks — and the choice is the reader's and is kept, so a reader who always looks at the parts opens on the parts.
+ */
+test('draws the same months as stacks when the view is switched, and keeps the choice', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
+
+  await page.goto('/net-worth');
+  const views = page.getByRole('radiogroup', { name: 'Chart view' });
+  await expect(views.getByRole('radio', { name: 'Line' })).toHaveAttribute('aria-checked', 'true');
+
+  await views.getByRole('radio', { name: 'Bars' }).click();
+  await expect(views.getByRole('radio', { name: 'Bars' })).toHaveAttribute('aria-checked', 'true');
+  // The line is gone rather than drawn twice: one figure, one drawing at a time.
+  await expect(page.getByTestId('net-worth-line')).toHaveCount(0);
+
+  // A block a family up from nothing, a block a kind down from it, and the figure drawn over the two.
+  const bars = page.getByTestId('net-worth-bars');
+  await expect(bars).toBeVisible();
+  await expect(bars.locator('rect[data-key="liquid"]').first()).toBeVisible();
+  await expect(bars.locator('rect[data-key="credit_card"]').first()).toBeVisible();
+  await expect(page.getByTestId('net-worth-bar-line').first()).toBeVisible();
+  // And the key says which colour is which, naming only what is drawn.
+  await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
+  await expect(page.getByText('Credit card').first()).toBeVisible();
+  await expect(page.getByText('Payables')).toHaveCount(0);
+
+  // A tap on the stacks reads a month exactly as a tap on the line does.
+  const plot = page.getByTestId('net-worth-plot');
+  const box = (await plot.boundingBox())!;
+  await plot.click({ position: { x: box.width - 6, y: box.height / 2 } });
+  await expect(page.getByTestId('net-worth-reading')).toContainText(/Rp/);
+
+  await page.reload();
+  await expect(page.getByRole('radiogroup', { name: 'Chart view' }).getByRole('radio', { name: 'Bars' })).toHaveAttribute('aria-checked', 'true');
+});
+
 test('says it does not know the cash-flow ratios until there are transactions', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
 

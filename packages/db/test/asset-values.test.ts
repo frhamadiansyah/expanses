@@ -107,6 +107,11 @@ describe('netWorthAt', () => {
       liabilitiesMinor: 14_820_000 + 3_249_000,
       netWorthMinor: 50_000_000 + 1_150_000_000 + 16_258_125 - 14_820_000 - 3_249_000,
       missing: [],
+      // The parts each convert at the rate the totals did: the dollar is in the cash, the yen in the card.
+      stack: {
+        assets: { liquid: 50_000_000 + 16_258_125, invest: 0, use: 1_150_000_000, other: 0 },
+        liabilities: { credit_card: 14_820_000 + 3_249_000, loan: 0, payable: 0 },
+      },
     });
   });
 
@@ -114,10 +119,11 @@ describe('netWorthAt', () => {
     await createAccount(database, ws, { name: 'Jenius USD', kind: 'asset', subtype: 'bank', currency: 'USD', openingBalanceMinor: 100_050, openedOn: '2026-01-01', openingRateToBase: 16_000 });
     await createAccount(database, ws, { name: 'Yen card', kind: 'liability', subtype: 'credit_card', currency: 'JPY', openingBalanceMinor: 30_000, openedOn: '2026-01-01', openingRateToBase: 110 });
 
-    // No USD: the assets cannot be added up; the debts still can.
-    expect(await netWorthAt(database, ws, '2026-02-28', { JPY: 108.3 })).toEqual({ assetsMinor: null, liabilitiesMinor: 14_820_000 + 3_249_000, netWorthMinor: null, missing: ['USD'] });
+    // No USD: the assets cannot be added up; the debts still can. A month without a figure has no stack either — a
+    // stack of partial sums is a shape of money that is not there.
+    expect(await netWorthAt(database, ws, '2026-02-28', { JPY: 108.3 })).toEqual({ assetsMinor: null, liabilitiesMinor: 14_820_000 + 3_249_000, netWorthMinor: null, missing: ['USD'], stack: null });
     // Neither: both named, once each, sorted.
-    expect(await netWorthAt(database, ws, '2026-02-28', {})).toEqual({ assetsMinor: null, liabilitiesMinor: null, netWorthMinor: null, missing: ['JPY', 'USD'] });
+    expect(await netWorthAt(database, ws, '2026-02-28', {})).toEqual({ assetsMinor: null, liabilitiesMinor: null, netWorthMinor: null, missing: ['JPY', 'USD'], stack: null });
   });
 
   it('ignores trades and prices dated after the day asked for', async () => {

@@ -12,6 +12,9 @@ import {
   positionAfter,
   type PriceRow,
   presetFor,
+  SHEET_SECTIONS,
+  type SheetSectionKey,
+  sheetSectionOf,
   type ValuationMode,
   type ValuationRow,
   sumToBase,
@@ -138,6 +141,30 @@ export interface NetWorth {
   netWorthMinor: number | null;
   /** Currencies without a rate to the workspace currency, sorted, once each. Empty when every figure is whole. */
   missing: string[];
+  /**
+   * What the two totals are made of, or null in the months they cannot be added up.
+   *
+   * The same rows the totals come from, kept apart rather than summed: the assets by the section the sheet draws them
+   * in, what is owed by the kind of debt it is. It is what a bar chart needs and what a line cannot say — a month whose
+   * figure did not move can be a month where the money moved between two families.
+   */
+  stack: NetWorthStack | null;
+}
+
+/** The kinds a debt is, in the order the Debts screen groups them. */
+export type LiabilityKind = (typeof BALANCE_SUBTYPES.liability)[number];
+
+/** A month's money by what it is held in and what it is owed as. Every key is present, zeros and all. */
+export interface NetWorthStack {
+  assets: Record<SheetSectionKey, number>;
+  liabilities: Record<LiabilityKind, number>;
+}
+
+/** Every key, at nothing — the shape a month is stacked into before its rows are added to it. */
+function emptyAssets(): Record<SheetSectionKey, number> {
+  const held: Record<SheetSectionKey, number> = { liquid: 0, invest: 0, use: 0, other: 0 };
+  for (const section of SHEET_SECTIONS) held[section] = 0;
+  return held;
 }
 
 /** Assets at their value minus what is still owed, both through `sumToBase`: every rate, or no figure. */
@@ -154,9 +181,34 @@ export async function netWorthAt(database: Database, ws: WorkspaceContext, date:
   const owed = rows.filter((row) => liabilitySubtypes.includes(row.subtype)).map((row) => ({ minor: -(balances[row.id] ?? 0), currency: row.currency ?? ws.baseCurrency }));
   const liabilities = sumToBase({ amounts: owed, baseCurrency: ws.baseCurrency, ratesToBase });
 
-  const missing = [...new Set([...assets.missing, ...liabilities.missing])].sort();
+  /*
+   * The same two lists, kept apart instead of added up. `toBase` rather than `sumToBase`, because a stack is a shape:
+   * one family that cannot be converted leaves a gap in the shape, and a shape with a gap in it is not the money. The
+   * rate it could not find is collected and the whole month is handed over without a stack, exactly as its totals are
+   * handed over as null.
+   */
+  const stacked = new Set<string>();
+  const bySection = emptyAssets();
+  for (const row of values) {
+    const section = sheetSectionOf({ planGroup: row.planGroup, code: row.coretaxCode });
+    bySection[section] += toBase(row.valueMinor, row.currency, ws, ratesToBase, stacked);
+  }
+  const byKind = {} as Record<LiabilityKind, number>;
+  for (const kind of BALANCE_SUBTYPES.liability) byKind[kind] = 0;
+  for (const row of rows) {
+    if (!liabilitySubtypes.includes(row.subtype)) continue;
+    const kind = row.subtype as LiabilityKind;
+    byKind[kind] += toBase(-(balances[row.id] ?? 0), row.currency ?? ws.baseCurrency, ws, ratesToBase, stacked);
+  }
+  const missing = [...new Set([...assets.missing, ...liabilities.missing, ...stacked])].sort();
   const netWorthMinor = assets.totalMinor !== null && liabilities.totalMinor !== null ? assets.totalMinor - liabilities.totalMinor : null;
-  return { assetsMinor: assets.totalMinor, liabilitiesMinor: liabilities.totalMinor, netWorthMinor, missing };
+  return {
+    assetsMinor: assets.totalMinor,
+    liabilitiesMinor: liabilities.totalMinor,
+    netWorthMinor,
+    missing,
+    stack: netWorthMinor === null ? null : { assets: bySection, liabilities: byKind },
+  };
 }
 
 /**

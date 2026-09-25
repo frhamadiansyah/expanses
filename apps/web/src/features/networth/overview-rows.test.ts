@@ -30,7 +30,16 @@ const template = (id: string, accountId: string): TradeTemplateRow => ({
   createdAt: '2026-01-01T00:00:00Z',
 });
 
-const point = (month: string, netWorthMinor: number): NetWorthPoint => ({ month, onDate: `${month}-28`, assetsMinor: netWorthMinor, liabilitiesMinor: 0, netWorthMinor, missing: [] });
+const point = (month: string, netWorthMinor: number): NetWorthPoint => ({
+  month,
+  onDate: `${month}-28`,
+  assetsMinor: netWorthMinor,
+  liabilitiesMinor: 0,
+  netWorthMinor,
+  missing: [],
+  // The stack is the bar view's, and nothing on this page reads it: the row is what the sheet is drawn from.
+  stack: { assets: { liquid: netWorthMinor, invest: 0, use: 0, other: 0 }, liabilities: { credit_card: 0, loan: 0, payable: 0 } },
+});
 
 describe('attentionItems', () => {
   it('says nothing when every value is fresh', () => {
