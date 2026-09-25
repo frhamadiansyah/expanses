@@ -295,6 +295,26 @@ export const ASSET_ITEMS: readonly OwnableItem[] = [...ASSET_FAMILIES.flatMap((f
 const ASSET_BY_ID = new Map(ASSET_ITEMS.map((item) => [item.id, item]));
 const FAMILY_BY_ID = new Map(ASSET_FAMILIES.map((family) => [family.id, family]));
 
+/*
+ * The catalogue read the other way round: by the code an asset files under.
+ *
+ * The code is the only thing an opened asset keeps of the item it was opened as — the profile stores the kind and the
+ * plan group, not the item — so every question of "what is this, exactly" is answered from here: a sheet listing shares
+ * beside gold reads these two maps.
+ */
+const ITEM_BY_CODE = new Map(ASSET_ITEMS.map((item) => [item.code, item]));
+const FAMILY_BY_CODE = new Map(ASSET_FAMILIES.flatMap((family) => family.items.map((item) => [item.code, family.id])));
+
+/** The catalogue item an asset's code belongs to — "Listed shares", "Gold bullion" — or null for a code it does not know. */
+export function assetItemOfCode(code: string | null): OwnableItem | null {
+  return code === null ? null : (ITEM_BY_CODE.get(code) ?? null);
+}
+
+/** The family an asset's code belongs to, by the family's own id: `0701` is gold, and gold is `other`. */
+export function assetFamilyOfCode(code: string | null): string | null {
+  return code === null ? null : (FAMILY_BY_CODE.get(code) ?? null);
+}
+
 export function assetFamily(id: OwnableFamily): OwnableFamilyRow {
   const family = FAMILY_BY_ID.get(id);
   if (!family) throw new Error(`Unknown asset family "${id}"`);

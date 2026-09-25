@@ -8,6 +8,7 @@ const value = (partial: Partial<AssetValueRow> & Pick<AssetValueRow, 'accountId'
   valueMinor: 1_000_000,
   costMinor: 1_000_000,
   source: 'price',
+  coretaxCode: null,
   asOf: '2026-09-11',
   currency: 'IDR',
   planGroup: 'invest',

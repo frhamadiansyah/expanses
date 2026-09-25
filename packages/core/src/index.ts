@@ -195,6 +195,8 @@ export {
   ASSET_FAMILIES,
   ASSET_ITEMS,
   assetFamily,
+  assetFamilyOfCode,
+  assetItemOfCode,
   assetItem,
   CASH_ITEMS,
   cashCodeForSubtype,
@@ -215,7 +217,8 @@ export {
 export {
   type BalanceSheet,
   balanceSheet,
-  SHEET_GROUP_LABELS,
+  SHEET_SECTION_LABELS,
+  sheetSectionOf,
   type SheetAsset,
   type SheetGroup,
   type SheetLiability,

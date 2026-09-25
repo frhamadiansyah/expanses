@@ -25,6 +25,13 @@ export interface ChartGeometry {
   areas: string[];
   points: (ChartPoint | null)[];
   ticks: ChartTick[];
+  /**
+   * Where a month sits across the drawing, thinned to as many guides as read as a grid rather than as a fill.
+   *
+   * Nothing is written on them — they are the ruling the line is read against, which is what keeps a chart on white
+   * from being a line floating in white.
+   */
+  guides: number[];
   /** Where nothing is drawn: the line above it is money held and below it money owed. */
   zeroY: number;
   /** The last month with a figure: the end of the line, and where a dot is drawn for today. */
@@ -129,6 +136,13 @@ export function chartGeometry(values: readonly (number | null)[], labels: readon
   const ticks: ChartTick[] = [];
   for (let value = low; value <= high + step / 2; value += step) ticks.push({ y: y(value), value });
 
+  /*
+   * A line a month until a month is narrower than the gap beside it, then every few — a grid of twelve at most, which
+   * is the most that reads as a grid on a phone and not as a hatch.
+   */
+  const guideEvery = Math.max(1, Math.ceil(values.length / 12));
+  const guides = values.flatMap((_, index) => (index % guideEvery === 0 ? [x(index)] : []));
+
   return {
     width,
     height,
@@ -136,6 +150,7 @@ export function chartGeometry(values: readonly (number | null)[], labels: readon
     areas,
     points,
     ticks,
+    guides,
     zeroY: y(0),
     last: [...points].reverse().find((point) => point !== null) ?? null,
     plotRight: width - right,

@@ -9,7 +9,7 @@ import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Pane
 import { useAttention } from './attention';
 import { NetWorthChart } from './NetWorthChart';
 import { ShareBar, ShareLegend, type ShareSegment } from './ShareBar';
-import { sheetDrawers } from './sheet-drawers';
+import { sheetDrawers, rowKindOf } from './sheet-drawers';
 import { RANGES, rangeChange, SPAN_MONTHS, type Span, spanSlice } from './span';
 import { useNetWorthSeries, useSheet } from './queries';
 import { isMoneyAccount, useAccounts } from '../../lib/queries';
@@ -31,13 +31,12 @@ const rangeLabel = (from: string, to: string) => {
   return `${MONTH_LABEL(from)}${sameYear ? '' : ` ${from.slice(0, 4)}`} – ${MONTH_LABEL(to)} ${to.slice(0, 4)}`;
 };
 
+/** What each section of the assets side is drawn in. One colour a family of things, as the catalogue's picker has. */
 const GROUP_COLORS: Record<string, string> = {
   liquid: 'bg-cyan-600',
   invest: 'bg-emerald-600',
-  owed: 'bg-indigo-500',
   use: 'bg-slate-400',
-  short: 'bg-rose-500',
-  long: 'bg-rose-800',
+  other: 'bg-amber-500',
 };
 
 /**
@@ -53,15 +52,15 @@ const LIABILITY_COLORS: Record<string, string> = {
 };
 
 /**
- * One side of the balance sheet: its share bar and legend on a panel, then a group per plan group.
+ * One side of the balance sheet: its share bar and legend on a panel, then a section per section of the statement.
  *
- * Each group's label is its own header, outside and above its rows, rather than a heading line inside one long card.
- * A group whose accounts are of more than one kind folds them into a drawer a kind — current accounts with current
- * accounts — because a list of everything you own is as long as the accounts you have opened, and the answer to what
- * you have is a handful of types. A group of one kind is drawn plainly: one drawer is no division at all, and a
- * drawer over a single account hides one figure to save one line.
+ * Each section's label is its own header, outside and above its rows, rather than a heading line inside one long card.
+ * A section whose rows are of more than one kind folds them into a drawer a kind — current accounts with current
+ * accounts, listed shares with listed shares — because a list of everything you own is as long as the accounts you have
+ * opened, and the answer to what you have is a handful of kinds. A section of one kind is drawn plainly: one drawer is
+ * no division at all, and a drawer over a single account hides one figure to save one line.
  *
- * The two columns stay two columns on a desktop — this and `/` are the only real grids in the app.
+ * The two columns stay two columns on a desktop.
  */
 function SheetColumn({
   title,
@@ -102,9 +101,12 @@ function SheetColumn({
         group.rows.length === 0 ? (
           <PanelHeader key={group.key} title={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />} />
         ) : (
-          <InsetGroup key={group.key} wide header={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />}>
-            {fold(group, subtypes, open, onToggle, currency)}
-          </InsetGroup>
+          /* Marked by its own key, so a spec can say which section a row was drawn in. */
+          <div key={group.key} data-testid={`sheet-section-${group.key}`}>
+            <InsetGroup wide header={group.label} trailing={<Money minor={group.totalMinor} currency={currency} />}>
+              {fold(group, subtypes, open, onToggle, currency)}
+            </InsetGroup>
+          </div>
         ),
       )}
     </div>
@@ -118,7 +120,7 @@ function sheetLine(row: SheetRow, currency: string) {
 
 /** A group's rows, folded by kind where there is more than one kind to tell apart. */
 function fold(group: SheetGroup, subtypes: ReadonlyMap<string, AccountSubtype>, open: ReadonlySet<string>, onToggle: (key: string) => void, currency: string) {
-  const drawers = sheetDrawers(group.rows, subtypes);
+  const drawers = sheetDrawers(group.rows, (row) => rowKindOf(group.key, row, (accountId) => subtypes.get(accountId)));
   // One kind is no division at all: a drawer over it would hide every row it has to name one type.
   if (drawers.length <= 1) return group.rows.map((row) => sheetLine(row, currency));
   return drawers.flatMap((drawer, index) => {
@@ -237,7 +239,7 @@ export function OverviewPage() {
    */
   const owed = sheet.debts;
   // The bar divides into the kinds the column's drawers hold: the same arithmetic, from the same fold.
-  const owedBar: ShareSegment[] = sheetDrawers(owed.rows, subtypes).map((drawer) => ({
+  const owedBar: ShareSegment[] = sheetDrawers(owed.rows, (row) => rowKindOf('debts', row, (accountId) => subtypes.get(accountId))).map((drawer) => ({
     key: drawer.key,
     label: drawer.label,
     minor: drawer.totalMinor,

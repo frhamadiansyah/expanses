@@ -33,6 +33,11 @@ export interface AssetValueRow extends AssetValue {
   currency: string;
   planGroup: PlanGroup;
   mode: ValuationMode;
+  /**
+   * The catalogue code the asset was opened under — `0303` listed shares, `0701` gold — or null for an account with no
+   * profile, which is what a money account is.
+   */
+  coretaxCode: string | null;
   /** Units held on the date, for holdings measured in units, shares or grams. */
   unitsMicro: number | null;
   /** The owner should type a fresh price or estimate. */
@@ -116,6 +121,7 @@ export async function assetValuesAt(database: Database, ws: WorkspaceContext, da
       currency: account.currency ?? ws.baseCurrency,
       planGroup: profile?.planGroup ?? GROUP_BY_SUBTYPE[account.subtype] ?? 'use',
       mode,
+      coretaxCode: profile?.coretaxCode ?? null,
       unitsMicro: position ? position.unitsMicro : null,
       stale: isStaleValue(value, date),
     };
@@ -226,6 +232,7 @@ export async function sheetInputsAt(
     name: row.name,
     planGroup: row.planGroup,
     valueMinor: toBase(row.valueMinor, row.currency, ws, ratesToBase, missing),
+    code: row.coretaxCode,
   }));
 
   const liabilitySubtypes = BALANCE_SUBTYPES.liability as readonly string[];

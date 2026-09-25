@@ -131,6 +131,19 @@ test('reads what you owe by kind rather than by when it falls due', async ({ pag
 });
 
 /**
+ * The assets side follows the Add asset catalogue's own taxonomy rather than the plan group an asset is filed under:
+ * gold is its own family — "Intangible and other" — and not a line inside Investments.
+ */
+test('reads the assets in the catalogue’s families', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await addGold(page);
+
+  await page.goto('/net-worth');
+  await expect(page.getByTestId('sheet-section-other').getByText('Antam gold bars')).toBeVisible();
+  await expect(page.getByTestId('sheet-section-invest').getByText('Antam gold bars')).toHaveCount(0);
+});
+
+/**
  * The figure is read over a range, and the range is chosen under the line it governs: six of them, from the half year
  * the page opens on to everything the snapshots hold.
  */

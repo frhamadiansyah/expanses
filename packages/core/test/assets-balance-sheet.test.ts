@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { balanceSheet, type SheetAsset, type SheetLiability } from '../src/index';
-
 const asset = (accountId: string, name: string, planGroup: SheetAsset['planGroup'], valueMinor: number): SheetAsset => ({ accountId, name, planGroup, valueMinor });
 
 const assets: SheetAsset[] = [
@@ -30,6 +29,30 @@ describe('balanceSheet', () => {
   it('keeps assets in the order given inside a group', () => {
     const sheet = balanceSheet(assets, []);
     expect(sheet.assetGroups[0]!.rows.map((row) => row.accountId)).toEqual(['bca', 'depo']);
+  });
+
+  it('draws the assets in the catalogue’s own families, not the plan groups', () => {
+    const gold: SheetAsset = { accountId: 'gold', name: 'UBS gold 10g', planGroup: 'invest', valueMinor: 49_200_000, code: '0701' };
+    const budi: SheetAsset = { accountId: 'budi', name: 'Budi', planGroup: 'owed', valueMinor: 2_000_000, code: '0201' };
+    const sheet = balanceSheet([...assets, gold, budi], []);
+
+    expect(sheet.assetGroups.map((group) => group.label)).toEqual(['Cash & equivalents', 'Investments', 'Personal use', 'Intangible and other']);
+    // Gold leaves Investments for the family the catalogue puts it in, and money owed to you is told with the cash.
+    expect(sheet.assetGroups.find((group) => group.key === 'other')!.rows.map((row) => row.name)).toEqual(['UBS gold 10g']);
+    expect(sheet.assetGroups[0]!.rows.map((row) => row.name)).toContain('Budi');
+    expect(sheet.assetGroups[1]!.rows.map((row) => row.name)).not.toContain('UBS gold 10g');
+    // The rows keep the code they were opened under: what a listing groups a share by is this, not "Investment".
+    expect(sheet.assetGroups.find((group) => group.key === 'invest')!.rows[0]!.code).toBeNull();
+    expect(sheet.assetGroups.find((group) => group.key === 'other')!.rows[0]!.code).toBe('0701');
+  });
+
+  it('falls back to the plan group for an asset the catalogue cannot place', () => {
+    const unknown: SheetAsset = { accountId: 'x', name: 'Something', planGroup: 'owed', valueMinor: 1_000, code: '9999' };
+    const sheet = balanceSheet([unknown, { ...unknown, accountId: 'y', code: null }], []);
+
+    // `owed` is money owed to you wherever it comes from, and its label is the money's own.
+    expect(sheet.assetGroups.map((group) => group.key)).toEqual(['liquid']);
+    expect(sheet.assetGroups[0]!.rows.map((row) => row.name)).toEqual(['Something', 'Something']);
   });
 
   it('puts a credit card entirely in due within a year', () => {

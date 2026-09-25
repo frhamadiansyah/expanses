@@ -55,7 +55,13 @@ export function NetWorthChart({ values, labels, currency }: { values: readonly (
     <>
       <svg
         viewBox={`0 0 ${chart.width} ${chart.height}`}
-        className="mt-[6px] h-auto w-full touch-pan-y select-none"
+        /*
+         * No focus ring and no tap flash: the drawing is read by tapping it, and a blue border around the whole chart
+         * in answer to a tap is the phone's guess at what a tap meant, not this app's. What a keyboard gets instead is
+         * the reading itself, which is announced as it moves.
+         */
+        className="mt-[6px] h-auto w-full touch-pan-y select-none outline-none"
+        style={{ WebkitTapHighlightColor: 'transparent' }}
         role="group"
         tabIndex={0}
         aria-label="Net worth by month. Tap a month to read it, or use the arrow keys."
@@ -86,6 +92,15 @@ export function NetWorthChart({ values, labels, currency }: { values: readonly (
             <rect x={0} y={chart.zeroY} width={chart.plotRight} height={Math.max(0, chart.plotBottom - chart.zeroY)} />
           </clipPath>
         </defs>
+        {/*
+         * The ruling first, behind everything: a hairline a month, so the line is read against the months rather than
+         * floating on white. Nothing is written on them — the reading is what says the figures.
+         */}
+        <g aria-hidden>
+          {chart.guides.map((at) => (
+            <line key={at} x1={at} x2={at} y1={0} y2={chart.height} stroke="var(--ph-hair)" strokeWidth={1} />
+          ))}
+        </g>
         {[
           { clip: above, colour: 'var(--ph-tint)' },
           { clip: below, colour: 'var(--ph-alarm)' },
