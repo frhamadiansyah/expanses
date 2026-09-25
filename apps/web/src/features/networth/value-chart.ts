@@ -84,6 +84,15 @@ function niceStep(range: number): number {
 }
 
 /**
+ * A step the eye can divide by: a round number near the one asked for, so a gridline falls on a figure somebody would
+ * have chosen. Shared with the bars, which rule their own drawing the same way.
+ */
+export function gridStep(range: number): number {
+  // Never under one: a step under a minor unit is a grid with more lines than the drawing has pixels.
+  return Math.max(1, niceStep(range));
+}
+
+/**
  * Places a series of values in an SVG box. Every tick sits inside the drawing, and a flat
  * series still gets a line through the middle instead of collapsing onto an edge.
  */
@@ -112,7 +121,6 @@ export function chartGeometry(values: readonly (number | null)[], labels: readon
   low = Math.floor(low / step) * step;
   high = Math.ceil(high / step) * step;
   if (low < 0 && Math.min(...series) >= 0) low = 0;
-
   const x = (index: number) => (values.length === 1 ? left : left + (index * (width - left - right)) / (values.length - 1));
   const y = (value: number) => top + (height - top - bottom) * (1 - (value - low) / (high - low));
 

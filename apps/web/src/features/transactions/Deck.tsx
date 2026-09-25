@@ -50,7 +50,15 @@ export function Deck({
           ))}
         </div>,
       )}
-      <div className="flex justify-center gap-1.5 pt-1.5">
+      {/*
+       * The dots' own strip, kept whether the deck has one page or two.
+       *
+       * The card's height must not depend on which question it is showing: a reader who turns from what the money going
+       * out is made of to what the money coming in is made of would otherwise watch the list below jump up by the
+       * height of a control that had quietly gone. So the strip is furniture — the dots are drawn in it when there are
+       * two pages to choose between, and it is left empty when there is only one.
+       */}
+      <div className="flex h-3 justify-center gap-1.5 pt-1.5">
         {labels.map((label, index) => (
           <button
             key={label}

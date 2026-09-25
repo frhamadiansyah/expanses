@@ -167,13 +167,18 @@ function Ring({
     ) : (
       content
     );
-  const chart = second ? (
-    <Deck page={page} onPage={onPage} labels={['Where the month went', 'Against budget']} frame={frame}>
-      {donut}
-      {second}
+  /*
+   * The card is a deck whether or not it has a second page to turn to.
+   *
+   * The budget gauge only exists for money going out over a month, and a card drawn without the deck when it is absent is
+   * a card that changes height with which side of the ledger it is showing — the month's ring is the same size either
+   * way, so what moved was the pager's own strip. One page keeps the furniture and offers nothing to turn to.
+   */
+  const pages = second ? [donut, second] : [donut];
+  const chart = (
+    <Deck page={page} onPage={onPage} labels={second ? ['Where the month went', 'Against budget'] : []} frame={frame}>
+      {pages}
     </Deck>
-  ) : (
-    frame(donut)
   );
 
   return (

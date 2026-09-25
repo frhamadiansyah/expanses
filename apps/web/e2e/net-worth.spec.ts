@@ -269,6 +269,40 @@ test('draws the same months as stacks when the view is switched, and keeps the c
   await expect(page.getByRole('group', { name: 'Chart view' }).getByRole('button', { name: 'Bars' })).toHaveAttribute('aria-pressed', 'true');
 });
 
+/**
+ * The drawing is ruled both ways: a solid hairline a month, and a dotted one along the amounts.
+ *
+ * A figure on white with nothing but its own line reads as a line that could be anywhere, and the ruling is what makes
+ * it a figure on a page. The two directions are drawn differently on purpose — two sets of identical lines would read as
+ * a net, and the reader would have to work out which was which.
+ */
+test('rules the months and the amounts differently, in both views', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  /** How far each line reaches, read off the drawing: a guide that spans nothing is not a guide. */
+  const spans = (testId: string, selector: string) =>
+    page
+      .getByTestId(testId)
+      .locator(selector)
+      .evaluateAll((lines) => lines.map((line) => ({ across: Number(line.getAttribute('x2')) - Number(line.getAttribute('x1')), down: Number(line.getAttribute('y2')) - Number(line.getAttribute('y1')) })));
+
+  await page.goto('/net-worth');
+  await expect(page.getByTestId('net-worth-line').first()).toBeVisible();
+  const months = await spans('net-worth-line-view', 'line:not([stroke-dasharray])');
+  const amounts = await spans('net-worth-line-view', 'line[stroke-dasharray]');
+  expect(Math.max(...months.map((line) => line.down))).toBeGreaterThan(0);
+  expect(amounts.length).toBeGreaterThan(0);
+  expect(Math.min(...amounts.map((line) => line.across))).toBeGreaterThan(0);
+
+  await page.getByRole('group', { name: 'Chart view' }).getByRole('button', { name: 'Bars' }).click();
+  await expect(page.getByTestId('net-worth-bars')).toBeVisible();
+  // The same ruling, plus the line the stacks stand on — solid, because it is the one line they are read from.
+  const barAmounts = await spans('net-worth-bars', 'line[stroke-dasharray]');
+  expect(barAmounts.length).toBeGreaterThan(0);
+  expect(Math.min(...barAmounts.map((line) => line.across))).toBeGreaterThan(0);
+  const barMonths = await spans('net-worth-bars', 'line:not([stroke-dasharray])');
+  expect(Math.max(...barMonths.map((line) => line.down))).toBeGreaterThan(0);
+});
+
 test('says it does not know the cash-flow ratios until there are transactions', async ({ page }) => {
   await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
 

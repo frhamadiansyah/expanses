@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { MORE_GROUPS, REACHABLE, TABS } from '../src/app/nav';
 import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
+import { setBudget } from './budget';
 
 /** Anything a finger is meant to hit must be at least this tall or wide. */
 const TAP = 44;
@@ -153,6 +154,42 @@ test('no screen scrolls sideways at phone width', async ({ page }) => {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, `${route} scrolls sideways by ${overflow}px`).toBeLessThanOrEqual(1);
   }
+});
+
+/**
+ * The chart card is one height whichever side of the ledger it is showing.
+ *
+ * What moved was never the ring — it is drawn from a fixed shape and comes out the same size either way — but the pager's
+ * own strip, which exists because the budget gauge does, and the gauge only exists for money going out over a month. The
+ * strip is furniture now, kept whether there is a second page to turn to or not, so the list under the chart stays put
+ * and nothing is resized to fit.
+ */
+test('the chart card keeps its height when the month is read the other way', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
+  await page.goto('/transactions');
+  await addTransaction(page, { description: 'Warung Steak', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '500000' });
+  await addTransaction(page, { mode: 'Income', description: 'Gaji', paidWith: 'BCA Tahapan', category: 'Salary', amount: '30000000' });
+
+  // A budget, so the outgoing side really does have a second page to turn to — which is the difference being measured.
+  await page.goto('/budget');
+  await setBudget(page, 'Food and beverage', '300000');
+  await page.goto('/transactions');
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+
+  const card = page.getByTestId('spending-report').locator('section').first();
+  const ring = card.locator('svg[role="img"]').first();
+  await expect(ring).toBeVisible();
+  const expense = (await card.boundingBox())!;
+  const expenseRing = (await ring.boundingBox())!;
+
+  await page.getByRole('button', { name: 'Show income' }).click();
+  await expect(page.getByRole('button', { name: 'Show income' })).toHaveAttribute('aria-pressed', 'true');
+  const income = (await card.boundingBox())!;
+  const incomeRing = (await ring.boundingBox())!;
+
+  // The card, to the pixel — and the ring itself untouched, which is the whole point of it: nothing is resized to fit.
+  expect(Math.abs(income.height - expense.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(incomeRing.height - expenseRing.height)).toBeLessThanOrEqual(1);
 });
 
 test('everything in the tab bar is big enough to hit', async ({ page }) => {

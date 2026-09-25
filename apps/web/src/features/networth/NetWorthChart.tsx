@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { ChartRuling } from './chart-ruling';
 import { ChartAnnouncement, ChartReading, READING_ROOM, useChartReading } from './chart-reading';
 import { chartGeometry } from './value-chart';
 
@@ -48,14 +49,11 @@ export function NetWorthChart({ values, labels, currency, height }: { values: re
           </clipPath>
         </defs>
         {/*
-         * The ruling first, behind everything: a hairline a month, so the line is read against the months rather than
-         * floating on white. Nothing is written on them — the reading is what says the figures.
+         * The ruling first, behind everything: a hairline a month and a dotted line a gridline, so the line is read
+         * against the months and the amounts rather than floating on white. Nothing is written on either of them — the
+         * reading is what says the figures.
          */}
-        <g aria-hidden>
-          {chart.guides.map((at) => (
-            <line key={at} x1={at} x2={at} y1={0} y2={chart.height} stroke="var(--ph-hair)" strokeWidth={1} />
-          ))}
-        </g>
+        <ChartRuling guides={chart.guides} ticks={chart.ticks} width={chart.width} height={chart.height} />
         {[
           { clip: above, colour: 'var(--ph-tint)' },
           { clip: below, colour: 'var(--ph-alarm)' },

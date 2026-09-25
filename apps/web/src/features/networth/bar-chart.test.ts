@@ -98,3 +98,43 @@ describe('stackKeyLayout', () => {
     for (const mark of narrow.marks) expect(mark.x).toBeLessThan(200);
   });
 });
+
+describe('the ruling', () => {
+  it('rules the amounts as well, a round figure a line on each side of nothing, at one step for both sides', () => {
+    const chart = barGeometry([month('Apr', [300], [200])], box);
+    // Three hundred owned and two hundred owed: the step is a hundred, from the taller side, so the lines land on
+    // figures somebody would have chosen and nothing itself gets none — the zero line is drawn solid instead.
+    expect(chart.ticks).toEqual([
+      { y: 40, value: 100 },
+      { y: 20, value: 200 },
+      { y: 0, value: 300 },
+      { y: 80, value: -100 },
+      { y: 100, value: -200 },
+    ]);
+  });
+
+  it('draws no line outside the drawing, however lopsided the two sides are', () => {
+    const chart = barGeometry([month('Apr', [1000], [10])], box);
+    for (const tick of chart.ticks) {
+      expect(tick.y).toBeGreaterThanOrEqual(0);
+      expect(tick.y).toBeLessThanOrEqual(chart.plotBottom);
+    }
+  });
+});
+
+describe('a family worth less than nothing', () => {
+  it('hangs under the line with what is owed, so the stacks add up to the figure drawn over them', () => {
+    // 300 owned as one family, another overdrawn by 100, and nothing owed: the assets come to 200.
+    const chart = barGeometry([month('Apr', [300, -100], [])], box);
+    const [above] = chart.rects;
+    const below = chart.rects.filter((rect) => rect.y >= chart.zeroY);
+    expect(above).toMatchObject({ key: 'a0', side: 'asset' });
+    // The overdrawn family is drawn in its own colour, under the line, and the figure sits where the two come to.
+    expect(below).toHaveLength(1);
+    expect(below[0]).toMatchObject({ key: 'a1', side: 'asset', y: chart.zeroY });
+    expect(chart.points[0]).toMatchObject({ value: 200 });
+    expect(chart.points[0]!.y).toBeLessThan(chart.zeroY);
+    // The drawing gives the lower side the room the money under it needs, and no more.
+    expect(chart.zeroY).toBeLessThan(box.height);
+  });
+});

@@ -1,4 +1,5 @@
 import { KEY_SWATCH, KEY_SWATCH_GAP, barGeometry, type BarMonth, stackKeyLayout } from './bar-chart';
+import { ChartRuling } from './chart-ruling';
 import { ChartAnnouncement, ChartReading, READING_ROOM, useChartReading } from './chart-reading';
 import type { StackKey } from './stack-keys';
 
@@ -25,7 +26,7 @@ export function NetWorthBars({ months, keys, currency, height }: { months: reado
    * and seven of them put a two-line key under every chart. It is measured before the bars because it is the bars that
    * give it the room — the drawing is settled second, in what is left.
    */
-  const held = new Set(months.flatMap((month) => [...month.assets, ...month.liabilities]).flatMap((slice) => (slice.minor > 0 ? [slice.key] : [])));
+  const held = new Set(months.flatMap((month) => [...month.assets, ...month.liabilities]).flatMap((slice) => (slice.minor !== 0 ? [slice.key] : [])));
   const key = stackKeyLayout(
     keys.filter((entry) => held.has(entry.key)),
     { width: WIDTH - KEY_MARGIN * 2 },
@@ -39,16 +40,11 @@ export function NetWorthBars({ months, keys, currency, height }: { months: reado
     <>
       <svg data-testid="net-worth-bars" viewBox={`0 0 ${chart.width} ${chart.height}`} {...svgProps} className={`mt-[6px] h-auto w-full ${svgProps.className}`}>
         {/*
-         * The ruling behind the bars, and the line they stand on: the same hairlines the line view draws, plus nothing
-         * itself. The stacks are read from that line outwards, so it is the one thing on the drawing that has to be
-         * there.
+         * The ruling behind the bars, and the line they stand on: the same dotted gridlines and solid month hairlines
+         * the line view draws, plus nothing itself — the stacks are read from that line outwards, so it is the one
+         * thing on this drawing that has to be there.
          */}
-        <g aria-hidden>
-          {chart.guides.map((at) => (
-            <line key={at} x1={at} x2={at} y1={0} y2={chart.height} stroke="var(--ph-hair)" strokeWidth={1} />
-          ))}
-          <line x1={0} x2={chart.width} y1={chart.zeroY} y2={chart.zeroY} stroke="var(--ph-hair)" strokeWidth={1} />
-        </g>
+        <ChartRuling guides={chart.guides} ticks={chart.ticks} width={chart.width} height={chart.height} zeroY={chart.zeroY} />
         {/* One block a family, in the family's own colour — the same colours the sheet's own bars are drawn in. */}
         <g aria-hidden>
           {chart.rects.map((rect, index) => (

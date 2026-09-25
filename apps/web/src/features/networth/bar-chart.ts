@@ -1,5 +1,5 @@
 import { textWidth } from '../../ui/native';
-import type { ChartPoint } from './value-chart';
+import { type ChartPoint, type ChartTick, gridStep } from './value-chart';
 
 /** One family's share of a month: what it is worth then. Nothing about how it is drawn. */
 export interface BarSlice {
@@ -83,14 +83,17 @@ export interface BarMonth {
   liabilities: readonly BarSlice[];
 }
 
-/** One block of a stack: where it is drawn, and which side of nothing it is on. */
+/** One block of a stack: where it is drawn, and which side of the ledger it belongs to. */
 export interface BarRect {
   key: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  /** Assets stand on the nothing line and debts hang under it, and the two are read as two different things. */
+  /**
+   * Assets or debts, which is what it *is* rather than where it is drawn: an overdrawn pocket is an asset family worth
+   * less than nothing, and it hangs under the line with what is owed.
+   */
   side: 'asset' | 'liability';
 }
 
@@ -113,6 +116,14 @@ export interface BarGeometry {
   zeroY: number;
   /** A hairline a month, thinned to as many as read as a grid rather than as a fill. */
   guides: number[];
+  /**
+   * The amounts, ruled across the drawing: one line a round figure, above nothing and below it.
+   *
+   * Both sides are ruled at the same step, worked out from whichever side is taller, so a line above nothing and one
+   * below it are the same distance in money — the two scales are not the same, and a grid that pretended otherwise
+   * would be a grid that lies.
+   */
+  ticks: ChartTick[];
   /** Every block, assets first, in the order they are stacked. */
   rects: BarRect[];
   /**
@@ -152,9 +163,16 @@ export function barGeometry(months: readonly BarMonth[], options: BarOptions = {
   const widest = options.barWidth ?? 34;
   const plotBottom = height - bottom;
 
-  const sum = (slices: readonly BarSlice[]) => slices.reduce((total, slice) => total + Math.max(0, slice.minor), 0);
-  const high = Math.max(0, ...months.map((month) => sum(month.assets)));
-  const low = Math.max(0, ...months.map((month) => sum(month.liabilities)));
+  /*
+   * A family worth less than nothing — an overdrawn pocket, money owed on a card the sheet counts as an asset — is not
+   * dropped: it hangs under the line with what is owed, in its own family's colour, so the two stacks add up to the
+   * figure drawn over them. A stack that quietly left it out would disagree with its own line.
+   */
+  const upTo = (slices: readonly BarSlice[]) => slices.reduce((total, slice) => total + Math.max(0, slice.minor), 0);
+  const downTo = (month: BarMonth) =>
+    month.liabilities.reduce((total, slice) => total + Math.max(0, slice.minor), 0) + month.assets.reduce((total, slice) => total + Math.max(0, -slice.minor), 0);
+  const high = Math.max(0, ...months.map((month) => upTo(month.assets)));
+  const low = Math.max(0, ...months.map(downTo));
   /*
    * The scale of a side nobody drew on is 1, not 0: a workspace holding nothing but debt still needs a line to hang it
    * from, and dividing by nothing is what would put that line in the middle of nowhere. The other side's room is what
@@ -190,6 +208,13 @@ export function barGeometry(months: readonly BarMonth[], options: BarOptions = {
       rects.push({ key: slice.key, x, y: hanging, width: barWidth, height: block, side: 'liability' });
       hanging += block;
     }
+    // A family worth less than nothing, at the foot of what is owed: an overdrawn pocket is money you do not have.
+    for (const slice of month.assets) {
+      const block = down(Math.max(0, -slice.minor));
+      if (block <= 0) continue;
+      rects.push({ key: slice.key, x, y: hanging, width: barWidth, height: block, side: 'asset' });
+      hanging += block;
+    }
     const net = month.netWorthMinor;
     points.push(net === null ? null : { x: centre, y: net >= 0 ? zeroY - up(net) : zeroY + down(-net), value: net, label: month.label });
   });
@@ -211,11 +236,22 @@ export function barGeometry(months: readonly BarMonth[], options: BarOptions = {
   const guideEvery = Math.max(1, Math.ceil(months.length / 12));
   const guides = centres.filter((_, index) => index % guideEvery === 0);
 
+  /*
+   * The amounts across the drawing. The step is one round figure chosen from the taller side, and the lines run out
+   * from nothing: a third of the way up the assets, two thirds, and so on, as many as each side holds. Nothing itself
+   * is not one of them — the zero line is drawn solid, and a dotted line on top of it is two lines saying one thing.
+   */
+  const grid = gridStep(Math.max(upScale, downScale) / 3);
+  const ticks: ChartTick[] = [];
+  for (let value = grid; value <= upScale; value += grid) ticks.push({ y: zeroY - up(value), value });
+  for (let value = grid; value <= downScale; value += grid) ticks.push({ y: zeroY + down(value), value: -value });
+
   return {
     width,
     height,
     zeroY,
     guides,
+    ticks,
     rects,
     runs,
     points,
