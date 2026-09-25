@@ -11,7 +11,8 @@ test('the emergency card divides cash by a month of spending, and the debt guide
   await page.goto('/transactions');
   await addTransaction(page, { description: 'Superindo', paidWith: 'BCA Tahapan', category: 'Groceries', amount: '4000000' });
 
-  await page.goto('/net-worth');
+  // The ratios left the Overview for a screen of their own behind the gauge in the corner.
+  await page.goto('/net-worth/health');
   // Rp 16 jt left in the bank against Rp 4 jt of one month's spending.
   const card = page.locator('section', { has: page.getByRole('heading', { name: 'Emergency fund', exact: true }) }).last();
   await expect(card).toContainText('4,0 months');

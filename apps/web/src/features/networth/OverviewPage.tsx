@@ -55,10 +55,11 @@ const LIABILITY_COLORS: Record<string, string> = {
  * One side of the balance sheet: its share bar and legend on a panel, then a section per section of the statement.
  *
  * Each section's label is its own header, outside and above its rows, rather than a heading line inside one long card.
- * A section whose rows are of more than one kind folds them into a drawer a kind — current accounts with current
- * accounts, listed shares with listed shares — because a list of everything you own is as long as the accounts you have
- * opened, and the answer to what you have is a handful of kinds. A section of one kind is drawn plainly: one drawer is
- * no division at all, and a drawer over a single account hides one figure to save one line.
+ * Every section folds its rows into a drawer a kind — current accounts with current accounts, listed shares with listed
+ * shares — because a list of everything you own is as long as the accounts you have opened, and the answer to what you
+ * have is a handful of kinds. A section of one kind folds all the same: "Intangible and other" holding nothing but gold
+ * must still say that what is inside it is gold, or the one section that cannot name its kind is the one whose rows are
+ * hardest to read at a glance.
  *
  * The two columns stay two columns on a desktop.
  */
@@ -118,11 +119,9 @@ function sheetLine(row: SheetRow, currency: string) {
   return <InsetRow key={row.accountId} title={row.name} subtitle={row.note ?? undefined} value={<Money minor={row.amountMinor} currency={currency} />} valueTone="ink" chevron={false} />;
 }
 
-/** A group's rows, folded by kind where there is more than one kind to tell apart. */
+/** A group's rows, folded by kind: every section says which kinds it holds, even where it holds only one. */
 function fold(group: SheetGroup, subtypes: ReadonlyMap<string, AccountSubtype>, open: ReadonlySet<string>, onToggle: (key: string) => void, currency: string) {
   const drawers = sheetDrawers(group.rows, (row) => rowKindOf(group.key, row, (accountId) => subtypes.get(accountId)));
-  // One kind is no division at all: a drawer over it would hide every row it has to name one type.
-  if (drawers.length <= 1) return group.rows.map((row) => sheetLine(row, currency));
   return drawers.flatMap((drawer, index) => {
     const key = `${group.key}:${drawer.key}`;
     const shown = open.has(key);
@@ -130,7 +129,7 @@ function fold(group: SheetGroup, subtypes: ReadonlyMap<string, AccountSubtype>, 
       <Drawer
         key={key}
         label={drawer.label}
-        /* A count, because a drawer is only drawn where there are two kinds: "2 accounts" says what is inside it. */
+        /* A count, because the drawer is what says how many accounts a kind is made of. */
         under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'account' : 'accounts'}`}
         figure={<Money minor={drawer.totalMinor} currency={currency} />}
         open={shown}
@@ -301,7 +300,7 @@ export function OverviewPage() {
        * and the two-column grid that held it was the reason the band stopped short of the right-hand gutter — a line
        * that runs under a second column is not full-bleed, it is in the way.
        */}
-      <section className="-mx-4 mb-[18px] bg-[var(--ph-surface)] pt-[2px] pb-[10px] md:mx-0">
+      <section className="-mx-4 mb-[18px] bg-[var(--ph-surface)] pt-[14px] pb-[14px] md:mx-0">
         <div className="px-4 md:px-0">
           <div data-testid="net-worth">
             {sheetMissing.length > 0 ? (
@@ -333,9 +332,12 @@ export function OverviewPage() {
         </div>
       </section>
 
+      {/*
+       * No heading over the sheet and no line under it saying how it was valued: each side is already headed by its own
+       * name and its own total, and "Assets at today's value · debts at what you still owe" sat above two columns
+       * whose captions said the same thing in the language of the thing itself.
+       */}
       <section className="mb-[18px]">
-        <PanelHeader title="Balance sheet" />
-        <p className="px-[4px] pb-[10px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">At today's value · debts at what you still owe</p>
         {/* A row with no rate reads 0 here, so its totals would be short: the missing rate is named instead. */}
         {sheetMissing.length > 0 ? (
           <Panel wide>

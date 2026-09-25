@@ -64,7 +64,8 @@ async function cap(page: Page, option: string, line: string, every: string, figu
 test('row 2 — Food and beverage lifestyle: essential counts groceries only', async ({ page }) => {
   await setUp(page);
   await markFoodLifestyle(page);
-  await page.goto('/net-worth');
+  // The ratios left the Overview for a screen of their own behind the gauge in the corner.
+  await page.goto('/net-worth/health');
   // Rp 17 jt against Rp 2 jt of essential spending.
   await expect(emergencyCard(page)).toContainText('8,5 months');
 });
@@ -140,7 +141,7 @@ test('row 13 — the card grades against the household’s own months', async ({
   // 12 months of Rp 3 jt, under the figure on the goal's own page.
   await expect(page.getByTestId('goal-page')).toContainText('36.000.000');
 
-  await page.goto('/net-worth');
+  await page.goto('/net-worth/health');
   const card = emergencyCard(page);
   await expect(card).toContainText('5,7 months');
   await expect(card).toContainText('12 months · your household');

@@ -161,6 +161,11 @@ test('a loan falls due this year and later, and the balance sheet names it once'
   // it into two groups underneath, and a list built from both of those named it twice.
   await page.goto('/net-worth');
   await expect(page.getByText('Due within a year')).toHaveCount(0);
+  // One drawer for the kind, and one loan inside it — shut, so the name is one tap away and the figure on the drawer
+  // is the whole of what is owed on it.
+  const kpr = page.getByTestId('type-drawer-debts:loan');
+  await expect(kpr).toContainText('700.000.000');
+  await kpr.click();
   await expect(page.getByText('KPR Bintaro')).toHaveCount(1);
   // 200.000.000 owned against 700.000.000 owed: the figure the whole balance is read against, not a part of it.
   await expect(page.getByTestId('net-worth')).toContainText('500.000.000');

@@ -53,7 +53,11 @@ test('the two pages are one, and what is left of them is all here', async ({ pag
 
   // What the Overview had, with the ratios one tap away in the corner and the three sections behind the `…` beside it.
   await expect(page.getByRole('button', { name: 'More' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Balance sheet' })).toBeVisible();
+  // The sheet is headed by its two sides and nothing else: "Balance sheet" and the line under it saying how it was
+  // valued both said what "Assets" and "Liabilities" say with a figure beside them.
+  await expect(page.getByRole('heading', { name: 'Balance sheet' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Financial health' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Financial health' }).click();
   await expect(page).toHaveURL(/\/net-worth\/health$/);
@@ -67,8 +71,13 @@ test('shows net worth, the balance sheet and both sides of it', async ({ page })
   await page.goto('/net-worth');
   await expect(page.getByTestId('net-worth')).toContainText('40.000.000');
   await expect(page.getByText('Cash & equivalents').first()).toBeVisible();
-  // The debts are one group a side, drawn by kind rather than by when each one falls due.
+  // The debts are one group a side, drawn by kind rather than by when each one falls due — and the kind is the drawer
+  // the card sits in, so its name is one tap away rather than on the page.
   await expect(page.getByText('Debts', { exact: true })).toBeVisible();
+  const card = page.getByTestId('type-drawer-debts:credit_card');
+  await expect(card).toContainText('Credit card');
+  await expect(card).toContainText('10.000.000');
+  await card.click();
   await expect(page.getByText('BCA KrisFlyer')).toBeVisible();
 });
 
@@ -139,8 +148,19 @@ test('reads the assets in the catalogue’s families', async ({ page }) => {
   await addGold(page);
 
   await page.goto('/net-worth');
-  await expect(page.getByTestId('sheet-section-other').getByText('Antam gold bars')).toBeVisible();
+  /*
+   * Gold is a family of its own, and inside it a kind of its own: the section says "Gold bullion" even though gold is
+   * the only thing in it, because that name is the answer the section exists to give — and the holding itself is one
+   * tap away inside the drawer.
+   */
+  const gold = page.getByTestId('type-drawer-other:gold');
+  await expect(gold).toContainText('Gold bullion');
+  await expect(gold).toContainText('1 account');
   await expect(page.getByTestId('sheet-section-invest').getByText('Antam gold bars')).toHaveCount(0);
+  await expect(page.getByTestId('sheet-section-other').getByText('Antam gold bars')).toHaveCount(0);
+
+  await gold.click();
+  await expect(page.getByTestId('sheet-section-other').getByText('Antam gold bars')).toBeVisible();
 });
 
 /**
