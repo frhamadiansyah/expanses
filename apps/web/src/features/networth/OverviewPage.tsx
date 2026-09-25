@@ -1,10 +1,10 @@
 import { balanceSheet, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { BellRing, Gauge } from 'lucide-react';
+import { BellRing, ChartColumn, ChartLine, Gauge } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
-import { Empty, ErrorBox, Money } from '../../ui';
+import { Empty, ErrorBox, Money, cx } from '../../ui';
 import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl } from '../../ui/native';
 import { useAttention } from './attention';
 import type { BarMonth } from './bar-chart';
@@ -43,11 +43,20 @@ const rangeLabel = (from: string, to: string) => {
  */
 type ChartView = 'line' | 'bars';
 const CHART_VIEWS = [
-  { key: 'line', label: 'Line' },
-  { key: 'bars', label: 'Bars' },
-] as const satisfies readonly { key: ChartView; label: string }[];
+  { key: 'line', label: 'Line', Icon: ChartLine },
+  { key: 'bars', label: 'Bars', Icon: ChartColumn },
+] as const satisfies readonly { key: ChartView; label: string; Icon: typeof ChartLine }[];
 const CHART_VIEW_KEY = 'expanses.networth.chart';
-const CHART_VIEW_WIDTH = 116;
+
+/**
+ * How tall the chart's box is, whichever drawing is in it.
+ *
+ * One height for both, because the box is a place on the page: a switch that made the balance sheet jump up and down
+ * would be a switch that moved everything below it to save a drawing some room. The key under the stacks is drawn
+ * inside the drawing, so the bars are shorter by exactly what it took and the two views come out as tall as each
+ * other at every width.
+ */
+const CHART_HEIGHT = 230;
 
 /** Which drawing was chosen last, on this browser. A convenience only: losing it opens the line. */
 function rememberedChartView(): ChartView {
@@ -342,7 +351,30 @@ export function OverviewPage() {
        * and the two-column grid that held it was the reason the band stopped short of the right-hand gutter — a line
        * that runs under a second column is not full-bleed, it is in the way.
        */}
-      <section className="-mx-4 mb-[18px] bg-[var(--ph-surface)] pt-[14px] pb-[14px] md:mx-0">
+      {/* The box the chart lives in: its own height, marked so a spec can say the two views leave it the same. */}
+      <section data-testid="chart-box" className="relative -mx-4 mb-[18px] bg-[var(--ph-surface)] pt-[14px] pb-[14px] md:mx-0">
+        {/*
+         * The switch sits in the box's own top corner, on the figure's line but out of its way — it is a preference
+         * about the drawing below, so it lives beside the drawing rather than in a row of its own under the figure.
+         * Glyphs rather than words: "Line" and "Bars" at a corner of a phone would be half the width of the figure.
+         */}
+        <div role="group" aria-label="Chart view" className="absolute right-4 top-[14px] flex gap-0.5 rounded-lg bg-[var(--ph-track)] p-0.5 md:right-0">
+          {CHART_VIEWS.map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={view === key}
+              aria-label={label}
+              onClick={() => chooseView(key)}
+              className={cx(
+                'ph-focus-inset ph-tap flex h-7 w-7 items-center justify-center rounded-md',
+                view === key ? 'bg-[var(--ph-selected)] text-[var(--ph-ink)] shadow-[0_1px_3px_rgb(0_0_0/0.14)]' : 'text-[var(--ph-ink-2)]',
+              )}
+            >
+              <Icon size={15} aria-hidden />
+            </button>
+          ))}
+        </div>
         <div className="px-4 md:px-0">
           <div data-testid="net-worth">
             {sheetMissing.length > 0 ? (
@@ -353,25 +385,18 @@ export function OverviewPage() {
           </div>
         </div>
         {/*
-         * The switch sits above the drawing it governs and out of the figure's way: the figure and its change are read
-         * first, and what shape they are drawn in is a preference read after them.
+         * One height for both drawings, so the box never changes size: the line is given the whole of it, and the
+         * bars are given it less the room the key under them needs.
          */}
-        <div className="flex justify-end px-4 md:px-0">
-          <div style={{ width: CHART_VIEW_WIDTH }}>
-            <SegmentedControl
-              width={CHART_VIEW_WIDTH}
-              label="Chart view"
-              segments={CHART_VIEWS}
-              value={view}
-              onChange={(key) => chooseView(key as ChartView)}
-              max={CHART_VIEWS.length}
-            />
-          </div>
-        </div>
         {view === 'line' ? (
-          <NetWorthChart values={shown.map((point) => point.netWorthMinor)} labels={shown.map((point) => monthLabel(point.month))} currency={ws.baseCurrency} />
+          <NetWorthChart
+            values={shown.map((point) => point.netWorthMinor)}
+            labels={shown.map((point) => monthLabel(point.month))}
+            currency={ws.baseCurrency}
+            height={CHART_HEIGHT}
+          />
         ) : (
-          <NetWorthBars months={barMonths} keys={STACK_KEYS} currency={ws.baseCurrency} />
+          <NetWorthBars months={barMonths} keys={STACK_KEYS} currency={ws.baseCurrency} height={CHART_HEIGHT} />
         )}
         {sheetMissing.length === 0 && unchartable.length > 0 && (
           <p data-testid="chart-missing" className="px-4 pt-[8px] text-[13px] leading-[17px] text-[var(--ph-warn)] md:px-0">

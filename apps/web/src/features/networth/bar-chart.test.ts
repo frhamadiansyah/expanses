@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barGeometry, type BarMonth } from './bar-chart';
+import { barGeometry, stackKeyLayout, type BarMonth } from './bar-chart';
 
 /** A month with nothing but the two sides told: what is held, and what is owed. */
 const month = (label: string, assets: number[], liabilities: number[], netWorthMinor?: number): BarMonth => ({
@@ -68,5 +68,33 @@ describe('barGeometry', () => {
     expect(empty.rects).toEqual([]);
     // Nothing owed and nothing held is still a figure of nothing, drawn in the middle of the drawing's own room.
     expect(empty.points[0]).toMatchObject({ value: 0, y: empty.zeroY });
+  });
+});
+
+describe('stackKeyLayout', () => {
+  const keys = (labels: string[]) => labels.map((label, index) => ({ key: `k${index}`, label }));
+  const FAMILIES = keys(['Cash & equivalents', 'Investments', 'Personal use', 'Intangible and other', 'Credit card', 'Loan', 'Payables']);
+
+  it('keeps the key inside the drawing it is drawn in', () => {
+    const layout = stackKeyLayout(FAMILIES, { width: 358 });
+    expect(layout.marks).toHaveLength(7);
+    // Measured from the drawing's own gutter, every name and its swatch still ends inside the room it was given.
+    for (const mark of layout.marks) expect(mark.x).toBeLessThan(358);
+  });
+
+  it('wraps into rows, and is as tall as the rows it took — which is what the drawing above gives up', () => {
+    // Three short names are one row of 17 px under an 8 px top; the seven the catalogue names are three, because a
+    // name is not its letter count.
+    expect(stackKeyLayout(keys(['Cash', 'Gold', 'Loan']), { width: 358 }).height).toBe(25);
+    expect(stackKeyLayout(FAMILIES, { width: 358 }).height).toBe(59);
+    // And a key with nothing in it takes no room at all.
+    expect(stackKeyLayout([], { width: 358 })).toEqual({ marks: [], height: 0 });
+  });
+
+  it('gives a narrow drawing more rows rather than a name running off it', () => {
+    const wide = stackKeyLayout(FAMILIES, { width: 358 });
+    const narrow = stackKeyLayout(FAMILIES, { width: 200 });
+    expect(narrow.height).toBeGreaterThan(wide.height);
+    for (const mark of narrow.marks) expect(mark.x).toBeLessThan(200);
   });
 });

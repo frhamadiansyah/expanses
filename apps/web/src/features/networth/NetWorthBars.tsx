@@ -1,6 +1,11 @@
-import { barGeometry, type BarMonth } from './bar-chart';
+import { KEY_SWATCH, KEY_SWATCH_GAP, barGeometry, type BarMonth, stackKeyLayout } from './bar-chart';
 import { ChartAnnouncement, ChartReading, READING_ROOM, useChartReading } from './chart-reading';
 import type { StackKey } from './stack-keys';
+
+/** The drawing's own width, which the line view is drawn at too: the box scales with the screen, the proportions do not. */
+const WIDTH = 390;
+/** The gutter the key keeps from the drawing's edges — the one the figure and the range control are set in. */
+const KEY_MARGIN = 16;
 
 /**
  * Net worth as what it is made of: a stack a month, what you own above nothing and what you owe below it.
@@ -11,19 +16,24 @@ import type { StackKey } from './stack-keys';
  * one number, and a tap reads that number out exactly as the line view does.
  *
  * Nothing is written beside or under the drawing — no axis, no scale, no month names — for the same reason the line view
- * has none. What the colours mean is the key under it, and what a month is worth is the reading.
+ * has none, and the key under the stacks is drawn as part of the drawing rather than beside it: the box is one height
+ * whichever view is in it, at whatever width the screen is.
  */
-export function NetWorthBars({ months, keys, currency }: { months: readonly BarMonth[]; keys: readonly StackKey[]; currency: string }) {
-  const chart = barGeometry(months, { width: 390, height: 230, left: 6, right: 6, top: READING_ROOM, bottom: 12 });
-  const { reading, svgProps } = useChartReading(chart.points, chart.width);
-  if (chart.rects.length === 0 && chart.points.every((point) => point === null)) return null;
-  const fillOf = new Map(keys.map((key) => [key.key, key.fill]));
+export function NetWorthBars({ months, keys, currency, height }: { months: readonly BarMonth[]; keys: readonly StackKey[]; currency: string; height: number }) {
   /*
    * The key names what the drawing holds and nothing else: a family no month holds is a colour with no block to explain,
-   * and seven of them put a two-line key under every chart. The order is the stacking order either way.
+   * and seven of them put a two-line key under every chart. It is measured before the bars because it is the bars that
+   * give it the room — the drawing is settled second, in what is left.
    */
   const held = new Set(months.flatMap((month) => [...month.assets, ...month.liabilities]).flatMap((slice) => (slice.minor > 0 ? [slice.key] : [])));
-  const heldKeys = keys.filter((key) => held.has(key.key));
+  const key = stackKeyLayout(
+    keys.filter((entry) => held.has(entry.key)),
+    { width: WIDTH - KEY_MARGIN * 2 },
+  );
+  const chart = barGeometry(months, { width: WIDTH, height, left: 6, right: 6, top: READING_ROOM, bottom: 12 + key.height });
+  const { reading, svgProps } = useChartReading(chart.points, chart.width);
+  if (chart.rects.length === 0 && chart.points.every((point) => point === null)) return null;
+  const fillOf = new Map(keys.map((entry) => [entry.key, entry.fill]));
 
   return (
     <>
@@ -69,17 +79,21 @@ export function NetWorthBars({ months, keys, currency }: { months: readonly BarM
         </g>
         {/* The whole drawing is the target, as it is on the line: a thumb is wider than a bar. */}
         <rect data-testid="net-worth-plot" x={0} y={0} width={chart.width} height={chart.height} fill="transparent" />
+        {/* The key, in the drawing's own coordinates: a swatch and a name a family, wrapped into as many rows as it
+            takes. It is placed along the foot of the drawing — where the room for it was taken from — and starts at
+            the drawing's own gutter, so it lines up with the figures above it. */}
+        <g data-testid="net-worth-bars-key" aria-hidden transform={`translate(${KEY_MARGIN}, ${height - key.height})`}>
+          {key.marks.map((mark) => (
+            <g key={mark.key}>
+              <rect x={mark.x} y={mark.y} width={KEY_SWATCH} height={KEY_SWATCH} rx={2} className={fillOf.get(mark.key)} />
+              <text x={mark.x + KEY_SWATCH + KEY_SWATCH_GAP} y={mark.baseline} fontSize={12.5} fill="var(--ph-ink-3)">
+                {mark.label}
+              </text>
+            </g>
+          ))}
+        </g>
         {reading && <ChartReading point={reading} currency={currency} width={chart.width} />}
       </svg>
-      {/* What the colours mean. No percentages: a key says which money is which, and the reading says how much. */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 pt-[8px] text-[12.5px] text-[var(--ph-ink-3)] md:px-0">
-        {heldKeys.map((key) => (
-          <span key={key.key} className="flex items-center gap-1.5">
-            <i className={`h-2 w-2 rounded-sm ${key.className}`} />
-            {key.label}
-          </span>
-        ))}
-      </div>
       <ChartAnnouncement point={reading} currency={currency} />
     </>
   );

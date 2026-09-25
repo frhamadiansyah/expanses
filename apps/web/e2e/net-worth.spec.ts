@@ -229,11 +229,18 @@ test('draws the same months as stacks when the view is switched, and keeps the c
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '10000000');
 
   await page.goto('/net-worth');
-  const views = page.getByRole('radiogroup', { name: 'Chart view' });
-  await expect(views.getByRole('radio', { name: 'Line' })).toHaveAttribute('aria-checked', 'true');
+  const views = page.getByRole('group', { name: 'Chart view' });
+  await expect(views.getByRole('button', { name: 'Line' })).toHaveAttribute('aria-pressed', 'true');
+  // The drawing is read from the series, so it arrives a moment after the page: measured before it lands, the box is
+  // a box with nothing in it and the comparison below says nothing.
+  await expect(page.getByTestId('net-worth-line').first()).toBeVisible();
+  // The box the drawing sits in, measured before and after: it is the page's own furniture, and switching what is
+  // drawn in it must not move anything below it.
+  const box = page.getByTestId('chart-box');
+  const lineBox = (await box.boundingBox())!;
 
-  await views.getByRole('radio', { name: 'Bars' }).click();
-  await expect(views.getByRole('radio', { name: 'Bars' })).toHaveAttribute('aria-checked', 'true');
+  await views.getByRole('button', { name: 'Bars' }).click();
+  await expect(views.getByRole('button', { name: 'Bars' })).toHaveAttribute('aria-pressed', 'true');
   // The line is gone rather than drawn twice: one figure, one drawing at a time.
   await expect(page.getByTestId('net-worth-line')).toHaveCount(0);
 
@@ -248,14 +255,18 @@ test('draws the same months as stacks when the view is switched, and keeps the c
   await expect(page.getByText('Credit card').first()).toBeVisible();
   await expect(page.getByText('Payables')).toHaveCount(0);
 
+  // The same box, to the pixel: the key under the stacks is inside it, not under it.
+  const barsBox = (await box.boundingBox())!;
+  expect(Math.abs(barsBox.height - lineBox.height)).toBeLessThanOrEqual(1);
+
   // A tap on the stacks reads a month exactly as a tap on the line does.
   const plot = page.getByTestId('net-worth-plot');
-  const box = (await plot.boundingBox())!;
-  await plot.click({ position: { x: box.width - 6, y: box.height / 2 } });
+  const scale = (await plot.boundingBox())!;
+  await plot.click({ position: { x: scale.width - 6, y: scale.height / 2 } });
   await expect(page.getByTestId('net-worth-reading')).toContainText(/Rp/);
 
   await page.reload();
-  await expect(page.getByRole('radiogroup', { name: 'Chart view' }).getByRole('radio', { name: 'Bars' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('group', { name: 'Chart view' }).getByRole('button', { name: 'Bars' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('says it does not know the cash-flow ratios until there are transactions', async ({ page }) => {

@@ -14,11 +14,13 @@ import { chartGeometry } from './value-chart';
  * below it. That split is the one thing a line in a single colour cannot say, and this is the figure that goes
  * negative. Hand-drawn SVG: no chart library in this app.
  */
-export function NetWorthChart({ values, labels, currency }: { values: readonly (number | null)[]; labels: readonly string[]; currency: string }) {
+export function NetWorthChart({ values, labels, currency, height }: { values: readonly (number | null)[]; labels: readonly string[]; currency: string; height: number }) {
   const id = useId();
   const chart = chartGeometry(values, labels, {
     width: 390,
-    height: 200,
+    /* The box decides how tall this is, not the drawing: the two views are the same height so the page below them
+     * never moves when the answer changes shape. */
+    height,
     // No gutter anywhere: nothing is written beside the line, so the drawing runs to the screen's own edges.
     left: 0,
     right: 0,

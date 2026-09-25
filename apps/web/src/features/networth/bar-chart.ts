@@ -1,9 +1,72 @@
+import { textWidth } from '../../ui/native';
 import type { ChartPoint } from './value-chart';
 
 /** One family's share of a month: what it is worth then. Nothing about how it is drawn. */
 export interface BarSlice {
   key: string;
   minor: number;
+}
+
+/** One thing the key names: what it is called, and the key the blocks and the swatch are both found by. */
+export interface KeyEntry {
+  key: string;
+  label: string;
+}
+
+/** Where a key entry is drawn: the swatch's own corner, and the baseline its name sits on beside it. */
+export interface KeyMark {
+  key: string;
+  label: string;
+  x: number;
+  y: number;
+  baseline: number;
+}
+
+export interface KeyLayout {
+  marks: KeyMark[];
+  /** How tall the key is, which is what the drawing above it gives up. */
+  height: number;
+}
+
+/*
+ * The key's own figures, in the drawing's coordinates: an 8 px swatch, a hair of air beside it, and the name at the
+ * size the rows and legends elsewhere in the app are set in.
+ */
+const KEY_SIZE = 12.5;
+/** The swatch's size and the air beside it, which a component drawing the key needs as well as this layout does. */
+export const KEY_SWATCH = 8;
+export const KEY_SWATCH_GAP = 6;
+const KEY_GAP = 16;
+const KEY_ROW = 17;
+const KEY_TOP = 8;
+
+/**
+ * The key under the stacks, laid out inside the drawing rather than beside it.
+ *
+ * Inside, because the two views are one box of one height at every width: a drawing that scales with the screen and a
+ * key set in fixed pixels beside it are a box that grows when the view is switched on a wide screen and not on a
+ * phone. Laid out here, the key is part of the drawing — it scales with it, and the drawing above it is given the
+ * height the key needs, whatever that comes to.
+ *
+ * The entries wrap into rows as they come, so the key is one line for four families and two for seven, and the
+ * drawing above is shorter by exactly what the key took.
+ */
+export function stackKeyLayout(keys: readonly KeyEntry[], options: { width: number }): KeyLayout {
+  const marks: KeyMark[] = [];
+  let row = 0;
+  let x = 0;
+  for (const entry of keys) {
+    const wide = KEY_SWATCH + KEY_SWATCH_GAP + textWidth(entry.label, KEY_SIZE);
+    // A row that is already holding something gives up rather than letting a name run off the drawing.
+    if (x > 0 && x + wide > options.width) {
+      row += 1;
+      x = 0;
+    }
+    const baseline = KEY_TOP + row * KEY_ROW + KEY_SIZE;
+    marks.push({ key: entry.key, label: entry.label, x, y: baseline - KEY_SWATCH + 1, baseline });
+    x += wide + KEY_GAP;
+  }
+  return { marks, height: marks.length === 0 ? 0 : KEY_TOP + (row + 1) * KEY_ROW };
 }
 
 /**
