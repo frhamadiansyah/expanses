@@ -36,7 +36,7 @@ import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
-import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
+import { currencyChoosable, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -633,13 +633,19 @@ function CardBody({
           <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} />
         </section>
       )}
+      {/*
+        Plain text across the column, not a white pill: the fold is a way of *reading* the form, not a thing you
+        can do to a transaction, and a filled button gave it the same weight as Save. Transparent, no edge, no
+        shadow — the secondary ink, so it follows the theme. It keeps the 44 pt reach the drawn 40 px does not
+        have, and keeps `aria-expanded`, because the word is now the only thing that tells the two states apart.
+      */}
       <button
         type="button"
         aria-expanded={detailsOpen}
         onClick={() => setDetailsOpen((open) => !open)}
-        className="ph-focus min-h-11 w-full rounded-full bg-[var(--ph-surface)] text-[15px] font-medium text-[var(--ph-ink)] active:bg-[var(--ph-fill)]"
+        className="ph-focus flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-ink-2)]"
       >
-        {detailsOpen ? 'Fewer details' : 'Add more details'}
+        {detailsToggleLabel(detailsOpen)}
       </button>
 
       {/* The set-aside question (E2) sits above the dock, in the kit's inset groups, so the dock stays one line. */}

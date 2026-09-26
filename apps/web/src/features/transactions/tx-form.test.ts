@@ -12,6 +12,7 @@ import {
   chargedHint,
   chargedInNeeded,
   currencyChoosable,
+  detailsToggleLabel,
   emptyForm,
   estimatedCharge,
   extraRowRefusal,
@@ -1193,5 +1194,19 @@ describe('the second figure of a transfer', () => {
         expect(post.input.lines.find((line) => line.accountId === 'idr')).toMatchObject({ currency: 'IDR', amountMinor: intoMinor });
       }
     }
+  });
+});
+
+/**
+ * The word on the control that folds §4's rows away.
+ *
+ * It is one word either way — the control says what a tap will *do*, not what is on screen — and it is now plain
+ * text rather than a white pill, which makes the word the only thing telling the two states apart. A control whose
+ * only signal is its label is a control whose label has to be right.
+ */
+describe('the details toggle', () => {
+  it('offers the rows when they are away, and offers to put them away when they are there', () => {
+    expect(detailsToggleLabel(false)).toBe('Add more details');
+    expect(detailsToggleLabel(true)).toBe('Fewer details');
   });
 });

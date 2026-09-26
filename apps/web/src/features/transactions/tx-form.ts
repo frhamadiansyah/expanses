@@ -204,6 +204,14 @@ export function receivedField(draft: FormDraft, accounts: readonly AccountRow[])
 export type ExtraRow = 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos' | 'exclude' | 'rate';
 
 /**
+ * The word on the control that folds §4's rows away — what a tap will do, never what is on screen.
+ *
+ * It is drawn as plain text rather than as a white pill, so the label is the only thing that tells the two states
+ * apart and is the only thing a screen reader is given beyond `aria-expanded`.
+ */
+export const detailsToggleLabel = (open: boolean): string => (open ? 'Fewer details' : 'Add more details');
+
+/**
  * The With rows that name somebody. A row being typed into is not yet a person on the bill.
  *
  * One filter, three readers — `withShares`, the With sheet's own list and the Split/With refusal below. It was
