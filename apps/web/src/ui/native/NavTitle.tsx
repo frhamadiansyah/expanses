@@ -36,6 +36,7 @@ export function CornerButton({
   disabled = false,
   pressed,
   expanded,
+  badge,
   className,
 }: {
   label: string;
@@ -51,24 +52,43 @@ export function CornerButton({
   pressed?: boolean;
   /** The action opens something, and says whether it is open. */
   expanded?: boolean;
+  /**
+   * A figure sitting on the glyph's top right — how many things are behind this corner, when the count is worth
+   * seeing before the button is pressed.
+   *
+   * Drawn `aria-hidden`, because a corner button is read out as its `label` and nothing else: the count has to be
+   * *in* the label as well, or a screen reader is told a glyph and a bare number.
+   */
+  badge?: ReactNode;
   className?: string;
 }) {
   const shell = cx(
-    'ph-focus flex shrink-0 items-center justify-center rounded-full',
+    'ph-focus relative flex shrink-0 items-center justify-center rounded-full',
     pressed ? 'bg-[var(--ph-ink)] text-[var(--ph-surface)]' : destructive ? 'bg-[var(--ph-corner)] text-[var(--ph-alarm)]' : 'bg-[var(--ph-corner)] text-[var(--ph-ink)]',
     disabled && 'opacity-40',
     className,
   );
+  const mark =
+    badge === undefined || badge === null || badge === false ? null : (
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-[2px] right-[2px] min-w-[16px] rounded-full bg-[var(--ph-ink)] px-[3px] text-center text-[10px] font-bold leading-[16px] text-[var(--ph-surface)]"
+      >
+        {badge}
+      </span>
+    );
   if (to && !disabled) {
     return (
       <Link to={to} params={params} search={search} aria-label={label} className={shell} style={{ width: 44, height: 44 }}>
         {children}
+        {mark}
       </Link>
     );
   }
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-pressed={pressed} aria-expanded={expanded} aria-label={label} className={shell} style={{ width: 44, height: 44 }}>
       {children}
+      {mark}
     </button>
   );
 }
@@ -247,6 +267,7 @@ export function LargeTitle({
                 disabled={action.disabled}
                 pressed={action.pressed}
                 expanded={action.expanded}
+                badge={action.badge}
               >
                 {action.glyph}
               </CornerButton>
@@ -337,6 +358,7 @@ export function PushedTitle({
                   disabled={action.disabled}
                   pressed={action.pressed}
                   expanded={action.expanded}
+                  badge={action.badge}
                 >
                   {action.glyph}
                 </CornerButton>
