@@ -13,8 +13,8 @@ import {
   amountAfterEnter,
   amountFace,
   amountFields,
-  chargedHint,
   chargedInNeeded,
+  chargedIsEstimate,
   currencyChoosable,
   currencyFlag,
   estimatedCharge,
@@ -160,7 +160,7 @@ export function AmountRow({
   const choosable = currencyChoosable(draft);
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);
-  const { rate, stale } = useSuggestedRate(needsCharged ? currency : '', needsCharged ? settled : '', draft.occurredOn);
+  const { rate } = useSuggestedRate(needsCharged ? currency : '', needsCharged ? settled : '', draft.occurredOn);
 
   /*
    * §3.3: "pre-filled with an estimate at that day's rate", and it tracks the amount for as long as the row is
@@ -185,17 +185,27 @@ export function AmountRow({
     // in one pass rather than re-filling a row that agrees with the estimate.
   }, [prefill]);
 
-  const fieldClass = 'min-w-0 flex-1 text-[15px] leading-5 text-[var(--ph-ink)] tabular ph-focus-inset';
+  const fieldBase = 'min-w-0 flex-1 text-[15px] leading-5 text-[var(--ph-ink)] tabular ph-focus-inset';
+  /** A code and the figure it names, side by side: the pair is what shares out the row's width. */
+  const codeGroup = 'flex min-w-0 items-center gap-[5px] self-stretch';
+  const codeClass = 'shrink-0 text-[12.5px] leading-4 font-semibold tracking-[0.2px] text-[var(--ph-ink-3)]';
   const toggle = (which: 'amount' | 'charged') => setKeypad((was) => (was === which ? null : which));
   /** The field the dock is typing into, or null when it is shut. */
   const open = keypad === null ? null : keypad === 'amount' ? fields.amount : fields.charged;
   // The same 28 px circle every other row of the card leads with; the flag is its glyph.
   const flagCircle = 'flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[15px] leading-none';
+  /*
+   * Whether the charged figure is still this form's own guess. Read at render from the same ref `prefilledCharge`
+   * reads, so the mark in front of the figure and the pre-fill behind it can never disagree: every writer of the
+   * ref also calls `set`, which is what brings us back here.
+   */
+  const guessed = fields.charged !== null && chargedIsEstimate({ value: fields.charged.value, touched: touched.current });
 
   /*
-   * Option B's amount row (§3.3, C1-C3): it reads like any other row — a round flag for the currency in the lead,
-   * the figure where a row's title goes, the code as the caption on the right. It is **not** a giant number. The
-   * rows are drawn straight into the card's group, so the hairline between them is the group's own.
+   * Option B's amount row (§3.3, C1-C3), with both figures on it: it reads like any other row — a round flag for
+   * the currency in the lead, then each figure behind the code it is read in, the two parted by a hairline. It is
+   * **not** a giant number. The row is drawn straight into the card's group, so the hairline above it is the
+   * group's own.
    */
   return (
     <>
@@ -229,15 +239,44 @@ export function AmountRow({
           )}
         </RowLead>
         {/* No vertical padding: the figure's button takes the row's whole 48px as its target, not 36 of it. */}
-        <span className={ROW_BODY_FLUSH}>
-          <MoneyField
-            field={fields.amount}
-            phone={phone}
-            onChange={(amount) => set({ amount })}
-            onKeypad={() => toggle('amount')}
-            className={fieldClass}
-          />
-          <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{currency}</span>
+        <span className={cx(ROW_BODY_FLUSH, 'gap-[10px]')}>
+          {/* The code names the field; the field holds the figure. Kept out of the control on purpose: a button
+              whose text is "IDR450.000" reads that to a screen reader and to every test that asks a money field
+              what it is showing, and the figure is what a money field shows. */}
+          <span className={cx(codeGroup, fields.charged ? 'shrink' : 'flex-1')}>
+            <span aria-hidden className={codeClass}>
+              {fields.amount.currency}
+            </span>
+            <MoneyField
+              field={fields.amount}
+              phone={phone}
+              onChange={(amount) => set({ amount })}
+              onKeypad={() => toggle('amount')}
+              className={fieldBase}
+            />
+          </span>
+          {fields.charged && (
+            <>
+              {/* What parts the two figures. A rule rather than a printed bar: the app spends "·" as a joiner in
+                  running text, and a second kind of punctuation between two money figures reads as arithmetic. */}
+              <span aria-hidden className="h-[18px] w-px shrink-0 bg-[var(--ph-hair)]" />
+              <span className={cx(codeGroup, 'flex-1')}>
+                {/* The ≈ is the whole of what the line under this row used to say: this figure is the day's
+                    estimate, not what the bank took. It goes on the first keystroke of the user's own. */}
+                <span aria-hidden className={codeClass}>
+                  {guessed ? `≈ ${fields.charged.currency}` : fields.charged.currency}
+                </span>
+                <MoneyField
+                  field={fields.charged}
+                  phone={phone}
+                  onChange={setCharged}
+                  onKeypad={() => toggle('charged')}
+                  className={fieldBase}
+                  placeholder="0"
+                />
+              </span>
+            </>
+          )}
           {draft.amount !== '' && (
             <button
               type="button"
@@ -251,36 +290,6 @@ export function AmountRow({
           )}
         </span>
       </div>
-
-      {fields.charged && (
-        <div className={cx(keypad !== null && 'relative z-40 bg-[var(--ph-surface)]')}>
-          <div className="flex items-center gap-[10px] pl-[10px]">
-            <RowLead>
-              <span aria-hidden className={flagCircle}>
-                {currencyFlag(settled)}
-              </span>
-            </RowLead>
-            {/* The hairline is drawn here by hand: this row sits inside its own wrapper, where the group's rule
-                for "every row but the first" cannot see it. */}
-            <span className={cx(ROW_BODY_FLUSH, 'border-t-[0.5px] border-[var(--ph-hair)]')}>
-              <MoneyField
-                field={fields.charged}
-                phone={phone}
-                onChange={setCharged}
-                onKeypad={() => toggle('charged')}
-                className={fieldClass}
-                placeholder="0"
-              />
-              <span className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
-                Charged in <em className="not-italic">{settled}</em>
-              </span>
-            </span>
-          </div>
-          <p className="pr-[13px] pb-2 pl-[54px] text-[12px] leading-4 text-[var(--ph-ink-3)]">
-            {chargedHint({ rate, currency, accountCurrency: settled, onDate: draft.occurredOn, accountName: account?.name ?? 'the account', stale })}
-          </p>
-        </div>
-      )}
 
       {picking && (
         <CurrencySheet

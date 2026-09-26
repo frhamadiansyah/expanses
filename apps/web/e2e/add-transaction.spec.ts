@@ -239,23 +239,22 @@ test('a transfer offers no currency of its own, and moves the figure its row sho
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
   await form.getByLabel('Amount', { exact: true }).fill('100');
   await expect(form.getByLabel('Charged in IDR')).toHaveValue('1600000');
-  await expect(form.getByText(/per 1 USD/)).toBeVisible();
+  // The figure is this form's own guess at the day's rate, and the ≈ in front of its code is what says so.
+  await expect(form.getByText('≈ IDR', { exact: true })).toBeVisible();
 
-  // Now Transfer, with USD still on the flag. No flag, no charged row, no rate hint — and the figure already
-  // typed is read in the From account's own currency, which is the only one a transfer has.
+  // Now Transfer, with USD still on the flag. No flag, no charged figure, no second code — and the figure
+  // already typed is read in the From account's own currency, which is the only one a transfer has.
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
   await expect(form.getByRole('button', { name: 'Currency' })).toHaveCount(0);
   await expect(form.getByLabel(/^Charged in/)).toHaveCount(0);
-  await expect(form.getByText(/per 1 USD/)).toHaveCount(0);
 
   // Typed here, on this tab, with the row saying IDR beside it: exactly the keystrokes that moved Rp 100 while
   // the card said Rp 1.600.000. No second figure appears now, whatever is typed.
   await form.getByLabel('Amount', { exact: true }).fill('100');
   await chooseTo(form, 'Jago (IDR)');
   await expect(form.getByLabel(/^Charged in/)).toHaveCount(0);
-  await expect(form.getByText(/Charged in/)).toHaveCount(0);
   await form.getByLabel('Note').fill('To Jago');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
@@ -343,7 +342,9 @@ test('"Charged in" opens filled in at the rate this device stored for the day', 
   // than no estimate, and the row says so instead of inventing one.
   await typeForeign('100');
   await expect(page.getByLabel('Charged in IDR')).toHaveValue('');
-  await expect(page.getByText(/No CNY→IDR rate is known/)).toBeVisible();
+  // Empty, and marked as nobody's guess: there is no estimate to qualify, so no ≈. What asks for the rate is
+  // the Rate row `extraRows` puts under Add more details, walked later in this same file.
+  await expect(page.getByText('≈ IDR', { exact: true })).toHaveCount(0);
 
   // A CNY account opened today stores today's CNY→IDR rate.
   await openAccount(page, { subtype: 'bank', name: 'Alipay', currency: 'CNY', balance: '1000', rate: '2200', opened: TODAY });
@@ -352,7 +353,7 @@ test('"Charged in" opens filled in at the rate this device stored for the day', 
   // from the rate, not the figure typed: CNY 100 at 2.200 is Rp 220.000, and CNY 250 is Rp 550.000.
   await typeForeign('100');
   await expect(page.getByLabel('Charged in IDR')).toHaveValue('220000');
-  await expect(page.getByText(`\u2248 2.200 per 1 CNY \u00b7 suggested from ${TODAY}`)).toBeVisible();
+  await expect(page.getByText('≈ IDR', { exact: true })).toBeVisible();
 
   await typeForeign('250');
   await expect(page.getByLabel('Charged in IDR')).toHaveValue('550000');

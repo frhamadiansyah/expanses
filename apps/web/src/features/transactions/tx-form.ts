@@ -909,34 +909,15 @@ export function prefilledCharge({ estimate, charged, touched }: { estimate: stri
 }
 
 /**
- * The quiet line under "Charged in …": what a rate for the day suggests, and whose figure overrules it.
+ * Whether the charged figure is still the app's own guess — which is what the ≈ in front of it says.
  *
- * Numbers are rendered the way `ratePreview` (lib/rates.ts) already renders a rate, so the app shows one
- * number style rather than two. A rate `resolveRates` marked stale did not come from `onDate` at all, so the
- * line must not claim it did.
+ * The row carries one mark rather than a line of prose: ≈ while the figure is the estimate this form worked
+ * out at the day's rate, nothing once the figure is the user's. `touched` is the row's own record of who wrote
+ * it last, the same one `prefilledCharge` reads, so the mark and the pre-fill can never disagree about whose
+ * figure is on screen. An empty row is marked by neither: there is no guess to qualify.
  */
-export function chargedHint({
-  rate,
-  currency,
-  accountCurrency,
-  onDate,
-  accountName,
-  stale = false,
-  locale = 'id-ID',
-}: {
-  rate: number | null;
-  currency: string;
-  accountCurrency: string;
-  onDate: string;
-  accountName: string;
-  stale?: boolean;
-  /** Told, not assumed: the app is country-neutral, and `formatMinor` takes its locale the same way. */
-  locale?: string;
-}): string {
-  if (rate === null) return `No ${currency}→${accountCurrency} rate is known for ${onDate}. Enter what ${accountName} charged.`;
-  const shown = rate.toLocaleString(locale, { maximumFractionDigits: 4 });
-  const source = stale ? `the last ${currency}→${accountCurrency} rate known` : `suggested from ${onDate}`;
-  return `≈ ${shown} per 1 ${currency} · ${source}, change it to what ${accountName} charged`;
+export function chargedIsEstimate({ value, touched }: { value: string; touched: boolean }): boolean {
+  return !touched && value.trim() !== '';
 }
 
 /**
