@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
-import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith } from './add-transaction';
+import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith, chooseTo } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
 import { cardSection } from './card-section';
@@ -131,7 +131,7 @@ test('/transactions/new opens the empty card rather than a receipt for a transac
   await addAccount(page, 'BCA Tahapan', 'bank');
   await page.goto('/transactions/new');
 
-  await expect(page.getByRole('heading', { name: 'Add a transaction' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'New transaction' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Category' })).toBeVisible();
   // A receipt draws a hero; the card never does. If `$transactionId` had swallowed "new" this is what would show.
   await expect(page.getByTestId('receipt-hero')).toHaveCount(0);
@@ -156,7 +156,7 @@ test('a desktop types the amount into a real input, and the keyboard does what t
   await amount.fill('272400+5000');
   await amount.press('Enter');
   await expect(amount).toHaveValue('277400');
-  await expect(page.getByRole('heading', { name: 'Add a transaction' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'New transaction' })).toBeVisible();
 });
 
 /** A foreign account opened with a balance stores that day's rate, which is what a cross-currency save then needs. */
@@ -189,8 +189,11 @@ test('a transfer moves money between two accounts and is filed in no workspace',
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await expect(form.getByRole('button', { name: 'Workspace for this transaction' })).toHaveCount(0);
-  // The hint that keeps a fund purchase off this tab is the To row's own line.
-  await expect(form.getByText(/Use Buy \/ sell, so units are counted/)).toBeVisible();
+  // The hint that keeps a fund purchase off this tab is under the To list, where the account is chosen.
+  await form.getByRole('button', { name: /^To/ }).click();
+  const toList = page.getByRole('dialog', { name: 'To', exact: true });
+  await expect(toList.getByText(/Use Buy \/ sell, so units are counted/)).toBeVisible();
+  await toList.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Cancel' }).click();
 
   await addTransfer(page, { from: 'BCA Tahapan', to: 'Jenius (IDR)', amount: '500000', note: 'Top up' });
@@ -250,7 +253,7 @@ test('a transfer offers no currency of its own, and moves the figure its row sho
   // Typed here, on this tab, with the row saying IDR beside it: exactly the keystrokes that moved Rp 100 while
   // the card said Rp 1.600.000. No second figure appears now, whatever is typed.
   await form.getByLabel('Amount', { exact: true }).fill('100');
-  await form.getByLabel('To', { exact: true }).selectOption({ label: 'Jago (IDR)' });
+  await chooseTo(form, 'Jago (IDR)');
   await expect(form.getByLabel(/^Charged in/)).toHaveCount(0);
   await expect(form.getByText(/Charged in/)).toHaveCount(0);
   await form.getByLabel('Note').fill('To Jago');
@@ -285,7 +288,7 @@ test('a transfer into a USD account asks for the received amount, and will not s
 
   // Same currency on both sides: nothing to ask, because what left is what landed.
   await expect(form.getByLabel(/^Received amount/)).toHaveCount(0);
-  await form.getByLabel('To', { exact: true }).selectOption({ label: 'Wise USD (USD)' });
+  await chooseTo(form, 'Wise USD (USD)');
   const received = form.getByLabel('Received amount (USD)');
   await expect(received).toBeVisible();
   await expect(received).toHaveAttribute('required', '');
@@ -559,7 +562,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await form.getByLabel('Note').fill('Superindo');
 
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
 
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
@@ -588,7 +591,6 @@ test('every extra survives the save, and leaving it out of the report leaves onl
 
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
   await expect(more.getByRole('switch', { name: 'Exclude from report' })).toHaveAttribute('aria-checked', 'true');
-  await more.getByRole('button', { name: 'Close' }).click();
 
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
@@ -622,9 +624,8 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Ranch Market');
   await form.getByRole('button', { name: 'Add more details' }).click();
-  await page.getByRole('dialog', { name: 'More details' }).getByRole('switch', { name: 'Exclude from report' }).click();
-  await page.getByRole('dialog', { name: 'More details' }).getByRole('button', { name: 'Close' }).click();
-  await form.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('region', { name: 'More details' }).getByRole('switch', { name: 'Exclude from report' }).click();
+  await   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
   // Out of the chart… the month's own total is the figure the ring is drawn from, so it is what the exclusion
@@ -659,7 +660,7 @@ test('a split is read in the paying account’s own currency, exponent and all',
   await form.getByRole('button', { name: 'Paid with' }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Wise Card', exact: true }).click();
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Split' }).click();
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
@@ -702,7 +703,7 @@ test('a split by category posts one line per category, each with its own figure'
   await form.getByLabel('Note').fill('Superindo');
 
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Split' }).click();
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
@@ -711,7 +712,6 @@ test('a split by category posts one line per category, each with its own figure'
   await split.getByLabel('Split 2 category').selectOption({ label: 'Restaurants' });
   await split.getByLabel('Split 2 amount').fill('45000');
   await split.getByRole('button', { name: 'Close' }).click();
-  await more.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
@@ -752,7 +752,7 @@ test('Split by category and With refuse each other in words, before Save', async
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
 
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   // Both rows are live while neither is set: the combination is offered, and refused only once it is made.
   await expect(more.getByRole('button', { name: 'Split' })).toBeEnabled();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
@@ -788,7 +788,6 @@ test('Split by category and With refuse each other in words, before Save', async
   await expect(more.getByRole('button', { name: 'With', exact: true })).toBeEnabled();
 
   // …and the bill still saves as a shared bill, whole, under the one category it was given.
-  await more.getByRole('button', { name: 'Close' }).click();
   await form.getByLabel('Note').fill('Warung Steak');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
@@ -819,11 +818,10 @@ test('a missing rate is asked for under Add more details, and the save then goes
   await expect(form.getByRole('alert')).toContainText('Add more details');
 
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   await more.getByLabel('Rate: IDR per 1 USD').fill('16000');
   // `ratePreview` under the row, reading back what was typed, so a decimal slip is visible before Save.
   await expect(more.getByText('Reads as 1 USD = 16.000 IDR')).toBeVisible();
-  await more.getByRole('button', { name: 'Close' }).click();
 
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
@@ -870,7 +868,6 @@ test('a bill split equally between three people leaves each of them owing their 
   // Shut, the row underneath reads back what was decided — the summary Task 14's edit sheet will show too.
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toContainText('3 people · They owe you Rp 300.000');
-  await more.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
@@ -1000,7 +997,7 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
   await edit.getByRole('button', { name: 'Add more details' }).click();
-  const reopened = page.getByRole('dialog', { name: 'More details' });
+  const reopened = page.getByRole('region', { name: 'More details' });
   await expect(reopened.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
   await reopened.getByRole('button', { name: 'Photos' }).click();
   const photos = page.getByRole('dialog', { name: 'Photos' });
@@ -1142,7 +1139,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   await form.getByLabel('Date').fill(OTHER_DAY);
 
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
   await more.getByRole('button', { name: 'MCC' }).click();
@@ -1155,7 +1152,6 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   await mccSheet.getByRole('button', { name: 'Close' }).click();
   await more.getByRole('button', { name: 'Channel' }).click();
   await page.getByRole('dialog', { name: 'Channel' }).getByRole('button', { name: 'Offline' }).click();
-  await more.getByRole('button', { name: 'Close' }).click();
 
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
@@ -1235,7 +1231,7 @@ test('a split by category refuses a foreign amount in words, and the way out wor
   await form.getByLabel('Note').fill('Superindo');
 
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Split' }).click();
   const split = page.getByRole('dialog', { name: 'Split' });
   await split.getByRole('button', { name: '+ Split' }).click();
@@ -1244,7 +1240,6 @@ test('a split by category refuses a foreign amount in words, and the way out wor
   await split.getByLabel('Split 2 category').selectOption({ label: 'Restaurants' });
   await split.getByLabel('Split 2 amount').fill('1000000');
   await split.getByRole('button', { name: 'Close' }).click();
-  await more.getByRole('button', { name: 'Close' }).click();
 
   await form.getByRole('button', { name: 'Save' }).click();
   // In the currency's own words, naming both ways out — not `MoneyError`'s "IDR allows 0 decimal places".
@@ -1293,10 +1288,9 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
     await form.getByLabel('Note').fill(note);
     if (exclude) {
       await form.getByRole('button', { name: 'Add more details' }).click();
-      const more = page.getByRole('dialog', { name: 'More details' });
+      const more = page.getByRole('region', { name: 'More details' });
       await more.getByRole('switch', { name: 'Exclude from report' }).click();
       await expect(more.getByRole('switch', { name: 'Exclude from report' })).toHaveAttribute('aria-checked', 'true');
-      await more.getByRole('button', { name: 'Close' }).click();
     }
     await form.getByRole('button', { name: 'Save' }).click();
     await expect(form).toHaveCount(0);
@@ -1432,7 +1426,6 @@ test('an event, a photograph and the exclusion survive one save together', async
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
   await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
-  await more.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
@@ -1472,7 +1465,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
   await more.getByRole('button', { name: 'MCC' }).click();
@@ -1482,7 +1475,6 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await more.getByRole('button', { name: 'Channel' }).click();
   await page.getByRole('dialog', { name: 'Channel' }).getByRole('button', { name: 'Online' }).click();
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
-  await more.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 

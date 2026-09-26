@@ -3,6 +3,7 @@ import { openAccount, openTypes } from './accounts';
 import { openNewAsset } from './add-asset';
 import { openDrawers } from './drawers';
 import { ageRates, forgetRates, mockRates, openWithPockets } from './pockets';
+import { chooseTo } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -291,7 +292,11 @@ test('the parent is offered nowhere money is chosen; its pockets are, and a pock
   await expect(payer.getByRole('button', { name: 'Valas Plus', exact: true })).toHaveCount(0);
   await payer.getByRole('button', { name: 'Valas Plus · IDR', exact: true }).click();
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
-  await expect(form.getByLabel('To', { exact: true }).locator('option', { hasText: /^Valas Plus \(/ })).toHaveCount(0);
+  await form.getByRole('button', { name: /^To/ }).click();
+  const toList = page.getByRole('dialog', { name: 'To', exact: true });
+  await expect(toList).toBeVisible();
+  await expect(toList.getByRole('button', { name: 'Valas Plus', exact: true })).toHaveCount(0);
+  await toList.getByRole('button', { name: 'Close' }).click();
 });
 
 test('USD → IDR between pockets reads each side at its own exponent, keystroke by keystroke', async ({ page }) => {
@@ -334,7 +339,7 @@ test('the Transfer tab between two pockets posts what the Move screen posts', as
   await form.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Valas Plus · USD', exact: true }).click();
   await form.getByLabel('Amount', { exact: true }).pressSequentially('500');
-  await form.getByLabel('To', { exact: true }).selectOption({ label: 'Valas Plus · SGD (SGD)' });
+  await chooseTo(form, 'Valas Plus · SGD (SGD)');
   await form.getByLabel('Received amount (SGD)').pressSequentially('638');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);

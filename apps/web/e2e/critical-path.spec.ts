@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, chooseTo } from './add-transaction';
 
 test('card purchase counts once as spending; statement payment is a transfer', async ({ page }) => {
   await page.goto('/accounts');
@@ -17,7 +17,7 @@ test('card purchase counts once as spending; statement payment is a transfer', a
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Checking', exact: true }).click();
-  await form.getByLabel('To', { exact: true }).selectOption({ label: 'BCA Visa (IDR)' });
+  await chooseTo(form, 'BCA Visa (IDR)');
   await form.getByLabel('Amount', { exact: true }).fill('500000');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);

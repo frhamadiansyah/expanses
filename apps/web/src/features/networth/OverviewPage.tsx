@@ -1,11 +1,12 @@
 import { balanceSheet, formatMinor, isoDate, lastNMonths, monthOf, type SheetGroup, type SheetRow, type SheetSectionKey } from '@expanses/core';
 import type { AccountSubtype, LiabilityKind } from '@expanses/db';
 import { Link } from '@tanstack/react-router';
-import { BellRing, ChartColumn, ChartLine, Gauge } from 'lucide-react';
-import { useState } from 'react';
+import { BellRing, ChartColumn, ChartLine, Gauge, type LucideIcon } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Empty, ErrorBox, Money, cx } from '../../ui';
 import { type CornerAction, Drawer, Hero, InsetGroup, InsetRow, LargeTitle, Panel, PanelHeader, PHONE_WIDTH, SCREEN, SegmentedControl, useDrawers } from '../../ui/native';
+import { assetKindTile, assetSectionTile, debtKindTile } from '../ownables/catalogue-view';
 import { useAttention } from './attention';
 import type { BarMonth } from './bar-chart';
 import { NetWorthBars } from './NetWorthBars';
@@ -97,6 +98,7 @@ function SheetColumn({
   groups,
   currency,
   kindOf,
+  tileOf,
   oneGroupOnly = false,
   nested = false,
   open,
@@ -107,6 +109,8 @@ function SheetColumn({
   currency: string;
   /** What kind each row is, which is what the drawers fold by. Read off the row, so a debt is read as a mortgage. */
   kindOf: (groupKey: string, row: SheetRow) => RowKind;
+  /** The drawing a section (kind `null`) or a kind within it wears: the one the add picker gives the same thing. */
+  tileOf: Tile;
   /**
    * Whether a group's own header is left out. True on the liabilities side, which holds one group: the column is
    * already headed by that side's name and total, and a second line saying the same thing swallowed a row of the page.
@@ -137,6 +141,7 @@ function SheetColumn({
             return [
               <Drawer
                 key={key}
+                icon={<TileIcon tile={tileOf(group.key, null)} />}
                 label={group.label}
                 /* What is inside, counted — the accounts the section is made of. Which *kinds* they are is what
                    opening it says, so that is not repeated in the count. */
@@ -150,7 +155,7 @@ function SheetColumn({
                 onToggle={() => onToggle(key)}
               />,
               /* Marked by its own key, so a spec can say which section a row was drawn in. */
-              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, open, onToggle, currency)}</div>] : []),
+              ...(shown ? [<div key={`${key}:rows`} data-testid={`sheet-section-${group.key}`}>{fold(group, kindOf, tileOf, open, onToggle, currency)}</div>] : []),
             ];
           })}
         </InsetGroup>
@@ -162,7 +167,7 @@ function SheetColumn({
             /* Marked by its own key, so a spec can say which section a row was drawn in. */
             <div key={group.key} data-testid={`sheet-section-${group.key}`}>
               <InsetGroup wide header={oneGroupOnly ? undefined : group.label} trailing={oneGroupOnly ? undefined : <Money minor={group.totalMinor} currency={currency} />}>
-                {fold(group, kindOf, open, onToggle, currency)}
+                {fold(group, kindOf, tileOf, open, onToggle, currency)}
               </InsetGroup>
             </div>
           ),
@@ -172,20 +177,30 @@ function SheetColumn({
   );
 }
 
-/** One account's line in the sheet: its name, and what it is worth or what it owes. */
-function sheetLine(row: SheetRow, currency: string) {
-  return <InsetRow key={row.accountId} title={row.name} subtitle={row.note ?? undefined} value={<Money minor={row.amountMinor} currency={currency} />} valueTone="ink" chevron={false} />;
+/** Which drawing a section or kind wears, by the group it is in and the kind's key — `null` for the section itself. */
+type Tile = (groupKey: string, kindKey: string | null) => LucideIcon;
+
+/** A drawing at the size a row draws one, for the kit's circle to hold. */
+function TileIcon({ tile: Glyph }: { tile: LucideIcon }) {
+  return <Glyph size={16} aria-hidden />;
+}
+
+/** One account's line in the sheet: the drawing its kind wears, its name, and what it is worth or what it owes. */
+function sheetLine(row: SheetRow, currency: string, icon: ReactNode) {
+  return <InsetRow key={row.accountId} icon={icon} title={row.name} subtitle={row.note ?? undefined} value={<Money minor={row.amountMinor} currency={currency} />} valueTone="ink" chevron={false} />;
 }
 
 /** A group's rows, folded by kind: every section says which kinds it holds, even where it holds only one. */
-function fold(group: SheetGroup, kindOf: (groupKey: string, row: SheetRow) => RowKind, open: ReadonlySet<string>, onToggle: (key: string) => void, currency: string) {
+function fold(group: SheetGroup, kindOf: (groupKey: string, row: SheetRow) => RowKind, tileOf: Tile, open: ReadonlySet<string>, onToggle: (key: string) => void, currency: string) {
   const drawers = sheetDrawers(group.rows, (row) => kindOf(group.key, row));
   return drawers.flatMap((drawer, index) => {
     const key = `${group.key}:${drawer.key}`;
     const shown = open.has(key);
+    const icon = <TileIcon tile={tileOf(group.key, drawer.key)} />;
     return [
       <Drawer
         key={key}
+        icon={icon}
         label={drawer.label}
         /* A count, because the drawer is what says how many accounts a kind is made of. */
         under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'account' : 'accounts'}`}
@@ -195,7 +210,7 @@ function fold(group: SheetGroup, kindOf: (groupKey: string, row: SheetRow) => Ro
         testId={`type-drawer-${key}`}
         onToggle={() => onToggle(key)}
       />,
-      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency)) : []),
+      ...(shown ? drawer.rows.map((row) => sheetLine(row, currency, icon)) : []),
     ];
   });
 }
@@ -503,6 +518,7 @@ export function OverviewPage() {
             groups={sheet.assetGroups}
             currency={ws.baseCurrency}
             kindOf={assetKind}
+            tileOf={(section, kind) => (kind === null ? assetSectionTile(section) : assetKindTile(section, kind))}
             nested
             open={openDrawers}
             onToggle={toggleDrawer}
@@ -512,6 +528,7 @@ export function OverviewPage() {
             groups={owed.rows.length > 0 ? [owed] : []}
             currency={ws.baseCurrency}
             kindOf={(_groupKey, row) => debtRowKind(row)}
+            tileOf={(_groupKey, kind) => debtKindTile(kind ?? '')}
             oneGroupOnly
             open={openDrawers}
             onToggle={toggleDrawer}

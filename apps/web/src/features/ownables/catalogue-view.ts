@@ -211,6 +211,31 @@ function tileFor(flow: OwnableFlow, item: OwnableItem, family?: OwnableFamily): 
   return ASSET_TILES[item.id] ?? (from ? FAMILY_TILES[from] : PLAIN);
 }
 
+/**
+ * The drawing a kind wears on the Assets page, the same one its picker row wears: a list of what you own and the
+ * screen that added it say which kind of thing each one is with the same mark.
+ *
+ * Keyed by the drawer's own key and the section it sits in, because the two overlap: `fund` is a fund account under
+ * cash and a mutual fund under investments. A kind no table names — an account read by its bare subtype — wears its
+ * section's family drawing, as a rare code in the picker does.
+ */
+export function assetKindTile(section: string, key: string): LucideIcon {
+  if (section === 'liquid') return CASH_TILES[key as MoneyAccountSubtype] ?? Wallet;
+  return ASSET_TILES[key] ?? FAMILY_TILES[section as OwnableFamily] ?? PLAIN;
+}
+
+/**
+ * The drawing a whole section of the balance sheet wears: its family's, as the add-asset picker's first list draws
+ * it. Cash is no family there — money is an account — so it wears the drawing of the row that hands over to accounts.
+ */
+export const assetSectionTile = (section: string): LucideIcon => (section === 'liquid' ? Landmark : (FAMILY_TILES[section as OwnableFamily] ?? PLAIN));
+
+/** The two debt drawers no catalogue item names, drawn as the picker draws their nearest kind. */
+const PLAIN_DEBT_TILES: Record<string, LucideIcon> = { other_loans: ReceiptText, payable: User };
+
+/** The drawing a kind of debt wears on the Liabilities page: the one the debt picker gives the same kind. */
+export const debtKindTile = (key: string): LucideIcon => DEBT_TILES[key] ?? PLAIN_DEBT_TILES[key] ?? PLAIN;
+
 const rowOf = (flow: OwnableFlow, item: OwnableItem, family?: OwnableFamily): PickerRow => ({
   id: item.id,
   label: item.label,

@@ -1,14 +1,15 @@
 import { formatMinor, isoDate } from '@expanses/core';
 import { Link, type LinkProps } from '@tanstack/react-router';
-import { Car, CreditCard, House, Landmark, Plus } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useBalances } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { ApproxFigure, approxLine, type CornerAction, Drawer, Figure, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN, useDrawers } from '../../ui/native';
 import { useHeldRates } from '../accounts/queries';
 import { usePeopleDebts } from '../debts/queries';
-import { bareFigure, type DebtDrawer, type DebtIcon, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
+import { debtKindTile } from '../ownables/catalogue-view';
+import { bareFigure, type DebtDrawer, type DebtRow, type DebtSheet, groupDebts } from '../networth/debt-rows';
 import { useSheet } from '../networth/queries';
 import { ShareBar, ShareLegend } from '../networth/ShareBar';
 import { debtSegments } from '../networth/share-segments';
@@ -20,13 +21,14 @@ import { useCardFacts, useLoanItems, useLoans, useScheduledPayments } from './qu
  * themselves inside it. What the Loans page did — terms, the instalments, the loans paid off — lives under them.
  */
 
-const ICONS: Record<DebtIcon, { glyph: ReactNode; colour: string }> = {
-  home: { glyph: <House size={15} aria-hidden />, colour: '#2F6FEB' },
-  car: { glyph: <Car size={15} aria-hidden />, colour: '#4E8A3E' },
-  loan: { glyph: <Landmark size={15} aria-hidden />, colour: '#6B5BD2' },
-  card: { glyph: <CreditCard size={15} aria-hidden />, colour: '#5A6478' },
-  person: { glyph: null, colour: '#C2417A' },
-};
+/**
+ * A kind's drawing, at the size a row draws one: the same mark the add-debt picker gave it, in the kit's neutral
+ * circle. Each debt wears its drawer's, so a mortgage looks the same folded, open, and on the screen that added it.
+ */
+function KindIcon({ kind }: { kind: string }) {
+  const Glyph = debtKindTile(kind);
+  return <Glyph size={16} aria-hidden />;
+}
 
 /** Where a debt opens: a loan its terms and schedule, a card the card, a person Lend & borrow for them. */
 function destination(row: DebtRow): { to: LinkProps['to']; params?: LinkProps['params']; search?: LinkProps['search'] } {
@@ -72,14 +74,12 @@ function subtitleOf(row: DebtRow): string {
 }
 
 /** A debt's own line: the drawing its kind wears, its name, what it is, and what is owed. */
-function DebtItem({ row, baseCurrency, rates }: { row: DebtRow; baseCurrency: string; rates: Record<string, number> }) {
-  const icon = ICONS[row.icon];
+function DebtItem({ row, kind, baseCurrency, rates }: { row: DebtRow; kind: string; baseCurrency: string; rates: Record<string, number> }) {
   return (
     <InsetRow
       {...destination(row)}
       testId={`debt-row-${row.key}`}
-      icon={icon.glyph ?? <span className="text-[13px] font-semibold">{row.name.slice(0, 1).toUpperCase()}</span>}
-      iconColour={icon.colour}
+      icon={<KindIcon kind={kind} />}
       title={row.name}
       subtitle={subtitleOf(row) || undefined}
       value={<RowFigure row={row} baseCurrency={baseCurrency} rates={rates} />}
@@ -246,7 +246,7 @@ export function DebtsPage() {
               <div data-testid="debts-total">
                 {/* Owed money is a figure like any other on this page: the box, the drawer and the row all draw it in
                     the page's own ink, and a red hero was the one place the same number wore a warning. */}
-                <Hero minor={debts.total.totalMinor} currency={baseCurrency} />
+                <Hero minor={debts.total.totalMinor} currency={baseCurrency} align="center" />
               </div>
               {segments.length > 0 && (
                 <>
@@ -263,6 +263,7 @@ export function DebtsPage() {
                 return [
                   <Drawer
                     key={key}
+                    icon={<KindIcon kind={drawer.key} />}
                     label={drawer.label}
                     under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'debt' : 'debts'}`}
                     figure={<DrawerFigure drawer={drawer} baseCurrency={baseCurrency} />}
@@ -271,7 +272,7 @@ export function DebtsPage() {
                     testId={`type-drawer-${key}`}
                     onToggle={() => drawersState.toggle(key)}
                   />,
-                  ...(shown ? drawer.rows.map((row) => <DebtItem key={row.key} row={row} baseCurrency={baseCurrency} rates={rates} />) : []),
+                  ...(shown ? drawer.rows.map((row) => <DebtItem key={row.key} row={row} kind={drawer.key} baseCurrency={baseCurrency} rates={rates} />) : []),
                 ];
               })}
               {debts.cleared.length > 0 && (

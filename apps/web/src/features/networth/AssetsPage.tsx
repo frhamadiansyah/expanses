@@ -5,10 +5,11 @@ import { useApp } from '../../app/context';
 import { useAccounts } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { type CornerAction, Drawer, Figure, groupedFigure, GroupedRow, Hero, InsetGroup, InsetRow, Panel, PushedTitle, SCREEN, useDrawers } from '../../ui/native';
+import { assetKindTile } from '../ownables/catalogue-view';
 import { pocketCount } from '../accounts/pockets';
 import { useHeldRates } from '../accounts/queries';
 import { ShareBar, ShareLegend } from './ShareBar';
-import { assetSegments } from './share-segments';
+import { assetSegments, heldShares } from './share-segments';
 import { UpdatePricesSheet } from './UpdatePricesSheet';
 import { type AssetDrawer, type AssetGroup, type AssetRow, groupAssets, liveGroups, rowSubtitle, soldRows, staleRows, totalOf } from './asset-rows';
 import { useAssetProfiles, useAssetValues, useDueDeposits } from './queries';
@@ -21,7 +22,14 @@ function staleNote(stale: AssetRow[]): string {
   return `${stale.length === 1 ? '1 asset needs' : `${stale.length} assets need`} a fresh price or estimate: ${stale.map((row) => row.name).join(', ')}.`;
 }
 
+/** A kind's drawing, at the size a row draws one: the same mark the add-asset picker gave it. */
+function KindIcon({ section, kind }: { section: string; kind: string }) {
+  const Glyph = assetKindTile(section, kind);
+  return <Glyph size={16} aria-hidden />;
+}
+
 function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string; money: Set<string> }) {
+  const icon = <KindIcon section={row.section} kind={row.kind.key} />;
   // An account with pockets: one row at their total (or the missing rate named), opening to the pockets — with the
   // ≈ on its figure only when a pocket is held in another currency.
   if (row.pockets !== null)
@@ -29,6 +37,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
       <GroupedRow
         to="/accounts/$accountId"
         params={{ accountId: row.accountId }}
+        icon={icon}
         title={row.name}
         subtitle={`${pocketCount(row.pockets)} · each files its own row`}
         figure={groupedFigure({ totalMinor: row.missing.length ? null : row.valueMinor, missing: row.missing }, baseCurrency, row.converted)}
@@ -44,6 +53,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
       <InsetRow
         to="/net-worth/lend-borrow"
         search={{ person: row.person }}
+        icon={icon}
         title={row.name}
         subtitle={rowSubtitle(row)}
         value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -60,6 +70,7 @@ function Row({ row, baseCurrency, money }: { row: AssetRow; baseCurrency: string
     <InsetRow
       to={to}
       params={{ accountId: row.accountId }}
+      icon={icon}
       title={row.name}
       subtitle={rowSubtitle(row)}
       value={<Money minor={row.valueMinor} currency={row.currency} />}
@@ -96,6 +107,7 @@ function Group({ group, baseCurrency, money }: { group: AssetGroup; baseCurrency
         return [
           <Drawer
             key={key}
+            icon={<KindIcon section={group.group} kind={drawer.key} />}
             label={drawer.label}
             under={`${drawer.rows.length} ${drawer.rows.length === 1 ? 'asset' : 'assets'}`}
             figure={<DrawerFigure drawer={drawer} baseCurrency={baseCurrency} />}
@@ -133,6 +145,8 @@ export function AssetsPage() {
   const live = liveGroups(groups);
   const sold = soldRows(groups);
   const stale = staleRows(groups);
+  // The bar divides what is held: a section taken below nought by an overdraft is named under it instead.
+  const shares = heldShares(assetSegments(live));
   // Which of the rows drawn below are money: those open their own page, not the asset page.
   const money = new Set((accounts.data ?? []).filter((account) => CASH_SUBTYPES.has(account.subtype)).map((account) => account.id));
 
@@ -163,13 +177,25 @@ export function AssetsPage() {
       {total.totalMinor !== null && (
         <Panel wide className="mb-[18px] space-y-2">
           <div data-testid="assets-total">
-            <Hero minor={total.totalMinor} currency={baseCurrency} />
+            {/* What the list below comes to, in the page's ink: a red total warned about rows that warn about nothing. */}
+            <Hero minor={total.totalMinor} currency={baseCurrency} plain align="center" />
           </div>
-          {live.length > 0 && (
+          {shares.shown.length > 0 && (
             <>
-              <ShareBar segments={assetSegments(live)} totalMinor={total.totalMinor} />
-              <ShareLegend segments={assetSegments(live)} totalMinor={total.totalMinor} />
+              <ShareBar segments={shares.shown} totalMinor={shares.heldMinor} />
+              <ShareLegend segments={shares.shown} totalMinor={shares.heldMinor} />
             </>
+          )}
+          {shares.below.length > 0 && (
+            <p data-testid="assets-below-zero" className="text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
+              {shares.below.map((segment, index) => (
+                <span key={segment.key}>
+                  {index > 0 && ' · '}
+                  {segment.label} is below zero at <Money minor={segment.minor} currency={baseCurrency} />
+                </span>
+              ))}
+              , so the bar divides the rest.
+            </p>
           )}
         </Panel>
       )}

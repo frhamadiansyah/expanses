@@ -86,9 +86,9 @@ export function Keypad({
               className={cx(
                 'ph-focus-inset flex h-12 items-center justify-center rounded-[10px] text-[20px] font-medium',
                 key === 'DONE'
-                  ? 'row-span-2 h-auto bg-[var(--ph-tint)] text-[15px] font-bold text-[var(--ph-surface)]'
+                  ? 'row-span-2 h-auto bg-[var(--ph-ink)] text-[15px] font-bold text-[var(--ph-surface)]'
                   : OPERATORS.has(key)
-                    ? 'bg-[var(--ph-fill)] text-[var(--ph-tint)] active:bg-[var(--ph-track)]'
+                    ? 'bg-[var(--ph-fill)] text-[var(--ph-ink-2)] active:bg-[var(--ph-track)]'
                     : 'bg-[var(--ph-fill)] text-[var(--ph-ink)] active:bg-[var(--ph-track)]',
               )}
             >

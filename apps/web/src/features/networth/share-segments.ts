@@ -34,6 +34,19 @@ export function assetSegments(groups: readonly { group: SheetSectionKey; label: 
   );
 }
 
+/**
+ * What a bar can honestly divide: the segments above nought, as shares of what they come to together.
+ *
+ * A share of a total is only a share while every part is a positive piece of it. An overdrawn current account can take
+ * the section it sits in below nought, and a whole side with it — and a total below nought has no shares, so the bar
+ * drew nothing at all. The parts that are held are still held, so they are divided among themselves, and a part below
+ * nought is handed back to be named beside the bar rather than drawn as a negative width.
+ */
+export function heldShares(segments: readonly ShareSegment[]): { shown: ShareSegment[]; below: ShareSegment[]; heldMinor: number } {
+  const shown = segments.filter((segment) => segment.minor > 0);
+  return { shown, below: segments.filter((segment) => segment.minor < 0), heldMinor: shown.reduce((sum, segment) => sum + segment.minor, 0) };
+}
+
 /** One segment per kind of debt: the same drawers the list under the bar is folded by. */
 export function debtSegments(drawers: readonly { key: string; label: string; totalMinor: number | null; kind: DebtKind }[]): ShareSegment[] {
   return drawers.flatMap((drawer) =>

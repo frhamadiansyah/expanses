@@ -1,6 +1,35 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
+ * The add form, wherever it is drawn: a sheet over the page on a wide screen, a screen of its own on a phone.
+ * Both carry the same name, so a journey written once runs at either width.
+ */
+/**
+ * Save, wherever the form keeps it: the dock at the foot of a sheet on a wide screen, the ✓ in the bar on a phone's
+ * add screen. Only one of them is ever drawn, so the pair still names one button.
+ */
+export const saveButton = (form: Locator): Locator =>
+  form.getByRole('button', { name: 'Save', exact: true }).or(form.page().locator('header').getByRole('button', { name: 'Save', exact: true }));
+
+/**
+ * A transfer's To, chosen as a person does: the row, then the account in its list. Takes the name as the old select
+ * labelled it too — "Jago (IDR)" — so a journey written against the select reads the same.
+ */
+export async function chooseTo(form: Locator, account: string) {
+  await form.getByRole('button', { name: /^To/ }).click();
+  await form.page().getByRole('dialog', { name: 'To', exact: true }).getByRole('button', { name: account.replace(/ \([A-Z]{3}\)$/, ''), exact: true }).click();
+}
+
+/** A transfer's For goal, the same way: the row, then the goal. */
+export async function chooseGoal(form: Locator, goal: string) {
+  await form.getByRole('button', { name: /^For goal/ }).click();
+  await form.page().getByRole('dialog', { name: 'For goal', exact: true }).getByRole('button', { name: goal, exact: true }).click();
+}
+
+export const addForm = (page: Page): Locator =>
+  page.getByRole('dialog', { name: 'Add a transaction' }).or(page.getByRole('form', { name: 'Add a transaction' }));
+
+/**
  * Records an expense or income through the Option B card, from wherever the + is.
  *
  * The amount is typed two different ways because the card offers two: a phone gets a keypad in the dock and no
@@ -23,7 +52,7 @@ export async function addTransaction(
   },
 ) {
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   if (tx.mode && tx.mode !== 'Expense') await form.getByRole('radio', { name: tx.mode }).click();
   await openAmount(form);
   await fillAmount(page, form, tx.amount, tx.keyByKey);
@@ -33,7 +62,7 @@ export async function addTransaction(
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: tx.category, exact: true }).click();
   await form.getByLabel('Note').fill(tx.description);
   if (tx.date) await form.getByLabel('Date').fill(tx.date);
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 }
 
@@ -50,17 +79,17 @@ export async function addTransfer(
   tx: { from: string; to: string; amount: string; note?: string; goal?: string; receivedAmount?: string },
 ) {
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: tx.from, exact: true }).click();
   await openAmount(form);
   await fillAmount(page, form, tx.amount);
-  await form.getByLabel('To', { exact: true }).selectOption({ label: tx.to });
+  await chooseTo(form, tx.to);
   await form.getByLabel('Note').fill(tx.note ?? 'Transfer');
-  if (tx.goal) await form.getByLabel('For goal').selectOption({ label: tx.goal });
+  if (tx.goal) await chooseGoal(form, tx.goal);
   if (tx.receivedAmount) await form.getByLabel(/^Received amount/).fill(tx.receivedAmount);
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 }
 
@@ -92,7 +121,7 @@ export async function addPurchase(
 ) {
   const sell = trade.mode === 'sell';
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await form.getByRole('radio', { name: 'Buy / sell' }).click();
   await form.getByLabel('What you bought or sold').selectOption({ label: `${sell ? 'Sell' : 'Investments'} › ${trade.what}` });
   await form.getByLabel(sell ? /^Proceeds, before fees/ : /^What it cost, before fees/).fill(trade.amount);
@@ -107,7 +136,7 @@ export async function addPurchase(
   // Offered only on a credit card, and only when buying — the card's two facts, not the trade's.
   if (trade.pointsCategory) await form.getByLabel('Category for points').selectOption({ label: trade.pointsCategory });
   if (trade.mcc) await form.getByLabel('MCC').fill(trade.mcc);
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 }
 
@@ -123,7 +152,7 @@ export async function addPurchase(
  */
 export async function shareWith(page: Page, form: Locator, people: readonly { name: string; owes?: string }[]) {
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'With', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'With', exact: true });
   for (const person of people) {
@@ -142,14 +171,11 @@ export async function shareWith(page: Page, form: Locator, people: readonly { na
 }
 
 /**
- * Both sheets shut again, innermost first, so the card underneath can be saved.
- *
- * The order is not a preference. A sheet is drawn inside the sheet that opened it, so while the inner one is up
- * there are two buttons called Close under `more` and neither can be picked out by name.
+ * The sheet a detail row opened, shut again so the card underneath can be saved. The details themselves stay open
+ * under the card: they are part of the form now rather than a sheet over it, so there is nothing else to close.
  */
 export async function closeDetails(more: Locator, sheet: Locator) {
   await sheet.getByRole('button', { name: 'Close' }).click();
-  await more.getByRole('button', { name: 'Close' }).click();
 }
 
 /**
@@ -160,7 +186,7 @@ export async function closeDetails(more: Locator, sheet: Locator) {
  */
 export async function attachPhoto(page: Page, form: Locator, file: { name: string; mimeType: string; buffer: Buffer }) {
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Photos' }).click();
   const sheet = page.getByRole('dialog', { name: 'Photos' });
   await sheet.getByTestId('photo-library-input').setInputFiles(file);

@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { openNewAsset } from './add-asset';
-import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
+import { addTransaction, attachPhoto, closeDetails, addForm, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { todayIn } from './today';
 
@@ -212,7 +212,7 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await form.getByRole('button', { name: 'Paid with' }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
   await form.getByRole('button', { name: 'Currency' }).click();
@@ -227,7 +227,7 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
   await form.getByLabel('Note').fill('Blue Bottle');
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
   // It really is a foreign purchase, or the fallback below is about an ordinary row.
@@ -320,7 +320,7 @@ test('the edit sheet shows the receipt the transaction already has', async ({ pa
 
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
   const keypad = page.getByTestId('keypad');
   for (const key of '120000') await keypad.getByRole('button', { name: key, exact: true }).click();
@@ -332,7 +332,7 @@ test('the edit sheet shows the receipt the transaction already has', async ({ pa
   await form.getByLabel('Note').fill('Warung Steak');
   const { more, sheet: photos } = await attachPhoto(page, form, { name: 'receipt.png', mimeType: 'image/png', buffer: Buffer.from('a receipt') });
   await closeDetails(more, photos);
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
   const steak = row(page, 'Warung Steak');

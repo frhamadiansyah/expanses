@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { MORE_GROUPS, REACHABLE, TABS } from '../src/app/nav';
 import { openAccount } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, addForm } from './add-transaction';
 import { setBudget } from './budget';
 
 /** Anything a finger is meant to hit must be at least this tall or wide. */
@@ -109,7 +109,7 @@ test('the phone header adds, searches and filters from three round buttons', asy
 
   // The header's + opens the same form the tab bar's does.
   await page.getByRole('button', { name: 'Add a transaction' }).first().click();
-  await expect(page.getByRole('dialog', { name: 'Add a transaction' }).getByLabel('Note')).toBeVisible();
+  await expect(addForm(page).getByLabel('Note')).toBeVisible();
 });
 
 test('the month’s chart leads the list, and a category opens as its own screen', async ({ page }) => {

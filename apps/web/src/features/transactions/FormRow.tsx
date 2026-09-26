@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { Info } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { cx } from '../../ui';
 
 /**
@@ -148,6 +149,7 @@ export function SwitchRow({
   onChange,
   disabled = false,
   hint,
+  info,
 }: {
   icon?: ReactNode;
   label: string;
@@ -155,34 +157,92 @@ export function SwitchRow({
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   hint?: ReactNode;
+  /**
+   * What the switch does, behind an ⓘ beside its name rather than under it: a sentence the row needs once, not every
+   * time it is read. Shown under the name while the ⓘ is pressed.
+   */
+  info?: ReactNode;
 }) {
+  const [explained, setExplained] = useState(false);
+  const track = (
+    <span
+      aria-hidden
+      className={cx(
+        'flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[2px] transition-colors',
+        checked ? 'bg-[var(--ph-tint)]' : 'bg-[var(--ph-track)]',
+      )}
+    >
+      <span className={cx('h-[22px] w-[22px] rounded-full bg-[var(--ph-selected)] shadow-[0_1px_2px_rgb(0_0_0/0.25)] transition-transform', checked && 'translate-x-[18px]')} />
+    </span>
+  );
+  if (info === undefined) {
+    return (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={cx('ph-focus-inset flex w-full items-center gap-[10px] pl-[10px] text-left', disabled && 'cursor-not-allowed opacity-40')}
+      >
+        <RowLead>{icon}</RowLead>
+        <span className={cx(ROW_BODY, 'py-2')}>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] leading-5 text-[var(--ph-ink)]">{label}</span>
+            {hint && <span className="mt-[2px] block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{hint}</span>}
+          </span>
+          {track}
+        </span>
+      </button>
+    );
+  }
+  /*
+   * With an ⓘ the row cannot be one button — a button inside a button is not a thing a browser will draw — so the
+   * switch is the track itself, and the rest of the row still flips it, as the one-button row does.
+   */
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={cx('ph-focus-inset flex w-full items-center gap-[10px] pl-[10px] text-left', disabled && 'cursor-not-allowed opacity-40')}
+    <div
+      onClick={() => !disabled && onChange(!checked)}
+      className={cx('flex w-full cursor-pointer items-center gap-[10px] pl-[10px] text-left', disabled && 'cursor-not-allowed opacity-40')}
     >
       <RowLead>{icon}</RowLead>
       <span className={cx(ROW_BODY, 'py-2')}>
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] leading-5 text-[var(--ph-ink)]">{label}</span>
-          {hint && <span className="mt-[2px] block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{hint}</span>}
+          <span className="flex items-center gap-[6px]">
+            <span className="text-[15px] leading-5 text-[var(--ph-ink)]">{label}</span>
+            <button
+              type="button"
+              aria-label={`About ${label}`}
+              aria-expanded={explained}
+              onClick={(event) => {
+                event.stopPropagation();
+                setExplained((was) => !was);
+              }}
+              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+            >
+              <Info size={16} aria-hidden />
+            </button>
+          </span>
+          {explained && <span className="mt-[2px] block text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{info}</span>}
         </span>
-        <span
-          aria-hidden
-          className={cx(
-            'flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[2px] transition-colors',
-            checked ? 'bg-[var(--ph-tint)]' : 'bg-[var(--ph-track)]',
-          )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          aria-label={label}
+          disabled={disabled}
+          onClick={(event) => {
+            event.stopPropagation();
+            onChange(!checked);
+          }}
+          // 44 px tall however thin the track: the whole height is the target, as the kit asks of every control.
+          className="ph-focus flex h-11 shrink-0 items-center rounded-full"
         >
-          <span className={cx('h-[22px] w-[22px] rounded-full bg-[var(--ph-selected)] shadow-[0_1px_2px_rgb(0_0_0/0.25)] transition-transform', checked && 'translate-x-[18px]')} />
-        </span>
+          {track}
+        </button>
       </span>
-    </button>
+    </div>
   );
 }
 

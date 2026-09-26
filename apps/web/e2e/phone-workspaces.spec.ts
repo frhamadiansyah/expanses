@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
+import { addForm, saveButton, chooseTo } from './add-transaction';
 
 /**
  * On a phone the ⋯ menu is the only room left for anything that is not the list itself, so the workspace sits
@@ -42,7 +43,7 @@ test('a workspace is made from ⋯ and starts with none of the other’s categor
   await page.keyboard.press('Escape');
 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await form.getByRole('button', { name: 'Category' }).click();
   const picker = page.getByRole('dialog', { name: 'Select category' });
   // Personal's own spending categories are Personal's: none of them is on offer here.
@@ -76,17 +77,17 @@ test('a transfer is filed in no workspace, so every workspace shows it and none 
 
   await page.goto('/transactions');
   await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Add a transaction' }).click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
-  await form.getByLabel('To', { exact: true }).selectOption({ label: 'Jenius (IDR)' });
+  await chooseTo(form, 'Jenius (IDR)');
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
   const keypad = page.getByTestId('keypad');
   for (const digit of '500000') await keypad.getByRole('button', { name: digit, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await form.getByLabel('Note').fill('Top up');
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
   // Personal: the transfer is on the list, and the month's chart has nothing to draw.

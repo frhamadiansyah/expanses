@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
-import { openAmount } from './add-transaction';
+import { openAmount, addForm, saveButton, chooseGoal, chooseTo } from './add-transaction';
 import { openGoalForm } from './goals';
 import { addBill, addGoal, addMoneyAccount, goalCard, goalRow, jeniusWithTwoGoals, openAccountPage, openExpense, setAside, transferOutBorrowingFromUmrah, typeAmount } from './set-aside';
 
@@ -60,7 +60,7 @@ async function deleteFromReceipt(page: Page, what: string) {
 }
 
 async function saveForm(form: Locator) {
-  const save = form.getByRole('button', { name: 'Save', exact: true });
+  const save = saveButton(form);
   await expect(save).toBeEnabled();
   await save.click();
   await expect(form).toHaveCount(0);
@@ -69,11 +69,11 @@ async function saveForm(form: Locator) {
 async function openTransfer(page: Page, from: string, to: string) {
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: from, exact: true }).click();
-  await form.getByLabel('To', { exact: true }).selectOption({ label: to });
+  await chooseTo(form, to);
   return form;
 }
 
@@ -90,7 +90,7 @@ async function expenseBorrowingEf(page: Page, amount: string, over: RegExp, note
   const form = await openExpense(page, 'Jenius');
   await typeAmount(page, form, amount);
   await expect(form.getByText(over)).toBeVisible();
-  await expect(form.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expect(saveButton(form)).toBeDisabled();
   await form.getByRole('button', { name: 'Take from Emergency fund' }).click();
   await form.getByRole('button', { name: 'No — borrowing from it' }).click();
   await pickCategory(page, form);
@@ -215,7 +215,7 @@ export const JOURNEYS: Journey[] = [
       await addMoneyAccount(page, 'BCA', 'savings', '0');
       const form = await openTransfer(page, 'Jenius', 'BCA (IDR)');
       await typeAmount(page, form, '7500000');
-      await form.getByLabel('For goal').selectOption({ label: 'Umrah 2027' });
+      await chooseGoal(form, 'Umrah 2027');
       await form.getByLabel('Note').pressSequentially('Umrah to BCA');
       await expect(form.getByText(/more than is free/)).toHaveCount(0);
       await saveForm(form);

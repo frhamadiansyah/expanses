@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { useBack } from '../../app/BackHeader';
 import { useApp } from '../../app/context';
 import { Card } from '../../ui';
-import { LargeTitle, SCREEN } from '../../ui/native';
+import { SCREEN } from '../../ui/native';
 import { isEditable } from './draft';
 import { useChangeable } from './queries';
 import { TransactionCard } from './TransactionCard';
@@ -17,14 +17,15 @@ import { TransactionCard } from './TransactionCard';
  * and "new" is never read as an id. `add-transaction.spec.ts` asserts exactly that rather than trusting it.
  */
 export function NewTransactionRoute() {
-  const navigate = useNavigate();
   const back = useBack('/transactions');
-  const done = () => void navigate({ to: '/transactions' });
   return (
     <div className={SCREEN}>
-      {/* Back goes wherever the form was opened from, so it is named for what it does rather than a destination. */}
-      <LargeTitle title="Add a transaction" back="Back" onBack={back} />
-      <TransactionCard full onDone={done} />
+      {/*
+       * A subpage's bar, as New asset and New debt draw theirs: the circle back, the name centred. Back goes wherever
+       * the form was opened from — the tab bar's ＋ works from every screen — and so do Save and Cancel, as the
+       * sheet this page replaced closed onto the screen underneath.
+       */}
+      <TransactionCard full title="New transaction" label="Add a transaction" onBack={back} onDone={back} />
     </div>
   );
 }
@@ -67,10 +68,9 @@ export function EditTransactionRoute() {
   if (!tx || !changeable) return <Card>Loading…</Card>;
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Edit transaction" back="Back" onBack={back} />
       {/* An edit voids the original and posts a new id, so the transaction this URL names is gone once it
           saves. The list is where to land — this address would only 404 into its own redirect. */}
-      <TransactionCard full initial={tx} onDone={() => void navigate({ to: '/transactions' })} />
+      <TransactionCard full title="Edit transaction" initial={tx} onBack={back} onDone={() => void navigate({ to: '/transactions' })} />
     </div>
   );
 }

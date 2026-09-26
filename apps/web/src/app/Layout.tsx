@@ -1,4 +1,4 @@
-import { Link, Outlet } from '@tanstack/react-router';
+import { Link, Outlet, useNavigate } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { sweepPhotosAtStart } from '../photos/sweep-at-start';
@@ -6,13 +6,11 @@ import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
 import { usePendingDraftCount } from '../features/review/queries';
-import { TransactionCard } from '../features/transactions/TransactionCard';
 import { useOpenBook } from '../features/workspaces/queries';
 import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
 import { WorkspaceSheet } from '../features/workspaces/WorkspaceSheet';
 import { useApp } from './context';
 import { AccountSheet } from './AccountSheet';
-import { Sheet } from './Sheet';
 import { TabBar } from './TabBar';
 import { usePhone } from './use-phone';
 
@@ -59,7 +57,7 @@ function ReviewLink() {
 export function Layout() {
   const { workspaceName, ws, database } = useApp();
   const [more, setMore] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const navigate = useNavigate();
   // The phone reaches the switcher from Cashflow's ⋯; the sidebar is on every screen, so a wide screen
   // reaches it from more places than a phone does, never fewer.
   const [choosing, setChoosing] = useState(false);
@@ -142,13 +140,10 @@ export function Layout() {
       </main>
       {phone && (
         <>
-          <TabBar onAdd={() => setAdding(true)} onAccount={() => setMore(true)} accountOpen={more} />
+          {/* Adding is a screen of its own, drawn the way every other subpage is: the form is long enough to scroll,
+              and a sheet over the page it was opened from left two screens half-visible at once. */}
+          <TabBar onAdd={() => void navigate({ to: '/transactions/new' })} onAccount={() => setMore(true)} accountOpen={more} />
           {more && <AccountSheet onClose={() => setMore(false)} />}
-          {adding && (
-            <Sheet grouped title="Add a transaction" onClose={() => setAdding(false)}>
-              <TransactionCard onDone={() => setAdding(false)} />
-            </Sheet>
-          )}
         </>
       )}
     </div>
