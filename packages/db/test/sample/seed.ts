@@ -1,7 +1,8 @@
 import { findEntry } from '@expanses/catalog';
-import { expenseLines, incomeLines, statementCycleFor, transferLines } from '@expanses/core';
+import { assetItem, expenseLines, incomeLines, statementCycleFor, transferLines } from '@expanses/core';
 import {
   addCard,
+  addHolding,
   applyCatalogEntry,
   billOnNextStatement,
   captureDrafts,
@@ -10,13 +11,16 @@ import {
   createCardAccount,
   createDraft,
   type Database,
+  databaseVersion,
   ensureCategoryKeys,
   ensureDefaultCategorySets,
   listAccounts,
   listCards,
   listCategorySets,
   listSetCategories,
+  openCashAccount,
   openDebtBalance,
+  openPocketedAccount,
   payCardPurchases,
   postTransaction,
   recordLoan,
@@ -24,6 +28,7 @@ import {
   recordRepayment,
   recordTaggedTransfer,
   recordTrade,
+  recordValuation,
   saveAssetProfile,
   saveBudget,
   saveCardTerms,
@@ -35,10 +40,12 @@ import {
   saveInstallment,
   saveLoanTerms,
   saveMerchantMcc,
+  setLoanItem,
   splitBill,
   tagTransaction,
   upsertPrice,
   upsertRate,
+  upsertSecurityPrice,
   type WorkspaceContext,
 } from '../../src/index';
 
@@ -47,6 +54,10 @@ import {
  * e-wallet and three credit cards (one with a supplementary card), with bills, budgets, a holiday, goals,
  * holdings, money lent, captures waiting to be recorded, and a card statement with a late posting and an
  * early payment. Every name here is made up.
+ *
+ * It owns one of every kind the pickers offer a drawing for — each of the seven money accounts, something in
+ * each of the five asset families, and each kind of debt — so every screen and every row's tile has something
+ * to show. What it owns outweighs what it owes, as it would for a household with a mortgage twenty years in.
  *
  * Built only through the app's own functions, so the data is exactly what the app would have written.
  */
@@ -106,6 +117,14 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
   const between = (low: number, high: number, step = 1_000) => Math.round((low + rand() * (high - low)) / step) * step;
   const start = monthStart(today, 3);
 
+  /*
+   * The sample also stands in for a real household on an older schema, where a migration test seeds it before
+   * upgrading. What a schema cannot hold yet is left out there, or opened the way that schema could: the kinds of
+   * money after 47, tickers and brokers after 51, and a loan's kind after 55.
+   */
+  const version = await databaseVersion(database);
+  const has = (migration: number) => version >= migration;
+
   await ensureCategoryKeys(database, ws);
   await ensureDefaultCategorySets(database, ws);
   const category = async (key: string) => {
@@ -120,14 +139,34 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
   };
 
   // ---- Money ----
-  const bca = await createAccount(database, ws, { name: 'BCA Tahapan', kind: 'asset', subtype: 'bank', currency: 'IDR', openingBalanceMinor: 52_450_000, openedOn: start });
-  const jenius = await createAccount(database, ws, { name: 'Jenius Maxi Saver', kind: 'asset', subtype: 'savings', currency: 'IDR', openingBalanceMinor: 61_200_000, openedOn: start });
-  const gopay = await createAccount(database, ws, { name: 'GoPay', kind: 'asset', subtype: 'cash', currency: 'IDR', openingBalanceMinor: 420_000, openedOn: start });
-  const cash = await createAccount(database, ws, { name: 'Wallet cash', kind: 'asset', subtype: 'cash', currency: 'IDR', openingBalanceMinor: 850_000, openedOn: start });
+  // Opened through the same call the Add account screen makes, so each carries the code and behaviour its kind fixes.
+  // Dated a year before the record starts: money the household already had is not money that arrived on day one,
+  // and a net-worth chart that counted it that way would show a jump nobody earned.
+  const held = monthStart(today, 15);
+  const bca = await openCashAccount(database, ws, { item: 'bank', name: 'BCA Tahapan', bank: 'BCA', currency: 'IDR', openingBalanceMinor: 68_450_000, openedOn: held });
+  const jenius = await openCashAccount(database, ws, { item: 'savings', name: 'Jenius Maxi Saver', bank: 'Bank SMBC Indonesia', currency: 'IDR', openingBalanceMinor: 111_200_000, openedOn: held });
+  const gopay = await openCashAccount(database, ws, { item: has(47) ? 'ewallet' : 'cash', name: 'GoPay', currency: 'IDR', openingBalanceMinor: 420_000, openedOn: held });
+  const cash = await openCashAccount(database, ws, { item: 'cash', name: 'Wallet cash', currency: 'IDR', openingBalanceMinor: 850_000, openedOn: held });
   const USD = 16_280;
-  await upsertRate(database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: start, rate: USD, source: 'manual', sourceDate: start });
-  await upsertRate(database, { fromCurrency: 'SGD', toCurrency: 'IDR', onDate: start, rate: 12_540, source: 'manual', sourceDate: start });
-  const wise = await createAccount(database, ws, { name: 'Wise USD', kind: 'asset', subtype: 'bank', currency: 'USD', openingBalanceMinor: 184_050, openedOn: start, openingRateToBase: USD });
+  const SGD = 12_540;
+  await upsertRate(database, { fromCurrency: 'USD', toCurrency: 'IDR', onDate: held, rate: USD, source: 'manual', sourceDate: held });
+  await upsertRate(database, { fromCurrency: 'SGD', toCurrency: 'IDR', onDate: held, rate: SGD, source: 'manual', sourceDate: held });
+  // One account holding two currencies, as Wise does: a row on Assets at their total, opening to its pockets.
+  const { pockets: wisePockets } = await openPocketedAccount(database, ws, {
+    item: 'bank',
+    name: 'Wise',
+    bank: 'Wise',
+    openedOn: held,
+    pockets: [
+      { currency: 'USD', openingBalanceMinor: 184_050, openingRateToBase: USD },
+      { currency: 'SGD', openingBalanceMinor: 42_000, openingRateToBase: SGD },
+    ],
+  });
+  const wise = wisePockets.find((pocket) => pocket.currency === 'USD')!;
+  // A deposit that matures next month, so its page has a maturity to propose on — moved out of savings, not new money.
+  if (has(47)) await openCashAccount(database, ws, { item: 'time_deposit', name: 'Deposito BCA 3 months', bank: 'BCA', currency: 'IDR', openingBalanceMinor: 50_000_000, openedOn: addDays(today, -65), maturesOn: addDays(today, 26), rateBps: 425, sourceAccountId: jenius.id });
+  // A client's cheque not yet cleared: money, but not money that can be spent from.
+  if (has(47)) await openCashAccount(database, ws, { item: 'other_cash', name: 'Cheque from PT Sinar Kreatif', currency: 'IDR', openingBalanceMinor: 4_500_000, openedOn: addDays(today, -6) });
 
   // ---- Cards ----
   const krisflyer = await createCardAccount(database, ws, { name: 'BCA KrisFlyer Visa Signature', subtype: 'credit_card', currency: 'IDR', issuer: 'BCA', last4: '4417' });
@@ -172,7 +211,7 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
 
   // ---- Bills ----
   const bills = [
-    { name: 'Apartment rent', key: 'property.housing_rent', money: bca.id, amount: 7_500_000, day: 1 },
+    { name: 'IPL Bintaro Jaya', key: 'property.community_security', money: bca.id, amount: 650_000, day: 1 },
     { name: 'Telkomsel Halo', key: 'utilities.mobile_phone', money: jenius.id, amount: 185_000, day: 5 },
     { name: 'Biznet Home', key: 'utilities.internet_provider', money: krisflyer.id, amount: 395_000, day: 10 },
     { name: 'PLN electricity', key: 'utilities.electricity', money: bca.id, amount: null, day: 20 },
@@ -218,14 +257,114 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
   });
 
   // ---- Holdings, owned before the app ----
-  const gold = await createAccount(database, ws, { name: 'Antam gold bars', kind: 'asset', subtype: 'investment', currency: 'IDR' });
-  await saveAssetProfile(database, ws, { accountId: gold.id, assetKind: 'gold' });
-  await recordTrade(database, ws, { accountId: gold.id, kind: 'buy', occurredOn: '2025-11-08', unitsMicro: 25_000_000, grossMinor: 39_250_000, feeMinor: 0, taxMinor: 0, cashAccountId: null });
-  await upsertPrice(database, ws, { accountId: gold.id, onDate: addDays(today, -2), priceMicro: 1_968_000_000_000 });
-  const bbri = await createAccount(database, ws, { name: 'BBRI shares', kind: 'asset', subtype: 'investment', currency: 'IDR' });
-  await saveAssetProfile(database, ws, { accountId: bbri.id, assetKind: 'stock', lotSize: 100 });
-  await recordTrade(database, ws, { accountId: bbri.id, kind: 'buy', occurredOn: '2025-06-16', unitsMicro: 1_500_000_000, grossMinor: 6_525_000, feeMinor: 9_800, taxMinor: 0, cashAccountId: null });
-  await upsertPrice(database, ws, { accountId: bbri.id, onDate: addDays(today, -1), priceMicro: 4_180_000_000 });
+  /*
+   * Each opened the way the Add asset form opens the item it names: the account and profile the catalogue item
+   * fixes, then either its buys (anything counted in units, grams or face value) or what it cost and what it is
+   * worth now (anything whose value is typed).
+   */
+  /*
+   * A figure's path from what was paid to what it is worth now, marked once a quarter over the last year: the way
+   * a house is revalued now and then, not once, the week the app was opened. One mark drawn three days ago moved
+   * the whole difference onto the chart's last month; a quarterly mark lets it climb, or fall, as it did.
+   */
+  const drift = (from: string, then: number, now: number, step: number): { on: string; value: number }[] => {
+    const heldDays = Math.max(1, (Date.parse(today) - Date.parse(from)) / 86_400_000);
+    return [12, 9, 6, 3, 0].flatMap((monthsBack) => {
+      const on = monthsBack === 0 ? addDays(today, -2) : monthStart(today, monthsBack);
+      const back = (Date.parse(today) - Date.parse(on)) / 86_400_000;
+      if (on <= from) return [];
+      const value = then + (now - then) * (1 - back / heldDays);
+      return [{ on, value: Math.max(step, Math.round(value / step) * step) }];
+    });
+  };
+  const own = async (
+    itemId: string,
+    name: string,
+    how: { buys: { on: string; unitsMicro: number; costMinor: number }[]; priceMicro: number } | { boughtOn: string; costMinor: number; worthMinor: number },
+  ) => {
+    const item = assetItem(itemId);
+    if (item.behaviour.opens !== 'holding') throw new Error(`${itemId} is not a holding`);
+    const { behaviour } = item;
+    const typed = 'boughtOn' in how;
+    const account = await createAccount(database, ws, {
+      name,
+      kind: 'asset',
+      subtype: behaviour.subtype as 'investment' | 'property' | 'vehicle',
+      currency: 'IDR',
+      openingBalanceMinor: typed ? how.costMinor : 0,
+      openedOn: typed ? how.boughtOn : undefined,
+    });
+    const years = typed ? [how.boughtOn] : how.buys.map((buy) => buy.on);
+    await saveAssetProfile(database, ws, {
+      accountId: account.id,
+      assetKind: behaviour.assetKind,
+      planGroup: behaviour.planGroup,
+      unitKind: behaviour.unitKind,
+      lotSize: behaviour.lotSize,
+      coretaxSection: item.section ?? 'lainnya',
+      coretaxCode: item.code,
+      acquiredYear: Math.min(...years.map((on) => Number(on.slice(0, 4)))),
+    });
+    if (typed) {
+      for (const mark of drift(how.boughtOn, how.costMinor, how.worthMinor, 100_000)) {
+        await recordValuation(database, ws, { accountId: account.id, asOf: mark.on, valueMinor: mark.value, basis: 'estimate' });
+      }
+    } else {
+      for (const buy of how.buys) {
+        await recordTrade(database, ws, { accountId: account.id, kind: 'buy', occurredOn: buy.on, unitsMicro: buy.unitsMicro, grossMinor: buy.costMinor, feeMinor: 0, taxMinor: 0, cashAccountId: null });
+      }
+      const first = how.buys[0]!;
+      for (const mark of drift(first.on, Math.round((first.costMinor * 1_000_000 * 1_000_000) / first.unitsMicro), how.priceMicro, 1)) {
+        await upsertPrice(database, ws, { accountId: account.id, onDate: mark.on, priceMicro: mark.value });
+      }
+    }
+    return account;
+  };
+  const year = (back: number) => Number(today.slice(0, 4)) - back;
+  const units = (n: number) => Math.round(n * 1_000_000);
+
+  // Immovable: the house the mortgage bought, and a plot outside the city.
+  await own('property', 'Rumah Bintaro Sektor 9', { boughtOn: `${year(2)}-08-14`, costMinor: 1_150_000_000, worthMinor: 1_420_000_000 });
+  await own('empty_land', 'Tanah kavling Sentul', { boughtOn: `${year(5)}-03-02`, costMinor: 210_000_000, worthMinor: 345_000_000 });
+  // Movable: the car the lease is paying for, and a scooter.
+  await own('vehicle', 'Toyota Veloz 2024', { boughtOn: `${year(2)}-09-20`, costMinor: 318_000_000, worthMinor: 262_000_000 });
+  await own('motorcycle', 'Honda Vario 160', { boughtOn: `${year(3)}-01-11`, costMinor: 27_500_000, worthMinor: 19_000_000 });
+  // Investments: a money-market fund, a retail government bond and a unit-linked policy, beside the shares below.
+  await own('fund', 'Sucorinvest Money Market Fund', { buys: [{ on: `${year(1)}-02-10`, unitsMicro: units(12_480.5521), costMinor: 22_000_000 }, { on: `${year(1)}-10-03`, unitsMicro: units(4_802.1144), costMinor: 8_600_000 }], priceMicro: units(1_812.4467) });
+  await own('bond', 'ORI025T3', { buys: [{ on: `${year(1)}-02-21`, unitsMicro: units(25_000_000), costMinor: 25_000_000 }], priceMicro: units(1.0125) });
+  await own('unit_link', 'Prudential PRULink', { boughtOn: `${year(4)}-05-01`, costMinor: 36_000_000, worthMinor: 41_800_000 });
+  // Intangible and other: gold bars and jewellery by the gram, and the laptop that earns the living.
+  const gold = await own('gold', 'Antam gold bars', { buys: [{ on: `${year(1)}-11-08`, unitsMicro: units(25), costMinor: 39_250_000 }], priceMicro: units(1_968_000) });
+  void gold;
+  await own('gold_jewellery', 'Wedding jewellery', { buys: [{ on: `${year(6)}-06-18`, unitsMicro: units(18.5), costMinor: 14_800_000 }], priceMicro: units(1_710_000) });
+  await own('electronics', 'MacBook Pro 14"', { boughtOn: `${year(1)}-04-05`, costMinor: 32_999_000, worthMinor: 24_500_000 });
+
+  if (has(51)) {
+    // Listed shares, held at a broker whose cash account (RDN) is money of its own: the By stock and broker page.
+    const bbca = await addHolding(database, ws, {
+      security: { ticker: 'BBCA', name: 'Bank Central Asia Tbk', market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share', source: 'catalogue' },
+      broker: { name: 'Stockbit RDN', currency: 'IDR' },
+      buy: { occurredOn: `${year(1)}-03-17`, unitsMicro: units(1_500), grossMinor: 13_725_000, feeMinor: 20_588, taxMinor: 0, cashAccountId: null },
+    });
+    const rdn = bbca.brokerAccountId!;
+    const bbri = await addHolding(database, ws, {
+      security: { ticker: 'BBRI', name: 'Bank Rakyat Indonesia Tbk', market: 'IDX', currency: 'IDR', lotSize: 100, kind: 'share', source: 'catalogue' },
+      broker: { accountId: rdn },
+      buy: { occurredOn: `${year(1)}-06-16`, unitsMicro: units(1_500), grossMinor: 6_525_000, feeMinor: 9_800, taxMinor: 0, cashAccountId: null },
+    });
+    for (const [holding, boughtOn, paid, now] of [
+      [bbca, `${year(1)}-03-17`, 9_150, 9_875],
+      [bbri, `${year(1)}-06-16`, 4_350, 4_180],
+    ] as const) {
+      for (const mark of drift(boughtOn, units(paid), units(now), 1)) await upsertSecurityPrice(database, ws, { securityId: holding.securityId, onDate: mark.on, priceMicro: mark.value });
+    }
+    // Cash waiting at the broker for the next buy.
+    await postTransaction(database, ws, { occurredOn: addDays(start, 2), description: 'Top up Stockbit RDN', lines: transferLines({ fromAccountId: bca.id, toAccountId: rdn, amountMinor: 3_500_000, currency: 'IDR' }) });
+  } else {
+    // Before tickers: the shares as a holding of their own, priced by hand.
+    const shares = await own('stock', 'BBRI shares', { buys: [{ on: `${year(1)}-06-16`, unitsMicro: units(1_500), costMinor: 6_525_000 }], priceMicro: units(4_180) });
+    void shares;
+  }
 
   // ---- Month by month ----
   const cardPurchases: { id: string; account: string; on: string }[] = [];
@@ -353,6 +492,9 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
     name: string;
     lender: string;
     purpose: string;
+    /** The debt picker's item: what the Liabilities page folds the loan under. */
+    item: string;
+    method?: 'annuity' | 'zero';
     owedThenMinor: number;
     originalMinor: number;
     monthsIn: number;
@@ -364,12 +506,19 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
     /** Left out for the loan whose bank named no figure, which the schedule then works out itself. */
     namedPaymentMinor?: number;
   }) => {
+    /*
+     * Only the instalments since the household's bank account was opened are paid through the app; paying two years
+     * of a mortgage out of a current account three months old is what overdrew it. A loan older than that is still
+     * dated from when it was taken on — so net worth never shows the debt arriving months after the house it bought —
+     * but opens at what was still owed when the app's own record begins.
+     */
+    const paidHere = Math.min(input.monthsIn, 3);
     const account = await createAccount(database, ws, {
       name: input.name,
       kind: 'liability',
       subtype: 'loan',
       currency: 'IDR',
-      openingBalanceMinor: input.owedThenMinor,
+      openingBalanceMinor: input.owedThenMinor - input.principalMinor * (input.monthsIn - paidHere),
       openedOn: addDays(withDay(monthStart(today, input.monthsIn + 1), input.paymentDay), -1),
     });
     await saveLoanTerms(database, ws, {
@@ -379,12 +528,13 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
       originalMinor: input.originalMinor,
       firstPaymentOn: withDay(monthStart(today, input.monthsIn), input.paymentDay),
       tenorMonths: input.tenorMonths,
-      method: 'annuity',
+      method: input.method ?? 'annuity',
       paymentDay: input.paymentDay,
       rateBps: input.rateBps,
       paymentMinor: input.namedPaymentMinor,
     });
-    for (let back = input.monthsIn; back >= 1; back -= 1) {
+    if (has(55)) await setLoanItem(database, ws, account.id, input.item);
+    for (let back = paidHere; back >= 1; back -= 1) {
       await recordLoanPayment(database, ws, {
         accountId: account.id,
         occurredOn: withDay(monthStart(today, back), input.paymentDay),
@@ -396,15 +546,22 @@ export async function seedSampleData(database: Database, ws: WorkspaceContext, t
     return account;
   };
 
-  await openLoan({ name: 'KPR BCA', lender: 'BCA', purpose: 'house', owedThenMinor: 728_400_000, originalMinor: 900_000_000, monthsIn: 24, tenorMonths: 180, rateBps: 475, paymentDay: 5, principalMinor: 3_100_000, interestMinor: 2_850_000, namedPaymentMinor: 5_950_000 });
-  await openLoan({ name: 'Car loan Adira', lender: 'Adira Finance', purpose: 'car', owedThenMinor: 260_400_000, originalMinor: 320_000_000, monthsIn: 24, tenorMonths: 36, rateBps: 690, paymentDay: 12, principalMinor: 4_600_000, interestMinor: 1_150_000, namedPaymentMinor: 5_750_000 });
+  await openLoan({ name: 'KPR BCA', lender: 'BCA', purpose: 'house', item: 'home_mortgage', owedThenMinor: 728_400_000, originalMinor: 900_000_000, monthsIn: 24, tenorMonths: 180, rateBps: 475, paymentDay: 5, principalMinor: 3_100_000, interestMinor: 2_850_000, namedPaymentMinor: 5_950_000 });
+  await openLoan({ name: 'Car loan Adira', lender: 'Adira Finance', purpose: 'car', item: 'vehicle_leasing', owedThenMinor: 260_400_000, originalMinor: 320_000_000, monthsIn: 24, tenorMonths: 36, rateBps: 690, paymentDay: 12, principalMinor: 4_600_000, interestMinor: 1_150_000, namedPaymentMinor: 5_750_000 });
   // The one with nothing named by the bank: the app's own schedule supplies the instalment it will ask for.
-  await openLoan({ name: 'KTA Mandiri', lender: 'Mandiri', purpose: 'personal', owedThenMinor: 56_600_000, originalMinor: 60_000_000, monthsIn: 2, tenorMonths: 24, rateBps: 1_080, paymentDay: 20, principalMinor: 1_900_000, interestMinor: 650_000 });
+  await openLoan({ name: 'KTA Mandiri', lender: 'Mandiri', purpose: 'personal', item: 'multi_purpose_loan', owedThenMinor: 56_600_000, originalMinor: 60_000_000, monthsIn: 2, tenorMonths: 24, rateBps: 1_080, paymentDay: 20, principalMinor: 1_900_000, interestMinor: 650_000 });
+  // A paylater for the new sofa: six months at no interest, which is why it is never asked for a rate.
+  await openLoan({ name: 'Kredivo 6 months', lender: 'Kredivo', purpose: 'personal', item: 'online_loan', method: 'zero', owedThenMinor: 9_000_000, originalMinor: 9_000_000, monthsIn: 2, tenorMonths: 6, rateBps: 0, paymentDay: 25, principalMinor: 1_500_000, interestMinor: 0 });
 
   const dewi = await recordLoan(database, ws, { person: { name: 'Dewi', direction: 'borrowed', currency: 'IDR', reason: 'Motorbike down payment' }, occurredOn: addDays(today, -40), amountMinor: 4_500_000, moneyAccountId: bca.id });
   await recordRepayment(database, ws, { debtAccountId: dewi.debtAccountId, occurredOn: addDays(today, -12), amountMinor: 1_500_000, moneyAccountId: bca.id });
   // Came with the household from before the app: opened at what is still owed, the way Add a debt opens one.
   await openDebtBalance(database, ws, { direction: 'borrowed', personName: 'Kadek', currency: 'IDR', balanceMinor: 2_000_000, openedOn: addDays(today, -120), reason: 'Bali villa share' });
+  // Family: owed to a parent, which the tax report files as affiliate debt.
+  await openDebtBalance(database, ws, { direction: 'borrowed', personName: 'Ibu Ratna', currency: 'IDR', balanceMinor: 15_000_000, openedOn: addDays(today, -200), coretaxCode: '103', reason: 'Help with the house down payment' });
+  // Owed to the household: a client's unpaid invoice, and a brother's loan — a trade and an affiliate receivable.
+  await openDebtBalance(database, ws, { direction: 'lent', personName: 'PT Sinar Kreatif', currency: 'IDR', balanceMinor: 12_500_000, openedOn: addDays(today, -34), coretaxCode: '0201', reason: 'Invoice INV-0917 brand design' });
+  await openDebtBalance(database, ws, { direction: 'lent', personName: 'Andi', currency: 'IDR', balanceMinor: 5_000_000, openedOn: addDays(today, -95), coretaxCode: '0202', reason: 'Laptop for college' });
 
   // ---- Card statements ----
   // Bought on the KrisFlyer statement day itself, but the bank posted it a day later: billed on the next statement.
