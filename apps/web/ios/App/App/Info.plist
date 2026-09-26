@@ -24,6 +24,17 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Without these two, iOS kills the app the moment a file input asks for a camera or the library, which is
+	     what attaching a receipt to a purchase does. The wording is what the person is shown in the prompt, so
+	     it says what the picture is for and where it stays. -->
+	<key>NSCameraUsageDescription</key>
+	<string>To photograph a receipt and keep it with the purchase. Pictures stay on this device.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>To attach a receipt you have already photographed. Pictures stay on this device.</string>
+	<!-- Answered here so every upload does not stop to ask. Expanses uses no encryption beyond what iOS and
+	     HTTPS provide, which is the exemption this key claims. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -49,20 +60,11 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>

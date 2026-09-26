@@ -34,7 +34,7 @@ export function AfterUpdateCard() {
     setBusy(true);
     try {
       const bytes = await database.exportBytes();
-      saveBytes(bytes, `expanses-backup-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
+      await saveBytes(bytes, `expanses-backup-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
       await setLastBackupAt(database, new Date().toISOString());
       // The standing "you have not backed up" banner reads the same date; it must not go on saying that.
       await queryClient.invalidateQueries({ queryKey: ['last-backup'] });

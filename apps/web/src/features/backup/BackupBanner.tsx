@@ -67,7 +67,7 @@ export function BackupBanner() {
     setBusy(true);
     try {
       const bytes = await database.exportBytes();
-      saveBytes(bytes, `expanses-backup-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
+      await saveBytes(bytes, `expanses-backup-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
       await setLastBackupAt(database, new Date().toISOString());
       // The date this banner reads is the one just written; without this it goes on saying the old number.
       await queryClient.invalidateQueries({ queryKey: ['last-backup'] });
