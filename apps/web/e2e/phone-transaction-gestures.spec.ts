@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { openNewAsset } from './add-asset';
-import { addTransaction, attachPhoto, closeDetails, addForm, photosButton, saveButton } from './add-transaction';
+import { addTransaction, attachPhoto, closeDetails, addForm, saveButton } from './add-transaction';
 import { openDrawers } from './drawers';
 import { todayIn } from './today';
 
@@ -122,10 +122,9 @@ test('a phone refuses what a desktop refuses, and still lets the row be read', a
  * very same screen — and the rarer things you can do to a transaction sit behind ⋯ rather than crowding it.
  *
  * The sheet is a **new way in**, so what it opens is what already exists: `MoreDetails` is the card's own
- * component with the card's own props (Event is there, With is not, because §15.6 does not offer a shared bill on a
- * correction), and Escape closes the innermost thing only, through the one listener `useEscape` keeps. A second copy
- * of either is how this branch has broken itself six times. The pictures are not among those rows any more: the
- * camera sits beside this sheet's own Save, as it does beside the add form's ✓.
+ * component with the card's own props (Event and Photos are there, With is not, because §15.6 does not offer a
+ * shared bill on a correction), and Escape closes the innermost thing only, through the one listener `useEscape`
+ * keeps. A second copy of either is how this branch has broken itself six times.
  */
 test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ holds the rest', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '20000000' });
@@ -151,16 +150,12 @@ test('Edit — from the receipt or from the swipe — is one sheet, and ⋯ hold
   const sheet = page.getByRole('dialog', { name: 'Edit', exact: true });
   await sheet.getByLabel('Note').fill('Warung Steak Tebet');
 
-  // The camera is on the sheet itself, beside Save — not behind More, and not a second one of its own.
-  await expect(photosButton(sheet)).toHaveAccessibleName('Photos');
-
-  // More opens the card's own extras screen, not a second set of them: Event is on it, Photos is not (it is the
-  // camera above), and neither is With, because a correction posts through `replaceTransaction` and cannot
-  // become a shared bill.
+  // More opens the card's own extras screen, not a second set of them: Event and Photos are on it, and With is
+  // not, because a correction posts through `replaceTransaction` and cannot become a shared bill.
   await sheet.getByRole('button', { name: 'More', exact: true }).click();
   const more = page.getByRole('dialog', { name: 'More details' });
   await expect(more.getByRole('button', { name: 'Event' })).toBeVisible();
-  await expect(more.getByRole('button', { name: /^Photos/ })).toHaveCount(0);
+  await expect(more.getByRole('button', { name: 'Photos' })).toBeVisible();
   await expect(more.getByRole('button', { name: 'With', exact: true })).toHaveCount(0);
   // Escape answers the innermost thing open and nothing else: the extras go, the half-typed edit stays.
   await page.keyboard.press('Escape');
@@ -316,7 +311,7 @@ test('the rate typed into the edit sheet is the rate the edit sheet saves', asyn
  * The phone's edit sheet said a transaction with a receipt had no photos.
  *
  * `formFromTransaction`'s fourth argument is the pictures the transaction already has; the sheet left it off,
- * so `photoIds` defaulted to `[]` and the camera carried no count at all on every correction made from a phone.
+ * so `photoIds` defaulted to `[]` and the Photos row read **None** on every correction made from a phone.
  * `movePhotosTx` re-keys the rows regardless, so the picture survived — but a row that states the opposite of
  * the truth is what data loss looks like from the outside, and there was no way to see or remove it from here.
  */
@@ -335,8 +330,8 @@ test('the edit sheet shows the receipt the transaction already has', async ({ pa
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
   await form.getByLabel('Note').fill('Warung Steak');
-  const { sheet: photos } = await attachPhoto(page, form, { name: 'receipt.png', mimeType: 'image/png', buffer: Buffer.from('a receipt') });
-  await closeDetails(photos);
+  const { more, sheet: photos } = await attachPhoto(page, form, { name: 'receipt.png', mimeType: 'image/png', buffer: Buffer.from('a receipt') });
+  await closeDetails(more, photos);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
@@ -345,11 +340,12 @@ test('the edit sheet shows the receipt the transaction already has', async ({ pa
   await swipeLeft(page, steak);
   await steak.getByRole('button', { name: 'Edit', exact: true }).click();
   const edit = page.getByRole('dialog', { name: 'Edit', exact: true });
+  await edit.getByRole('button', { name: 'More', exact: true }).click();
+  const details = page.getByRole('dialog', { name: 'More details' });
 
-  // One picture, not none — and it is behind the camera beside Save, to be looked at or taken off.
-  await expect(photosButton(edit)).toHaveText('1');
-  await expect(photosButton(edit)).toHaveAccessibleName('Photos, 1 added');
-  await photosButton(edit).click();
+  // "1 photo", not "None" — and the picture itself is behind the row, to be looked at or taken off.
+  await expect(details.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  await details.getByRole('button', { name: 'Photos' }).click();
   await expect(page.getByRole('dialog', { name: 'Photos' }).getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
 });
 

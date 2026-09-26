@@ -20,7 +20,6 @@ import { ConvertForm } from './ConvertForm';
 import { FormRow, FormRows } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
-import { PhotosCorner, PhotosSheet } from './PhotosSheet';
 import { useChangeable, useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
 import { TwoTapDelete } from './TwoTapDelete';
@@ -80,7 +79,7 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
   // The fourth argument is the receipt. `tx-form.ts`'s own docstring describes what leaving it off does, and
   // this screen was doing it: Photos read "None" on every correction made from a phone.
   const [draft, setDraft] = useState<FormDraft>(() => formFromTransaction(tx, accounts, ws.bookId ?? '', photoIds));
-  const [sheet, setSheet] = useState<null | 'money' | 'category' | 'details' | 'more-actions' | 'convert' | 'photos'>(null);
+  const [sheet, setSheet] = useState<null | 'money' | 'category' | 'details' | 'more-actions' | 'convert'>(null);
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -178,7 +177,7 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
             value={categoryName}
             onClick={() => setSheet('category')}
           />
-          <FormRow label="More" value="Event, Channel, MCC…" onClick={() => setSheet('details')} />
+          <FormRow label="More" value="Event, With, Photos…" onClick={() => setSheet('details')} />
         </FormRows>
 
         {changeable && setAside.node}
@@ -186,20 +185,14 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
         {/* Gated on the hook, not on a copy of its reasons: what the receipt and the list refuse to change, this
             refuses to change too, and says why rather than offering a Save that cannot work. */}
         {changeable ? (
-          /* The camera immediately left of Save, as it is on the add form's own bar: Photos left §4's rows for the
-             corner, and this screen's corner is the one beside the button that commits the correction. */
-          <div className="flex items-center gap-2">
-            <PhotosCorner count={draft.photoIds.length} onClick={() => setSheet('photos')} />
-            <Button type="button" className="flex-1 justify-center" disabled={busy || !setAside.ready} onClick={() => void save()}>
-              Save
-            </Button>
-          </div>
+          <Button type="button" className="w-full justify-center" disabled={busy || !setAside.ready} onClick={() => void save()}>
+            Save
+          </Button>
         ) : (
           <p className="text-sm text-slate-500">This one cannot be corrected here.</p>
         )}
       </div>
 
-      {sheet === 'photos' && <PhotosSheet draft={draft} onChange={setDraft} onClose={() => setSheet(null)} />}
       {sheet === 'money' && (
         <PaymentSheet
           title="Paid with"

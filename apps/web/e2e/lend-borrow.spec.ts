@@ -102,8 +102,8 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
   await form.getByLabel('Note').fill('Dinner at Plataran');
   // With, under Add more details: the row that replaced the card's single-person checkbox.
-  const { sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '600000' }]);
-  await closeDetails(sheet);
+  const { more, sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '600000' }]);
+  await closeDetails(more, sheet);
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 

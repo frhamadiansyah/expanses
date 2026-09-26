@@ -9,7 +9,7 @@ import {
   splitBill,
   type TransactionView,
 } from '@expanses/db';
-import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Landmark, Shapes, Target } from 'lucide-react';
+import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Home, Landmark, Shapes, Target } from 'lucide-react';
 import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -34,7 +34,6 @@ import { ChoiceSheet } from './ChoiceSheet';
 import { FormRow, FormRows, ROW_BODY, RowGlyph, RowLead } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
-import { PhotosCorner, PhotosSheet, photosCorner } from './PhotosSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
 import { currencyChoosable, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
@@ -153,7 +152,7 @@ function CardBody({
   const [draft, setDraft] = useState<FormDraft>(() =>
     initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense' },
   );
-  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'photos'>(null);
+  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   const [detailsOpen, setDetailsOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -667,9 +666,6 @@ function CardBody({
           >
             Cancel
           </button>
-          {/* The camera sits immediately left of Save, wherever Save is: in a sheet there is no bar to put it in,
-              and the dock is where this form keeps its one way to commit. */}
-          <PhotosCorner count={draft.photoIds.length} onClick={() => setSheet('photos')} />
           <button
             type="submit"
             disabled={busy || !setAside.ready}
@@ -695,17 +691,11 @@ function CardBody({
           title={title}
           back="Back"
           onBack={onBack}
-          actions={[
-            // Immediately left of the ✓, so a receipt can be attached without opening the fold at all. The count is
-            // in the name as well as in the badge: a corner button is read out as its label and nothing else.
-            { key: 'photos', ...photosCorner(draft.photoIds.length), glyph: <Camera size={20} aria-hidden />, run: () => setSheet('photos') },
-            { key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() },
-          ]}
+          actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() }]}
         />
       )}
       {full ? body : <div className="rounded-2xl bg-[var(--ph-ground)] p-0 in-[[role=dialog]]:rounded-none">{body}</div>}
 
-      {sheet === 'photos' && <PhotosSheet draft={draft} onChange={setDraft} onClose={() => setSheet(null)} />}
       {sheet === 'workspace' && <WorkspaceSheet onClose={() => setSheet(null)} />}
       {sheet === 'to' && (
         <ChoiceSheet

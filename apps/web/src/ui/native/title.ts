@@ -27,11 +27,6 @@ export interface CornerAction {
   /** The action opens something: carried as `aria-expanded`, for the corner that is a menu in disguise. */
   expanded?: boolean;
   /**
-   * How many things are behind this corner, drawn as a small figure on the glyph. `aria-hidden`, so the count has
-   * to be in `label` as well — the badge is a glance, not the name.
-   */
-  badge?: ReactNode;
-  /**
    * Where the action goes, when it goes somewhere.
    *
    * An action that is a journey is drawn as a link, so a desktop keeps the middle-click and the new tab it has
