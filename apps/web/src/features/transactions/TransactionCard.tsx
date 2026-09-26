@@ -9,13 +9,13 @@ import {
   splitBill,
   type TransactionView,
 } from '@expanses/db';
-import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Home, Landmark, Shapes, Target } from 'lucide-react';
+import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
 import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
-import { Card, cx, ErrorBox, InputRow, SelectRow } from '../../ui';
+import { Card, cx, ErrorBox, InputRow } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
 import { CategoryOptions } from '../cards/options';
@@ -29,14 +29,15 @@ import { useOpenBook } from '../workspaces/queries';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { AmountRow } from './AmountRow';
 import { buyChoices, emptyPurchaseDraft, type PurchaseDraft, transferTargets } from './buy-in-form';
+import { amountRowText, chargedRowText, feeRowText, goalRowText, holdingFace, holdingRowText, payRowText, unitsRowText } from './buy-rows';
 import { CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
-import { FormRow, FormRows, ROW_BODY, RowGlyph, RowLead } from './FormRow';
+import { FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
-import { currencyChoosable, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
+import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -296,6 +297,21 @@ function CardBody({
     }
   })();
 
+  /*
+   * What every row of the Buy / sell tab says, worked out once in `buy-rows.ts`: the accessible name each row
+   * has always had, and — separately — the caption, the prompt and the hint that are drawn. The tab reads like
+   * Expense, Income and Transfer now, and moving the currency onto the flag must not move it out of the name.
+   */
+  const holdingRow = holdingRowText(purchase.mode);
+  const costRow = amountRowText(purchase.mode, purchaseCurrency);
+  const unitsRow = unitsRowText({ useLots: purchase.useLots, lotSize: purchase.lotSize, unitLabel: chosen?.unitLabel ?? 'Units' });
+  const feeRow = feeRowText(purchaseCurrency);
+  const payRow = payRowText(purchase.mode);
+  const chargedRow = chargedRowText({ mode: purchase.mode, cashCurrency: purchaseCashCurrency, moneyName: purchaseMoney?.name ?? 'the account' });
+  const goalRow = goalRowText(purchase.mode);
+  /* The holding wears the drawing the Assets page gives its kind, as a transfer's accounts do in their own list. */
+  const HoldingGlyph = assetKindTile('invest', byId.get(purchase.accountId)?.subtype ?? '');
+
   /** Which glyph leads the paying row: a card, a bank for what came in, the account money leaves. */
   const payGlyph = draft.mode === 'income' ? <Landmark size={15} /> : draft.mode === 'transfer' ? <ArrowUpRight size={15} /> : <CreditCard size={15} />;
   const modes = [
@@ -347,7 +363,7 @@ function CardBody({
     </div>
   );
   const stepButton = 'ph-focus ph-tap flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[var(--ph-ink)]';
-  const dateRow = (on: string, change: (iso: string) => void) => (
+  const dateRow = (on: string, change: (iso: string) => void, max?: string) => (
     <div className="flex items-center gap-[10px] pl-[10px]">
       <RowLead>
         <RowGlyph>
@@ -367,6 +383,7 @@ function CardBody({
             aria-label="Date"
             type="date"
             required
+            max={max}
             value={on}
             onChange={(e) => change(e.target.value)}
             onClick={(e) => {
@@ -404,12 +421,21 @@ function CardBody({
            * validation — nothing here reads a figure for itself.
            */
           <FormRows className="rounded-none">
-            <SelectRow
-              label="What you bought or sold"
-              hint="Units are recorded, so this never counts as spending."
+            <SelectFormRow
+              icon={
+                <RowGlyph>
+                  <HoldingGlyph size={15} />
+                </RowGlyph>
+              }
+              label={holdingRow.label}
+              caption={holdingRow.caption}
+              hint={holdingRow.hint}
+              /* The picker groups its options — "Investments › Antam" — and that group is now the caption, so
+                 the row draws the holding's own name rather than saying Bought twice and truncating the name. */
+              display={chosen ? holdingFace(chosen.label) : ''}
               value={`${purchase.mode}:${purchase.accountId}`}
-              onChange={(e) => {
-                const option = [...choices.buys, ...choices.sells].find((row) => row.value === e.target.value)!;
+              onChange={(value) => {
+                const option = [...choices.buys, ...choices.sells].find((row) => row.value === value)!;
                 setPurchase({ mode: option.mode, accountId: option.accountId, lotSize: option.lotSize, useLots: (option.lotSize ?? 1) > 1 });
               }}
             >
@@ -425,56 +451,68 @@ function CardBody({
                   ))}
                 </optgroup>
               )}
-            </SelectRow>
-            <InputRow
-              label={purchase.mode === 'buy' ? `What it cost, before fees (${purchaseCurrency})` : `Proceeds, before fees (${purchaseCurrency})`}
+            </SelectFormRow>
+            <MoneyFieldRow
+              currency={purchaseCurrency}
+              flag={currencyFlag(purchaseCurrency)}
+              label={costRow.label}
+              caption={costRow.caption}
+              placeholder={costRow.placeholder}
               value={purchase.amount}
-              inputMode="decimal"
-              onChange={(e) => setPurchase({ amount: e.target.value })}
-              placeholder="3.980.000"
+              onChange={(amount) => setPurchase({ amount })}
             />
-            {purchase.useLots ? (
-              <InputRow
-                label="Lots"
-                hint={`${purchase.lotSize ?? 1} shares a lot.`}
-                value={purchase.lots}
-                inputMode="decimal"
-                onChange={(e) => setPurchase({ lots: e.target.value })}
-                placeholder="1"
-              />
-            ) : (
-              <InputRow
-                label={chosen?.unitLabel ?? 'Units'}
-                value={purchase.units}
-                inputMode="decimal"
-                onChange={(e) => setPurchase({ units: e.target.value })}
-                placeholder="2"
-              />
-            )}
-            <InputRow
-              label={`Fee (${purchaseCurrency})`}
+            <FieldRow
+              icon={
+                <RowGlyph>
+                  <Layers size={15} />
+                </RowGlyph>
+              }
+              label={unitsRow.label}
+              caption={unitsRow.caption}
+              hint={unitsRow.hint}
+              placeholder={unitsRow.placeholder}
+              inputMode="decimal"
+              divided={purchase.useLots}
+              value={purchase.useLots ? purchase.lots : purchase.units}
+              onChange={(text) => setPurchase(purchase.useLots ? { lots: text } : { units: text })}
+            />
+            <MoneyFieldRow
+              currency={purchaseCurrency}
+              flag={currencyFlag(purchaseCurrency)}
+              label={feeRow.label}
+              caption={feeRow.caption}
+              placeholder={feeRow.placeholder}
               value={purchase.fee}
-              inputMode="decimal"
-              onChange={(e) => setPurchase({ fee: e.target.value })}
+              onChange={(fee) => setPurchase({ fee })}
             />
-            <SelectRow
-              label={purchase.mode === 'buy' ? 'Paid with' : 'Proceeds into'}
-              hint={purchase.mode === 'buy' ? 'A credit card works: the card owes more, and the purchase still earns points.' : undefined}
+            <SelectFormRow
+              icon={<RowGlyph>{purchase.mode === 'buy' ? <CreditCard size={15} /> : <Landmark size={15} />}</RowGlyph>}
+              label={payRow.label}
+              caption={payRow.caption}
+              hint={payRow.hint}
+              divided={purchase.mode === 'buy'}
+              /* The options are a component, so there are no `<option>`s here to read the chosen one off; the
+                 row is handed the very label `MoneyAccountOptions` gives that account. */
+              display={purchaseMoney ? `${purchaseMoney.name} (${purchaseMoney.currency})` : ''}
               value={purchase.moneyId}
-              onChange={(e) => setPurchase({ moneyId: e.target.value, moneyIsCard: byId.get(e.target.value)?.subtype === 'credit_card', charged: '' })}
+              onChange={(moneyId) => setPurchase({ moneyId, moneyIsCard: byId.get(moneyId)?.subtype === 'credit_card', charged: '' })}
             >
               <MoneyAccountOptions accounts={accounts} spendableOnly keep={purchase.moneyId} />
-            </SelectRow>
+            </SelectFormRow>
             {purchaseNeeds.charged && (
-              <InputRow
-                label={`Charged in ${purchaseCashCurrency}`}
-                hint={purchase.mode === 'buy' ? `What left ${purchaseMoney?.name ?? 'the account'}, in ${purchaseCashCurrency}.` : `What reached ${purchaseMoney?.name ?? 'the account'}, in ${purchaseCashCurrency}.`}
+              <MoneyFieldRow
+                currency={purchaseCashCurrency}
+                flag={currencyFlag(purchaseCashCurrency)}
+                label={chargedRow.label}
+                caption={chargedRow.caption}
+                placeholder={chargedRow.placeholder}
+                hint={chargedRow.hint}
+                divided
                 value={purchase.charged}
-                inputMode="decimal"
-                onChange={(e) => setPurchase({ charged: e.target.value })}
+                onChange={(charged) => setPurchase({ charged })}
               />
             )}
-            <InputRow label="Date" type="date" value={purchase.occurredOn} max={isoDate()} onChange={(e) => setPurchase({ occurredOn: e.target.value })} />
+            {dateRow(purchase.occurredOn, (occurredOn) => setPurchase({ occurredOn }), isoDate())}
           </FormRows>
         ) : (
           <FormRows className="rounded-none">
@@ -555,34 +593,55 @@ function CardBody({
       {draft.mode === 'trade' && (goals.length > 0 || (purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card')) && (
         <FormRows>
           {goals.length > 0 && (
-            <SelectRow
-              label={purchase.mode === 'buy' ? 'For goal' : 'Sell from goal'}
+            <SelectFormRow
+              icon={
+                <RowGlyph>
+                  <Target size={15} />
+                </RowGlyph>
+              }
+              label={goalRow.label}
+              caption={goalRow.caption}
               value={purchase.goalId}
-              onChange={(e) => setPurchase({ goalId: e.target.value })}
+              onChange={(goalId) => setPurchase({ goalId })}
             >
               <option value="">No goal</option>
               {goals.map((goal) => (
                 <option key={goal.id} value={goal.id}>{goal.name}</option>
               ))}
-            </SelectRow>
+            </SelectFormRow>
           )}
           {purchase.mode === 'buy' && purchaseMoney?.subtype === 'credit_card' && (
             <>
-              <SelectRow
+              <SelectFormRow
+                icon={
+                  <RowGlyph>
+                    <Shapes size={15} />
+                  </RowGlyph>
+                }
                 label="Category for points"
+                caption="For points"
                 hint="Not spending: it only tells the points engine what the card bought."
+                divided={goals.length > 0}
+                display={purchase.spendCategoryId ? (byId.get(purchase.spendCategoryId)?.name ?? '') : ''}
                 value={purchase.spendCategoryId}
-                onChange={(e) => setPurchase({ spendCategoryId: e.target.value })}
+                onChange={(spendCategoryId) => setPurchase({ spendCategoryId })}
               >
                 <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
-              </SelectRow>
-              <InputRow
+              </SelectFormRow>
+              <FieldRow
+                icon={
+                  <RowGlyph>
+                    <Hash size={15} />
+                  </RowGlyph>
+                }
                 label="MCC"
+                caption="MCC"
                 hint="Gold and jewellery shops are 5944."
-                value={purchase.mcc}
-                inputMode="numeric"
-                onChange={(e) => setPurchase({ mcc: e.target.value })}
                 placeholder="5944"
+                inputMode="numeric"
+                divided
+                value={purchase.mcc}
+                onChange={(mcc) => setPurchase({ mcc })}
               />
             </>
           )}

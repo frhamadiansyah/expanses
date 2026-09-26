@@ -1,6 +1,7 @@
 import { Info } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { cx } from '../../ui';
+import { optionLabel } from '../../ui/native';
 
 /**
  * The lead circle a transaction row draws its glyph in: 28px, the kit's fill behind the kit's secondary ink.
@@ -244,6 +245,225 @@ export function SwitchRow({
       </span>
     </div>
   );
+}
+
+/*
+ * The three rows below are the same reading as `FormRow`, for a field whose answer is not a sheet: a bare select
+ * laid over a row that draws itself, a figure typed in place, and money with its currency's flag in the lead.
+ *
+ * They exist because the Buy / sell tab was the one tab still drawn label-left, value-right — the old app's shape
+ * — while Expense, Income and Transfer had moved to a glyph, a value and a caption. The controls are unchanged:
+ * a select is still a select, so the system picker, the keyboard and every `selectOption` in the suite still
+ * reach it; a figure is still an input at every width, because a trade's cost does not live on `draft.amount`
+ * and so has no keypad to open.
+ */
+
+/** The row's own text on the left: the value, or its prompt in the faint ink. */
+const ROW_TITLE = 'min-w-0 flex-1 truncate text-[15px] leading-5';
+/** The small grey word on the right — "Paid with", "IDR" — as `FormRow` draws a caption. */
+const ROW_CAPTION = 'max-w-[55%] shrink-0 truncate text-right text-[12.5px] leading-4 text-[var(--ph-ink-3)]';
+/** A figure or a word typed straight into a row: no box, no border, the group's hairline is the boundary. */
+const ROW_FIELD = 'ph-focus-inset tabular min-w-0 flex-1 border-0 bg-transparent p-0 text-base leading-5 text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]';
+/** The currency's flag, in the same 28px circle every other row leads with. */
+const FLAG_CIRCLE = 'flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[15px] leading-none';
+
+/**
+ * The line under a row, indented to the text column, in the muted ink — the shape the amount row's own hint has.
+ * It is what the Buy / sell tab's full-width grey paragraphs between rows become.
+ */
+export function RowHintLine({ children }: { children: ReactNode }) {
+  return <p className="pr-[13px] pb-2 pl-[54px] text-[12px] leading-4 text-[var(--ph-ink-3)]">{children}</p>;
+}
+
+/**
+ * A row carrying a hint sits in a wrapper of its own, which puts its body out of reach of the group's "every row
+ * but the first" rule — so the hairline is drawn by hand, exactly as the charged row in `AmountRow` draws it.
+ */
+function bodyClass(divided: boolean | undefined, flush = false) {
+  return cx(flush ? ROW_BODY_FLUSH : ROW_BODY, divided && 'border-t-[0.5px] border-[var(--ph-hair)]');
+}
+
+/** Row plus its hint, or the bare row when it has none, so an unhinted row keeps the group's own hairline. */
+function withHint(row: ReactNode, hint: ReactNode) {
+  if (!hint) return <>{row}</>;
+  return (
+    <div>
+      {row}
+      <RowHintLine>{hint}</RowHintLine>
+    </div>
+  );
+}
+
+/**
+ * A row whose answer is the platform's own list: drawn as `FormRow` draws a chosen value — glyph, value, caption,
+ * chevron — with the select laid invisibly over it. The row prints what the select says rather than letting the
+ * control draw it, for the reason the kit's own `SelectRow` gives: WebKit lays a closed select out from the left
+ * of a box as wide as its longest option and ignores `text-align`.
+ */
+export function SelectFormRow({
+  icon,
+  label,
+  value,
+  onChange,
+  children,
+  caption,
+  display,
+  placeholder,
+  hint,
+  divided,
+}: {
+  icon?: ReactNode;
+  /** The accessible name — the one the journeys and the screen readers already know. */
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: ReactNode;
+  /** The small grey word on the right, once something is chosen. */
+  caption?: string;
+  /**
+   * What to draw instead of the chosen option's own label. Two reasons a caller needs it: the options are a
+   * component rather than a list of `<option>`s, so there is nothing here to walk; or the row wants a shorter
+   * face than the picker's label — "Antam" under a caption reading Bought, rather than "Investments › Antam"
+   * truncated at 390px.
+   */
+  display?: string;
+  /** What the row says with nothing chosen; the label when left out. */
+  placeholder?: string;
+  hint?: ReactNode;
+  divided?: boolean;
+}) {
+  const id = useId();
+  const chosen = display ?? optionLabel(children, value);
+  const empty = value === '' || chosen === null || chosen === '';
+  const row = (
+    /* The select is laid over the **whole** row, glyph and all, so the tap target is the row — what `FormRow`
+       gets for free by being one button, and what a picker row has to be given by hand. */
+    <div className="ph-focus-within relative flex items-center gap-[10px] pl-[10px]">
+      <RowLead>{icon}</RowLead>
+      <span className={bodyClass(divided)}>
+        <span aria-hidden className={cx(ROW_TITLE, empty ? 'text-[var(--ph-ink-3)]' : 'text-[var(--ph-ink)]')}>
+          {empty ? (placeholder ?? label) : chosen}
+        </span>
+        {!empty && caption && (
+          <span aria-hidden className={ROW_CAPTION}>
+            {caption}
+          </span>
+        )}
+        <Chevron />
+      </span>
+      <select
+        id={id}
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+      >
+        {children}
+      </select>
+    </div>
+  );
+  return withHint(row, hint);
+}
+
+/**
+ * A row typed into in place, read the way the amount row is read: the figure is the row's own text on the left
+ * and the caption on the right says what it is — "2 · Grams", "5944 · MCC". No chevron: nothing opens.
+ */
+export function FieldRow({
+  icon,
+  label,
+  value,
+  onChange,
+  caption,
+  placeholder,
+  hint,
+  inputMode,
+  divided,
+}: {
+  icon?: ReactNode;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  caption?: string;
+  placeholder?: string;
+  hint?: ReactNode;
+  inputMode?: 'decimal' | 'numeric' | 'text';
+  divided?: boolean;
+}) {
+  const row = (
+    <div className="flex items-center gap-[10px] pl-[10px]">
+      <RowLead>{icon}</RowLead>
+      <span className={bodyClass(divided)}>
+        <input
+          aria-label={label}
+          inputMode={inputMode}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className={ROW_FIELD}
+        />
+        {caption && (
+          <span aria-hidden className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">
+            {caption}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+  return withHint(row, hint);
+}
+
+/**
+ * A money figure drawn as the add card's amount row draws one: the currency's flag in the lead, the figure where
+ * a row's title goes, the code — or what the figure is — as the caption.
+ *
+ * The flag here is only drawn. The currency belongs to the holding, or to the account that paid, and is never a
+ * choice made on this row: `AmountRow` is the one place a currency is picked, and only where the save would
+ * honour it.
+ */
+export function MoneyFieldRow({
+  currency,
+  flag,
+  label,
+  caption,
+  value,
+  onChange,
+  placeholder,
+  hint,
+  divided,
+}: {
+  currency: string;
+  /** The flag to draw, worked out by the caller from `currency` — the kit does not read a currency table. */
+  flag: string;
+  label: string;
+  caption?: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  hint?: ReactNode;
+  divided?: boolean;
+}) {
+  const row = (
+    <div className="flex items-center gap-[10px] pl-[10px]">
+      <RowLead>
+        <span aria-hidden className={FLAG_CIRCLE}>
+          {flag}
+        </span>
+      </RowLead>
+      <span className={bodyClass(divided, true)}>
+        <input
+          aria-label={label}
+          inputMode="decimal"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className={ROW_FIELD}
+        />
+        <span aria-hidden className="shrink-0 text-[12.5px] leading-4 text-[var(--ph-ink-3)]">{caption ?? currency}</span>
+      </span>
+    </div>
+  );
+  return withHint(row, hint);
 }
 
 /**
