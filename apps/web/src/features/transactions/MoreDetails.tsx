@@ -15,7 +15,8 @@ import { WithSheet, withSummary } from './WithSheet';
 import { extraRowRefusal, extraRows, type FormDraft, postingCurrency } from './tx-form';
 
 /** B3's lead glyph for an extra: a Lucide glyph where the mockup draws an emoji. */
-const glyph = (icon: ReactNode) => <RowGlyph tone="plain">{icon}</RowGlyph>;
+// The circle every row of the add form leads with, so the extras line up with the card above them.
+const glyph = (icon: ReactNode) => <RowGlyph>{icon}</RowGlyph>;
 
 /** The pair a rate is missing for, as `resolveRates` reported it, and the day it is wanted for. */
 export interface MissingRate {
@@ -74,23 +75,23 @@ export function MoreDetails({
   return (
     <>
       <FormRows>
-        {rows.includes('event') && <FormRow icon={glyph(<Plane size={16} />)} label="Event" value={eventName} onClick={() => setSheet('event')} />}
+        {rows.includes('event') && <FormRow icon={glyph(<Plane size={15} />)} label="Event" value={eventName} onClick={() => setSheet('event')} />}
         {rows.includes('split') && (
-          <FormRow icon={glyph(<Split size={16} />)} label="Split" value={splitSummary(draft.splits, currency)} disabled={!!splitRefusal} onClick={() => setSheet('split')} />
+          <FormRow icon={glyph(<Split size={15} />)} label="Split" value={splitSummary(draft.splits, currency)} disabled={!!splitRefusal} onClick={() => setSheet('split')} />
         )}
         {rows.includes('with') && (
-          <FormRow icon={glyph(<Users size={16} />)} label="With" value={withSummary(draft, accounts, currency)} disabled={!!withRefusal} onClick={() => setSheet('with')} />
+          <FormRow icon={glyph(<Users size={15} />)} label="With" value={withSummary(draft, accounts, currency)} disabled={!!withRefusal} onClick={() => setSheet('with')} />
         )}
-        {rows.includes('mcc') && <FormRow icon={glyph(<Hash size={16} />)} label="MCC" value={draft.mcc} onClick={() => setSheet('mcc')} />}
+        {rows.includes('mcc') && <FormRow icon={glyph(<Hash size={15} />)} label="MCC" value={draft.mcc} onClick={() => setSheet('mcc')} />}
         {rows.includes('channel') && (
-          <FormRow icon={glyph(<ShoppingCart size={16} />)} label="Channel" tone={draft.channel ? 'plain' : 'muted'} value={draft.channel === 'online' ? 'Online' : draft.channel === 'offline' ? 'Offline' : ''} onClick={() => setSheet('channel')} />
+          <FormRow icon={glyph(<ShoppingCart size={15} />)} label="Channel" tone={draft.channel ? 'plain' : 'muted'} value={draft.channel === 'online' ? 'Online' : draft.channel === 'offline' ? 'Offline' : ''} onClick={() => setSheet('channel')} />
         )}
-        {rows.includes('photos') && <FormRow icon={glyph(<Camera size={16} />)} label="Photos" value={photosSummary(draft)} onClick={() => setSheet('photos')} />}
+        {rows.includes('photos') && <FormRow icon={glyph(<Camera size={15} />)} label="Photos" value={photosSummary(draft)} onClick={() => setSheet('photos')} />}
         {rows.includes('exclude') && (
           <SwitchRow
-            icon={glyph(<EyeOff size={16} />)}
+            icon={glyph(<EyeOff size={15} />)}
             label="Exclude from report"
-            hint="Out of the chart and the budgets. Still counted in balances, statements, points and net worth."
+            info="Out of the chart and the budgets. Still counted in balances, statements, points and net worth."
             checked={draft.excluded}
             onChange={(excluded) => set({ excluded })}
           />

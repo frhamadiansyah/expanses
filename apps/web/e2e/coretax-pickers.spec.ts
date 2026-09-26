@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { openTypes } from './accounts';
 import { openDeposit } from './deposit-maturity';
 import { openDrawers } from './drawers';
+import { chooseTo } from './add-transaction';
 
 /**
  * The three ways in, by mouse: an account, an asset, a debt — each chosen in words, each filed under a code
@@ -70,7 +71,7 @@ test('a time deposit holds money that cannot be spent until it is moved', async 
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Deposito BCA 6 bulan', exact: true }).click();
   // Exact, as every other transfer spec asks: rows now end in a "Receipt for …" ⓘ, and a loose "To" matches
   // any description with "to" in it — "Deposito BCA 6 bulan", here.
-  await form.getByLabel('To', { exact: true }).selectOption({ label: 'BCA Tahapan (IDR)' });
+  await chooseTo(form, 'BCA Tahapan (IDR)');
   await form.getByLabel('Amount', { exact: true }).fill('100000000');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);

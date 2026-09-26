@@ -817,7 +817,7 @@ export function TransactionsPage() {
         actions={
           phone
             ? [
-                { key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); setAdding(true); } },
+                { key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); void navigate({ to: '/transactions/new' }); } },
                 { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
                 { key: 'filters', label: 'Filters', glyph: <Ellipsis size={20} aria-hidden />, pressed: showFilters, expanded: showFilters, run: () => setShowFilters((was) => !was) },
               ]

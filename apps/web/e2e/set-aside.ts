@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openAccount } from './accounts';
-import { openAmount } from './add-transaction';
+import { openAmount, addForm, saveButton, chooseTo } from './add-transaction';
 import { openAssets } from './drawers';
 import { openGoalForm } from './goals';
 
@@ -101,7 +101,7 @@ export async function openExpense(page: Page, paidWith: string) {
   // The add button lives on the transactions page; the setup helpers leave the browser on /goals.
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await form.getByRole('button', { name: /^Paid with/ }).click();
   await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: paidWith, exact: true }).click();
   return form;
@@ -120,17 +120,17 @@ export async function transferOutBorrowingFromUmrah(page: Page) {
   await addMoneyAccount(page, 'BCA', 'savings', '0');
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await form.getByRole('radio', { name: 'Transfer', exact: true }).click();
   await form.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Jenius', exact: true }).click();
-  await form.getByLabel('To', { exact: true }).selectOption({ label: 'BCA (IDR)' });
+  await chooseTo(form, 'BCA (IDR)');
   await typeAmount(page, form, '21500000');
   await expect(form.getByText(/16\.500\.000 more than is free/)).toBeVisible();
   await form.getByRole('button', { name: 'Take from Umrah 2027' }).click();
   await form.getByRole('button', { name: 'No — borrowing from it' }).click();
   await form.getByLabel('Note').pressSequentially('To BCA');
-  await form.getByRole('button', { name: 'Save', exact: true }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 }
 

@@ -56,7 +56,7 @@ async function buy(page: Page, p: Purchase) {
   await form.getByLabel('Note').fill(p.description);
   if (p.on) await form.getByLabel('Date').fill(p.on);
   await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('dialog', { name: 'More details' });
+  const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'MCC' }).click();
   const mccSheet = page.getByRole('dialog', { name: 'MCC' });
   await mccSheet.getByLabel('MCC', { exact: true }).fill(p.mcc);
@@ -65,7 +65,6 @@ async function buy(page: Page, p: Purchase) {
     await mccSheet.getByLabel('Merchant text', { exact: true }).fill(p.remember);
   }
   await mccSheet.getByRole('button', { name: 'Close' }).click();
-  await more.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   if (!p.on) await expect(page.getByText(p.description)).toBeVisible();

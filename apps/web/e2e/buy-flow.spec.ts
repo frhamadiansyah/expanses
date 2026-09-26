@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
 import { openNewAsset } from './add-asset';
-import { addPurchase, addTransaction, attachPhoto } from './add-transaction';
+import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal } from './add-transaction';
 import { cardSection } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
@@ -93,8 +93,12 @@ test('a transfer cannot land in a holding measured in units', async ({ page }) =
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('radio', { name: 'Transfer' }).click();
   // Exactly "To": the chart above the form labels itself "… Total spent", which a loose match also catches.
-  await expect(form.getByLabel('To', { exact: true })).not.toContainText('Antam gold bars');
-  await expect(form.getByText(/Use Buy \/ sell, so units are counted/)).toBeVisible();
+  await form.getByRole('button', { name: /^To/ }).click();
+  const toList = page.getByRole('dialog', { name: 'To', exact: true });
+  await expect(toList).toBeVisible();
+  await expect(toList).not.toContainText('Antam gold bars');
+  await expect(toList.getByText(/Use Buy \/ sell, so units are counted/)).toBeVisible();
+  await toList.getByRole('button', { name: 'Close' }).click();
 });
 
 test('turns an expense already recorded into the purchase it really was', async ({ page }) => {
@@ -143,9 +147,9 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await form.getByRole('radio', { name: 'Transfer' }).click();
   await form.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
-  await form.getByLabel('To', { exact: true }).selectOption({ label: 'RDN Stockbit (IDR)' });
+  await chooseTo(form, 'RDN Stockbit (IDR)');
   await form.getByLabel('Amount', { exact: true }).fill('2000000');
-  await form.getByLabel('For goal').selectOption({ label: 'University for Aisyah' });
+  await chooseGoal(form, 'University for Aisyah');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
   // The row carries the goal once the write has landed, so the next page cannot read a stale database.
@@ -184,7 +188,7 @@ test('parks money at the broker for a goal, then buys one lot and the leftover s
   await topUp.getByRole('radio', { name: 'Transfer' }).click();
   await topUp.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
-  await topUp.getByLabel('To', { exact: true }).selectOption({ label: 'RDN Stockbit (IDR)' });
+  await chooseTo(topUp, 'RDN Stockbit (IDR)');
   await topUp.getByLabel('Amount', { exact: true }).pressSequentially('250000');
   await topUp.getByRole('button', { name: 'Save' }).click();
   await expect(topUp).toHaveCount(0);
@@ -327,12 +331,11 @@ test('a purchase can keep its contract note and be left out of the report', asyn
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
 
-  // The very same row the other three tabs carry, opening the very same sheet.
+  // The very same row the other three tabs carry, opening the very same details.
   const { more, sheet } = await attachPhoto(page, form, { name: 'note.png', mimeType: 'image/png', buffer: Buffer.from('a contract note') });
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
-  await more.getByRole('button', { name: 'Close' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 

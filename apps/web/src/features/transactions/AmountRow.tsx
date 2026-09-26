@@ -189,7 +189,8 @@ export function AmountRow({
   const toggle = (which: 'amount' | 'charged') => setKeypad((was) => (was === which ? null : which));
   /** The field the dock is typing into, or null when it is shut. */
   const open = keypad === null ? null : keypad === 'amount' ? fields.amount : fields.charged;
-  const flagCircle = 'flex h-8 w-8 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[19px] leading-none';
+  // The same 28 px circle every other row of the card leads with; the flag is its glyph.
+  const flagCircle = 'flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ph-fill)] text-[15px] leading-none';
 
   /*
    * Option B's amount row (§3.3, C1-C3): it reads like any other row — a round flag for the currency in the lead,

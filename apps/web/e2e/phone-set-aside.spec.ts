@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { goalCard, jeniusWithTwoGoals, openAccountPage, openExpense, textOnWhite, typeAmount } from './set-aside';
+import { saveButton } from './add-transaction';
 
 /*
  * The laptop again, on the phone's own shell: the figure goes in on the keypad, digit by digit, and the question,
@@ -15,13 +16,13 @@ test('the laptop on a phone: borrowed from the Emergency fund, and the account p
   const form = await openExpense(page, 'Jenius');
   await typeAmount(page, form, '6800000');
   await expect(form.getByText(/1\.800\.000 more than is free/)).toBeVisible();
-  await expect(form.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expect(saveButton(form)).toBeDisabled();
   await form.getByRole('button', { name: 'Take from Emergency fund' }).click();
   await form.getByRole('button', { name: 'No — borrowing from it' }).click();
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').pressSequentially('Laptop');
-  await form.getByRole('button', { name: 'Save', exact: true }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
   await page.goto('/goals');

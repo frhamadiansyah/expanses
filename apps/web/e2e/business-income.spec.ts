@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, chooseTo } from './add-transaction';
 
 /** Sales recorded by these tests are dated today, so this is the year that holds them. */
 const YEAR = new Date().getFullYear();
@@ -73,7 +73,7 @@ test('money moved in from the family wallet is not a sale', async ({ page }) => 
   await float.getByRole('radio', { name: 'Transfer' }).click();
   await float.getByRole('button', { name: 'From' }).click();
   await page.getByRole('dialog', { name: 'From' }).getByRole('button', { name: 'Family wallet', exact: true }).click();
-  await float.getByLabel('To', { exact: true }).selectOption({ label: 'Business wallet (IDR)' });
+  await chooseTo(float, 'Business wallet (IDR)');
   await float.getByLabel('Amount', { exact: true }).fill('50000000');
   await float.getByRole('button', { name: 'Save' }).click();
   await expect(float).toHaveCount(0);

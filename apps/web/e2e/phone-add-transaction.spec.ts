@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction, attachPhoto, closeDetails } from './add-transaction';
+import { addTransaction, attachPhoto, closeDetails, addForm, saveButton } from './add-transaction';
 import { todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -66,16 +66,16 @@ test('a purchase recorded by thumb reaches the list', async ({ page }) => {
 /**
  * Escape closes the innermost thing open, and the draft behind it survives.
  *
- * The sheet and the dock inside it both listen for Escape on the document. One press used to be answered by
- * both: the dock shut, the sheet shut behind it, and a transaction typed to its last digit was gone with
- * nothing to get it back. The first test in this file works on `/transactions/new` precisely to avoid this;
- * here is the sheet path it was avoiding.
+ * The form and the dock inside it both listened for Escape on the document when the form was a sheet. One press
+ * used to be answered by both: the dock shut, the sheet shut behind it, and a transaction typed to its last digit
+ * was gone with nothing to get it back. On a phone the form is now a screen of its own, reached from the ＋, and a
+ * screen is left by its Back — so Escape puts the dock away and nothing else, however often it is pressed.
  */
-test('Escape inside the sheet puts the dock away and keeps what was typed', async ({ page }) => {
+test('Escape on the add screen puts the dock away and keeps what was typed', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
   await expect(form).toBeVisible();
 
   const amount = form.getByRole('button', { name: 'Amount', exact: true });
@@ -90,9 +90,10 @@ test('Escape inside the sheet puts the dock away and keeps what was typed', asyn
   await expect(form).toBeVisible();
   await expect(amount).toHaveText('450.000');
 
-  // A second press is the sheet's own way out, which is what Escape was always for once the dock is gone.
+  // A second press has nothing left to close: a screen is left by its Back, and what was typed stays.
   await page.keyboard.press('Escape');
-  await expect(form).toHaveCount(0);
+  await expect(form).toBeVisible();
+  await expect(amount).toHaveText('450.000');
 });
 
 /**
@@ -107,7 +108,7 @@ test('a photograph attached by thumb is on the receipt', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
 
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
   const keypad = page.getByTestId('keypad');
@@ -122,7 +123,7 @@ test('a photograph attached by thumb is on the receipt', async ({ page }) => {
   const { more, sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a receipt') });
   await expect(sheet.getByText('Photos stay on this device with the transaction and go into your backups.')).toBeVisible();
   await closeDetails(more, sheet);
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
   // A phone reaches a receipt by tapping the row's face; the ⓘ the desktop uses is `hidden md:inline-flex`.
@@ -149,7 +150,7 @@ test('the dock adds up what a thumb types, and has no Save key of its own', asyn
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
 
   const amount = form.getByRole('button', { name: 'Amount', exact: true });
   await amount.click();
@@ -175,7 +176,7 @@ test('the dock adds up what a thumb types, and has no Save key of its own', asyn
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
-  await form.getByRole('button', { name: 'Save' }).click();
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
   await expect(page.getByTestId('transaction-row').filter({ hasText: 'Superindo' })).toContainText('155.000');
 });
@@ -277,7 +278,7 @@ test('Channel, a photograph and Exclude all reach the receipt from the phone', a
   await addWallet(page);
   await page.goto('/transactions');
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
-  const form = page.getByRole('dialog', { name: 'Add a transaction' });
+  const form = addForm(page);
 
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
   const keypad = page.getByTestId('keypad');
@@ -304,8 +305,8 @@ test('Channel, a photograph and Exclude all reach the receipt from the phone', a
   const switchBox = (await more.getByRole('switch', { name: 'Exclude from report' }).boundingBox())!;
   expect(switchBox.height, `the Exclude switch is under ${TAP}px`).toBeGreaterThanOrEqual(TAP);
 
-  await more.getByRole('button', { name: 'Close' }).click();
-  await form.getByRole('button', { name: 'Save' }).click();
+  // The details are part of the form now, so nothing stands between them and Save.
+  await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
   await page.getByTestId('transaction-row').filter({ hasText: 'Superindo' }).getByRole('button', { name: /^Groceries/ }).click();

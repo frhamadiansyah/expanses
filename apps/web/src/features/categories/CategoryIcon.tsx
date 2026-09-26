@@ -56,7 +56,8 @@ export function categoryMark(categoryId: string | null, accounts: readonly Accou
   return { Glyph: ICONS[category?.icon ?? base.icon] ?? CircleHelp, colour: base.colour, name: category?.name ?? null };
 }
 
-const SIZES = { lg: { box: 'h-16 w-16', glyph: 32 }, md: { box: 'h-9 w-9', glyph: 18 }, sm: { box: 'h-6 w-6', glyph: 14 }, xs: { box: 'h-5 w-5', glyph: 12 } } as const;
+/** `row` is the kit's own lead circle, 28 px — what a form row's glyph sits in, so a category lines up with them. */
+const SIZES = { lg: { box: 'h-16 w-16', glyph: 32 }, md: { box: 'h-9 w-9', glyph: 18 }, row: { box: 'h-7 w-7', glyph: 15 }, sm: { box: 'h-6 w-6', glyph: 14 }, xs: { box: 'h-5 w-5', glyph: 12 } } as const;
 
 /**
  * A round, tinted category mark: the glyph names the category, the colour its top-level parent.
