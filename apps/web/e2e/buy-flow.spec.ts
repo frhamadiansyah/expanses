@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
 import { openNewAsset } from './add-asset';
-import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal } from './add-transaction';
+import { addPurchase, addTransaction, attachPhoto, chooseTo, chooseGoal, openDetails, photosButton } from './add-transaction';
 import { cardSection } from './card-section';
 import { openAssets, openDrawers } from './drawers';
 import { openGoalForm } from './goals';
@@ -312,10 +312,10 @@ test('a purchase paid by card reaches the points engine with the MCC and categor
 });
 
 /**
- * §4 scopes Photos and Exclude from report to "always", and `extraRows` answers both for a trade — but the card
- * drew "Add more details" inside the expense branch alone, so the Buy or sell tab computed two rows that nothing
+ * §4 scopes the pictures and Exclude from report to "always", and `extraRows` answers Exclude for a trade — but the
+ * card drew "Add more details" inside the expense branch alone, so the Buy or sell tab computed rows that nothing
  * ever drew. A contract note could not be kept with the purchase it belongs to, and `purchaseDraftToInput` had
- * nowhere to take either fact from.
+ * nowhere to take either fact from. The camera is in the bar on every tab now, and Exclude is still behind the fold.
  *
  * Both halves are read back off the receipt, which is built from what was stored rather than from the draft.
  */
@@ -331,10 +331,11 @@ test('a purchase can keep its contract note and be left out of the report', asyn
   await form.getByLabel(/What it cost, before fees/).fill('3980000');
   await form.getByLabel('Paid with').first().selectOption({ label: 'BCA Tahapan (IDR)' });
 
-  // The very same row the other three tabs carry, opening the very same details.
-  const { more, sheet } = await attachPhoto(page, form, { name: 'note.png', mimeType: 'image/png', buffer: Buffer.from('a contract note') });
+  // The very same camera the other three tabs carry, opening the very same sheet.
+  const { sheet } = await attachPhoto(page, form, { name: 'note.png', mimeType: 'image/png', buffer: Buffer.from('a contract note') });
   await sheet.getByRole('button', { name: 'Close' }).click();
-  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  await expect(photosButton(form)).toHaveText('1');
+  const more = await openDetails(page, form);
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);

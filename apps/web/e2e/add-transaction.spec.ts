@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAccount, openTypes } from './accounts';
-import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith, chooseTo } from './add-transaction';
+import { addTransaction, addTransfer, attachPhoto, closeDetails, openDetails, photosButton, shareWith, chooseTo } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
 import { cardSection } from './card-section';
@@ -458,8 +458,8 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
   await form.getByLabel('Note').fill('Dinner with Andi');
-  const { more, sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '800000' }]);
-  await closeDetails(more, sheet);
+  const { sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '800000' }]);
+  await closeDetails(sheet);
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
@@ -912,11 +912,11 @@ test('a typed share leaves the rest of the bill as your own spending', async ({ 
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
   await form.getByLabel('Note').fill('Sate Khas Senayan');
 
-  const { more, sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '133333' }]);
+  const { sheet } = await shareWith(page, form, [{ name: 'Andi', owes: '133333' }]);
   await expect(sheet.getByTestId('with-summary')).toContainText('Rp 133.333');
   await expect(sheet.getByTestId('with-your-share')).toHaveText('Rp 266.667');
 
-  await closeDetails(more, sheet);
+  await closeDetails(sheet);
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 
@@ -956,20 +956,24 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
   // orphan sweep, and a file no row names must go with it.
   await plantPhoto(page, 'abandoned-by-a-half-filled-form.jpg');
 
-  const { more, sheet } = await attachPhoto(page, form, { name: 'wrong-one.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('the wrong receipt') });
+  const { sheet } = await attachPhoto(page, form, { name: 'wrong-one.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('the wrong receipt') });
 
   // ✕ takes both halves away — the row and the file — so the picture that goes with the transaction is the
   // second one and only the second one. The bytes are the half a sweep cannot put back.
   await sheet.getByRole('button', { name: 'Remove photo 1' }).click();
   await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toHaveCount(0);
-  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('None');
+  // The camera in the bar drops its badge and its count with it: "Photos", not "Photos, 1 added".
+  await expect(photosButton(form)).toHaveAccessibleName('Photos');
+  await expect(photosButton(form)).toHaveText('');
   expect(await photoFiles(page)).toEqual(['abandoned-by-a-half-filled-form.jpg']);
 
   await sheet.getByTestId('photo-library-input').setInputFiles({ name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a receipt') });
   await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
-  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  // One picture: the figure on the badge, and the same figure in the name a screen reader is given.
+  await expect(photosButton(form)).toHaveText('1');
+  await expect(photosButton(form)).toHaveAccessibleName('Photos, 1 added');
 
-  await closeDetails(more, sheet);
+  await closeDetails(sheet);
   // One file left on the device: the picture on the open form, which `allPhotoFileNames` names even though its
   // row has no transaction yet. The abandoned one is gone, and the sweep is what took it.
   await expect.poll(() => photoFiles(page), { timeout: 15_000 }).toHaveLength(1);
@@ -996,18 +1000,16 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
    */
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const edit = page.getByRole('dialog', { name: 'Edit transaction' });
-  await edit.getByRole('button', { name: 'Add more details' }).click();
-  const reopened = page.getByRole('region', { name: 'More details' });
-  await expect(reopened.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
-  await reopened.getByRole('button', { name: 'Photos' }).click();
+  await expect(photosButton(edit)).toHaveAccessibleName('Photos, 1 added');
+  await photosButton(edit).click();
   const photos = page.getByRole('dialog', { name: 'Photos' });
   await expect(photos.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
 
   // And it is the same picture, not a second one: removing it here really removes it, which is the whole
   // point of it being on screen. Saving the correction leaves the transaction with none.
   await photos.getByRole('button', { name: 'Remove photo 1' }).click();
-  await expect(reopened.getByRole('button', { name: 'Photos' })).toContainText('None');
-  await closeDetails(reopened, photos);
+  await expect(photosButton(edit)).toHaveAccessibleName('Photos');
+  await closeDetails(photos);
   await edit.getByRole('button', { name: 'Save' }).click();
   await expect(edit).toHaveCount(0);
   await page.getByRole('link', { name: 'Receipt for Superindo' }).click();
@@ -1420,12 +1422,14 @@ test('an event, a photograph and the exclusion survive one save together', async
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
 
-  const { more, sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a Lebaran receipt') });
+  const { sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a Lebaran receipt') });
   await sheet.getByRole('button', { name: 'Close' }).click();
+  // The picture came from the bar; the event and the exclusion are still rows behind the fold.
+  const more = await openDetails(page, form);
   await more.getByRole('button', { name: 'Event' }).click();
   await page.getByRole('dialog', { name: 'Event' }).getByRole('button', { name: 'Lebaran' }).click();
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
-  await expect(more.getByRole('button', { name: 'Photos' })).toContainText('1 photo');
+  await expect(photosButton(form)).toHaveText('1');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(form).toHaveCount(0);
 

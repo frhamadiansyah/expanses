@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction, attachPhoto, closeDetails, addForm, saveButton } from './add-transaction';
+import { addTransaction, attachPhoto, closeDetails, addForm, openDetails, photosButton, saveButton } from './add-transaction';
 import { todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -120,9 +120,9 @@ test('a photograph attached by thumb is on the receipt', async ({ page }) => {
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
 
-  const { more, sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a receipt') });
+  const { sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a receipt') });
   await expect(sheet.getByText('Photos stay on this device with the transaction and go into your backups.')).toBeVisible();
-  await closeDetails(more, sheet);
+  await closeDetails(sheet);
   await saveButton(form).click();
   await expect(form).toHaveCount(0);
 
@@ -290,20 +290,26 @@ test('Channel, a photograph and Exclude all reach the receipt from the phone', a
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
 
-  const { more, sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a thumbed receipt') });
+  const { sheet } = await attachPhoto(page, form, { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('a thumbed receipt') });
   await sheet.getByRole('button', { name: 'Close' }).click();
+  // The picture came off the bar; the channel and the exclusion are still rows behind the fold.
+  const more = await openDetails(page, form);
   await more.getByRole('button', { name: 'Channel' }).click();
   await page.getByRole('dialog', { name: 'Channel' }).getByRole('button', { name: 'Offline' }).click();
   await more.getByRole('switch', { name: 'Exclude from report' }).click();
   await expect(more.getByRole('switch', { name: 'Exclude from report' })).toHaveAttribute('aria-checked', 'true');
 
   // Every row under here is reachable by a thumb, including the switch, which is the smallest of them.
-  for (const name of ['Event', 'Channel', 'Photos']) {
+  for (const name of ['Event', 'Channel']) {
     const box = (await more.getByRole('button', { name, exact: true }).boundingBox())!;
     expect(box.height, `the ${name} row is under ${TAP}px`).toBeGreaterThanOrEqual(TAP);
   }
   const switchBox = (await more.getByRole('switch', { name: 'Exclude from report' }).boundingBox())!;
   expect(switchBox.height, `the Exclude switch is under ${TAP}px`).toBeGreaterThanOrEqual(TAP);
+  // Photos left the rows for the bar, so it is measured as the circle it is now — 44 both ways, not 44 tall alone.
+  const cameraBox = (await photosButton(form).boundingBox())!;
+  expect(cameraBox.height, `the camera is under ${TAP}px tall`).toBeGreaterThanOrEqual(TAP);
+  expect(cameraBox.width, `the camera is under ${TAP}px wide`).toBeGreaterThanOrEqual(TAP);
 
   // The details are part of the form now, so nothing stands between them and Save.
   await saveButton(form).click();
@@ -326,7 +332,9 @@ test('every row on the card is big enough for a thumb', async ({ page }) => {
   await addWallet(page);
   await page.goto('/transactions/new');
 
-  const rows = ['Workspace', 'Paid with', 'Category', 'Add more details'];
+  // "Add more details" is plain text now, 40px drawn — so its 44pt reach is padding rather than a pill, and this
+  // is the check that says the padding is really there. Photos is the camera in the bar, beside the ✓.
+  const rows = ['Workspace', 'Paid with', 'Category', 'Add more details', 'Photos'];
   for (const name of rows) {
     const box = (await page.getByRole('button', { name: new RegExp(`^${name}`) }).first().boundingBox())!;
     expect(box.height, `the ${name} row is under ${TAP}px`).toBeGreaterThanOrEqual(TAP);
