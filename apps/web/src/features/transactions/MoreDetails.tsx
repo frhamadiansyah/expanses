@@ -1,5 +1,5 @@
 import type { AccountRow } from '@expanses/db';
-import { EyeOff, Hash, Plane, ShoppingCart, Split, Users } from 'lucide-react';
+import { Camera, EyeOff, Hash, Plane, ShoppingCart, Split, Users } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { ratePreview } from '../../lib/rates';
@@ -8,6 +8,7 @@ import { useEvents } from '../events/queries';
 import { ChannelSheet } from './ChannelSheet';
 import { FormRow, FormRows, RowGlyph, SwitchRow } from './FormRow';
 import { McSheet } from './McSheet';
+import { PhotosSheet, photosSummary } from './PhotosSheet';
 import { SplitSheet, splitSummary } from './SplitSheet';
 import { EventSheet } from './EventSheet';
 import { WithSheet, withSummary } from './WithSheet';
@@ -33,9 +34,9 @@ export interface MissingRate {
  * four fields this screen holds were dropped in silence once already.
  *
  * Which rows appear is `extraRows`'s decision, not this component's, and every row in that list is drawn here.
- * With replaces the card's old single-person "Someone owes part of this", which never caught up with the several
- * people `splitBill` has taken since Task 5. Photos is no longer among these rows at all: the pictures are the
- * camera in the bar beside Save (`PhotosCorner`), reachable without opening the fold.
+ * With and Photos were the last two missing: With replaces the card's old single-person "Someone owes part of
+ * this" — which never caught up with the several people `splitBill` has taken since Task 5 — and Photos is the
+ * first thing in the app to put a picture on a transaction while it is being recorded.
  */
 export function MoreDetails({
   draft,
@@ -49,7 +50,7 @@ export function MoreDetails({
   missingRate: MissingRate | null;
 }) {
   const { ws } = useApp();
-  const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel'>(null);
+  const [sheet, setSheet] = useState<null | 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos'>(null);
   const set = (patch: Partial<FormDraft>) => onChange({ ...draft, ...patch });
   const rows = extraRows(draft, accounts, { missingRate });
   const events = useEvents().data ?? [];
@@ -85,6 +86,7 @@ export function MoreDetails({
         {rows.includes('channel') && (
           <FormRow icon={glyph(<ShoppingCart size={15} />)} label="Channel" tone={draft.channel ? 'plain' : 'muted'} value={draft.channel === 'online' ? 'Online' : draft.channel === 'offline' ? 'Offline' : ''} onClick={() => setSheet('channel')} />
         )}
+        {rows.includes('photos') && <FormRow icon={glyph(<Camera size={15} />)} label="Photos" value={photosSummary(draft)} onClick={() => setSheet('photos')} />}
         {rows.includes('exclude') && (
           <SwitchRow
             icon={glyph(<EyeOff size={15} />)}
@@ -124,6 +126,7 @@ export function MoreDetails({
       {sheet === 'event' && <EventSheet value={draft.eventId} onPick={(eventId) => set({ eventId })} onClose={() => setSheet(null)} />}
       {sheet === 'split' && <SplitSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
       {sheet === 'with' && <WithSheet draft={draft} onChange={onChange} accounts={accounts} currency={currency} onClose={() => setSheet(null)} />}
+      {sheet === 'photos' && <PhotosSheet draft={draft} onChange={onChange} onClose={() => setSheet(null)} />}
       {sheet === 'mcc' && <McSheet draft={draft} onChange={onChange} accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet === 'channel' && <ChannelSheet value={draft.channel} onPick={(channel) => set({ channel })} onClose={() => setSheet(null)} />}
     </>

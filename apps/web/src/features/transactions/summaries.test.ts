@@ -1,6 +1,6 @@
 import type { AccountRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { photosCorner } from './PhotosSheet';
+import { photosSummary } from './PhotosSheet';
 import { splitSummary } from './SplitSheet';
 import { emptyForm, type FormDraft } from './tx-form';
 import { withSummary } from './WithSheet';
@@ -88,19 +88,10 @@ describe('what the With row says', () => {
   });
 });
 
-/**
- * The camera in the bar, which replaced §4's Photos row.
- *
- * A corner button carries a glyph and never a word, so its `aria-label` is the whole of what a screen reader
- * gets — the count has to be *in* the name, not only drawn in the badge beside it. And the badge is drawn only
- * when there is something to count: a "0" sitting on the glyph reads as a state rather than as an absence.
- */
-describe('what the photos button says and shows', () => {
-  it('names the count, and draws a badge only once there is one', () => {
-    expect(photosCorner(0)).toEqual({ label: 'Photos', badge: null });
-    expect(photosCorner(1)).toEqual({ label: 'Photos, 1 added', badge: '1' });
-    expect(photosCorner(2)).toEqual({ label: 'Photos, 2 added', badge: '2' });
-    // Nothing caps the figure: the badge grows with its own padding rather than turning into "9+".
-    expect(photosCorner(12)).toEqual({ label: 'Photos, 12 added', badge: '12' });
+describe('what the Photos row says', () => {
+  it('counts the pictures attached, one as a picture', () => {
+    expect(photosSummary(usd)).toBe('None');
+    expect(photosSummary({ ...usd, photoIds: ['p1'] })).toBe('1 photo');
+    expect(photosSummary({ ...usd, photoIds: ['p1', 'p2'] })).toBe('2 photos');
   });
 });
