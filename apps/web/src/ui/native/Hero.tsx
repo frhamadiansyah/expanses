@@ -74,6 +74,7 @@ export function Hero({
   minor,
   currency,
   direction = 'neutral',
+  plain = false,
   approximate = false,
   empty = '—',
   change,
@@ -94,6 +95,11 @@ export function Hero({
   empty?: string;
   direction?: Direction;
   /**
+   * The figure in the page's own ink whatever its sign: a total that only says what a list comes to, where a red
+   * figure would read as a warning the rows under it do not give.
+   */
+  plain?: boolean;
+  /**
    * How far the figure has moved across the range it is read over: the arrow, the money and the share of it.
    *
    * The two figures rather than the change, so the caller hands over what it measured — a range whose ends are
@@ -107,7 +113,7 @@ export function Hero({
   align?: 'center' | 'start';
   className?: string;
 }) {
-  const figure = minor === null ? ({ text: empty, tone: 'ink-3' } as const) : heroFigure(minor, currency, direction);
+  const figure = minor === null ? ({ text: empty, tone: 'ink-3' } as const) : { ...heroFigure(minor, currency, direction), ...(plain ? { tone: 'ink' as const } : {}) };
   const move = change ? heroChange(change.fromMinor, change.toMinor, currency) : null;
   return (
     <div

@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import { cx } from '../index';
+import { RowIcon } from './InsetList';
 import { ROW_PAD_X, ROW_PAD_Y, rowHeight } from './metrics';
 
 /**
@@ -38,6 +39,7 @@ export function useDrawers() {
 }
 
 export function Drawer({
+  icon,
   label,
   under,
   figure,
@@ -46,6 +48,8 @@ export function Drawer({
   testId,
   onToggle,
 }: {
+  /** The kind's own glyph, in the circle a row draws one in, so a drawer and the rows under it line up. */
+  icon?: ReactNode;
   /** The kind of thing inside: "Current account", "Credit card", "Time deposit". */
   label: string;
   /** What is inside, counted: "3 accounts". Left off where the count says nothing — two credit cards, one card. */
@@ -69,6 +73,7 @@ export function Drawer({
         className="ph-focus-inset flex w-full items-center gap-[10px] text-left"
         style={{ minHeight: rowHeight(true), padding: `${ROW_PAD_Y}px ${ROW_PAD_X}px` }}
       >
+        {icon && <RowIcon>{icon}</RowIcon>}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{label}</span>
           {under !== undefined && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{under}</span>}

@@ -178,6 +178,19 @@ export interface InsetRowProps extends GroupChild {
  * inside it would put two targets inside one 44 pt box and leave a keyboard with no way to say which it meant.
  * A row that slides is not an exception: its action sits *behind* the row, never inside the tap target.
  */
+/** A row's leading glyph, in the kit's own 28 px circle: the neutral fill, or the caller's tint when it gave one. */
+export function RowIcon({ tint, children }: { tint?: { background: string; foreground: string } | null; children: ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      className="flex shrink-0 items-center justify-center rounded-full"
+      style={{ width: 28, height: 28, background: tint?.background ?? 'var(--ph-fill)', color: tint?.foreground ?? 'var(--ph-ink-2)' }}
+    >
+      {children}
+    </span>
+  );
+}
+
 export function InsetRow({
   icon,
   iconColour,
@@ -208,15 +221,7 @@ export function InsetRow({
     <span className="w-full text-center text-[15px] leading-[20px] font-normal text-[var(--ph-alarm)]">{title}</span>
   ) : (
     <>
-      {icon && (
-        <span
-          aria-hidden
-          className="flex shrink-0 items-center justify-center rounded-full"
-          style={{ width: 28, height: 28, background: tint?.background ?? 'var(--ph-fill)', color: tint?.foreground ?? 'var(--ph-ink-2)' }}
-        >
-          {icon}
-        </span>
-      )}
+      {icon && <RowIcon tint={tint}>{icon}</RowIcon>}
       <span className="min-w-0 flex-1 text-left">
         <span className="block truncate text-[15px] leading-[20px] font-medium text-[var(--ph-ink)]">{title}</span>
         {subtitle && <span className="mt-[2px] block truncate text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{subtitle}</span>}
