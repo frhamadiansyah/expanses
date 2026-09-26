@@ -8,12 +8,39 @@ import { photos } from '../../photos/store';
 import { sweepPhotosAtStart } from '../../photos/sweep-at-start';
 import { usePhotoUrls } from '../../photos/use-photo-urls';
 import { ErrorBox } from '../../ui';
+import { CornerButton } from '../../ui/native';
 import { FormRow, FormRows, RowGlyph } from './FormRow';
 import type { FormDraft } from './tx-form';
 
-/** "None", or "2 photos" — what the Photos row says without being opened. */
-export const photosSummary = (draft: FormDraft): string =>
-  draft.photoIds.length === 0 ? 'None' : `${draft.photoIds.length} ${draft.photoIds.length === 1 ? 'photo' : 'photos'}`;
+/**
+ * What the camera in the bar says and shows, for a given number of pictures.
+ *
+ * Photos was a row under "Add more details" and is now a corner button beside Save, so there is no label and no
+ * value column to read the count off: the whole of what a screen reader gets is the `aria-label`, and the whole of
+ * what everyone else gets is the badge. Hence both, from one place.
+ *
+ * The badge is `null` at nothing rather than `'0'` — a nought sitting on the glyph reads as a state, not as an
+ * absence — and the figure is never capped: the badge grows with its own padding instead of saying "9+".
+ */
+export function photosCorner(count: number): { label: string; badge: string | null } {
+  return { label: count === 0 ? 'Photos' : `Photos, ${count} added`, badge: count === 0 ? null : String(count) };
+}
+
+/**
+ * The camera itself: §4's Photos row, as the corner button it became.
+ *
+ * One component, so the full-screen form's bar, the sheet's dock and the phone's edit sheet cannot drift apart on
+ * what the button is called or when it carries a figure. The full-screen bar cannot use it — `PushedTitle` draws
+ * its own corners from `CornerAction`s — so it passes `photosCorner`'s two answers through instead.
+ */
+export function PhotosCorner({ count, onClick }: { count: number; onClick: () => void }) {
+  const { label, badge } = photosCorner(count);
+  return (
+    <CornerButton label={label} badge={badge} onClick={onClick}>
+      <Camera size={20} aria-hidden />
+    </CornerButton>
+  );
+}
 
 /**
  * The pictures on this transaction — §4's Photos row, as its own screen.

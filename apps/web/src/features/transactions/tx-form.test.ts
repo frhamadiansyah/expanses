@@ -12,6 +12,7 @@ import {
   chargedHint,
   chargedInNeeded,
   currencyChoosable,
+  detailsToggleLabel,
   emptyForm,
   estimatedCharge,
   extraRowRefusal,
@@ -154,39 +155,47 @@ describe('what the form adds up to', () => {
   });
 
   // Three cases, three assertions: the title promised three and one covered only the first.
+  // Photos left this table for the bar: the pictures are a corner button beside Save, on every mode, so no
+  // mode's list of rows may name it any more. Asserted here as well as in `toEqual` above, because a row
+  // creeping back in on one mode alone is exactly how the four fields of §4 were dropped in silence once.
+  it('never offers Photos as a row: it is the camera in the bar', () => {
+    for (const mode of ['expense', 'income', 'transfer', 'trade'] as const) {
+      expect(extraRows({ ...draft, mode }, accounts, { missingRate: null })).not.toContain('photos');
+    }
+  });
+
   it('offers MCC only on a card, With only on a new expense, and the rate row only when one is missing', () => {
-    expect(extraRows(draft, accounts, { missingRate: null })).toEqual(['event', 'split', 'with', 'channel', 'photos', 'exclude']);
+    expect(extraRows(draft, accounts, { missingRate: null })).toEqual(['event', 'split', 'with', 'channel', 'exclude']);
     expect(extraRows({ ...draft, moneyId: 'acct-card' }, accounts, { missingRate: null })).toEqual([
       'event',
       'split',
       'with',
       'mcc',
       'channel',
-      'photos',
       'exclude',
     ]);
     // Editing rather than adding: With is not offered, because splitBill posts a differently shaped transaction (§15.6).
-    expect(extraRows({ ...draft, editing: true }, accounts, { missingRate: null })).toEqual(['event', 'split', 'channel', 'photos', 'exclude']);
+    expect(extraRows({ ...draft, editing: true }, accounts, { missingRate: null })).toEqual(['event', 'split', 'channel', 'exclude']);
     // The rate row is last, and only when resolveRates says one is missing.
     expect(extraRows(foreign, accounts, { missingRate: { from: 'CNY', to: 'IDR', onDate: '2026-09-17' } })).toEqual([
       'event',
       'split',
       'with',
       'channel',
-      'photos',
       'exclude',
       'rate',
     ]);
   });
 
   it('keeps Add more details to §4 table: no event and no goal on money that never left', () => {
-    // §4: Event appears "always, on Expense and Income"; Photos and Exclude appear always. There is no goal
+    // §4: Event appears "always, on Expense and Income"; Exclude appears always. There is no goal
     // row at all — §3.5 puts For goal on the transfer's own second card, and §3.6 on the trade's.
-    expect(extraRows({ ...transfer, moneyId: 'acct-bank' }, accounts, { missingRate: null })).toEqual(['photos', 'exclude']);
+    // Photos is no longer a row on any mode: it is the camera in the bar, beside Save.
+    expect(extraRows({ ...transfer, moneyId: 'acct-bank' }, accounts, { missingRate: null })).toEqual(['exclude']);
     expect(extraRows({ ...transfer, moneyId: 'acct-bank' }, accounts, { missingRate: null })).not.toContain('goal');
-    expect(extraRows({ ...draft, mode: 'trade' }, accounts, { missingRate: null })).toEqual(['photos', 'exclude']);
+    expect(extraRows({ ...draft, mode: 'trade' }, accounts, { missingRate: null })).toEqual(['exclude']);
     // Income keeps the event and the channel, and never offers a split or the people to share with.
-    expect(extraRows({ ...draft, mode: 'income' }, accounts, { missingRate: null })).toEqual(['event', 'channel', 'photos', 'exclude']);
+    expect(extraRows({ ...draft, mode: 'income' }, accounts, { missingRate: null })).toEqual(['event', 'channel', 'exclude']);
   });
 
   it('sends a split with several people to splitBill, not to postTransaction', () => {
@@ -1193,5 +1202,19 @@ describe('the second figure of a transfer', () => {
         expect(post.input.lines.find((line) => line.accountId === 'idr')).toMatchObject({ currency: 'IDR', amountMinor: intoMinor });
       }
     }
+  });
+});
+
+/**
+ * The word on the control that folds §4's rows away.
+ *
+ * It is one word either way — the control says what a tap will *do*, not what is on screen — and it is now plain
+ * text rather than a white pill, which makes the word the only thing telling the two states apart. A control whose
+ * only signal is its label is a control whose label has to be right.
+ */
+describe('the details toggle', () => {
+  it('offers the rows when they are away, and offers to put them away when they are there', () => {
+    expect(detailsToggleLabel(false)).toBe('Add more details');
+    expect(detailsToggleLabel(true)).toBe('Fewer details');
   });
 });

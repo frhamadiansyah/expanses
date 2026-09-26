@@ -151,8 +151,7 @@ export async function addPurchase(
  * component never has to touch a spec.
  */
 export async function shareWith(page: Page, form: Locator, people: readonly { name: string; owes?: string }[]) {
-  await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('region', { name: 'More details' });
+  const more = await openDetails(page, form);
   await more.getByRole('button', { name: 'With', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'With', exact: true });
   for (const person of people) {
@@ -171,27 +170,52 @@ export async function shareWith(page: Page, form: Locator, people: readonly { na
 }
 
 /**
+ * §4's rows, unfolded: the plain-text control under the card, and the region it reveals.
+ *
+ * The control is a word and nothing else now — no fill, no edge — so it is found by that word, which is also the
+ * only thing telling its two states apart.
+ */
+export async function openDetails(page: Page, form: Locator) {
+  await form.getByRole('button', { name: 'Add more details' }).click();
+  return page.getByRole('region', { name: 'More details' });
+}
+
+/**
  * The sheet a detail row opened, shut again so the card underneath can be saved. The details themselves stay open
  * under the card: they are part of the form now rather than a sheet over it, so there is nothing else to close.
  */
-export async function closeDetails(more: Locator, sheet: Locator) {
+export async function closeDetails(sheet: Locator) {
   await sheet.getByRole('button', { name: 'Close' }).click();
 }
 
 /**
- * Attaches one picture through Photos under Add more details, as a file chosen from the library.
+ * The camera, wherever the form keeps it: the corner immediately left of the ✓ in a phone's bar, the one
+ * immediately left of Save in the sheet's dock. Only one of them is ever drawn, so the pair names one button.
+ *
+ * Matched on the *start* of the accessible name, because the name carries the count — "Photos" with none,
+ * "Photos, 1 added" with one — and that count is the button's only voice: the glyph carries no word.
+ */
+export const photosButton = (form: Locator): Locator =>
+  form
+    .getByRole('button', { name: /^Photos(,|$)/ })
+    .or(form.page().locator('header').getByRole('button', { name: /^Photos(,|$)/ }));
+
+/**
+ * Attaches one picture through the camera in the bar, as a file chosen from the library.
+ *
+ * It is no longer a row under Add more details: the button sits beside Save, so a receipt is attached without the
+ * fold being opened at all — and this helper opens nothing else, which is what a caller asserting the fold's own
+ * rows now has to do for itself.
  *
  * The bytes are the assertion's whole point elsewhere, so they are the caller's: a spec hands in what it will
  * later read back out of the blob URL on the receipt.
  */
 export async function attachPhoto(page: Page, form: Locator, file: { name: string; mimeType: string; buffer: Buffer }) {
-  await form.getByRole('button', { name: 'Add more details' }).click();
-  const more = page.getByRole('region', { name: 'More details' });
-  await more.getByRole('button', { name: 'Photos' }).click();
+  await photosButton(form).click();
   const sheet = page.getByRole('dialog', { name: 'Photos' });
   await sheet.getByTestId('photo-library-input').setInputFiles(file);
   await expect(sheet.getByRole('button', { name: 'Photo 1', exact: true })).toBeVisible();
-  return { more, sheet };
+  return { sheet };
 }
 
 /**

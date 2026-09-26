@@ -216,8 +216,8 @@ test('a split bill says which figure is the share and which is the bill', async 
   await split.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await split.getByLabel('Note').fill('Dinner at Plataran');
-  const { more, sheet } = await shareWith(page, split, [{ name: 'Andi', owes: '300000' }]);
-  await closeDetails(more, sheet);
+  const { sheet } = await shareWith(page, split, [{ name: 'Andi', owes: '300000' }]);
+  await closeDetails(sheet);
   await split.getByRole('button', { name: 'Save' }).click();
   await expect(split).toHaveCount(0);
   await expect(page.getByText('Dinner at Plataran')).toBeVisible();

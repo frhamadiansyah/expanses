@@ -201,7 +201,19 @@ export function receivedField(draft: FormDraft, accounts: readonly AccountRow[])
   return { which: 'received', label: `Received amount (${to.currency})`, value: draft.toAmount, currency: to.currency };
 }
 
-export type ExtraRow = 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'photos' | 'exclude' | 'rate';
+/**
+ * The extras §4 draws as rows. Photos is deliberately not among them: the pictures are the camera in the bar,
+ * beside Save, where they are reachable without opening the fold — so no mode's row list may name them.
+ */
+export type ExtraRow = 'event' | 'split' | 'with' | 'mcc' | 'channel' | 'exclude' | 'rate';
+
+/**
+ * The word on the control that folds §4's rows away — what a tap will do, never what is on screen.
+ *
+ * It is drawn as plain text rather than as a white pill, so the label is the only thing that tells the two states
+ * apart and is the only thing a screen reader is given beyond `aria-expanded`.
+ */
+export const detailsToggleLabel = (open: boolean): string => (open ? 'Fewer details' : 'Add more details');
 
 /**
  * The With rows that name somebody. A row being typed into is not yet a person on the bill.
@@ -249,6 +261,9 @@ export function extraRowRefusal(row: ExtraRow, draft: FormDraft): string | null 
  * corrected (§15.6). A goal is deliberately **not** here: §3.5 and §3.6 put For goal on the second card of a
  * transfer and of a buy or sell, where it belongs to the mode rather than to the extras. The rate row is last
  * and appears only when `resolveRates` came back without one.
+ *
+ * Photos is **not** here and never should be again: the pictures moved into the bar, as the camera beside Save,
+ * so a receipt can be attached without opening the fold at all. `photosCorner` names that button.
  */
 export function extraRows(
   draft: FormDraft,
@@ -265,7 +280,7 @@ export function extraRows(
   // Online or offline is how money left for the outside world; it says nothing about money moved between your
   // own accounts, and a trade is recorded as units rather than as a purchase.
   if (outward) rows.push('channel');
-  rows.push('photos', 'exclude');
+  rows.push('exclude');
   if (missingRate) rows.push('rate');
   return rows;
 }

@@ -9,7 +9,7 @@ import {
   splitBill,
   type TransactionView,
 } from '@expanses/db';
-import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Home, Landmark, Shapes, Target } from 'lucide-react';
+import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CreditCard, Home, Landmark, Shapes, Target } from 'lucide-react';
 import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -34,9 +34,10 @@ import { ChoiceSheet } from './ChoiceSheet';
 import { FormRow, FormRows, ROW_BODY, RowGlyph, RowLead } from './FormRow';
 import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
+import { PhotosCorner, PhotosSheet, photosCorner } from './PhotosSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
-import { currencyChoosable, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
+import { currencyChoosable, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
 /**
@@ -152,7 +153,7 @@ function CardBody({
   const [draft, setDraft] = useState<FormDraft>(() =>
     initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense' },
   );
-  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
+  const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal' | 'photos'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   const [detailsOpen, setDetailsOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -633,13 +634,19 @@ function CardBody({
           <MoreDetails draft={draft} onChange={setDraft} accounts={accounts} missingRate={missingRate} />
         </section>
       )}
+      {/*
+        Plain text across the column, not a white pill: the fold is a way of *reading* the form, not a thing you
+        can do to a transaction, and a filled button gave it the same weight as Save. Transparent, no edge, no
+        shadow — the secondary ink, so it follows the theme. It keeps the 44 pt reach the drawn 40 px does not
+        have, and keeps `aria-expanded`, because the word is now the only thing that tells the two states apart.
+      */}
       <button
         type="button"
         aria-expanded={detailsOpen}
         onClick={() => setDetailsOpen((open) => !open)}
-        className="ph-focus min-h-11 w-full rounded-full bg-[var(--ph-surface)] text-[15px] font-medium text-[var(--ph-ink)] active:bg-[var(--ph-fill)]"
+        className="ph-focus flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-ink-2)]"
       >
-        {detailsOpen ? 'Fewer details' : 'Add more details'}
+        {detailsToggleLabel(detailsOpen)}
       </button>
 
       {/* The set-aside question (E2) sits above the dock, in the kit's inset groups, so the dock stays one line. */}
@@ -660,6 +667,9 @@ function CardBody({
           >
             Cancel
           </button>
+          {/* The camera sits immediately left of Save, wherever Save is: in a sheet there is no bar to put it in,
+              and the dock is where this form keeps its one way to commit. */}
+          <PhotosCorner count={draft.photoIds.length} onClick={() => setSheet('photos')} />
           <button
             type="submit"
             disabled={busy || !setAside.ready}
@@ -685,11 +695,17 @@ function CardBody({
           title={title}
           back="Back"
           onBack={onBack}
-          actions={[{ key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() }]}
+          actions={[
+            // Immediately left of the ✓, so a receipt can be attached without opening the fold at all. The count is
+            // in the name as well as in the badge: a corner button is read out as its label and nothing else.
+            { key: 'photos', ...photosCorner(draft.photoIds.length), glyph: <Camera size={20} aria-hidden />, run: () => setSheet('photos') },
+            { key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: !ready, run: () => formRef.current?.requestSubmit() },
+          ]}
         />
       )}
       {full ? body : <div className="rounded-2xl bg-[var(--ph-ground)] p-0 in-[[role=dialog]]:rounded-none">{body}</div>}
 
+      {sheet === 'photos' && <PhotosSheet draft={draft} onChange={setDraft} onClose={() => setSheet(null)} />}
       {sheet === 'workspace' && <WorkspaceSheet onClose={() => setSheet(null)} />}
       {sheet === 'to' && (
         <ChoiceSheet
