@@ -265,3 +265,86 @@ describe('a removed device is removed at its place in the log, whatever hlc it p
     expect((await dewi.database.db.values<[string]>(sql`SELECT name FROM books WHERE id = ${bookId}`))[0]![0]).toBe('Personal');
   });
 });
+
+/* ------------------------------------------------------------------ fix round 3 */
+
+/** Every member row of the book, by id: its role, or absent — what must read the same on every device. */
+async function membersOf(d: Device, bookId: string): Promise<Record<string, string>> {
+  const rows = await d.database.db.values<[string, string]>(sql`SELECT member_id, role FROM book_members WHERE book_id = ${bookId} ORDER BY member_id`);
+  return Object.fromEntries(rows);
+}
+
+async function expectSameMembers(devices: Device[], bookId: string): Promise<Record<string, string>> {
+  const views = await Promise.all(devices.map((d) => membersOf(d, bookId)));
+  for (const view of views.slice(1)) expect(view).toEqual(views[0]);
+  return views[0]!;
+}
+
+async function promote(home: Household, owner: Device, member: Device, bookId: string) {
+  await writeMember(owner, bookId, member.memberId, `UPDATE book_members SET role = 'owner' WHERE member_id = '${member.memberId}'`);
+  await home.settle();
+  await home.settle();
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 3));
+
+describe("this device's own member edits that the log refuses are put back (fix round 3)", () => {
+  it('X2: two owners demote each other at once; every device ends with the same roles and an owner', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await promote(home, fandri, budi, bookId);
+    await tick();
+    await writeMember(fandri, bookId, budi.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${budi.memberId}'`);
+    await writeMember(budi, bookId, fandri.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${fandri.memberId}'`);
+    await fandri.engine.syncOnce(bookId);
+    await budi.engine.syncOnce(bookId);
+    await home.settle();
+    await home.settle();
+    const members = await expectSameMembers([fandri, dewi, budi], bookId);
+    expect(Object.values(members)).toContain('owner');
+  });
+
+  it('X3: an owner demoted in the log while offline promotes someone; that promotion is undone on its own device too', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await promote(home, fandri, budi, bookId);
+    await tick();
+    await writeMember(fandri, bookId, budi.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${budi.memberId}'`);
+    await fandri.engine.syncOnce(bookId);
+    await tick();
+    await writeMember(budi, bookId, dewi.memberId, `UPDATE book_members SET role = 'owner' WHERE member_id = '${dewi.memberId}'`);
+    await home.settle();
+    await home.settle();
+    const members = await expectSameMembers([fandri, dewi, budi], bookId);
+    expect(members[dewi.memberId]).toBe('member');
+  });
+
+  it('X4: a rename from a lagging view crossing an owner’s delete does not keep the row alive on the renaming device', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await promote(home, fandri, budi, bookId);
+    await tick();
+    await writeMember(budi, bookId, dewi.memberId, `DELETE FROM book_members WHERE member_id = '${dewi.memberId}'`);
+    await writeMember(budi, bookId, fandri.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${fandri.memberId}'`);
+    await budi.engine.syncOnce(bookId);
+    await tick();
+    await writeMember(fandri, bookId, dewi.memberId, `UPDATE book_members SET name = 'Dewi R' WHERE member_id = '${dewi.memberId}'`);
+    await fandri.engine.syncOnce(bookId);
+    await home.settle();
+    await home.settle();
+    const members = await expectSameMembers([fandri, dewi, budi], bookId);
+    expect(members[dewi.memberId]).toBeUndefined();
+  });
+
+  it('X5: a member promoting herself keeps it nowhere, her own device included', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await writeMember(dewi, bookId, dewi.memberId, `UPDATE book_members SET role = 'owner' WHERE member_id = '${dewi.memberId}'`);
+    await home.settle();
+    await home.settle();
+    const members = await expectSameMembers([fandri, dewi, budi], bookId);
+    expect(members[dewi.memberId]).toBe('member');
+  });
+
+  it('the last-owner guard asks the log, not this device’s rows: a local self-promotion does not let a member demote the owner', async () => {
+    const { fandri, dewi, bookId } = await household();
+    await writeMember(dewi, bookId, dewi.memberId, `UPDATE book_members SET role = 'owner' WHERE member_id = '${dewi.memberId}'`);
+    await expect(writeMember(dewi, bookId, fandri.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${fandri.memberId}'`)).rejects.toThrow(/last owner/);
+  });
+});

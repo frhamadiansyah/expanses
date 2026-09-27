@@ -50,7 +50,7 @@ interface ViewMember {
   rowHlc: string;
 }
 
-async function viewMember(tx: Db, bookId: string, memberId: string): Promise<ViewMember | null> {
+export async function viewMember(tx: Db, bookId: string, memberId: string): Promise<ViewMember | null> {
   const [row] = await tx.values<[string, string, number, string]>(
     sql`SELECT role, role_hlc, deleted, row_hlc FROM sync_authority WHERE book_id = ${bookId} AND member_id = ${memberId}`,
   );
@@ -70,6 +70,15 @@ export async function viewRoleOfDevice(tx: Db, bookId: string, deviceId: string)
   if (!device || device.removedSeq !== null) return null;
   const member = await viewMember(tx, bookId, device.memberId);
   return member && !member.deleted ? member.role : null;
+}
+
+/**
+ * Whether `memberId` is, per the view, the book's only owner — what `withCapture`'s last-owner guard reads, never this
+ * device's own rows (fix round 3).
+ */
+export async function viewIsLastOwner(tx: Db, bookId: string, memberId: string): Promise<boolean> {
+  const member = await viewMember(tx, bookId, memberId);
+  return member !== null && !member.deleted && member.role === 'owner' && (await ownerMembers(tx, bookId)) <= 1;
 }
 
 async function ownerMembers(tx: Db, bookId: string): Promise<number> {

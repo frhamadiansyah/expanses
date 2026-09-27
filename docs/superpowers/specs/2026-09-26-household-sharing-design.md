@@ -55,7 +55,8 @@ this device's own entries included, at their seq — so no local, unsynced edit 
 from its peers (§7.1, §8.4, §8.5); deleting a member row, or making one again, is an owner's, and the last owner is
 never deleted or demoted (§8.5); a removed device is removed at its place in the log, whatever hlc it picks (§8.4); the
 relay's owners follow the view (§8.5); a reordering relay is recorded as a known gap (§15). Each passage says "(fix
-round 2)".
+round 2)". **Fix round 3:** this device's own member edits the view refused are put back on this device, and the
+last-owner guard reads the view (§8.5); §15's gap is worded as needing only the relay.
 
 ## 0. What v3 changed
 
@@ -908,7 +909,12 @@ non-owner's op merely carries (a whole revivable row) loses its clock and can on
 view has as deleted), is accepted only from an owner author; a non-owner's edit that crossed a delete stays dead — it
 merges into what the tombstone kept and moves no existence clock, here and on the device that made it, so every device
 ends alike. The **last owner** is never deleted or made a member: `withCapture` refuses the local write
-(`LastOwnerError`) and apply refuses it as a recorded skip. All of it is decided by the authority view (§7.1), never by
+(`LastOwnerError`, deciding who the last owner is from the authority view, not this device's rows; fix round 3) and
+apply refuses it as a recorded skip. **This device's own refused edits are put back (fix round 3):** when the loop
+takes in one of this device's own entries, every member row that entry touched is set to what the view decided — its
+role, and its existence with the values it last had — with the role clock and the existence clock set to the view's,
+so a refused edit, or one made from a view that lagged (a rename whose existence clock crossed an owner's delete), no
+longer leaves this device's `book_members` different from its peers'. Nothing is re-emitted. All of it is decided by the authority view (§7.1), never by
 this device's own rows. **The relay's owners follow the view:** after a pull changes the set of owner devices in the
 view — a promotion, a demotion, a linked owner device — an owner device calls `setOwners` with the new set (a device the
 relay does not yet count as an owner gets `403` and leaves it to one that is).
@@ -1111,11 +1117,15 @@ Mutate-twice review on every step.
 
 ## 15. Left open
 
-- **A relay that reorders the log (known gap, fix round 2 — deferred by ruling).** Authority is decided in log order, and
-  the log's order is the relay's. A malicious relay colluding with a removed device could serve a new joiner a
-  reordered prefix (a removal moved before a promotion, say) and so make that joiner decide differently. Fix sketch:
-  the owner-signed invite terms carry an **anchor** — the seq and a running hash of the entry signing bytes up to it —
-  that the joiner checks as it pulls; later, devices compare running hashes to detect a forked log.
+- **A relay that reorders the log (known gap, fix rounds 2–3 — deferred by ruling).** Authority is decided in log order
+  (§7.1), and the log's order is the relay's. The relay alone can make devices diverge: serving one device a reordered
+  prefix (a removal moved before the promotion that authorised it, say) makes that device decide differently from its
+  peers, and no colluding device is needed for that. A removed device matters only because the divergent device may then
+  seal a rotation for it, handing it the new epoch key — that is the consequence: **a rotation sealed for a removed
+  device**. It reaches every device that builds its view from a prefix the relay chose: a new joiner, and equally a
+  restored phone rejoining (§8.7), whose view is rebuilt from seq 0. Fix sketch: the owner-signed invite terms carry an
+  **anchor** — the seq and a running hash of the entry signing bytes up to it — that the joiner checks as it pulls; later,
+  devices compare running hashes to detect a forked log.
 - ~~The keychain plugin for `NativeKeyStore` (step 2).~~ Settled in task 5: `@aparajita/capacitor-secure-storage` 8.x —
   Capacitor 8, iOS keychain class `afterFirstUnlockThisDeviceOnly`, iCloud sync switchable off (§5.2). Linked into the
   iOS project by `cap sync ios` (fix round 1: `CapApp-SPM/Package.swift`); not yet built in Xcode or run on a device.

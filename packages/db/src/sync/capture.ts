@@ -2,7 +2,7 @@ import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
-import { makesMember, viewRoleOfDevice } from './authority';
+import { makesMember, viewIsLastOwner, viewRoleOfDevice } from './authority';
 import { reserveAndSplit } from './split';
 import type { ChangeSet, Op } from './types';
 
@@ -369,17 +369,14 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
   const slot = session.reserveRowSlot();
   const before = await snapshot(tx, books, targets);
   const result = await fn();
-  // §8.5 (fix round 2): a shared book always keeps an owner. Deleting or demoting its last owner is refused here, before
-  // anything is emitted, and rolls the write back.
-  for (const t of targets) {
-    if (t.entity !== 'member') continue;
-    for (const book of books) {
-      if (t.bookId && t.bookId !== book.bookId) continue;
-      const [had] = await tx.values<[number]>(sql`SELECT count(*) FROM book_members WHERE book_id = ${book.bookId} AND role = 'owner'`);
-      if (Number(had?.[0] ?? 0) === 0 && [...before.values()].some((b) => b.bookId === book.bookId && b.entity.entity === 'member' && b.values.role === 'owner')) {
-        throw new LastOwnerError();
-      }
-    }
+  // §8.5 (fix rounds 2–3): a shared book always keeps an owner. Deleting or demoting the member the authority view has as
+  // the book's only owner is refused here, before anything is emitted, and rolls the write back. The view, not this
+  // device's rows, says who that is.
+  for (const was of before.values()) {
+    if (was.entity.entity !== 'member' || was.values.role !== 'owner') continue;
+    const [now] = await tx.values<[string]>(sql`SELECT role FROM book_members WHERE book_id = ${was.bookId} AND member_id = ${was.id}`);
+    if (now?.[0] === 'owner') continue;
+    if (await viewIsLastOwner(tx, was.bookId, was.id)) throw new LastOwnerError();
   }
   const after = await snapshot(tx, books, targets);
   for (const [key, was] of before) {

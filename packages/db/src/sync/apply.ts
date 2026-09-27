@@ -5,7 +5,7 @@ import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
 import { isRevivable, projectPurchase, ROW_CLOCK, withCapturePaused, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
-import { AuthorityError, decideOpsTx, NO_REVIVE, introductionRefusal, recordRemovalTx, removalRefusal, removedInView, viewDevice, wasRefused } from './authority';
+import { AuthorityError, decideOpsTx, NO_REVIVE, viewMember, introductionRefusal, recordRemovalTx, removalRefusal, removedInView, viewDevice, wasRefused } from './authority';
 import { openSealedKey } from './crypto';
 import { deviceIdOf } from './relay-signing';
 import { MissingEpochKeyError, verifyEntry, type ChangeLogEntry, type Sealer } from './seal';
@@ -789,6 +789,9 @@ export async function pullAndApply(
                   for (const [i, decision] of run.decisions.entries()) {
                     if (decision instanceof AuthorityError) await refuse(changeSet.ops[i]!.entity, changeSet.ops[i]!.id, `SkipOp: ${decision.message}`);
                   }
+                  // …and whatever of our member edits the log did not take is put back to what it did (fix round 3).
+                  const members = new Set(changeSet.ops.filter((op) => op.entity === 'member').map((op) => op.id));
+                  if (members.size) await reconcileMembersTx(tx, await bookContextTx(tx, bookId), members, changeSet);
                 }
               }
               if (entry.kind === 'removal') {
@@ -846,6 +849,49 @@ export async function pullAndApply(
   function finish(stopped?: PullResult['stopped']): PullResult {
     for (const lineageId of held.keys()) console.warn(`sync: purchase ${lineageId} changed but its money never arrived; dropped`);
     return stopped ? { applied, skipped, stopped, removals, introduced } : { applied, skipped, removals, introduced };
+  }
+}
+
+/**
+ * Puts this device's member rows back to what the authority view decided (fix round 3). Reached when the loop takes in
+ * one of this device's own entries: an edit the log refused (a role only an owner may write, a delete, a re-make) or
+ * one this device made from a view that lagged (an existence clock moved by a rename that crossed an owner's delete)
+ * was already written here and never undone — so the row's role and its existence, with their clocks, are set to the
+ * view's. Nothing is emitted: peers never took the edit in.
+ */
+async function reconcileMembersTx(tx: Tx, ctx: BookContext, memberIds: ReadonlySet<string>, changeSet: ChangeSet): Promise<void> {
+  const entity = entityOf('member') as RowEntity;
+  for (const memberId of memberIds) {
+    const view = await viewMember(tx, ctx.bookId, memberId);
+    if (!view) continue;
+    const key = parseOpId(entity, memberId);
+    const where = keyWhere(entity, key, ctx);
+    const exists = await rowExists(tx, entity, where);
+    if (view.deleted) {
+      if (!exists) continue;
+      await setTombstone(tx, ctx, 'member', memberId, view.rowHlc, await rowValuesOf(tx, entity, where));
+      await tx.run(sql`UPDATE sync_tombstones SET hlc = ${view.rowHlc} WHERE book_id = ${ctx.bookId} AND entity = 'member' AND id = ${memberId}`);
+      await deleteRow(tx, entity, where, key);
+      await setClock(tx, ctx, 'member', memberId, ROW_CLOCK, view.rowHlc);
+      continue;
+    }
+    if (!exists) {
+      const kept = await retainedOf(tx, ctx, 'member', memberId);
+      const op = changeSet.ops.find((o) => o.entity === 'member' && o.id === memberId && o.op === 'upsert');
+      const carried = op && op.op === 'upsert' ? op.fields : {};
+      const values: Record<string, unknown> = {};
+      for (const field of Object.keys(entity.fields)) values[field] = field in kept ? kept[field] : carried[field];
+      values.role = view.role;
+      if (typeof values.name !== 'string' || typeof values.joinedAt !== 'string') continue; // nothing here to rebuild it from
+      await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${ctx.bookId} AND entity = 'member' AND id = ${memberId}`);
+      await insertRow(tx, ctx, entity, key, values, where);
+      await setClock(tx, ctx, 'member', memberId, ROW_CLOCK, view.rowHlc);
+    }
+    const [row] = await tx.values<[string]>(sql`SELECT role FROM book_members WHERE ${where}`);
+    if (row && row[0] !== view.role) await tx.run(sql`UPDATE book_members SET role = ${view.role} WHERE ${where}`);
+    await setClock(tx, ctx, 'member', memberId, 'role', view.roleHlc);
+    const [alive] = await tx.values<[string]>(sql`SELECT hlc FROM sync_field_clocks WHERE book_id = ${ctx.bookId} AND entity = 'member' AND id = ${memberId} AND field = ${ROW_CLOCK}`);
+    if (alive && alive[0] > view.rowHlc) await setClock(tx, ctx, 'member', memberId, ROW_CLOCK, view.rowHlc);
   }
 }
 
