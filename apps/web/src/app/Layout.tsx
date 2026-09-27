@@ -145,10 +145,10 @@ export function Layout() {
       <div
         aria-hidden
         className={cx(
-          'pointer-events-none fixed inset-x-0 top-0 z-30 transition-colors duration-150 md:hidden',
-          scrolled && 'border-b-[0.5px] border-[var(--ph-hair)] bg-[var(--ph-chrome)] backdrop-blur-xl',
+          'ph-status-glass pointer-events-none fixed inset-x-0 top-0 z-30 md:hidden',
+          scrolled && 'ph-edge-glass',
         )}
-        style={{ height: 'env(safe-area-inset-top)' }}
+        style={{ boxSizing: 'content-box', height: 'env(safe-area-inset-top)' }}
       />
       {/* The phone draws under the status bar and the home indicator, so the shell gives both back. */}
       <main className="relative flex-1 pb-32 md:pb-8" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
