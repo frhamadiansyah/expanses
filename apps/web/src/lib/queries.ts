@@ -25,7 +25,9 @@ export function useAccountsFor(tx: { id: string; entries: readonly { accountId: 
   const { database, ws } = useApp();
   const ids = tx ? [...new Set(tx.entries.map((entry) => entry.accountId))].sort() : [];
   return useQuery({
-    queryKey: ['accounts', ws.workspaceId, 'for', tx?.id ?? null, ids.join(',')],
+    // Without `tx` it is `useAccounts`'s own query, key and all, so a new form reads the very cache an add just
+    // refreshed (a Paid with Add row returns to the form with the new account, which a key of its own may not hold yet).
+    queryKey: tx ? ['accounts', ws.workspaceId, 'for', tx.id, ids.join(',')] : ['accounts', ws.workspaceId],
     queryFn: async () => {
       const listed = await listAccounts(database, ws, { includeArchived: true });
       if (!tx) return listed;

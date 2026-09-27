@@ -24,6 +24,8 @@ import { CardDetailPage } from '../features/cards/CardDetailPage';
 import { CardsPage } from '../features/cards/CardsPage';
 import { RecommendPage } from '../features/cards/RecommendPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
+import { CategoryPage } from '../features/categories/CategoryPage';
+import { SetsPage } from '../features/categories/SetsPage';
 import { KitPage } from '../features/design/KitPage';
 import { MerchantsPage } from '../features/merchants/MerchantsPage';
 import { AddAccountPage } from '../features/ownables/AddAccountPage';
@@ -106,6 +108,9 @@ const planSearch = (search: Record<string, unknown>): EventPlanSearch => ({ ws: 
 const eventSearch = (search: Record<string, unknown>): EventSearch => ({ ws: text(search.ws), buy: text(search.buy) });
 const linkSearch = (search: Record<string, unknown>): EventLinkSearch => ({ ws: text(search.ws), item: text(search.item) });
 
+/** The Categories list's tab, in the address so the way back from an income category lands on Income. */
+const categoriesSearch = (search: Record<string, unknown>): { kind?: 'income' } => (search.kind === 'income' ? { kind: 'income' } : {});
+
 const rootRoute = createRootRoute({ component: Layout });
 
 const cardsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/cards', component: CardsPage });
@@ -172,12 +177,21 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/retirement', component: RetirementFundPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/life-cover', component: LifeCoverPage }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
-  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/accounts/new',
+    component: AddAccountPage,
+    // Opened from New transaction's Paid with: saving goes back there with the account picked, not to Accounts.
+    validateSearch: (search: Record<string, unknown>): { returnTo?: 'transaction' } => ({ returnTo: search.returnTo === 'transaction' ? 'transaction' : undefined }),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', component: PocketsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/pocket', component: AddPocketPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/move', component: MovePage }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/categories', component: CategoriesPage, validateSearch: categoriesSearch }),
+  // "sets" is a static segment, which outranks `$categoryId` however they are ordered here.
+  createRoute({ getParentRoute: () => rootRoute, path: '/categories/sets', component: SetsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/categories/$categoryId', component: CategoryPage }),
   // The wallet and an open card are one screen: a card's page is a child of the wallet, so the stack stays mounted
   // and the card itself can rise out of it to the top, as in Apple Wallet. A deep link opens straight into it.
   cardsRoute.addChildren([
@@ -251,7 +265,16 @@ const routeTree = rootRoute.addChildren([
   }),
   // The debt picker stands on its own path: a debt is a card, a loan or money owed to a person, and each of them
   // lands somewhere different.
-  createRoute({ getParentRoute: () => rootRoute, path: '/debts/new', component: AddDebtPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/debts/new',
+    component: AddDebtPage,
+    // From Paid with's Credit cards tab: the card form opens straight away, and saving goes back to the transaction.
+    validateSearch: (search: Record<string, unknown>): { returnTo?: 'transaction'; item?: string } => ({
+      returnTo: search.returnTo === 'transaction' ? 'transaction' : undefined,
+      item: typeof search.item === 'string' ? search.item : undefined,
+    }),
+  }),
   // Debts — everything owed — keeps the address the Loans page had, so a loan's own page stays where it was.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans', component: DebtsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/loans/$accountId', component: LoanDetailPage }),

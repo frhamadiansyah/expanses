@@ -1,18 +1,28 @@
-import { isoDate } from '@expanses/core';
-import { forgiveRemainder, listDebtProfiles, saveDebtProfile } from '@expanses/db';
-import { useParams } from '@tanstack/react-router';
-import { Plus } from 'lucide-react';
+import { formatMinor, isoDate } from '@expanses/core';
+import { deleteLoan, forgiveRemainder, listDebtProfiles, loanEntry, type LoanEntry, saveDebtProfile } from '@expanses/db';
+import { useNavigate, useParams } from '@tanstack/react-router';
+import { ArrowDown, ArrowUp, Gift, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { personCodeChoices } from '../ownables/catalogue-view';
-import { personParams, repaymentWord, shortDay } from './lend-borrow-view';
+import { counterpartyLabel, deleteLoanQuestion, historyEntry, loanFigureLabels, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
+import { LentEntrySheet } from './LentEntrySheet';
 import { RepaymentForm } from './RepaymentForm';
 
-const HISTORY_TITLES: Record<string, string> = { lend: 'Lent', repayment: 'Repayment', forgive: 'Forgiven' };
+/**
+ * Each history line's circle: money in is green, money out red, a forgiveness grey — and the + that records the next
+ * one grey too, so it reads as the next line rather than as money.
+ */
+const FLOW_GLYPH = {
+  in: <ArrowDown size={15} strokeWidth={2.5} aria-hidden />,
+  out: <ArrowUp size={15} strokeWidth={2.5} aria-hidden />,
+  none: <Gift size={15} aria-hidden />,
+} as const;
+const FLOW_COLOUR = { in: 'var(--ph-tint)', out: 'var(--ph-alarm)', none: undefined } as const;
 
 /**
  * One loan, on a page of its own: what is left of it, the two things to do about it, what it is and what happened.
@@ -31,6 +41,9 @@ export function LoanPage() {
   const profiles = useDebtProfiles();
   const history = useDebtHistory(accountId);
   const [repaying, setRepaying] = useState(false);
+  // A history line opened to be changed, read back with the figures it was recorded with.
+  const [editing, setEditing] = useState<LoanEntry | null>(null);
+  const navigate = useNavigate();
   const [error, setError] = useState<unknown>(null);
 
   const all = [...(people.data?.owedToYou ?? []), ...(people.data?.youOwe ?? []), ...(people.data?.settled ?? [])];
@@ -75,6 +88,33 @@ export function LoanPage() {
     }
   }
 
+  /**
+   * For a loan entered by mistake: everything it moved is taken back and the loan goes. Back to the person when they
+   * have other loans, to Lend & borrow when this was their only one.
+   */
+  async function remove() {
+    const moneyBack = (history.data ?? []).filter((row) => row.kind === 'repayment').length;
+    if (!window.confirm(deleteLoanQuestion(person!.direction, moneyBack))) return;
+    setError(null);
+    try {
+      await deleteLoan(database, ws, accountId);
+      await invalidate();
+      if (person!.loans.length > 1) await navigate({ to: '/net-worth/lend-borrow/$side/$person', params: personParams(person!) });
+      else await navigate({ to: '/net-worth/lend-borrow', search: { side: personParams(person!).side } });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  async function open(transactionId: string) {
+    setError(null);
+    try {
+      setEditing(await loanEntry(database, ws, transactionId));
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   async function forgive() {
     if (!window.confirm(`Forgive what ${person!.personName} still owes? It becomes a gift, and the debt closes.`)) return;
     setError(null);
@@ -86,7 +126,6 @@ export function LoanPage() {
     }
   }
 
-  const anyBack = loan.repaidMinor > 0;
 
   return (
     <div className={SCREEN}>
@@ -96,30 +135,28 @@ export function LoanPage() {
         back={person.personName}
         backTo="/net-worth/lend-borrow/$side/$person"
         backParams={back}
-        actions={[]}
+        actions={[
+          /*
+           * The two rare, final things sit behind ⋯ at the top right: forgiving keeps the history and counts the rest
+           * as a gift; deleting is for a loan entered by mistake.
+           */
+          {
+            key: 'more',
+            label: 'More',
+            glyph: <MoreHorizontal size={20} aria-hidden />,
+            menu: [
+              ...(loan.status === 'open'
+                ? [{ key: 'forgive', label: 'Forgive the rest', glyph: <Gift size={17} aria-hidden />, run: () => void forgive() }]
+                : []),
+              { key: 'delete', label: 'Delete loan', glyph: <Trash2 size={17} aria-hidden />, run: () => void remove() },
+            ],
+          },
+        ]}
       />
 
+      {/* What is still owed, alone, as Wallet draws a payment: what was lent and what came back are rows in Details. */}
       <section className="flex flex-col items-center gap-1 pb-[18px] text-center" data-testid="loan-hero">
         <Money minor={loan.balanceMinor} currency={loan.currency} className="text-[34px] leading-[40px] font-bold tracking-[-0.02em]" />
-        <span className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
-          {'of '}
-          <Money minor={loan.originalMinor} currency={loan.currency} />
-          {person.direction === 'lent' ? ' lent' : ' borrowed'}
-          {anyBack ? (
-            <>
-              {' · '}
-              <Money minor={loan.repaidMinor} currency={loan.currency} />
-              {' back'}
-            </>
-          ) : (
-            ' · nothing back yet'
-          )}
-        </span>
-        {loan.originalMinor > 0 && (
-          <span className="mt-2 block h-1.5 w-full max-w-sm rounded-full bg-[var(--ph-track)]" aria-hidden>
-            <i className="block h-1.5 rounded-full bg-[var(--ph-tint)]" style={{ width: `${Math.min(100, (loan.repaidMinor / loan.originalMinor) * 100)}%` }} />
-          </span>
-        )}
       </section>
 
       {repaying && (
@@ -132,6 +169,18 @@ export function LoanPage() {
           onDone={() => setRepaying(false)}
         />
       )}
+      {editing?.kind === 'repayment' && (
+        <RepaymentForm
+          debtAccountId={accountId}
+          direction={person.direction}
+          currency={loan.currency}
+          personName={person.personName}
+          balanceMinor={loan.balanceMinor}
+          entry={editing}
+          onDone={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === 'lend' && <LentEntrySheet entry={editing} direction={person.direction} currency={loan.currency} onDone={() => setEditing(null)} />}
 
       <ErrorBox error={error} />
 
@@ -149,7 +198,7 @@ export function LoanPage() {
             )}
           </SelectRow>
           {/* Whose loan it is, as the new-loan form asks it: shown, not changed — moving a loan to someone else is not an edit. */}
-          <TextRow label="Person" value={person.personName} readOnly />
+          <TextRow label={counterpartyLabel(person.direction)} value={person.personName} readOnly />
           <TextRow
             key={`reason-${profile.reason ?? ''}`}
             label="Loan"
@@ -160,6 +209,8 @@ export function LoanPage() {
               if (reason !== (profile.reason ?? null)) void saveField({ reason });
             }}
           />
+          <TextRow label={loanFigureLabels(person.direction).given} value={formatMinor(loan.originalMinor, loan.currency)} readOnly />
+          <TextRow label={loanFigureLabels(person.direction).back} value={formatMinor(loan.repaidMinor, loan.currency)} readOnly />
           <TextRow
             label="Due by"
             type="date"
@@ -179,39 +230,44 @@ export function LoanPage() {
             <InsetRow
               key="record"
               icon={<Plus size={16} strokeWidth={2.5} aria-hidden />}
-              iconColour="var(--ph-tint)"
               title={`Record ${repaymentWord(person.direction).toLowerCase()}`}
               chevron={false}
               onClick={() => setRepaying(true)}
             />
           ) : null}
-          {(history.data ?? []).map((row) => (
-            <InsetRow
-              key={row.transactionId}
-              title={row.kind === 'repayment' ? repaymentWord(person.direction) : (HISTORY_TITLES[row.kind] ?? row.kind)}
-              subtitle={
-                row.interestMinor > 0 ? (
+          {/* Newest first, straight under the + that adds the next one. */}
+          {[...(history.data ?? [])].reverse().map((row) => {
+            const entry = historyEntry(row.kind, person.direction);
+            // One line each: the circle says which way the money went, and the date follows the word in grey.
+            return (
+              <InsetRow
+                key={row.transactionId}
+                icon={FLOW_GLYPH[entry.flow]}
+                iconColour={FLOW_COLOUR[entry.flow]}
+                title={
                   <>
-                    {shortDay(row.occurredOn, today)}
-                    {' · interest '}
-                    <Money minor={row.interestMinor} currency={loan.currency} />
+                    {entry.title}
+                    <span className="font-normal text-[var(--ph-ink-3)]">
+                      {` · ${shortDay(row.occurredOn, today)}`}
+                      {row.interestMinor > 0 ? (
+                        <>
+                          {' · interest '}
+                          <Money minor={row.interestMinor} currency={loan.currency} />
+                        </>
+                      ) : null}
+                    </span>
                   </>
-                ) : (
-                  shortDay(row.occurredOn, today)
-                )
-              }
-              value={<Money minor={row.amountMinor} currency={loan.currency} />}
-              chevron={false}
-            />
-          ))}
+                }
+                value={<Money minor={row.amountMinor} currency={loan.currency} />}
+                // A forgiven loan's history is closed; every other line opens to be changed.
+                onClick={loan.status === 'forgiven' || row.kind === 'forgive' ? undefined : () => void open(row.transactionId)}
+                chevron={loan.status !== 'forgiven' && row.kind !== 'forgive'}
+              />
+            );
+          })}
         </InsetGroup>
       )}
 
-      {loan.status === 'open' && (
-        <InsetGroup>
-          <InsetRow title="Forgive the rest" destructive onClick={() => void forgive()} />
-        </InsetGroup>
-      )}
     </div>
   );
 }

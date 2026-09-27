@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { personRow } from './people';
 import { openAccount, openTypes } from './accounts';
-import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith, chooseTo } from './add-transaction';
+import { addTransaction, addTransfer, attachPhoto, closeDetails, shareWith, chooseTo, choosePayment } from './add-transaction';
 import { addEvent } from './event-plan';
 import { openGoalForm } from './goals';
 import { cardSection } from './card-section';
@@ -92,6 +92,8 @@ test('Paid with names each card by its digits, and choosing one sets the account
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Paid with' }).click();
   const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  // Nothing chosen yet, so the sheet opens on Accounts: the cards are on their own tab.
+  await sheet.getByRole('radio', { name: 'Credit cards' }).click();
   await expect(sheet.getByRole('button', { name: 'BCA KrisFlyer ···· 1467', exact: true })).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'BCA KrisFlyer ···· 8802', exact: true })).toBeVisible();
 
@@ -235,7 +237,7 @@ test('a transfer offers no currency of its own, and moves the figure its row sho
   // The flag is offered on Expense, and choosing USD there really does draw the second row. The assertion
   // below turns on the tab rather than on the card having lost a control it never had.
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
   await form.getByLabel('Amount', { exact: true }).fill('100');
@@ -331,7 +333,7 @@ test('"Charged in" opens filled in at the rate this device stored for the day', 
   const typeForeign = async (amount: string) => {
     await page.goto('/transactions/new');
     await page.getByRole('button', { name: 'Paid with' }).click();
-    await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+    await choosePayment(page, 'BCA Tahapan');
     await page.getByRole('button', { name: 'Currency' }).click();
     // The sheet lists CNY under Recent once it has been chosen, and under All currencies always.
     await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'CNY Chinese Yuan' }).first().click();
@@ -377,7 +379,7 @@ test('the charged row follows an amount typed a digit at a time, and that figure
   const openForeignForm = async () => {
     await page.goto('/transactions/new');
     await page.getByRole('button', { name: 'Paid with' }).click();
-    await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+    await choosePayment(page, 'BCA Tahapan');
     await page.getByRole('button', { name: 'Currency' }).click();
     await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'CNY Chinese Yuan' }).first().click();
   };
@@ -452,7 +454,7 @@ test('a shared bill keeps the card it was charged on, and what the merchant char
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'KF Signature ···· 8802', exact: true }).click();
+  await choosePayment(page, 'KF Signature ···· 8802');
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
   await form.getByLabel('Amount', { exact: true }).fill('100');
@@ -565,7 +567,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'KF Signature', exact: true }).click();
+  await choosePayment(page, 'KF Signature');
   await form.getByLabel('Amount', { exact: true }).fill('85000');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -628,7 +630,7 @@ test('every extra survives the save, and leaving it out of the report leaves onl
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'KF Signature', exact: true }).click();
+  await choosePayment(page, 'KF Signature');
   await form.getByLabel('Amount', { exact: true }).fill('50000');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -668,7 +670,7 @@ test('a split is read in the paying account’s own currency, exponent and all',
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Wise Card', exact: true }).click();
+  await choosePayment(page, 'Wise Card');
   await form.getByRole('button', { name: 'Add more details' }).click();
   const more = page.getByRole('region', { name: 'More details' });
   await more.getByRole('button', { name: 'Split' }).click();
@@ -709,7 +711,7 @@ test('a split by category posts one line per category, each with its own figure'
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByLabel('Note').fill('Superindo');
 
   await form.getByRole('button', { name: 'Add more details' }).click();
@@ -756,7 +758,7 @@ test('Split by category and With refuse each other in words, before Save', async
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByLabel('Amount', { exact: true }).fill('85000');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
@@ -816,7 +818,7 @@ test('a missing rate is asked for under Add more details, and the save then goes
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Wise USD', exact: true }).click();
+  await choosePayment(page, 'Wise USD');
   await form.getByLabel('Amount', { exact: true }).fill('12.50');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
@@ -858,7 +860,7 @@ test('a bill split equally between three people leaves each of them owing their 
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await choosePayment(page, 'BCA Visa');
   await form.getByLabel('Amount', { exact: true }).fill('400000');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
@@ -916,7 +918,7 @@ test('a typed share leaves the rest of the bill as your own spending', async ({ 
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByLabel('Amount', { exact: true }).fill('400000');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
@@ -956,7 +958,7 @@ test('a photograph attached to a purchase is on its receipt, and ✕ takes it of
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await choosePayment(page, 'BCA Visa');
   await form.getByLabel('Amount', { exact: true }).fill('85000');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -1140,7 +1142,7 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
 
   // Paid with — and the card of it, not just the account.
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'KF Signature ···· 8802', exact: true }).click();
+  await choosePayment(page, 'KF Signature ···· 8802');
   // The flag, the amount in the merchant's currency, and what the bank actually took.
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
@@ -1236,7 +1238,7 @@ test('a split by category refuses a foreign amount in words, and the way out wor
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await choosePayment(page, 'BCA Visa');
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
   await form.getByLabel('Amount', { exact: true }).fill('100');
@@ -1294,7 +1296,7 @@ test('an excluded purchase leaves the chart and the budget, keeps the statement 
     await page.getByRole('button', { name: 'Add transaction' }).click();
     const form = page.getByRole('dialog', { name: 'Add a transaction' });
     await form.getByRole('button', { name: 'Paid with' }).click();
-    await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'KF Signature', exact: true }).click();
+    await choosePayment(page, 'KF Signature');
     await form.getByLabel('Amount', { exact: true }).fill(amount);
     await form.getByRole('button', { name: 'Category' }).click();
     await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -1370,7 +1372,7 @@ test('the keyboard alone records a purchase, and evaluating is not saving', asyn
   await expect(form).toBeVisible();
 
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
@@ -1396,7 +1398,7 @@ test('the keyboard alone records a purchase, and evaluating is not saving', asyn
   // And the same figure by blur alone: Tab out of the field, and the row still reads 100.000.
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Ranch Market');
@@ -1427,7 +1429,7 @@ test('an event, a photograph and the exclusion survive one save together', async
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await choosePayment(page, 'BCA Visa');
   await form.getByLabel('Amount', { exact: true }).fill('85000');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
@@ -1472,7 +1474,7 @@ test('an edit that turns a purchase into income drops the card’s facts and kee
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'KF Signature', exact: true }).click();
+  await choosePayment(page, 'KF Signature');
   await form.getByLabel('Amount', { exact: true }).fill('85000');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();

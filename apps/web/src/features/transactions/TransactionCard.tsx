@@ -2,6 +2,8 @@ import { isoDate, type PaymentOption, tradeRateNeeds } from '@expanses/core';
 import {
   type AccountRow,
   type CardRow,
+  noteCategory,
+  type NoteSuggestion,
   postTransaction,
   recordTaggedTransfer,
   replaceTransaction,
@@ -10,6 +12,7 @@ import {
   type TransactionView,
 } from '@expanses/db';
 import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
 import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -34,9 +37,11 @@ import { CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
+import { NoteSuggestions } from './NoteSuggestions';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions, placeholderLabel, withoutPlaceholders } from './quick-row';
+import { clearStashedDraft, readStashedDraft, stashDraft } from './draft-handoff';
 import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
@@ -157,9 +162,29 @@ function CardBody({
   // The placeholders among `accounts`: what the edited purchase names that this device's own list leaves out (§4.4).
   const placeholders = new Set(accounts.filter((a) => !listedIds.has(a.id)).map((a) => a.id));
   const assetProfiles = useAssetProfiles();
-  const [draft, setDraft] = useState<FormDraft>(() =>
-    initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense' },
-  );
+  // A new transaction set aside while an account was added for it comes back as typed, with that account picked
+  // when it can pay (or receive, or move) the way this transaction does.
+  const [handoff] = useState(() => (!initial && full ? readStashedDraft() : null));
+  useEffect(() => {
+    if (handoff) clearStashedDraft();
+  }, [handoff]);
+  const [draft, setDraft] = useState<FormDraft>(() => {
+    if (initial) return formFromTransaction(initial, accounts, bookId, photoIds);
+    if (!handoff) return { ...emptyForm(bookId), mode: mode ?? 'expense' };
+    const added = accounts.find((a) => a.id === handoff.addedAccountId);
+    const fits = handoff.draft.mode === 'transfer' ? canTransferWith : handoff.draft.mode === 'income' ? canReceiveInto : canPayWith;
+    return added && fits(added, '') ? { ...handoff.draft, moneyId: added.id, cardId: '' } : handoff.draft;
+  });
+  const navigate = useNavigate();
+  /**
+   * Off to New account — or, from the Credit cards tab, straight to a new credit card — with what is typed set aside;
+   * saving there, or going back, returns here with it.
+   */
+  const addAccount = (kind: 'accounts' | 'cards') => {
+    stashDraft(draft);
+    if (kind === 'cards') void navigate({ to: '/debts/new', search: { returnTo: 'transaction', item: 'credit_card' } });
+    else void navigate({ to: '/accounts/new', search: { returnTo: 'transaction' } });
+  };
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -354,6 +379,27 @@ function CardBody({
    * correction is, and the middle is the real date input laid over the day it shows, so it is still labelled
    * Date and still opens the browser's own picker.
    */
+  /*
+   * Notes written before, over the keyboard while Note is typed in; a pick brings the category it was last filed
+   * under, but only into an empty Category — one chosen by hand is never overwritten.
+   */
+  const [noteFocused, setNoteFocused] = useState(false);
+  const suggestKind = draft.mode === 'expense' || draft.mode === 'income' ? draft.mode : null;
+  const categoryNameOf = (id: string) => accounts.find((a) => a.id === id)?.name;
+  const pickNote = (suggestion: NoteSuggestion) =>
+    setDraft((d) => ({
+      ...d,
+      description: suggestion.description,
+      ...(suggestion.categoryId && !d.categoryId && d.splits.length === 0 ? { categoryId: suggestion.categoryId } : {}),
+    }));
+  // A note typed out in full without a tap still brings its category, when leaving Note finds Category empty.
+  const fillCategoryFromNote = () => {
+    const typed = draft.description.trim();
+    if (!suggestKind || !typed || draft.categoryId || draft.splits.length > 0) return;
+    void noteCategory(database, ws, typed, suggestKind).then((categoryId) => {
+      if (categoryId) setDraft((d) => (d.categoryId || d.splits.length > 0 || d.description.trim() !== typed ? d : { ...d, categoryId }));
+    });
+  };
   const noteRow = (
     <div className="flex items-center gap-[10px] pl-[10px]">
       <RowLead>
@@ -367,6 +413,11 @@ function CardBody({
           aria-label="Note"
           value={draft.description}
           onChange={(e) => set({ description: e.target.value })}
+          onFocus={() => setNoteFocused(true)}
+          onBlur={() => {
+            setNoteFocused(false);
+            fillCategoryFromNote();
+          }}
           placeholder="Note"
           className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
         />
@@ -597,6 +648,7 @@ function CardBody({
 
             {noteRow}
             {dateRow(draft.occurredOn, (occurredOn) => set({ occurredOn }))}
+            <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />
           </FormRows>
         )}
       </div>
@@ -792,8 +844,14 @@ function CardBody({
           title={payLabel}
           options={payable}
           accounts={accounts}
+          placeholders={placeholders}
+          chosenAccountId={draft.moneyId}
+          chosenCardId={draft.cardId}
+          cards={draft.mode === 'expense'}
           onPick={(option) => set({ moneyId: option.accountId, cardId: option.cardId ?? '' })}
           onClose={() => setSheet(null)}
+          // Only a new transaction on its own screen: an edit, or the card in a sheet, has nowhere to come back to.
+          onAddAccount={full && !initial ? addAccount : undefined}
         />
       )}
       {sheet === 'category' && (

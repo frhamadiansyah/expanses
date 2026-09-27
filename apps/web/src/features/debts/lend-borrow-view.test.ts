@@ -1,6 +1,6 @@
 import type { PersonDebtRow, PersonLoanRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { loanSubtitle, personDue, personParams, repaymentWord, shortDay } from './lend-borrow-view';
+import { counterpartyLabel, deleteLoanQuestion, historyEntry, loanFigureLabels, loanSubtitle, personDue, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 
 const TODAY = '2026-09-27';
 
@@ -64,5 +64,27 @@ describe('one loan', () => {
     // Money back on a loan you made is collected; money back on one you took is repaid.
     expect(repaymentWord('lent')).toBe('Collection');
     expect(repaymentWord('borrowed')).toBe('Repayment');
+    expect(loanFigureLabels('lent')).toEqual({ given: 'Money lent', back: 'Money back' });
+    expect(loanFigureLabels('borrowed')).toEqual({ given: 'Money borrowed', back: 'Paid back' });
+  });
+
+  it('names each history line and which way its money went, from the owner\'s side', () => {
+    expect(historyEntry('lend', 'lent')).toEqual({ title: 'Lent', flow: 'out' });
+    expect(historyEntry('repayment', 'lent')).toEqual({ title: 'Collection', flow: 'in' });
+    // A loan you took says so, and the money arrived.
+    expect(historyEntry('lend', 'borrowed')).toEqual({ title: 'Borrowed', flow: 'in' });
+    expect(historyEntry('repayment', 'borrowed')).toEqual({ title: 'Repayment', flow: 'out' });
+    expect(historyEntry('forgive', 'lent')).toEqual({ title: 'Forgiven', flow: 'none' });
+  });
+
+  it('names the other side of a loan by its role, whether a person or a company', () => {
+    expect(counterpartyLabel('lent')).toBe('Borrower');
+    expect(counterpartyLabel('borrowed')).toBe('Lender');
+  });
+
+  it('asks before deleting, naming what goes with the loan', () => {
+    expect(deleteLoanQuestion('lent', 0)).toBe('Delete this loan? Every balance goes back as if it was never recorded.');
+    expect(deleteLoanQuestion('lent', 1)).toMatch(/^Delete this loan and its collection\?/);
+    expect(deleteLoanQuestion('borrowed', 2)).toMatch(/^Delete this loan and its 2 repayments\?/);
   });
 });

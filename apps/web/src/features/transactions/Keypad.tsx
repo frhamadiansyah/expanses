@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import { useEscape } from '../../app/use-escape';
 import { usePhone } from '../../app/use-phone';
 import { cx } from '../../ui';
-import { KEYPAD_KEYS, keypadAction } from './tx-form';
+import { type KeypadKey, keypadAction, keypadKeys } from './tx-form';
 
 /**
  * The phone's dock: the only way an amount is typed on a touch screen, so it carries the arithmetic too.
@@ -46,7 +46,7 @@ export function Keypad({
   if (!phone) return null;
 
   // Every key, DONE included, goes through the one tested decision. Nothing is worked out here.
-  const press = (key: (typeof KEYPAD_KEYS)[number]) => {
+  const press = (key: KeypadKey) => {
     const { text, close } = keypadAction(value, currency, key);
     if (text !== value) onChange(text);
     if (close) onClose();
@@ -75,7 +75,7 @@ export function Keypad({
           </button>
         </div>
         <div className="grid grid-cols-4 gap-[5px]">
-          {KEYPAD_KEYS.map((key) => (
+          {keypadKeys(currency).map((key) => (
             <button
               key={key}
               type="button"

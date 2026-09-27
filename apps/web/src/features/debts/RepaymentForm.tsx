@@ -1,5 +1,5 @@
-import { type DebtDirection, isoDate } from '@expanses/core';
-import { recordRepayment } from '@expanses/db';
+import { type DebtDirection, isoDate, minorToMajorString } from '@expanses/core';
+import { deleteLoanEntry, editLoanEntry, type LoanEntry, recordRepayment } from '@expanses/db';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { SPENDABLE_SUBTYPES } from '../../lib/account-types';
@@ -8,7 +8,7 @@ import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useHeldRates } from '../accounts/queries';
 import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, InsetRow, SelectRow, TextRow } from '../../ui/native';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
 import { repaymentWord } from './lend-borrow-view';
@@ -28,13 +28,17 @@ export function RepaymentForm({
   currency,
   personName,
   balanceMinor,
+  entry,
   onDone,
 }: {
   debtAccountId: string;
   direction: DebtDirection;
   currency: string;
   personName: string;
+  /** What is owed now. When `entry` is being changed, the amount it took off is added back before checking. */
   balanceMinor: number;
+  /** A collection or repayment already recorded, opened from History to be changed or taken off. */
+  entry?: LoanEntry;
   onDone: () => void;
 }) {
   const { database, ws } = useApp();
@@ -44,7 +48,19 @@ export function RepaymentForm({
   // Somewhere money can actually sit: never another person's account.
   const moneyAccounts = moneyHolders(accounts).filter((account) => SPENDABLE_SUBTYPES.includes(account.subtype));
   const today = isoDate();
-  const [draft, setDraft] = useState<RepaymentDraft>(() => emptyRepaymentDraft(today, moneyAccounts[0]?.id ?? ''));
+  const [draft, setDraft] = useState<RepaymentDraft>(() =>
+    entry
+      ? {
+          amount: minorToMajorString(entry.amountMinor, currency),
+          interest: entry.interestMinor > 0 ? minorToMajorString(entry.interestMinor, currency) : '',
+          occurredOn: entry.occurredOn,
+          moneyId: entry.moneyAccountId,
+        }
+      : emptyRepaymentDraft(today, moneyAccounts[0]?.id ?? ''),
+  );
+  // Changing an entry, what it took off the loan is owed again until the new figure is saved.
+  const owedBefore = entry ? balanceMinor + entry.amountMinor : balanceMinor;
+  const word = repaymentWord(direction);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [manualRate, setManualRate] = useState('');
@@ -58,13 +74,14 @@ export function RepaymentForm({
   const outflowMinor = (() => {
     if (direction !== 'borrowed') return 0;
     try {
-      const input = repaymentDraftToInput({ ...draft, moneyId }, debtAccountId, currency, balanceMinor, personName);
+      const input = repaymentDraftToInput({ ...draft, moneyId }, debtAccountId, currency, owedBefore, personName);
       return input.amountMinor + (input.interestMinor ?? 0);
     } catch {
       return 0;
     }
   })();
-  const setAside = useSetAside(direction === 'borrowed' ? spendingDoor(moneyId, outflowMinor) : null);
+  // Only a new payment asks about money set aside; a correction to one already made does not ask again.
+  const setAside = useSetAside(direction === 'borrowed' && !entry ? spendingDoor(moneyId, outflowMinor) : null);
   // The ✓ is dim until there is an amount; anything else wrong with it is said in words when ✓ is pressed, since a
   // dim ✓ alone could not say that Andi owes less than was typed.
   const ready = draft.amount.trim() !== '';
@@ -74,7 +91,7 @@ export function RepaymentForm({
     setError(null);
     setBusy(true);
     try {
-      const input = repaymentDraftToInput({ ...draft, moneyId }, debtAccountId, currency, balanceMinor, personName);
+      const input = repaymentDraftToInput({ ...draft, moneyId }, debtAccountId, currency, owedBefore, personName);
       const ratesToBase = await ratesForSave({
         database,
         ws,
@@ -85,7 +102,34 @@ export function RepaymentForm({
         resolveRates,
         onMissing: setNeedsRate,
       });
-      await recordRepayment(database, ws, { ...input, ratesToBase, setAside: setAside.choice });
+      if (entry) {
+        await editLoanEntry(database, ws, entry.transactionId, {
+          occurredOn: input.occurredOn,
+          amountMinor: input.amountMinor,
+          interestMinor: input.interestMinor ?? 0,
+          moneyAccountId: input.moneyAccountId,
+          ratesToBase,
+        });
+      } else {
+        await recordRepayment(database, ws, { ...input, ratesToBase, setAside: setAside.choice });
+      }
+      await invalidate();
+      onDone();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Takes this one off the loan; what it paid is owed again, and the loan stays. */
+  async function remove() {
+    if (!entry || busy) return;
+    if (!window.confirm(`Delete this ${word.toLowerCase()}? What it paid is owed again.`)) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await deleteLoanEntry(database, ws, entry.transactionId);
       await invalidate();
       onDone();
     } catch (e) {
@@ -96,7 +140,7 @@ export function RepaymentForm({
   }
 
   return (
-    <Sheet grouped title={repaymentWord(direction)} onClose={onDone} confirm={{ label: `Save ${repaymentWord(direction).toLowerCase()}`, disabled: busy || !setAside.ready || !ready, run: () => void save() }}>
+    <Sheet grouped title={word} onClose={onDone} confirm={{ label: `Save ${word.toLowerCase()}`, disabled: busy || !setAside.ready || !ready, run: () => void save() }}>
       <InsetGroup>
         <TextRow
           label={`${direction === 'lent' ? 'Came back' : 'Paid back'} (${currency})`}
@@ -134,6 +178,11 @@ export function RepaymentForm({
       </InsetGroup>
       {setAside.node}
       <ErrorBox error={error} />
+      {entry ? (
+        <InsetGroup>
+          <InsetRow title={`Delete this ${word.toLowerCase()}`} destructive onClick={() => void remove()} />
+        </InsetGroup>
+      ) : null}
     </Sheet>
   );
 }

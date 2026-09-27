@@ -26,7 +26,14 @@ import { fieldsFor } from './catalogue-view';
  * The bank is kept as the Coretax "Nama bank/institusi" of the account's own kas row, which is where the tax
  * report reads it from; there is no column on `accounts` for it, and inventing one would break older databases.
  */
-export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
+export function CashAccountForm({
+  item,
+  onCreated,
+}: {
+  item: MoneyAccountSubtype;
+  /** Where saving goes instead of Accounts, given the account just made. */
+  onCreated?: (accountId: string) => void;
+}) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
@@ -87,14 +94,15 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
             openingRateToBase: await openingRateFor({ database, ws, currency: pocket.currency, openedOn, openingBalanceMinor: pocket.openingBalanceMinor, typed: pocket.typedRate, resolveRates }),
           });
         }
-        await openPocketedAccount(database, ws, { item, name, bank: bank.trim() || undefined, openedOn, pockets: settled });
+        const { parent } = await openPocketedAccount(database, ws, { item, name, bank: bank.trim() || undefined, openedOn, pockets: settled });
         await invalidate();
-        await navigate({ to: '/accounts' });
+        if (onCreated) onCreated(parent.id);
+        else await navigate({ to: '/accounts' });
         return;
       }
       const openingBalanceMinor = balance.trim() ? parseMajor(balance, currency) : 0;
       const openingRateToBase = await openingRateFor({ database, ws, currency, openedOn, openingBalanceMinor, typed: manualRate, resolveRates });
-      await openCashAccount(database, ws, {
+      const opened = await openCashAccount(database, ws, {
         item,
         name,
         currency,
@@ -108,7 +116,8 @@ export function CashAccountForm({ item }: { item: MoneyAccountSubtype }) {
         sourceAccountId: source?.id,
       });
       await invalidate();
-      await navigate({ to: '/accounts' });
+      if (onCreated) onCreated(opened.id);
+      else await navigate({ to: '/accounts' });
     } catch (e) {
       setError(e);
     } finally {

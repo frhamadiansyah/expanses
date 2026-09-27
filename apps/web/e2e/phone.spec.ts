@@ -182,8 +182,8 @@ test('the chart card keeps its height when the month is read the other way', asy
   const expense = (await card.boundingBox())!;
   const expenseRing = (await ring.boundingBox())!;
 
-  await page.getByRole('button', { name: 'Show income' }).click();
-  await expect(page.getByRole('button', { name: 'Show income' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('radiogroup', { name: 'Show' }).getByRole('radio', { name: 'Income' }).click();
+  await expect(page.getByRole('radiogroup', { name: 'Show' }).getByRole('radio', { name: 'Income' })).toBeChecked();
   const income = (await card.boundingBox())!;
   const incomeRing = (await ring.boundingBox())!;
 

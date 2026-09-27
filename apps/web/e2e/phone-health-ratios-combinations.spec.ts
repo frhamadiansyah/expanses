@@ -3,6 +3,7 @@ import { openAccount } from './accounts';
 import { addTransaction } from './add-transaction';
 import { openGoalForm, openWorking } from './goals';
 import { goalCard, goalRow } from './set-aside';
+import { expectNeed, markNeed, openCategory } from './categories';
 
 /**
  * The health-ratio combinations (spec §15, Part 1 rows), rows 2, 7, 9, 11 and 13 at phone width.
@@ -31,9 +32,9 @@ async function setUp(page: Page) {
 
 /** Row 2's marks: Food and beverage lifestyle, so Restaurants inherits it. */
 async function markFoodLifestyle(page: Page) {
-  await page.goto('/categories');
-  await page.getByRole('button', { name: 'Mark Food and beverage lifestyle' }).click();
-  await expect(page.getByTestId('need-Restaurants')).toHaveText('Lifestyle (from parent)');
+  await markNeed(page, 'Food and beverage', 'Lifestyle');
+  await openCategory(page, 'Restaurants');
+  await expectNeed(page, 'Restaurants', 'Lifestyle', 'Follows Food and beverage');
 }
 
 function emergencyCard(page: Page) {

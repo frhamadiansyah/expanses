@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { Globe, X } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { AccountRow } from '@expanses/db';
@@ -16,6 +16,7 @@ import {
   chargedInNeeded,
   chargedIsEstimate,
   currencyChoosable,
+  currencyShown,
   currencyFlag,
   estimatedCharge,
   type FormDraft,
@@ -161,6 +162,7 @@ export function AmountRow({
   // the flag is drawn but never a control — the same "drawn, not a control" shape a transfer's flag already has.
   const sharedBook = useIsBookShared();
   const choosable = currencyChoosable(draft) && !sharedBook;
+  const named = currencyShown(draft);
   // One decision about which currency each figure is typed in, read by the row, the keypad and nothing else.
   const fields = amountFields(draft, accounts, ws.baseCurrency);
   const { rate } = useSuggestedRate(needsCharged ? currency : '', needsCharged ? settled : '', draft.occurredOn);
@@ -233,11 +235,11 @@ export function AmountRow({
               aria-label="Currency"
               className={cx(flagCircle, 'ph-focus')}
             >
-              <span aria-hidden>{currencyFlag(currency)}</span>
+              {named ? <span aria-hidden>{currencyFlag(fields.amount.currency)}</span> : <Globe size={16} aria-hidden className="text-[var(--ph-ink-3)]" />}
             </button>
           ) : (
             <span aria-hidden className={flagCircle}>
-              {currencyFlag(currency)}
+              {named ? currencyFlag(fields.amount.currency) : <Globe size={16} className="text-[var(--ph-ink-3)]" />}
             </span>
           )}
         </RowLead>
@@ -247,9 +249,11 @@ export function AmountRow({
               whose text is "IDR450.000" reads that to a screen reader and to every test that asks a money field
               what it is showing, and the figure is what a money field shows. */}
           <span className={cx(codeGroup, fields.charged ? 'shrink' : 'flex-1')}>
-            <span aria-hidden className={codeClass}>
-              {fields.amount.currency}
-            </span>
+            {named && (
+              <span aria-hidden className={codeClass}>
+                {fields.amount.currency}
+              </span>
+            )}
             <MoneyField
               field={fields.amount}
               phone={phone}

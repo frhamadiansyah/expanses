@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openCard } from './accounts';
-import { addTransaction } from './add-transaction';
+import { addTransaction, choosePayment } from './add-transaction';
 import { cardSection } from './card-section';
 
 test.beforeEach(({ page }) => {
@@ -43,7 +43,7 @@ async function buy(page: Page, p: { card: string; description: string; category:
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: p.card, exact: true }).click();
+  await choosePayment(page, p.card);
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: new RegExp(`^${p.original[0]} `) }).first().click();
   await form.getByLabel('Amount', { exact: true }).fill(p.original[1]);
