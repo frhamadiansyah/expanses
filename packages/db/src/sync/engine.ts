@@ -24,7 +24,7 @@ import {
 import type { DeviceKeys } from './keys';
 import { base64UrlToBytes, bytesToBase64Url, inviteSigningBytes } from './relay-signing';
 import { MissingEpochKeyError, Sealer } from './seal';
-import { assertShareableTx, emitUnknownRowsTx, REMEMBERED_MEMBER_KEY, SharingError, seedBookTx } from './seed';
+import { assertShareableTx, catchUpTx, emitNewerTx, keepClocksTx, REMEMBERED_MEMBER_KEY, SeenLog, SharingError, seedBookTx } from './seed';
 import type { ChangeSet, InviteRecord, InviteTerms, SyncTransport } from './types';
 import { removedFromBook, SyncTransportError } from './types';
 
@@ -222,7 +222,7 @@ export class SyncEngine {
   }
 
   /** `drain`, with whatever a stale-epoch re-pull applied collected into `pulls`, for `syncActive` to act on. */
-  private async drainInto(bookId: string, seen: Set<string> | undefined, pulls: PullResult[]): Promise<number> {
+  private async drainInto(bookId: string, seen: SeenLog | undefined, pulls: PullResult[]): Promise<number> {
     let shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') return 0;
     const rows = await this.database.db.values<[string, string]>(sql`SELECT id, entry_json FROM sync_outbox WHERE book_id = ${bookId} ORDER BY hlc`);
@@ -253,7 +253,7 @@ export class SyncEngine {
    * (§8.4) and add a linked device of an owner to the relay's owners (§8.3). A transport failure throws; the outbox
    * and cursor stay put.
    */
-  async syncOnce(bookId: string, seen?: Set<string>): Promise<SyncOnceResult> {
+  async syncOnce(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
     if (await this.checkBook(bookId)) return { pushed: 0, applied: 0, skipped: [], removals: [], introduced: [], stopped: { seq: 0, reason: 'needs invite' } };
     try {
       return await this.syncActive(bookId, seen);
@@ -264,7 +264,7 @@ export class SyncEngine {
     }
   }
 
-  private async syncActive(bookId: string, seen?: Set<string>): Promise<SyncOnceResult> {
+  private async syncActive(bookId: string, seen?: SeenLog): Promise<SyncOnceResult> {
     const ownersBefore = await this.database.transaction((tx) => viewOwnerDevices(tx, bookId));
     let result = await this.pull(bookId, seen);
     let pushed = 0;
@@ -306,7 +306,7 @@ export class SyncEngine {
     return rotated === undefined ? { pushed, ...result } : { pushed, rotated, ...result };
   }
 
-  private pull(bookId: string, seen?: Set<string>): Promise<PullResult> {
+  private pull(bookId: string, seen?: SeenLog): Promise<PullResult> {
     return pullAndApply(this.database, this.transport, this.sealer, bookId, this.now, seen);
   }
 
@@ -506,6 +506,9 @@ export class SyncEngine {
           ON CONFLICT (book_id) DO UPDATE SET relay_book_id = excluded.relay_book_id, epoch = excluded.epoch, state = 'active', synced_at = NULL, unshared_by = NULL, unshared_reason = NULL`);
         await tx.run(sql`INSERT INTO sync_cursor (book_id, applied_seq) VALUES (${bookId}, 0) ON CONFLICT (book_id) DO UPDATE SET applied_seq = 0`);
         await clearAuthorityTx(tx, bookId); // rebuilt from the log, entry by entry, as the pull applies it again
+        // What changed here while nothing was captured gets its clock before the pull, so the log's older values do
+        // not overwrite it; a copy kept as its own gets back the clocks it kept (recovery review, N2).
+        await catchUpTx(tx, { bookId, memberId, epoch }, this.now());
       } else {
         await tx.run(sql`
           INSERT INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, archived_at, created_at)
@@ -537,14 +540,15 @@ export class SyncEngine {
       await writeChangeSetsTx(tx, captureConfigOf(this.database), book, ops, { invite: terms });
     });
 
-    const seen = rejoin ? new Set<string>() : undefined;
+    const seen = rejoin ? new SeenLog() : undefined;
     let result = await this.syncOnce(bookId, seen);
     if (rejoin && !result.stopped) {
       // S4 (task 9a): an edit the backup made and drained before it was taken comes back under the old device's id,
       // no longer "own", so the pull refused it without putting the row back. Every member row goes to the view's.
       await this.database.transaction((tx) => withCapturePaused(tx, () => reconcileAllMembersTx(tx, bookId)));
-      // §8.7: what this device holds that the log never mentioned (made before the backup, never drained) goes out as new.
-      const emitted = await this.database.transaction((tx) => emitUnknownRowsTx(tx, captureConfigOf(this.database), { bookId, memberId, epoch }, seen!));
+      // §8.7, N2: what this device holds that the log does not say — rows it never names, fields and voids newer here
+      // than there, rows deleted here — goes out, each field at its own clock.
+      const emitted = await this.database.transaction((tx) => emitNewerTx(tx, captureConfigOf(this.database), { bookId, memberId, epoch }, seen!));
       if (emitted > 0) result = { ...result, pushed: result.pushed + (await this.drain(bookId)) };
     }
     return { bookId, memberId, result };
@@ -750,6 +754,9 @@ export class SyncEngine {
    * as the same person (C1).
    */
   private async dropSyncStateTx(tx: Tx, bookId: string, memberId: string): Promise<void> {
+    // The field clocks go, but not before they are kept with their values (unless already kept when it went
+    // needs_invite): sharing it again or rejoining sends each field at its own clock (recovery review, N2).
+    await keepClocksTx(tx, bookId);
     await tx.run(sql`DELETE FROM shared_books WHERE book_id = ${bookId}`);
     for (const table of ['sync_outbox', 'sync_cursor', 'book_epoch_keys', 'sync_field_clocks', 'sync_tombstones', 'sync_skipped', 'book_devices']) {
       await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId}`);
@@ -884,6 +891,7 @@ export class SyncEngine {
     const [mine] = await this.database.db.values(sql`SELECT 1 FROM book_devices WHERE book_id = ${bookId} AND device_id = ${this.deviceId} AND removed_at IS NULL`);
     if (mine && (await this.sealer.epochKey(bookId, shared.epoch))) return false;
     await this.database.transaction(async (tx: Tx) => {
+      await keepClocksTx(tx, bookId); // nothing is captured while it waits (recovery review, N2)
       await tx.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
       await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`);
     });

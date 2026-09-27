@@ -57,6 +57,16 @@ CREATE TABLE sync_field_clocks (
   PRIMARY KEY (book_id, entity, id, field)
 );
 
+-- A book's field clocks as they stood when this device stopped keeping them (recovery review, N2): written once, when
+-- the book goes needs_invite or its sync state is dropped (stop sharing, keep as my own copy), with each field's value
+-- then. Sharing it again or rejoining takes each field back at its own clock when its value is unchanged since, and at a
+-- fresh one when it changed while nothing was captured; then the rows go.
+CREATE TABLE sync_kept_clocks (
+  book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, field TEXT NOT NULL, hlc TEXT NOT NULL,
+  value_json TEXT NOT NULL,
+  PRIMARY KEY (book_id, entity, id, field)
+);
+
 CREATE TABLE sync_tombstones (
   book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, hlc TEXT NOT NULL,
   last_json TEXT,                                       -- a revivable row's last values, kept for a revive to merge with

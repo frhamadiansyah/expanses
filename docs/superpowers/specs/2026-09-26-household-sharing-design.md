@@ -226,6 +226,11 @@ CREATE TABLE sync_field_clocks (
   book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, field TEXT NOT NULL, hlc TEXT NOT NULL,
   PRIMARY KEY (book_id, entity, id, field)
 );
+CREATE TABLE sync_kept_clocks (                         -- recovery review N2: clocks and values kept while a share is down (§8.6, §8.7)
+  book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, field TEXT NOT NULL, hlc TEXT NOT NULL,
+  value_json TEXT NOT NULL,
+  PRIMARY KEY (book_id, entity, id, field)
+);
 CREATE TABLE sync_tombstones (
   book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, hlc TEXT NOT NULL,
   last_json TEXT,                                       -- fix round 2: a revivable row's last values, for a revive to merge with
@@ -599,6 +604,19 @@ on its own.
 
 Voided rows are not seeded: a purchase that was void before sharing never existed for the other member.
 
+**Sharing again (recovery review, N2).** Step 3's "fresh HLC" is right for a book shared for the first time, and wrong
+for one shared before: a fresh clock on every field overwrote, on a member's rejoining copy, every edit that member made
+after the sharer's clocks stopped moving (a restored phone's backup, a stopped share) — the ruled C1 recovery left the
+two copies different for good. A book shared before is seeded at the clocks it **kept**: each field whose value is
+unchanged since goes at its own clock, a field changed while nothing was captured at a fresh one, and a field with no
+clock at the seed's (`Op.changed` names those; `Op.clocks` carries the rest, as for a revivable row, §7.2). Every
+purchase void here goes out as `{ void: true }` at its clock, and a row deleted while nothing was captured as a delete
+(`catchUpTx`, `seed.ts`), so a copy that rejoins ends as this one does and LWW decides every field alike everywhere.
+Clocks are kept — with each field's value then, in `sync_kept_clocks` — the moment this device stops keeping them: the
+book goes `needs_invite` (§8.7), or its sync state is dropped by Stop sharing or Keep as my own copy (§8.6)
+(`keepClocksTx`). On the next share or rejoin, a purchase voided or corrected meanwhile gets its `sync_lineage` head put
+right first, and the kept rows go.
+
 **As built (task 4).** `SyncEngine.shareBook` (`packages/db/src/sync/engine.ts`) runs step 0 before the relay book
 exists, then `seedBookTx` (`seed.ts`) writes steps 1–3 in one transaction; `syncOnce` drains. Task 5: epoch 1's key is
 minted and stored at rest in the seed's transaction, and a seed that fails deletes the relay book again, so a failed
@@ -724,8 +742,10 @@ for op in cs.ops, in order:
 applyPurchase(op, cs):
   L = sync_lineage[op.id]
   if L exists and L.head is null: return                          # void wins, for ever
-  winners = fields of op that beat their clocks, as above
+  winners = fields of op that beat their clocks, each at at(f), as above   # recovery review N2: clocks honoured
   if winners is empty: return
+  if L does not exist and winners.void:                           # N2: a void for a purchase never posted here
+    insert sync_lineage(op.id, head = null); record clocks; return
   if winners.void:
     voidTransactionTx(L.head); L.head = null; record clocks; return
   state = (L exists ? project(L.head) : {}) merged with winners   # the purchase as it should now read
@@ -766,7 +786,10 @@ input)`, and `replaceTransaction` wraps it (check #13).
 
 A purchase whose fields arrive in two change-sets (split by §6.2) is posted by the first that carries `money` and
 replaced by the second; an op for an unknown lineage without `money` is held in memory until the rest of the
-pulled page is applied, then dropped with a logged warning if `money` never came.
+pulled page is applied, then dropped as a recorded skip if `money` never came (final review, minor 6). A **void** for an
+unknown lineage is not held (recovery review, N2): void wins for ever, so the lineage is recorded as void, and money that
+arrives for it later is dropped by it. A share made again sends every void it holds (§6.5), and a joiner that never had
+the purchase then reads it as void like everyone else.
 
 ### 7.3 The six rules
 
@@ -1031,8 +1054,9 @@ replace or a void of a row in it — `BookReadOnlyError`, inside the writing tra
 the same one `shared_books` lookup capture already makes. *The owner's own device (new decision):* the book becomes an
 ordinary local book again — `shared_books` and the book's sync state (`sync_outbox`, `sync_cursor`, `book_epoch_keys`,
 field clocks, tombstones, skips, `book_devices`, the authority view) go; every row stays, and so do `book_members`,
-`book_member_accounts` (another member's money stays hidden, §4.4) and `sync_lineage` (who paid). Sharing it again
-seeds afresh: the sharer is its owner again — as the same member, which the device remembers in `settings` (final
+`book_member_accounts` (another member's money stays hidden, §4.4) and `sync_lineage` (who paid). The field clocks are
+kept first, with their values (`sync_kept_clocks`, recovery review N2; §6.5). Sharing it again seeds at those clocks:
+the sharer is its owner again — as the same member, which the device remembers in `settings` (final
 review, C1) — and any other remembered member comes back as a member.
 
 **The way out of a dead share (final review, C1).** `forgetSharing(bookId)` does on any device what stopping does on
@@ -1055,8 +1079,8 @@ construction and (b) — the inviter was an owner here — is checked before the
 `shared_books` row afresh. A plain book that was never shared here, under the same id, is still `ALREADY_SHARED`. The
 confirm says what is true: *"… To join the share again later, ask one of its owners for an invite that links this
 device as you."* The rejoin drops the old keys, outbox, skips and every other
-device's pinned row (each is pinned again by its introduction in the new log), pulls from 0, and emits as new what the
-new log never mentioned.
+device's pinned row (each is pinned again by its introduction in the new log), pulls from 0, and emits what the new
+log does not say (§8.7, recovery review N2).
 
 ### 8.7 A restored backup
 
@@ -1082,13 +1106,27 @@ replaced or restored goes `needs_invite` and no device can invite it back: the s
 nobody. The way out is `forgetSharing` (§8.6): the restored phone keeps the book as its own, shares it again as the
 same member, and links the member's device with an invite naming them; the member's copy — still `active` on the
 orphaned relay book — leaves it first (a live copy never moves, recovery review N1; §8.2), then rejoins the new share
-through the rejoin path, and what it recorded meanwhile goes out as new.
+through the rejoin path. The restored phone's seed goes at the clocks its backup kept, and what the member changed or
+recorded meanwhile goes out at its own (N2), so both copies end the same with no skips (`recovery.test.ts`, including a
+property run over random edits before the backup, after it on the lost phone, on both sides while the share is down,
+and on the restored phone's own copy).
 
 Rejoining with a fresh invite from that state: steps §8.2 1–7, keeping the existing `books` row and `member_id`;
 then pull from 0 and apply (the restored `sync_field_clocks` make the merge correct); then emit, as new, every
-local row in scope whose id appears in no op pulled. A local edit newer than the backup that never reached the
-relay, on a row the log already knows, is lost to the log's value — the restored database is by definition the
-older one.
+local row in scope whose id appears in no op pulled.
+
+**The rejoin's catch-up and emit (recovery review, N2).** The ruled C1 recovery never converged: the rejoin dropped the
+member's outbox, the emit sent only rows the new log never named, and the owner's re-share seed overwrote with fresh
+clocks what the member had changed on the orphaned relay book — a void, a correction, a rename stayed on one copy only.
+Now, before the pull, the rejoin catches up (`catchUpTx`, §6.5): a field changed while nothing was captured
+(`needs_invite`, or a copy kept as its own) gets a fresh clock, so the log's older value does not overwrite it — this
+replaces the old rule that such an edit "is lost to the log's value" — and a copy kept as its own gets back the clocks
+it kept. During the pull, `SeenLog` notes, per field, the latest clock the log gives it (the ops the authority view
+refused left out). After it, `emitNewerTx` sends, each at its own clock: every row the log never names; every field
+whose clock here is newer than the log's (the member's edits on the orphaned relay book, and the lost phone's own edits
+there that its backup never had); every void here the log has not got, named by the log or not; and a delete for a row
+deleted here that the log still has alive. Only what the author may write goes: no device row, and no role, new member
+row or member delete unless this member is an owner in the view (§8.5).
 
 ## 9. The relay
 
@@ -1287,6 +1325,11 @@ Mutate-twice review on every step.
   the join screen names the inviter before anything is claimed. Fix sketch: sign `inviterMemberId` into the invite
   terms, and have the joiner check, after the claim and before applying, that the device whose key verifies them was
   introduced as that member in the new log.
+- **An edit made while nothing was captured wins at the rejoin (recovery review, N2).** A field changed on a copy in
+  `needs_invite`, or kept as its own, gets a fresh clock when it is shared again or rejoins — later than any edit the
+  other side made meanwhile, even one made later in wall time. The alternative is to keep a clock that no longer
+  matches its value, which diverged. A row deleted in that time goes out as a delete; a member row deleted by a
+  non-owner's device does not (only an owner deletes a member, §8.5), and comes back from the log.
 - **The put-back's transient window (known gap, fix round 4).** Putting this device's member rows back to the view
   (§8.5) can briefly show a row the user just deleted (or a role they just changed) when an earlier own entry is pulled
   back before the later one: the later entry restores it when it arrives, and a member edit made in that window is put

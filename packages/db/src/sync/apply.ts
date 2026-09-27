@@ -11,6 +11,7 @@ import { deviceIdOf } from './relay-signing';
 import { MissingEpochKeyError, verifyEntry, type ChangeLogEntry, type Sealer } from './seal';
 import { entityOf, NEVER_SYNCED_COLUMNS, parseOpId, type RowEntity } from './shared-entities';
 import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
+import { keepClocksTx, type SeenLog } from './seed';
 import { uuidv5 } from './uuidv5';
 
 /*
@@ -86,17 +87,18 @@ async function rowValuesOf(tx: Db, entity: RowEntity, where: SQL): Promise<Recor
 }
 
 /**
- * The fields of an upsert that beat their clocks (rule 1): no clock yet, or an older one. Only the fields the op
- * names as changed compete; a revivable row's other fields ride along for an insert only.
+ * A purchase op's fields that beat their clocks (rule 1): no clock yet, or an older one, each field at the change-set's
+ * hlc when the op names it as changed, else at the clock `clocks` gives it (a seed or a rejoin sending what it kept at
+ * its own clock, recovery review N2). A field with neither does not compete.
  */
-async function winnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, hlc: string): Promise<Record<string, unknown>> {
-  const winners: Record<string, unknown> = {};
+async function purchaseWinnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, hlc: string): Promise<Map<string, { value: unknown; hlc: string }>> {
+  const winners = new Map<string, { value: unknown; hlc: string }>();
   const named = op.changed ?? Object.keys(op.fields);
-  for (const field of named) {
-    if (!(field in op.fields)) continue;
-    const value = op.fields[field];
+  for (const [field, value] of Object.entries(op.fields)) {
+    const at = named.includes(field) ? hlc : op.clocks?.[field];
+    if (at === undefined) continue;
     const clock = await clockOf(tx, ctx, op.entity, op.id, field);
-    if (clock === null || hlc > clock) winners[field] = value;
+    if (clock === null || at > clock) winners.set(field, { value, hlc: at });
   }
   return winners;
 }
@@ -465,8 +467,8 @@ async function ledgerInput(tx: Db, ctx: BookContext, head: string | null, state:
   return input;
 }
 
-async function recordPurchaseClocks(tx: Db, ctx: BookContext, lineageId: string, fields: Record<string, unknown>, hlc: string): Promise<void> {
-  for (const field of Object.keys(fields)) await setClock(tx, ctx, 'purchase', lineageId, field, hlc);
+async function recordPurchaseClocks(tx: Db, ctx: BookContext, lineageId: string, won: ReadonlyMap<string, { hlc: string }>): Promise<void> {
+  for (const [field, { hlc }] of won) await setClock(tx, ctx, 'purchase', lineageId, field, hlc);
 }
 
 /** A purchase op for a lineage this device has not seen, without the money to post it: kept until its page ends, with the seq it came at. */
@@ -476,15 +478,23 @@ export type HeldOps = Map<string, { op: Extract<Op, { op: 'upsert' }>; changeSet
 async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, changeSet: ChangeSet): Promise<boolean> {
   const lineage = await lineageOf(tx, op.id);
   if (lineage && lineage.head === null) return true; // void wins, for ever
-  const winners = await winnersOf(tx, ctx, op, changeSet.hlc);
-  if (Object.keys(winners).length === 0) return true;
+  const won = await purchaseWinnersOf(tx, ctx, op, changeSet.hlc);
+  if (won.size === 0) return true;
+  const winners = Object.fromEntries([...won].map(([field, { value }]) => [field, value]));
   if (!lineage) {
-    if (!('money' in winners) || winners.void) return false;
+    // A void for a purchase never posted here (a share made again sends every void it holds, recovery review N2):
+    // void wins for ever, so the lineage is known as void, and any money that comes for it later is dropped by it.
+    if (winners.void) {
+      await tx.run(sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label) VALUES (${op.id}, ${ctx.bookId}, NULL, '', '')`);
+      await recordPurchaseClocks(tx, ctx, op.id, won);
+      return true;
+    }
+    if (!('money' in winners)) return false;
   }
   if (winners.void) {
     await voidTransactionTx(tx, ctx.ws, lineage!.head!, {}, changeSet.member);
     await tx.run(sql`UPDATE sync_lineage SET head_transaction_id = NULL WHERE lineage_id = ${op.id}`);
-    await recordPurchaseClocks(tx, ctx, op.id, winners, changeSet.hlc);
+    await recordPurchaseClocks(tx, ctx, op.id, won);
     return true;
   }
   const current = lineage ? await projectPurchase(tx, lineage.head!, ctx.memberId, lineage) : null;
@@ -501,7 +511,7 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
       sql`UPDATE sync_lineage SET head_transaction_id = ${id}, paid_by = ${state.money.paidBy}, paid_label = ${state.money.paidLabel} WHERE lineage_id = ${op.id}`,
     );
   }
-  await recordPurchaseClocks(tx, ctx, op.id, winners, changeSet.hlc);
+  await recordPurchaseClocks(tx, ctx, op.id, won);
   return true;
 }
 
@@ -700,7 +710,7 @@ export async function pullAndApply(
   sealer: Sealer,
   bookId: string,
   now: () => number = Date.now,
-  seen?: Set<string>,
+  seen?: SeenLog,
 ): Promise<PullResult> {
   const [shared] = await database.db.values<[string, string]>(sql`SELECT relay_book_id, state FROM shared_books WHERE book_id = ${bookId}`);
   const removals: PullResult['removals'] = [];
@@ -759,7 +769,6 @@ export async function pullAndApply(
           continue;
         }
         if (!own && driftBlocks(decodeHlc(changeSet.hlc).ms, now())) return await finish({ seq: entry.seq, reason: 'drift' });
-        if (seen && !own) for (const op of changeSet.ops) seen.add(`${op.entity}\u0000${op.id}`);
       }
       let rotationKey: Uint8Array | null = null;
       if (entry.kind === 'rotation') {
@@ -801,6 +810,8 @@ export async function pullAndApply(
                   { bookId, author: entry.deviceId, hlc: changeSet.hlc, creator: run.creator, introducedMember: run.introducedMember },
                   changeSet.ops,
                 );
+                // A rejoin's pull (§8.7, N2) notes what the log says, as the view took it, for what it sends after.
+                seen?.note(changeSet, run.decisions);
                 if (!own) await applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet, held, run);
                 else {
                   // Our own rows are already as we wrote them; what peers refuse is recorded here too.
@@ -862,7 +873,11 @@ export async function pullAndApply(
     applied += 1;
   }
   async function needsInvite(seq: number): Promise<PullResult> {
-    await database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
+    // Nothing is captured while it waits: its clocks are kept with their values now (recovery review, N2).
+    await database.transaction(async (tx) => {
+      await keepClocksTx(tx, bookId);
+      await tx.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
+    });
     return await finish({ seq, reason: 'needs invite' });
   }
 

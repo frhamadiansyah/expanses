@@ -1,9 +1,11 @@
 import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { postTransaction, voidTransaction } from '../../src/index';
+import { inBook, postTransaction, renameAccount, replaceTransaction, voidTransaction } from '../../src/index';
 import { REMEMBERED_MEMBER_KEY } from '../../src/sync/seed';
 import { categoryOf, headOf, Household, projectBook, skipsOf, type Device } from './household';
+import { runStep, stepArb, type Step } from './programs';
 
 /*
  * The recovery paths of a share (recovery review, 2026-09-27; spec §8.2, §8.6, §8.7): a copy moves onto another relay
@@ -196,4 +198,139 @@ describe('a copy kept as its own rejoins the share made again (N3)', () => {
     await expect(dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'd' })).rejects.toMatchObject({ code: 'ALREADY_SHARED' });
     expect(await claimed(dewi, code)).toBe(false);
   });
+});
+
+/**
+ * The ruled C1 recovery (§8.7): the only owner's phone is restored; while the share is down Dewi changes things on the
+ * orphaned relay book (`orphan`) and the restored phone changes things too (`waiting`, then `own` once it keeps the
+ * book as its own); then it shares again and invites Dewi, who stops sharing on the old relay book and rejoins.
+ */
+async function recovery(opts: {
+  orphan?: (dewi: Device, bookId: string, ids: { fandri: string; dewi: string }) => Promise<void>;
+  waiting?: (restored: Device, bookId: string, ids: { fandri: string; dewi: string }) => Promise<void>;
+  own?: (restored: Device, bookId: string, ids: { fandri: string; dewi: string }) => Promise<void>;
+}) {
+  const home = new Household();
+  const fandri = await home.device('Fandri');
+  const dewi = await home.device('Dewi');
+  const bookId = await home.share(fandri);
+  await home.join(dewi, fandri);
+  await home.settle();
+  const ids = { fandri: await spend(fandri, bookId, 'Fandri, before'), dewi: await spend(dewi, bookId, 'Dewi, before') };
+  await home.settle();
+  const restored = await home.restore(fandri, await fandri.database.exportBytes());
+  await restored.engine.checkRestore();
+
+  await opts.orphan?.(dewi, bookId, ids);
+  await dewi.engine.syncOnce(bookId);
+  await opts.waiting?.(restored, bookId, ids);
+  await restored.engine.forgetSharing(bookId);
+  await opts.own?.(restored, bookId, ids);
+
+  const again = await restored.engine.shareBook(bookId, { memberName: 'Fandri', deviceName: 'new phone' });
+  home.relayBookId = again.relayBookId;
+  await restored.engine.syncOnce(bookId);
+  const { code } = await restored.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+  // Dewi's copy is still live on the orphaned relay book: she stops sharing it there first (N1, a).
+  await expect(dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'd' })).rejects.toMatchObject({ code: 'STILL_SHARED' });
+  await dewi.engine.leave(bookId);
+  await dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'd' });
+  await home.settle([restored, dewi]);
+  await home.settle([restored, dewi]);
+  await converged(restored, dewi, bookId);
+  return { restored, dewi, bookId, ids };
+}
+
+const lineOf = async (d: Device, lineageId: string) => {
+  const head = (await headOf(d.database, lineageId))!;
+  const [tx] = await d.database.db.values<[string, string]>(sql`SELECT occurred_on, description FROM transactions WHERE id = ${head}`);
+  const entries = await d.database.db.values<[string, number, string]>(sql`SELECT account_id, amount_minor, currency FROM entries WHERE transaction_id = ${head} ORDER BY rowid`);
+  return { head, occurredOn: tx![0], description: tx![1], lines: entries.map(([accountId, amountMinor, currency]) => ({ accountId, amountMinor: Number(amountMinor), currency })) };
+};
+const purchaseOf = async (d: Device, bookId: string, lineageId: string) => (await projectBook(d.database, bookId)).purchase![lineageId];
+
+describe('what changed while the share was down reaches both sides (N2)', () => {
+  it('a member’s edit of a field of an existing row, made on the orphaned relay book', async () => {
+    const { restored, bookId } = await recovery({
+      orphan: async (dewi, bookId) => renameAccount(dewi.database, inBook(dewi.ws, bookId), await categoryOf(dewi.database, bookId, 'Groceries'), 'Groceries, renamed by Dewi'),
+    });
+    await expect(categoryOf(restored.database, bookId, 'Groceries, renamed by Dewi')).resolves.toEqual(expect.any(String));
+  });
+
+  it('a member’s void of an existing purchase', async () => {
+    const { restored, dewi, bookId, ids } = await recovery({
+      orphan: async (dewi, _bookId, ids) => void (await voidTransaction(dewi.database, dewi.ws, (await headOf(dewi.database, ids.fandri))!)),
+    });
+    expect(await purchaseOf(restored, bookId, ids.fandri)).toBe('void');
+    expect(await descriptions(dewi, bookId)).toEqual(['Dewi, before']);
+  });
+
+  it('a member’s correction of the money of an existing purchase', async () => {
+    const { restored, bookId, ids } = await recovery({
+      orphan: async (dewi, _bookId, ids) => {
+        const was = await lineOf(dewi, ids.fandri);
+        const lines = was.lines.map((l) => ({ ...l, amountMinor: Math.sign(l.amountMinor) * 40_000 }));
+        await replaceTransaction(dewi.database, dewi.ws, was.head, { occurredOn: was.occurredOn, description: was.description, lines });
+      },
+    });
+    const money = (await purchaseOf(restored, bookId, ids.fandri)) as { money: { lines: { amountMinor: number }[] } };
+    expect(money.money.lines.map((l) => l.amountMinor)).toEqual([40_000]);
+  });
+
+  it('the restored phone’s own edits, while it waited and while the book was its own, win over the clocks it kept', async () => {
+    const { dewi, bookId, ids } = await recovery({
+      waiting: async (restored, bookId, ids) => {
+        await renameAccount(restored.database, inBook(restored.ws, bookId), await categoryOf(restored.database, bookId, 'Supplies'), 'Supplies, while waiting');
+        const was = await lineOf(restored, ids.fandri);
+        await replaceTransaction(restored.database, restored.ws, was.head, { occurredOn: was.occurredOn, description: 'Fandri, edited while waiting', lines: was.lines });
+      },
+      own: async (restored, _bookId, ids) => {
+        await voidTransaction(restored.database, restored.ws, (await headOf(restored.database, ids.dewi))!);
+      },
+    });
+    await expect(categoryOf(dewi.database, bookId, 'Supplies, while waiting')).resolves.toEqual(expect.any(String));
+    expect(await descriptions(dewi, bookId)).toEqual(['Fandri, edited while waiting']);
+    expect(await purchaseOf(dewi, bookId, ids.dewi)).toBe('void');
+  });
+
+  const RUNS = Number(process.env.RECOVERY_RUNS ?? 25);
+  it(`property: random edits before, after the backup, on both sides while the share is down, then share again and rejoin (${RUNS} runs)`, async () => {
+    const phase = (devices: number, max: number) => fc.array(stepArb(devices), { maxLength: max });
+    await fc.assert(
+      fc.asyncProperty(fc.record({ shared: phase(2, 10), lost: phase(2, 6), orphan: phase(2, 8), own: phase(1, 4) }), async (program) => {
+        const home = new Household();
+        const fandri = await home.device('Fandri');
+        const dewi = await home.device('Dewi');
+        const bookId = await home.share(fandri);
+        await home.join(dewi, fandri);
+        await home.settle();
+        const run = async (devices: Device[], steps: Step[], skipSync = false) => {
+          for (const step of steps) if (!(skipSync && step.kind === 'sync')) await runStep(home, devices[step.device]!, step);
+        };
+        await run([fandri, dewi], program.shared);
+        await home.settle();
+        const backup = await fandri.database.exportBytes();
+        // The phone records on after the backup, then is lost; what it synced is on the orphaned relay book.
+        await run([fandri, dewi], program.lost);
+        await fandri.engine.syncOnce(bookId);
+        const restored = await home.restore(fandri, backup);
+        await restored.engine.checkRestore();
+        await run([restored, dewi], program.orphan);
+        await dewi.engine.syncOnce(bookId);
+        await restored.engine.forgetSharing(bookId);
+        await run([restored], program.own, true);
+
+        const again = await restored.engine.shareBook(bookId, { memberName: 'Fandri', deviceName: 'new phone' });
+        home.relayBookId = again.relayBookId;
+        await restored.engine.syncOnce(bookId);
+        const { code } = await restored.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+        await dewi.engine.leave(bookId);
+        await dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: 'd' });
+        await home.settle([restored, dewi]);
+        await home.settle([restored, dewi]);
+        await converged(restored, dewi, bookId);
+      }),
+      { numRuns: RUNS, seed: 20260927, endOnFailure: true },
+    );
+  }, 1_800_000);
 });

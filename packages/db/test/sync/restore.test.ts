@@ -112,6 +112,8 @@ describe('a restored backup (§8.7)', () => {
     for (const table of ['sync_outbox', 'sync_cursor', 'book_epoch_keys', 'sync_field_clocks', 'sync_tombstones', 'sync_skipped', 'book_devices', 'sync_authority', 'sync_authority_devices']) {
       expect((await restored.database.db.values(sql`SELECT 1 FROM ${sql.raw(table)} WHERE book_id = ${bookId}`)).length).toBe(0);
     }
+    // …but the clocks it had are kept, with each field's value then, for sharing it again (recovery review, N2).
+    expect((await restored.database.db.values(sql`SELECT 1 FROM sync_kept_clocks WHERE book_id = ${bookId}`)).length).toBeGreaterThan(0);
     // Every row stays, and so do the members (Dewi is remembered), the placeholders and who paid.
     expect(await posted(restored, bookId)).toEqual(['Dewi, before', 'Fandri, before']);
     expect((await restored.database.db.values(sql`SELECT 1 FROM book_members WHERE book_id = ${bookId}`)).length).toBe(2);

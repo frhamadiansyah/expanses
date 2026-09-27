@@ -96,6 +96,20 @@ export const syncFieldClocks = sqliteTable(
   (t) => [primaryKey({ columns: [t.bookId, t.entity, t.id, t.field] })],
 );
 
+/** A book's field clocks and values as they stood when this device stopped keeping them (recovery review, N2; §8.6, §8.7). */
+export const syncKeptClocks = sqliteTable(
+  'sync_kept_clocks',
+  {
+    bookId: text('book_id').notNull(),
+    entity: text('entity').notNull(),
+    id: text('id').notNull(),
+    field: text('field').notNull(),
+    hlc: text('hlc').notNull(),
+    valueJson: text('value_json').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.bookId, t.entity, t.id, t.field] })],
+);
+
 export const syncTombstones = sqliteTable(
   'sync_tombstones',
   {

@@ -48,6 +48,21 @@ describe('what apply skips, and what it refuses to', () => {
     expect(await cursor(dewi, bookId)).toBe(seq);
   });
 
+  it('a void for a purchase never posted here is known as void, not held and dropped (recovery review, N2)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    const lineage = '01a0e100-0000-7000-8000-0000000000c1';
+    await appendOps(home, fandri, [{ entity: 'purchase', id: lineage, op: 'upsert', fields: { void: true } }]);
+    const result = await dewi.engine.syncOnce(bookId);
+    expect(result.skipped).toEqual([]);
+    expect(await dewi.database.db.values(sql`SELECT head_transaction_id FROM sync_lineage WHERE lineage_id = ${lineage}`)).toEqual([[null]]);
+    // Its money, arriving after, is dropped by the void.
+    const groceries = await categoryOf(dewi.database, bookId, 'Groceries');
+    const money = { lines: [{ categoryId: groceries, amountMinor: 1_000, currency: 'IDR', amountBaseMinor: 1_000, memo: null }], originalCurrency: null, originalAmountMinor: null, paidBy: fandri.memberId, paidLabel: 'BCA' };
+    await appendOps(home, fandri, [purchase(lineage, '2026-09-10', money)]);
+    expect((await dewi.engine.syncOnce(bookId)).skipped).toEqual([]);
+    expect(await dewi.database.db.values(sql`SELECT head_transaction_id FROM sync_lineage WHERE lineage_id = ${lineage}`)).toEqual([[null]]);
+  });
+
   it('an entry whose change-set hlc names another device than its author is a recorded skip, and the log goes on (final review, I3)', async () => {
     const { home, fandri, dewi, bookId } = await household();
     const groceries = await categoryOf(dewi.database, bookId, 'Groceries');
