@@ -1,0 +1,102 @@
+import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+/** Household sharing's side tables (0056, spec §4.2). No column is added to any existing table. */
+
+export const sharedBooks = sqliteTable('shared_books', {
+  bookId: text('book_id').primaryKey(),
+  relayBookId: text('relay_book_id').notNull(),
+  epoch: integer('epoch').notNull(),
+  memberId: text('member_id').notNull(),
+  state: text('state', { enum: ['active', 'needs_invite', 'unshared'] }).notNull(),
+  sharedAt: text('shared_at').notNull(),
+});
+
+export const bookMembers = sqliteTable(
+  'book_members',
+  {
+    bookId: text('book_id').notNull(),
+    memberId: text('member_id').notNull(),
+    name: text('name').notNull(),
+    role: text('role', { enum: ['owner', 'member'] }).notNull(),
+    joinedAt: text('joined_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.bookId, t.memberId] })],
+);
+
+export const bookDevices = sqliteTable(
+  'book_devices',
+  {
+    bookId: text('book_id').notNull(),
+    deviceId: text('device_id').notNull(),
+    memberId: text('member_id').notNull(),
+    name: text('name').notNull(),
+    signJwk: text('sign_jwk').notNull(),
+    agreeJwk: text('agree_jwk').notNull(),
+    addedAt: text('added_at').notNull(),
+    removedAt: text('removed_at'),
+  },
+  (t) => [primaryKey({ columns: [t.bookId, t.deviceId] })],
+);
+
+/** The hidden placeholder account per other member and currency (spec §4.4), one per (book, member, currency). */
+export const bookMemberAccounts = sqliteTable('book_member_accounts', {
+  accountId: text('account_id').primaryKey(),
+  bookId: text('book_id').notNull(),
+  memberId: text('member_id').notNull(),
+  currency: text('currency').notNull(),
+});
+
+export const bookEpochKeys = sqliteTable(
+  'book_epoch_keys',
+  {
+    bookId: text('book_id').notNull(),
+    epoch: integer('epoch').notNull(),
+    keySealed: text('key_sealed').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.bookId, t.epoch] })],
+);
+
+/** A purchase's lineage -> its current head (spec §6.3). */
+export const syncLineage = sqliteTable('sync_lineage', {
+  lineageId: text('lineage_id').primaryKey(),
+  bookId: text('book_id').notNull(),
+  headTransactionId: text('head_transaction_id'),
+  paidBy: text('paid_by').notNull(),
+  paidLabel: text('paid_label').notNull(),
+});
+
+export const syncOutbox = sqliteTable('sync_outbox', {
+  id: text('id').primaryKey(),
+  bookId: text('book_id').notNull(),
+  hlc: text('hlc').notNull(),
+  entryJson: text('entry_json').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+export const syncCursor = sqliteTable('sync_cursor', {
+  bookId: text('book_id').primaryKey(),
+  appliedSeq: integer('applied_seq').notNull().default(0),
+});
+
+export const syncFieldClocks = sqliteTable(
+  'sync_field_clocks',
+  {
+    bookId: text('book_id').notNull(),
+    entity: text('entity').notNull(),
+    id: text('id').notNull(),
+    field: text('field').notNull(),
+    hlc: text('hlc').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.bookId, t.entity, t.id, t.field] })],
+);
+
+export const syncTombstones = sqliteTable(
+  'sync_tombstones',
+  {
+    bookId: text('book_id').notNull(),
+    entity: text('entity').notNull(),
+    id: text('id').notNull(),
+    hlc: text('hlc').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.bookId, t.entity, t.id] })],
+);

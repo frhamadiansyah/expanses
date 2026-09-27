@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import type { Database } from '../../src/index';
-import type { NodeExecutor } from '../../src/node';
+import { createDatabase, migrate, MIGRATIONS, type Database } from '../../src/index';
+import { createNodeExecutor, type NodeExecutor } from '../../src/node';
 import { buildOpId, NEVER_SYNCED_COLUMNS, parseOpId, SHARED_ENTITIES, type PurchaseEntity, type RowEntity } from '../../src/sync/shared-entities';
 import { setupDb } from '../helpers';
 
@@ -28,7 +28,9 @@ async function tableExists(database: Database, table: string): Promise<boolean> 
 }
 
 const rows = SHARED_ENTITIES.filter((e): e is RowEntity => e.kind === 'row');
-const existing = rows.filter((e) => !e.createdBy0056);
+// Migration 0056 (household sharing) is now part of every freshly migrated database, so every row entity's table
+// exists — `member` and `device` included. `createdBy0056` still marks which ones arrived with it (see the test below).
+const existing = rows;
 const purchase = SHARED_ENTITIES.find((e): e is PurchaseEntity => e.kind === 'purchase')!;
 
 describe('SHARED_ENTITIES against a freshly migrated database', () => {
@@ -63,10 +65,19 @@ describe('SHARED_ENTITIES against a freshly migrated database', () => {
   });
 
   it('the tables of member and device come with migration 0056, and not before', async () => {
-    const { database } = await fresh();
     const pending = rows.filter((e) => e.createdBy0056).map((e) => e.table);
     expect(pending.sort()).toEqual(['book_devices', 'book_members']);
-    for (const table of pending) expect(await tableExists(database, table)).toBe(false);
+
+    const localExecutor = createNodeExecutor();
+    const database = createDatabase(localExecutor);
+    try {
+      await migrate(database, MIGRATIONS.filter((m) => m.version < 56));
+      for (const table of pending) expect(await tableExists(database, table)).toBe(false);
+      await migrate(database); // the rest, including 0056
+      for (const table of pending) expect(await tableExists(database, table)).toBe(true);
+    } finally {
+      localExecutor.close();
+    }
   });
 
   it('purchase: every column of its five tables is a field, a link, or never synced', async () => {

@@ -302,6 +302,9 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
   book_transactions: ['workspace_id'],
   transaction_flags: ['workspace_id'],
   bill_payments: ['workspace_id'],
+  // book_id is this row's own scope, not a synced field: apply writes it locally on insert (migration 0056).
+  book_members: ['book_id'],
+  book_devices: ['book_id'],
 };
 
 export function entityOf(name: string): SharedEntity {
