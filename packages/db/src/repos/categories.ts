@@ -6,6 +6,7 @@ import { accounts } from '../schema';
 import { bookCategories } from '../schema-books';
 import { NOT_IN_A_SET } from '../schema-category-sets';
 import { hasBooks, personalBookIdTx } from './books';
+import { withCapture } from '../sync/capture';
 
 type AccountRow = typeof accounts.$inferSelect;
 
@@ -21,7 +22,7 @@ const ADDED_WITH_ASSETS = new Set(['income.realized_gains', 'government_taxes.es
  * parent, so renamed categories stay unkeyed and are never recreated. Archived rows count as existing.
  */
 export async function ensureCategoryKeys(database: Database, ws: WorkspaceContext): Promise<{ keyed: string[]; created: string[] }> {
-  return database.transaction(async (tx) => {
+  return database.transaction((tx) => withCapture(tx, { entity: 'category' }, async () => {
     const all: AccountRow[] = await tx
       .select()
       .from(accounts)
@@ -94,7 +95,7 @@ export async function ensureCategoryKeys(database: Database, ws: WorkspaceContex
       }
     }
     return { keyed, created };
-  });
+  }));
 }
 
 /**
@@ -130,6 +131,10 @@ const DEFAULT_BY_KEY = new Map<string, { name: string; kind: 'expense' | 'income
  * source itself was missing is made. A parent is made first when its child needs one, so the tree keeps its shape.
  */
 export async function ensureBookCategoryKeysTx(tx: Db, ws: WorkspaceContext, bookId: string, createdAt: string): Promise<string[]> {
+  return withCapture(tx, { entity: 'category', bookId }, () => ensureBookCategoryKeysUncaptured(tx, ws, bookId, createdAt));
+}
+
+async function ensureBookCategoryKeysUncaptured(tx: Db, ws: WorkspaceContext, bookId: string, createdAt: string): Promise<string[]> {
   const rows = await tx
     .select({ id: accounts.id, systemKey: accounts.systemKey, parentId: accounts.parentId, sortOrder: accounts.sortOrder })
     .from(accounts)

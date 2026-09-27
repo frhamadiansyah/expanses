@@ -15,6 +15,7 @@ import { healthTablesExist } from './health-tables';
 import { replanCatalogProgramsTx } from './catalog';
 import { ensureBookCategoryKeysTx } from './categories';
 import { categoryTotalsIn } from './reports';
+import { withCapture } from '../sync/capture';
 
 export type BookKind = 'personal' | 'business' | 'family' | 'shared';
 
@@ -241,7 +242,9 @@ export async function renameBook(database: Database, ws: WorkspaceContext, bookI
   await bookOf(database, ws, bookId);
   const trimmed = name.trim();
   if (!trimmed) throw new BookError('NAME_REQUIRED', 'A workspace needs a name');
-  await database.db.update(books).set({ name: trimmed }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'book', id: bookId }, () => tx.update(books).set({ name: trimmed }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)))),
+  );
 }
 
 export async function archiveBook(database: Database, ws: WorkspaceContext, bookId: string): Promise<void> {
@@ -249,7 +252,11 @@ export async function archiveBook(database: Database, ws: WorkspaceContext, book
   if (book.kind === 'personal') throw new BookError('PERSONAL_BOOK', 'Personal is where categories and expected income fall back to, so it stays');
   const open = await listBooks(database, ws);
   if (open.length <= 1) throw new BookError('LAST_BOOK', 'The last workspace cannot be archived');
-  await database.db.update(books).set({ archivedAt: new Date().toISOString() }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'book', id: bookId }, () =>
+      tx.update(books).set({ archivedAt: new Date().toISOString() }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId))),
+    ),
+  );
 }
 
 const activeKey = (ws: WorkspaceContext) => `active_book:${ws.workspaceId}`;
@@ -271,7 +278,11 @@ export async function setActiveBook(database: Database, ws: WorkspaceContext, bo
 /** Whether this workspace's monthly caps count spending tagged to an event. */
 export async function setBookEventsInBudget(database: Database, ws: WorkspaceContext, bookId: string, on: boolean): Promise<void> {
   await bookOf(database, ws, bookId);
-  await database.db.update(books).set({ countEventsInBudget: on ? 1 : 0 }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId)));
+  await database.transaction((tx) =>
+    withCapture(tx, { entity: 'book', id: bookId }, () =>
+      tx.update(books).set({ countEventsInBudget: on ? 1 : 0 }).where(and(eq(books.workspaceId, ws.workspaceId), eq(books.id, bookId))),
+    ),
+  );
 }
 
 /**
@@ -294,7 +305,16 @@ export async function setBookBaseCurrency(database: Database, ws: WorkspaceConte
   const into = (amountMinor: number) => convertMinor(amountMinor, book.baseCurrency, currency, found.rate);
   const now = new Date().toISOString();
 
-  await database.transaction(async (tx) => {
+  // Every figure in the book's plan is rewritten here: captured whole, narrowed to this book (spec §6.3).
+  const captured = [
+    { entity: 'book', id: bookId },
+    { entity: 'budget', bookId },
+    { entity: 'budget_frequency', bookId },
+    { entity: 'budget_override', bookId },
+    { entity: 'book_income', id: bookId },
+    { entity: 'book_income_override', bookId },
+  ];
+  await database.transaction((tx) => withCapture(tx, captured, async () => {
     // The old, workspace-wide budget tables are Personal's own copy — budget-settings.ts writes both whenever
     // Personal is written — so they move when Personal moves and are left alone for any other workspace.
     const personalId = await personalBookIdTx(tx, ws.workspaceId);
@@ -385,7 +405,7 @@ export async function setBookBaseCurrency(database: Database, ws: WorkspaceConte
       payloadJson: JSON.stringify({ from: book.baseCurrency, to: currency, rate: found.rate, onDate: found.onDate }),
       createdAt: now,
     });
-  });
+  }));
   return { rate: found.rate, onDate: found.onDate };
 }
 

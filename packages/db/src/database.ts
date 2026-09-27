@@ -1,5 +1,6 @@
 import { drizzle, type SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy';
 import type { SqlExecutor } from './executor';
+import { defaultCaptureConfig, openCaptureSession, registerCaptureConfig } from './sync/capture';
 
 export type Db = SqliteRemoteDatabase;
 
@@ -40,13 +41,19 @@ export function createDatabase(executor: SqlExecutor): Database {
     rows: (await mutex.run(() => executor.query(sql, params, method))) as any[],
   }));
 
-  return {
+  // Household sharing's capture (spec §6.3, ruled O1): one session per db transaction, flushed before COMMIT, so a
+  // change-set in sync_outbox is durable exactly when the rows it describes are.
+  const captureConfig = defaultCaptureConfig();
+
+  const database: Database = {
     db: locked,
     transaction: (fn) =>
       mutex.run(async () => {
         await executor.execScript('BEGIN IMMEDIATE');
+        const session = openCaptureSession(direct, captureConfig);
         try {
           const result = await fn(direct);
+          await session.flush();
           await executor.execScript('COMMIT');
           return result;
         } catch (error) {
@@ -56,10 +63,14 @@ export function createDatabase(executor: SqlExecutor): Database {
             // SQLite may have rolled back already; surface the error that caused the failure.
           }
           throw error;
+        } finally {
+          session.close();
         }
       }),
     execScript: (sql) => mutex.run(() => executor.execScript(sql)),
     exportBytes: () => mutex.run(() => executor.exportBytes()),
     importBytes: (bytes) => mutex.run(() => executor.importBytes(bytes)),
   };
+  registerCaptureConfig(database, captureConfig);
+  return database;
 }

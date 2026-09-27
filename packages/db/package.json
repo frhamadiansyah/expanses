@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:capture": "vitest run --config vitest.capture.config.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
