@@ -231,9 +231,12 @@ export function DebtForm({
             </option>
           ))}
         </SelectRow>
-        {/* A reason and a due date belong to a loan. Adding to one of theirs, they are that loan's, changed from its card. */}
+        {/*
+          A reason and a due date belong to a loan: adding to one of theirs, they are that loan's, changed from its
+          card. Each is its own child of the group, never wrapped together — the group draws the line between rows by
+          counting its children, and a wrapper around two rows reads to it as one.
+        */}
         {!draft.existingAccountId ? (
-          <>
           <TextRow
             label="What it is for"
             info="Shown on their card, so you remember."
@@ -241,8 +244,9 @@ export function DebtForm({
             onChange={(e) => set({ reason: e.target.value })}
             placeholder="Motorcycle repair"
           />
+        ) : null}
+        {!draft.existingAccountId ? (
           <TextRow label="Due by" info="Optional. You are warned three weeks before." type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
-          </>
         ) : null}
         {/* Asked once per person: a new loan for someone already on the list keeps the ID they have. */}
         {!draft.existingAccountId && !known ? (
