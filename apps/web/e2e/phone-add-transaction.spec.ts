@@ -360,3 +360,46 @@ test('every row on the card is big enough for a thumb', async ({ page }) => {
     expect(box.height, `the ${key} key is under ${TAP}px`).toBeGreaterThanOrEqual(TAP);
   }
 });
+
+test('Paid with adds an account on the way, and the transaction comes back as typed with it picked', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  const keypad = page.getByTestId('keypad');
+  for (const digit of '85000') await keypad.getByRole('button', { name: digit, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByLabel('Note').fill('Superindo');
+
+  // Not on the list yet: the list's own last row opens New account, and its way back names where it came from.
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  await expect(page).toHaveURL(/\/accounts\/new/);
+  await expect(page.getByRole('link', { name: 'New transaction' }).or(page.getByRole('button', { name: 'New transaction' })).first()).toBeVisible();
+  await page.getByRole('button', { name: /^Current account(\b|$)/ }).click();
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Jago');
+  await page.getByRole('button', { name: 'Add account' }).click();
+
+  // Back on the form, as it was, with Jago paying.
+  await expect(page).toHaveURL(/\/transactions\/new/);
+  await expect(form.getByLabel('Note')).toHaveValue('Superindo');
+  await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('85.000');
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago');
+});
+
+test('backing out of New account returns to the transaction as typed, with nothing picked', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByLabel('Note').fill('Parking');
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  await expect(page).toHaveURL(/\/accounts\/new/);
+
+  await page.getByRole('link', { name: 'New transaction' }).or(page.getByRole('button', { name: 'New transaction' })).first().click();
+  await expect(page).toHaveURL(/\/transactions\/new/);
+  await expect(form.getByLabel('Note')).toHaveValue('Parking');
+  await expect(form.getByRole('button', { name: 'Paid with' })).not.toContainText('BCA');
+});

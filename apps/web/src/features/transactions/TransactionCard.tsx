@@ -10,6 +10,7 @@ import {
   type TransactionView,
 } from '@expanses/db';
 import { AlignLeft, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, CreditCard, Hash, Home, Landmark, Layers, Shapes, Target } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
 import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
@@ -37,6 +38,7 @@ import { MoreDetails } from './MoreDetails';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
+import { clearStashedDraft, readStashedDraft, stashDraft } from './draft-handoff';
 import { currencyChoosable, currencyFlag, detailsToggleLabel, emptyForm, type FormDraft, type FormMode, formFromTransaction, formToMemory, formToPost, rateDateFor, receivedField } from './tx-form';
 import { ratesForSave, submitTrade } from './tx-save';
 
@@ -150,9 +152,25 @@ function CardBody({
   const goals = useGoals().data ?? [];
   const assetValues = useAssetValues();
   const assetProfiles = useAssetProfiles();
-  const [draft, setDraft] = useState<FormDraft>(() =>
-    initial ? formFromTransaction(initial, accounts, bookId, photoIds) : { ...emptyForm(bookId), mode: mode ?? 'expense' },
-  );
+  // A new transaction set aside while an account was added for it comes back as typed, with that account picked
+  // when it can pay (or receive, or move) the way this transaction does.
+  const [handoff] = useState(() => (!initial && full ? readStashedDraft() : null));
+  useEffect(() => {
+    if (handoff) clearStashedDraft();
+  }, [handoff]);
+  const [draft, setDraft] = useState<FormDraft>(() => {
+    if (initial) return formFromTransaction(initial, accounts, bookId, photoIds);
+    if (!handoff) return { ...emptyForm(bookId), mode: mode ?? 'expense' };
+    const added = accounts.find((a) => a.id === handoff.addedAccountId);
+    const fits = handoff.draft.mode === 'transfer' ? canTransferWith : handoff.draft.mode === 'income' ? canReceiveInto : canPayWith;
+    return added && fits(added, '') ? { ...handoff.draft, moneyId: added.id, cardId: '' } : handoff.draft;
+  });
+  const navigate = useNavigate();
+  /** Off to New account with what is typed set aside; saving there, or going back, returns here with it. */
+  const addAccount = () => {
+    stashDraft(draft);
+    void navigate({ to: '/accounts/new', search: { returnTo: 'transaction' } });
+  };
   const [sheet, setSheet] = useState<null | 'workspace' | 'money' | 'category' | 'to' | 'goal'>(null);
   // Add more details opens in place, under the card, rather than over it: the extras are part of the one form.
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -783,6 +801,8 @@ function CardBody({
           accounts={accounts}
           onPick={(option) => set({ moneyId: option.accountId, cardId: option.cardId ?? '' })}
           onClose={() => setSheet(null)}
+          // Only a new transaction on its own screen: an edit, or the card in a sheet, has nowhere to come back to.
+          onAddAccount={full && !initial ? addAccount : undefined}
         />
       )}
       {sheet === 'category' && (

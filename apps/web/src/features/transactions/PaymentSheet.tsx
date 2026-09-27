@@ -1,4 +1,4 @@
-import { CreditCard, Landmark } from 'lucide-react';
+import { CreditCard, Landmark, Plus } from 'lucide-react';
 import type { PaymentOption } from '@expanses/core';
 import type { AccountRow } from '@expanses/db';
 import { Sheet } from '../../app/Sheet';
@@ -35,6 +35,7 @@ export function PaymentSheet({
   accounts,
   onPick,
   onClose,
+  onAddAccount,
 }: {
   /** "Paid with", "Received into" or "From", as the mode names it. */
   title: string;
@@ -42,6 +43,8 @@ export function PaymentSheet({
   accounts: readonly AccountRow[];
   onPick: (option: PaymentOption) => void;
   onClose: () => void;
+  /** Offered at the foot of the list, for the account that is not on it yet. */
+  onAddAccount?: () => void;
 }) {
   return (
     <Sheet grouped title={title} onClose={onClose}>
@@ -74,6 +77,25 @@ export function PaymentSheet({
             </li>
           );
         })}
+        {onAddAccount ? (
+          <li>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onAddAccount();
+              }}
+              className="ph-focus-inset flex w-full items-center gap-[10px] pl-[10px] text-left active:bg-[var(--ph-fill)]"
+            >
+              <span aria-hidden className="flex w-[34px] shrink-0 items-center justify-center text-[var(--ph-tint)]">
+                <Plus size={16} />
+              </span>
+              <span className="ph-row-body flex min-h-12 min-w-0 flex-1 items-center pr-[13px]">
+                <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--ph-tint)]">Add account</span>
+              </span>
+            </button>
+          </li>
+        ) : null}
       </ul>
     </Sheet>
   );

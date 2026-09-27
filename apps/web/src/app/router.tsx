@@ -171,7 +171,13 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/retirement', component: RetirementFundPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/calculators/life-cover', component: LifeCoverPage }),
   // Before /accounts only for reading: a route is ranked by how specific its path is, never by where it sits here.
-  createRoute({ getParentRoute: () => rootRoute, path: '/accounts/new', component: AddAccountPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/accounts/new',
+    component: AddAccountPage,
+    // Opened from New transaction's Paid with: saving goes back there with the account picked, not to Accounts.
+    validateSearch: (search: Record<string, unknown>): { returnTo?: 'transaction' } => ({ returnTo: search.returnTo === 'transaction' ? 'transaction' : undefined }),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts', component: AccountsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId', component: PocketsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/accounts/$accountId/pocket', component: AddPocketPage }),
