@@ -9,10 +9,11 @@ import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useHeldRates } from '../accounts/queries';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, PushedTitle, SelectRow, TextRow } from '../../ui/native';
+import { detailsToggleLabel } from '../transactions/tx-form';
 import { CategoryOptions } from '../cards/options';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { type DebtDraft, debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, openLoansWith, personSuggestions, subCategories } from './debts-form';
+import { type DebtDraft, debtDraftFor, debtDetailsFilled, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, openLoansWith, personSuggestions, subCategories } from './debts-form';
 import { useDebtProfiles, usePeopleDebts } from './queries';
 
 /**
@@ -46,6 +47,8 @@ export function DebtForm({
   // The pair a Save came back without, so the rate row stays on screen even if the stored-rate read raced it.
   const [needsRate, setNeedsRate] = useState<string | null>(null);
   const form = useRef<HTMLFormElement>(null);
+  // Folded until asked for — but never over something already filled in, which would be typed and then hidden.
+  const [detailsOpen, setDetailsOpen] = useState(() => debtDetailsFilled(draft));
 
   const set = (patch: Partial<DebtDraft>) => setDraft((current) => ({ ...current, ...patch }));
   // A loan comes from money you hold, or a card. Another person's account is not a source.
@@ -201,7 +204,59 @@ export function DebtForm({
             placeholder="16250"
           />
         ) : null}
+        {/*
+          The rest of it, folded into this box behind the toggle under it, as New transaction folds its details. Every
+          row is its own child of the group — never wrapped — so the group still draws the line between each.
+        */}
+        {detailsOpen ? (
+          <SelectRow
+            label="Sub category"
+            value={draft.subCategory}
+            onChange={(e) => set({ subCategory: e.target.value })}
+          >
+            {subCategories(draft.direction).map((choice) => (
+              <option key={choice.code} value={choice.code}>
+                {choice.label}
+              </option>
+            ))}
+          </SelectRow>
+        ) : null}
+        {/*
+          A reason and a due date belong to a loan: adding to one of theirs, they are that loan's, changed from its
+          card. Each is its own child of the group, never wrapped together — the group draws the line between rows by
+          counting its children, and a wrapper around two rows reads to it as one.
+        */}
+        {detailsOpen && !draft.existingAccountId ? (
+          <TextRow
+            label="What it is for"
+            info="Shown on their card, so you remember."
+            value={draft.reason}
+            onChange={(e) => set({ reason: e.target.value })}
+            placeholder="Motorcycle repair"
+          />
+        ) : null}
+        {detailsOpen && !draft.existingAccountId ? (
+          <TextRow label="Due by" info="Optional. You are warned three weeks before." type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+        ) : null}
+        {/* Asked once per person: a new loan for someone already on the list keeps the ID they have. */}
+        {detailsOpen && !draft.existingAccountId && !known ? (
+          <TextRow
+            label="Tax ID"
+            info="Their national or tax ID number. Optional, and only needed when this reaches your tax report."
+            value={draft.personIdNumber}
+            inputMode="numeric"
+            onChange={(e) => set({ personIdNumber: e.target.value })}
+          />
+        ) : null}
       </InsetGroup>
+      <button
+        type="button"
+        aria-expanded={detailsOpen}
+        onClick={() => setDetailsOpen((open) => !open)}
+        className="ph-focus mb-[18px] flex min-h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-[var(--ph-ink-2)]"
+      >
+        {detailsToggleLabel(detailsOpen)}
+      </button>
 
       {/* The datalist belongs to the Person box above; it draws nothing of its own. */}
       <datalist id="debt-people">
@@ -219,46 +274,6 @@ export function DebtForm({
         </InsetGroup>
       )}
 
-      <InsetGroup header="The rest of it">
-        <SelectRow
-          label="Sub category"
-          value={draft.subCategory}
-          onChange={(e) => set({ subCategory: e.target.value })}
-        >
-          {subCategories(draft.direction).map((choice) => (
-            <option key={choice.code} value={choice.code}>
-              {choice.label}
-            </option>
-          ))}
-        </SelectRow>
-        {/*
-          A reason and a due date belong to a loan: adding to one of theirs, they are that loan's, changed from its
-          card. Each is its own child of the group, never wrapped together — the group draws the line between rows by
-          counting its children, and a wrapper around two rows reads to it as one.
-        */}
-        {!draft.existingAccountId ? (
-          <TextRow
-            label="What it is for"
-            info="Shown on their card, so you remember."
-            value={draft.reason}
-            onChange={(e) => set({ reason: e.target.value })}
-            placeholder="Motorcycle repair"
-          />
-        ) : null}
-        {!draft.existingAccountId ? (
-          <TextRow label="Due by" info="Optional. You are warned three weeks before." type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
-        ) : null}
-        {/* Asked once per person: a new loan for someone already on the list keeps the ID they have. */}
-        {!draft.existingAccountId && !known ? (
-          <TextRow
-            label="Tax ID"
-            info="Their national or tax ID number. Optional, and only needed when this reaches your tax report."
-            value={draft.personIdNumber}
-            inputMode="numeric"
-            onChange={(e) => set({ personIdNumber: e.target.value })}
-          />
-        ) : null}
-      </InsetGroup>
 
       {setAside.node}
       <ErrorBox error={error} />

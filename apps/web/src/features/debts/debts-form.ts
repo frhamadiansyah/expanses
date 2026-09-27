@@ -180,6 +180,19 @@ export function openLoansWith(people: PeopleDebts | undefined, direction: DebtDi
 }
 
 /**
+ * Whether anything behind "Add more details" is already filled in: a sub-category other than the side's own, a
+ * reason, a due date or a tax ID. The details open by themselves when it is, so nothing typed is ever out of sight.
+ */
+export function debtDetailsFilled(draft: DebtDraft): boolean {
+  return (
+    draft.subCategory !== DEFAULT_SUB_CATEGORY[draft.direction] ||
+    draft.reason.trim() !== '' ||
+    draft.dueOn !== '' ||
+    draft.personIdNumber.trim() !== ''
+  );
+}
+
+/**
  * Whether the ✓ can save: everything `debtDraftToInput` requires is there — a person, a date that is not in the
  * future, an account, an amount above zero, and a category for any fee. Asked of the very function Save calls, so the
  * ✓ can never light up for a draft Save would refuse, nor stay dim for one it would take.

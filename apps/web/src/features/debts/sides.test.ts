@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, openLoansWith } from './debts-form';
+import { debtDetailsFilled, debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, openLoansWith } from './debts-form';
 import { newDebtPath, openingSide, sideOf } from './sides';
 
 describe('the two sides of Lend & borrow', () => {
@@ -136,5 +136,18 @@ describe('the loans a new amount could be added to', () => {
     expect(openLoansWith(people, 'borrowed', 'Andi').map((c) => c.accountId)).toEqual(['mine']);
     expect(openLoansWith(people, 'lent', 'Budi')).toEqual([]);
     expect(openLoansWith(undefined, 'lent', 'Andi')).toEqual([]);
+  });
+});
+
+describe('whether the details open by themselves', () => {
+  const blank = debtDraftFor('lent', '2026-09-27', 'Andi');
+  it('stay folded over nothing, and open over anything filled in', () => {
+    expect(debtDetailsFilled(blank)).toBe(false);
+    expect(debtDetailsFilled({ ...blank, reason: 'Laptop' })).toBe(true);
+    expect(debtDetailsFilled({ ...blank, dueOn: '2026-12-01' })).toBe(true);
+    expect(debtDetailsFilled({ ...blank, personIdNumber: '123' })).toBe(true);
+    expect(debtDetailsFilled({ ...blank, subCategory: '0209' })).toBe(true);
+    // The side's own sub-category is the default, not something the reader chose.
+    expect(debtDetailsFilled(debtDraftFor('borrowed', '2026-09-27'))).toBe(false);
   });
 });

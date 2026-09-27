@@ -123,6 +123,7 @@ test('+ adds on a screen of its own for the side the phone is showing, and a per
   const loan = page.getByLabel('Loan', { exact: true });
   await expect(loan).toHaveValue('');
   await expect(loan.locator('option')).toHaveText(['New loan', /^No reason noted · .*750\.000 left$/]);
+  await page.getByRole('button', { name: 'Add more details' }).tap();
   await expect(page.getByRole('textbox', { name: 'What it is for' })).toBeVisible();
 
   // Picking her loan adds to it, and its reason and due date are that loan's, so the form stops asking for them.
@@ -134,6 +135,8 @@ test('+ adds on a screen of its own for the side the phone is showing, and a per
 test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is not one country\'s', async ({ page }) => {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
   await page.goto('/net-worth/lend-borrow/new-receivable');
+  // The notes live with the rows they explain, behind Add more details.
+  await page.getByRole('button', { name: 'Add more details' }).tap();
 
   // Fine print waits behind the ⓘ beside its label, and comes out only when asked for.
   const note = page.getByText('Optional. You are warned three weeks before.');

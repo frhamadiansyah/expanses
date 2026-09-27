@@ -242,6 +242,7 @@ test('a second loan to the same person is a loan of its own, with its own reason
   await page.getByLabel('Person').fill('Andi');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByLabel(/^Amount/).fill('1500000');
+  await page.getByRole('button', { name: 'Add more details' }).click();
   await page.getByRole('textbox', { name: 'What it is for' }).fill('Motorcycle repair');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
@@ -252,6 +253,7 @@ test('a second loan to the same person is a loan of its own, with its own reason
   await expect(page.getByLabel('Loan', { exact: true })).toHaveValue('');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByLabel(/^Amount/).fill('8000000');
+  await page.getByRole('button', { name: 'Add more details' }).click();
   await page.getByRole('textbox', { name: 'What it is for' }).fill('Laptop purchase');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
 
@@ -267,6 +269,8 @@ test('a second loan to the same person is a loan of its own, with its own reason
   const loan = page.getByLabel('Loan', { exact: true });
   const laptop = await loan.locator('option', { hasText: /^Laptop purchase/ }).getAttribute('value');
   await loan.selectOption(laptop!);
+  // Even with the details open, a picked loan's reason is that loan's and is not asked for.
+  await page.getByRole('button', { name: 'Add more details' }).click();
   await expect(page.getByRole('textbox', { name: 'What it is for' })).toHaveCount(0);
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByLabel(/^Amount/).fill('500000');
@@ -274,4 +278,34 @@ test('a second loan to the same person is a loan of its own, with its own reason
   await expect(page.getByTestId('debts-total-Receivables')).toContainText('10.000.000');
   // Still two loans: the half million went onto the laptop, not into a third.
   await expect(page.getByText(/Laptop purchase/)).toHaveCount(1);
+});
+
+test('the rest of it folds into the same box behind Add more details, and opens by itself over anything filled in', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await page.goto('/net-worth/lend-borrow');
+  await openNew(page, 'New receivable');
+
+  // Folded: the box ends at the fee, and the toggle under it says what it does.
+  await expect(page.getByLabel('Sub category')).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'What it is for' })).toHaveCount(0);
+  await expect(page.getByText('The rest of it')).toHaveCount(0);
+  const toggle = page.getByRole('button', { name: 'Add more details' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  // Open: the four rows join the same box, and the toggle reads the way New transaction's does.
+  await toggle.click();
+  await expect(page.getByLabel('Sub category')).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'What it is for' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'About Due by' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Tax ID', exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'What it is for' }).fill('Laptop purchase');
+  await page.getByRole('button', { name: 'Fewer details' }).click();
+  await expect(page.getByRole('textbox', { name: 'What it is for' })).toHaveCount(0);
+
+  // Folding again keeps what was typed: it is saved with the loan.
+  await page.getByLabel('Person').fill('Andi');
+  await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await page.getByLabel(/^Amount/).fill('8000000');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Laptop purchase')).toBeVisible();
 });
