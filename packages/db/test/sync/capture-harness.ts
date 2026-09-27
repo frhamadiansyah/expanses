@@ -2,6 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import type { Database } from '../../src/database';
 import type { ChangeLogEntry } from '../../src/sync/seal';
+import { projectPurchase } from '../../src/sync/capture';
 import { IdentitySealer } from '../../src/sync/seal';
 import { parseOpId, SHARED_ENTITIES, type PurchaseEntity, type RowEntity } from '../../src/sync/shared-entities';
 import type { Op } from '../../src/sync/types';
@@ -144,9 +145,10 @@ type Write = { seq: number; table: string; key: string; op: string; cols: string
  *
  * A write is accounted for only by an op sealed after the outbox's high-water mark at the time of the write, and only
  * if that op carries the field the changed column feeds:
- * - a row entity is judged by its end state: the first write's before-image against the row as it is now. Each field
- *   whose column differs needs an upsert naming it; a row that is gone needs a delete; a row that was not there needs
- *   an upsert. A row deleted and written back as it was needs nothing.
+ * - a row entity is judged by its end state against what peers will end up with: for each synced field, the value in
+ *   the latest op after the mark that carries it, else the first write's before-image. A difference is a miss (so a
+ *   captured A→B followed by an uncaptured B→A is caught); a row that is gone needs a delete; a new row needs an
+ *   upsert. A row deleted and written back as it was needs nothing.
  * - a purchase row written in place (its transaction not inserted in this batch) needs an op naming the purchase field
  *   of each changed column (`transactions.status` excepted: a void is judged, with every lineage, by its head).
  *   Every lineage touched must have a `sync_lineage` row whose head is the lineage's posted head in the book — unless
@@ -187,9 +189,31 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     }
     const fieldOf = new Map<string, string>(Object.entries(entity.fields).map(([field, column]) => [column, field]));
     for (const [field, cols] of Object.entries(entity.derivedFields ?? {})) for (const c of cols) fieldOf.set(c, field);
-    const changedColumns = columns.filter((c) => fieldOf.has(c) && (!before || JSON.stringify(before[c]) !== JSON.stringify(now[c])));
-    const missing = changedColumns.filter((c) => !carries(entityOps, w.mark, fieldOf.get(c)!));
-    if (missing.length) misses.push(`${w.table} ${w.key}: ${missing.join(', ')} changed with no ${entity.entity} op`);
+    // What peers end up with, per field: the latest op after the mark that carries it, else what they had before.
+    const after = (entityOps ?? []).filter(({ rowid }) => rowid > w.mark);
+    const latest = after.at(-1);
+    if (latest?.op.op === 'delete') {
+      misses.push(`${w.table} ${w.key}: the row exists but the outbox's latest ${entity.entity} op deletes it`);
+      continue;
+    }
+    const direct = new Set(Object.values(entity.fields));
+    const problems: string[] = [];
+    for (const column of columns.filter((c) => fieldOf.has(c))) {
+      const field = fieldOf.get(column)!;
+      const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && field in op.fields);
+      if (!direct.has(column)) {
+        // A derived field (a bill's payer): its value is not the column's, so only a change without an op is a miss.
+        if (!carrier && (!before || JSON.stringify(before[column]) !== JSON.stringify(now[column]))) problems.push(`${column} changed with no ${entity.entity} op`);
+        continue;
+      }
+      if (carrier) {
+        const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
+        if (JSON.stringify(said) !== JSON.stringify(now[column])) problems.push(`${column} is ${JSON.stringify(now[column])} but the outbox says ${JSON.stringify(said)}`);
+      } else if (!before || JSON.stringify(before[column]) !== JSON.stringify(now[column])) {
+        problems.push(`${column} changed with no ${entity.entity} op`);
+      }
+    }
+    if (problems.length) misses.push(`${w.table} ${w.key}: ${problems.join('; ')}`);
     else if (!before && !carries(entityOps, w.mark, null)) misses.push(`${w.table} ${w.key}: inserted with no ${entity.entity} op`);
   }
 
@@ -238,7 +262,23 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       if (expected !== null) misses.push(`${w.table} ${w.key}: purchase ${lineageId} has no sync_lineage row`);
       continue;
     }
-    if (lineage[0] !== expected) misses.push(`purchase ${lineageId}: sync_lineage head ${lineage[0]} but the posted head in the book is ${expected}`);
+    if (lineage[0] !== expected) {
+      misses.push(`purchase ${lineageId}: sync_lineage head ${lineage[0]} but the posted head in the book is ${expected}`);
+      continue;
+    }
+    // The head must read as the outbox's latest word on each field it carried since the first write here.
+    if (expected !== null) {
+      const since = Math.min(...writes.filter((x) => x.key === w.key || x.key === expected).map((x) => x.mark));
+      const [member] = await database.db.values<[string]>(sql`SELECT member_id FROM shared_books WHERE book_id = ${bookId}`);
+      const projected = (await projectPurchase(database.db, expected, member![0], null)) as unknown as Record<string, unknown>;
+      const after = (ops.get(`purchase\u0000${lineageId}`) ?? []).filter(({ rowid }) => rowid > since);
+      for (const field of Object.keys(projected)) {
+        const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && field in op.fields);
+        if (!carrier) continue;
+        const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
+        if (JSON.stringify(said) !== JSON.stringify(projected[field])) misses.push(`purchase ${lineageId}: ${field} reads ${JSON.stringify(projected[field])} but the outbox says ${JSON.stringify(said)}`);
+      }
+    }
   }
   return misses;
 }

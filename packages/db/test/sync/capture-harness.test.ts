@@ -72,4 +72,18 @@ describe('the capture harness (§6.4)', () => {
     });
     expect(await uncapturedWrites(database, book.id)).toEqual([]);
   });
+
+  it('names a captured rename followed by an uncaptured revert: the outbox says one thing, the row another', async () => {
+    const { database, ws, book, groceries } = await watchedBook();
+    await renameAccount(database, ws, groceries.id, 'Market');
+    await database.db.run(sql`UPDATE accounts SET name = 'Groceries' WHERE id = ${groceries.id}`);
+    expect(await uncapturedWrites(database, book.id)).toEqual([`accounts ${groceries.id}: name is "Groceries" but the outbox says "Market"`]);
+  });
+
+  it('names a captured purchase whose flag is then reverted by hand', async () => {
+    const { database, ws, book, bca, groceries } = await watchedBook();
+    const id = await postTransaction(database, ws, { occurredOn: '2026-09-01', description: 'x', channel: 'online', lines: expenseLines({ categoryAccountId: groceries.id, paymentAccountId: bca.id, amountMinor: 1, currency: 'IDR' }) });
+    await database.db.run(sql`UPDATE transaction_flags SET channel = NULL WHERE transaction_id = ${id}`);
+    expect(await uncapturedWrites(database, book.id)).toContain(`purchase ${id}: channel reads null but the outbox says "online"`);
+  });
 });

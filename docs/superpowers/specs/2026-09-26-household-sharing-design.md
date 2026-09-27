@@ -434,19 +434,23 @@ op accounts for. **An op accounts for a write only if it was sealed after the wr
 field the changed column feeds** (task 3 fix round 1; an earlier "any op for that id, ever" rule could not catch a
 second uncaptured write to a row already seen):
 
-- A row entity is judged by its end state: the first write's before-image against the row as it is now. Each field
-  whose column differs needs an upsert naming it; a row that is gone needs a delete; a new row needs an upsert. A row
-  deleted and written back as it was needs nothing.
+- A row entity is judged by its end state against what peers will end up with: for each synced field, the value in
+  the latest op after the mark that carries it, else the first write's before-image. Any difference is a miss, so a
+  captured A→B followed by an uncaptured B→A is caught (fix round 2). A row that is gone needs a delete; a new row
+  needs an upsert. A row deleted and written back as it was needs nothing.
 - A purchase row written in place (its transaction not inserted in the same batch) needs an op naming the purchase
   field (`PurchaseEntity.fields`) of each changed column. Every touched lineage must have a `sync_lineage` row whose
   head is the lineage's posted head in the book (that is how a void or a missed replacement is caught), unless it has
   neither (a purchase posted and voided in one transaction, which no other device ever saw).
+  The head's projection must also read as the latest op's value for each field an op carried since the first write.
 - Raw SQL a test runs through `database.execScript` (a fixture such as "archive this row") is not a repository write
   and is dropped from the watch. No repository writes data through `execScript`; only migrations use it.
 
 The whole existing suite, run against a database whose first workspace's Personal book is shared, is the completeness
 test; no repository function is called by hand. The command is **`npm run test:capture`** (in `packages/db`, or at the
-repo root).
+repo root). `packages/db`'s `npm test` runs the plain suite and then the capture run (`vitest run && vitest run --config
+vitest.capture.config.ts`), so a red plain pass short-circuits the capture pass: fix it, or run `npm run test:capture`
+on its own.
 
 ### 6.5 Seeding — sharing a workspace that already has history
 
