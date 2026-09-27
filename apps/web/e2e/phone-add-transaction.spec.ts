@@ -513,3 +513,46 @@ test('Add credit card on the Credit cards tab opens the card form, and the card 
   await expect(form.getByLabel('Note')).toHaveValue('Hotel');
   await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UOB PRVI');
 });
+
+test('Note offers past notes over the keyboard, and a pick brings its category', async ({ page }) => {
+  await addWallet(page);
+  await addTransaction(page, { description: 'Grabfood Gudeg Jogja', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '45000' });
+
+  await page.goto('/transactions/new');
+  const form = addForm(page);
+  const note = form.getByRole('textbox', { name: 'Note' });
+  const suggestions = page.getByRole('listbox', { name: 'Suggested notes' });
+
+  // One letter is too little to go on.
+  await note.fill('G');
+  await expect(suggestions).toHaveCount(0);
+
+  await note.fill('Grabfood G');
+  const pick = suggestions.getByRole('option', { name: /^Grabfood Gudeg Jogja/ });
+  await expect(pick).toContainText('Restaurants');
+  await pick.click();
+
+  await expect(note).toHaveValue('Grabfood Gudeg Jogja');
+  await expect(note).toBeFocused();
+  await expect(suggestions).toHaveCount(0);
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Restaurants');
+});
+
+test('a note typed out in full brings its category on leaving Note, but never over one already chosen', async ({ page }) => {
+  await addWallet(page);
+  await addTransaction(page, { description: 'Kopi Kenangan', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '38000' });
+
+  await page.goto('/transactions/new');
+  const form = addForm(page);
+  const note = form.getByRole('textbox', { name: 'Note' });
+  await note.fill('Kopi Kenangan');
+  await note.blur();
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Restaurants');
+
+  await page.goto('/transactions/new');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await note.fill('Kopi Kenangan');
+  await note.blur();
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Groceries');
+});

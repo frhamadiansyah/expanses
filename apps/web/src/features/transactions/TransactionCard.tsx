@@ -2,6 +2,8 @@ import { isoDate, type PaymentOption, tradeRateNeeds } from '@expanses/core';
 import {
   type AccountRow,
   type CardRow,
+  noteCategory,
+  type NoteSuggestion,
   postTransaction,
   recordTaggedTransfer,
   replaceTransaction,
@@ -35,6 +37,7 @@ import { CategoryPicker } from './CategoryPicker';
 import { ChoiceSheet } from './ChoiceSheet';
 import { FieldRow, FormRow, FormRows, MoneyFieldRow, ROW_BODY, RowGlyph, RowLead, SelectFormRow } from './FormRow';
 import { MoreDetails } from './MoreDetails';
+import { NoteSuggestions } from './NoteSuggestions';
 import { PaymentSheet, chosenPayment } from './PaymentSheet';
 import { useTransactionPhotoIds } from './queries';
 import { paymentOptions } from './quick-row';
@@ -365,6 +368,27 @@ function CardBody({
    * correction is, and the middle is the real date input laid over the day it shows, so it is still labelled
    * Date and still opens the browser's own picker.
    */
+  /*
+   * Notes written before, over the keyboard while Note is typed in; a pick brings the category it was last filed
+   * under, but only into an empty Category — one chosen by hand is never overwritten.
+   */
+  const [noteFocused, setNoteFocused] = useState(false);
+  const suggestKind = draft.mode === 'expense' || draft.mode === 'income' ? draft.mode : null;
+  const categoryNameOf = (id: string) => accounts.find((a) => a.id === id)?.name;
+  const pickNote = (suggestion: NoteSuggestion) =>
+    setDraft((d) => ({
+      ...d,
+      description: suggestion.description,
+      ...(suggestion.categoryId && !d.categoryId && d.splits.length === 0 ? { categoryId: suggestion.categoryId } : {}),
+    }));
+  // A note typed out in full without a tap still brings its category, when leaving Note finds Category empty.
+  const fillCategoryFromNote = () => {
+    const typed = draft.description.trim();
+    if (!suggestKind || !typed || draft.categoryId || draft.splits.length > 0) return;
+    void noteCategory(database, ws, typed, suggestKind).then((categoryId) => {
+      if (categoryId) setDraft((d) => (d.categoryId || d.splits.length > 0 || d.description.trim() !== typed ? d : { ...d, categoryId }));
+    });
+  };
   const noteRow = (
     <div className="flex items-center gap-[10px] pl-[10px]">
       <RowLead>
@@ -378,6 +402,11 @@ function CardBody({
           aria-label="Note"
           value={draft.description}
           onChange={(e) => set({ description: e.target.value })}
+          onFocus={() => setNoteFocused(true)}
+          onBlur={() => {
+            setNoteFocused(false);
+            fillCategoryFromNote();
+          }}
           placeholder="Note"
           className="ph-focus-inset min-w-0 flex-1 bg-transparent py-1 text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
         />
@@ -608,6 +637,7 @@ function CardBody({
 
             {noteRow}
             {dateRow(draft.occurredOn, (occurredOn) => set({ occurredOn }))}
+            <NoteSuggestions typed={draft.description} kind={suggestKind} open={noteFocused} categoryName={categoryNameOf} onPick={pickNote} />
           </FormRows>
         )}
       </div>

@@ -11,6 +11,8 @@ import {
   listAccounts,
   listDrafts,
   listTransactions,
+  noteMatches,
+  noteSuggestions,
   postTransaction,
 } from '../src/index';
 import { setupDb, type TestDb } from './helpers';
@@ -110,5 +112,43 @@ describe('guessing a category from history', () => {
     });
 
     expect(await guessCategoryFromHistory(t.database, t.ws, 'Lotte Mart')).toBe(t.key('household.groceries'));
+  });
+});
+
+describe('suggesting a note from history', () => {
+  async function spend(t: Awaited<ReturnType<typeof workspace>>, bank: string, occurredOn: string, description: string, categoryKey: string) {
+    await postTransaction(t.database, t.ws, {
+      occurredOn,
+      description,
+      lines: expenseLines({ categoryAccountId: t.key(categoryKey), paymentAccountId: bank, amountMinor: 100_000, currency: 'IDR' }),
+    });
+  }
+
+  it('matches the start of a note or of any word in it, ignoring case', () => {
+    expect(noteMatches('Grabfood Gudeg Jogja', 'Grabfood G')).toBe(true);
+    expect(noteMatches('Grabfood Gudeg Jogja', 'gudeg')).toBe(true);
+    expect(noteMatches('Grabfood Gudeg Jogja', 'jogja')).toBe(true);
+    expect(noteMatches('Grabfood Gudeg Jogja', 'deg')).toBe(false);
+    expect(noteMatches('Grabfood Gudeg Jogja', 'g')).toBe(false);
+    expect(noteMatches('Grabfood Gudeg Jogja', 'grabfood gudeg jogja')).toBe(false);
+  });
+
+  it('offers each past note once, newest first, with the category it was last filed under', async () => {
+    const t = await workspace();
+    const bank = (await createAccount(t.database, t.ws, { name: 'BCA', kind: 'asset', subtype: 'bank', currency: 'IDR' })).id;
+    await spend(t, bank, '2026-08-01', 'Grabfood Gudeg Jogja', 'household.groceries');
+    await spend(t, bank, '2026-08-05', 'Grabfood Bakmi GM', 'food_beverage.takeaways');
+    await spend(t, bank, '2026-09-01', 'grabfood gudeg jogja', 'food_beverage.takeaways');
+    await spend(t, bank, '2026-09-02', 'Superindo', 'household.groceries');
+
+    const found = await noteSuggestions(t.database, t.ws, 'Grabfood G', 'expense');
+    expect(found).toEqual([{ description: 'grabfood gudeg jogja', categoryId: t.key('food_beverage.takeaways') }]);
+
+    const all = await noteSuggestions(t.database, t.ws, 'grab', 'expense');
+    expect(all.map((s) => s.description)).toEqual(['grabfood gudeg jogja', 'Grabfood Bakmi GM']);
+
+    // Income notes are not offered to a purchase, and a single letter offers nothing.
+    expect(await noteSuggestions(t.database, t.ws, 'grab', 'income')).toEqual([]);
+    expect(await noteSuggestions(t.database, t.ws, 'g', 'expense')).toEqual([]);
   });
 });
