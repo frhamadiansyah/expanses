@@ -12,14 +12,14 @@ import {
   splitBillPostings,
   statusFor,
 } from '@expanses/core';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db } from '../database';
 import { accounts, entries, transactions } from '../schema';
 import { debtProfiles } from '../schema-debts';
-import { createAccountTx } from './accounts';
+import { archiveAccountTx, createAccountTx } from './accounts';
 import { categoryIdsByKeyTx } from './categories';
-import { postTransactionTx } from './ledger';
+import { postTransactionTx, voidTransactionTx } from './ledger';
 import type { SetAsideChoice } from './set-aside-tx';
 
 export class DebtDbError extends Error {
@@ -457,6 +457,51 @@ export async function forgiveRemainder(database: Database, ws: WorkspaceContext,
     });
     await setStatusTx(tx, ws, input.debtAccountId, 'forgiven', input.occurredOn);
     return { transactionId };
+  });
+}
+
+/**
+ * Deletes a loan entered by mistake: every transaction that touched it — the money lent or borrowed with any fee, each
+ * collection or repayment with its interest, a forgiveness — is voided, the loan's profile goes, and its account is
+ * archived. Every balance reads as if the loan had never been recorded; the voided transactions stay in the ledger.
+ *
+ * Refused when one of those transactions also moved another person's loan — a split bill opens one per friend in a
+ * single transaction — since voiding it would take the others' shares with it.
+ */
+export async function deleteLoan(database: Database, ws: WorkspaceContext, debtAccountId: string): Promise<void> {
+  await database.transaction(async (tx) => {
+    await debtAccountTx(tx, ws, debtAccountId);
+    const [profile] = await tx
+      .select({ accountId: debtProfiles.accountId })
+      .from(debtProfiles)
+      .where(and(eq(debtProfiles.accountId, debtAccountId), eq(debtProfiles.workspaceId, ws.workspaceId)));
+    if (!profile) throw new DebtDbError('That account is not a debt with anyone yet');
+
+    const touched = await tx
+      .selectDistinct({ id: transactions.id })
+      .from(entries)
+      .innerJoin(transactions, eq(entries.transactionId, transactions.id))
+      .where(and(eq(entries.workspaceId, ws.workspaceId), eq(entries.accountId, debtAccountId), eq(transactions.status, 'posted')));
+    const ids = touched.map((row) => row.id);
+
+    if (ids.length > 0) {
+      const shared = await tx
+        .selectDistinct({ accountId: entries.accountId })
+        .from(entries)
+        .innerJoin(debtProfiles, eq(debtProfiles.accountId, entries.accountId))
+        .where(and(inArray(entries.transactionId, ids), ne(entries.accountId, debtAccountId)));
+      if (shared.length > 0) {
+        throw new DebtDbError('This loan was recorded together with other people’s shares, as a split bill. Delete that bill in Cashflow instead.');
+      }
+    }
+
+    for (const id of ids) {
+      // A void can take others with it (a deposit event's own postings), so each is checked before it is voided.
+      const [row] = await tx.select({ status: transactions.status }).from(transactions).where(eq(transactions.id, id));
+      if (row?.status === 'posted') await voidTransactionTx(tx, ws, id);
+    }
+    await tx.delete(debtProfiles).where(and(eq(debtProfiles.accountId, debtAccountId), eq(debtProfiles.workspaceId, ws.workspaceId)));
+    await archiveAccountTx(tx, ws, debtAccountId);
   });
 }
 

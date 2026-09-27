@@ -8,6 +8,7 @@ import {
   createWorkspace,
   type Database,
   DebtDbError,
+  deleteLoan,
   getDebtProfile,
   listDebtProfiles,
   forgiveRemainder,
@@ -17,6 +18,7 @@ import {
   migrate,
   MIGRATIONS,
   nativeBalances,
+  peopleDebts,
   recordLoan,
   recordRepayment,
   saveDebtProfile,
@@ -296,6 +298,67 @@ describe('forgiving what is left', () => {
     await recordRepayment(database, ws, { debtAccountId, occurredOn: '2026-10-05', amountMinor: 10_000_000, moneyAccountId: bca.id });
 
     await expect(forgiveRemainder(database, ws, { debtAccountId, occurredOn: '2026-11-01' })).rejects.toThrow(/greater than zero/);
+  });
+});
+
+describe('deleting a loan entered by mistake', () => {
+  it('takes back the money, the fee, the collections and their interest, and leaves no loan behind', async () => {
+    const categories = await categoryIdsByKey(database, ws);
+    const fees = categories['miscellaneous.fees_charges']!;
+    const { debtAccountId } = await recordLoan(database, ws, {
+      person: { name: 'Andi', direction: 'lent', currency: 'IDR', reason: 'Laptop' },
+      occurredOn: '2026-09-05',
+      amountMinor: 10_000_000,
+      moneyAccountId: bca.id,
+      feeMinor: 6_500,
+      feeCategoryId: fees,
+    });
+    await recordRepayment(database, ws, { debtAccountId, occurredOn: '2026-10-05', amountMinor: 4_000_000, interestMinor: 100_000, moneyAccountId: bca.id });
+
+    await deleteLoan(database, ws, debtAccountId);
+
+    // Every balance as if the loan had never been recorded.
+    expect(await balanceOf(bca.id)).toBe(50_000_000);
+    expect(await balanceOf(debtAccountId)).toBe(0);
+    expect(await balanceOf(fees)).toBe(0);
+    // No empty loan left under Settled, and no profile for the tax report to find.
+    const people = await peopleDebts(database, ws, '2026-12-31');
+    expect([...people.owedToYou, ...people.youOwe, ...people.settled]).toEqual([]);
+    await expect(getDebtProfile(database, ws, debtAccountId)).resolves.toBeUndefined();
+    // The ledger keeps what happened, voided.
+    const kept = (await listTransactions(database, ws, { includeVoid: true })).filter((row) => row.description.includes('Andi'));
+    expect(kept.every((row) => row.status === 'void')).toBe(true);
+  });
+
+  it('leaves the person’s other loans alone', async () => {
+    const first = await lend(1_000_000);
+    const second = await lend(2_000_000, '2026-09-06');
+    expect(second.debtAccountId).not.toBe(first.debtAccountId);
+
+    await deleteLoan(database, ws, first.debtAccountId);
+
+    expect(await balanceOf(second.debtAccountId)).toBe(2_000_000);
+    const people = await peopleDebts(database, ws, '2026-12-31');
+    expect(people.owedToYou.flatMap((person) => person.loans.map((loan) => loan.accountId))).toEqual([second.debtAccountId]);
+  });
+
+  it('refuses a loan that came from a split bill, which carries other people’s shares', async () => {
+    const categories = await categoryIdsByKey(database, ws);
+    const { debtAccountIds } = await splitBill(database, ws, {
+      occurredOn: '2026-09-05',
+      description: 'Dinner',
+      totalMinor: 900_000,
+      moneyAccountId: bca.id,
+      ownCategoryId: categories['food_beverage.restaurants']!,
+      ownShareMinor: 300_000,
+      shares: [
+        { person: { name: 'Andi', currency: 'IDR' }, amountMinor: 300_000 },
+        { person: { name: 'Budi', currency: 'IDR' }, amountMinor: 300_000 },
+      ],
+    });
+
+    await expect(deleteLoan(database, ws, debtAccountIds[0]!)).rejects.toThrow(/split bill/);
+    expect(await balanceOf(debtAccountIds[1]!)).toBe(300_000);
   });
 });
 

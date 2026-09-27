@@ -1,6 +1,6 @@
 import type { PersonDebtRow, PersonLoanRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { loanFigureLabels, loanSubtitle, personDue, personParams, repaymentWord, shortDay } from './lend-borrow-view';
+import { deleteLoanQuestion, loanFigureLabels, loanSubtitle, personDue, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 
 const TODAY = '2026-09-27';
 
@@ -66,5 +66,11 @@ describe('one loan', () => {
     expect(repaymentWord('borrowed')).toBe('Repayment');
     expect(loanFigureLabels('lent')).toEqual({ given: 'Money lent', back: 'Money back' });
     expect(loanFigureLabels('borrowed')).toEqual({ given: 'Money borrowed', back: 'Paid back' });
+  });
+
+  it('asks before deleting, naming what goes with the loan', () => {
+    expect(deleteLoanQuestion('lent', 0)).toBe('Delete this loan? Every balance goes back as if it was never recorded.');
+    expect(deleteLoanQuestion('lent', 1)).toMatch(/^Delete this loan and its collection\?/);
+    expect(deleteLoanQuestion('borrowed', 2)).toMatch(/^Delete this loan and its 2 repayments\?/);
   });
 });

@@ -104,8 +104,10 @@ test('by thumb: settled items stay where they were, under the switch', async ({ 
   await twoPeople(page);
 
   await openLoan(page, 'Andi');
-  await page.getByRole('button', { name: 'Forgive the rest' }).tap();
-  await expect(page.getByRole('button', { name: 'Forgive the rest' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'More' }).tap();
+  await page.getByRole('menuitem', { name: 'Forgive the rest' }).tap();
+  await page.getByRole('button', { name: 'More' }).tap();
+  await expect(page.getByRole('menuitem', { name: 'Forgive the rest' })).toHaveCount(0);
   // Back on the list, Andi is settled: it opens on Receivables rather than turning itself over to where people are.
   await page.goto('/net-worth/lend-borrow');
   await expect(sides(page).getByRole('radio', { name: 'Receivables' })).toBeChecked();

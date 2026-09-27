@@ -84,6 +84,16 @@ export function OverflowMenu({ actions }: { actions: CornerAction[] }) {
   return <CornerMenu label="More" glyph={<MoreHorizontal size={20} aria-hidden />} actions={actions} />;
 }
 
+/** A line in a corner menu: its words, and its glyph at the far end when it has one, as iOS draws a menu. */
+function MenuLine({ action }: { action: CornerAction }) {
+  return (
+    <>
+      <span>{action.label}</span>
+      {action.glyph ? <span className="flex shrink-0 items-center" aria-hidden>{action.glyph}</span> : null}
+    </>
+  );
+}
+
 /**
  * A corner button that opens a list of actions. The `…` is one; a + that offers two things to add is another.
  * One drawing for both, so a menu in the corner never looks two ways.
@@ -108,7 +118,7 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
           >
             {actions.map((action, index) => {
               const item = cx(
-                'ph-focus-inset block w-full px-[13px] py-[11px] text-left text-[15px] leading-[20px]',
+                'ph-focus-inset flex w-full items-center justify-between gap-3 px-[13px] py-[11px] text-left text-[15px] leading-[20px]',
                 index > 0 && 'border-t-[0.5px] border-[var(--ph-hair)]',
                 action.destructive ? 'text-[var(--ph-alarm)]' : 'text-[var(--ph-ink)]',
               );
@@ -123,7 +133,7 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
                   onClick={() => setOpen(false)}
                   className={item}
                 >
-                  {action.label}
+                  <MenuLine action={action} />
                 </Link>
               ) : (
                 <button
@@ -136,7 +146,7 @@ export function CornerMenu({ label, glyph, actions }: { label: string; glyph: Re
                   }}
                   className={item}
                 >
-                  {action.label}
+                  <MenuLine action={action} />
                 </button>
               );
             })}

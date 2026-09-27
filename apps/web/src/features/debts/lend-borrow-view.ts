@@ -60,3 +60,13 @@ export const repaymentWord = (direction: DebtDirection): string => (direction ==
 /** The two figures a loan's Details shows beside what is still owed: what first moved, and what has come back. */
 export const loanFigureLabels = (direction: DebtDirection): { given: string; back: string } =>
   direction === 'lent' ? { given: 'Money lent', back: 'Money back' } : { given: 'Money borrowed', back: 'Paid back' };
+
+/**
+ * What Delete loan asks before it goes: what else goes with it, in the side's own word, and what happens to the
+ * money — "Delete this loan and its 2 collections? Every balance goes back as if it was never recorded."
+ */
+export function deleteLoanQuestion(direction: DebtDirection, moneyBackCount: number): string {
+  const word = repaymentWord(direction).toLowerCase();
+  const withIt = moneyBackCount === 0 ? '' : ` and its ${moneyBackCount === 1 ? word : `${moneyBackCount} ${word}s`}`;
+  return `Delete this loan${withIt}? Every balance goes back as if it was never recorded.`;
+}

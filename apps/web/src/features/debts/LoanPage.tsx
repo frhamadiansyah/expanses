@@ -1,14 +1,14 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { forgiveRemainder, listDebtProfiles, saveDebtProfile } from '@expanses/db';
-import { useParams } from '@tanstack/react-router';
-import { Plus } from 'lucide-react';
+import { deleteLoan, forgiveRemainder, listDebtProfiles, saveDebtProfile } from '@expanses/db';
+import { useNavigate, useParams } from '@tanstack/react-router';
+import { Gift, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { personCodeChoices } from '../ownables/catalogue-view';
-import { loanFigureLabels, personParams, repaymentWord, shortDay } from './lend-borrow-view';
+import { deleteLoanQuestion, loanFigureLabels, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
 import { RepaymentForm } from './RepaymentForm';
 
@@ -31,6 +31,7 @@ export function LoanPage() {
   const profiles = useDebtProfiles();
   const history = useDebtHistory(accountId);
   const [repaying, setRepaying] = useState(false);
+  const navigate = useNavigate();
   const [error, setError] = useState<unknown>(null);
 
   const all = [...(people.data?.owedToYou ?? []), ...(people.data?.youOwe ?? []), ...(people.data?.settled ?? [])];
@@ -75,6 +76,24 @@ export function LoanPage() {
     }
   }
 
+  /**
+   * For a loan entered by mistake: everything it moved is taken back and the loan goes. Back to the person when they
+   * have other loans, to Lend & borrow when this was their only one.
+   */
+  async function remove() {
+    const moneyBack = (history.data ?? []).filter((row) => row.kind === 'repayment').length;
+    if (!window.confirm(deleteLoanQuestion(person!.direction, moneyBack))) return;
+    setError(null);
+    try {
+      await deleteLoan(database, ws, accountId);
+      await invalidate();
+      if (person!.loans.length > 1) await navigate({ to: '/net-worth/lend-borrow/$side/$person', params: personParams(person!) });
+      else await navigate({ to: '/net-worth/lend-borrow', search: { side: personParams(person!).side } });
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   async function forgive() {
     if (!window.confirm(`Forgive what ${person!.personName} still owes? It becomes a gift, and the debt closes.`)) return;
     setError(null);
@@ -95,7 +114,23 @@ export function LoanPage() {
         back={person.personName}
         backTo="/net-worth/lend-borrow/$side/$person"
         backParams={back}
-        actions={[]}
+        actions={[
+          /*
+           * The two rare, final things sit behind ⋯ at the top right: forgiving keeps the history and counts the rest
+           * as a gift; deleting is for a loan entered by mistake.
+           */
+          {
+            key: 'more',
+            label: 'More',
+            glyph: <MoreHorizontal size={20} aria-hidden />,
+            menu: [
+              ...(loan.status === 'open'
+                ? [{ key: 'forgive', label: 'Forgive the rest', glyph: <Gift size={18} aria-hidden />, destructive: true, run: () => void forgive() }]
+                : []),
+              { key: 'delete', label: 'Delete loan', glyph: <Trash2 size={18} aria-hidden />, destructive: true, run: () => void remove() },
+            ],
+          },
+        ]}
       />
 
       {/* What is still owed, alone, as Wallet draws a payment: what was lent and what came back are rows in Details. */}
@@ -190,11 +225,6 @@ export function LoanPage() {
         </InsetGroup>
       )}
 
-      {loan.status === 'open' && (
-        <InsetGroup>
-          <InsetRow title="Forgive the rest" destructive onClick={() => void forgive()} />
-        </InsetGroup>
-      )}
     </div>
   );
 }

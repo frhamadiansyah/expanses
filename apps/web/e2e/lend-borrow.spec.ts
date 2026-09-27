@@ -86,10 +86,9 @@ test('a repayment opens in a sheet over the loan, and closes without saving', as
   await lend(page, 'Andi', '9000000', 'BCA Tahapan (IDR)');
 
   await openLoan(page, 'Andi');
-  // Recording it is the first row of History, over the entries it adds to; forgiving is a red row at the foot.
+  // Recording it is the first row of History, over the entries it adds to.
   const record = page.getByRole('button', { name: 'Record collection' });
   expect((await page.getByText('History', { exact: true }).boundingBox())!.y).toBeLessThan((await record.boundingBox())!.y);
-  expect((await record.boundingBox())!.y).toBeLessThan((await page.getByRole('button', { name: 'Forgive the rest' }).boundingBox())!.y);
   await record.click();
   const sheet = page.getByRole('dialog', { name: 'Collection' });
   await expect(sheet).toBeVisible();
@@ -135,9 +134,13 @@ test('forgiving the rest closes the debt and takes it off the balance sheet', as
   await lend(page, 'Andi', '10000000', 'BCA Tahapan (IDR)');
 
   await openLoan(page, 'Andi');
-  await page.getByRole('button', { name: 'Forgive the rest' }).click();
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Forgive the rest' }).click();
   // The loan closes on its own page, and Andi moves under Show settled on the list.
-  await expect(page.getByRole('button', { name: 'Forgive the rest' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'More' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Forgive the rest' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'Delete loan' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.goto('/net-worth/lend-borrow');
   await expect(page.getByRole('button', { name: /Show settled/ })).toBeVisible();
 
@@ -465,4 +468,30 @@ test('a person\'s initial turns red when a loan is overdue, and stays grey with 
   await expect(initial('Budi')).toHaveAttribute('style', /--ph-fill/);
   // The colour says it; the row carries no second line.
   await expect(personRow(page, 'Andi')).not.toContainText(/overdue|Due/i);
+});
+
+test('a loan entered by mistake is deleted with everything it moved, and leaves nothing under Settled', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Andi', '1000000', 'BCA Tahapan (IDR)');
+  await lend(page, 'Andi', '2000000', 'BCA Tahapan (IDR)');
+
+  // Andi has two loans: deleting one goes back to his page, with the other still there.
+  await openLoan(page, 'Andi');
+  let asked = '';
+  page.once('dialog', (dialog) => {
+    asked = dialog.message();
+  });
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Delete loan' }).click();
+  await expect(page.getByTestId('person-hero')).toBeVisible();
+  expect(asked).toMatch(/^Delete this loan\? Every balance goes back/);
+  await expect(page.getByTestId('loan-row')).toHaveCount(1);
+
+  // Deleting his last one goes back to Lend & borrow, and he is gone from it — not an empty loan under Settled.
+  await page.getByTestId('loan-row').click();
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('menuitem', { name: 'Delete loan' }).click();
+  await expect(page).toHaveURL(/\/net-worth\/lend-borrow(\?|$)/);
+  await expect(personRow(page, 'Andi')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Show settled/ })).toHaveCount(0);
 });
