@@ -10,6 +10,7 @@ import {
   billMinor,
   canEditInSheet,
   chargedIsEstimate,
+  currencyShown,
   chargedInNeeded,
   currencyChoosable,
   detailsToggleLabel,
@@ -1224,5 +1225,16 @@ describe('the details toggle', () => {
   it('offers the rows when they are away, and offers to put them away when they are there', () => {
     expect(detailsToggleLabel(false)).toBe('Add more details');
     expect(detailsToggleLabel(true)).toBe('Fewer details');
+  });
+});
+
+describe('currencyShown', () => {
+  it('names no currency on a blank row with no flag picked', () => {
+    expect(currencyShown({ ...draft, amount: '', currency: '' })).toBe(false);
+    expect(currencyShown({ ...draft, amount: '  ', currency: '' })).toBe(false);
+  });
+  it('names it once a figure is typed, or once the flag is picked', () => {
+    expect(currencyShown({ ...draft, amount: '5', currency: '' })).toBe(true);
+    expect(currencyShown({ ...draft, amount: '', currency: 'USD' })).toBe(true);
   });
 });

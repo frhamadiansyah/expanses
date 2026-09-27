@@ -129,6 +129,13 @@ export const typedCurrency = (draft: FormDraft, accounts: readonly AccountRow[])
   (currencyChoosable(draft) ? draft.currency : '') || accountOf(draft, accounts)?.currency || '';
 
 /**
+ * Whether the amount row names its currency yet: once a figure is typed, or once the flag was chosen. A blank row
+ * with nothing picked says nothing about money it does not hold; the first digit brings the flag and the code of
+ * the currency it is read in (the paying account's, else the base currency).
+ */
+export const currencyShown = (draft: FormDraft) => draft.amount.trim() !== '' || draft.currency !== '';
+
+/**
  * Whether the "Charged in <account currency>" row applies: the figure was typed in one currency and the
  * account settles in another, so the posting cannot be read off the typed figure alone.
  *
