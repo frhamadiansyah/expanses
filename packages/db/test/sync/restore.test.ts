@@ -67,6 +67,9 @@ describe('a restored backup (§8.7)', () => {
     await expect(restored.engine.joinBook(wrong, { ws: restored.ws, memberName: 'Fandri', deviceName: 'new phone' })).rejects.toMatchObject({ code: 'INVITE_MISMATCH' });
     await expect(restored.transport.previewInvite((await restored.engine.previewInvite(wrong)).inviteId)).resolves.toMatchObject({ claimed: false });
     const { code } = await dewi.engine.createInvite(bookId, { inviterName: 'Dewi', sameMember: true, memberId: memberBefore });
+    // The preview says whose device this joins as: the member the terms name, not the inviter (final review, C1 e2e).
+    expect(await restored.engine.previewInvite(code)).toMatchObject({ inviterName: 'Dewi', memberName: 'Fandri', terms: { sameMember: true, memberId: memberBefore } });
+    expect(await restored.engine.previewInvite(wrong)).not.toHaveProperty('memberName');
     const { memberId } = await restored.engine.joinBook(code, { ws: restored.ws, memberName: 'Fandri', deviceName: 'new phone' });
     expect(memberId).toBe(memberBefore);
     expect(await state(restored, bookId)).toBe('active');

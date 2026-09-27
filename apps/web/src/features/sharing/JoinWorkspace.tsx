@@ -59,7 +59,7 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
     event.preventDefault();
     if (!preview || busy) return;
     const linking = preview.terms.sameMember;
-    const memberName = linking ? preview.inviterName : name.trim();
+    const memberName = linking ? (preview.memberName ?? preview.inviterName) : name.trim();
     if (!memberName) return;
     setBusy(true);
     setError(null);
@@ -121,7 +121,7 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
                   {refusal}
                 </span>
               ) : (
-                (unusable ?? (preview.terms.sameMember ? `This device joins as ${preview.inviterName}.` : 'You will see and record into it together.'))
+                (unusable ?? (preview.terms.sameMember ? `This device joins as ${preview.memberName ?? preview.inviterName}.` : 'You will see and record into it together.'))
               )
             }
           >

@@ -24,6 +24,8 @@ export interface InvitePreview {
   relayBookId: string;
   bookName: string;
   inviterName: string;
+  /** For a same-member invite: the name of the member the new device joins as (an owner linking another member's device, §8.3/§8.7). */
+  memberName?: string;
   baseCurrency: string;
   terms: InviteTerms;
 }

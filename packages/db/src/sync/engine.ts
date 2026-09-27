@@ -333,7 +333,16 @@ export class SyncEngine {
       termsSigningBytes(bookId, { inviteId, sameMember, memberId }) as BufferSource,
     );
     const terms: InviteTerms = { inviteId, sameMember, ...(memberId === undefined ? {} : { memberId }), sig: bytesToBase64Url(new Uint8Array(termsSig)) };
-    const preview: InvitePreview = { bookId, relayBookId: shared.relayBookId, bookName: book[0], inviterName: input.inviterName, baseCurrency: book[1], terms };
+    const [named] = memberId === undefined ? [] : await this.database.db.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${bookId} AND member_id = ${memberId}`);
+    const preview: InvitePreview = {
+      bookId,
+      relayBookId: shared.relayBookId,
+      bookName: book[0],
+      inviterName: input.inviterName,
+      ...(named ? { memberName: named[0] } : {}),
+      baseCurrency: book[1],
+      terms,
+    };
     const expiresAt = new Date(this.now() + INVITE_TTL_MS).toISOString();
     const unsigned: Omit<InviteRecord, 'sig'> = {
       inviteId,
