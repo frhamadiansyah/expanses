@@ -83,6 +83,21 @@ describe('SHARED_ENTITIES against a freshly migrated database', () => {
     expect(typeof row![0]).toBe('number');
   });
 
+  it('category_need is keyed by its category and scoped like one', () => {
+    const need = rows.find((e) => e.entity === 'category_need')!;
+    const category = rows.find((e) => e.entity === 'category')!;
+    expect(need.table).toBe('category_needs');
+    expect(need.keyColumns).toEqual(['category_account_id']);
+    expect(need.fields).toEqual({ need: 'need' });
+    expect(need.scopeRule).toBe('category_account_id is a category of the book');
+    expect(category.scopeRule).toBe('id is in book_categories for the book');
+  });
+
+  it('a purchase line carries its currency and its book-currency figure', () => {
+    expect(purchase.fields.money).toEqual(expect.arrayContaining(['entries.currency', 'entries.amount_base_minor']));
+    expect(NEVER_SYNCED_COLUMNS.entries).not.toContain('amount_base_minor');
+  });
+
   it('never syncs workspace_id', () => {
     for (const e of rows) {
       expect(Object.values(e.fields)).not.toContain('workspace_id');

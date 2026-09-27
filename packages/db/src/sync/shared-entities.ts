@@ -101,6 +101,17 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
   },
   {
     kind: 'row',
+    entity: 'category_need',
+    table: 'category_needs',
+    scopeRule: 'category_account_id is a category of the book',
+    scope: (bookId) => inBookCategories(bookId, sql`t.category_account_id`),
+    // Ruled O4: a category's need-or-choice mark (0053) travels with the category.
+    keyColumns: ['category_account_id'],
+    fields: { need: 'need' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
     entity: 'member',
     table: 'book_members',
     scopeRule: 'book_id = bookId',
@@ -238,6 +249,9 @@ export const SHARED_ENTITIES: readonly SharedEntity[] = [
         'entries.account_id',
         'entries.amount_minor',
         'entries.currency',
+        // Ruled O2: the book-currency figure (the owner's workspace currency is the book's, ruled O3), so a receiver
+        // can post a line in another currency with ratesToBase taken from the pair.
+        'entries.amount_base_minor',
         'entries.memo',
         'transactions.original_currency',
         'transactions.original_amount_minor',
@@ -283,7 +297,8 @@ export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> =
     'goal_id',
     'created_at',
   ],
-  entries: ['workspace_id', 'fx_rate_to_base', 'amount_base_minor', 'spend_category_id'],
+  entries: ['workspace_id', 'fx_rate_to_base', 'spend_category_id'],
+  category_needs: ['workspace_id'],
   book_transactions: ['workspace_id'],
   transaction_flags: ['workspace_id'],
   bill_payments: ['workspace_id'],

@@ -79,15 +79,16 @@ rows (`features/coretax/report-rows.ts`). The health ratios are `features/networ
 it to the accounts they list. So one anti-join in `listAccounts`, with an opt-in to include placeholders, covers the
 named readers. Step 5 confirms each reader with its own e2e test.
 
-## 4. Open for the controller
+## 4. Open for the controller (all ruled)
 
-These are design-level. The spec marks each as open instead of guessing.
+These are design-level. The controller's ruling follows each item, and the spec marks each one with "(ruled On)".
 
 - **O1. Where the capture flush runs.** Rule 14 needs a hook at the end of the caller's db transaction, before
   `COMMIT`, to turn the touched lineages into ops. **Proposed:** `createDatabase().transaction` keeps a per-transaction
   capture session (the mutex already serialises transactions, so one "current session" per `Database` is enough) and
   runs its flushers after `fn` resolves and before `COMMIT`. Writes through `database.db` outside a transaction are
   not ledger writes, so they need no session.
+  **Ruled: accepted.** A per-transaction capture session in `createDatabase().transaction`, flushed before `COMMIT`; written into spec §6.3.
 - **O2. Lines not in the book's currency.** Seeding sends history. A purchase from before sharing may have been paid
   from a USD card, and its category entry is then in USD with `fx_rate_to_base ≠ 1`. v3's "amounts are in the book's
   currency" does not hold for history. A receiver would hit `MISSING_RATE`. A placeholder account must have a
@@ -96,14 +97,17 @@ These are design-level. The spec marks each as open instead of guessing.
   in another currency against a placeholder for (member, currency), with `ratesToBase` taken from the carried pair.
   The payer's device keeps its own accounts as §7.4 says. The simpler alternative: seed such rows converted to the
   book's currency and move the foreign figure to `originalCurrency`/`originalAmountMinor`.
+  **Ruled: the first proposal.** `Money.lines` carry `currency` and `amountBaseMinor` (book currency). A receiver that did not pay posts a line in another currency against a placeholder per (member, currency), with `ratesToBase` from the carried pair; the payer keeps their own accounts. `entries.amount_base_minor` moved from `NEVER_SYNCED_COLUMNS` into `money`. Spec §4.1, §4.2 (`book_member_accounts.currency`, `UNIQUE (book_id, member_id, currency)`), §4.3, §4.4 and §7.4 are updated.
 - **O3. A book whose currency is not the workspace's.** `books.base_currency` can differ from the owner's workspace
   currency (`book-currency.ts`), and `entries.amount_base_minor` is always in the workspace currency. §8.2 checks only
   the joiner. **Proposed:** **Share this workspace** refuses a book whose `base_currency` differs from the owner's
   workspace base currency, with the same sentence §8.2 uses. Cross-currency books are already dropped.
+  **Ruled: accepted.** Share refuses such a book with §8.2's sentence; spec §6.5 step 0 and §11.
 - **O4. `category_needs`.** A category's need-or-choice mark (0053) is keyed by `category_account_id` and edited on
   the book's Categories page. v3 does not list it, so the two phones would disagree about it. **Proposed:** add a
-  `category_need` entity (`Op.id = category_account_id`, field `need`, same scope as `category`). It is not in the
-  constant yet.
+  `category_need` entity (`Op.id = category_account_id`, field `need`, same scope as `category`).
+  **Ruled: accepted.** `category_need` is in the constant (`Op.id = category_account_id`, field `need`, category scope), in spec §4.1, and in the schema test.
 - **O5. Local side effects that void a shared purchase.** `convert.ts` turns a purchase into an investment buy by
   voiding it, and a void wins for ever on every device. So when the payer converts a purchase, it disappears from the
   other member's book. **Proposed:** accept it and say so in §7.3. The purchase really did stop being spending.
+  **Ruled: accepted.** Documented in spec §7.3 as a known behaviour.

@@ -90,6 +90,7 @@ ever sent. `workspace_id` is never sent; **apply stamps the local workspace id o
 |---|---|---|---|---|
 | `book` | `books` | `id = bookId` | `id` | `name`, `base_currency`, `count_events_in_budget`, `archived_at` |
 | `category` | `accounts` | `id` is in `book_categories` for the book | `id` | `name`, `parent_id`, `kind`, `subtype`, `currency`, `icon`, `system_key`, `sort_order`, `archived_at` (check #1–3: there is no colour column) |
+| `category_need` | `category_needs` | `category_account_id` is a category of the book | `category_account_id` | `need` (ruled O4) |
 | `member` | `book_members` | `book_id = bookId` | `member_id` | `name`, `role`, `joined_at` |
 | `device` | `book_devices` | `book_id = bookId` | `device_id` | `member_id`, `name`, `sign_jwk`, `agree_jwk`, `added_at`, `removed_at` |
 | `budget` | `budgets` | `category_account_id` is a category of the book | `id` | `category_account_id`, `amount_minor` |
@@ -113,7 +114,7 @@ ever sent. `workspace_id` is never sent; **apply stamps the local workspace id o
 
 **Never syncs:** transfers between asset accounts (they belong to no book); every owner-scope table; `settings`,
 `fx_rates`; photos; `transactions.source`, `external_ref`, `event_id`, `card_id`, `goal_id`, `mcc`,
-`replaces_transaction_id`, `created_at`; `entries.id`, `spend_category_id`, `fx_rate_to_base`, `amount_base_minor`;
+`replaces_transaction_id`, `created_at`; `entries.id`, `spend_category_id`, `fx_rate_to_base` (`amount_base_minor` travels inside `money`, ruled O2);
 `books.kind`, `sort_order`, `created_at`; `accounts.valuation_mode`, `created_at`; every other `created_at` and
 `updated_at` (check #8). `NEVER_SYNCED_COLUMNS` in the constant is the complete list.
 
@@ -145,8 +146,9 @@ CREATE TABLE book_devices (
   added_at TEXT NOT NULL, removed_at TEXT,
   PRIMARY KEY (book_id, device_id)
 );
-CREATE TABLE book_member_accounts (                     -- the hidden placeholder account per other member
-  account_id TEXT PRIMARY KEY, book_id TEXT NOT NULL, member_id TEXT NOT NULL
+CREATE TABLE book_member_accounts (                     -- the hidden placeholder account per other member and currency
+  account_id TEXT PRIMARY KEY, book_id TEXT NOT NULL, member_id TEXT NOT NULL, currency TEXT NOT NULL,
+  UNIQUE (book_id, member_id, currency)                 -- ruled O2
 );
 CREATE TABLE book_epoch_keys (
   book_id TEXT NOT NULL, epoch INTEGER NOT NULL, key_sealed TEXT NOT NULL,   -- §5.5
@@ -197,7 +199,13 @@ Fields of a `purchase`, each with its own clock:
 
 ```ts
 type Money = {
-  lines: { categoryId: string; amountMinor: number; currency: string; memo: string | null }[];  // entries on income/expense accounts, signed as stored (check #6)
+  lines: {                        // entries on income/expense accounts, signed as stored (check #6)
+    categoryId: string;
+    amountMinor: number;           // in `currency`
+    currency: string;
+    amountBaseMinor: number;       // the same line in the book's currency (ruled O2)
+    memo: string | null;
+  }[];
   originalCurrency: string | null;
   originalAmountMinor: number | null;
   paidBy: string;      // member_id
@@ -205,10 +213,15 @@ type Money = {
 };
 ```
 
-Amounts are in the book's currency, which is every member's base currency (§8.2): `amount_base_minor =
-amount_minor` and `fx_rate_to_base = 1` on every device, and no rate is needed to apply. **Open (O2, O3 in the
-check):** seeded history can hold lines in another currency, and the owner's book currency can differ from the
-owner's workspace currency. Both need a decision before step 1's seeding.
+The book's currency is every member's workspace base currency: §8.2 checks the joiner, and §6.5 refuses to share
+a book whose currency is not the owner's (ruled O3). So on every device, `entries.amount_base_minor` is the line in
+the book's currency, and a line in the book's currency has `fx_rate_to_base = 1` and needs no rate.
+
+A line in **another currency** is possible, for example in history paid from a USD card before sharing. It carries
+both figures: `amountMinor` in its `currency`, and `amountBaseMinor` (ruled O2). A receiver posts it with
+`ratesToBase[currency] = amountBaseMinor / amountMinor`, taken from the pair. `planPosting` balances each currency on
+its own, so the money side takes one placeholder entry per currency (§4.4, §7.4). With a split, each currency gets
+the rate of its first line in that currency.
 
 **Category side and money side.** An entry on an account whose `kind` is `income` or `expense` is a `line`. Every
 other entry of the row is the **money side**. `paidLabel` is built on the payer's device from the money side: the
@@ -218,8 +231,10 @@ account, the names joined by `' + '`.
 ### 4.4 Placeholder accounts, and the bill's payer
 
 On a device that did not pay, the money side is posted against a **placeholder account** for the payer: one
-`accounts` row per other member per book — `kind = 'asset'`, `subtype = 'cash'`, `name` = the member's name,
-`currency` = the book's — with a `book_member_accounts` row. Created on first need.
+`accounts` row per other member, per book and per currency — `kind = 'asset'`, `subtype = 'cash'`, `name` = the
+member's name, `currency` = the currency of the lines it balances (the book's, nearly always) — with a
+`book_member_accounts` row keyed `(book_id, member_id, currency)` (ruled O2). An asset account must have a currency
+(`accounts` CHECK), so one placeholder cannot take them all. Created on first need.
 
 Placeholder accounts are excluded, by an anti-join on `book_member_accounts`, from: the Accounts page, Net worth,
 every Paid-with and Transfer picker, the tax report, and the health ratios. Their balance is never shown. Every
@@ -355,8 +370,15 @@ Before the db transaction commits, each touched lineage of a shared book is reso
 That one rule covers `replaceTransaction` (a `markVoidTx` then a `postTransactionTx` with `replacesTransactionId`).
 It also covers `trades.ts`, which replaces a recalculated sell with `voidTransactionTx` and then `postTransactionTx`,
 so the pair is not read as a void. And it covers the deposit-event recursion in `voidTransactionTx`. Hooking the
-three exported functions separately would read every replacement as a new lineage. Where the flush runs is open
-(O1 in the check).
+three exported functions separately would read every replacement as a new lineage.
+
+**Where the flush runs (ruled O1).** `createDatabase().transaction` opens a capture session for each db
+transaction. The mutex already serialises transactions, so there is one current session per `Database`. The two
+capture points add the lineages they touch, and `withCapture` adds its row ops. After `fn` resolves and **before
+`COMMIT`**, the session is flushed. It resolves the lineages, writes `sync_field_clocks`, and cuts, seals and inserts
+the change-sets into `sync_outbox`, all inside the same transaction. If `fn` throws, the session is dropped along
+with the `ROLLBACK`. Writes through `database.db` outside a transaction are never ledger writes, so they open no
+session.
 
 Nothing else needs rerouting (check #15). `events.tagTransaction` (`event_id`), `set-aside-tx`
 `parkForGoalTx`/`carryTaggedTx` (`goal_id`) and `ledger.setTransactionMcc` (`mcc`) update in place only columns
@@ -381,9 +403,13 @@ repository function is called by hand.
 
 **Share this workspace**, before any invite exists:
 
+0. **Currency check (ruled O3).** If the book's `base_currency` is not the owner's workspace base currency, refuse
+   with §8.2's sentence the other way round: *"This workspace keeps its money in SGD; this app keeps yours in IDR.
+   Sharing across currencies isn't supported yet."* Nothing is created.
+
 1. Create the relay book; insert `shared_books`; mint epoch 1.
 2. Emit, in this order, upserts of every row in scope with **all** its fields: `book`, `member` (self), `device`
-   (self), `category` (parents before children), `budget` and its dependents, `bill` and its dependents, then every
+   (self), `category` (parents before children) and its `category_need`, `budget` and its dependents, `bill` and its dependents, then every
    non-void `purchase` oldest first with `paidBy` = this member.
 3. Cut into change-sets (§6.2), each with a fresh HLC; write `sync_field_clocks`; put in `sync_outbox`.
 4. Drain the outbox. Only when it is empty is the invite created and shown. While it drains the screen says
@@ -485,6 +511,11 @@ pulled page is applied, then dropped with a logged warning if `money` never came
    two `money` values for **one** lineage; the later wins and the purchase is counted once.
 6. **Idempotent.** An entry at or below `applied_seq` is skipped; a change-set applied again wins no field.
 
+**A local conversion voids a shared purchase (known behaviour, ruled O5).** Turning a purchase into an investment
+buy (`convert.ts`) voids it and posts a trade, which belongs to no book. Void wins, so the purchase disappears from
+every member's copy of the book. That is right: it stopped being spending. The history shows the void and who made
+it.
+
 **Who changed what.** `postTransactionTx` writes `audit_log` (`'post'`, payload = its input), and so does
 `markVoidTx` (`'void'`), which means a replace writes one of each. Step 1 adds an optional `syncAuthor` (a member id)
 to `PostTransactionInput`, which lands in the `'post'` payload, and an optional author argument to
@@ -499,8 +530,13 @@ moneySide(L, money):
   if L exists and L.head has money-side entries on non-placeholder accounts:        # this device paid
     keep those accounts; if the total changed, put the whole difference on the entry with the largest |amount|
   else:
-    one entry of −sum(lines) on placeholderAccount(bookId, money.paidBy)
+    for each currency c in money.lines:                                             # ruled O2
+      one entry of −sum(lines in c) on placeholderAccount(bookId, money.paidBy, c)
+  ratesToBase = { c: amountBaseMinor / amountMinor of the first line in c, for each c ≠ this device's base }
 ```
+
+On the payer's device the head's own money-side accounts are kept, each in its own currency. Their rates come
+from the carried pairs in the same way.
 
 On the payer's device the correction therefore goes through `replaceTransactionTx` against the payer's real account.
 Everything that function carries across a correction is carried exactly as when the payer edits it themselves: a
@@ -659,7 +695,7 @@ Native kit only.
 
 | Row | Shown when | Does |
 |---|---|---|
-| **Share this workspace** | no `shared_books` row | explains what the other person will and will not see, and that a replaced phone needs a new invite; seeds (§6.5); then code, link, **Share** |
+| **Share this workspace** | no `shared_books` row | refuses a book whose currency is not the owner's (§6.5 step 0, ruled O3); otherwise explains what the other person will and will not see, and that a replaced phone needs a new invite; seeds (§6.5); then code, link, **Share** |
 | **Members** | `state = 'active'` | a row per member: name, role; under it a row per device: name, "synced 2 min ago", **Remove** |
 | **Link a device** | on your own member | §8.3 |
 | **Make owner** | you are an owner, on another member | §8.5 |
@@ -717,9 +753,6 @@ Mutate-twice review on every step.
 ## 15. Left open
 
 - The keychain plugin for `NativeKeyStore` (step 2).
-- The five items under "Open for the controller" in `2026-09-27-household-sharing-v3-check.md`: where the capture
-  flush runs (O1), lines in another currency in seeded history (O2), a book whose currency is not the workspace's
-  (O3), `category_needs` (O4), a local conversion that voids a shared purchase (O5).
 - The relay's domain and the Cloudflare account (before step 3).
 - The App Privacy wording (at submission).
 - **Encrypted backups.** Separate work, and independently urgent: today's backup file is a plaintext copy of a
