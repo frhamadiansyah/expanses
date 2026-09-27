@@ -1,6 +1,6 @@
 import type { PersonDebtRow, PersonLoanRow } from '@expanses/db';
 import { describe, expect, it } from 'vitest';
-import { deleteLoanQuestion, historyEntry, loanFigureLabels, loanSubtitle, personDue, personParams, repaymentWord, shortDay } from './lend-borrow-view';
+import { counterpartyLabel, deleteLoanQuestion, historyEntry, loanFigureLabels, loanSubtitle, personDue, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 
 const TODAY = '2026-09-27';
 
@@ -75,6 +75,11 @@ describe('one loan', () => {
     expect(historyEntry('lend', 'borrowed')).toEqual({ title: 'Borrowed', flow: 'in' });
     expect(historyEntry('repayment', 'borrowed')).toEqual({ title: 'Repayment', flow: 'out' });
     expect(historyEntry('forgive', 'lent')).toEqual({ title: 'Forgiven', flow: 'none' });
+  });
+
+  it('names the other side of a loan by its role, whether a person or a company', () => {
+    expect(counterpartyLabel('lent')).toBe('Borrower');
+    expect(counterpartyLabel('borrowed')).toBe('Lender');
   });
 
   it('asks before deleting, naming what goes with the loan', () => {

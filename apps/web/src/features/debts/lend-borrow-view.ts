@@ -81,3 +81,6 @@ export function historyEntry(kind: 'lend' | 'repayment' | 'forgive', direction: 
   if (kind === 'lend') return direction === 'lent' ? { title: 'Lent', flow: 'out' } : { title: 'Borrowed', flow: 'in' };
   return { title: repaymentWord(direction), flow: direction === 'lent' ? 'in' : 'out' };
 }
+
+/** Who is on the other side of a loan — a person or a company alike: the Borrower of money lent, the Lender of money borrowed. */
+export const counterpartyLabel = (direction: DebtDirection): string => (direction === 'lent' ? 'Borrower' : 'Lender');

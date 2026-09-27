@@ -8,7 +8,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { personCodeChoices } from '../ownables/catalogue-view';
-import { deleteLoanQuestion, historyEntry, loanFigureLabels, personParams, repaymentWord, shortDay } from './lend-borrow-view';
+import { counterpartyLabel, deleteLoanQuestion, historyEntry, loanFigureLabels, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
 import { RepaymentForm } from './RepaymentForm';
 
@@ -174,7 +174,7 @@ export function LoanPage() {
             )}
           </SelectRow>
           {/* Whose loan it is, as the new-loan form asks it: shown, not changed — moving a loan to someone else is not an edit. */}
-          <TextRow label="Person" value={person.personName} readOnly />
+          <TextRow label={counterpartyLabel(person.direction)} value={person.personName} readOnly />
           <TextRow
             key={`reason-${profile.reason ?? ''}`}
             label="Loan"

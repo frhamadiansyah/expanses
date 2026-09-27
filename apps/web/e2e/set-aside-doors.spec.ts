@@ -264,7 +264,7 @@ test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
   await page.goto('/net-worth/lend-borrow');
   await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
   await page.getByRole('menuitem', { name: 'New receivable' }).click();
-  await page.getByLabel('Person').pressSequentially('Andi');
+  await page.getByLabel(/^(Borrower|Lender)$/).pressSequentially('Andi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).pressSequentially('6800000');
   await page.getByLabel('Paid from').selectOption({ label: 'Jenius (IDR)' });
@@ -272,7 +272,7 @@ test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
   const save = page.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
   // Enter in a field submits the form: it must not go round the question.
-  await enterWaitsForTheQuestion(page, page.getByLabel('Person'));
+  await enterWaitsForTheQuestion(page, page.getByLabel(/^(Borrower|Lender)$/));
   await expect(personRow(page, 'Andi')).toHaveCount(0);
   await borrowFromEmergencyFund(page.locator('body'));
   await save.click();
@@ -288,7 +288,7 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
   await page.goto('/net-worth/lend-borrow');
   await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
   await page.getByRole('menuitem', { name: 'New payable' }).click();
-  await page.getByLabel('Person').pressSequentially('Budi');
+  await page.getByLabel(/^(Borrower|Lender)$/).pressSequentially('Budi');
   await page.getByLabel('Type', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/^Money (lent|borrowed)/).pressSequentially('10000000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA (IDR)' });
