@@ -403,6 +403,11 @@ test("an owner stops and shares again: the member's read-only copy rejoins throu
   await expect(join.getByText('Home', { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(join.getByText('This device joins as Dewi.')).toBeVisible();
   await join.getByRole('button', { name: 'Join', exact: true }).click();
+  // Her copy moves onto the share made again: Join says so, and asks, before anything is claimed (recovery review, N1).
+  const replace = dewi.getByRole('dialog', { name: 'Replace this workspace’s sharing?' });
+  await expect(replace).toContainText('This replaces the sharing of Home on this device with Fandri’s share. Your rows stay and are merged.');
+  await shot(dewi, info, '12a-replace-confirm');
+  await replace.getByRole('button', { name: 'Replace and join', exact: true }).click();
   await expect(join).toHaveCount(0, { timeout: 60_000 });
 
   // Shared again on Dewi's side: syncing, no longer read-only, and everything from before is still there.

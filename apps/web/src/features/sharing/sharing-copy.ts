@@ -103,6 +103,14 @@ export function forgetConfirm(bookName: string): string {
   return `${bookName} becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else's copy is touched. To join the share again later, ask one of its owners for an invite that links this device as you.`;
 }
 
+/**
+ * Before Join moves this device's copy onto another share than the one it was on (recovery review, N1): a share made
+ * again by one of its owners. `bookName` is the workspace's name here; `inviterName` is who sent the invite.
+ */
+export function replaceConfirm(bookName: string, inviterName: string): string {
+  return `This replaces the sharing of ${bookName} on this device with ${inviterName}’s share. Your rows stay and are merged.`;
+}
+
 /** Under a device: "synced just now", "synced 2 min ago", "synced 3 h ago", "synced Tue". */
 export function syncedAgo(ms: number | null, now: number): string {
   if (ms === null) return 'not synced yet';

@@ -1,16 +1,18 @@
 import { ownerScope, type PreviewedInvite } from '@expanses/db';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
+import { Sheet } from '../../app/Sheet';
 import { ErrorBox } from '../../ui';
 import { InsetGroup, InsetRow, ReadOnlyRow, SubmitRow, TextRow } from '../../ui/native';
-import { currencyRefusal, sayError } from './sharing-copy';
+import { currencyRefusal, replaceConfirm, sayError } from './sharing-copy';
 import { thisDeviceName } from './SharingSection';
 
 /*
  * Join a workspace (household sharing spec §8.2, §11): a code pasted or arrived by a `cicis://join/…` link, then the
  * preview — the workspace, who invited you, and the currency check — and only then Join, which claims the invite. A
  * workspace in another currency is refused with §8.2's sentence before anything is claimed, so the invite stays good
- * for someone else.
+ * for someone else. A join that would move this device's copy of the workspace onto another share asks first
+ * (recovery review, N1).
  */
 
 const NAME_KEY = 'cicis.sharing.name';
@@ -30,6 +32,7 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
   const [name, setName] = useState(rememberedName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [confirming, setConfirming] = useState(false);
   const asked = useRef(false);
 
   async function look(text: string) {
@@ -55,9 +58,15 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode]);
 
-  async function join(event: FormEvent) {
-    event.preventDefault();
+  async function join(event?: FormEvent, confirmed = false) {
+    event?.preventDefault();
     if (!preview || busy) return;
+    // Moving this copy onto another share replaces the one it was on (N1): said, and asked, before anything is claimed.
+    if (preview.replaces && !confirmed) {
+      setConfirming(true);
+      return;
+    }
+    setConfirming(false);
     const linking = preview.terms.sameMember;
     const memberName = linking ? (preview.memberName ?? preview.inviterName) : name.trim();
     if (!memberName) return;
@@ -142,6 +151,15 @@ export function JoinWorkspace({ initialCode = '', onJoined }: { initialCode?: st
             </InsetGroup>
           ) : null}
         </form>
+      ) : null}
+      {confirming && preview?.replaces ? (
+        <Sheet
+          title="Replace this workspace’s sharing?"
+          onClose={() => setConfirming(false)}
+          confirm={{ label: 'Replace and join', disabled: busy, run: () => void join(undefined, true) }}
+        >
+          <p className="text-[15px] leading-[20px]">{replaceConfirm(preview.replaces.bookName, preview.inviterName)}</p>
+        </Sheet>
       ) : null}
     </div>
   );

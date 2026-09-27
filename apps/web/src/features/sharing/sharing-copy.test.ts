@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BookReadOnlyError, FrozenBookError, LastOwnerError, LeaveIncompleteError, NotOwnerError, SharingError, SyncTransportError } from '@expanses/db';
-import { currencyRefusal, endedLine, FORGET_ROW, forgetConfirm, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
+import { currencyRefusal, endedLine, FORGET_ROW, forgetConfirm, replaceConfirm, FROZEN_NOTE, leaveConfirm, postedAgainstPlaceholder, READ_ONLY_NOTE, sayError, statusLineOf, stopConfirm, deviceName, ownerName, payerLine, preparing, sharedWith, sinceWhen, syncedAgo } from './sharing-copy';
 
 const fandri = { memberId: 'f', name: 'Fandri', role: 'owner' as const };
 const dewi = { memberId: 'd', name: 'Dewi', role: 'member' as const };
@@ -144,6 +144,12 @@ describe('the status line from the engine’s status (§11, task 9b)', () => {
     expect(forgetConfirm('Home')).toBe(
       'Home becomes a workspace of your own, with everything in it, and can be changed or shared again. Nobody else\'s copy is touched. To join the share again later, ask one of its owners for an invite that links this device as you.',
     );
+  });
+});
+
+describe('before a join moves this copy onto another share (recovery review, N1)', () => {
+  it('names the workspace here and whose share takes its place, and that the rows stay', () => {
+    expect(replaceConfirm('Home', 'Fandri')).toBe('This replaces the sharing of Home on this device with Fandri’s share. Your rows stay and are merged.');
   });
 });
 
