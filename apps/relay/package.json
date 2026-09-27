@@ -1,0 +1,17 @@
+{
+  "name": "@expanses/relay",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@expanses/core": "*"
+  },
+  "devDependencies": {
+    "wrangler": "^4.141.0"
+  }
+}

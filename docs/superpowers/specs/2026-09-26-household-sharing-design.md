@@ -669,6 +669,18 @@ Refused: a timestamp more than 5 minutes off; an unknown or removed device; a ba
 `POST /invites/:id/claim` come from a device on no list and are verified against the JWK in their own body.
 `GET /invites/:id` is unauthenticated: the id is unguessable and the body is sealed.
 
+**As built (task 6).** Every refusal above answers `401`, and so does a missing header. `path` is the request
+target as sent — pathname plus query string (`/books/B/entries?since=12`) — so the `since` of a pull is signed too.
+"ECDSA(sign.private, SHA-256(m))" is WebCrypto's `ECDSA` with `hash: 'SHA-256'` over `m` (the algorithm hashes); the
+signature is WebCrypto's raw r ‖ s (64 bytes), base64url. On `POST /books` and the claim, an `X-Device` that is not
+the id derived from the body's `signJwk` answers `403`, a signature that does not verify under that key `401`. For a
+member, the book's `404`/`410` are answered before the device check, as `MemoryTransport` does. One file holds the
+signing string, the canonical JSON and the verifier for both ends: `packages/db/src/sync/relay-signing.ts`.
+
+An invite's `sig` (§5.4) is ECDSA P-256/SHA-256 over `utf8(JSON(invite without sig, keys sorted))` — the same form
+as an entry's (§6.6) — checked at claim time against the pinned key of each current owner device; none verifies:
+`403`. The stub `stub-sig:<deviceId>` convention `MemoryTransport` accepts is not accepted by the relay.
+
 **Replay.** `POST /books/:id/entries` with a `(deviceId, hlc)` already in the log answers `200` with the seq the
 entry was already given, and stores nothing new — success, not an error, so the client never has to special-case
 it. `409` on this endpoint is reserved for the one real conflict: a `rotation` whose `epoch ≠ current + 1`.
@@ -687,6 +699,15 @@ it. `409` on this endpoint is reserved for the one real conflict: a `rotation` w
 | `PUT /books/:id/owners` | owner | `{ deviceIds }` → `204` |
 | `DELETE /books/:id` | owner | → `204`; every later call on the book → `410` |
 
+**As built (task 6)**, the statuses every endpoint can also answer, each the one `MemoryTransport` throws: `401` per
+§9.1; `404` an unknown book, invite, device or path; `400` a body or `since` of the wrong shape; `405` a method a path
+does not take; `403` a non-owner on an owner-only call, and an append whose `deviceId` is not the caller;
+`409` on `POST /books/:id/invites` when another book already holds that invite id; `410` on `GET /invites/:id` and
+the claim once the invite's book is deleted; `413` a request body over 1 MB, refused before it is parsed. A removed
+device frees its place among the five. The Worker answers CORS preflights and stamps `Access-Control-Allow-Origin`
+for the origins in `wrangler.toml`'s `ALLOWED_ORIGINS` (the Vite dev server and preview, `capacitor://localhost`),
+allowing `Content-Type`, `X-Device`, `X-Timestamp`, `X-Signature`.
+
 ### 9.3 Durable Object state — all of it
 
 ```
@@ -703,11 +724,24 @@ deleted: boolean
 No name, no currency, no plaintext, no receipt. What the relay can observe: how many devices a book has, when each
 writes, and how much.
 
+**As built (task 6).** Each row is its own storage key (`meta` holds `epoch`, `seq`, `owners`, `deleted` and the
+book's id; `device:`, `log:`, `seen:`, `invite:` the rest), so an append writes three small values, never the log.
+One more Durable Object class exists, one per invite id, holding only the id of the book that keeps the invite: the
+invite endpoints arrive with nothing but the invite id, and a per-book object cannot be searched the way
+`MemoryTransport` scans every book in memory. It holds no invite content.
+
 ### 9.4 Client behaviour
 
 `RelayTransport` drains `sync_outbox` in `hlc` order and pulls from `applied_seq`, when the app comes to the
 foreground and every 30 s while open. A failure leaves the outbox as it was; retry with exponential backoff capped
 at 5 minutes. No screen waits on the relay.
+
+**As built (task 6).** `SyncScheduler` (`apps/web/src/sync/sync-scheduler.ts`) owns the timing: a run at start and
+on every `trigger()` (foreground, or a local write), then every 30 s after a success; after `n` failures in a row the
+wait is `min(30 s × 2ⁿ, 5 min)` — 60, 120, 240, then 300 s. One run at a time: a trigger during a run queues one
+follow-up. What a run does is a `syncOnce` callback, built with the engine (tasks 3–4) and wired in task 7.
+`RelayTransport` maps every non-2xx answer to `SyncTransportError` with its status, and a relay it cannot reach to
+status `0`. The base URL is `VITE_RELAY_URL`, else `http://localhost:8787`.
 
 ## 10. Entitlement
 
@@ -715,7 +749,8 @@ at 5 minutes. No screen waits on the relay.
 `POST /books` and on owner appends. When tiers exist: the owner's device sends its StoreKit 2 signed transaction on
 `POST /books`; the Worker verifies the chain and keeps `{ entitledUntil }` only; a lapse makes the book read-only
 on the relay after 30 days; nothing is deleted. Members never present a receipt. Android: a second verifier behind
-the same function.
+the same function. As built, a `false` answers `402` (on `POST /books`, and on an owner's append); it cannot happen
+while the function returns `true`.
 
 ## 11. Screens
 

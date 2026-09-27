@@ -1,0 +1,26 @@
+# The household-sharing relay (spec §9). Local development only: `npm run relay` from the repo root runs it under
+# wrangler dev / Miniflare on port 8787. There is no Cloudflare account, route or deploy target.
+name = "expanses-relay"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# One Durable Object per book (spec §9.3), and one per invite that only remembers which book holds it (§9.3 note).
+[[durable_objects.bindings]]
+name = "BOOKS"
+class_name = "BookObject"
+
+[[durable_objects.bindings]]
+name = "INVITES"
+class_name = "InviteObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BookObject", "InviteObject"]
+
+[vars]
+# Origins allowed to call the relay from a browser: the Vite dev server and preview, and the Capacitor shell.
+ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,capacitor://localhost"
+
+[dev]
+port = 8787
+local_protocol = "http"
