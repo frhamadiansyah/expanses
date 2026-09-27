@@ -1,0 +1,315 @@
+import { sql, type SQL } from 'drizzle-orm';
+
+/*
+ * What syncs in a shared book (household-sharing spec §4.1). One record per synced entity: its table, how a row is
+ * found to be in a book, how its `Op.id` is built, and exactly which fields travel. Nothing outside this list is ever
+ * sent. `workspace_id` is never sent: apply stamps the local workspace id on every row it inserts.
+ *
+ * Checked against the code at 725f284 (spec step 0); the findings are in
+ * docs/superpowers/specs/2026-09-27-household-sharing-v3-check.md. This constant is the truth where the two differ.
+ */
+
+/** Separates the parts of a composite `Op.id`, in `keyColumns` order. Never includes `workspace_id`. */
+export const OP_ID_SEPARATOR = '|';
+
+/** An entity whose rows are edited in place: one table, one row per `Op.id`, captured by `withCapture`. */
+export interface RowEntity {
+  kind: 'row';
+  entity: string;
+  table: string;
+  /** Plain words for the scope rule, as the spec states it. */
+  scopeRule: string;
+  /** SQL predicate over the entity's table aliased `t`: true when the row is in `bookId`'s book. */
+  scope: (bookId: string) => SQL;
+  /** The columns whose values, joined by `OP_ID_SEPARATOR` in this order, make the `Op.id`. */
+  keyColumns: readonly string[];
+  /** Synced field name → the column in `table` it is read from and written to. */
+  fields: Readonly<Record<string, string>>;
+  /**
+   * Fields that do not map one-to-one onto a column. Each is read and written by code, never copied: the key is the
+   * field, the value is the columns it stands for (in `table`).
+   */
+  derivedFields?: Readonly<Record<string, readonly string[]>>;
+  /** Columns that never travel but are NOT NULL without a default: apply writes a local value on insert. */
+  localOnInsert: readonly string[];
+  /** Made by migration 0056 (spec §4.2), so absent from a database migrated today. */
+  createdBy0056?: true;
+}
+
+/** The purchase: a lineage of `transactions` rows and the rows about them, captured at the ledger's doors. */
+export interface PurchaseEntity {
+  kind: 'purchase';
+  entity: 'purchase';
+  /** The head row's table. The lineage's other rows are in `tables`. */
+  table: 'transactions';
+  tables: readonly string[];
+  scopeRule: string;
+  /** Over `transactions` aliased `t`: the row is filed in the book (only rows with an income or expense entry are). */
+  scope: (bookId: string) => SQL;
+  /** `Op.id` is the lineage id: the id of the first `transactions` row in a `replaces_transaction_id` chain. */
+  keyColumns: readonly ['lineage_id'];
+  /** Synced field name → the `table.column`s it is read from and written through (by the ledger, never directly). */
+  fields: Readonly<Record<string, readonly string[]>>;
+  /** `table.column`s that tie the lineage's rows together locally: rewritten by the ledger, never sent. */
+  linkColumns: readonly string[];
+}
+
+export type SharedEntity = RowEntity | PurchaseEntity;
+
+const inBookCategories = (bookId: string, column: SQL) =>
+  sql`${column} IN (SELECT category_account_id FROM book_categories WHERE book_id = ${bookId})`;
+
+const budgetsOfBook = (bookId: string) =>
+  sql`SELECT b.id FROM budgets b JOIN book_categories bc ON bc.category_account_id = b.category_account_id WHERE bc.book_id = ${bookId}`;
+
+const billsOfBook = (bookId: string) =>
+  sql`SELECT x.id FROM expense_templates x JOIN book_categories bc ON bc.category_account_id = x.category_account_id WHERE bc.book_id = ${bookId}`;
+
+export const SHARED_ENTITIES: readonly SharedEntity[] = [
+  {
+    kind: 'row',
+    entity: 'book',
+    table: 'books',
+    scopeRule: 'id = bookId',
+    scope: (bookId) => sql`t.id = ${bookId}`,
+    keyColumns: ['id'],
+    fields: { name: 'name', baseCurrency: 'base_currency', countEventsInBudget: 'count_events_in_budget', archivedAt: 'archived_at' },
+    // `kind` is the owner's label and never travels; a joiner inserts 'shared' (spec §4.2).
+    localOnInsert: ['kind', 'created_at'],
+  },
+  {
+    kind: 'row',
+    entity: 'category',
+    table: 'accounts',
+    scopeRule: 'id is in book_categories for the book',
+    scope: (bookId) => inBookCategories(bookId, sql`t.id`),
+    keyColumns: ['id'],
+    fields: {
+      name: 'name',
+      parentId: 'parent_id',
+      kind: 'kind',
+      subtype: 'subtype',
+      currency: 'currency',
+      icon: 'icon',
+      // A category keeps its system key per book (0043) so card earning rules recognise it on every device.
+      systemKey: 'system_key',
+      sortOrder: 'sort_order',
+      archivedAt: 'archived_at',
+    },
+    // valuation_mode has a default ('derived'); created_at has none.
+    localOnInsert: ['created_at'],
+  },
+  {
+    kind: 'row',
+    entity: 'member',
+    table: 'book_members',
+    scopeRule: 'book_id = bookId',
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['member_id'],
+    fields: { name: 'name', role: 'role', joinedAt: 'joined_at' },
+    localOnInsert: ['book_id'],
+    createdBy0056: true,
+  },
+  {
+    kind: 'row',
+    entity: 'device',
+    table: 'book_devices',
+    scopeRule: 'book_id = bookId',
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['device_id'],
+    fields: {
+      memberId: 'member_id',
+      name: 'name',
+      signJwk: 'sign_jwk',
+      agreeJwk: 'agree_jwk',
+      addedAt: 'added_at',
+      removedAt: 'removed_at',
+    },
+    localOnInsert: ['book_id'],
+    createdBy0056: true,
+  },
+  {
+    kind: 'row',
+    entity: 'budget',
+    table: 'budgets',
+    scopeRule: 'category_account_id is a category of the book',
+    scope: (bookId) => inBookCategories(bookId, sql`t.category_account_id`),
+    keyColumns: ['id'],
+    fields: { categoryAccountId: 'category_account_id', amountMinor: 'amount_minor' },
+    localOnInsert: ['created_at', 'updated_at'],
+  },
+  {
+    kind: 'row',
+    entity: 'budget_override',
+    table: 'budget_overrides',
+    scopeRule: 'its budget_id is a budget of the book',
+    scope: (bookId) => sql`t.budget_id IN (${budgetsOfBook(bookId)})`,
+    keyColumns: ['id'],
+    fields: { budgetId: 'budget_id', month: 'month', amountMinor: 'amount_minor' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
+    entity: 'budget_frequency',
+    table: 'budget_frequencies',
+    scopeRule: 'its budget_id is a budget of the book',
+    scope: (bookId) => sql`t.budget_id IN (${budgetsOfBook(bookId)})`,
+    // Settled (spec §15): keyed by budget_id, one row per budget (0053).
+    keyColumns: ['budget_id'],
+    fields: { frequency: 'frequency', amountAsSetMinor: 'amount_as_set_minor' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
+    entity: 'book_income',
+    table: 'book_budget_settings',
+    scopeRule: 'book_id = bookId',
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['book_id'],
+    fields: { expectedIncomeMinor: 'expected_income_minor' },
+    localOnInsert: ['updated_at'],
+  },
+  {
+    kind: 'row',
+    entity: 'book_income_override',
+    table: 'book_income_overrides',
+    scopeRule: 'book_id = bookId',
+    scope: (bookId) => sql`t.book_id = ${bookId}`,
+    keyColumns: ['book_id', 'month'],
+    fields: { amountMinor: 'amount_minor' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
+    entity: 'bill',
+    table: 'expense_templates',
+    scopeRule: 'category_account_id is a category of the book',
+    scope: (bookId) => inBookCategories(bookId, sql`t.category_account_id`),
+    keyColumns: ['id'],
+    fields: {
+      name: 'name',
+      categoryAccountId: 'category_account_id',
+      amountMinor: 'amount_minor',
+      dayOfMonth: 'day_of_month',
+      active: 'active',
+      archivedAt: 'archived_at',
+    },
+    // `payer` = { memberId, label } stands for money_account_id, which names an owner-scope account (spec §4.4).
+    derivedFields: { payer: ['money_account_id'] },
+    localOnInsert: ['created_at'],
+  },
+  {
+    kind: 'row',
+    entity: 'bill_window',
+    table: 'bill_windows',
+    scopeRule: 'its template_id is a bill of the book',
+    scope: (bookId) => sql`t.template_id IN (${billsOfBook(bookId)})`,
+    keyColumns: ['template_id'],
+    fields: { payByDay: 'pay_by_day', startsMonth: 'starts_month' },
+    localOnInsert: [],
+  },
+  {
+    kind: 'row',
+    entity: 'bill_skip',
+    table: 'bill_skips',
+    scopeRule: 'its template_id is a bill of the book',
+    scope: (bookId) => sql`t.template_id IN (${billsOfBook(bookId)})`,
+    // The table's key is (workspace_id, template_id, month); workspace_id differs per device and is dropped.
+    keyColumns: ['template_id', 'month'],
+    fields: {},
+    localOnInsert: ['created_at'],
+  },
+  {
+    kind: 'purchase',
+    entity: 'purchase',
+    table: 'transactions',
+    tables: ['transactions', 'entries', 'book_transactions', 'transaction_flags', 'bill_payments'],
+    scopeRule: "the lineage's head is in book_transactions for the book (the ledger files only rows with an income or expense entry)",
+    scope: (bookId) => sql`t.id IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${bookId})`,
+    keyColumns: ['lineage_id'],
+    fields: {
+      occurredOn: ['transactions.occurred_on'],
+      description: ['transactions.description'],
+      channel: ['transaction_flags.channel'],
+      excluded: ['transaction_flags.excluded'],
+      // Both halves: the ledger writes transactions.template_id and the bill_payments row from one input.
+      bill: ['transactions.template_id', 'bill_payments.template_id', 'bill_payments.bill_month'],
+      money: [
+        'entries.account_id',
+        'entries.amount_minor',
+        'entries.currency',
+        'entries.memo',
+        'transactions.original_currency',
+        'transactions.original_amount_minor',
+      ],
+      void: ['transactions.status'],
+    },
+    linkColumns: [
+      'transactions.id',
+      'entries.id',
+      'entries.transaction_id',
+      'book_transactions.transaction_id',
+      'book_transactions.book_id',
+      'transaction_flags.transaction_id',
+      'bill_payments.transaction_id',
+    ],
+  },
+];
+
+/**
+ * Columns of synced tables that never travel. Every column of a synced table is exactly one of: a key column, a field
+ * above, a purchase's `linkColumns`, or listed here — the test holds the lists to the schema. `localOnInsert` columns
+ * are listed here too.
+ */
+export const NEVER_SYNCED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  books: ['workspace_id', 'kind', 'sort_order', 'created_at'],
+  accounts: ['workspace_id', 'valuation_mode', 'created_at'],
+  budgets: ['workspace_id', 'created_at', 'updated_at'],
+  budget_overrides: ['workspace_id'],
+  budget_frequencies: ['workspace_id'],
+  book_budget_settings: ['workspace_id', 'updated_at'],
+  book_income_overrides: ['workspace_id'],
+  expense_templates: ['workspace_id', 'created_at'],
+  bill_windows: ['workspace_id'],
+  bill_skips: ['workspace_id', 'created_at'],
+  transactions: [
+    'workspace_id',
+    'source',
+    'external_ref',
+    'event_id',
+    'replaces_transaction_id',
+    'mcc',
+    'card_id',
+    'goal_id',
+    'created_at',
+  ],
+  entries: ['workspace_id', 'fx_rate_to_base', 'amount_base_minor', 'spend_category_id'],
+  book_transactions: ['workspace_id'],
+  transaction_flags: ['workspace_id'],
+  bill_payments: ['workspace_id'],
+};
+
+export function entityOf(name: string): SharedEntity {
+  const found = SHARED_ENTITIES.find((e) => e.entity === name);
+  if (!found) throw new Error(`Unknown shared entity "${name}"`);
+  return found;
+}
+
+/** The `Op.id` of a row: its key columns' values joined by `|`, in `keyColumns` order. */
+export function buildOpId(entity: SharedEntity, key: Readonly<Record<string, string>>): string {
+  return entity.keyColumns
+    .map((column) => {
+      const value = key[column];
+      if (value === undefined) throw new Error(`${entity.entity}: key column ${column} missing`);
+      if (value.includes(OP_ID_SEPARATOR)) throw new Error(`${entity.entity}: key ${column} contains "${OP_ID_SEPARATOR}"`);
+      return value;
+    })
+    .join(OP_ID_SEPARATOR);
+}
+
+/** The key columns of an `Op.id`, the inverse of `buildOpId`. */
+export function parseOpId(entity: SharedEntity, id: string): Record<string, string> {
+  const parts = id.split(OP_ID_SEPARATOR);
+  if (parts.length !== entity.keyColumns.length) throw new Error(`${entity.entity}: "${id}" is not a ${entity.keyColumns.length}-part id`);
+  return Object.fromEntries(entity.keyColumns.map((column, i) => [column, parts[i]!]));
+}

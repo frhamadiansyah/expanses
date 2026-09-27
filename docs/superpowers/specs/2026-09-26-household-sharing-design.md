@@ -3,6 +3,8 @@
 Status: draft v3 for review · 2026-09-27
 Builds on: `2026-09-17-workspaces-design.md` §5.4, `2026-09-18-data-safety-design.md`.
 Reviewed by: `2026-09-27-household-sharing-review.md` (v2). Every finding there is answered in §0.
+Checked against the code at `725f284` (step 0): `2026-09-27-household-sharing-v3-check.md`. Each correction is listed
+there by number, and each changed passage here says "(check #n)".
 
 ## 0. What v3 changed
 
@@ -87,29 +89,36 @@ ever sent. `workspace_id` is never sent; **apply stamps the local workspace id o
 | Entity | Table | In the book when | `Op.id` | Fields that travel |
 |---|---|---|---|---|
 | `book` | `books` | `id = bookId` | `id` | `name`, `base_currency`, `count_events_in_budget`, `archived_at` |
-| `category` | `accounts` | `id` is in `book_categories` for the book | `id` | `name`, `parent_id`, `kind`, `subtype`, `currency`, icon and colour columns, `archived_at` |
+| `category` | `accounts` | `id` is in `book_categories` for the book | `id` | `name`, `parent_id`, `kind`, `subtype`, `currency`, `icon`, `system_key`, `sort_order`, `archived_at` (check #1–3: there is no colour column) |
 | `member` | `book_members` | `book_id = bookId` | `member_id` | `name`, `role`, `joined_at` |
 | `device` | `book_devices` | `book_id = bookId` | `device_id` | `member_id`, `name`, `sign_jwk`, `agree_jwk`, `added_at`, `removed_at` |
 | `budget` | `budgets` | `category_account_id` is a category of the book | `id` | `category_account_id`, `amount_minor` |
 | `budget_override` | `budget_overrides` | its `budget_id` is in the book | `id` | `budget_id`, `month`, `amount_minor` |
-| `budget_frequency` | `budget_frequencies` | its budget is in the book | the table's key, as step 1 finds it | its value columns |
+| `budget_frequency` | `budget_frequencies` | its budget is in the book | `budget_id` | `frequency`, `amount_as_set_minor` (check #4) |
 | `book_income` | `book_budget_settings` | `book_id = bookId` | `book_id` | `expected_income_minor` |
 | `book_income_override` | `book_income_overrides` | `book_id = bookId` | `bookId + '\|' + month` | `amount_minor` |
 | `bill` | `expense_templates` | `category_account_id` is a category of the book | `id` | `name`, `category_account_id`, `amount_minor`, `day_of_month`, `active`, `archived_at`, **`payer`** (§4.4) |
 | `bill_window` | `bill_windows` | its `template_id` is in the book | `template_id` | `pay_by_day`, `starts_month` |
 | `bill_skip` | `bill_skips` | its `template_id` is in the book | `templateId + '\|' + month` | (existence only) |
-| `purchase` | `transactions` + `entries` + `book_transactions` + `transaction_flags` + `bill_payments` | the lineage's rows are in `book_transactions` for the book, and it has at least one income or expense entry | **lineage id** | §4.3 |
+| `purchase` | `transactions` + `entries` + `book_transactions` + `transaction_flags` + `bill_payments` | the lineage's head is in `book_transactions` for the book (the ledger tags only a posting with an income or expense line; check #9) | **lineage id** | §4.3 |
 
-`book_categories` and `book_transactions` are not entities: apply writes the tag row whenever it inserts a
-`category` or posts a `purchase`.
+`book_categories` and `book_transactions` are not entities. Apply writes a `book_categories` row whenever it inserts a
+`category`. `postTransactionTx` writes `book_transactions` itself, from the categories' book (check #10).
+
+**Local on insert.** Some columns are `NOT NULL` with no default and never travel: every `created_at`, the
+`updated_at` of `budgets` and `book_budget_settings`, and `books.kind`. Apply writes a local value for them: now, and
+`'shared'` for `books.kind`. Each record's `localOnInsert` names them (check #7).
 
 **Composite keys** are joined with `|` in the column order shown, never including `workspace_id`.
 
 **Never syncs:** transfers between asset accounts (they belong to no book); every owner-scope table; `settings`,
 `fx_rates`; photos; `transactions.source`, `external_ref`, `event_id`, `card_id`, `goal_id`, `mcc`,
-`replaces_transaction_id`; `entries.spend_category_id`, `fx_rate_to_base`, `amount_base_minor`; `books.kind`.
+`replaces_transaction_id`, `created_at`; `entries.id`, `spend_category_id`, `fx_rate_to_base`, `amount_base_minor`;
+`books.kind`, `sort_order`, `created_at`; `accounts.valuation_mode`, `created_at`; every other `created_at` and
+`updated_at` (check #8). `NEVER_SYNCED_COLUMNS` in the constant is the complete list.
 
-Step 1 confirms each row of this table against the code and corrects the constant; the constant is the truth.
+Step 0 confirmed each row of this table against the code. `book_members` and `book_devices` come with migration
+0056 (check #11). The constant is the truth, and its test fails when a synced table gains a column nobody has sorted.
 
 ### 4.2 New tables — migration `0056_household_sharing.sql`
 
@@ -182,13 +191,13 @@ Fields of a `purchase`, each with its own clock:
 | `description` | `transactions.description` | string |
 | `channel` | `transaction_flags.channel` | `'online' \| 'offline' \| null` |
 | `excluded` | `transaction_flags.excluded` | `0 \| 1` |
-| `bill` | `bill_payments` | `{ templateId, billMonth } \| null` |
+| `bill` | `transactions.template_id` + `bill_payments` (check #5) | `{ templateId, billMonth } \| null` |
 | `money` | `entries` + two `transactions` columns | the atom below |
 | `void` | `transactions.status` of the head | `true`, written once |
 
 ```ts
 type Money = {
-  lines: { categoryId: string; amountMinor: number; memo: string | null }[];  // entries on income/expense accounts, signed as stored
+  lines: { categoryId: string; amountMinor: number; currency: string; memo: string | null }[];  // entries on income/expense accounts, signed as stored (check #6)
   originalCurrency: string | null;
   originalAmountMinor: number | null;
   paidBy: string;      // member_id
@@ -197,7 +206,9 @@ type Money = {
 ```
 
 Amounts are in the book's currency, which is every member's base currency (§8.2): `amount_base_minor =
-amount_minor` and `fx_rate_to_base = 1` on every device, and no rate is needed to apply.
+amount_minor` and `fx_rate_to_base = 1` on every device, and no rate is needed to apply. **Open (O2, O3 in the
+check):** seeded history can hold lines in another currency, and the owner's book currency can differ from the
+owner's workspace currency. Both need a decision before step 1's seeding.
 
 **Category side and money side.** An entry on an account whose `kind` is `income` or `expense` is a `line`. Every
 other entry of the row is the **money side**. `paidLabel` is built on the payer's device from the money side: the
@@ -326,16 +337,31 @@ await withCapture(tx, { bookId, entity, id }, async () => { /* the existing writ
 Reads the entity's fields before, runs the write, reads after; emits an upsert with the fields that differ, or a
 delete if the row is gone.
 
-**Purchases** — at the three ledger doors, because an edit replaces the row:
+**Purchases** — at the two places the ledger writes a transaction (check #14):
 
-| Ledger function | Emits |
+| Ledger function | Records |
 |---|---|
-| `postTransactionTx` | upsert of every field; inserts `sync_lineage` with `lineage_id = head = the new id`, `paid_by` = this member |
-| `replaceTransaction` | project the old head and the new head (§4.3); upsert the fields that differ; `sync_lineage.head` = the new id |
-| `voidTransactionTx`, when not part of a replace | upsert `{ void: true }`; `sync_lineage.head = NULL` |
+| `postTransactionTx` (every insert of `transactions` and `entries`) | the new row's lineage: `replacesTransactionId`'s lineage when it has one, else a new lineage whose id is the root of its `replaces_transaction_id` chain (the new id, for a fresh post) |
+| `markVoidTx` (the only writer of `status = 'void'`; reached from `voidTransactionTx` and `replaceTransaction`) | the voided row's lineage |
 
-`events.ts` and `set-aside-tx.ts` also insert or update `transactions`; step 1 routes each through one of the
-three doors or wraps it the same way.
+Before the db transaction commits, each touched lineage of a shared book is resolved by its **net effect**:
+
+| Before → after | Emits |
+|---|---|
+| no lineage → a posted head in the book | upsert of every field; inserts `sync_lineage` with `head` = the new id and `paid_by` = this member |
+| a head → another posted head in the book | project both (§4.3); upsert the fields that differ; `sync_lineage.head` = the new id |
+| a head → no posted head in the book (voided, or re-filed with no category line; check #18) | upsert `{ void: true }`; `sync_lineage.head = NULL` |
+
+That one rule covers `replaceTransaction` (a `markVoidTx` then a `postTransactionTx` with `replacesTransactionId`).
+It also covers `trades.ts`, which replaces a recalculated sell with `voidTransactionTx` and then `postTransactionTx`,
+so the pair is not read as a void. And it covers the deposit-event recursion in `voidTransactionTx`. Hooking the
+three exported functions separately would read every replacement as a new lineage. Where the flush runs is open
+(O1 in the check).
+
+Nothing else needs rerouting (check #15). `events.tagTransaction` (`event_id`), `set-aside-tx`
+`parkForGoalTx`/`carryTaggedTx` (`goal_id`) and `ledger.setTransactionMcc` (`mcc`) update in place only columns
+that never travel. Every other writer reaches the ledger through `postTransactionTx` or `voidTransactionTx`. The check
+lists them.
 
 After capture, for each emitted field: `sync_field_clocks[book, entity, id, field] = hlc`. At commit the ops are
 cut into change-sets (§6.2), each sealed and signed (§6.6) and inserted into `sync_outbox`.
@@ -344,8 +370,9 @@ A write outside a shared book emits nothing and costs one lookup.
 
 ### 6.4 Nothing escapes capture
 
-In the **test harness only**, `installCaptureTriggers(db)` creates `AFTER INSERT/UPDATE/DELETE` triggers on every
-table named in `SHARED_ENTITIES`, each writing `(table, key, op)` to a temp table `__writes`. After every test, a
+In the **test harness only**, `installCaptureTriggers(db)` creates `AFTER INSERT`, `AFTER UPDATE OF <the synced
+columns>` and `AFTER DELETE` triggers on every table named in `SHARED_ENTITIES`. They watch only the synced columns,
+so an in-place write to a column that never travels (check #15) is not a miss. Each trigger writes `(table, key, op)` to a temp table `__writes`. After every test, a
 global `afterEach` fails the test if `__writes` holds a row of a shared book that no op in `sync_outbox` accounts
 for. The whole existing suite, run against a database seeded with one shared book, is the completeness test; no
 repository function is called by hand.
@@ -430,12 +457,17 @@ applyPurchase(op, cs):
   state = (L exists ? project(L.head) : {}) merged with winners   # the purchase as it should now read
   input = ledgerInput(state, moneySide(L, state.money))           # §7.4
   if L does not exist:
-    id = postTransactionTx(input with id = op.id)                 # the lineage id is the first row's id
+    id = postTransactionTx(tx, input with id = op.id)             # the lineage id is the first row's id
     insert sync_lineage(op.id, head = id, paid_by, paid_label)
   else:
-    id = replaceTransaction(L.head, input); L.head = id
+    id = replaceTransactionTx(tx, L.head, input); L.head = id
   record clocks for winners
 ```
+
+`postTransactionTx` mints its own id today. Step 1 adds an optional `id` to `PostTransactionInput`, which only this
+call uses; `replaceTransactionTx` drops it from the input it spreads (check #12). `replaceTransaction` opens its own
+db transaction under a mutex that is not reentrant. Step 1 therefore extracts `replaceTransactionTx(tx, ws, id,
+input)`, and `replaceTransaction` wraps it (check #13).
 
 A purchase whose fields arrive in two change-sets (split by §6.2) is posted by the first that carries `money` and
 replaced by the second; an op for an unknown lineage without `money` is held in memory until the rest of the
@@ -453,8 +485,11 @@ pulled page is applied, then dropped with a logged warning if `money` never came
    two `money` values for **one** lineage; the later wins and the purchase is counted once.
 6. **Idempotent.** An entry at or below `applied_seq` is skipped; a change-set applied again wins no field.
 
-**Who changed what.** Every `replaceTransaction` and `voidTransactionTx` already writes `audit_log`; apply passes
-the author's `member` so the history reads "amount changed by Dewi". The owner decided any member may change any
+**Who changed what.** `postTransactionTx` writes `audit_log` (`'post'`, payload = its input), and so does
+`markVoidTx` (`'void'`), which means a replace writes one of each. Step 1 adds an optional `syncAuthor` (a member id)
+to `PostTransactionInput`, which lands in the `'post'` payload, and an optional author argument to
+`voidTransactionTx` for the `'void'` payload. Apply passes the author's `member` so the history reads "amount
+changed by Dewi" (check #16). The owner decided any member may change any
 purchase, including one the other person paid; this is that decision's record.
 
 ### 7.4 The money side on apply
@@ -467,9 +502,12 @@ moneySide(L, money):
     one entry of −sum(lines) on placeholderAccount(bookId, money.paidBy)
 ```
 
-On the payer's device the correction therefore goes through `replaceTransaction` against the payer's real account,
-and everything that function carries across a correction — a set-aside answer, a tagged goal, a bill payment, the
-card and its statement — is carried exactly as when the payer edits it themselves.
+On the payer's device the correction therefore goes through `replaceTransactionTx` against the payer's real account.
+Everything that function carries across a correction is carried exactly as when the payer edits it themselves: a
+set-aside answer, a tagged goal, a bill payment, the card and its statement, point actuals, photos, event items
+(confirmed, check #17). It carries a fact only when the input field is **`undefined`**. So `ledgerInput` leaves every
+field that is not a winner `undefined`, never `null`: above all `setAside`, `templateId`, `billMonth`, `cardId`,
+`eventId` and `mcc`. A `null` clears the fact.
 
 ## 8. Invites, devices, ownership
 
@@ -679,7 +717,9 @@ Mutate-twice review on every step.
 ## 15. Left open
 
 - The keychain plugin for `NativeKeyStore` (step 2).
-- `budget_frequencies`' key and columns (step 0).
+- The five items under "Open for the controller" in `2026-09-27-household-sharing-v3-check.md`: where the capture
+  flush runs (O1), lines in another currency in seeded history (O2), a book whose currency is not the workspace's
+  (O3), `category_needs` (O4), a local conversion that voids a shared purchase (O5).
 - The relay's domain and the Cloudflare account (before step 3).
 - The App Privacy wording (at submission).
 - **Encrypted backups.** Separate work, and independently urgent: today's backup file is a plaintext copy of a
