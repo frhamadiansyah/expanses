@@ -6,7 +6,7 @@ import { useApp } from '../../app/context';
 import { newerDatabaseVersion } from '../../db/newer-database';
 import type { SnapshotInfo, SnapshotStore } from '../../db/open';
 import { restoreSnapshot } from '../../db/snapshots';
-import { saveBytes } from '../../lib/download';
+import { saveBytes, savedWhere } from '../../lib/download';
 import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
 import { photos } from '../../photos/store';
 import { useInvalidateAll } from '../../lib/queries';
@@ -55,9 +55,10 @@ export function BackupPage() {
 
   async function exportBackup(filename: string) {
     const bytes = await database.exportBytes();
-    saveBytes(bytes, filename, 'application/vnd.sqlite3');
+    const to = await saveBytes(bytes, filename, 'application/vnd.sqlite3');
     await setLastBackupAt(database, new Date().toISOString());
     await invalidate();
+    return to;
   }
 
   async function onExport() {
@@ -65,8 +66,8 @@ export function BackupPage() {
     setDone(null);
     setBusy(true);
     try {
-      await exportBackup(`expanses-backup-${isoDate()}.sqlite3`);
-      setDone('Backup downloaded. Check it is in your Downloads and keep it somewhere private.');
+      const to = await exportBackup(`expanses-backup-${isoDate()}.sqlite3`);
+      setDone(`Backup saved. ${savedWhere(to)}`);
     } catch (e) {
       setError(e);
     } finally {
@@ -94,8 +95,8 @@ export function BackupPage() {
         else unreadable += 1;
       }
       if (!files.length) throw new Error('None of the photos could be read from this device.');
-      saveBytes(zipStore(files), `expanses-photos-${isoDate()}.zip`, 'application/zip');
-      setDone(`${photoWords(files.length)} downloaded.${unreadable ? ` ${photoWords(unreadable)} could not be read from this device.` : ''}`);
+      await saveBytes(zipStore(files), `expanses-photos-${isoDate()}.zip`, 'application/zip');
+      setDone(`${photoWords(files.length)} saved.${unreadable ? ` ${photoWords(unreadable)} could not be read from this device.` : ''}`);
     } catch (e) {
       setError(e);
     } finally {

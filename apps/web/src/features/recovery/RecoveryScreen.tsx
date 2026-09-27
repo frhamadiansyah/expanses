@@ -5,7 +5,7 @@ import { refusedCopy } from '../../db/newer-database';
 import { NO_SNAPSHOTS, type RecoveryReason, type SnapshotInfo, type SnapshotStore } from '../../db/open';
 import { restoreBytes, salvageBytes } from '../../db/salvage';
 import { restoreSnapshot } from '../../db/snapshots';
-import { saveBytes } from '../../lib/download';
+import { saveBytes, savedWhere } from '../../lib/download';
 import { holdPhotosOrRefuse } from '../../photos/hold-before-restore';
 import { Button, ErrorBox } from '../../ui';
 import { copyReasonWords } from '../backup/backupState';
@@ -102,8 +102,8 @@ export function RecoveryScreen({
     const found = bytes ?? (await salvageBytes());
     if (!found) throw new Error('We could not find the data file on this device. Try again, or reopen Expanses in the browser you last used.');
     setBytes(found);
-    saveBytes(found, `expanses-recovery-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
-    setNote('Saved to your downloads. Keep it somewhere private — it is all of your data.');
+    const to = await saveBytes(found, `expanses-recovery-${isoDate()}.sqlite3`, 'application/vnd.sqlite3');
+    setNote(`Saved. ${savedWhere(to)} It is all of your data.`);
   };
 
   return (

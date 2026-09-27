@@ -1,5 +1,11 @@
+import { Capacitor } from '@capacitor/core';
+
+/** True inside the Capacitor iOS/Android shell, where the app is already installed and served by the app itself. */
+export const isNative = (): boolean => Capacitor.isNativePlatform();
+
 export function registerServiceWorker(): void {
-  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  // The native shell serves every file from the app bundle: an offline cache would only be a second copy that can go stale.
+  if (import.meta.env.PROD && !isNative() && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
     });
@@ -14,7 +20,7 @@ export async function requestPersistentStorage(): Promise<boolean | null> {
 }
 
 export function isStandalone(): boolean {
-  return window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return isNative() || window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
 
 export function isIos(): boolean {
