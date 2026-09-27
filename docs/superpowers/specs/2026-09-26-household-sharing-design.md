@@ -22,7 +22,10 @@ own accounts are kept only while `money.paidBy` is still this member, and the di
 — the tombstone ruling (a row keyed by anything but its own id comes back when made again later), existence-only
 rows, rows whose uniqueness is wider than their id, and a parent that is gone; §6.4 — the harness watches only while
 the book is shared, leaves apply's writes out, and counts drained and applied change-sets; §6.5 — joined books are
-left out of the default-tree upkeep at app open.
+left out of the default-tree upkeep at app open. **Fix round 1:** §7.1 — apply skips only a refusal every
+receiver makes alike and records it in `sync_skipped` (§4.2); anything else rolls the entry back and stops; §6.2/§7.2 —
+a revivable row travels whole but names its changed fields (`Op.changed`), so rule 1 stays per field; §8.4 — a
+removal stamps `device.removedAt`'s clock.
 
 ## 0. What v3 changed
 
@@ -190,6 +193,9 @@ CREATE TABLE sync_field_clocks (
 CREATE TABLE sync_tombstones (
   book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, hlc TEXT NOT NULL,
   PRIMARY KEY (book_id, entity, id)
+);
+CREATE TABLE sync_skipped (                             -- task 4 fix round 1: an op apply refused, never silent (§7.1)
+  book_id TEXT NOT NULL, seq INTEGER NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, error TEXT NOT NULL, at TEXT NOT NULL
 );
 ```
 
@@ -375,7 +381,8 @@ win every field for ever.
 ```ts
 type ChangeSet = { v: 1; hlc: string; member: string; ops: Op[] };
 type Op =
-  | { entity: string; id: string; op: 'upsert'; fields: Record<string, unknown> }   // only fields that changed
+  | { entity: string; id: string; op: 'upsert'; fields: Record<string, unknown>;    // only fields that changed …
+      changed?: string[] }                                                          // … or, for a revivable row (§7.2), all, naming these
   | { entity: string; id: string; op: 'delete' };
 ```
 
@@ -544,9 +551,16 @@ for e in entries, in seq order:
 tick tries the same entry again.
 
 **As built (task 4).** `pullAndApply` (`packages/db/src/sync/apply.ts`). An entry this device wrote is already true
-here and only moves the cursor (a restored backup is a new device, §5.1, so this never skips anything it lacks). Each
-op runs in a savepoint: one the local database refuses (a constraint no rule above foresaw) is skipped with a warning,
-never a cursor stuck for ever.
+here and only moves the cursor (a restored backup is a new device, §5.1, so this never skips anything it lacks). A
+removal is applied by its author too.
+
+**Skips (fix round 1).** Each op runs in a savepoint. Only a refusal every receiver makes alike from the carried data
+is skipped: a SQLite constraint error; `PostingError` `TOO_FEW_LINES`, `ZERO_AMOUNT`, `UNBALANCED`, `NOT_INTEGER`;
+`LedgerError` `INVALID_DATE`, `INVALID_ORIGINAL`, `INVALID_MCC`, `INVALID_BILL_MONTH`; and a row whose parent is gone.
+The op is rolled back to its savepoint, recorded in `sync_skipped` (book, seq, entity, id, error, when) and returned in
+`PullResult.skipped`, and the entry goes on. Anything else is a bug: it is rethrown, the entry's transaction rolls
+back, and the cursor stays before it — a stop like any other, retried on the next tick. The property tests require no
+skip at all.
 
 ### 7.2 Applying one change-set
 
@@ -564,7 +578,7 @@ for op in cs.ops, in order:
     if not revivable or cs.hlc <= T: continue
     remove the tombstone                                          # made again later: alive again
   if revivable: clock[..., '@row'] = max(clock[..., '@row'], cs.hlc)
-  winners = { f: v for (f, v) in op.fields if clock[op.entity, op.id, f] is null or cs.hlc > clock[...] }
+  winners = { f: op.fields[f] for f in (op.changed ?? keys(op.fields)) if clock[op.entity, op.id, f] is null or cs.hlc > clock[...] }
   if the row exists: if winners is empty: continue; update it with winners
   else:                                                           # an existence-only row (bill_skip) inserts here too
     if its parent is gone: continue                               # an override of a budget that lost, …
@@ -598,6 +612,11 @@ anything else — a natural key (`bill_skip`, `book_income_override`) or another
 take back, skip again). For those, capture always emits the **whole** row and records the row's existence clock
 `@row` in `sync_field_clocks`, and a delete and a re-make race by hlc like any field: whichever is later wins on every
 device. A fragment never arrives for a revivable row, because a fragment could not be inserted where the row was gone.
+The op names the fields that really changed in `changed` (fix round 1): only those compete for their clocks and are
+written into an existing row, so rule 1 stays per field (a name edited here and a role there both survive); the
+others are there only to insert the row where it is absent. Known limit: a row inserted by a revive takes the reviving
+device's values for its unnamed fields, which can be older than a concurrent edit another device made before the
+delete reached it.
 
 **Uniqueness wider than the id.** `budgets` is unique per category and `budget_overrides` per budget and month, so two
 devices can each make "the" budget of one category offline under different ids. The lower id wins on every device;
@@ -701,7 +720,9 @@ owner, the inviter follows the claim with `setOwners` including the new device.
 Two acts, by design done by different devices when someone leaves.
 
 **Removal** — by an owner for any device, by any device for itself (**Leave** removes each of the member's
-devices):
+devices). Applying a removal (fix round 1) writes `book_devices.removed_at` = the entry's hlc time and stamps
+`sync_field_clocks[device, target, removedAt]` = the entry's hlc, so a later edit of another field by a device that had
+not seen the removal cannot undo it:
 
 1. `append({ kind: 'removal', target })`.
 2. `removeDevice(bookId, target)` — the relay drops it from the allow-list; it can no longer append or pull.

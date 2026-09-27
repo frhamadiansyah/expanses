@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { Household, projectBook } from './household';
+import { Household, projectBook, skipsOf } from './household';
 import { play, programArb } from './programs';
 
 /*
@@ -20,6 +20,7 @@ describe('convergence', () => {
         const devices = await play(home, program);
         const [first, ...rest] = await Promise.all(devices.map((d) => projectBook(d.database, home.bookId)));
         for (const other of rest) expect(other).toEqual(first);
+        for (const d of devices) expect(await skipsOf(d.database)).toEqual([]);
       }),
       { numRuns: RUNS, seed: 20260927, endOnFailure: true },
     );

@@ -32,12 +32,12 @@ import type { Device, Household } from './household';
  */
 
 export type Step =
-  | { kind: 'post'; device: number; category: number; amount: number; usd: boolean; day: number }
-  | { kind: 'correct'; device: number; pick: number; what: 'description' | 'amount' | 'category' | 'payer'; amount: number; category: number }
+  | { kind: 'post'; device: number; category: number; amount: number; usd: boolean; day: number; shape: 'single' | 'split' | 'mixed' | 'twoPay' }
+  | { kind: 'correct'; device: number; pick: number; what: 'description' | 'amount' | 'category' | 'payer' | 'total'; amount: number; category: number }
   | { kind: 'void'; device: number; pick: number }
-  | { kind: 'budget'; device: number; category: number; amount: number; remove: boolean }
+  | { kind: 'budget'; device: number; category: number; amount: number; remove: boolean; frequency: 'monthly' | 'weekly' | 'yearly' }
   | { kind: 'override'; device: number; category: number; month: number; amount: number; clear: boolean }
-  | { kind: 'bill'; device: number; pick: number; category: number; amount: number }
+  | { kind: 'bill'; device: number; pick: number; category: number; amount: number; payByDay: number | null; cash: boolean }
   | { kind: 'skip'; device: number; pick: number; month: number; undo: boolean }
   | { kind: 'need'; device: number; category: number; need: 'essential' | 'lifestyle' | null }
   | { kind: 'category'; device: number; pick: number; name: number }
@@ -60,12 +60,12 @@ const small = fc.nat({ max: 3 });
 function stepArb(devices: number): fc.Arbitrary<Step> {
   const device = fc.nat({ max: devices - 1 });
   return fc.oneof(
-    { weight: 5, arbitrary: fc.record({ kind: fc.constant('post' as const), device, category: small, amount: fc.integer({ min: 1, max: 900 }), usd: fc.boolean(), day: fc.integer({ min: 1, max: 28 }) }) },
-    { weight: 4, arbitrary: fc.record({ kind: fc.constant('correct' as const), device, pick: small, what: fc.constantFrom('description' as const, 'amount' as const, 'category' as const, 'payer' as const), amount: fc.integer({ min: 1, max: 900 }), category: small }) },
+    { weight: 5, arbitrary: fc.record({ kind: fc.constant('post' as const), device, category: small, amount: fc.integer({ min: 1, max: 900 }), usd: fc.boolean(), day: fc.integer({ min: 1, max: 28 }), shape: fc.constantFrom('single' as const, 'single' as const, 'split' as const, 'mixed' as const, 'twoPay' as const) }) },
+    { weight: 4, arbitrary: fc.record({ kind: fc.constant('correct' as const), device, pick: small, what: fc.constantFrom('description' as const, 'amount' as const, 'category' as const, 'payer' as const, 'total' as const, 'total' as const), amount: fc.integer({ min: 1, max: 900 }), category: small }) },
     { weight: 2, arbitrary: fc.record({ kind: fc.constant('void' as const), device, pick: small }) },
-    { weight: 2, arbitrary: fc.record({ kind: fc.constant('budget' as const), device, category: small, amount: fc.integer({ min: 1, max: 50 }), remove: fc.boolean() }) },
+    { weight: 2, arbitrary: fc.record({ kind: fc.constant('budget' as const), device, category: small, amount: fc.integer({ min: 1, max: 50 }), remove: fc.boolean(), frequency: fc.constantFrom('monthly' as const, 'weekly' as const, 'yearly' as const) }) },
     { weight: 1, arbitrary: fc.record({ kind: fc.constant('override' as const), device, category: small, month: fc.nat({ max: 1 }), amount: fc.integer({ min: 1, max: 50 }), clear: fc.boolean() }) },
-    { weight: 2, arbitrary: fc.record({ kind: fc.constant('bill' as const), device, pick: small, category: small, amount: fc.integer({ min: 1, max: 50 }) }) },
+    { weight: 2, arbitrary: fc.record({ kind: fc.constant('bill' as const), device, pick: small, category: small, amount: fc.integer({ min: 1, max: 50 }), payByDay: fc.option(fc.integer({ min: 1, max: 28 })), cash: fc.boolean() }) },
     { weight: 3, arbitrary: fc.record({ kind: fc.constant('skip' as const), device, pick: small, month: fc.nat({ max: 1 }), undo: fc.boolean() }) },
     { weight: 2, arbitrary: fc.record({ kind: fc.constant('need' as const), device, category: small, need: fc.constantFrom('essential' as const, 'lifestyle' as const, null) }) },
     { weight: 1, arbitrary: fc.record({ kind: fc.constant('category' as const), device, pick: small, name: fc.nat({ max: 99 }) }) },
@@ -134,13 +134,38 @@ export async function runStep(home: Household, d: Device, step: Step): Promise<b
         await d.engine.syncOnce(bookId);
         return true;
       case 'post': {
-        const category = at(await pool(d, bookId), step.category);
-        if (!category) return false;
-        const usd = step.usd ? d.usd : null;
+        const categories = await pool(d, bookId);
+        const category = at(categories, step.category);
+        const other = at(categories, step.category + 1);
+        if (!category || !other) return false;
+        const idr = step.amount * 1_000;
+        const cents = step.amount * 7;
+        const usd = step.shape === 'mixed' || (step.shape === 'single' && step.usd);
+        const lines =
+          step.shape === 'split'
+            ? [
+                { accountId: category, amountMinor: idr, currency: 'IDR' },
+                { accountId: other, amountMinor: 3_000, currency: 'IDR' },
+                { accountId: d.bank, amountMinor: -(idr + 3_000), currency: 'IDR' },
+              ]
+            : step.shape === 'mixed'
+              ? [
+                  { accountId: category, amountMinor: idr, currency: 'IDR' },
+                  { accountId: d.bank, amountMinor: -idr, currency: 'IDR' },
+                  { accountId: other, amountMinor: cents, currency: 'USD' },
+                  { accountId: d.usd, amountMinor: -cents, currency: 'USD' },
+                ]
+              : step.shape === 'twoPay'
+                ? [
+                    { accountId: category, amountMinor: idr + 2_000, currency: 'IDR' },
+                    { accountId: d.bank, amountMinor: -idr, currency: 'IDR' },
+                    { accountId: d.cash, amountMinor: -2_000, currency: 'IDR' },
+                  ]
+                : expenseLines({ categoryAccountId: category, paymentAccountId: usd ? d.usd : d.bank, amountMinor: usd ? cents : idr, currency: usd ? 'USD' : 'IDR' });
         await postTransaction(database, d.ws, {
           occurredOn: `2026-09-${String(step.day).padStart(2, '0')}`,
           description: `Bought ${step.amount}`,
-          lines: expenseLines({ categoryAccountId: category, paymentAccountId: usd ?? d.bank, amountMinor: usd ? step.amount * 7 : step.amount * 1_000, currency: usd ? 'USD' : 'IDR' }),
+          lines,
           ...(usd ? { ratesToBase: { USD: USD_RATE } } : {}),
         });
         return true;
@@ -172,6 +197,19 @@ export async function runStep(home: Household, d: Device, step: Step): Promise<b
           if (side.length !== 1 || side[0]!.currency !== 'IDR') return false;
           side[0]!.accountId = d.bank;
         }
+        if (step.what === 'total') {
+          // The total moves: the first category line by some amount, and the last money-side line of its currency with
+          // it — on the payer's device that lands on one of several own entries, elsewhere on the placeholder.
+          const first = lines.findIndex((_, i) => entries[i]![4] === 'expense');
+          if (first < 0) return false;
+          const line = lines[first]!;
+          const sideIndex = [...lines.keys()].reverse().find((i) => entries[i]![4] !== 'expense' && entries[i]![4] !== 'income' && lines[i]!.currency === line.currency);
+          if (sideIndex === undefined) return false;
+          const delta = (line.currency === 'USD' ? 3 : 1_000) * (step.amount % 2 === 0 ? 1 : -1);
+          if (line.amountMinor + delta <= 0 || lines[sideIndex]!.amountMinor - delta === 0) return false;
+          line.amountMinor += delta;
+          lines[sideIndex]!.amountMinor -= delta;
+        }
         if (step.what === 'amount') {
           if (lines.length !== 2 || lines[0]!.currency !== lines[1]!.currency) return false;
           const sign = Math.sign(lines[0]!.amountMinor);
@@ -187,7 +225,7 @@ export async function runStep(home: Household, d: Device, step: Step): Promise<b
         const category = at(await pool(d, bookId), step.category);
         if (!category) return false;
         if (step.remove) await removeBudget(database, ws, category);
-        else await saveBudget(database, ws, { categoryAccountId: category, amountMinor: step.amount * 100_000 });
+        else await saveBudget(database, ws, { categoryAccountId: category, amountMinor: step.amount * 100_000, frequency: step.frequency });
         return true;
       }
       case 'override': {
@@ -202,7 +240,17 @@ export async function runStep(home: Household, d: Device, step: Step): Promise<b
         if (!category) return false;
         const existing = await bills(d, bookId);
         const id = step.pick < existing.length ? existing[step.pick] : undefined;
-        await saveExpenseTemplate(database, ws, { ...(id ? { id } : {}), name: `Bill ${step.pick}`, categoryAccountId: category, moneyAccountId: d.bank, amountMinor: step.amount * 10_000, dayOfMonth: 5, startsMonth: '2026-09' });
+        // An edit on another device moves the payer to that device's member (§4.4); the pay-by day is the window.
+        await saveExpenseTemplate(database, ws, {
+          ...(id ? { id } : {}),
+          name: `Bill ${step.pick}`,
+          categoryAccountId: category,
+          moneyAccountId: step.cash ? d.cash : d.bank,
+          amountMinor: step.amount * 10_000,
+          dayOfMonth: 5,
+          payByDay: step.payByDay,
+          startsMonth: '2026-09',
+        });
         return true;
       }
       case 'skip': {

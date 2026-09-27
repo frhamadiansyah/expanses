@@ -295,8 +295,8 @@ export async function withCapturePaused<T>(tx: Db, fn: () => Promise<T>, applyin
 /**
  * Whether an entity's rows can come back after a delete (controller ruling, spec §7.2): one keyed by anything but
  * its own minted `id` — a natural key (`bill_skip`, `book_income_override`) or another row's id (`category_need`,
- * `budget_frequency`, `bill_window`) — is made again under the same `Op.id`. Its upserts always carry every field, and
- * record the row's existence clock `@row`, so a delete and a re-make race by hlc like any field. An entity keyed by its
+ * `budget_frequency`, `bill_window`) — is made again under the same `Op.id`. Its upserts always carry every field
+ * (naming the ones that changed in `changed`), and record the row's existence clock `@row`, so a delete and a re-make race by hlc like any field. An entity keyed by its
  * own `id` is never made again: its tombstone wins for ever (rule 3).
  */
 export function isRevivable(entity: RowEntity): boolean {
@@ -341,7 +341,8 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
     await deriveFields(tx, was, now, fields, books);
     if (Object.keys(fields).length === 0) continue;
     // A revivable row travels whole, so a re-make after a delete never arrives as a fragment (see isRevivable).
-    if (isRevivable(now.entity)) slot.ops.push({ bookId: now.bookId, op: await fullUpsert(tx, now, books) });
+    // It names what changed: only those fields win on a receiver (rule 1 stays per field).
+    if (isRevivable(now.entity)) slot.ops.push({ bookId: now.bookId, op: { ...(await fullUpsert(tx, now, books)), changed: Object.keys(fields) } as Op });
     else slot.ops.push({ bookId: now.bookId, op: { entity: now.entity.entity, id: now.id, op: 'upsert', fields } });
   }
   for (const [key, now] of after) {
@@ -444,7 +445,8 @@ export async function recordClocks(tx: Db, bookId: string, op: Op, hlc: string):
   // A row this device deleted and made again under the same key is alive here again.
   await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${bookId} AND entity = ${op.entity} AND id = ${op.id}`);
   const entity = entityOf(op.entity);
-  const fields = entity.kind === 'row' && isRevivable(entity) ? [...Object.keys(op.fields), ROW_CLOCK] : Object.keys(op.fields);
+  const named = op.changed ?? Object.keys(op.fields);
+  const fields = entity.kind === 'row' && isRevivable(entity) ? [...named, ROW_CLOCK] : named;
   for (const field of fields) {
     await tx.run(
       sql`INSERT INTO sync_field_clocks (book_id, entity, id, field, hlc) VALUES (${bookId}, ${op.entity}, ${op.id}, ${field}, ${hlc}) ON CONFLICT (book_id, entity, id, field) DO UPDATE SET hlc = excluded.hlc`,

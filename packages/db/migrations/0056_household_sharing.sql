@@ -56,3 +56,8 @@ CREATE TABLE sync_tombstones (
   book_id TEXT NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, hlc TEXT NOT NULL,
   PRIMARY KEY (book_id, entity, id)
 );
+
+CREATE TABLE sync_skipped (                             -- an op apply refused deterministically (§7.1): kept, never silent
+  book_id TEXT NOT NULL, seq INTEGER NOT NULL, entity TEXT NOT NULL, id TEXT NOT NULL, error TEXT NOT NULL, at TEXT NOT NULL
+);
+CREATE INDEX sync_skipped_book ON sync_skipped (book_id, seq);

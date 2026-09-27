@@ -68,10 +68,16 @@ async function setTombstone(tx: Db, ctx: BookContext, entity: string, id: string
   );
 }
 
-/** The fields of an upsert that beat their clocks (rule 1): no clock yet, or an older one. */
+/**
+ * The fields of an upsert that beat their clocks (rule 1): no clock yet, or an older one. Only the fields the op
+ * names as changed compete; a revivable row's other fields ride along for an insert only.
+ */
 async function winnersOf(tx: Db, ctx: BookContext, op: Extract<Op, { op: 'upsert' }>, hlc: string): Promise<Record<string, unknown>> {
   const winners: Record<string, unknown> = {};
-  for (const [field, value] of Object.entries(op.fields)) {
+  const named = op.changed ?? Object.keys(op.fields);
+  for (const field of named) {
+    if (!(field in op.fields)) continue;
+    const value = op.fields[field];
     const clock = await clockOf(tx, ctx, op.entity, op.id, field);
     if (clock === null || hlc > clock) winners[field] = value;
   }
@@ -273,10 +279,7 @@ async function applyRowOp(tx: Db, ctx: BookContext, entity: RowEntity, op: Op, h
       );
     }
   } else {
-    if (await parentMissing(tx, entity, key, op.fields)) {
-      console.warn(`sync: ${entity.entity} ${op.id} arrived after its parent was gone; not applied`);
-      return;
-    }
+    if (await parentMissing(tx, entity, key, op.fields)) throw new SkipOp('its parent is gone here');
     if (await settleSiblings(tx, ctx, entity, op, hlc)) return;
     await insertRow(tx, ctx, entity, key, op.fields, where);
   }
@@ -433,10 +436,51 @@ async function applyPurchase(tx: Tx, ctx: BookContext, op: Extract<Op, { op: 'up
 
 /* -------------------------------------------------------------- one change-set */
 
+/** An op apply declines on purpose (a parent that is gone): recorded like a refusal. */
+class SkipOp extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SkipOp';
+  }
+}
+
+/** Refusals every receiver makes alike, from the carried data alone (§7.1, task 4 fix round 1). */
+const SKIPPABLE_POSTING = new Set(['TOO_FEW_LINES', 'ZERO_AMOUNT', 'UNBALANCED', 'NOT_INTEGER']);
+const SKIPPABLE_LEDGER = new Set(['INVALID_DATE', 'INVALID_ORIGINAL', 'INVALID_MCC', 'INVALID_BILL_MONTH']);
+
+function deterministicRefusal(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 5; e = (e as { cause?: unknown }).cause, depth += 1) {
+    const { name, code } = e as { name?: string; code?: string };
+    if (name === 'SkipOp') return true;
+    if (name === 'PostingError' && code && SKIPPABLE_POSTING.has(code)) return true;
+    if (name === 'LedgerError' && code && SKIPPABLE_LEDGER.has(code)) return true;
+    if (typeof code === 'string' && code.startsWith('SQLITE_CONSTRAINT')) return true;
+  }
+  return false;
+}
+
+/** One op apply skipped: recorded in `sync_skipped` and reported by `pullAndApply`. */
+export interface SkippedOp {
+  seq: number;
+  entity: string;
+  id: string;
+  error: string;
+}
+
+/** What one entry's apply is part of: its seq, and the skips it adds to. */
+export interface ApplyRun {
+  seq: number;
+  skipped: SkippedOp[];
+}
+
 let savepoints = 0;
 
-/** Runs one op in a savepoint: an op the local database refuses is skipped with a warning, never a stuck cursor. */
-async function guarded(tx: Db, what: string, fn: () => Promise<void>): Promise<void> {
+/**
+ * Runs one op in a savepoint. A refusal every receiver would make alike is rolled back to the savepoint, recorded
+ * durably in `sync_skipped`, and the entry goes on; anything else is a bug and is rethrown, so the entry's whole
+ * transaction rolls back and the cursor stays before it (§7.1 stop).
+ */
+async function guarded(tx: Db, ctx: BookContext, run: ApplyRun, op: Op, fn: () => Promise<void>): Promise<void> {
   const name = sql.raw(`apply_op_${(savepoints += 1)}`);
   await tx.run(sql`SAVEPOINT ${name}`);
   try {
@@ -445,29 +489,35 @@ async function guarded(tx: Db, what: string, fn: () => Promise<void>): Promise<v
   } catch (error) {
     await tx.run(sql`ROLLBACK TO ${name}`);
     await tx.run(sql`RELEASE ${name}`);
-    console.warn(`sync: ${what} could not be applied here and was skipped`, error);
+    if (!deterministicRefusal(error)) throw error;
+    const message = error instanceof Error ? `${(error as { code?: string }).code ?? error.name}: ${error.message}` : String(error);
+    const skip: SkippedOp = { seq: run.seq, entity: op.entity, id: op.id, error: message };
+    await tx.run(
+      sql`INSERT INTO sync_skipped (book_id, seq, entity, id, error, at) VALUES (${ctx.bookId}, ${skip.seq}, ${skip.entity}, ${skip.id}, ${skip.error}, ${new Date().toISOString()})`,
+    );
+    run.skipped.push(skip);
   }
 }
 
 /** §7.2, inside the caller's transaction, capture already off. Held purchase ops go into `held`. */
-export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: ChangeSet, held: HeldOps = new Map()): Promise<void> {
+export async function applyChangeSetTx(tx: Tx, ctx: BookContext, changeSet: ChangeSet, held: HeldOps = new Map(), run: ApplyRun = { seq: 0, skipped: [] }): Promise<void> {
   await receiveHlc(tx, changeSet.hlc);
   for (const op of changeSet.ops) {
     const entity = entityOf(op.entity);
     if (entity.kind === 'purchase') {
       if (op.op !== 'upsert') continue; // a purchase is never deleted, only voided
-      await guarded(tx, `purchase ${op.id}`, async () => {
+      await guarded(tx, ctx, run, op, async () => {
         if (!(await applyPurchase(tx, ctx, op, changeSet))) held.set(op.id, [...(held.get(op.id) ?? []), { op, changeSet }]);
       });
       continue;
     }
-    await guarded(tx, `${op.entity} ${op.id}`, () => applyRowOp(tx, ctx, entity, op, changeSet.hlc));
+    await guarded(tx, ctx, run, op, () => applyRowOp(tx, ctx, entity, op, changeSet.hlc));
   }
   // A held op whose lineage this change-set started is applied now, its clocks deciding as for any op.
   for (const [lineageId, ops] of [...held]) {
     if (!(await lineageOf(tx, lineageId))) continue;
     held.delete(lineageId);
-    for (const { op, changeSet: from } of ops) await guarded(tx, `purchase ${lineageId}`, async () => void (await applyPurchase(tx, ctx, op, from)));
+    for (const { op, changeSet: from } of ops) await guarded(tx, ctx, run, op, async () => void (await applyPurchase(tx, ctx, op, from)));
   }
 }
 
@@ -481,6 +531,8 @@ export async function applyChangeSet(database: Database, bookId: string, changeS
 export interface PullResult {
   /** Entries this call moved the cursor past. */
   applied: number;
+  /** Ops skipped as refusals every receiver makes alike, each also kept in `sync_skipped`. */
+  skipped: SkippedOp[];
   /** Why the loop stopped before the end of the log, and at which entry; the cursor stays before it (§7.1). */
   stopped?: { seq: number; reason: 'bad signature' | 'drift' | 'not active' };
 }
@@ -507,12 +559,13 @@ export async function pullAndApply(
   now: () => number = Date.now,
 ): Promise<PullResult> {
   const [shared] = await database.db.values<[string, string]>(sql`SELECT relay_book_id, state FROM shared_books WHERE book_id = ${bookId}`);
-  if (!shared || shared[1] !== 'active') return { applied: 0, stopped: { seq: await cursorOf(database, bookId), reason: 'not active' } };
+  if (!shared || shared[1] !== 'active') return { applied: 0, skipped: [], stopped: { seq: await cursorOf(database, bookId), reason: 'not active' } };
   const relayBookId = shared[0];
   const self = await database.transaction((tx) => localDeviceId(tx));
   let since = await cursorOf(database, bookId);
   let applied = 0;
   const held: HeldOps = new Map();
+  const skipped: SkippedOp[] = [];
   for (;;) {
     const { entries } = await transport.pull(relayBookId, since);
     if (entries.length === 0) break;
@@ -525,10 +578,10 @@ export async function pullAndApply(
       }
       await database.transaction((tx) =>
         withCapturePaused(tx, async () => {
-          if (changeSet) await applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet, held);
-          if (entry.kind === 'removal') {
-            await tx.run(sql`UPDATE book_devices SET removed_at = ${new Date().toISOString()} WHERE book_id = ${bookId} AND device_id = ${entry.target} AND removed_at IS NULL`);
-          }
+          const run: ApplyRun = { seq: entry.seq, skipped: [] };
+          if (changeSet) await applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet, held, run);
+          if (entry.kind === 'removal') await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
+          skipped.push(...run.skipped);
           // A rotation's key is task 5's (§5.3); with the identity sealer there is nothing to open.
           await setCursorTx(tx, bookId, entry.seq);
         }, changeSet ?? undefined),
@@ -541,8 +594,21 @@ export async function pullAndApply(
 
   function finish(stopped?: PullResult['stopped']): PullResult {
     for (const lineageId of held.keys()) console.warn(`sync: purchase ${lineageId} changed but its money never arrived; dropped`);
-    return stopped ? { applied, stopped } : { applied };
+    return stopped ? { applied, skipped, stopped } : { applied, skipped };
   }
+}
+
+/**
+ * A removal entry (§8.4): the device's `removedAt`, with a clock at the entry's hlc like any field, so a later edit of
+ * another field from a device that has not seen the removal cannot undo it. The value is the entry's own time, the same
+ * on every device. The author applies its own removal too.
+ */
+async function applyRemovalTx(tx: Db, ctx: BookContext, deviceId: string, hlc: string): Promise<void> {
+  const clock = await clockOf(tx, ctx, 'device', deviceId, 'removedAt');
+  if (clock !== null && clock >= hlc) return;
+  const at = new Date(decodeHlc(hlc).ms).toISOString();
+  await tx.run(sql`UPDATE book_devices SET removed_at = ${at} WHERE book_id = ${ctx.bookId} AND device_id = ${deviceId}`);
+  await setClock(tx, ctx, 'device', deviceId, 'removedAt', hlc);
 }
 
 /** The sealer this database's capture uses, for opening what the relay hands back (one seam; task 5 swaps it). */

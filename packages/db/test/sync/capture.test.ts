@@ -114,7 +114,8 @@ describe('capture: rows edited in place', () => {
     await clearCategoryNeed(database, ws, groceries.id);
     expect(await outboxOps(database)).toEqual([
       { entity: 'category_need', id: groceries.id, op: 'upsert', fields: { need: 'essential' } },
-      { entity: 'category_need', id: groceries.id, op: 'upsert', fields: { need: 'lifestyle' } },
+      // A revivable row travels whole and names what changed (§7.2).
+      { entity: 'category_need', id: groceries.id, op: 'upsert', fields: { need: 'lifestyle' }, changed: ['need'] },
       { entity: 'category_need', id: groceries.id, op: 'delete' },
     ]);
   });

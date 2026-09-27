@@ -42,6 +42,8 @@ export interface Device {
   engine: SyncEngine;
   /** This device's own bank account, in the workspace currency. */
   bank: string;
+  /** A second own account in the workspace currency, for purchases paid from two places. */
+  cash: string;
   /** This device's own dollar account (lines in another currency than the book's, ruled O2). */
   usd: string;
   memberId: string;
@@ -60,8 +62,9 @@ export class Household {
     await database.db.run(sql`INSERT INTO settings (key, value) VALUES ('sync.device', ${deviceId})`);
     const bank = await createAccount(database, ws, { name: `${name} Bank`, kind: 'asset', subtype: 'bank', currency: baseCurrency });
     const usd = await createAccount(database, ws, { name: `${name} Dollars`, kind: 'asset', subtype: 'bank', currency: 'USD' });
+    const cash = await createAccount(database, ws, { name: `${name} Wallet`, kind: 'asset', subtype: 'cash', currency: baseCurrency });
     const transport = this.relay.as(deviceId);
-    const device: Device = { name, database, ws, deviceId, public: pub, transport, engine: new SyncEngine(database, transport), bank: bank.id, usd: usd.id, memberId };
+    const device: Device = { name, database, ws, deviceId, public: pub, transport, engine: new SyncEngine(database, transport), bank: bank.id, cash: cash.id, usd: usd.id, memberId };
     this.devices.push(device);
     return device;
   }
@@ -117,6 +120,11 @@ export async function joinBookForTest(joiner: Device, bookId: string, relayBookI
       );
     }),
   );
+}
+
+/** Ops this device's apply skipped (§7.1): a property run must end with none. */
+export async function skipsOf(database: Database): Promise<unknown[]> {
+  return database.db.values(sql`SELECT seq, entity, id, error FROM sync_skipped`);
 }
 
 /** This device's member in the book. */

@@ -90,3 +90,60 @@ Changed:
 4. **The Uncategorised category is created locally only when Rule 4 fires, and it is never synced.** On such a device the book's category projection would differ from the others. With seq-ordered apply, Rule 4 is not reachable today.
 5. **A rotation entry only advances the cursor.** Key storage and `needs_invite` are task 5's.
 6. **Review was not requested.** Per the fast-track preference, no separate code review was run on this drop.
+
+---
+
+# Fix round 1
+
+## Findings, as ruled
+
+1. **Apply no longer swallows every error.**
+   - `guarded` now catches only refusals that every receiver would make the same way:
+     - SQLite `SQLITE_CONSTRAINT*`, found by walking the error's `cause` chain;
+     - `PostingError` `TOO_FEW_LINES`, `ZERO_AMOUNT`, `UNBALANCED`, `NOT_INTEGER`;
+     - `LedgerError` `INVALID_DATE`, `INVALID_ORIGINAL`, `INVALID_MCC`, `INVALID_BILL_MONTH`;
+     - `SkipOp`, which the missing-parent skip now throws.
+   - Each skip is rolled back to its savepoint and recorded in the new table `sync_skipped(book_id, seq, entity, id, error, at)`. I added the table to **migration 0056**, since that migration is unreleased, and to `schema-sharing.ts` as `syncSkipped`.
+   - Skips are returned in `PullResult.skipped` / `SyncOnceResult.skipped`.
+   - Every other error is rethrown. The entry's transaction rolls back, the cursor stays before the entry, and `syncOnce` rejects.
+   - Both property tests now assert that `sync_skipped` is empty on every device.
+2. **Revivable ops keep per-field merging.**
+   - `Op.upsert` gained an optional `changed: string[]`. For revivable rows, capture still sends the full fields but names the changed ones in `changed`.
+   - `winnersOf` and the clocks (`recordClocks` in capture, `setClock` in apply) use only the named fields. Inserting an absent row still uses all fields.
+   - A removal entry now goes through `applyRemovalTx`. It sets `removed_at` to the entry's hlc time, which is the same on every device, and stamps the `device.removedAt` clock with the entry's hlc. It applies even when this device wrote the removal.
+   - The harness now judges carriers by `changed ?? keys`.
+3. **The generator now covers what was missing:**
+   - split purchases (2 category lines);
+   - mixed IDR+USD purchases;
+   - purchases paid from 2 own IDR accounts;
+   - a `total` correction that moves the first category line and the last money-side line of the same currency. On the payer's device this is spread over several own entries; elsewhere it lands on the placeholder;
+   - bill edits with a random `payByDay` (window edits) and a random paying account, so edits from another device reassign the payer;
+   - budgets with a random frequency (monthly, weekly or yearly).
+
+   A 30-program sample produced 50 split heads, 25 mixed, 8 with two IDR money-side entries, 11 budget frequencies, 34 windows with a pay-by day, and 20 bills paid through a placeholder.
+
+## TDD
+
+- New `skips.test.ts` (2 tests) and `row-fields.test.ts` (2 tests): RED, 4/4 failed before the fix; GREEN, 4/4 pass after.
+- The capture test for category_need expected the old op shape. It now expects `changed: ['need']`.
+
+## Commands
+
+- `npx vitest run test/sync/skips.test.ts test/sync/row-fields.test.ts`: 4 passed.
+- `npx vitest run test/sync/convergence.property.test.ts test/sync/money-atom.property.test.ts`: 2 passed, 33.6 s total (convergence 200 runs, money-atom 100 runs).
+- `npm test` in packages/db: exit 0. Plain run 1940 passed; capture run 1908 passed.
+- Root `npm test`: core 924, catalog 152, relay 55 and web 1196 pass. db's first root run failed on the capture.test op shape; after that fix, db passes on its own (above).
+- Root `npm run typecheck`: exit 0. `tsc` in packages/db is clean after the last edit.
+
+## Spec
+
+- §0 header: a note on this fix round.
+- §4.2: `sync_skipped`.
+- §6.2: `Op.changed`.
+- §7.1: the Skips paragraph, which replaces the old catch-all savepoint text.
+- §7.2: pseudocode uses `op.changed`, and the Tombstones paragraph covers named fields and a known limit (below).
+- §8.4: a removal stamps `removedAt`'s clock.
+
+## Remaining concern
+
+When a revive inserts a row that is absent here, its unnamed fields take the reviving device's values. Those can be older than a concurrent edit another device made before it saw the delete. The spec now states this limit. The property tests have not hit it.

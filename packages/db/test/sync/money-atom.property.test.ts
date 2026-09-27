@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { checkLedgerIntegrity } from '../../src/index';
-import { Household, memberOf, type Device } from './household';
+import { Household, memberOf, skipsOf, type Device } from './household';
 import { play, programArb } from './programs';
 
 /*
@@ -14,6 +14,7 @@ const RUNS = Number(process.env.MONEY_ATOM_RUNS ?? 100);
 
 async function checkAtoms(d: Device, bookId: string): Promise<void> {
   expect(await checkLedgerIntegrity(d.database, d.ws)).toEqual([]);
+  expect(await skipsOf(d.database)).toEqual([]);
   const baseDrift = await d.database.db.values<[string, number]>(sql`
     SELECT e.transaction_id, sum(e.amount_base_minor) FROM entries e JOIN transactions t ON t.id = e.transaction_id
     WHERE t.status = 'posted' AND t.id IN (SELECT transaction_id FROM book_transactions WHERE book_id = ${bookId})

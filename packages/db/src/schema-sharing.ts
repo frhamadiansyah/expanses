@@ -100,3 +100,13 @@ export const syncTombstones = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.bookId, t.entity, t.id] })],
 );
+
+/** An op apply refused deterministically, recorded so it is never a silent divergence (spec §7.1, task 4 fix round 1). */
+export const syncSkipped = sqliteTable('sync_skipped', {
+  bookId: text('book_id').notNull(),
+  seq: integer('seq').notNull(),
+  entity: text('entity').notNull(),
+  id: text('id').notNull(),
+  error: text('error').notNull(),
+  at: text('at').notNull(),
+});

@@ -171,9 +171,12 @@ export function watchPausedWrites(database: Database): void {
   });
 }
 
+/** The fields an upsert speaks for: those it names as changed, else every field it carries (§7.2). */
+const names = (op: Op): string[] => (op.op === 'upsert' ? (op.changed ?? Object.keys(op.fields)) : []);
+
 /** Whether an op sealed after `mark` carries `field` (an upsert naming it) — or, with no field, is any upsert. */
 function carries(ops: readonly SealedOp[] | undefined, mark: number, field: string | null): boolean {
-  return (ops ?? []).some(({ rowid, op }) => rowid > mark && op.op === 'upsert' && (field === null || field in op.fields));
+  return (ops ?? []).some(({ rowid, op }) => rowid > mark && op.op === 'upsert' && (field === null || names(op).includes(field)));
 }
 
 function deletedAfter(ops: readonly SealedOp[] | undefined, mark: number): boolean {
@@ -243,7 +246,7 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
     const problems: string[] = [];
     for (const column of columns.filter((c) => fieldOf.has(c))) {
       const field = fieldOf.get(column)!;
-      const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && field in op.fields);
+      const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && names(op).includes(field));
       if (!direct.has(column)) {
         // A derived field (a bill's payer): its value is not the column's, so only a change without an op is a miss.
         if (!carrier && (!before || JSON.stringify(before[column]) !== JSON.stringify(now[column]))) problems.push(`${column} changed with no ${entity.entity} op`);
@@ -317,7 +320,7 @@ export async function uncapturedWrites(database: Database, bookId: string): Prom
       const projected = (await projectPurchase(database.db, expected, member![0], { paidBy: lineage[1], paidLabel: lineage[2] })) as unknown as Record<string, unknown>;
       const after = (ops.get(`purchase\u0000${lineageId}`) ?? []).filter(({ rowid }) => rowid > since);
       for (const field of Object.keys(projected)) {
-        const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && field in op.fields);
+        const carrier = [...after].reverse().find(({ op }) => op.op === 'upsert' && names(op).includes(field));
         if (!carrier) continue;
         const said = (carrier.op as { fields: Record<string, unknown> }).fields[field];
         if (JSON.stringify(said) !== JSON.stringify(projected[field])) misses.push(`purchase ${lineageId}: ${field} reads ${JSON.stringify(projected[field])} but the outbox says ${JSON.stringify(said)}`);

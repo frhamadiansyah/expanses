@@ -18,7 +18,18 @@ export interface Sealed {
 
 /** One op inside a change-set (spec §6.2). A `purchase` is never deleted; it is voided by an upsert of `{ void: true }`. */
 export type Op =
-  | { entity: string; id: string; op: 'upsert'; fields: Record<string, unknown> }
+  | {
+      entity: string;
+      id: string;
+      op: 'upsert';
+      fields: Record<string, unknown>;
+      /**
+       * The fields this upsert changed, when `fields` carries more: a row that can be made again after a delete
+       * travels whole so it can always be inserted, but only the fields it names win and take a clock (§7.2, task 4
+       * fix round 1). Absent: every field in `fields` changed.
+       */
+      changed?: string[];
+    }
   | { entity: string; id: string; op: 'delete' };
 
 /** A batch of ops, cut to size by split.ts and sealed into a `LogEntry` of kind `change` (spec §6.2). */
