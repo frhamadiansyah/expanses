@@ -1,5 +1,5 @@
 import { formatMinor, isoDate } from '@expanses/core';
-import { deleteLoan, forgiveRemainder, listDebtProfiles, saveDebtProfile } from '@expanses/db';
+import { deleteLoan, forgiveRemainder, listDebtProfiles, loanEntry, type LoanEntry, saveDebtProfile } from '@expanses/db';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { ArrowDown, ArrowUp, Gift, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -10,6 +10,7 @@ import { InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '.
 import { personCodeChoices } from '../ownables/catalogue-view';
 import { counterpartyLabel, deleteLoanQuestion, historyEntry, loanFigureLabels, personParams, repaymentWord, shortDay } from './lend-borrow-view';
 import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
+import { LentEntrySheet } from './LentEntrySheet';
 import { RepaymentForm } from './RepaymentForm';
 
 /**
@@ -40,6 +41,8 @@ export function LoanPage() {
   const profiles = useDebtProfiles();
   const history = useDebtHistory(accountId);
   const [repaying, setRepaying] = useState(false);
+  // A history line opened to be changed, read back with the figures it was recorded with.
+  const [editing, setEditing] = useState<LoanEntry | null>(null);
   const navigate = useNavigate();
   const [error, setError] = useState<unknown>(null);
 
@@ -103,6 +106,15 @@ export function LoanPage() {
     }
   }
 
+  async function open(transactionId: string) {
+    setError(null);
+    try {
+      setEditing(await loanEntry(database, ws, transactionId));
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   async function forgive() {
     if (!window.confirm(`Forgive what ${person!.personName} still owes? It becomes a gift, and the debt closes.`)) return;
     setError(null);
@@ -157,6 +169,18 @@ export function LoanPage() {
           onDone={() => setRepaying(false)}
         />
       )}
+      {editing?.kind === 'repayment' && (
+        <RepaymentForm
+          debtAccountId={accountId}
+          direction={person.direction}
+          currency={loan.currency}
+          personName={person.personName}
+          balanceMinor={loan.balanceMinor}
+          entry={editing}
+          onDone={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === 'lend' && <LentEntrySheet entry={editing} direction={person.direction} currency={loan.currency} onDone={() => setEditing(null)} />}
 
       <ErrorBox error={error} />
 
@@ -234,7 +258,9 @@ export function LoanPage() {
                   </>
                 }
                 value={<Money minor={row.amountMinor} currency={loan.currency} />}
-                chevron={false}
+                // A forgiven loan's history is closed; every other line opens to be changed.
+                onClick={loan.status === 'forgiven' || row.kind === 'forgive' ? undefined : () => void open(row.transactionId)}
+                chevron={loan.status !== 'forgiven' && row.kind !== 'forgive'}
               />
             );
           })}

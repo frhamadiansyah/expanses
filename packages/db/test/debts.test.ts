@@ -9,6 +9,9 @@ import {
   type Database,
   DebtDbError,
   deleteLoan,
+  deleteLoanEntry,
+  editLoanEntry,
+  loanEntry,
   getDebtProfile,
   listDebtProfiles,
   forgiveRemainder,
@@ -359,6 +362,79 @@ describe('deleting a loan entered by mistake', () => {
 
     await expect(deleteLoan(database, ws, debtAccountIds[0]!)).rejects.toThrow(/split bill/);
     expect(await balanceOf(debtAccountIds[1]!)).toBe(300_000);
+  });
+});
+
+describe('changing one line of a loan', () => {
+  it('reads an entry back with the figures it was recorded with', async () => {
+    const categories = await categoryIdsByKey(database, ws);
+    const fees = categories['miscellaneous.fees_charges']!;
+    const { transactionId, debtAccountId } = await recordLoan(database, ws, {
+      person: { name: 'Andi', direction: 'lent', currency: 'IDR' },
+      occurredOn: '2026-06-23',
+      amountMinor: 5_000_000,
+      moneyAccountId: bca.id,
+      feeMinor: 6_500,
+      feeCategoryId: fees,
+    });
+    const back = await recordRepayment(database, ws, { debtAccountId, occurredOn: '2026-09-01', amountMinor: 500_000, interestMinor: 20_000, moneyAccountId: bca.id });
+
+    await expect(loanEntry(database, ws, transactionId)).resolves.toMatchObject({
+      kind: 'lend', debtAccountId, occurredOn: '2026-06-23', amountMinor: 5_000_000, moneyAccountId: bca.id, feeMinor: 6_500, feeCategoryId: fees,
+    });
+    await expect(loanEntry(database, ws, back.transactionId)).resolves.toMatchObject({
+      kind: 'repayment', amountMinor: 500_000, interestMinor: 20_000, moneyAccountId: bca.id,
+    });
+  });
+
+  it('changes the money lent, and every balance follows', async () => {
+    const { transactionId, debtAccountId } = await lend(5_000_000, '2026-06-23');
+
+    await editLoanEntry(database, ws, transactionId, { occurredOn: '2026-06-24', amountMinor: 4_000_000, moneyAccountId: bca.id });
+
+    expect(await balanceOf(debtAccountId)).toBe(4_000_000);
+    expect(await balanceOf(bca.id)).toBe(46_000_000);
+  });
+
+  it('refuses a loan smaller than what has already come back, and leaves it as it was', async () => {
+    const { transactionId, debtAccountId } = await lend(5_000_000);
+    await recordRepayment(database, ws, { debtAccountId, occurredOn: '2026-10-01', amountMinor: 500_000, moneyAccountId: bca.id });
+
+    await expect(editLoanEntry(database, ws, transactionId, { occurredOn: '2026-09-05', amountMinor: 300_000, moneyAccountId: bca.id })).rejects.toThrow(
+      /500\.000 has already come back, so the loan cannot be less than that/,
+    );
+    expect(await balanceOf(debtAccountId)).toBe(4_500_000);
+  });
+
+  it('changes a collection, and settles the loan when it now covers everything', async () => {
+    const { debtAccountId } = await lend(1_000_000);
+    const { transactionId } = await recordRepayment(database, ws, { debtAccountId, occurredOn: '2026-10-01', amountMinor: 400_000, moneyAccountId: bca.id });
+
+    await editLoanEntry(database, ws, transactionId, { occurredOn: '2026-10-02', amountMinor: 1_000_000, interestMinor: 50_000, moneyAccountId: bca.id });
+
+    expect(await balanceOf(debtAccountId)).toBe(0);
+    await expect(getDebtProfile(database, ws, debtAccountId)).resolves.toMatchObject({ status: 'settled' });
+    // The money came back with its interest on top.
+    expect(await balanceOf(bca.id)).toBe(50_000_000 - 1_000_000 + 1_050_000);
+  });
+
+  it('takes one collection off and reopens a settled loan, leaving the loan itself', async () => {
+    const { debtAccountId } = await lend(1_000_000);
+    const { transactionId } = await recordRepayment(database, ws, { debtAccountId, occurredOn: '2026-10-01', amountMinor: 1_000_000, moneyAccountId: bca.id });
+    await expect(getDebtProfile(database, ws, debtAccountId)).resolves.toMatchObject({ status: 'settled' });
+
+    await deleteLoanEntry(database, ws, transactionId);
+
+    expect(await balanceOf(debtAccountId)).toBe(1_000_000);
+    await expect(getDebtProfile(database, ws, debtAccountId)).resolves.toMatchObject({ status: 'open' });
+  });
+
+  it('never deletes the money lent itself, and keeps a forgiven loan\'s history as it is', async () => {
+    const { transactionId, debtAccountId } = await lend(1_000_000);
+    await expect(deleteLoanEntry(database, ws, transactionId)).rejects.toThrow(/delete it/);
+
+    await forgiveRemainder(database, ws, { debtAccountId, occurredOn: '2026-11-01' });
+    await expect(editLoanEntry(database, ws, transactionId, { occurredOn: '2026-09-05', amountMinor: 2_000_000, moneyAccountId: bca.id })).rejects.toThrow(/forgiven/);
   });
 });
 

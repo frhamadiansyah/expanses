@@ -497,3 +497,41 @@ test('a loan entered by mistake is deleted with everything it moved, and leaves 
   await expect(personRow(page, 'Andi')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Show settled/ })).toHaveCount(0);
 });
+
+test('a history line opens to be changed: the money lent, a collection, or taking a collection off', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await lend(page, 'Andi', '5000000', 'BCA Tahapan (IDR)');
+  await openLoan(page, 'Andi');
+  await page.getByRole('button', { name: 'Record collection' }).click();
+  const collectionSheet = page.getByRole('dialog', { name: 'Collection' });
+  await collectionSheet.getByLabel(/^Came back/).fill('500000');
+  await collectionSheet.getByRole('button', { name: 'Save collection' }).click();
+  const hero = page.getByTestId('loan-hero');
+  await expect(hero).toContainText('4.500.000');
+
+  // The collection, opened filled in and changed.
+  await page.getByRole('button', { name: /^Collection · / }).click();
+  await expect(collectionSheet.getByLabel(/^Came back/)).toHaveValue(/^500000/);
+  await collectionSheet.getByLabel(/^Came back/).fill('700000');
+  await collectionSheet.getByRole('button', { name: 'Save collection' }).click();
+  await expect(hero).toContainText('4.300.000');
+
+  // The money lent cannot go below what has come back; it says so, and nothing changes.
+  await page.getByRole('button', { name: /^Lent · / }).click();
+  const lentSheet = page.getByRole('dialog', { name: 'Lent' });
+  await expect(lentSheet.getByLabel(/^Money lent/)).toHaveValue(/^5000000/);
+  await lentSheet.getByLabel(/^Money lent/).fill('300000');
+  await lentSheet.getByRole('button', { name: 'Save' }).click();
+  await expect(lentSheet.getByText(/700\.000 has already come back, so the loan cannot be less than that/)).toBeVisible();
+  await lentSheet.getByLabel(/^Money lent/).fill('6000000');
+  await lentSheet.getByRole('button', { name: 'Save' }).click();
+  await expect(lentSheet).toHaveCount(0);
+  await expect(hero).toContainText('5.300.000');
+
+  // Taking the collection off: what it paid is owed again, and the loan stays.
+  await page.getByRole('button', { name: /^Collection · / }).click();
+  await collectionSheet.getByRole('button', { name: 'Delete this collection' }).click();
+  await expect(collectionSheet).toHaveCount(0);
+  await expect(hero).toContainText('6.000.000');
+  await expect(page.getByRole('button', { name: /^Collection · / })).toHaveCount(0);
+});
