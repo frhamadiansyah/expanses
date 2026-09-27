@@ -369,14 +369,18 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
   const slot = session.reserveRowSlot();
   const before = await snapshot(tx, books, targets);
   const result = await fn();
-  // §8.5 (fix rounds 2–3): a shared book always keeps an owner. Deleting or demoting the member the authority view has as
-  // the book's only owner is refused here, before anything is emitted, and rolls the write back. The view, not this
-  // device's rows, says who that is.
+  // §8.5 (fix rounds 2–4): a shared book always keeps an owner. Deleting or demoting an owner is refused here, before
+  // anything is emitted, and rolls the write back, when either the authority view has that member as the book's only
+  // owner (the log's say, which a local self-promotion cannot change), or this device's rows would be left with no owner
+  // at all (its own earlier writes still on their way to the log, or one statement over every owner). A write that
+  // would be put back by the log anyway is not worth emitting.
   for (const was of before.values()) {
     if (was.entity.entity !== 'member' || was.values.role !== 'owner') continue;
     const [now] = await tx.values<[string]>(sql`SELECT role FROM book_members WHERE book_id = ${was.bookId} AND member_id = ${was.id}`);
     if (now?.[0] === 'owner') continue;
     if (await viewIsLastOwner(tx, was.bookId, was.id)) throw new LastOwnerError();
+    const [owners] = await tx.values<[number]>(sql`SELECT count(*) FROM book_members WHERE book_id = ${was.bookId} AND role = 'owner'`);
+    if (Number(owners?.[0] ?? 0) === 0) throw new LastOwnerError();
   }
   const after = await snapshot(tx, books, targets);
   for (const [key, was] of before) {

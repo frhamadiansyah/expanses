@@ -348,3 +348,60 @@ describe("this device's own member edits that the log refuses are put back (fix 
     await expect(writeMember(dewi, bookId, fandri.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${fandri.memberId}'`)).rejects.toThrow(/last owner/);
   });
 });
+
+/* ------------------------------------------------------------------ fix round 4 */
+
+/** A write over every member row of the book at once (one statement, no single id). */
+async function writeMembers(d: Device, bookId: string, statement: string) {
+  const { withCapture } = await import('../../src/sync/capture');
+  await d.database.transaction((tx) => withCapture(tx, { entity: 'member', bookId }, async () => void (await tx.run(sql.raw(statement)))));
+}
+
+const memberClocks = async (d: Device, bookId: string, memberId: string) =>
+  d.database.db.values(sql`SELECT field FROM sync_field_clocks WHERE book_id = ${bookId} AND entity = 'member' AND id = ${memberId}`);
+const memberTombstones = async (d: Device, bookId: string, memberId: string) =>
+  d.database.db.values(sql`SELECT 1 FROM sync_tombstones WHERE book_id = ${bookId} AND entity = 'member' AND id = ${memberId}`);
+
+describe('a member row the log never took in leaves the device that made it (C6, fix round 4)', () => {
+  it('a plain member inserting a new member row: peers refuse it, and it goes from her own device too, clocks and all', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await writeMember(dewi, bookId, 'member-Zed', `INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES ('${bookId}', 'member-Zed', 'Zed', 'member', '2026-01-01')`);
+    expect(await roleOf(dewi, bookId, 'member-Zed')).toBe('member');
+    await home.settle();
+    await home.settle();
+    const members = await expectSameMembers([fandri, dewi, budi], bookId);
+    expect(members['member-Zed']).toBeUndefined();
+    expect(Object.keys(members)).toHaveLength(3);
+    expect((await skips(dewi, bookId)).map(([e, id]) => [e, id])).toEqual([['member', 'member-Zed']]);
+    expect(await memberClocks(dewi, bookId, 'member-Zed')).toEqual([]);
+    expect(await memberTombstones(dewi, bookId, 'member-Zed')).toEqual([]);
+  });
+});
+
+describe('the last-owner guard also counts this device’s own pending writes (C4, C5, fix round 4)', () => {
+  it('C4: an owner demoting the co-owner and then herself before syncing is refused on the second write', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await promote(home, fandri, budi, bookId);
+    await tick();
+    await writeMember(fandri, bookId, budi.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${budi.memberId}'`);
+    await expect(writeMember(fandri, bookId, fandri.memberId, `UPDATE book_members SET role = 'member' WHERE member_id = '${fandri.memberId}'`)).rejects.toThrow(/last owner/);
+    expect(await roleOf(fandri, bookId, fandri.memberId)).toBe('owner');
+    await home.settle();
+    await home.settle();
+    const members = await expectSameMembers([fandri, dewi, budi], bookId);
+    expect(members).toEqual({ [fandri.memberId]: 'owner', [dewi.memberId]: 'member', [budi.memberId]: 'member' });
+  });
+
+  it('C5: one statement demoting both owners is refused, and nothing of it is emitted', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await promote(home, fandri, budi, bookId);
+    await tick();
+    await expect(writeMembers(fandri, bookId, `UPDATE book_members SET role = 'member'`)).rejects.toThrow(/last owner/);
+    expect(await roleOf(fandri, bookId, fandri.memberId)).toBe('owner');
+    expect(await roleOf(fandri, bookId, budi.memberId)).toBe('owner');
+    await home.settle();
+    await home.settle();
+    const members = await expectSameMembers([fandri, dewi, budi], bookId);
+    expect(members).toEqual({ [fandri.memberId]: 'owner', [dewi.memberId]: 'member', [budi.memberId]: 'owner' });
+  });
+});

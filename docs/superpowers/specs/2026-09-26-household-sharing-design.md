@@ -909,12 +909,17 @@ non-owner's op merely carries (a whole revivable row) loses its clock and can on
 view has as deleted), is accepted only from an owner author; a non-owner's edit that crossed a delete stays dead — it
 merges into what the tombstone kept and moves no existence clock, here and on the device that made it, so every device
 ends alike. The **last owner** is never deleted or made a member: `withCapture` refuses the local write
-(`LastOwnerError`, deciding who the last owner is from the authority view, not this device's rows; fix round 3) and
-apply refuses it as a recorded skip. **This device's own refused edits are put back (fix round 3):** when the loop
-takes in one of this device's own entries, every member row that entry touched is set to what the view decided — its
-role, and its existence with the values it last had — with the role clock and the existence clock set to the view's,
-so a refused edit, or one made from a view that lagged (a rename whose existence clock crossed an owner's delete), no
-longer leaves this device's `book_members` different from its peers'. Nothing is re-emitted. All of it is decided by the authority view (§7.1), never by
+(`LastOwnerError`) when either the authority view has that member as the book's only owner (the log's say, which a
+local self-promotion cannot change; fix round 3) or this device's `book_members` would be left with no owner at all
+(an owner's own earlier demotion still on its way to the log, or one statement demoting every owner; fix round 4), and
+rolls it back before anything is emitted; apply refuses it as a recorded skip. **This device's own refused edits are
+put back (fix rounds 3–4):** when the loop takes in one of this device's own entries, every member row that entry
+touched is set to what the view decided — its role, and its existence with the values it last had — with the role
+clock and the existence clock set to the view's, so a refused edit, or one made from a view that lagged (a rename
+whose existence clock crossed an owner's delete), no longer leaves this device's `book_members` different from its
+peers'. A member row the view has never known — one this device made and the log refused (only an owner makes a
+member) — is deleted here outright, with its field clocks, existence clock and tombstone, as if never written (fix
+round 4). Nothing is re-emitted. All of it is decided by the authority view (§7.1), never by
 this device's own rows. **The relay's owners follow the view:** after a pull changes the set of owner devices in the
 view — a promotion, a demotion, a linked owner device — an owner device calls `setOwners` with the new set (a device the
 relay does not yet count as an owner gets `403` and leaves it to one that is).
@@ -1126,6 +1131,10 @@ Mutate-twice review on every step.
   restored phone rejoining (§8.7), whose view is rebuilt from seq 0. Fix sketch: the owner-signed invite terms carry an
   **anchor** — the seq and a running hash of the entry signing bytes up to it — that the joiner checks as it pulls; later,
   devices compare running hashes to detect a forked log.
+- **The put-back's transient window (known gap, fix round 4).** Putting this device's member rows back to the view
+  (§8.5) can briefly show a row the user just deleted (or a role they just changed) when an earlier own entry is pulled
+  back before the later one: the later entry restores it when it arrives, and a member edit made in that window is put
+  back the same way. Seconds on a synced device; accepted.
 - ~~The keychain plugin for `NativeKeyStore` (step 2).~~ Settled in task 5: `@aparajita/capacitor-secure-storage` 8.x —
   Capacitor 8, iOS keychain class `afterFirstUnlockThisDeviceOnly`, iCloud sync switchable off (§5.2). Linked into the
   iOS project by `cap sync ios` (fix round 1: `CapApp-SPM/Package.swift`); not yet built in Xcode or run on a device.

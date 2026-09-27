@@ -863,10 +863,19 @@ async function reconcileMembersTx(tx: Tx, ctx: BookContext, memberIds: ReadonlyS
   const entity = entityOf('member') as RowEntity;
   for (const memberId of memberIds) {
     const view = await viewMember(tx, ctx.bookId, memberId);
-    if (!view) continue;
     const key = parseOpId(entity, memberId);
     const where = keyWhere(entity, key, ctx);
     const exists = await rowExists(tx, entity, where);
+    if (!view) {
+      // The log has never known this member: this device made the row and its introduction was refused (only an owner
+      // makes a member), so no peer has it and nothing will ever take it in. It leaves here too, with its clocks and
+      // tombstone, as if it had never been written (fix round 4).
+      if (!exists) continue;
+      await deleteRow(tx, entity, where, key);
+      await tx.run(sql`DELETE FROM sync_field_clocks WHERE book_id = ${ctx.bookId} AND entity = 'member' AND id = ${memberId}`);
+      await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${ctx.bookId} AND entity = 'member' AND id = ${memberId}`);
+      continue;
+    }
     if (view.deleted) {
       if (!exists) continue;
       await setTombstone(tx, ctx, 'member', memberId, view.rowHlc, await rowValuesOf(tx, entity, where));
@@ -882,7 +891,12 @@ async function reconcileMembersTx(tx: Tx, ctx: BookContext, memberIds: ReadonlyS
       const values: Record<string, unknown> = {};
       for (const field of Object.keys(entity.fields)) values[field] = field in kept ? kept[field] : carried[field];
       values.role = view.role;
-      if (typeof values.name !== 'string' || typeof values.joinedAt !== 'string') continue; // nothing here to rebuild it from
+      if (typeof values.name !== 'string' || typeof values.joinedAt !== 'string') {
+        // Nothing here to rebuild it from: no tombstone kept its values and the op carried none. Left absent; the next
+        // entry that names it whole brings it back.
+        console.warn(`sync: member ${memberId} of book ${ctx.bookId} is alive in the log but this device has nothing to rebuild it from; left absent`);
+        continue;
+      }
       await tx.run(sql`DELETE FROM sync_tombstones WHERE book_id = ${ctx.bookId} AND entity = 'member' AND id = ${memberId}`);
       await insertRow(tx, ctx, entity, key, values, where);
       await setClock(tx, ctx, 'member', memberId, ROW_CLOCK, view.rowHlc);
