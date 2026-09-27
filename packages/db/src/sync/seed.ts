@@ -10,7 +10,7 @@ import type { DevicePublic, Op } from './types';
  * change-sets with fresh hlcs and their field clocks written. Step 4 (draining, and the invite after it) is the caller's.
  */
 
-export type SharingErrorCode = 'CURRENCY' | 'ALREADY_SHARED' | 'NOT_FOUND' | 'BAD_CODE' | 'INVITE_CLAIMED' | 'INVITE_EXPIRED' | 'INVITE_MISMATCH' | 'NO_KEYS';
+export type SharingErrorCode = 'CURRENCY' | 'ALREADY_SHARED' | 'NOT_FOUND' | 'BAD_CODE' | 'INVITE_CLAIMED' | 'INVITE_EXPIRED' | 'INVITE_MISMATCH' | 'NO_KEYS' | 'NOT_OWNER';
 
 export class SharingError extends Error {
   constructor(

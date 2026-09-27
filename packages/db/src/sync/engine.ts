@@ -192,8 +192,12 @@ export class SyncEngine {
     const [book] = await this.database.db.values<[string, string]>(sql`SELECT name, base_currency FROM books WHERE id = ${bookId}`);
     if (!book) throw new SharingError('NOT_FOUND', 'That workspace is not here');
     // §6.5 step 4: the outbox is drained before any invite exists, so the creator's seed is always the log's first
-    // entry — the one introduction that needs no invite (§8.2) — and every joiner finds the book already there.
-    await this.drain(bookId);
+    // entry — the one introduction that needs no invite (§8.2) — and every joiner finds the book already there. A full
+    // sync, not a drain alone: the pull brings the authority view up to the log, which the owner check below reads.
+    await this.syncOnce(bookId);
+    // Invites are an owner's (§8.1, §8.3; task 7 fix round 1): the relay would answer 403, so refuse first, by the view.
+    const owners = await this.database.transaction((tx) => viewOwnerDevices(tx, bookId));
+    if (!owners.includes(this.deviceId)) throw new SharingError('NOT_OWNER', 'Only an owner can invite someone or link a device');
     const inviteId = uuidv7();
     const secret = newInviteSecret();
     const key = await inviteKeyOf(secret, inviteId);

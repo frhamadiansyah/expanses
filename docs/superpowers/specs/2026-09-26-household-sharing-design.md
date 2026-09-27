@@ -857,6 +857,13 @@ it and pulls from 0.
 **Link a device**, on your own member row: §8.1 with `sameMember: true` and your `memberId`. If the inviter is an
 owner, the inviter follows the claim with `setOwners` including the new device.
 
+**Owners only (task 7 fix round 1, ruled).** Every invite is an owner's, Link a device included: the relay keeps
+`putInvite` to owner devices (§8.5), so a member who replaces or adds a phone asks an owner, who links it with
+`createInvite(…, { sameMember: true, memberId })`. `createInvite` and `linkDevice` sync first — the pull brings the
+authority view up to the log — then refuse a device the view does not have as an owner's with `SharingError('NOT_OWNER')`,
+before anything reaches the relay. The screens offer Link a device and Invite someone to owners only; a member sees
+"Ask an owner to link a new device".
+
 **As built (task 5).** `linkDevice`. The inviter learns of the claim when the new device's introduction arrives: a sync
 that pins a device of an owner member, on an owner's device, calls `setOwners` with every current device of every owner
 member.
