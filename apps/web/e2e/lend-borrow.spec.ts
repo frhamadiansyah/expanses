@@ -360,7 +360,7 @@ test('a loan is changed on its own page, and a person’s tax ID on theirs', asy
   // Written once at lending with no reason; added afterwards on the loan's page, where it used to be impossible.
   await openLoan(page, 'Andi');
   await expect(page.getByRole('heading', { name: 'No reason noted' })).toBeVisible();
-  const reason = page.getByRole('textbox', { name: 'What it is for' });
+  const reason = page.getByRole('textbox', { name: 'Loan', exact: true });
   await reason.fill('Laptop for college');
   await reason.blur();
   await expect(page.getByRole('heading', { name: 'Laptop for college' })).toBeVisible();

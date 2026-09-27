@@ -153,7 +153,7 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
   };
 }
 
-/** One of a person's open loans, offered as a chip under What it is for. */
+/** One of a person's open loans, offered as a chip under Loan. */
 export interface LoanChoice {
   accountId: string;
   /** What the loan is for, as written; empty when none was noted. */

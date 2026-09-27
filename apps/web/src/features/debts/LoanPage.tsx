@@ -17,7 +17,7 @@ const HISTORY_TITLES: Record<string, string> = { lend: 'Lent', repayment: 'Repay
  * One loan, on a page of its own: what is left of it, the two things to do about it, what it is and what happened.
  *
  * Everything that used to crowd the person's card under every loan — Record repayment, Forgive rest, the boxed
- * tax-code picker, a Show history link — lives here, and the card is a list of rows again. What it is for, the due
+ * tax-code picker, a Show history link — lives here, and the card is a list of rows again. What it is for (Loan), the due
  * date and the sub-category were written once when the money moved and could never be changed; they are rows that
  * save as they are changed.
  */
@@ -157,7 +157,7 @@ export function LoanPage() {
         <InsetGroup header="Details">
           <TextRow
             key={`reason-${profile.reason ?? ''}`}
-            label="What it is for"
+            label="Loan"
             defaultValue={profile.reason ?? ''}
             placeholder="Purpose"
             onBlur={(e) => {

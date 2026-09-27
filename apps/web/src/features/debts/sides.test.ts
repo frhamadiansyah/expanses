@@ -160,7 +160,7 @@ describe('whether the details open by themselves', () => {
   const blank = debtDraftFor('lent', '2026-09-27', 'Andi');
   it('stay folded over nothing, and open over anything filled in', () => {
     expect(debtDetailsFilled(blank)).toBe(false);
-    // What it is for and the sub category sit in the main box, so filling them opens nothing.
+    // Loan and Type sit in the main box, so filling them opens nothing.
     expect(debtDetailsFilled({ ...blank, reason: 'Laptop' })).toBe(false);
     expect(debtDetailsFilled({ ...blank, dueOn: '2026-12-01' })).toBe(true);
     expect(debtDetailsFilled({ ...blank, personIdNumber: '123' })).toBe(true);
