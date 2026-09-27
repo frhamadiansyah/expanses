@@ -235,6 +235,47 @@ describe('the figures a receipt has to get right', () => {
  * On the screen that was Rp 100.000 in 3xl type with Rp 400.000 directly beneath it and not a word between
  * them, which reads as a mistake rather than as two true facts.
  */
+describe('a purchase in a shared workspace (household sharing spec §11)', () => {
+  /** Paid by the other member: posted here against their placeholder, which no receipt names. */
+  const theirs = (): TransactionView =>
+    ({
+      id: 'tx-2',
+      occurredOn: '2026-09-18',
+      description: 'Groceries',
+      status: 'posted',
+      cardId: null,
+      entries: [
+        { accountId: 'placeholder-dewi', accountKind: 'asset', amountMinor: -250_000, amountBaseMinor: -250_000, currency: 'IDR' },
+        { accountId: 'cat-restaurants', accountKind: 'expense', amountMinor: 250_000, amountBaseMinor: 250_000, currency: 'IDR' },
+      ],
+    }) as TransactionView;
+
+  it('says what the payer paid with, as their device named it, and who paid', () => {
+    const lines = receiptLines({
+      tx: theirs(),
+      accounts,
+      cards: [],
+      currency: 'IDR',
+      points: null,
+      owed: [],
+      payer: { paidBy: 'm-dewi', paidLabel: 'Mandiri Visa ···· 9001', payerName: 'Dewi', mine: false },
+    });
+    expect(said(lines)).toEqual([
+      ['Paid with', 'Mandiri Visa ···· 9001'],
+      ['Paid by', 'Dewi'],
+      ['Total', 'Rp 250.000'],
+    ]);
+  });
+
+  it('says You on your own purchase, with the label your device gave it', () => {
+    const lines = receiptLines({ tx: dinner(), accounts, cards: [card], currency: 'IDR', points: null, owed: [], payer: { paidBy: 'm-me', paidLabel: 'BCA KrisFlyer ···· 1467', payerName: 'Fandri', mine: true } });
+    expect(said(lines).slice(0, 2)).toEqual([
+      ['Paid with', 'BCA KrisFlyer ···· 1467'],
+      ['Paid by', 'You'],
+    ]);
+  });
+});
+
 describe('the word between a share and a bill', () => {
   it('says which figure the big one is, when the bill and the share of it differ', () => {
     // Exactly what `ReceiptPage` passes: `classify(tx).amountMinor`, the expense side of the split.

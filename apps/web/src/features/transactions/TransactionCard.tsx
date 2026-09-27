@@ -14,7 +14,7 @@ import { type CSSProperties, type FormEvent, useEffect, useId, useMemo, useRef, 
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccountsFor, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Card, cx, ErrorBox, InputRow } from '../../ui';
 import { PushedTitle, SegmentedControl } from '../../ui/native';
 import { useCards } from '../cards/card-queries';
@@ -108,7 +108,8 @@ export function TransactionCard(props: {
   title?: string;
   onBack?: () => void;
 }) {
-  const accounts = useAccounts();
+  // An edit can read a placeholder the purchase is already posted against: one another member paid for (§4.4).
+  const accounts = useAccountsFor(props.initial);
   // The pictures this transaction already has, so reopening one that has a receipt does not say "Photos: None".
   // The very same reader the phone's edit sheet uses, and `ready` is its own answer about when it may be read.
   const photos = useTransactionPhotoIds(props.initial?.id ?? null);

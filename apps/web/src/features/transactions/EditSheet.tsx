@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../../app/context';
 import { Sheet } from '../../app/Sheet';
 import { canPayWith, canReceiveInto, canTransferWith } from '../../lib/account-types';
-import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
+import { moneyHolders, useAccountsFor, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { Button, ErrorBox, InputRow, RowGroup } from '../../ui';
 import { useCards } from '../cards/card-queries';
 import { CategoryIcon } from '../categories/CategoryIcon';
@@ -45,7 +45,8 @@ import { ratesForSave } from './tx-save';
  * `MoreDetails` owns §4's extras — the very same component, with the very same props, the card opens.
  */
 export function EditSheet({ tx, onClose }: { tx: TransactionView; onClose: () => void }) {
-  const accounts = useAccounts();
+  // A purchase another member paid for is posted here against their placeholder: the sheet reads it, never offers it.
+  const accounts = useAccountsFor(tx);
   /*
    * The pictures this transaction already has — `useTransactionPhotoIds`, the very same reader the card uses,
    * rather than nothing at all. Without them the Photos row of a transaction that has one says **None**, which
