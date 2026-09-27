@@ -1,169 +1,67 @@
-import { type CategoryNeed, mccName, needOf } from '@expanses/core';
-import {
-  type AccountRow,
-  addSetCategory,
-  archiveAccount,
-  clearCategoryMcc,
-  clearCategoryNeed,
-  createAccount,
-  createCategorySet,
-  deleteCategorySet,
-  listCategoryMccs,
-  renameAccount,
-  renameCategorySet,
-  saveCategoryMcc,
-  saveCategoryNeed,
-} from '@expanses/db';
-import { useQuery } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { categoryPath } from '@expanses/core';
+import type { AccountRow } from '@expanses/db';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { Plus, Search } from 'lucide-react';
 import { useState } from 'react';
-import { useApp } from '../../app/context';
-import { isCategoryOf, useAccounts, useInOpenBook, useInvalidateAll } from '../../lib/queries';
-import { Empty, ErrorBox } from '../../ui';
-import { type CornerAction, ActionLine, InsetGroup, InsetRow, LargeTitle, LineAction, Panel, PanelHeader, SCREEN, SegmentedControl } from '../../ui/native';
-import { categoryMcc } from './category-mcc';
-import { useCategoryNeeds } from './need-queries';
+import { useAccounts, useInOpenBook } from '../../lib/queries';
+import { cx, ErrorBox } from '../../ui';
+import { type CornerAction, InsetGroup, InsetRow, LargeTitle, SCREEN, SegmentedControl } from '../../ui/native';
+import { pickerGroups } from '../transactions/CategoryPicker';
+import { CategoryIcon } from './CategoryIcon';
 import { useCategorySetMembership, useCategorySets } from './set-queries';
+import { useCategoryActions } from './use-category-actions';
 
-/** What card code a category carries, and where it came from. The quiet ink the kit gives a subtitle. */
-function MccNote({ mcc, source }: { mcc: string | null; source?: string | null }) {
+/**
+ * One line of the tree, drawn as the picker draws it — icon, name, and a chevron, because the line is the way to
+ * the category's own page. Nothing else rides on it: renaming, marking and archiving live on that page.
+ */
+function CategoryLine({ category, accounts, child }: { category: AccountRow; accounts: AccountRow[]; child: boolean }) {
   return (
-    <span className="tabular shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]" title={mcc ? (mccName(mcc) ?? undefined) : undefined}>
-      {mcc ? `MCC ${mcc}${source === 'yours' ? ' (yours)' : source === 'parent' ? ' (from parent)' : ''}` : 'No card MCC'}
-    </span>
+    <Link
+      to="/categories/$categoryId"
+      params={{ categoryId: category.id }}
+      title={categoryPath(accounts, category.id)}
+      className={cx(
+        'ph-focus-inset relative flex w-full items-center gap-3 text-left active:bg-[var(--ph-fill)]',
+        child
+          ? 'pl-[34px] before:absolute before:top-0 before:bottom-1/2 before:left-5 before:w-[10px] before:rounded-bl-lg before:border-b-[1.5px] before:border-l-[1.5px] before:border-[var(--ph-hair)]'
+          : 'pl-[14px]',
+      )}
+    >
+      <CategoryIcon categoryId={category.id} accounts={accounts} size={child ? 'sm' : 'md'} />
+      <span className="ph-row-body flex min-h-[46px] min-w-0 flex-1 items-center gap-2 pr-[14px]">
+        <span className={cx('min-w-0 flex-1 truncate text-[15px] text-[var(--ph-ink)]', !child && 'font-semibold')}>{category.name}</span>
+        <span aria-hidden className="shrink-0 text-[17px] leading-none text-[var(--ph-chevron)]">
+          {'›'}
+        </span>
+      </span>
+    </Link>
   );
 }
 
-/** Essential or lifestyle, and where the answer came from. Quiet ink, like the MCC beside it. */
-function NeedNote({ name, need, source }: { name: string; need: CategoryNeed; source: 'yours' | 'parent' | null }) {
-  return (
-    <span data-testid={`need-${name}`} className="shrink-0 text-[12.5px] leading-[20px] text-[var(--ph-ink-3)]">
-      {need === 'lifestyle' ? 'Lifestyle' : 'Essential'}
-      {source === 'parent' ? ' (from parent)' : ''}
-    </span>
-  );
-}
-
+/**
+ * The Categories list: the same tree the category picker draws, one card per top-level category, every line a link
+ * to that category's page. A search pill rides the foot of the screen, above the tab bar, and narrows the tree the
+ * way the picker's does — by `pickerGroups`, so the two can never disagree about what a category list holds.
+ */
 export function CategoriesPage() {
-  const { database, ws } = useApp();
-  const invalidate = useInvalidateAll();
-  const accounts = useAccounts();
-  const [kind, setKind] = useState<'expense' | 'income'>('expense');
-  const [error, setError] = useState<unknown>(null);
-
+  const { kind = 'expense' } = useSearch({ from: '/categories' });
+  const navigate = useNavigate();
+  const accounts = useAccounts().data ?? [];
   const membership = useCategorySetMembership().data ?? {};
   const inOpenBook = useInOpenBook();
-  // The monthly tree only, and only the open book's: a set's categories are managed on the event that draws on them.
-  const categories = (accounts.data ?? []).filter(isCategoryOf(kind)).filter((account) => membership[account.id] === undefined && inOpenBook(account));
   const sets = useCategorySets().data ?? [];
-  const needs = useCategoryNeeds();
-  const overrides = useQuery({ queryKey: ['category-mccs', ws.workspaceId], queryFn: () => listCategoryMccs(database, ws) });
-  const allCategories = (accounts.data ?? []).filter((a) => a.subtype === 'category');
-  const roots = categories.filter((c) => c.parentId === null);
-  const childrenOf = (id: string) => categories.filter((c) => c.parentId === id);
-
-  async function run(action: () => Promise<unknown>) {
-    setError(null);
-    try {
-      await action();
-      await invalidate();
-    } catch (e) {
-      setError(e);
-    }
-  }
-  const add = (parent: AccountRow | null) => {
-    const name = window.prompt(parent ? `New subcategory under ${parent.name}` : `New ${kind} category`);
-    if (name?.trim()) void run(() => createAccount(database, ws, { name, kind, subtype: 'category', currency: null, parentId: parent?.id ?? null }));
-  };
-  const rename = (c: AccountRow) => {
-    const name = window.prompt('Rename category', c.name);
-    if (name?.trim() && name !== c.name) void run(() => renameAccount(database, ws, c.id, name));
-  };
-  const changeMcc = (c: AccountRow, current: string | null) => {
-    const mcc = window.prompt(`Card MCC for ${c.name} (four digits). Purchases in this category use it when no merchant MCC is known.`, current ?? '');
-    if (mcc?.trim() && mcc.trim() !== current) void run(() => saveCategoryMcc(database, ws, c.id, mcc.trim()));
-  };
-  const archive = (c: AccountRow) => {
-    if (window.confirm(`Archive ${c.name}? Past transactions keep it.`)) void run(() => archiveAccount(database, ws, c.id));
-  };
-
-  const addSet = () => {
-    const name = window.prompt('New set of categories, for events that spend on the same things every time');
-    if (name?.trim()) void run(() => createCategorySet(database, ws, name));
-  };
-  const renameSet = (id: string, current: string) => {
-    const name = window.prompt('Rename set', current);
-    if (name?.trim() && name !== current) void run(() => renameCategorySet(database, ws, id, name));
-  };
-  const removeSet = (id: string, name: string) => {
-    if (window.confirm(`Remove the ${name} set? Its categories and what was spent on them stay.`)) void run(() => deleteCategorySet(database, ws, id));
-  };
-  const addToSet = (id: string, name: string) => {
-    const category = window.prompt(`New category in ${name}`);
-    if (category?.trim()) void run(() => addSetCategory(database, ws, id, category));
-  };
-
-  const Row = ({ c, depth, first }: { c: AccountRow; depth: number; first: boolean }) => {
-    const card = kind === 'expense' ? categoryMcc(c, allCategories, overrides.data ?? {}) : null;
-    const need = kind === 'expense' ? needOf(c.id, allCategories, needs.data ?? {}) : null;
-    const other: CategoryNeed | null = need ? (need.need === 'lifestyle' ? 'essential' : 'lifestyle') : null;
-    return (
-      <li>
-        <ActionLine
-          name={c.name}
-          depth={depth}
-          separator={!first}
-          meta={
-            <>
-              {card && <MccNote mcc={card.mcc} source={card.source} />}
-              {need && <NeedNote name={c.name} need={need.need} source={need.source} />}
-            </>
-          }
-        >
-          {card && (
-            <>
-              <LineAction label={`Card MCC for ${c.name}`} onClick={() => changeMcc(c, card.mcc)}>
-                MCC
-              </LineAction>
-              {card.source === 'yours' && (
-                <LineAction label={`Reset card MCC for ${c.name}`} onClick={() => void run(() => clearCategoryMcc(database, ws, c.id))}>
-                  Reset
-                </LineAction>
-              )}
-            </>
-          )}
-          {need && other && (
-            <LineAction label={`Mark ${c.name} ${other}`} onClick={() => void run(() => saveCategoryNeed(database, ws, c.id, other))}>
-              {other === 'lifestyle' ? 'Lifestyle' : 'Essential'}
-            </LineAction>
-          )}
-          {need?.source === 'yours' && (
-            <LineAction label={`Clear the mark on ${c.name}`} onClick={() => void run(() => clearCategoryNeed(database, ws, c.id))}>
-              Clear mark
-            </LineAction>
-          )}
-          {depth === 0 && <LineAction onClick={() => add(c)}>+ Sub</LineAction>}
-          <LineAction onClick={() => rename(c)}>Rename</LineAction>
-          <LineAction onClick={() => archive(c)}>Archive</LineAction>
-        </ActionLine>
-        {depth === 0 && childrenOf(c.id).length > 0 && (
-          <ul>
-            {childrenOf(c.id).map((child) => (
-              <Row key={child.id} c={child} depth={1} first={false} />
-            ))}
-          </ul>
-        )}
-      </li>
-    );
-  };
+  const actions = useCategoryActions();
+  const [search, setSearch] = useState('');
+  // The monthly tree only, and only the open book's: a set's categories are managed on the sets page.
+  const groups = pickerGroups(accounts, kind, membership, inOpenBook, search);
 
   /* The primary action is a corner glyph at every width, not a dark rectangle beside the title. */
-  const actions: CornerAction[] = [{ key: 'add', label: 'Add category', glyph: <Plus size={22} aria-hidden />, run: () => add(null) }];
+  const corner: CornerAction[] = [{ key: 'add', label: 'Add category', glyph: <Plus size={22} aria-hidden />, run: () => actions.add(kind, null) }];
 
   return (
     <div className={SCREEN}>
-      <LargeTitle title="Categories" actions={actions} />
-      {/* Two tabs that could never wrap, in the one control that replaces every underline tab row in the app. */}
+      <LargeTitle title="Categories" actions={corner} />
       <SegmentedControl
         className="mb-[18px] md:max-w-xs"
         label="Which categories"
@@ -172,93 +70,50 @@ export function CategoriesPage() {
           { key: 'income', label: 'Income' },
         ]}
         value={kind}
-        onChange={(key) => setKind(key as 'expense' | 'income')}
+        onChange={(key) => void navigate({ to: '/categories', search: key === 'income' ? { kind: 'income' } : {}, replace: true })}
       />
-      <ErrorBox error={error} />
+      <ErrorBox error={actions.error} />
 
-      <Panel
-        wide
-        pad={false}
-        header="Every category"
-        footer={
-          kind === 'expense'
-            ? 'Essential or lifestyle decides what an emergency fund covers and how the Budget splits what you spent. A category with no mark follows its parent, and counts as essential at the top.'
-            : undefined
-        }
-      >
-        <ul>
-          {roots.map((c, index) => (
-            <Row key={c.id} c={c} depth={0} first={index === 0} />
-          ))}
-        </ul>
-      </Panel>
+      <div className="flex w-full flex-col gap-[10px] md:max-w-2xl" data-testid="category-tree">
+        {groups.map((group) => (
+          <div
+            key={group.root.id}
+            className="overflow-hidden rounded-[18px] bg-[var(--ph-surface)] py-1 [&>*+*>.ph-row-body]:border-t-[0.5px] [&>*+*>.ph-row-body]:border-[var(--ph-hair)]"
+          >
+            <CategoryLine category={group.root} accounts={accounts} child={false} />
+            {group.children.map((child) => (
+              <CategoryLine key={child.id} category={child} accounts={accounts} child />
+            ))}
+          </div>
+        ))}
+        {groups.length === 0 && (
+          <p className="px-1 py-3 text-[15px] text-[var(--ph-ink-3)]">
+            {search.trim() ? 'Nothing here by that name.' : `No ${kind} categories in this workspace yet.`}
+          </p>
+        )}
+      </div>
 
       {kind === 'expense' && (
-        <section className="w-full">
-          <PanelHeader title="Sets" />
-          <p className="px-[4px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">
-            Categories an event draws on, kept out of the list above. A set is named once and used by any number of events.
-          </p>
-          <div data-testid="category-sets">
-            {/* One action, so it is the kit's row: the line itself is the button, with nothing else inside it. */}
-            <InsetGroup wide>
-              <InsetRow title="Add a set" onClick={addSet} />
-            </InsetGroup>
-
-            {sets.length === 0 && <Empty>No sets yet.</Empty>}
-
-            {sets.map((set) => {
-              const inSet = (accounts.data ?? []).filter((account) => membership[account.id] === set.id && account.archivedAt === null);
-              return (
-                <div key={set.id} data-testid={`set-${set.name}`}>
-                  <Panel wide pad={false}>
-                    <ActionLine name={set.name} separator={false}>
-                      <LineAction label={`Add a category to ${set.name}`} onClick={() => addToSet(set.id, set.name)}>
-                        + Category
-                      </LineAction>
-                      <LineAction label={`Rename ${set.name}`} onClick={() => renameSet(set.id, set.name)}>
-                        Rename
-                      </LineAction>
-                      <LineAction label={`Remove ${set.name}`} onClick={() => removeSet(set.id, set.name)}>
-                        Remove
-                      </LineAction>
-                    </ActionLine>
-                    <ul>
-                      {inSet.map((category) => {
-                        // A set category has no key and no parent, so an MCC here is always one you set.
-                        const card = categoryMcc(category, allCategories, overrides.data ?? {});
-                        return (
-                          <li key={category.id}>
-                            <ActionLine name={category.name} depth={1} separator meta={<MccNote mcc={card.mcc} source="yours" />}>
-                              <LineAction label={`Card MCC for ${category.name}`} onClick={() => changeMcc(category, card.mcc)}>
-                                MCC
-                              </LineAction>
-                              {card.mcc !== null && (
-                                <LineAction
-                                  label={`Reset card MCC for ${category.name}`}
-                                  onClick={() => void run(() => clearCategoryMcc(database, ws, category.id))}
-                                >
-                                  Reset
-                                </LineAction>
-                              )}
-                              <LineAction label={`Rename ${category.name}`} onClick={() => rename(category)}>
-                                Rename
-                              </LineAction>
-                              <LineAction label={`Archive ${category.name}`} onClick={() => archive(category)}>
-                                Archive
-                              </LineAction>
-                            </ActionLine>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </Panel>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+        <InsetGroup className="mt-[18px]" footer="Categories an event draws on, kept out of the list above.">
+          <InsetRow title="Sets" value={sets.length} to="/categories/sets" />
+        </InsetGroup>
       )}
+
+      {/* The picker's floating search pill, riding the foot of the screen just above the phone's tab bar. */}
+      <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-10 w-full px-1 pt-2 pb-1 md:bottom-4 md:max-w-2xl">
+        <label className="flex h-11 items-center gap-2 rounded-full bg-[var(--ph-surface)] px-4 shadow-[0_6px_20px_rgb(0_0_0/0.12)]">
+          <Search size={16} aria-hidden className="shrink-0 text-[var(--ph-ink-3)]" />
+          <input
+            aria-label="Search categories"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search"
+            autoComplete="off"
+            className="min-w-0 flex-1 bg-transparent text-base text-[var(--ph-ink)] placeholder:text-[var(--ph-ink-3)] focus:outline-none md:text-[15px]"
+          />
+        </label>
+      </div>
     </div>
   );
 }

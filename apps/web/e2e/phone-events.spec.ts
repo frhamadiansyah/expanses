@@ -37,7 +37,7 @@ test('an event reads like Cashflow: where it went, and a swipe to what it planne
 
   // No Expense and Income, and no arrows: an event is spending, and the list is one tap back.
   const sheet = page.getByTestId('event-sheet');
-  await expect(sheet.getByRole('button', { name: /Show expenses|Show income/ })).toHaveCount(0);
+  await expect(sheet.getByRole('radiogroup', { name: 'Show' })).toHaveCount(0);
   await expect(page.getByTestId('event-total')).toContainText('8.180.000');
   // Where it went keeps every category: its share of the trip, and — since both were planned — what each was planned at.
   const rows = page.getByTestId('event-detail-sheet');

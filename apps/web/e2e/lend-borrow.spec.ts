@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openLoan, personRow } from './people';
 import { openAccount } from './accounts';
-import { closeDetails, shareWith } from './add-transaction';
+import { closeDetails, shareWith, choosePayment } from './add-transaction';
 
 test.beforeEach(({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept());
@@ -158,7 +158,7 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
   await page.getByRole('button', { name: 'Add transaction' }).click();
   const form = page.getByRole('dialog', { name: 'Add a transaction' });
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByLabel('Amount', { exact: true }).fill('900000');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();

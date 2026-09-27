@@ -6,7 +6,8 @@ import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useAccounts, useInOpenBook } from '../../lib/queries';
-import { Button, Card, cx, Empty, Money } from '../../ui';
+import { Button, Card, Empty, Money } from '../../ui';
+import { SegmentedControl } from '../../ui/native';
 import { useCategorySetMembership, useCategorySets } from '../categories/set-queries';
 import { budgetProgress } from './budget-progress';
 import { BudgetGauge } from './BudgetGauge';
@@ -348,21 +349,17 @@ export function SpendingReport({
       {picking && onMonth && (
         <PeriodPicker value={month} years={yearsSince(first.data ?? null)} onPick={onMonth} onClose={() => setPicking(false)} />
       )}
-      <div className="mt-5 flex gap-1.5">
-        {(['expense', 'income'] as const).map((k) => (
-          <button
-            key={k}
-            type="button"
-            aria-pressed={kind === k}
-            onClick={() => onKind(k)}
-            // Named apart from what it says: the form on this same page already has an "Income" button.
-            aria-label={k === 'expense' ? 'Show expenses' : 'Show income'}
-            className={cx('min-h-9 flex-1 rounded-lg text-sm font-medium', kind === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600')}
-          >
-            {k === 'expense' ? 'Expense' : 'Income'}
-          </button>
-        ))}
-      </div>
+      {/* The iOS segmented control, as every other either-or in the app is drawn. */}
+      <SegmentedControl
+        className="mt-5"
+        label="Show"
+        segments={[
+          { key: 'expense', label: 'Expense' },
+          { key: 'income', label: 'Income' },
+        ]}
+        value={kind}
+        onChange={(key) => onKind(key as 'expense' | 'income')}
+      />
     </div>
   );
 

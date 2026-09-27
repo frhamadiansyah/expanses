@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { openAccount, openCard } from './accounts';
 import { openNewAsset } from './add-asset';
-import { addTransaction, attachPhoto, closeDetails, addForm, saveButton } from './add-transaction';
+import { addTransaction, attachPhoto, closeDetails, addForm, saveButton, choosePayment } from './add-transaction';
 import { openDrawers } from './drawers';
 import { todayIn } from './today';
 
@@ -214,7 +214,7 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
   await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
   const form = addForm(page);
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Visa', exact: true }).click();
+  await choosePayment(page, 'BCA Visa');
   await form.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'USD US Dollar' }).first().click();
   await form.getByRole('button', { name: 'Amount', exact: true }).click();
@@ -330,7 +330,7 @@ test('the edit sheet shows the receipt the transaction already has', async ({ pa
   for (const key of '120000') await keypad.getByRole('button', { name: key, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: /^Category/ }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Restaurants', exact: true }).click();
   await form.getByLabel('Note').fill('Warung Steak');

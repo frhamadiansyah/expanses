@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAccount } from './accounts';
-import { addTransaction, attachPhoto, closeDetails, addForm, saveButton } from './add-transaction';
+import { addTransaction, attachPhoto, closeDetails, addForm, saveButton, choosePayment } from './add-transaction';
 import { todayIn } from './today';
 
 test.beforeEach(({ page }) => {
@@ -115,7 +115,7 @@ test('a photograph attached by thumb is on the receipt', async ({ page }) => {
   for (const digit of '85000') await keypad.getByRole('button', { name: digit, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
@@ -172,7 +172,7 @@ test('the dock adds up what a thumb types, and has no Save key of its own', asyn
   await expect(amount).toHaveText('155.000');
 
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
@@ -200,7 +200,7 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
 
   await page.goto('/transactions/new');
   await page.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   // No second figure while both sides are IDR: what was typed is what the account was charged.
   await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveCount(0);
 
@@ -273,7 +273,7 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
   // Putting the flag back where it was takes the row away with it: there is nothing left to ask.
   await page.goto('/transactions/new');
   await page.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await page.getByRole('button', { name: 'Currency' }).click();
   await page.getByRole('dialog', { name: 'Currency' }).getByRole('button', { name: 'CNY Chinese Yuan' }).first().click();
   await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveCount(1);
@@ -300,7 +300,7 @@ test('Channel, a photograph and Exclude all reach the receipt from the phone', a
   for (const key of '85000') await keypad.getByRole('button', { name: key, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await form.getByRole('button', { name: 'Paid with' }).click();
-  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'BCA Tahapan', exact: true }).click();
+  await choosePayment(page, 'BCA Tahapan');
   await form.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
   await form.getByLabel('Note').fill('Superindo');
@@ -359,4 +359,200 @@ test('every row on the card is big enough for a thumb', async ({ page }) => {
     const box = (await page.getByTestId('keypad').getByRole('button', { name: key, exact: true }).boundingBox())!;
     expect(box.height, `the ${key} key is under ${TAP}px`).toBeGreaterThanOrEqual(TAP);
   }
+});
+
+test('Paid with adds an account on the way, and the transaction comes back as typed with it picked', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  const keypad = page.getByTestId('keypad');
+  for (const digit of '85000') await keypad.getByRole('button', { name: digit, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await form.getByLabel('Note').fill('Superindo');
+
+  // Not on the list yet: the list's own last row opens New account, and its way back names where it came from.
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  await expect(page).toHaveURL(/\/accounts\/new/);
+  await expect(page.getByRole('link', { name: 'New transaction' }).or(page.getByRole('button', { name: 'New transaction' })).first()).toBeVisible();
+  await page.getByRole('button', { name: /^Current account(\b|$)/ }).click();
+  await page.getByLabel('Name', { exact: true }).pressSequentially('Jago');
+  await page.getByRole('button', { name: 'Add account' }).click();
+
+  // Back on the form, as it was, with Jago paying.
+  await expect(page).toHaveURL(/\/transactions\/new/);
+  await expect(form.getByLabel('Note')).toHaveValue('Superindo');
+  await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('85.000');
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago');
+});
+
+test('backing out of New account returns to the transaction as typed, with nothing picked', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByLabel('Note').fill('Parking');
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Add account' }).click();
+  await expect(page).toHaveURL(/\/accounts\/new/);
+
+  await page.getByRole('link', { name: 'New transaction' }).or(page.getByRole('button', { name: 'New transaction' })).first().click();
+  await expect(page).toHaveURL(/\/transactions\/new/);
+  await expect(form.getByLabel('Note')).toHaveValue('Parking');
+  await expect(form.getByRole('button', { name: 'Paid with' })).not.toContainText('BCA');
+});
+
+test('Paid with narrows to what is typed in its search, and says when nothing matches', async ({ page }) => {
+  await addWallet(page);
+  await openAccount(page, { subtype: 'bank', name: 'Jago Syariah' });
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  const search = sheet.getByRole('textbox', { name: 'Search Paid with' });
+
+  await search.fill('jago');
+  await expect(sheet.getByRole('button', { name: 'Jago Syariah', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
+  // Add account stays at the foot whatever is typed: the account looked for may not be there yet.
+  await expect(sheet.getByRole('button', { name: 'Add account' })).toBeVisible();
+
+  await search.fill('zzz');
+  await expect(sheet.getByText('Nothing here matches “zzz”.')).toBeVisible();
+
+  await search.fill('');
+  await sheet.getByRole('button', { name: 'Jago Syariah', exact: true }).click();
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('Jago Syariah');
+});
+
+test('the dock has a decimal comma for dollars, and keeps 00 for rupiah', async ({ page }) => {
+  await addWallet(page);
+  await openAccount(page, { subtype: 'bank', name: 'Wise USD', currency: 'USD' });
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  const keypad = page.getByTestId('keypad');
+
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  await expect(keypad.getByRole('button', { name: '00', exact: true })).toBeVisible();
+  await expect(keypad.getByRole('button', { name: ',', exact: true })).toHaveCount(0);
+  await keypad.getByRole('button', { name: 'Close keypad' }).click();
+
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await choosePayment(page, 'Wise USD');
+  await form.getByRole('button', { name: 'Amount', exact: true }).click();
+  await expect(keypad.getByRole('button', { name: '00', exact: true })).toHaveCount(0);
+  for (const key of ['1', '2', ',', '5', '0']) await keypad.getByRole('button', { name: key, exact: true }).click();
+  await keypad.getByRole('button', { name: 'DONE' }).click();
+  await expect(form.getByRole('button', { name: 'Amount', exact: true })).toContainText('12,50');
+});
+
+test('Paid with has tabs for accounts and cards, and its search looks across both', async ({ page }) => {
+  await addWallet(page);
+  await openAccount(page, { subtype: 'credit_card', name: 'BCA KrisFlyer', balance: '0', last4: '1234' });
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  const tabs = sheet.getByRole('radiogroup', { name: 'Paid with: which kind' });
+
+  // Nothing chosen yet: Accounts, with the way to add one as the list's own last row.
+  await expect(tabs.getByRole('radio', { name: 'Accounts' })).toBeChecked();
+  await expect(tabs.getByRole('radio', { name: 'All' })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Add account' })).toBeVisible();
+
+  // Credit cards: only cards, and the last row adds a card.
+  await tabs.getByRole('radio', { name: 'Credit cards' }).click();
+  await expect(sheet.getByRole('button', { name: /^BCA KrisFlyer/ })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Add credit card' })).toBeVisible();
+
+  // A search looks across both, under their headings, whatever tab is open; the ✕ clears it.
+  await sheet.getByRole('textbox', { name: 'Search Paid with' }).fill('bca');
+  await expect(sheet.getByRole('heading', { name: 'Accounts' })).toBeVisible();
+  await expect(sheet.getByRole('heading', { name: 'Credit cards' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Clear search' }).click();
+  await expect(sheet.getByRole('textbox', { name: 'Search Paid with' })).toHaveValue('');
+  await expect(sheet.getByRole('button', { name: 'BCA Tahapan', exact: true })).toHaveCount(0);
+
+  // Nothing chosen yet, so nothing is marked.
+  await expect(sheet.locator('[aria-current="true"]')).toHaveCount(0);
+
+  // Chosen by card, the sheet opens on Credit cards next time, with that card marked.
+  await sheet.getByRole('button', { name: /^BCA KrisFlyer/ }).click();
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  await expect(tabs.getByRole('radio', { name: 'Credit cards' })).toBeChecked();
+  await expect(sheet.locator('[aria-current="true"]')).toHaveCount(1);
+  await expect(sheet.getByRole('button', { name: /^BCA KrisFlyer/ })).toHaveAttribute('aria-current', 'true');
+});
+
+test('Add credit card on the Credit cards tab opens the card form, and the card comes back picked', async ({ page }) => {
+  await addWallet(page);
+  await page.goto('/transactions');
+  await page.getByRole('button', { name: /^Add (a )?transaction$/ }).first().click();
+  const form = addForm(page);
+  await form.getByLabel('Note').fill('Hotel');
+  await form.getByRole('button', { name: 'Paid with' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Paid with' });
+  await sheet.getByRole('radiogroup', { name: 'Paid with: which kind' }).getByRole('radio', { name: 'Credit cards' }).click();
+  await expect(sheet.getByText('No credit cards yet.')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Add credit card' }).click();
+
+  // Straight to the card's own form, not the list of debts.
+  await expect(page).toHaveURL(/\/debts\/new/);
+  await page.getByLabel('Name', { exact: true }).fill('UOB PRVI');
+  await page.getByLabel('Last 4 digits').fill('3310');
+  await page.getByRole('button', { name: 'Add card' }).click();
+
+  await expect(page).toHaveURL(/\/transactions\/new/);
+  await expect(form.getByLabel('Note')).toHaveValue('Hotel');
+  await expect(form.getByRole('button', { name: 'Paid with' })).toContainText('UOB PRVI');
+});
+
+test('Note offers past notes over the keyboard, and a pick brings its category', async ({ page }) => {
+  await addWallet(page);
+  await addTransaction(page, { description: 'Grabfood Gudeg Jogja', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '45000' });
+
+  await page.goto('/transactions/new');
+  const form = addForm(page);
+  const note = form.getByRole('textbox', { name: 'Note' });
+  const suggestions = page.getByRole('listbox', { name: 'Suggested notes' });
+
+  // One letter is too little to go on.
+  await note.fill('G');
+  await expect(suggestions).toHaveCount(0);
+
+  await note.fill('Grabfood G');
+  const pick = suggestions.getByRole('option', { name: /^Grabfood Gudeg Jogja/ });
+  await expect(pick).toContainText('Restaurants');
+  await pick.click();
+
+  await expect(note).toHaveValue('Grabfood Gudeg Jogja');
+  await expect(note).toBeFocused();
+  await expect(suggestions).toHaveCount(0);
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Restaurants');
+});
+
+test('a note typed out in full brings its category on leaving Note, but never over one already chosen', async ({ page }) => {
+  await addWallet(page);
+  await addTransaction(page, { description: 'Kopi Kenangan', paidWith: 'BCA Tahapan', category: 'Restaurants', amount: '38000' });
+
+  await page.goto('/transactions/new');
+  const form = addForm(page);
+  const note = form.getByRole('textbox', { name: 'Note' });
+  await note.fill('Kopi Kenangan');
+  await note.blur();
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Restaurants');
+
+  await page.goto('/transactions/new');
+  await form.getByRole('button', { name: /^Category/ }).click();
+  await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();
+  await note.fill('Kopi Kenangan');
+  await note.blur();
+  await expect(form.getByRole('button', { name: /^Category/ })).toContainText('Groceries');
 });

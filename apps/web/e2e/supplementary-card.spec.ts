@@ -23,6 +23,7 @@ test('a second card joins the same statement, and a purchase records which one',
   await page.goto('/transactions');
   await page.getByRole('button', { name: 'Add transaction' }).click();
   await page.getByRole('dialog', { name: 'Add a transaction' }).getByRole('button', { name: 'Paid with' }).click();
+  await page.getByRole('dialog', { name: 'Paid with' }).getByRole('radio', { name: 'Credit cards' }).click();
   await expect(page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: 'Mandiri Bonvoy', exact: true })).toHaveCount(1);
   await expect(page.getByRole('dialog', { name: 'Paid with' }).getByRole('button', { name: /Mandiri Bonvoy ····/ })).toHaveCount(0);
 

@@ -1,7 +1,7 @@
 import { CATALOG, type CatalogEntry } from '@expanses/catalog';
 import { CURRENCIES, debtItem, isoDate } from '@expanses/core';
 import { applyCatalogEntry, createAccount, createCardAccount, openDebtBalance, saveCardTerms, saveLoanTerms, setLoanItem } from '@expanses/db';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouter, useSearch } from '@tanstack/react-router';
 import { type FormEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll, useResolveRates } from '../../lib/queries';
@@ -13,6 +13,7 @@ import { memberLevelsOf, searchCatalog } from '../cards/catalog-picker';
 import { fieldsFor, handOverRows } from './catalogue-view';
 import { type DebtItemDraft, emptyDebtItemDraft, planNewCard, planNewDebt } from './debt-form';
 import { OwnablePicker } from './OwnablePicker';
+import { noteAddedAccount } from '../transactions/draft-handoff';
 
 /**
  * Adding a debt, named the way you would say it: a mortgage, a leasing, a paylater, money borrowed from family.
@@ -22,7 +23,18 @@ import { OwnablePicker } from './OwnablePicker';
  * form rather than opening half a card.
  */
 export function AddDebtPage() {
-  const [chosen, setChosen] = useState<string | null>(null);
+  const { returnTo, item } = useSearch({ from: '/debts/new' });
+  // Opened for one thing — a credit card, from Paid with — the picker starts on its form.
+  const [chosen, setChosen] = useState<string | null>(item ?? null);
+  const router = useRouter();
+  // From New transaction: the card made is noted for Paid with, and back is the way to the form set aside.
+  const onCreated =
+    returnTo === 'transaction'
+      ? (accountId: string) => {
+          noteAddedAccount(accountId);
+          router.history.back();
+        }
+      : undefined;
   const card = chosen !== null && debtItem(chosen).behaviour.opens === 'card';
   return (
     <OwnablePicker
@@ -32,8 +44,9 @@ export function AddDebtPage() {
       chosen={chosen}
       onChoose={setChosen}
       handOver={handOverRows('debt')}
+      backLabel={returnTo === 'transaction' ? 'New transaction' : undefined}
     >
-      {chosen && (card ? <NewCardForm key={chosen} /> : <DebtItemForm key={chosen} item={chosen} />)}
+      {chosen && (card ? <NewCardForm key={chosen} onCreated={onCreated} /> : <DebtItemForm key={chosen} item={chosen} />)}
     </OwnablePicker>
   );
 }
@@ -194,7 +207,7 @@ function byIssuer(entries: readonly CatalogEntry[]): [string, CatalogEntry[]][] 
  * card's terms and the terms are what a cycle is counted from. A card typed by hand may leave both for later,
  * exactly as it may on the Accounts page.
  */
-function NewCardForm() {
+function NewCardForm({ onCreated }: { onCreated?: (accountId: string) => void }) {
   const { database, ws } = useApp();
   const navigate = useNavigate();
   const invalidate = useInvalidateAll();
@@ -278,7 +291,8 @@ function NewCardForm() {
         await applyCatalogEntry(database, ws, { cardAccountId: account.id, entry, today, replaceManual: false, memberLevel: plan.memberLevel });
       }
       await invalidate();
-      await navigate({ to: '/cards/$cardId', params: { cardId: account.id } });
+      if (onCreated) onCreated(account.id);
+      else await navigate({ to: '/cards/$cardId', params: { cardId: account.id } });
     } catch (e) {
       setError(e);
     } finally {

@@ -73,6 +73,9 @@
    * a token rather than `bg-white/80` because a translucent white is a light-theme fact, not a colour.
    */
   --ph-chrome: rgb(255 255 255 / 0.8);
+  /* The glass over the status bar once a page scrolls under it: thinner than the tab bar's, as iOS's bar
+     material is, so what passes under reads as a coloured blur rather than a white block. */
+  --ph-bar: rgb(249 249 251 / 0.5);
 
   /* Behind a sheet: the page is dimmed, never inverted — a dark scrim in either mode. */
   --ph-scrim: rgb(15 23 42 / 0.4);
@@ -136,6 +139,7 @@
     --ph-tint-ink: #7ee79b;
 
     --ph-chrome: rgb(28 28 30 / 0.8);
+    --ph-bar: rgb(18 18 20 / 0.5);
     --ph-scrim: rgb(0 0 0 / 0.6);
 
     --ph-focus: #30d158;
@@ -229,4 +233,23 @@
 .ph-date-input::-webkit-date-and-time-value {
   margin: 0;
   text-align: right;
+}
+
+/* A page's compact bar carries the status bar's glass itself while it is up; the shell's strip stands down. */
+html[data-compact-bar] .ph-status-glass {
+  display: none;
+}
+
+/*
+ * The iOS 26 scroll-edge glass: the page blurs under the status bar and the bar under it, and the blur fades out
+ * downwards instead of ending on a hard edge or a hairline. The mask fades the backdrop filter with it; the extra
+ * 20 px at the foot is where the fade happens, so what the bar holds sits in the full blur.
+ */
+.ph-edge-glass {
+  padding-bottom: 20px;
+  background: linear-gradient(to bottom, var(--ph-bar) 0%, var(--ph-bar) calc(100% - 28px), transparent 100%);
+  backdrop-filter: saturate(180%) blur(10px);
+  -webkit-backdrop-filter: saturate(180%) blur(10px);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 28px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 28px), transparent 100%);
 }

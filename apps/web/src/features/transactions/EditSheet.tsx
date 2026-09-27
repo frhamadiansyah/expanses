@@ -198,6 +198,9 @@ function SheetBody({ tx, onClose, accounts, photoIds }: { tx: TransactionView; o
           title="Paid with"
           options={payable}
           accounts={accounts}
+          chosenAccountId={draft.moneyId}
+          chosenCardId={draft.cardId}
+          cards={payable.some((option) => option.cardId) || accounts.some((a) => a.subtype === 'credit_card')}
           onPick={(option) => set({ moneyId: option.accountId, cardId: option.cardId ?? '' })}
           onClose={() => setSheet(null)}
         />

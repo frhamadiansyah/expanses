@@ -1,10 +1,11 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { ChevronLeft, MoreHorizontal } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { useEscape } from '../../app/use-escape';
 import { cx } from '../index';
 import { backLabel, type CornerAction, planCornerActions, titleSteps } from './title';
 import { TAP } from './metrics';
+import { CompactBar, PinnedTitleBar, useScrolledPast } from './CompactBar';
 
 /**
  * Primitive 3: the large title, and the corner buttons beside it.
@@ -207,6 +208,10 @@ export function LargeTitle({
 }) {
   const plan = planCornerActions(actions, max);
   const steps = oneLine && titleSteps(title);
+  const head = useRef<HTMLElement>(null);
+  // A section's own title (no way back) is pinned as it is; one with a way back folds into the small bar.
+  const pinned = !back;
+  const folded = useScrolledPast(head, !field, pinned);
   /*
    * The way back is a control a thumb has to find, so it is 44 tall like every other — and drawn as though it were
    * not: the negative margins give the hit area back to the layout, so the line still sits where 28px put it.
@@ -216,10 +221,73 @@ export function LargeTitle({
    * back links down the phone's history read as an accent shouting on every screen. The tint stays where it says
    * something — a selection, progress, the receipt for something saved.
    */
+  const titleRow = (copy: boolean) => (
+    <div className="flex items-start justify-between gap-3" style={{ paddingTop: 8, minHeight: 8 + TAP }}>
+      <div className="min-w-0 flex-1">
+        {field ?? (
+          <>
+            <h1
+              title={oneLine ? title : undefined}
+              className={cx(
+                // Semibold, the weight Cashflow's title has always carried: a page's name is not a figure, and the
+                // screen whose title people see most should not be the only one that draws it this way.
+                'font-semibold tracking-tight text-[var(--ph-ink)] md:text-[24px] md:leading-[30px]',
+                steps ? 'text-[22px] leading-[36px]' : 'text-[30px] leading-[36px]',
+                oneLine && 'truncate',
+              )}
+            >
+              {title}
+            </h1>
+            {!copy && subtitle && <p className="mt-[2px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{subtitle}</p>}
+          </>
+        )}
+      </div>
+      {!field && (plan.inline.length > 0 || plan.overflow.length > 0) && (
+        <div className="flex shrink-0 items-center gap-[8px]">
+          {plan.inline.map((action) =>
+            action.menu ? (
+              <CornerMenu key={action.key} label={action.label} glyph={action.glyph} actions={action.menu} />
+            ) : (
+            <CornerButton
+              key={action.key}
+              label={action.label}
+              to={action.to}
+              params={action.params}
+              search={action.search}
+              onClick={action.to ? undefined : () => action.run?.()}
+              destructive={action.destructive}
+              disabled={action.disabled}
+              pressed={action.pressed}
+              expanded={action.expanded}
+            >
+              {action.glyph}
+            </CornerButton>
+            ),
+          )}
+          {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
+        </div>
+      )}
+    </div>
+  );
   const backShell =
     'ph-focus -mt-[8px] -mb-[6px] -ml-[2px] inline-flex min-h-[44px] items-center rounded px-[2px] text-[14px] leading-[18px] text-[var(--ph-ink)]';
   return (
-    <header className="mb-[14px] md:max-w-4xl">
+    <header ref={head} className="mb-[14px] md:max-w-4xl">
+      {folded &&
+        (pinned ? (
+          <PinnedTitleBar>{titleRow(true)}</PinnedTitleBar>
+        ) : (
+          <CompactBar
+            title={title}
+            back={back}
+            onBack={onBack}
+            backTo={backTo}
+            backParams={backParams}
+            backSearch={backSearch}
+            actions={plan.inline}
+            overflow={plan.overflow}
+          />
+        ))}
       {back &&
         (backTo ? (
           <Link to={backTo} params={backParams} search={backSearch} aria-label={back} className={backShell}>
@@ -236,52 +304,7 @@ export function LargeTitle({
        * everything below the bar up and down as you move between screens or between one screen's own tabs.
        * `items-start` keeps the title itself where it was: the row grows downwards, under the name.
        */}
-      <div className="flex items-start justify-between gap-3" style={{ paddingTop: 8, minHeight: 8 + TAP }}>
-        <div className="min-w-0 flex-1">
-          {field ?? (
-            <>
-              <h1
-                title={oneLine ? title : undefined}
-                className={cx(
-                  // Semibold, the weight Cashflow's title has always carried: a page's name is not a figure, and the
-                  // screen whose title people see most should not be the only one that draws it this way.
-                  'font-semibold tracking-tight text-[var(--ph-ink)] md:text-[24px] md:leading-[30px]',
-                  steps ? 'text-[22px] leading-[36px]' : 'text-[30px] leading-[36px]',
-                  oneLine && 'truncate',
-                )}
-              >
-                {title}
-              </h1>
-              {subtitle && <p className="mt-[2px] text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{subtitle}</p>}
-            </>
-          )}
-        </div>
-        {!field && (plan.inline.length > 0 || plan.overflow.length > 0) && (
-          <div className="flex shrink-0 items-center gap-[8px]">
-            {plan.inline.map((action) =>
-              action.menu ? (
-                <CornerMenu key={action.key} label={action.label} glyph={action.glyph} actions={action.menu} />
-              ) : (
-              <CornerButton
-                key={action.key}
-                label={action.label}
-                to={action.to}
-                params={action.params}
-                search={action.search}
-                onClick={action.to ? undefined : () => action.run?.()}
-                destructive={action.destructive}
-                disabled={action.disabled}
-                pressed={action.pressed}
-                expanded={action.expanded}
-              >
-                {action.glyph}
-              </CornerButton>
-              ),
-            )}
-            {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
-          </div>
-        )}
-      </div>
+      {titleRow(false)}
     </header>
   );
 }
@@ -327,8 +350,22 @@ export function PushedTitle({
   field?: ReactNode;
 }) {
   const plan = planCornerActions(actions, max);
+  const head = useRef<HTMLElement>(null);
+  const folded = useScrolledPast(head, !field);
   return (
-    <header className="mb-[14px] md:max-w-4xl">
+    <header ref={head} className="mb-[14px] md:max-w-4xl">
+      {folded && (
+        <CompactBar
+          title={title}
+          back={back}
+          onBack={onBack}
+          backTo={backTo}
+          backParams={backParams}
+          backSearch={backSearch}
+          actions={plan.inline}
+          overflow={plan.overflow}
+        />
+      )}
       {/* The same 8 px of air the large title's row has, so a corner sits at the same height on both bars. */}
       <div className="flex items-center gap-[8px]" style={{ paddingTop: 8 }}>
         {field ? (
