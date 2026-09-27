@@ -98,7 +98,19 @@ export * as sharingSchema from './schema-sharing';
 export { DEFAULT_RELAY_URL, RelayTransport, type RelayTransportOptions } from './sync/relay-transport';
 export { ecdsaRequestSigner, type RequestSigner } from './sync/relay-signing';
 export { isBookShared, notPlaceholder, sharingTablesExist } from './sync/placeholder';
-export { SyncEngine, type CreatedInvite, type JoinInput, type PreviewedInvite, type ShareInput, type SyncOnceResult } from './sync/engine';
+export {
+  FrozenBookError,
+  NotOwnerError,
+  STALE_AFTER_MS,
+  SyncEngine,
+  type BookSyncStatus,
+  type CreatedInvite,
+  type JoinInput,
+  type PreviewedInvite,
+  type ShareInput,
+  type SyncOnceResult,
+} from './sync/engine';
+export { BookReadOnlyError, LastOwnerError } from './sync/capture';
 export {
   deviceKeysOf,
   exportDeviceJwks,

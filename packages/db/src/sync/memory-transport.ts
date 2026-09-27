@@ -40,6 +40,13 @@ interface BookState {
   seen: Map<string, number>;
   invites: Map<string, StoredInvite>;
   deleted: boolean;
+  /** The owner device that deleted the book (§8.6): every later `410` names it. */
+  deletedBy?: string;
+}
+
+/** A deleted book's `410`, naming the device that deleted it (§8.6, §9.2). */
+function gone(state: BookState): SyncTransportError {
+  return new SyncTransportError(410, 'this book is no longer shared', state.deletedBy === undefined ? {} : { deletedBy: state.deletedBy });
 }
 
 function byteSize(value: unknown): number {
@@ -84,7 +91,7 @@ export class MemoryTransport {
   requireBook(bookId: string): BookState {
     const state = this.books.get(bookId);
     if (!state) throw new SyncTransportError(404, `no such book ${bookId}`);
-    if (state.deleted) throw new SyncTransportError(410, 'this book is no longer shared');
+    if (state.deleted) throw gone(state);
     return state;
   }
 
@@ -172,7 +179,7 @@ export class MemoryTransport {
     const found = this.findInvite(inviteId);
     if (!found) throw new SyncTransportError(404, 'no such invite');
     const { state, invite } = found;
-    if (state.deleted) throw new SyncTransportError(410, 'this book is no longer shared');
+    if (state.deleted) throw gone(state);
     return { preview: invite.preview, expiresAt: invite.expiresAt, claimed: invite.claimedAt !== undefined };
   }
 
@@ -184,7 +191,7 @@ export class MemoryTransport {
     const found = this.findInvite(inviteId);
     if (!found) throw new SyncTransportError(404, 'no such invite');
     const { bookId, state, invite } = found;
-    if (state.deleted) throw new SyncTransportError(410, 'this book is no longer shared');
+    if (state.deleted) throw gone(state);
     if (invite.claimedAt !== undefined) throw new SyncTransportError(409, 'invite already claimed');
     if (Date.parse(invite.expiresAt) <= Date.now()) throw new SyncTransportError(410, 'invite expired');
     if (!(await inviteSignedByAnOwner(invite, state.owners, (owner) => state.devices.get(owner)))) throw new SyncTransportError(403, 'bad owner signature');
@@ -221,6 +228,7 @@ export class MemoryTransport {
     const state = this.requireBook(bookId);
     this.requireOwner(state, actorDeviceId);
     state.deleted = true;
+    state.deletedBy = actorDeviceId;
   }
 
   private findInvite(inviteId: string): { bookId: string; state: BookState; invite: StoredInvite } | undefined {

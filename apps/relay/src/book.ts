@@ -9,7 +9,7 @@ import { verifyEntitlement } from './entitlement';
  * Object authenticates the caller (§9.1) and hands this class a verified device id.
  *
  * Storage keys — the §9.3 state, one key per row so an append writes three small values, never the whole log:
- *   meta                       { bookId, epoch, seq, owners, deleted }
+ *   meta                       { bookId, epoch, seq, owners, deleted, deletedBy? }
  *   device:<deviceId>          { signJwk, agreeJwk, addedAt, removedAt? }
  *   log:<seq, zero-padded>     LogEntry
  *   seen:<deviceId>:<hlc>      seq
@@ -31,6 +31,8 @@ export class RelayError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** More the answer's body carries beside `error`: a deleted book's `410` names who deleted it (§8.6). */
+    readonly detail: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -49,6 +51,8 @@ interface Meta {
   seq: number;
   owners: string[];
   deleted: boolean;
+  /** The owner device that deleted the book (§8.6, task 9a): every later `410` names it. */
+  deletedBy?: string;
 }
 
 type StoredInvite = InviteRecord & { claimedAt?: string };
@@ -82,7 +86,7 @@ export class Book {
   async requireBook(): Promise<Meta> {
     const meta = await this.store.get<Meta>('meta');
     if (!meta) throw new RelayError(404, 'no such book');
-    if (meta.deleted) throw new RelayError(410, 'this book is no longer shared');
+    if (meta.deleted) throw new RelayError(410, 'this book is no longer shared', meta.deletedBy === undefined ? {} : { deletedBy: meta.deletedBy });
     return meta;
   }
 
@@ -200,7 +204,7 @@ export class Book {
 
   async deleteBook(actor: string): Promise<void> {
     const meta = await this.requireOwner(actor);
-    await this.store.put({ meta: { ...meta, deleted: true } });
+    await this.store.put({ meta: { ...meta, deleted: true, deletedBy: actor } });
   }
 
   /** The invite's `sig` verifies under the pinned signing key of one of the book's current owners (spec §5.4). */

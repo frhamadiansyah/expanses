@@ -10,7 +10,7 @@ import type { DevicePublic, Op } from './types';
  * change-sets with fresh hlcs and their field clocks written. Step 4 (draining, and the invite after it) is the caller's.
  */
 
-export type SharingErrorCode = 'CURRENCY' | 'ALREADY_SHARED' | 'NOT_FOUND' | 'BAD_CODE' | 'INVITE_CLAIMED' | 'INVITE_EXPIRED' | 'INVITE_MISMATCH' | 'NO_KEYS';
+export type SharingErrorCode = 'CURRENCY' | 'ALREADY_SHARED' | 'NOT_FOUND' | 'BAD_CODE' | 'INVITE_CLAIMED' | 'INVITE_EXPIRED' | 'INVITE_MISMATCH' | 'NO_KEYS' | 'NOT_OWNER' | 'FROZEN';
 
 export class SharingError extends Error {
   constructor(
@@ -74,7 +74,12 @@ export async function seedBookTx(tx: Tx, config: Pick<CaptureConfig, 'now'>, inp
   await tx.run(
     sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${input.bookId}, ${input.relayBookId}, 1, ${input.memberId}, 'active', ${now})`,
   );
-  await tx.run(sql`INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${input.bookId}, ${input.memberId}, ${input.memberName}, 'owner', ${now})`);
+  // A book shared before and stopped (§8.6) still has its members here: the sharer is its owner again, and whoever else
+  // it remembers comes back as a member, never an owner with no device.
+  await tx.run(sql`UPDATE book_members SET role = 'member' WHERE book_id = ${input.bookId} AND member_id <> ${input.memberId}`);
+  await tx.run(sql`
+    INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${input.bookId}, ${input.memberId}, ${input.memberName}, 'owner', ${now})
+    ON CONFLICT (book_id, member_id) DO UPDATE SET name = excluded.name, role = 'owner'`);
   await tx.run(sql`
     INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at)
     VALUES (${input.bookId}, ${input.deviceId}, ${input.memberId}, ${input.deviceName}, ${JSON.stringify(input.device.signJwk)}, ${JSON.stringify(input.device.agreeJwk)}, ${now}, NULL)`);

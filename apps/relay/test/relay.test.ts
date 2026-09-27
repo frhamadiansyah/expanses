@@ -478,7 +478,8 @@ describe('§9.2 DELETE /books/:id', () => {
     const res = await raw(base, { method: 'DELETE', path: `/books/${bookId}`, signer: owner.signer });
     expect(res.status).toBe(204);
 
-    await expect(owner.transport.pull(bookId, 0)).rejects.toMatchObject({ status: 410 });
+    // Every later 410 names the device that deleted the book, as MemoryTransport does (§8.6, task 9a).
+    await expect(owner.transport.pull(bookId, 0)).rejects.toMatchObject({ status: 410, deletedBy: owner.deviceId });
     await expect(owner.transport.append(bookId, change(owner.deviceId, 'after'))).rejects.toMatchObject({ status: 410 });
     await expect(owner.transport.deleteBook(bookId)).rejects.toMatchObject({ status: 410 });
     await expect(owner.transport.previewInvite(invite.inviteId)).rejects.toMatchObject({ status: 410 });

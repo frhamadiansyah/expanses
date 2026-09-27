@@ -2,9 +2,9 @@ import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
-import { pullAndApply, type PullResult } from './apply';
-import { clearAuthorityTx, viewActiveDevices, viewOwnerDevices } from './authority';
-import { captureConfigOf, configureCapture, rowUpsertsTx, writeChangeSetsTx } from './capture';
+import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
+import { clearAuthorityTx, viewActiveDevices, viewDevice, viewIsLastOwner, viewMember, viewOwnerDevices, viewRoleOfDevice } from './authority';
+import { captureConfigOf, configureCapture, LastOwnerError, rowUpsertsTx, withCapture, withCapturePaused, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
 import { localTick } from './hlc';
 import {
@@ -39,7 +39,48 @@ import { SyncTransportError } from './types';
  * - `createInvite` / `linkDevice` (§8.1, §8.3), `previewInvite` / `joinBook` (§8.2).
  * - `removeDevice` and `maybeRotate` (§8.4).
  * - `checkRestore` and rejoining through `joinBook` (§8.7).
+ * - `makeOwner`, `leave`, `stopSharing`, `isFrozen` and `bookSyncStatus` (§8.4–§8.7, §11; task 9a).
  */
+
+/** Only an owner may do this (§8.5): make an owner, stop sharing. Decided by the authority view. */
+export class NotOwnerError extends SharingError {
+  constructor(message = 'Only an owner of this workspace can do that') {
+    super('NOT_OWNER', message);
+    this.name = 'NotOwnerError';
+  }
+}
+
+/**
+ * The book is frozen (§8.5): no owner device is left in the authority view. Members still record and sync, and
+ * rotation still works; nobody can invite, remove another device or make an owner.
+ */
+export class FrozenBookError extends SharingError {
+  constructor() {
+    super('FROZEN', 'This workspace has no owner device left: nobody can invite, remove a device or make an owner');
+    this.name = 'FrozenBookError';
+  }
+}
+
+/**
+ * The status line of a shared book (§11), for the UI to word:
+ * - `up_to_date` — "Up to date";
+ * - `waiting` — "3 changes waiting" (`changes` is the outbox);
+ * - `stale` — "Not synced since Tue" (`since`: the last finished sync; none has finished for longer than the stale
+ *   window, 5 minutes by default — the scheduler's longest backoff);
+ * - `needs_invite` — "Ask Dewi for a new invite to keep sharing" (`askName`: an owner of the book other than this member);
+ * - `unshared` — "No longer shared by Fandri" (`byYou`: this device's own member left);
+ * - `frozen` — no owner device is left (§8.5).
+ */
+export type BookSyncStatus =
+  | { state: 'up_to_date'; syncedAt: string | null }
+  | { state: 'waiting'; changes: number; syncedAt: string | null }
+  | { state: 'stale'; since: string; changes: number }
+  | { state: 'needs_invite'; askName: string | null }
+  | { state: 'unshared'; byMemberId: string | null; byName: string | null; byYou: boolean }
+  | { state: 'frozen'; changes: number; syncedAt: string | null };
+
+/** How long since the last finished sync before the status line says "Not synced since …": the scheduler's longest wait. */
+export const STALE_AFTER_MS = 5 * 60_000;
 
 export interface ShareInput {
   memberName: string;
@@ -53,6 +94,11 @@ export interface SyncOnceResult extends PullResult {
   pushed: number;
   /** The epoch this device rotated the book to, when it did (§8.4). */
   rotated?: number;
+  /**
+   * The sharing ended here during this call (task 9a): `unshared` — the relay answered `410`, its owner stopped sharing
+   * (§8.6); `left` — another device of this member left, and this one followed (§8.4). The book is read-only after.
+   */
+  ended?: 'unshared' | 'left';
 }
 
 export interface CreatedInvite {
@@ -157,19 +203,40 @@ export class SyncEngine {
    */
   async syncOnce(bookId: string, seen?: Set<string>): Promise<SyncOnceResult> {
     if (await this.checkBook(bookId)) return { pushed: 0, applied: 0, skipped: [], removals: [], introduced: [], stopped: { seq: 0, reason: 'needs invite' } };
+    try {
+      return await this.syncActive(bookId, seen);
+    } catch (error) {
+      if (!(await this.endIfGone(bookId, error))) throw error;
+      return { pushed: 0, applied: 0, skipped: [], removals: [], introduced: [], ended: 'unshared' };
+    }
+  }
+
+  private async syncActive(bookId: string, seen?: Set<string>): Promise<SyncOnceResult> {
     const pushed = await this.drain(bookId);
     const ownersBefore = await this.database.transaction((tx) => viewOwnerDevices(tx, bookId));
     let result = await this.pull(bookId, seen);
     let rotated: number | undefined;
+    let follow = false;
     for (const removal of result.removals) {
       if (removal.target === this.deviceId) continue; // a device never rotates on its own removal
+      // Leave (§8.4): another device of this member left, so this one leaves too, and seals nothing on the way out.
+      if (removal.leave && (await this.sameMember(bookId, removal.target))) {
+        follow = true;
+        continue;
+      }
+      if (follow) continue;
       const outcome = await this.maybeRotate(bookId, removal.epoch);
       if (outcome === 'skipped') continue;
       if (typeof outcome === 'number') rotated = outcome;
       // Our own rotation, or on a 409 the one that won: either way the next pull brings it (§8.4 step 3).
       result = merge(result, await this.pull(bookId, seen));
     }
+    if (follow) {
+      await this.leaveNow(bookId);
+      return { pushed, ...result, ended: 'left' };
+    }
     await this.followOwners(bookId, ownersBefore);
+    if (!result.stopped) await this.database.db.run(sql`UPDATE shared_books SET synced_at = ${new Date(this.now()).toISOString()} WHERE book_id = ${bookId}`);
     return rotated === undefined ? { pushed, ...result } : { pushed, rotated, ...result };
   }
 
@@ -189,6 +256,7 @@ export class SyncEngine {
   async createInvite(bookId: string, input: { inviterName: string; sameMember?: boolean; memberId?: string }): Promise<CreatedInvite> {
     const shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
+    if (await this.isFrozen(bookId)) throw new FrozenBookError();
     const [book] = await this.database.db.values<[string, string]>(sql`SELECT name, base_currency FROM books WHERE id = ${bookId}`);
     if (!book) throw new SharingError('NOT_FOUND', 'That workspace is not here');
     // §6.5 step 4: the outbox is drained before any invite exists, so the creator's seed is always the log's first
@@ -323,6 +391,9 @@ export class SyncEngine {
     const seen = rejoin ? new Set<string>() : undefined;
     let result = await this.syncOnce(bookId, seen);
     if (rejoin && !result.stopped) {
+      // S4 (task 9a): an edit the backup made and drained before it was taken comes back under the old device's id,
+      // no longer "own", so the pull refused it without putting the row back. Every member row goes to the view's.
+      await this.database.transaction((tx) => withCapturePaused(tx, () => reconcileAllMembersTx(tx, bookId)));
       // §8.7: what this device holds that the log never mentioned (made before the backup, never drained) goes out as new.
       const emitted = await this.database.transaction((tx) => emitUnknownRowsTx(tx, captureConfigOf(this.database), { bookId, memberId, epoch }, seen!));
       if (emitted > 0) result = { ...result, pushed: result.pushed + (await this.drain(bookId)) };
@@ -339,6 +410,7 @@ export class SyncEngine {
   async removeDevice(bookId: string, target: string): Promise<void> {
     const shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
+    if (target !== this.deviceId && (await this.isFrozen(bookId))) throw new FrozenBookError();
     const hlc = await this.database.transaction((tx) => localTick(tx, this.deviceId, this.now()));
     const entry = await this.sealer.sign(bookId, { kind: 'removal' as const, deviceId: this.deviceId, epoch: shared.epoch, hlc, target });
     await this.transport.append(shared.relayBookId, entry);
@@ -393,6 +465,172 @@ export class SyncEngine {
     if (after.length === before.length && after.every((id, i) => id === before[i])) return;
     await this.transport.setOwners(shared.relayBookId, after).catch((error: unknown) => {
       if (!(error instanceof SyncTransportError && error.status === 403)) throw error;
+    });
+  }
+
+  /* ------------------------------------------------- ownership, leave, stop */
+
+  /**
+   * §8.5 Make owner: a `member` op setting `role = 'owner'`, by an owner (per the view). The sync that follows takes it
+   * into the view and `followOwners` hands the relay the new owner devices. A transport failure leaves that to the
+   * next sync; the op is in the outbox.
+   */
+  async makeOwner(bookId: string, memberId: string): Promise<void> {
+    await this.requireActive(bookId);
+    if (await this.isFrozen(bookId)) throw new FrozenBookError();
+    if (!(await this.selfIsOwner(bookId))) throw new NotOwnerError('Only an owner can make someone an owner');
+    const member = await this.database.transaction((tx) => viewMember(tx, bookId, memberId));
+    if (!member || member.deleted) throw new SharingError('NOT_FOUND', 'That person is not in this workspace');
+    if (member.role === 'owner') return;
+    await this.database.transaction((tx) =>
+      withCapture(tx, { entity: 'member', id: memberId, bookId }, async () => {
+        await tx.run(sql`UPDATE book_members SET role = 'owner' WHERE book_id = ${bookId} AND member_id = ${memberId}`);
+      }),
+    );
+    await this.syncSoon(bookId);
+  }
+
+  /**
+   * §8.4 Leave: this device removes itself with a `leave` removal, and every other device of this member, applying it,
+   * removes itself too (a device may always remove itself; only an owner removes another, and the relay knows no
+   * members). The last owner cannot leave (`LastOwnerError`) until someone else is owner. What waits in the outbox goes
+   * out first. The book stays here with every row, read-only (`unshared`, by this member).
+   */
+  async leave(bookId: string): Promise<void> {
+    await this.requireActive(bookId);
+    const synced = await this.syncOnce(bookId);
+    if (synced.ended) return;
+    const shared = (await this.sharedRow(bookId))!;
+    if (await this.database.transaction((tx) => viewIsLastOwner(tx, bookId, shared.memberId))) {
+      throw new LastOwnerError("You're this workspace's last owner: make someone else an owner before you leave");
+    }
+    await this.leaveNow(bookId);
+  }
+
+  /** The leave itself: the signed `leave` removal of this device, the relay drops it, and the book here ends. */
+  private async leaveNow(bookId: string): Promise<void> {
+    const shared = (await this.sharedRow(bookId))!;
+    const hlc = await this.database.transaction((tx) => localTick(tx, this.deviceId, this.now()));
+    const entry = await this.sealer.sign(bookId, { kind: 'removal' as const, deviceId: this.deviceId, epoch: shared.epoch, hlc, target: this.deviceId, leave: true as const });
+    await this.transport.append(shared.relayBookId, entry);
+    await this.transport.removeDevice(shared.relayBookId, this.deviceId);
+    await this.endShared(bookId, shared.memberId);
+  }
+
+  /**
+   * §8.6 Stop sharing, by an owner (per the view): the relay deletes the book, and every other device goes `unshared`
+   * on its next call (`410`). Here the book becomes an ordinary local book again: `shared_books` and the sync state of
+   * the book go; every row stays, and so do `book_members`, `book_member_accounts` (another member's money stays
+   * hidden, §4.4) and `sync_lineage` (who paid). A book another owner already stopped goes `unshared` here instead.
+   */
+  async stopSharing(bookId: string): Promise<void> {
+    const shared = await this.requireActive(bookId);
+    if (!(await this.selfIsOwner(bookId))) throw new NotOwnerError('Only an owner can stop sharing');
+    try {
+      await this.transport.deleteBook(shared.relayBookId);
+    } catch (error) {
+      if (await this.endIfGone(bookId, error)) return;
+      throw error;
+    }
+    this.sealer.forget();
+    await this.database.transaction(async (tx) => {
+      // `shared_books` first: from here on the book is not shared, and nothing below is a change to a shared row.
+      await tx.run(sql`DELETE FROM shared_books WHERE book_id = ${bookId}`);
+      for (const table of ['sync_outbox', 'sync_cursor', 'book_epoch_keys', 'sync_field_clocks', 'sync_tombstones', 'sync_skipped', 'book_devices']) {
+        await tx.run(sql`DELETE FROM ${sql.raw(table)} WHERE book_id = ${bookId}`);
+      }
+      await clearAuthorityTx(tx, bookId);
+    });
+  }
+
+  /**
+   * §8.5: no owner device is left in the authority view. A book whose view holds no device yet (never pulled) is not
+   * frozen.
+   */
+  async isFrozen(bookId: string): Promise<boolean> {
+    const shared = await this.sharedRow(bookId);
+    if (!shared || shared.state !== 'active') return false;
+    return this.database.transaction(async (tx) => {
+      if ((await viewActiveDevices(tx, bookId)).length === 0) return false;
+      return (await viewOwnerDevices(tx, bookId)).length === 0;
+    });
+  }
+
+  /** The status line of a shared book (§11); `null` for a book not shared on this device. */
+  async bookSyncStatus(bookId: string, options: { now?: number; staleAfterMs?: number } = {}): Promise<BookSyncStatus | null> {
+    const [row] = await this.database.db.values<[string, string, string | null, string | null]>(
+      sql`SELECT state, member_id, synced_at, unshared_by FROM shared_books WHERE book_id = ${bookId}`,
+    );
+    if (!row) return null;
+    const [state, memberId, syncedAt, unsharedBy] = row;
+    const nameOf = async (id: string | null) =>
+      id === null ? null : ((await this.database.db.values<[string]>(sql`SELECT name FROM book_members WHERE book_id = ${bookId} AND member_id = ${id}`))[0]?.[0] ?? null);
+    if (state === 'unshared') return { state: 'unshared', byMemberId: unsharedBy, byName: await nameOf(unsharedBy), byYou: unsharedBy === memberId };
+    if (state === 'needs_invite') {
+      // An owner to ask: per the view, else per this device's rows (a view a restore brought back).
+      const [owner] = await this.database.db.values<[string]>(sql`
+        SELECT m.name FROM book_members m LEFT JOIN sync_authority a ON a.book_id = m.book_id AND a.member_id = m.member_id
+        WHERE m.book_id = ${bookId} AND m.member_id <> ${memberId} AND coalesce(a.role, m.role) = 'owner' AND coalesce(a.deleted, 0) = 0
+        ORDER BY m.joined_at, m.member_id LIMIT 1`);
+      return { state: 'needs_invite', askName: owner?.[0] ?? null };
+    }
+    const [[waiting]] = (await this.database.db.values<[number]>(sql`SELECT count(*) FROM sync_outbox WHERE book_id = ${bookId}`)) as [[number]];
+    const changes = Number(waiting);
+    if (await this.isFrozen(bookId)) return { state: 'frozen', changes, syncedAt };
+    const now = options.now ?? this.now();
+    if (syncedAt !== null && now - Date.parse(syncedAt) > (options.staleAfterMs ?? STALE_AFTER_MS)) return { state: 'stale', since: syncedAt, changes };
+    if (changes > 0) return { state: 'waiting', changes, syncedAt };
+    return { state: 'up_to_date', syncedAt };
+  }
+
+  /** The book is shared and active here, or `NOT_FOUND`. */
+  private async requireActive(bookId: string): Promise<{ relayBookId: string; epoch: number; memberId: string; state: string }> {
+    const shared = await this.sharedRow(bookId);
+    if (!shared || shared.state !== 'active') throw new SharingError('NOT_FOUND', 'This workspace is not shared from this device');
+    return shared;
+  }
+
+  private selfIsOwner(bookId: string): Promise<boolean> {
+    return this.database.transaction(async (tx) => (await viewRoleOfDevice(tx, bookId, this.deviceId)) === 'owner');
+  }
+
+  /** Whether `deviceId` belongs to this device's member, per the view. */
+  private sameMember(bookId: string, deviceId: string): Promise<boolean> {
+    return this.database.transaction(async (tx) => {
+      const [other, self] = [await viewDevice(tx, bookId, deviceId), await viewDevice(tx, bookId, this.deviceId)];
+      return other !== null && self !== null && self.removedSeq === null && other.memberId === self.memberId;
+    });
+  }
+
+  /** A sync right after a local change, when the relay can be reached; otherwise the scheduler's next run does it. */
+  private async syncSoon(bookId: string): Promise<void> {
+    try {
+      await this.syncOnce(bookId);
+    } catch (error) {
+      if (!(error instanceof SyncTransportError)) throw error;
+    }
+  }
+
+  /**
+   * §8.6: a `410` for the book — its owner stopped sharing. The book goes `unshared`, naming the member whose device
+   * deleted it (the relay says which device; this device's pinned list says whose). Whether it was that.
+   */
+  private async endIfGone(bookId: string, error: unknown): Promise<boolean> {
+    if (!(error instanceof SyncTransportError && error.status === 410)) return false;
+    const shared = await this.sharedRow(bookId);
+    if (!shared || shared.state !== 'active') return false;
+    const [by] = error.deletedBy
+      ? await this.database.db.values<[string]>(sql`SELECT member_id FROM book_devices WHERE book_id = ${bookId} AND device_id = ${error.deletedBy}`)
+      : [];
+    await this.endShared(bookId, by?.[0] ?? null);
+    return true;
+  }
+
+  /** The sharing ended here: read-only from now on (capture refuses every write), with who ended it. */
+  private async endShared(bookId: string, by: string | null): Promise<void> {
+    await this.database.transaction(async (tx) => {
+      await tx.run(sql`UPDATE shared_books SET state = 'unshared', unshared_by = ${by} WHERE book_id = ${bookId}`);
+      await tx.run(sql`DELETE FROM sync_outbox WHERE book_id = ${bookId}`); // nowhere to go now
     });
   }
 

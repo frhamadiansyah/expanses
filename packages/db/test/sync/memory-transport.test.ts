@@ -346,6 +346,13 @@ describe('MemoryTransport: deleteBook (DELETE /books/:id -> 204; later calls -> 
     await expect(owner.deleteBook(bookId)).rejects.toMatchObject({ status: 410 });
   });
 
+  it('every later 410 names the device that deleted the book (§8.6, task 9a)', async () => {
+    const transport = new MemoryTransport();
+    const { bookId, owner, ownerId } = await bookWithOwner(transport);
+    await owner.deleteBook(bookId);
+    await expect(owner.pull(bookId, 0)).rejects.toMatchObject({ status: 410, deletedBy: ownerId });
+  });
+
   it('403s a non-owner', async () => {
     const transport = new MemoryTransport();
     const { bookId, owner } = await bookWithOwner(transport);

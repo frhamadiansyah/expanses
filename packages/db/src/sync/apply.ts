@@ -628,8 +628,11 @@ export interface PullResult {
   skipped: SkippedOp[];
   /** Why the loop stopped before the end of the log, and at which entry; the cursor stays before it (§7.1). */
   stopped?: { seq: number; reason: 'bad signature' | 'drift' | 'not active' | 'needs invite' };
-  /** Removals applied by this call, with the epoch each was made under — what `maybeRotate` looks at (§8.4). */
-  removals: { epoch: number; target: string }[];
+  /**
+   * Removals applied by this call, with the epoch each was made under — what `maybeRotate` looks at (§8.4) — and
+   * whether it was a device leaving with its member (`leave`, a device removing itself; task 9a).
+   */
+  removals: { epoch: number; target: string; leave?: true }[];
   /** Devices this call pinned for the first time (§5.4), by id. */
   introduced: string[];
 }
@@ -748,7 +751,7 @@ export async function pullAndApply(
         const mine = entry.sealed.find((sealed) => sealed.deviceId === self && sealed.epoch === entry.epoch);
         rotationKey = mine ? await openSealedKey(sealer.device.agree.privateKey, bookId, mine).catch(() => null) : null;
       }
-      let removal: { epoch: number; target: string } | null = null;
+      let removal: PullResult['removals'][number] | null = null;
       let admitted = false;
       let applyingDecisions: (Op | AuthorityError)[] | undefined;
       await database.transaction((tx) =>
@@ -800,7 +803,9 @@ export async function pullAndApply(
                 else {
                   await recordRemovalTx(tx, bookId, entry.target, entry.seq);
                   await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
-                  removal = { epoch: entry.epoch, target: entry.target };
+                  // Leave (§8.4, task 9a) counts only on a device removing itself.
+                  const leave = entry.leave === true && entry.target === entry.deviceId;
+                  removal = leave ? { epoch: entry.epoch, target: entry.target, leave: true } : { epoch: entry.epoch, target: entry.target };
                 }
               }
               if (entry.kind === 'rotation') {
@@ -850,6 +855,18 @@ export async function pullAndApply(
     for (const lineageId of held.keys()) console.warn(`sync: purchase ${lineageId} changed but its money never arrived; dropped`);
     return stopped ? { applied, skipped, stopped, removals, introduced } : { applied, skipped, removals, introduced };
   }
+}
+
+/**
+ * After a rejoin's pull from 0 (§8.7, task 9a — S4): every member row of the book here is set to what the view decided.
+ * A refused edit this device's backup made and drained before the backup was taken comes back from the log under the
+ * old device's id, which is no longer "own": apply refuses it like anyone's, and the row the backup holds would keep
+ * the refused value. Nothing is emitted.
+ */
+export async function reconcileAllMembersTx(tx: Tx, bookId: string): Promise<void> {
+  const rows = await tx.values<[string]>(sql`SELECT member_id FROM book_members WHERE book_id = ${bookId}`);
+  if (rows.length === 0) return;
+  await reconcileMembersTx(tx, await bookContextTx(tx, bookId), new Set(rows.map(([id]) => id)), { v: 1, hlc: '', member: '', ops: [] });
 }
 
 /**

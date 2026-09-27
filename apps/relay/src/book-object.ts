@@ -84,7 +84,7 @@ export class BookObject extends DurableObject<Env> {
       try {
         return await work();
       } catch (error) {
-        if (error instanceof RelayError) return { status: error.status, body: { error: error.message } };
+        if (error instanceof RelayError) return { status: error.status, body: { ...error.detail, error: error.message } };
         throw error;
       }
     });

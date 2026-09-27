@@ -34,9 +34,21 @@ async function selfIsOwner(tx: Db, bookId: string): Promise<boolean> {
 
 /** A write that would leave a shared book with no owner (§8.5). */
 export class LastOwnerError extends Error {
-  constructor() {
-    super("A shared workspace needs an owner: the last owner can't be removed or made a member");
+  constructor(message = "A shared workspace needs an owner: the last owner can't be removed or made a member") {
+    super(message);
     this.name = 'LastOwnerError';
+  }
+}
+
+/**
+ * A write to a book that is no longer shared here (`shared_books.state = 'unshared'`, §8.6, task 9a): its owner stopped
+ * sharing it, or this device left. The book stays with every row, read-only. Thrown from capture, inside the
+ * transaction that tried, so the write is rolled back.
+ */
+export class BookReadOnlyError extends Error {
+  constructor(readonly bookId: string) {
+    super('This workspace is no longer shared, and is kept read-only');
+    this.name = 'BookReadOnlyError';
   }
 }
 
@@ -152,6 +164,7 @@ const sessions = new WeakMap<object, CaptureSession>();
 export class CaptureSession {
   private enabled: boolean;
   private books: SharedBook[] | undefined;
+  private unshared: ReadonlySet<string> = new Set();
   private readonly slots: Slot[] = [];
   private readonly lineages = new Map<string, LineageTouch>();
 
@@ -176,13 +189,22 @@ export class CaptureSession {
     if (!this.enabled) return [];
     if (this.books) return this.books;
     try {
-      const rows = await this.tx.values<[string, string, number]>(sql`SELECT book_id, member_id, epoch FROM shared_books WHERE state = 'active'`);
-      this.books = rows.map(([bookId, memberId, epoch]) => ({ bookId, memberId, epoch: Number(epoch) }));
+      const rows = await this.tx.values<[string, string, number, string]>(
+        sql`SELECT book_id, member_id, epoch, state FROM shared_books WHERE state IN ('active', 'unshared')`,
+      );
+      this.books = rows.filter((r) => r[3] === 'active').map(([bookId, memberId, epoch]) => ({ bookId, memberId, epoch: Number(epoch) }));
+      this.unshared = new Set(rows.filter((r) => r[3] === 'unshared').map(([bookId]) => bookId));
     } catch {
       // A database stopped before migration 0056 has no sharing at all.
       this.books = [];
     }
     return this.books;
+  }
+
+  /** The books no longer shared here, read-only (§8.6). Read by the same one lookup as `sharedBooks`. */
+  async readOnlyBooks(): Promise<ReadonlySet<string>> {
+    await this.sharedBooks();
+    return this.enabled ? this.unshared : new Set();
   }
 
   reserveRowSlot(): { kind: 'rows'; ops: { bookId: string; op: Op }[] } {
@@ -364,8 +386,27 @@ export async function withCapture<T>(tx: Db, target: CaptureTarget | readonly Ca
   const session = sessionOf(tx);
   if (!session) return fn();
   const books = await session.sharedBooks();
-  if (books.length === 0) return fn();
+  const readOnly = await session.readOnlyBooks();
+  if (books.length === 0 && readOnly.size === 0) return fn();
   const targets = Array.isArray(target) ? (target as readonly CaptureTarget[]) : [target as CaptureTarget];
+  if (readOnly.size > 0) {
+    // §8.6 (task 9a): a book no longer shared keeps every row as it was. Any change to one of its rows is refused here,
+    // before anything is emitted, and rolls the whole transaction back.
+    const frozen = [...readOnly].map((bookId) => ({ bookId, memberId: '', epoch: 0 }));
+    const was = await snapshot(tx, frozen, targets);
+    const inner = fn;
+    fn = async () => {
+      const result = await inner();
+      const now = await snapshot(tx, frozen, targets);
+      for (const [key, row] of was) {
+        const after = now.get(key);
+        if (!after || JSON.stringify([after.values, after.derived]) !== JSON.stringify([row.values, row.derived])) throw new BookReadOnlyError(row.bookId);
+      }
+      for (const [key, row] of now) if (!was.has(key)) throw new BookReadOnlyError(row.bookId);
+      return result;
+    };
+    if (books.length === 0) return fn();
+  }
   const slot = session.reserveRowSlot();
   const before = await snapshot(tx, books, targets);
   const result = await fn();
@@ -657,6 +698,13 @@ export async function capturePostedTx(tx: Db, transactionId: string, bookId: str
   const session = sessionOf(tx);
   if (!session) return;
   const books = await session.sharedBooks();
+  const readOnly = await session.readOnlyBooks();
+  if (readOnly.size > 0) {
+    // §8.6: nothing is posted into a book no longer shared, nor does anything in it change.
+    if (bookId && readOnly.has(bookId)) throw new BookReadOnlyError(bookId);
+    const replaced = replacesTransactionId ? await bookOfTransaction(tx, replacesTransactionId) : null;
+    if (replaced && readOnly.has(replaced)) throw new BookReadOnlyError(replaced);
+  }
   if (books.length === 0) return;
   if (replacesTransactionId === null) {
     if (bookId && books.some((b) => b.bookId === bookId)) await session.touchLineage(transactionId, transactionId);
@@ -672,8 +720,11 @@ export async function captureVoidingTx(tx: Db, transactionId: string): Promise<v
   const session = sessionOf(tx);
   if (!session) return;
   const books = await session.sharedBooks();
-  if (books.length === 0) return;
+  const readOnly = await session.readOnlyBooks();
+  if (books.length === 0 && readOnly.size === 0) return;
   const bookId = await bookOfTransaction(tx, transactionId);
+  if (bookId && readOnly.has(bookId)) throw new BookReadOnlyError(bookId); // §8.6
+  if (books.length === 0) return;
   const lineageId = await lineageOfTransaction(tx, transactionId);
   const inShared = (bookId && books.some((b) => b.bookId === bookId)) || (await lineageRowOf(tx, lineageId)) !== null;
   if (inShared) await session.touchLineage(lineageId, transactionId);

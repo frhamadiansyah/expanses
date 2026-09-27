@@ -184,7 +184,9 @@ CREATE TABLE shared_books (
   epoch         INTEGER NOT NULL,   -- the epoch this device writes under
   member_id     TEXT NOT NULL,      -- this device's member
   state         TEXT NOT NULL,      -- 'active' | 'needs_invite' | 'unshared'
-  shared_at     TEXT NOT NULL
+  shared_at     TEXT NOT NULL,
+  synced_at     TEXT,               -- 0058, task 9a: when this device last finished a sync of the book (§11)
+  unshared_by   TEXT                -- 0058, task 9a: the member who ended the sharing here (§8.4, §8.6)
 );
 CREATE TABLE book_members (
   book_id TEXT NOT NULL, member_id TEXT NOT NULL, name TEXT NOT NULL,
@@ -898,6 +900,15 @@ device syncs at once, which applies the removal and rotates. `syncOnce` runs `ma
 removal applied, and pulls again after a `201` or a `409`; running it after the loop rather than mid-loop means a
 rotation already in the same page wins without a `409`. A device whose own row is removed never seals.
 
+**Leave, as built (task 9a).** The relay knows no members, and only an owner removes another device, so a plain member
+cannot remove its other devices itself. `SyncEngine.leave(bookId)` syncs first (the outbox goes out), refuses the last
+owner (`LastOwnerError`, per the view) until someone else is owner, then appends a removal of itself carrying
+`leave: true` (signed like every field; it counts only when `target` is the author) and drops itself from the relay.
+Every other device of the same member (per the view), applying that removal, does the same on its next sync and does
+not rotate on the way out (`syncOnce` answers `ended: 'left'`); every other device rotates as for any removal. A device
+of the leaving member that never syncs again keeps its keys until an owner removes it. On each device that left, the
+book stays with every row, `shared_books.state = 'unshared'`, `unshared_by` = its own member: read-only, as §8.6.
+
 ### 8.5 Ownership
 
 `book_members.role`, synced. **Only an owner writes it (fix round 1, C3):** a `member` op naming `role` among its
@@ -929,10 +940,30 @@ The relay keeps the set of owner **device ids** for authorising `putInvite`,
 `setOwners` with that member's devices added. With every owner device gone the book is **frozen**: members record
 and sync, nobody can invite or remove; rotation still works.
 
+**As built (task 9a).** `makeOwner(bookId, memberId)` checks this device is an owner's in the view (`NotOwnerError`),
+writes `role = 'owner'` through `withCapture`, and syncs when it can; the sync's pull takes the op into the view and
+`followOwners` calls `setOwners` with the promoted member's devices added — the same path as any role change. **Frozen**
+is `isFrozen(bookId)`: the view holds at least one device and no owner device (a book never pulled is not frozen).
+`createInvite`, `removeDevice` of another device and `makeOwner` refuse a frozen book with `FrozenBookError`; a device
+removing itself, recording, syncing and rotating carry on.
+
 ### 8.6 Stop sharing
 
 Owner: `deleteBook`. Every other device, on the next call answered `410`, sets `state = 'unshared'`: the book
 stays, read-only, labelled *"No longer shared by Fandri"*. Nobody's rows are deleted by someone else's tap.
+
+**As built (task 9a).** `stopSharing(bookId)`, by an owner in the view (`NotOwnerError`). *Who stopped it:* the relay
+keeps the deleting device (`deletedBy`) and every later `410` on the book names it (§9.2); a device answered `410`
+maps it to a member through its pinned `book_devices` and keeps it in `shared_books.unshared_by`, clears its outbox
+(nothing can drain it) and keeps everything else. A `410` on any sync call — drain or pull — does this (`syncOnce`
+answers `ended: 'unshared'`). *Read-only* is enforced in capture, the one place every writer of a book's rows already
+passes: `withCapture` refuses any change to a row of an `unshared` book, and the ledger doors refuse a post into it, a
+replace or a void of a row in it — `BookReadOnlyError`, inside the writing transaction, so it rolls back. It is found by
+the same one `shared_books` lookup capture already makes. *The owner's own device (new decision):* the book becomes an
+ordinary local book again — `shared_books` and the book's sync state (`sync_outbox`, `sync_cursor`, `book_epoch_keys`,
+field clocks, tombstones, skips, `book_devices`, the authority view) go; every row stays, and so do `book_members`,
+`book_member_accounts` (another member's money stays hidden, §4.4) and `sync_lineage` (who paid). Sharing it again
+seeds afresh: the sharer is its owner again and any other remembered member comes back as a member.
 
 ### 8.7 A restored backup
 
@@ -946,6 +977,12 @@ shows **"Ask Dewi for a new invite to keep sharing"**; its rows are all there an
 true, memberId })` by an owner; fix round 1): the old epoch keys are dropped, the cursor goes to 0, and after the pull every
 row in scope whose `Op.id` the pull never saw is emitted as new (`emitUnknownRowsTx`, sharing the seed's row walk).
 Recording while waiting works and is captured by nothing (capture watches `active` books only); the rejoin emits it.
+
+**S4 (task 9a).** An edit the log refused (a plain member's role, say) that the backup made and drained before it was
+taken comes back in the rejoin's pull under the old device's id, which is no longer this device's own: apply refuses it
+like anyone's, and the row the backup holds kept the refused value. After the rejoin's pull, every member row of the
+book here is set to the view's (`reconcileAllMembersTx`, the put-back of §8.5 over all of them), before the unknown
+rows are emitted. The status line's "Ask Dewi" names an owner of the book other than this member (§11).
 
 Rejoining with a fresh invite from that state: steps §8.2 1–7, keeping the existing `books` row and `member_id`;
 then pull from 0 and apply (the restored `sync_field_clocks` make the merge correct); then emit, as new, every
@@ -1000,7 +1037,7 @@ it. `409` on this endpoint is reserved for the one real conflict: a `rotation` w
 | `POST /invites/:id/claim` | new device | `DevicePublic` → `200 { bookId, epoch, keys, sameMember, memberId }`; `409` claimed; `410` expired; `403` bad owner signature; `429` five devices |
 | `DELETE /books/:id/devices/:deviceId` | owner, or the device itself | → `204` |
 | `PUT /books/:id/owners` | owner | `{ deviceIds }` → `204` |
-| `DELETE /books/:id` | owner | → `204`; every later call on the book → `410` |
+| `DELETE /books/:id` | owner | → `204`; every later call on the book → `410 { error, deletedBy }` (task 9a: the device that deleted it) |
 
 **As built (task 6)**, the statuses every endpoint can also answer, each the one `MemoryTransport` throws: `401` per
 §9.1; `404` an unknown book, invite, device or path; `400` a body or `since` of the wrong shape; `405` a method a path
@@ -1022,6 +1059,7 @@ log:     Map<seq, LogEntry>
 seen:    Map<deviceId + ':' + hlc, seq>          // lets a duplicate append answer with the original seq
 invites: Map<inviteId, InviteRecord & { claimedAt? }>
 deleted: boolean
+deletedBy?: deviceId                             // task 9a: named by every later 410 (§8.6)
 ```
 
 No name, no currency, no plaintext, no receipt. What the relay can observe: how many devices a book has, when each
@@ -1069,7 +1107,13 @@ Native kit only.
 | **Make owner** | you are an owner, on another member | §8.5 |
 | **Leave** | you are a member, on yourself | §8.4 |
 | **Stop sharing** | you are an owner | confirm, then §8.6 |
-| status line | any `shared_books` row | "Up to date" · "3 changes waiting" · "Not synced since Tue" · "Ask Dewi for a new invite to keep sharing" · "No longer shared by Fandri" |
+| status line | any `shared_books` row | "Up to date" · "3 changes waiting" · "Not synced since Tue" · "Ask Dewi for a new invite to keep sharing" · "No longer shared by Fandri" · frozen: no owner device left |
+
+**Status, as built (task 9a).** `SyncEngine.bookSyncStatus(bookId)` returns the line's state, first match wins:
+`unshared` (who, and whether it was this member leaving) · `needs_invite` (an owner's name to ask) · `frozen` · `stale`
+(no sync finished within 5 minutes, the scheduler's longest wait — "Not synced since `synced_at`") · `waiting` (the
+outbox count) · `up_to_date`; `null` for a book not shared here. `synced_at` is written when a `syncOnce` finishes
+without a stop.
 
 **Workspace switcher.** A shared book's subtitle: **Shared with Dewi**. The **+** menu gains **Join a workspace**:
 paste a code or arrive by `cicis://join/…`; then §8.2 steps 2–8.
@@ -1135,6 +1179,14 @@ Mutate-twice review on every step.
   (§8.5) can briefly show a row the user just deleted (or a role they just changed) when an earlier own entry is pulled
   back before the later one: the later entry restores it when it arrives, and a member edit made in that window is put
   back the same way. Seconds on a synced device; accepted.
+- **An `unshared` book can't be archived (task 9a).** Read-only covers the `book` row too, so archiving or renaming an
+  unshared copy is refused. If people want the copy gone or made their own, that needs its own act (drop `shared_books`,
+  as the owner's device does on stop).
+- **A leaving member's device that never syncs again (task 9a).** Leave reaches a member's other devices when they
+  next sync (§8.4); one that never does keeps its keys and its place among the five until an owner removes it.
+- **The stopper's device id on a `410` (task 9a).** `deletedBy` is answered before the caller's signature is checked, as
+  every book `410` is (§9.1), so whoever holds the relay book id learns that device id — an opaque key hash that only
+  members can put a name to.
 - ~~The keychain plugin for `NativeKeyStore` (step 2).~~ Settled in task 5: `@aparajita/capacitor-secure-storage` 8.x —
   Capacitor 8, iOS keychain class `afterFirstUnlockThisDeviceOnly`, iCloud sync switchable off (§5.2). Linked into the
   iOS project by `cap sync ios` (fix round 1: `CapApp-SPM/Package.swift`); not yet built in Xcode or run on a device.
