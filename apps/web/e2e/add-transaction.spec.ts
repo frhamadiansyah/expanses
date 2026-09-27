@@ -533,10 +533,18 @@ test('a transfer that crosses currencies can be tagged to a goal', async ({ page
 });
 
 /** A card with real terms, so the points engine has a scheme to measure a purchase against. */
-async function catalogueCard(page: Page, name: string, search: string, entryName: string) {
+/**
+ * Gives a card its two dates and links it to a catalogue entry.
+ *
+ * `billingDay` is the statement day, and it decides which cycle a purchase lands in: the cycle ends on that day
+ * and starts the day after the previous one. A walk that records a purchase on a day other than today must pick a
+ * day that keeps both inside one cycle whatever the date is when the suite runs — `'31'` clamps to the end of the
+ * month, so the cycle is exactly the calendar month.
+ */
+async function catalogueCard(page: Page, name: string, search: string, entryName: string, billingDay = '25') {
   await page.goto('/cards');
   await page.getByRole('link', { name: new RegExp(`^${name}(,|$)`) }).click();
-  await page.getByLabel('Billing date').fill('25');
+  await page.getByLabel('Billing date').fill(billingDay);
   await page.getByLabel('Due date').fill('12');
   await page.getByRole('button', { name: 'Save terms' }).click();
   await page.getByLabel('Search catalogue').fill(search);
@@ -1119,7 +1127,10 @@ test('nothing was lost: one purchase carries every field the old form had', asyn
   await page.getByLabel('Whose card').fill('Spouse');
   await page.getByRole('button', { name: 'Add card' }).click();
   await expect(page.getByTestId('card-on-account')).toHaveCount(2);
-  await catalogueCard(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature');
+  // The 31st clamps to the end of the month, so this card's statement cycle IS the calendar month. With the
+  // usual 25th the cycle runs 26th→25th, and `OTHER_DAY` — the 1st — falls into the *previous* cycle on every
+  // day from the 26th onwards, which took the purchase off "This cycle" and out of the list read at the end.
+  await catalogueCard(page, 'KF Signature', 'signature', 'BCA Singapore Airlines KrisFlyer Visa Signature', '31');
   await addEvent(page, 'Lebaran');
 
   await page.goto('/transactions');
