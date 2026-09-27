@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Tx } from '../database';
 import { pullAndApply, reconcileAllMembersTx, type PullResult } from './apply';
-import { clearAuthorityTx, viewActiveDevices, viewDevice, viewIsLastOwner, viewMember, viewOwnerDevices, viewRoleOfDevice } from './authority';
+import { clearAuthorityTx, viewActiveDevices, viewDevice, viewMember, viewOtherActiveOwners, viewOwnerDevices, viewRoleOfDevice } from './authority';
 import { captureConfigOf, configureCapture, LastOwnerError, rowUpsertsTx, withCapture, withCapturePaused, writeChangeSetsTx } from './capture';
 import { randomBytes, sealKeyFor } from './crypto';
 import { localTick } from './hlc';
@@ -220,7 +220,7 @@ export class SyncEngine {
     for (const removal of result.removals) {
       if (removal.target === this.deviceId) continue; // a device never rotates on its own removal
       // Leave (§8.4): another device of this member left, so this one leaves too, and seals nothing on the way out.
-      if (removal.leave && (await this.sameMember(bookId, removal.target))) {
+      if (removal.leave && (await this.followsLeave(bookId, removal.target, removal.seq))) {
         follow = true;
         continue;
       }
@@ -493,16 +493,27 @@ export class SyncEngine {
   /**
    * §8.4 Leave: this device removes itself with a `leave` removal, and every other device of this member, applying it,
    * removes itself too (a device may always remove itself; only an owner removes another, and the relay knows no
-   * members). The last owner cannot leave (`LastOwnerError`) until someone else is owner. What waits in the outbox goes
-   * out first. The book stays here with every row, read-only (`unshared`, by this member).
+   * members). The last owner cannot leave (`LastOwnerError`) until another owner with a device still in exists; an
+   * owner who leaves steps down to member first (fix round 1). What waits in the outbox goes out first. The book stays here with every row, read-only (`unshared`, by this member).
    */
   async leave(bookId: string): Promise<void> {
     await this.requireActive(bookId);
     const synced = await this.syncOnce(bookId);
     if (synced.ended) return;
     const shared = (await this.sharedRow(bookId))!;
-    if (await this.database.transaction((tx) => viewIsLastOwner(tx, bookId, shared.memberId))) {
-      throw new LastOwnerError("You're this workspace's last owner: make someone else an owner before you leave");
+    if (await this.selfIsOwner(bookId)) {
+      // Fix round 1: only another owner who still has a device in counts; leaving past one with none freezes the book.
+      if ((await this.database.transaction((tx) => viewOtherActiveOwners(tx, bookId, shared.memberId))) === 0) {
+        throw new LastOwnerError("You're this workspace's last owner: make someone else an owner before you leave");
+      }
+      // An owner steps down before leaving, so nobody is sent to ask a departed owner (§8.7) and the view keeps no
+      // owner without a device. It must reach the log before the removal: after it, this device's entries count for nothing.
+      await this.database.transaction((tx) =>
+        withCapture(tx, { entity: 'member', id: shared.memberId, bookId }, async () => {
+          await tx.run(sql`UPDATE book_members SET role = 'member' WHERE book_id = ${bookId} AND member_id = ${shared.memberId}`);
+        }),
+      );
+      if ((await this.syncOnce(bookId)).ended) return;
     }
     await this.leaveNow(bookId);
   }
@@ -526,6 +537,12 @@ export class SyncEngine {
   async stopSharing(bookId: string): Promise<void> {
     const shared = await this.requireActive(bookId);
     if (!(await this.selfIsOwner(bookId))) throw new NotOwnerError('Only an owner can stop sharing');
+    // Fix round 1: what waits in the outbox goes to the log first, when the relay can be reached.
+    try {
+      await this.drain(bookId);
+    } catch (error) {
+      if (await this.endIfGone(bookId, error)) return;
+    }
     try {
       await this.transport.deleteBook(shared.relayBookId);
     } catch (error) {
@@ -594,11 +611,16 @@ export class SyncEngine {
     return this.database.transaction(async (tx) => (await viewRoleOfDevice(tx, bookId, this.deviceId)) === 'owner');
   }
 
-  /** Whether `deviceId` belongs to this device's member, per the view. */
-  private sameMember(bookId: string, deviceId: string): Promise<boolean> {
+  /**
+   * Whether this device follows a leave by `deviceId` at `seq` (§8.4): that device is of this device's member, per the
+   * view, and this device was in before the leave (fix round 1) — a device of the member admitted after it, re-invited
+   * or a restored phone rejoining, stays.
+   */
+  private followsLeave(bookId: string, deviceId: string, seq: number): Promise<boolean> {
     return this.database.transaction(async (tx) => {
       const [other, self] = [await viewDevice(tx, bookId, deviceId), await viewDevice(tx, bookId, this.deviceId)];
-      return other !== null && self !== null && self.removedSeq === null && other.memberId === self.memberId;
+      if (other === null || self === null || self.removedSeq !== null || other.memberId !== self.memberId) return false;
+      return (self.addedSeq ?? 0) < seq;
     });
   }
 

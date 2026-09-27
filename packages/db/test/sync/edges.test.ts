@@ -112,6 +112,54 @@ describe('leave (§8.4)', () => {
     expect(await shared(tablet, bookId)).toEqual(['active', null]);
   });
 
+  it('a member who left comes back through a same-member invite, and the new device stays (fix round 1)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    await dewi.engine.leave(bookId);
+    await home.settle([fandri]);
+    const back = await home.device('Dewi again', dewi.memberId);
+    const { code } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+    const { result } = await back.engine.joinBook(code, { ws: back.ws, memberName: 'Dewi', deviceName: "Dewi's new phone" });
+    expect(result.ended).toBeUndefined();
+    expect(await shared(back, bookId)).toEqual(['active', null]);
+    expect((await back.engine.syncOnce(bookId)).ended).toBeUndefined();
+    expect(relayRemoved(home, back.deviceId)).toBe(false);
+  });
+
+  it('a restored phone of a member who left rejoins and stays (§8.7, fix round 1)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    const backup = await dewi.database.exportBytes();
+    await dewi.engine.leave(bookId);
+    await home.settle([fandri]);
+    const restored = await home.restore(dewi, backup);
+    await restored.engine.checkRestore();
+    const { code } = await fandri.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+    const { result } = await restored.engine.joinBook(code, { ws: restored.ws, memberName: 'Dewi', deviceName: "Dewi's restored phone" });
+    expect(result.ended).toBeUndefined();
+    expect(await shared(restored, bookId)).toEqual(['active', null]);
+  });
+
+  it('an owner who leaves steps down first; the other owner, now alone, cannot leave (fix round 1)', async () => {
+    const { home, fandri, dewi, budi, bookId } = await household();
+    await fandri.engine.makeOwner(bookId, dewi.memberId);
+    await home.settle();
+    await dewi.engine.leave(bookId);
+    await home.settle([fandri, budi]);
+    expect(await roleOf(fandri, bookId, dewi.memberId)).toBe('member');
+    await expect(fandri.engine.leave(bookId)).rejects.toBeInstanceOf(LastOwnerError);
+    expect(relayRemoved(home, fandri.deviceId)).toBe(false);
+    expect(await fandri.engine.isFrozen(bookId)).toBe(false);
+  });
+
+  it('an owner whose other owner has no device left is the last one that counts (fix round 1)', async () => {
+    const { home, fandri, dewi, bookId } = await household();
+    await fandri.engine.makeOwner(bookId, dewi.memberId);
+    await home.settle();
+    // Dewi's only device goes without stepping down (removed, not left): she is an owner with no device.
+    await dewi.engine.removeDevice(bookId, dewi.deviceId);
+    await home.settle([fandri]);
+    await expect(fandri.engine.leave(bookId)).rejects.toBeInstanceOf(LastOwnerError);
+  });
+
   it('the last owner cannot leave until someone else is owner', async () => {
     const { home, fandri, dewi, bookId } = await household();
     await expect(fandri.engine.leave(bookId)).rejects.toBeInstanceOf(LastOwnerError);
@@ -171,6 +219,14 @@ describe('stop sharing (§8.6)', () => {
     expect((await budi.engine.syncOnce(bookId)).ended).toBe('unshared');
     expect(await shared(budi, bookId)).toEqual(['unshared', fandri.memberId]);
     expect(await count(budi, 'sync_outbox', bookId)).toBe(0);
+  });
+
+  it("drains the owner's outbox before the relay book goes (fix round 1)", async () => {
+    const { home, fandri, bookId } = await household();
+    await spend(fandri, bookId, 'last words');
+    const before = home.relay.peek(home.relayBookId)!.seq;
+    await fandri.engine.stopSharing(bookId);
+    expect(home.relay.peek(home.relayBookId)!.seq).toBe(before + 1);
   });
 
   it('is refused to a device whose member is not an owner', async () => {

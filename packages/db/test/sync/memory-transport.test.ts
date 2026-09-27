@@ -353,6 +353,25 @@ describe('MemoryTransport: deleteBook (DELETE /books/:id -> 204; later calls -> 
     await expect(owner.pull(bookId, 0)).rejects.toMatchObject({ status: 410, deletedBy: ownerId });
   });
 
+  it('names deletedBy only to a caller whose signature verifies against its pinned key; before that, a bare 410 (fix round 1)', async () => {
+    const transport = new MemoryTransport();
+    const ownerKeys = await generateDevice();
+    const owner = transport.as(requestSignerOf(ownerKeys));
+    const { bookId } = await owner.createBook(ownerKeys.public);
+    await owner.deleteBook(bookId);
+    await expect(owner.pull(bookId, 0)).rejects.toMatchObject({ status: 410, deletedBy: ownerKeys.deviceId });
+    const stranger = await generateDevice();
+    const bare = async (t: SyncTransport) => {
+      const error = await t.pull(bookId, 0).then(() => null, (e: unknown) => e as SyncTransportError);
+      expect(error).toMatchObject({ status: 410 });
+      expect(error!.deletedBy).toBeUndefined();
+    };
+    await bare(transport.as(requestSignerOf(stranger)));
+    // Claiming to be the owner, signing with another key.
+    const impostor: RequestSigner = { deviceId: ownerKeys.deviceId, publicJwk: stranger.public.signJwk, sign: (b) => requestSignerOf(stranger).sign(b) };
+    await bare(transport.as(impostor));
+  });
+
   it('403s a non-owner', async () => {
     const transport = new MemoryTransport();
     const { bookId, owner } = await bookWithOwner(transport);

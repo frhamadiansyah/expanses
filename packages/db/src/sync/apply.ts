@@ -630,9 +630,9 @@ export interface PullResult {
   stopped?: { seq: number; reason: 'bad signature' | 'drift' | 'not active' | 'needs invite' };
   /**
    * Removals applied by this call, with the epoch each was made under — what `maybeRotate` looks at (§8.4) — and
-   * whether it was a device leaving with its member (`leave`, a device removing itself; task 9a).
+   * whether it was a device leaving with its member (`leave`, a device removing itself; task 9a), at which seq.
    */
-  removals: { epoch: number; target: string; leave?: true }[];
+  removals: { epoch: number; target: string; seq: number; leave?: true }[];
   /** Devices this call pinned for the first time (§5.4), by id. */
   introduced: string[];
 }
@@ -805,7 +805,7 @@ export async function pullAndApply(
                   await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
                   // Leave (§8.4, task 9a) counts only on a device removing itself.
                   const leave = entry.leave === true && entry.target === entry.deviceId;
-                  removal = leave ? { epoch: entry.epoch, target: entry.target, leave: true } : { epoch: entry.epoch, target: entry.target };
+                  removal = leave ? { epoch: entry.epoch, target: entry.target, seq: entry.seq, leave: true } : { epoch: entry.epoch, target: entry.target, seq: entry.seq };
                 }
               }
               if (entry.kind === 'rotation') {

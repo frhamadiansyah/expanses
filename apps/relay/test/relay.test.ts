@@ -487,6 +487,21 @@ describe('§9.2 DELETE /books/:id', () => {
     await expect(joiner.transport.claimInvite(invite.inviteId, joiner.devicePublic)).rejects.toMatchObject({ status: 410 });
   });
 
+  it('answers a bare 410 before the caller is authenticated; deletedBy only after (fix round 1)', async () => {
+    const { bookId, owner } = await bookWithOwner();
+    await owner.transport.deleteBook(bookId);
+    const stranger = await makeDevice(base);
+    const path = `/books/${bookId}/entries?since=0`;
+    const unknown = await raw(base, { method: 'GET', path, signer: stranger.signer });
+    expect(unknown.status).toBe(410);
+    expect(await unknown.json()).not.toHaveProperty('deletedBy');
+    const forged = await raw(base, { method: 'GET', path, signer: stranger.signer, deviceId: owner.deviceId });
+    expect(forged.status).toBe(410);
+    expect(await forged.json()).not.toHaveProperty('deletedBy');
+    const real = await raw(base, { method: 'GET', path, signer: owner.signer });
+    expect(await real.json()).toMatchObject({ deletedBy: owner.deviceId });
+  });
+
   it('403s a non-owner', async () => {
     const { bookId, owner } = await bookWithOwner();
     const { joiner } = await join(bookId, owner);

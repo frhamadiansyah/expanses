@@ -52,6 +52,8 @@ export class BookObject extends DurableObject<Env> {
 
   async member(call: SignedCall, op: MemberOp): Promise<Result> {
     return this.serial(async () => {
+      const gone = await this.book.deletedAnswer(call.deviceId, (key) => verifySignature(key, call.signingBytes, call.signature));
+      if (gone) throw gone;
       const key = await this.book.memberKey(call.deviceId);
       if (!(await verifySignature(key, call.signingBytes, call.signature))) throw new RelayError(401, 'bad signature');
       const actor = call.deviceId;

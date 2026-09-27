@@ -86,8 +86,21 @@ export class Book {
   async requireBook(): Promise<Meta> {
     const meta = await this.store.get<Meta>('meta');
     if (!meta) throw new RelayError(404, 'no such book');
-    if (meta.deleted) throw new RelayError(410, 'this book is no longer shared', meta.deletedBy === undefined ? {} : { deletedBy: meta.deletedBy });
+    if (meta.deleted) throw new RelayError(410, 'this book is no longer shared');
     return meta;
+  }
+
+  /**
+   * A member's call on a deleted book (§8.6, fix round 1): null while the book stands. Otherwise the `410`, bare — and
+   * naming the device that deleted it only when the caller is a device of the book, not removed, whose request
+   * `verifies` against its stored key. Nothing about the book is told before the caller is authenticated.
+   */
+  async deletedAnswer(actor: string, verifies: (key: JsonWebKey) => Promise<boolean>): Promise<RelayError | null> {
+    const meta = await this.store.get<Meta>('meta');
+    if (!meta?.deleted) return null;
+    const device = await this.store.get<DeviceRecord>(deviceKey(actor));
+    const known = device !== undefined && !device.removedAt && meta.deletedBy !== undefined && (await verifies(device.signJwk));
+    return new RelayError(410, 'this book is no longer shared', known ? { deletedBy: meta.deletedBy } : {});
   }
 
   /**

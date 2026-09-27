@@ -243,6 +243,7 @@ CREATE TABLE sync_authority (                           -- 0057, fix round 2: th
 CREATE TABLE sync_authority_devices (                   -- 0057, fix round 2: the authority view, devices (§8.4)
   book_id TEXT NOT NULL, device_id TEXT NOT NULL, member_id TEXT NOT NULL,
   removed_seq INTEGER,                                  -- the seq of the removal entry that removed it
+  added_seq   INTEGER,                                  -- 0058, task 9a fix round 1: the seq of the entry that admitted it
   PRIMARY KEY (book_id, device_id)
 );
 ```
@@ -901,11 +902,16 @@ removal applied, and pulls again after a `201` or a `409`; running it after the 
 rotation already in the same page wins without a `409`. A device whose own row is removed never seals.
 
 **Leave, as built (task 9a).** The relay knows no members, and only an owner removes another device, so a plain member
-cannot remove its other devices itself. `SyncEngine.leave(bookId)` syncs first (the outbox goes out), refuses the last
-owner (`LastOwnerError`, per the view) until someone else is owner, then appends a removal of itself carrying
-`leave: true` (signed like every field; it counts only when `target` is the author) and drops itself from the relay.
-Every other device of the same member (per the view), applying that removal, does the same on its next sync and does
-not rotate on the way out (`syncOnce` answers `ended: 'left'`); every other device rotates as for any removal. A device
+cannot remove its other devices itself. `SyncEngine.leave(bookId)` syncs first (the outbox goes out). An owner may
+leave only while another owner member still has a device in the view (`LastOwnerError` otherwise; fix round 1 — an
+owner whose devices are all gone does not count, or leaving past it would freeze the book), and first steps down: it
+writes its own role `'member'` and syncs, so the demotion is in the log before the removal and no departed owner is
+named in the view or asked for an invite (§8.7). Then it appends a removal of itself carrying `leave: true` (signed like
+every field; it counts only when `target` is the author) and drops itself from the relay. Every other device of the
+same member (per the view) **that was in before that leave** — admitted at an earlier seq (`added_seq`; fix round 1) —
+applying that removal, does the same on its next sync and does not rotate on the way out (`syncOnce` answers
+`ended: 'left'`); every other device rotates as for any removal. A device of that member admitted after the leave — a
+same-member invite bringing someone back, or a restored phone rejoining (§8.7) — replays the old leave and stays. A device
 of the leaving member that never syncs again keeps its keys until an owner removes it. On each device that left, the
 book stays with every row, `shared_books.state = 'unshared'`, `unshared_by` = its own member: read-only, as §8.6.
 
@@ -952,8 +958,9 @@ removing itself, recording, syncing and rotating carry on.
 Owner: `deleteBook`. Every other device, on the next call answered `410`, sets `state = 'unshared'`: the book
 stays, read-only, labelled *"No longer shared by Fandri"*. Nobody's rows are deleted by someone else's tap.
 
-**As built (task 9a).** `stopSharing(bookId)`, by an owner in the view (`NotOwnerError`). *Who stopped it:* the relay
-keeps the deleting device (`deletedBy`) and every later `410` on the book names it (§9.2); a device answered `410`
+**As built (task 9a).** `stopSharing(bookId)`, by an owner in the view (`NotOwnerError`). *Pending changes:* the owner's outbox is drained first, when the relay can be reached (fix round 1). *Who stopped
+it:* the relay keeps the deleting device (`deletedBy`); a later `410` names it only to a caller whose signature
+verifies against its stored, not removed, device key — before that the `410` is bare (§9.2; fix round 1); a device answered `410`
 maps it to a member through its pinned `book_devices` and keeps it in `shared_books.unshared_by`, clears its outbox
 (nothing can drain it) and keeps everything else. A `410` on any sync call — drain or pull — does this (`syncOnce`
 answers `ended: 'unshared'`). *Read-only* is enforced in capture, the one place every writer of a book's rows already
@@ -1037,7 +1044,7 @@ it. `409` on this endpoint is reserved for the one real conflict: a `rotation` w
 | `POST /invites/:id/claim` | new device | `DevicePublic` → `200 { bookId, epoch, keys, sameMember, memberId }`; `409` claimed; `410` expired; `403` bad owner signature; `429` five devices |
 | `DELETE /books/:id/devices/:deviceId` | owner, or the device itself | → `204` |
 | `PUT /books/:id/owners` | owner | `{ deviceIds }` → `204` |
-| `DELETE /books/:id` | owner | → `204`; every later call on the book → `410 { error, deletedBy }` (task 9a: the device that deleted it) |
+| `DELETE /books/:id` | owner | → `204`; every later call on the book → `410`; to a device of the book whose signature verifies, `410 { error, deletedBy }` (task 9a, fix round 1) |
 
 **As built (task 6)**, the statuses every endpoint can also answer, each the one `MemoryTransport` throws: `401` per
 §9.1; `404` an unknown book, invite, device or path; `400` a body or `since` of the wrong shape; `405` a method a path
@@ -1184,9 +1191,6 @@ Mutate-twice review on every step.
   as the owner's device does on stop).
 - **A leaving member's device that never syncs again (task 9a).** Leave reaches a member's other devices when they
   next sync (§8.4); one that never does keeps its keys and its place among the five until an owner removes it.
-- **The stopper's device id on a `410` (task 9a).** `deletedBy` is answered before the caller's signature is checked, as
-  every book `410` is (§9.1), so whoever holds the relay book id learns that device id — an opaque key hash that only
-  members can put a name to.
 - ~~The keychain plugin for `NativeKeyStore` (step 2).~~ Settled in task 5: `@aparajita/capacitor-secure-storage` 8.x —
   Capacitor 8, iOS keychain class `afterFirstUnlockThisDeviceOnly`, iCloud sync switchable off (§5.2). Linked into the
   iOS project by `cap sync ios` (fix round 1: `CapApp-SPM/Package.swift`); not yet built in Xcode or run on a device.

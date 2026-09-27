@@ -57,11 +57,26 @@ export async function viewMember(tx: Db, bookId: string, memberId: string): Prom
   return row ? { role: row[0], roleHlc: row[1], deleted: Number(row[2]) === 1, rowHlc: row[3] } : null;
 }
 
-export async function viewDevice(tx: Db, bookId: string, deviceId: string): Promise<{ memberId: string; removedSeq: number | null } | null> {
-  const [row] = await tx.values<[string, number | null]>(
-    sql`SELECT member_id, removed_seq FROM sync_authority_devices WHERE book_id = ${bookId} AND device_id = ${deviceId}`,
+export async function viewDevice(
+  tx: Db,
+  bookId: string,
+  deviceId: string,
+): Promise<{ memberId: string; removedSeq: number | null; addedSeq: number | null } | null> {
+  const [row] = await tx.values<[string, number | null, number | null]>(
+    sql`SELECT member_id, removed_seq, added_seq FROM sync_authority_devices WHERE book_id = ${bookId} AND device_id = ${deviceId}`,
   );
-  return row ? { memberId: row[0], removedSeq: row[1] === null ? null : Number(row[1]) } : null;
+  return row ? { memberId: row[0], removedSeq: row[1] === null ? null : Number(row[1]), addedSeq: row[2] === null ? null : Number(row[2]) } : null;
+}
+
+/**
+ * Leave's guard (§8.4, fix round 1): the owner members other than `memberId` that still have a device in, per the view.
+ * An owner member whose every device is gone cannot run the book, so it does not count.
+ */
+export async function viewOtherActiveOwners(tx: Db, bookId: string, memberId: string): Promise<number> {
+  const [row] = await tx.values<[number]>(sql`
+    SELECT count(DISTINCT m.member_id) FROM sync_authority m JOIN sync_authority_devices d ON d.book_id = m.book_id AND d.member_id = m.member_id
+    WHERE m.book_id = ${bookId} AND m.member_id <> ${memberId} AND m.role = 'owner' AND m.deleted = 0 AND d.removed_seq IS NULL`);
+  return Number(row?.[0] ?? 0);
 }
 
 /** The role of the member a device belongs to, per the view: none for a device removed, or whose member is deleted. */
@@ -159,7 +174,7 @@ export async function introductionRefusal(tx: Db, bookId: string, author: string
     if (used.length > 0) return refuse('on an invite another device already used');
     await tx.run(sql`INSERT INTO sync_invites_used (book_id, invite_id, device_id) VALUES (${bookId}, ${terms.inviteId}, ${author})`);
   }
-  await tx.run(sql`INSERT INTO sync_authority_devices (book_id, device_id, member_id, removed_seq) VALUES (${bookId}, ${author}, ${memberId}, NULL)`);
+  await tx.run(sql`INSERT INTO sync_authority_devices (book_id, device_id, member_id, removed_seq, added_seq) VALUES (${bookId}, ${author}, ${memberId}, NULL, ${seq})`);
   return null;
 }
 
