@@ -24,6 +24,12 @@ export interface InvitePreview {
   relayBookId: string;
   bookName: string;
   inviterName: string;
+  /**
+   * The inviting device's member (recovery review, N1): a copy that would move onto this relay book checks, before the
+   * claim, that this member was an owner of the book in its own rows. What the inviter's device says; the terms it signs
+   * are checked against an owner device of the new log by every device that applies the joiner's introduction (§8.2).
+   */
+  inviterMemberId?: string;
   /** For a same-member invite: the name of the member the new device joins as (an owner linking another member's device, §8.3/§8.7). */
   memberName?: string;
   baseCurrency: string;

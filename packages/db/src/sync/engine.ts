@@ -133,7 +133,19 @@ export interface PreviewedInvite extends InvitePreview {
   expiresAt: string;
   claimed: boolean;
   expired: boolean;
+  /**
+   * Joining moves this device's copy of the book onto the invite's relay book, away from the one it was shared on
+   * (recovery review, N1): the screen asks first — "This replaces the sharing of Home on this device with Fandri's
+   * share". `bookName` is the book's name here. `null` for a new book, or a rejoin of the same relay book (§8.7).
+   */
+  replaces: { bookName: string } | null;
 }
+
+/** A copy of the invited book already on this device, and what joining would do to it (§8.2, §8.6, §8.7). */
+type CopyHere =
+  | { kind: 'none' }
+  | { kind: 'refused'; error: SharingError }
+  | { kind: 'rejoin'; memberId: string; state: string; moving: boolean; bookName: string };
 
 export interface JoinInput {
   /** The workspace the joined book goes into; its currency must be the book's (§8.2 step 3). */
@@ -339,6 +351,7 @@ export class SyncEngine {
       relayBookId: shared.relayBookId,
       bookName: book[0],
       inviterName: input.inviterName,
+      inviterMemberId: shared.memberId,
       ...(named ? { memberName: named[0] } : {}),
       baseCurrency: book[1],
       terms,
@@ -375,18 +388,67 @@ export class SyncEngine {
     const preview = await openInviteJson<InvitePreview>(key, found.preview, inviteAad('preview', inviteId)).catch(() => {
       throw new SharingError('BAD_CODE', 'That is not the whole invite code');
     });
-    return { ...preview, inviteId, expiresAt: found.expiresAt, claimed: found.claimed, expired: Date.parse(found.expiresAt) <= this.now() };
+    const copy = await this.copyHere(preview);
+    const replaces = copy.kind === 'rejoin' && copy.moving ? { bookName: copy.bookName } : null;
+    return { ...preview, inviteId, expiresAt: found.expiresAt, claimed: found.claimed, expired: Date.parse(found.expiresAt) <= this.now(), replaces };
+  }
+
+  /**
+   * What an invite would do to the copy of its book this device already holds, decided from local rows and the sealed
+   * preview alone, so every refusal comes before the claim (§8.2, I4):
+   *
+   * - none here: a new book;
+   * - active on the invite's own relay book: `ALREADY_SHARED`;
+   * - any other copy with a `shared_books` row is a rejoin as its member (§8.6, §8.7). One that would move onto another
+   *   relay book (recovery review, N1) must not be live — an `active` copy is refused (`STILL_SHARED`): stop sharing it
+   *   here first — and the invite must come from a member who was an owner of the book in this copy's own rows
+   *   (`INVITER_NOT_OWNER`); a rejoin of the same relay book (a restored phone, §8.7) is unchanged.
+   * - a plain book under that id: `ALREADY_SHARED`.
+   */
+  private async copyHere(preview: InvitePreview): Promise<CopyHere> {
+    const bookId = preview.bookId;
+    const [book] = await this.database.db.values<[string]>(sql`SELECT name FROM books WHERE id = ${bookId}`);
+    if (!book) return { kind: 'none' };
+    const existing = await this.sharedRow(bookId);
+    const here = new SharingError('ALREADY_SHARED', 'This workspace is already here');
+    if (!existing) return { kind: 'refused', error: here };
+    if (existing.state === 'active' && existing.relayBookId === preview.relayBookId) return { kind: 'refused', error: here };
+    const moving = existing.relayBookId !== preview.relayBookId;
+    if (moving) {
+      if (existing.state === 'active') {
+        return {
+          kind: 'refused',
+          error: new SharingError(
+            'STILL_SHARED',
+            'This workspace is still shared on this device. To move it to this invite’s share, stop sharing it here first: leave it, or keep it as your own copy.',
+          ),
+        };
+      }
+      const [inviter] = preview.inviterMemberId
+        ? await this.database.db.values<[string, string]>(sql`SELECT name, role FROM book_members WHERE book_id = ${bookId} AND member_id = ${preview.inviterMemberId}`)
+        : [];
+      if (inviter?.[1] !== 'owner') {
+        return {
+          kind: 'refused',
+          error: new SharingError(
+            'INVITER_NOT_OWNER',
+            `${inviter?.[0] ?? preview.inviterName} was not an owner of this workspace here. Only a share made by one of its owners can take the place of this one.`,
+          ),
+        };
+      }
+    }
+    return { kind: 'rejoin', memberId: existing.memberId, state: existing.state, moving, bookName: book[0] };
   }
 
   /**
    * §8.2 steps 1–8: preview, the currency check (nothing claimed on a mismatch), claim, every epoch key at rest, the
    * book and `shared_books`, the introduction (this device and, unless linking, this member), then a sync from 0.
    *
-   * On a book already here that is not active on this very relay book — `needs_invite` (§8.7), `unshared` (its owner
-   * stopped and shared again, §8.6), or active on an older relay book the owner has moved on from (a restored owner
-   * phone that kept the book as its own and shared it again; final review, C1) — this is the rejoin: the existing book
-   * row and member are kept, the old keys and sync state go, the cursor goes back to 0, and after the pull every local
-   * row in scope the log never mentioned is emitted as new. The invite must name this device's member.
+   * On a book already here (`copyHere`) this is the rejoin: `needs_invite` on the same relay book (§8.7), or a copy
+   * that is not live — `needs_invite` or `unshared` — moving onto a share made again by one of its owners (§8.6;
+   * recovery review, N1). The existing book row and member are kept, the old keys and sync state go, the cursor goes
+   * back to 0, and after the pull every local row in scope the log never mentioned is emitted as new. The invite must
+   * name this device's member. Every refusal comes before the claim, and nothing is applied before it.
    */
   async joinBook(code: string, input: JoinInput): Promise<{ bookId: string; memberId: string; result: SyncOnceResult }> {
     const preview = await this.previewInvite(code);
@@ -402,12 +464,10 @@ export class SyncEngine {
     // after it — the disk, say — needs a fresh invite from the owner (§8.2).
     const terms = preview.terms;
     if (!terms || terms.inviteId !== preview.inviteId) throw new SharingError('BAD_CODE', 'That invite is not complete');
-    const existing = await this.sharedRow(preview.bookId);
-    if (existing && existing.state === 'active' && existing.relayBookId === preview.relayBookId) throw new SharingError('ALREADY_SHARED', 'This workspace is already here');
+    const copy = await this.copyHere(preview);
+    if (copy.kind === 'refused') throw copy.error;
+    const existing = copy.kind === 'rejoin' ? copy : undefined;
     const rejoin = existing !== undefined;
-    if (!rejoin && (await this.database.db.values(sql`SELECT 1 FROM books WHERE id = ${preview.bookId}`)).length > 0) {
-      throw new SharingError('ALREADY_SHARED', 'This workspace is already here');
-    }
     if (rejoin && !(terms.sameMember && terms.memberId === existing.memberId)) {
       throw new SharingError('INVITE_MISMATCH', 'This invite is for someone else; ask for an invite to rejoin as yourself');
     }

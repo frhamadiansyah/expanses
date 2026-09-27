@@ -119,13 +119,16 @@ describe('a restored backup (§8.7)', () => {
     await spend(restored, bookId, 'Fandri, my own again');
     expect(await outbox(restored, bookId)).toBe(0);
 
-    // Shared again — as the same member, without being told which (the device remembers) — and Dewi's active copy on
-    // the old relay book joins the new share through a link-a-device invite for her.
+    // Shared again — as the same member, without being told which (the device remembers) — and Dewi's copy on the old
+    // relay book joins the new share through a link-a-device invite for her.
     const again = await restored.engine.shareBook(bookId, { memberName: 'Fandri', deviceName: 'new phone' });
     expect(again.memberId).toBe(fandri.memberId);
     home.relayBookId = again.relayBookId;
     await restored.engine.syncOnce(bookId);
     const { code } = await restored.engine.createInvite(bookId, { inviterName: 'Fandri', sameMember: true, memberId: dewi.memberId });
+    // Her copy is still live on the orphaned relay book: she stops sharing it there before it moves (recovery review, N1).
+    await expect(dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: "Dewi's phone" })).rejects.toMatchObject({ code: 'STILL_SHARED' });
+    await dewi.engine.leave(bookId);
     const joined = await dewi.engine.joinBook(code, { ws: dewi.ws, memberName: 'Dewi', deviceName: "Dewi's phone" });
     expect(joined.memberId).toBe(dewi.memberId);
     expect(await state(dewi, bookId)).toBe('active');

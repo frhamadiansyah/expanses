@@ -59,7 +59,7 @@ export interface Program {
 const USD_RATE = 16_123.45;
 const small = fc.nat({ max: 3 });
 
-function stepArb(devices: number): fc.Arbitrary<Step> {
+export function stepArb(devices: number): fc.Arbitrary<Step> {
   const device = fc.nat({ max: devices - 1 });
   return fc.oneof(
     { weight: 5, arbitrary: fc.record({ kind: fc.constant('post' as const), device, category: small, amount: fc.integer({ min: 1, max: 900 }), usd: fc.boolean(), day: fc.integer({ min: 1, max: 28 }), shape: fc.constantFrom('single' as const, 'single' as const, 'split' as const, 'mixed' as const, 'twoPay' as const) }) },

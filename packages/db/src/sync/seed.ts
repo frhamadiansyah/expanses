@@ -22,7 +22,8 @@ export type SharingErrorCode =
   | 'NOT_OWNER'
   | 'FROZEN'
   | 'LEAVE_INCOMPLETE'
-  | 'STILL_SHARED';
+  | 'STILL_SHARED'
+  | 'INVITER_NOT_OWNER';
 
 /** The settings key under which a device remembers its own member in a book it stopped sharing or kept as its own (§8.6, final review C1). */
 export const REMEMBERED_MEMBER_KEY = (bookId: string) => `sharing.member.${bookId}`;

@@ -865,6 +865,27 @@ other, and an invite with no keys is never made.
 currency, a book already held under that id (shared or not), and, for a rejoin (§8.7), that the terms name this
 device's member. A local failure after the claim needs a fresh invite from an owner — the recovery is to ask again.
 
+**A copy moves onto another relay book only when it is not live, and to an owner's share (recovery review, N1).** The
+seq-1 creator of any relay book is trusted as its owner (§8.5), so an invite that moved a copy onto another relay book
+would hand that copy to whoever made the share: an ex-member who kept the book, shared it again and "linked" a healthy
+owner's device took over that owner's copy with one tap — roles flipped, a purchase voided. A rejoin onto a
+**different** relay book than the copy's own is therefore allowed only when both hold, checked before the claim from
+local rows and the sealed preview alone, so a refusal claims nothing and applies nothing:
+
+- (a) the copy is not live: `needs_invite`, `unshared`, or kept as its own (no `shared_books` row, with a remembered
+  member; §8.6). An `active` copy is refused (`STILL_SHARED`): *"This workspace is still shared on this device. To move
+  it to this invite's share, stop sharing it here first: leave it, or keep it as your own copy."*
+- (b) the inviter's member was an `owner` in this copy's own `book_members`. The preview carries it
+  (`inviterMemberId`, sealed like the rest); otherwise `INVITER_NOT_OWNER` — *"Dewi was not an owner of this workspace
+  here. Only a share made by one of its owners can take the place of this one."*
+
+The preview tells the screen when a join would move the copy (`PreviewedInvite.replaces`, the book's name here), and
+Join asks first: *"This replaces the sharing of Home on this device with Fandri's share. Your rows stay and are
+merged."* A rejoin onto the **same** relay book (§8.7's `needs_invite`) is unchanged: no confirm, no owner check.
+`inviterMemberId` is what the inviting device says; a modified client could name an owner's member id when it shares
+again, so (b) guards the ordinary app, and (a) — a live copy never moves — is what keeps a healthy owner's copy where
+it is (§15).
+
 **As built (task 5).** `SyncEngine.previewInvite(code)` and `joinBook(code, { ws, memberName, deviceName })` in
 `engine.ts`; the code helpers in `invite.ts`. A mistyped code (the preview does not open) is `BAD_CODE`; a claimed or
 expired invite says so before claiming. `shared_books.epoch` is the claim's epoch when the invite carried its key, else
@@ -1019,11 +1040,12 @@ the owner's: `shared_books` and every piece of sync state go, every row stays, a
 and who paid; the relay is not told. It is allowed for a book in `needs_invite`, `unshared`, or `active` with no owner
 device left in the view (frozen, §8.5), and refused (`STILL_SHARED`) while an owner device is in — then the way out is
 Leave. On the screens it is **Stop sharing on this device**, behind a confirm ("Keep as my own copy"). **A copy
-rejoins a share made again.** A member's copy left `unshared` by a stop, or still `active` on a relay book the owner has
-moved on from (a restored owner's phone that kept the book and shared it again), rejoins the new share through the
-existing rejoin path (§8.7) with an owner's link-a-device invite naming its member: `joinBook` refuses only a copy
-already active on that very relay book (the invite's preview now carries the relay book id), and a plain invite is
-still `INVITE_MISMATCH` before anything is claimed. The rejoin drops the old keys, outbox, skips and every other
+rejoins a share made again.** A member's copy left `unshared` by a stop rejoins the new share through the existing
+rejoin path (§8.7) with an owner's link-a-device invite naming its member (the invite's preview carries the relay book
+id); a plain invite is still `INVITE_MISMATCH` before anything is claimed. A copy still `active` on a relay book the
+owner has moved on from (a restored owner's phone that kept the book and shared it again) is **not** moved while it is
+live (recovery review, N1; §8.2): its member leaves the old relay book first, or keeps the copy as its own, and then
+joins; and the new share must be one its owner made. The rejoin drops the old keys, outbox, skips and every other
 device's pinned row (each is pinned again by its introduction in the new log), pulls from 0, and emits as new what the
 new log never mentioned.
 
@@ -1050,7 +1072,8 @@ rows are emitted. The status line's "Ask Dewi" names an owner of the book other 
 replaced or restored goes `needs_invite` and no device can invite it back: the status line's "Ask an owner" names
 nobody. The way out is `forgetSharing` (§8.6): the restored phone keeps the book as its own, shares it again as the
 same member, and links the member's device with an invite naming them; the member's copy — still `active` on the
-orphaned relay book — rejoins the new share through the rejoin path, and what it recorded meanwhile goes out as new.
+orphaned relay book — leaves it first (a live copy never moves, recovery review N1; §8.2), then rejoins the new share
+through the rejoin path, and what it recorded meanwhile goes out as new.
 
 Rejoining with a fresh invite from that state: steps §8.2 1–7, keeping the existing `books` row and `member_id`;
 then pull from 0 and apply (the restored `sync_field_clocks` make the merge correct); then emit, as new, every
@@ -1248,6 +1271,13 @@ Mutate-twice review on every step.
   restored phone rejoining (§8.7), whose view is rebuilt from seq 0. Fix sketch: the owner-signed invite terms carry an
   **anchor** — the seq and a running hash of the entry signing bytes up to it — that the joiner checks as it pulls; later,
   devices compare running hashes to detect a forked log.
+- **Who made a share made again is the inviter's word (recovery review, N1).** A copy moves onto another relay book only
+  when it is not live and the invite's `inviterMemberId` was an owner in the copy's own rows (§8.2). That member id is
+  sealed in the preview but chosen by the inviting device, and a share's seq-1 creator names its own member: a modified
+  client that shares a kept copy again under an owner's member id passes (b). It still cannot move a live copy (a), and
+  the join screen names the inviter before anything is claimed. Fix sketch: sign `inviterMemberId` into the invite
+  terms, and have the joiner check, after the claim and before applying, that the device whose key verifies them was
+  introduced as that member in the new log.
 - **The put-back's transient window (known gap, fix round 4).** Putting this device's member rows back to the view
   (§8.5) can briefly show a row the user just deleted (or a role they just changed) when an earlier own entry is pulled
   back before the later one: the later entry restores it when it arrives, and a member edit made in that window is put
