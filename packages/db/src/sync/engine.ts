@@ -193,15 +193,33 @@ export class SyncEngine {
   /**
    * Seals and appends every outbox change-set of the book, in hlc order, under the book's epoch now; each is removed
    * once the relay has it (§9.4). A retry after a lost answer seals again and the relay answers with the first seq.
+   * A `409 stale epoch` (final review, I1) — the book rotated while this device was away — pulls the rotation in and
+   * seals again under it; the outbox is plaintext, so nothing is lost by sealing twice.
    */
-  async drain(bookId: string): Promise<number> {
-    const shared = await this.sharedRow(bookId);
+  drain(bookId: string): Promise<number> {
+    return this.drainInto(bookId, undefined, []);
+  }
+
+  /** `drain`, with whatever a stale-epoch re-pull applied collected into `pulls`, for `syncActive` to act on. */
+  private async drainInto(bookId: string, seen: Set<string> | undefined, pulls: PullResult[]): Promise<number> {
+    let shared = await this.sharedRow(bookId);
     if (!shared || shared.state !== 'active') return 0;
     const rows = await this.database.db.values<[string, string]>(sql`SELECT id, entry_json FROM sync_outbox WHERE book_id = ${bookId} ORDER BY hlc`);
     let pushed = 0;
     for (const [id, changeSetJson] of rows) {
-      const entry = await this.sealer.seal(bookId, shared.epoch, JSON.parse(changeSetJson) as ChangeSet);
-      await this.transport.append(shared.relayBookId, entry);
+      for (let attempt = 0; ; attempt += 1) {
+        const entry = await this.sealer.seal(bookId, shared.epoch, JSON.parse(changeSetJson) as ChangeSet);
+        try {
+          await this.transport.append(shared.relayBookId, entry);
+          break;
+        } catch (error) {
+          if (!(error instanceof SyncTransportError && error.status === 409 && attempt === 0)) throw error;
+          pulls.push(await this.pull(bookId, seen));
+          const now = await this.sharedRow(bookId);
+          if (!now || now.state !== 'active' || now.epoch === shared.epoch) throw error;
+          shared = now;
+        }
+      }
       await this.database.db.run(sql`DELETE FROM sync_outbox WHERE id = ${id}`);
       pushed += 1;
     }
@@ -209,8 +227,10 @@ export class SyncEngine {
   }
 
   /**
-   * One sync of one book: drain, then pull and apply, then rotate if a removal calls for it (§8.4) and add a linked
-   * device of an owner to the relay's owners (§8.3). A transport failure throws; the outbox and cursor stay put.
+   * One sync of one book: pull and apply, drain, then pull again (final review, I1: what waits in the outbox is sealed
+   * under the epoch the log has now, never one a removed device still holds); then rotate if a removal calls for it
+   * (§8.4) and add a linked device of an owner to the relay's owners (§8.3). A transport failure throws; the outbox
+   * and cursor stay put.
    */
   async syncOnce(bookId: string, seen?: Set<string>): Promise<SyncOnceResult> {
     if (await this.checkBook(bookId)) return { pushed: 0, applied: 0, skipped: [], removals: [], introduced: [], stopped: { seq: 0, reason: 'needs invite' } };
@@ -223,9 +243,15 @@ export class SyncEngine {
   }
 
   private async syncActive(bookId: string, seen?: Set<string>): Promise<SyncOnceResult> {
-    const pushed = await this.drain(bookId);
     const ownersBefore = await this.database.transaction((tx) => viewOwnerDevices(tx, bookId));
     let result = await this.pull(bookId, seen);
+    let pushed = 0;
+    if (!result.stopped) {
+      const pulls: PullResult[] = [];
+      pushed = await this.drainInto(bookId, seen, pulls);
+      for (const pulled of pulls) result = merge(result, pulled);
+      result = merge(result, await this.pull(bookId, seen));
+    }
     let rotated: number | undefined;
     let follow = false;
     for (const removal of result.removals) {

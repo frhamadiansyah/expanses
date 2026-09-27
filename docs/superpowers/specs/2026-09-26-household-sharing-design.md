@@ -622,7 +622,11 @@ and a rotation between capture and drain seals it under the newer key. `deflate`
 `CompressionStream('deflate')`, which browsers, WKWebView (iOS 16.4+), Node ≥ 18 and Workers all have: no fallback. The
 signed bytes leave out what the relay adds on the way back (`seq`, `signJwk`). `removal` and `rotation` entries are signed
 the same way. `SyncEngine.drain` reads `shared_books.epoch` and seals each outbox row under it; a retry after a lost
-answer seals again and the relay answers with the first seq (§9.1). `crypto.kat.test.ts` checks HKDF (RFC 5869),
+answer seals again and the relay answers with the first seq (§9.1). **Never under an epoch the log has rotated past
+(final review, I1):** `syncOnce` pulls before it drains (pull → drain → pull), and both relays answer `409 { error:
+'stale epoch' }` to a `change` whose `epoch` is below the book's; on that answer `drain` pulls the rotation in and seals
+the same plaintext again under the new epoch. A device offline across a removal therefore never hands the removed device
+its backlog. `crypto.kat.test.ts` checks HKDF (RFC 5869),
 AES-GCM (the GCM specification's test cases 13, 14, 16), ECDSA P-256 (RFC 6979 A.2.5) and ECDH P-256 (NIST CAVS).
 
 No entry carries a name. Device and member names travel only inside `change` entries.
@@ -1053,14 +1057,16 @@ that is not the caller's).
 
 **Replay.** `POST /books/:id/entries` with a `(deviceId, hlc)` already in the log answers `200` with the seq the
 entry was already given, and stores nothing new — success, not an error, so the client never has to special-case
-it. `409` on this endpoint is reserved for the one real conflict: a `rotation` whose `epoch ≠ current + 1`.
+it. `409` on this endpoint means one of two things: a `rotation` whose `epoch ≠ current + 1`, or (final review, I1)
+a `change` whose `epoch` is below the book's current epoch — `{ error: 'stale epoch' }` — which the client answers by
+pulling and sealing again.
 
 ### 9.2 Endpoints
 
 | Method and path | Who | Body → Response |
 |---|---|---|
 | `POST /books` | new device | `DevicePublic` → `201 { bookId }`; the caller is the only owner; `epoch = 1` |
-| `POST /books/:id/entries` | member | `LogEntry` → `201 { seq }` new; `200 { seq }` duplicate `(deviceId, hlc)`, the original entry's seq; `409` a `rotation` whose `epoch ≠ current + 1`; `413` over 128 KB |
+| `POST /books/:id/entries` | member | `LogEntry` → `201 { seq }` new; `200 { seq }` duplicate `(deviceId, hlc)`, the original entry's seq; `409` a `rotation` whose `epoch ≠ current + 1`, or a `change` under an epoch below the current (`stale epoch`); `413` over 128 KB |
 | `GET /books/:id/entries?since=N` | member | → `200 { entries: SequencedEntry[], latest }`, at most 500 |
 | `POST /books/:id/invites` | owner | `InviteRecord` → `201` |
 | `GET /invites/:id` | anyone | → `200 { preview, expiresAt, claimed }`; `404` |
@@ -1103,8 +1109,8 @@ invite endpoints arrive with nothing but the invite id, and a per-book object ca
 
 ### 9.4 Client behaviour
 
-`RelayTransport` drains `sync_outbox` in `hlc` order and pulls from `applied_seq`, when the app comes to the
-foreground and every 30 s while open. A failure leaves the outbox as it was; retry with exponential backoff capped
+`RelayTransport` pulls from `applied_seq`, drains `sync_outbox` in `hlc` order under the epoch that pull left, and
+pulls again (final review, I1), when the app comes to the foreground and every 30 s while open. A failure leaves the outbox as it was; retry with exponential backoff capped
 at 5 minutes. No screen waits on the relay.
 
 **As built (task 6).** `SyncScheduler` (`apps/web/src/sync/sync-scheduler.ts`) owns the timing: a run at start and

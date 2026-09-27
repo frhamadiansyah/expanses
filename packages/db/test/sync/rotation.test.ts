@@ -106,6 +106,41 @@ describe('rotation (§8.4)', () => {
     expect(log(home).filter((e) => e.kind === 'rotation')).toHaveLength(1);
   });
 
+  it('a device offline across a rotation never appends under the old epoch (final review, I1)', async () => {
+    const { home, fandri, dewi, budi, bookId } = await threeDevices();
+    await spend(dewi, bookId, 'made while offline');
+    // Budi is removed and the book rotates to epoch 2 while Dewi is away: her outbox still knows only epoch 1.
+    await fandri.engine.removeDevice(bookId, budi.deviceId);
+    expect(home.relay.peek(home.relayBookId)!.epoch).toBe(2);
+    expect(await epochOf(dewi, bookId)).toBe(1);
+    const rotationSeq = log(home).find((e) => e.kind === 'rotation')!.seq;
+
+    // A bare drain, as it stood: the relay refuses the stale seal, and the drain takes the rotation in and seals again.
+    expect(await dewi.engine.drain(bookId)).toBe(1);
+    expect(await epochOf(dewi, bookId)).toBe(2);
+    const after = log(home).filter((e) => e.seq > rotationSeq && e.kind === 'change');
+    expect(after).toHaveLength(1);
+    expect(after[0]!.epoch).toBe(2);
+
+    // The relay itself never takes a change under an epoch older than the book's.
+    const stale = await dewi.engine.sealer.seal(bookId, 1, { v: 1, hlc: encodeHlc(Date.now(), 7, dewi.deviceId), member: dewi.memberId, ops: [] });
+    await expect(dewi.transport.append(home.relayBookId, stale)).rejects.toMatchObject({ status: 409, message: 'stale epoch' });
+
+    // A whole sync pulls before it drains, so the ordinary path never meets the 409 at all.
+    await spend(dewi, bookId, 'after the rotation');
+    const appends: number[] = [];
+    const inner = dewi.transport.append.bind(dewi.transport);
+    dewi.transport.append = async (relayBookId, entry) => {
+      appends.push(entry.epoch);
+      return inner(relayBookId, entry);
+    };
+    await dewi.engine.syncOnce(bookId);
+    expect(appends).toEqual([2]);
+    await home.settle([fandri, dewi]);
+    expect(await projectBook(fandri.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
+    expect(log(home).filter((e) => e.seq > rotationSeq && e.kind === 'change').every((e) => e.epoch === 2)).toBe(true);
+  });
+
   it('a change captured before a rotation is sealed under the newer key when it drains (seal at drain)', async () => {
     const { home, fandri, dewi, budi, bookId } = await threeDevices();
     await spend(dewi, bookId, 'waiting in the outbox');

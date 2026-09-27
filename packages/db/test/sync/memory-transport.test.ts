@@ -123,11 +123,19 @@ describe('MemoryTransport: append (POST /books/:id/entries)', () => {
     expect(transport.peek(bookId)?.seq).toBe(1);
   });
 
-  it('409s a rotation whose epoch is not current + 1 (the only 409 append gives)', async () => {
+  it('409s a rotation whose epoch is not current + 1', async () => {
     const transport = new MemoryTransport();
     const { bookId, owner, ownerId } = await bookWithOwner(transport);
     const badRotation: LogEntry = { kind: 'rotation', deviceId: ownerId, epoch: 5, hlc: 'hlc-1', sealed: [], sig: 'sig' };
     await expect(owner.append(bookId, badRotation)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('409s a change sealed under an epoch older than the book’s: stale epoch (final review, I1)', async () => {
+    const transport = new MemoryTransport();
+    const { bookId, owner, ownerId } = await bookWithOwner(transport);
+    await owner.append(bookId, { kind: 'rotation', deviceId: ownerId, epoch: 2, hlc: 'r-2', sealed: [], sig: 'sig' });
+    await expect(owner.append(bookId, changeEntry(ownerId, 1, 'hlc-stale'))).rejects.toMatchObject({ status: 409, message: 'stale epoch' });
+    await expect(owner.append(bookId, changeEntry(ownerId, 2, 'hlc-fresh'))).resolves.toEqual({ seq: 2 });
   });
 
   it('accepts a rotation exactly at current epoch + 1, and raises the book epoch', async () => {

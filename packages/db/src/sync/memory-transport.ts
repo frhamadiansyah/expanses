@@ -165,6 +165,9 @@ export class MemoryTransport {
     if (entry.kind === 'rotation' && entry.epoch !== state.epoch + 1) {
       throw new SyncTransportError(409, 'a rotation must raise the epoch by exactly one');
     }
+    // A change sealed under an epoch the book has rotated past (final review, I1): a device that was offline across a
+    // removal would hand the removed device its backlog. It pulls the rotation and seals again.
+    if (entry.kind === 'change' && entry.epoch < state.epoch) throw new SyncTransportError(409, 'stale epoch');
 
     const seq = state.seq + 1;
     state.seq = seq;

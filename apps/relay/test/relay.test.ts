@@ -219,6 +219,13 @@ describe('§9.2 POST /books/:id/entries', () => {
     expect(claim.epoch).toBe(2);
   });
 
+  it('409s a change sealed under an epoch older than the book’s (stale epoch), and takes one under the current', async () => {
+    const { bookId, owner } = await bookWithOwner();
+    await owner.transport.append(bookId, rotation(owner.deviceId, 'r2', 2));
+    await expect(owner.transport.append(bookId, change(owner.deviceId, 'h-stale', 1))).rejects.toMatchObject({ status: 409, message: 'stale epoch' });
+    await expect(owner.transport.append(bookId, change(owner.deviceId, 'h-fresh', 2))).resolves.toEqual({ seq: 2 });
+  });
+
   it('413s an entry over 128 KB, and takes one just under', async () => {
     const { bookId, owner } = await bookWithOwner();
     const big = { ...change(owner.deviceId, 'big'), ct: 'x'.repeat(128 * 1024) };

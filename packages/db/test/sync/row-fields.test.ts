@@ -43,6 +43,9 @@ describe('per-field merge on rows that travel whole', () => {
     await fandri.transport.append(home.relayBookId, await fandri.engine.sealer.sign(home.bookId, { kind: 'removal' as const, deviceId: fandri.deviceId, epoch: 1, hlc: encodeHlc(Date.now(), 0, fandri.deviceId), target: dewi.deviceId }));
     await new Promise((r) => setTimeout(r, 5));
     await editRow(dewi, bookId, 'device', dewi.deviceId, "name = 'Dewi iPad'");
+    // Drained without a pull first, so the edit reaches the log behind the removal (a sync pulls first, final review I1,
+    // and the relay would then refuse the stale seal once the book rotated).
+    await dewi.engine.drain(bookId);
     await home.settle();
     const onFandri = (await projectBook(fandri.database, bookId)).device![dewi.deviceId] as { name: string; removedAt: string | null };
     expect(onFandri.name).toBe("Dewi's phone");

@@ -139,6 +139,8 @@ export class Book {
     if (entry.kind === 'rotation' && entry.epoch !== meta.epoch + 1) {
       throw new RelayError(409, 'a rotation must raise the epoch by exactly one');
     }
+    // A change sealed under an epoch the book has rotated past (final review, I1) — `MemoryTransport.append`.
+    if (entry.kind === 'change' && entry.epoch < meta.epoch) throw new RelayError(409, 'stale epoch');
     if (meta.owners.includes(actor) && !(await verifyEntitlement(meta.bookId))) {
       throw new RelayError(402, 'this book is read-only until its owner renews');
     }
