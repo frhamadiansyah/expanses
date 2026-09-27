@@ -388,11 +388,15 @@ test('a loan is changed on its own page, and a person’s tax ID on theirs', asy
 
   // Written once at lending with no reason; added afterwards on the loan's page, where it used to be impossible.
   await openLoan(page, 'Andi');
-  await expect(page.getByRole('heading', { name: 'No reason noted' })).toBeVisible();
+  // The bar says only Loan; whose it is sits in Details, shown but not changed.
+  await expect(page.getByRole('heading', { name: 'Loan', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Person', exact: true })).toHaveValue('Andi');
+  await expect(page.getByRole('textbox', { name: 'Person', exact: true })).not.toBeEditable();
+  await expect(page.getByText(/still owes/)).toHaveCount(0);
   const reason = page.getByRole('textbox', { name: 'Loan', exact: true });
   await reason.fill('Laptop for college');
   await reason.blur();
-  await expect(page.getByRole('heading', { name: 'Laptop for college' })).toBeVisible();
+  await expect(reason).toHaveValue('Laptop for college');
   await page.getByRole('textbox', { name: 'Due by' }).fill('2026-12-31');
   await page.getByLabel('Type', { exact: true }).selectOption({ label: 'Affiliate receivables' });
 

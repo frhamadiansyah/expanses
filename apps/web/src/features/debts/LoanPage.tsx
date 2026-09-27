@@ -8,7 +8,7 @@ import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { InsetGroup, InsetRow, PushedTitle, SCREEN, SelectRow, TextRow } from '../../ui/native';
 import { personCodeChoices } from '../ownables/catalogue-view';
-import { personParams, repaymentWord, shortDay, stillOwesLine } from './lend-borrow-view';
+import { personParams, repaymentWord, shortDay } from './lend-borrow-view';
 import { useDebtHistory, useDebtProfiles, usePeopleDebts } from './queries';
 import { RepaymentForm } from './RepaymentForm';
 
@@ -86,13 +86,13 @@ export function LoanPage() {
     }
   }
 
-  const title = loan.reason?.trim() || 'No reason noted';
   const anyBack = loan.repaidMinor > 0;
 
   return (
     <div className={SCREEN}>
+      {/* A plain word in the bar: a loan's own name can be too long for it, and is shown, and changed, in Details. */}
       <PushedTitle
-        title={title}
+        title="Loan"
         back={person.personName}
         backTo="/net-worth/lend-borrow/$side/$person"
         backParams={back}
@@ -100,7 +100,6 @@ export function LoanPage() {
       />
 
       <section className="flex flex-col items-center gap-1 pb-[18px] text-center" data-testid="loan-hero">
-        <span className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">{stillOwesLine(person.direction, person.personName)}</span>
         <Money minor={loan.balanceMinor} currency={loan.currency} className="text-[34px] leading-[40px] font-bold tracking-[-0.02em]" />
         <span className="text-[13px] leading-[17px] text-[var(--ph-ink-3)]">
           {'of '}
@@ -168,6 +167,8 @@ export function LoanPage() {
               <option value={profile.coretaxCode}>{profile.coretaxCode}</option>
             )}
           </SelectRow>
+          {/* Whose loan it is, as the new-loan form asks it: shown, not changed — moving a loan to someone else is not an edit. */}
+          <TextRow label="Person" value={person.personName} readOnly />
           <TextRow
             key={`reason-${profile.reason ?? ''}`}
             label="Loan"

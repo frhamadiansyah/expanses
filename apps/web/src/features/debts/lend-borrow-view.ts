@@ -54,9 +54,5 @@ export function loanSubtitle(loan: PersonLoanRow, codeLabel: string, today: stri
   return parts.join(' · ');
 }
 
-/** "Andi still owes", "You still owe Dewi", for one loan's page. */
-export const stillOwesLine = (direction: DebtDirection, name: string): string =>
-  direction === 'lent' ? `${name} still owes` : `You still owe ${name}`;
-
 /** Money coming back on a loan you made is a collection; money going back on one you took is a repayment. */
 export const repaymentWord = (direction: DebtDirection): string => (direction === 'lent' ? 'Collection' : 'Repayment');
