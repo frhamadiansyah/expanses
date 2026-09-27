@@ -86,7 +86,11 @@ test('a repayment opens in a sheet over the loan, and closes without saving', as
   await lend(page, 'Andi', '9000000', 'BCA Tahapan (IDR)');
 
   await openLoan(page, 'Andi');
-  await page.getByRole('button', { name: 'Record collection' }).click();
+  // Recording it is the first row of History, over the entries it adds to; forgiving is a red row at the foot.
+  const record = page.getByRole('button', { name: 'Record collection' });
+  expect((await page.getByText('History', { exact: true }).boundingBox())!.y).toBeLessThan((await record.boundingBox())!.y);
+  expect((await record.boundingBox())!.y).toBeLessThan((await page.getByRole('button', { name: 'Forgive the rest' }).boundingBox())!.y);
+  await record.click();
   const sheet = page.getByRole('dialog', { name: 'Collection' });
   await expect(sheet).toBeVisible();
   // The loan stays under it, and ✓ waits for an amount.
@@ -127,9 +131,9 @@ test('forgiving the rest closes the debt and takes it off the balance sheet', as
   await lend(page, 'Andi', '10000000', 'BCA Tahapan (IDR)');
 
   await openLoan(page, 'Andi');
-  await page.getByRole('button', { name: 'Forgive rest' }).click();
+  await page.getByRole('button', { name: 'Forgive the rest' }).click();
   // The loan closes on its own page, and Andi moves under Show settled on the list.
-  await expect(page.getByRole('button', { name: 'Forgive rest' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Forgive the rest' })).toHaveCount(0);
   await page.goto('/net-worth/lend-borrow');
   await expect(page.getByRole('button', { name: /Show settled/ })).toBeVisible();
 

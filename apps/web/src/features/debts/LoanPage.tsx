@@ -1,8 +1,8 @@
 import { isoDate } from '@expanses/core';
 import { forgiveRemainder, listDebtProfiles, saveDebtProfile } from '@expanses/db';
 import { useParams } from '@tanstack/react-router';
-import { Plus, X } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { useInvalidateAll } from '../../lib/queries';
 import { Empty, ErrorBox, Money } from '../../ui';
@@ -17,7 +17,7 @@ const HISTORY_TITLES: Record<string, string> = { lend: 'Lent', repayment: 'Repay
 /**
  * One loan, on a page of its own: what is left of it, the two things to do about it, what it is and what happened.
  *
- * Everything that used to crowd the person's card under every loan — Record repayment, Forgive rest, the boxed
+ * Everything that used to crowd the person's card under every loan — Record repayment, Forgive the rest, the boxed
  * tax-code picker, a Show history link — lives here, and the card is a list of rows again. What it is for (Loan), the due
  * date and the sub-category were written once when the money moved and could never be changed; they are rows that
  * save as they are changed.
@@ -122,25 +122,6 @@ export function LoanPage() {
         )}
       </section>
 
-      {/*
-        The loan's two actions as round buttons under the figure they change, as Wallet and Contacts draw theirs: the
-        repayment filled in the app's green, forgiving on a plain surface in red. Repaying opens a sheet over the page.
-      */}
-      {loan.status === 'open' && (
-        <div className="mb-[22px] flex justify-center gap-[44px]">
-          <RoundAction
-            label={repaymentWord(person.direction)}
-            name={`Record ${repaymentWord(person.direction).toLowerCase()}`}
-            onClick={() => setRepaying(true)}
-            filled
-          >
-            <Plus size={24} aria-hidden />
-          </RoundAction>
-          <RoundAction label="Forgive" name="Forgive rest" onClick={() => void forgive()}>
-            <X size={24} aria-hidden />
-          </RoundAction>
-        </div>
-      )}
       {repaying && (
         <RepaymentForm
           debtAccountId={accountId}
@@ -188,8 +169,22 @@ export function LoanPage() {
         </InsetGroup>
       )}
 
-      {(history.data?.length ?? 0) > 0 && (
+      {/*
+        Recording money back is the first row of History, where the entry it makes appears; forgiving, done once and
+        rarely, waits in red at the foot of the page. Both go when the loan is finished.
+      */}
+      {((history.data?.length ?? 0) > 0 || loan.status === 'open') && (
         <InsetGroup header="History">
+          {loan.status === 'open' ? (
+            <InsetRow
+              key="record"
+              icon={<Plus size={16} strokeWidth={2.5} aria-hidden />}
+              iconColour="var(--ph-tint)"
+              title={`Record ${repaymentWord(person.direction).toLowerCase()}`}
+              chevron={false}
+              onClick={() => setRepaying(true)}
+            />
+          ) : null}
           {(history.data ?? []).map((row) => (
             <InsetRow
               key={row.transactionId}
@@ -212,26 +207,12 @@ export function LoanPage() {
         </InsetGroup>
       )}
 
+      {loan.status === 'open' && (
+        <InsetGroup>
+          <InsetRow title="Forgive the rest" destructive onClick={() => void forgive()} />
+        </InsetGroup>
+      )}
     </div>
   );
 }
 
-/** A round button with its word under it: `name` is what it does in full, for a screen reader and a test. */
-function RoundAction({ label, name, onClick, filled = false, children }: { label: string; name: string; onClick: () => void; filled?: boolean; children: ReactNode }) {
-  return (
-    <button type="button" onClick={onClick} aria-label={name} className="ph-focus flex flex-col items-center gap-[6px] rounded-[12px]">
-      <span
-        className={
-          filled
-            ? 'flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[var(--ph-tint)] text-[var(--ph-surface)]'
-            : 'flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[var(--ph-surface)] text-[var(--ph-alarm)]'
-        }
-      >
-        {children}
-      </span>
-      <span className="text-[12px] leading-[16px] text-[var(--ph-ink-2)]" aria-hidden>
-        {label}
-      </span>
-    </button>
-  );
-}
