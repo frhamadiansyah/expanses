@@ -57,7 +57,7 @@ import { WorkspaceBadge, WorkspaceDot } from '../workspaces/WorkspaceBadge';
 import { Unconverted } from '../workspaces/Unconverted';
 import { WorkspaceSheet } from '../workspaces/WorkspaceSheet';
 import { useOpenBook, useWorkspaceBadges } from '../workspaces/queries';
-import { usePurchasePayers } from '../sharing/queries';
+import { useOpenBookReadOnly, usePurchasePayers } from '../sharing/queries';
 import { payerLine, postedAgainstPlaceholder } from '../sharing/sharing-copy';
 
 const route = getRouteApi('/transactions');
@@ -261,6 +261,7 @@ export function TransactionsPage() {
   // Household sharing (spec §11): in a shared workspace a purchase names what it was paid with, as the payer's own
   // device named it, and who paid when it was not you — never the placeholder account it is posted against here.
   const shared = useIsBookShared();
+  const readOnly = useOpenBookReadOnly();
   const payerOf = usePurchasePayers(
     recorded.map((tx) => tx.id),
     shared,
@@ -669,7 +670,8 @@ export function TransactionsPage() {
     const trade = tradeByTransaction.has(tx.id);
     const billTag = billTagOf(tx);
     // Filed in another workspace: it can still be reached and asked about, but it is not dressed as editable.
-    const reachable = !trade && isEditable(tx);
+    // A share that ended here is kept read-only (§8.6): nothing on it is edited, deleted or re-filed.
+    const reachable = !trade && isEditable(tx) && !readOnly;
     const elsewhere = reachable ? elsewhereOf(tx.id) : null;
     const clickable = reachable && !elsewhere && filingKnown;
     // Every way in that *writes* inherits the same refusals. A trade, an opening balance, a voided row and a
@@ -772,7 +774,8 @@ export function TransactionsPage() {
     renderForm: (tx, onDone) => <TransactionCard initial={tx} onDone={onDone} />,
     tradeIds: new Set(tradeByTransaction.keys()),
     elsewhereOf,
-    filingKnown,
+    // Read-only: no row of an ended share is edited in cells (a typed new row is refused by capture, in words).
+    filingKnown: filingKnown && !readOnly,
     payerOf,
     paidByOther,
   };
@@ -845,7 +848,7 @@ export function TransactionsPage() {
         actions={
           phone
             ? [
-                { key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); void navigate({ to: '/transactions/new' }); } },
+                ...(readOnly ? [] : [{ key: 'add', label: 'Add a transaction', glyph: <Plus size={22} aria-hidden />, run: () => { close(); void navigate({ to: '/transactions/new' }); } }]),
                 { key: 'search', label: 'Search', glyph: <Search size={20} aria-hidden />, pressed: showSearch, run: () => setShowSearch((was) => !was) },
                 { key: 'filters', label: 'Filters', glyph: <Ellipsis size={20} aria-hidden />, pressed: showFilters, expanded: showFilters, run: () => setShowFilters((was) => !was) },
               ]
@@ -856,7 +859,7 @@ export function TransactionsPage() {
       {!phone && (
         <div className="mb-3 flex flex-wrap items-center justify-end gap-2.5">
           {viewSwitcher}
-          {!adding && (
+          {!adding && !readOnly && (
             <Button
               onClick={() => {
                 close();

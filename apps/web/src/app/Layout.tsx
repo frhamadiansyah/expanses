@@ -5,6 +5,7 @@ import { sweepPhotosAtStart } from '../photos/sweep-at-start';
 import { AfterUpdateCard } from '../features/backup/AfterUpdateCard';
 import { BackupBanner } from '../features/backup/BackupBanner';
 import { InstallHint } from '../features/pwa/InstallHint';
+import { ReadOnlyNotice } from '../features/sharing/ReadOnlyNotice';
 import { usePendingDraftCount } from '../features/review/queries';
 import { useOpenBook } from '../features/workspaces/queries';
 import { WorkspaceDot } from '../features/workspaces/WorkspaceBadge';
@@ -135,6 +136,8 @@ export function Layout() {
           {/* What just happened to their data comes before the standing reminder about backing it up. */}
           <AfterUpdateCard />
           <BackupBanner />
+          {/* A share that ended here is read-only (§8.6), and every screen of it says so. */}
+          <ReadOnlyNotice />
           <Outlet />
         </div>
       </main>
