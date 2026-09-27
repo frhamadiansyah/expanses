@@ -27,6 +27,14 @@ export interface ListRow {
   currency: string;
   /** The amount in the workspace's own currency, which is what a day or a filter adds up. */
   baseMinor: number;
+  /**
+   * What of this row is spending and what is income, in the workspace's currency — the figures every total reads.
+   * For an expense or an income they are its `baseMinor`. A row of another kind can carry some of either: a loan put
+   * on a card with a fee is not spending, but its fee is; a repayment is not income, but its interest is. Counting
+   * those parts is what keeps the list's totals equal to the chart's.
+   */
+  spentMinor: number;
+  earnedMinor: number;
   type: RowType;
   categoryId: string | null;
   categoryName: string | null;
@@ -109,6 +117,8 @@ export function buildRows(
       amountMinor: c.amountMinor,
       currency: c.currency,
       baseMinor: type === 'expense' || type === 'income' ? baseOf(type) : 0,
+      spentMinor: type === 'expense' || type === 'debt' ? baseOf('expense') : 0,
+      earnedMinor: type === 'income' || type === 'debt' ? baseOf('income') : 0,
       type,
       categoryId,
       categoryName: categoryId ? (byId.get(categoryId)?.name ?? null) : null,
@@ -135,6 +145,8 @@ export function buildRows(
       amountMinor: draft.amountMinor > 0 ? draft.amountMinor : 0,
       currency: draft.currency,
       baseMinor: 0,
+      spentMinor: 0,
+      earnedMinor: 0,
       type: 'expense',
       categoryId: draft.categoryAccountId,
       categoryName: draft.categoryAccountId ? (byId.get(draft.categoryAccountId)?.name ?? null) : null,
@@ -231,7 +243,7 @@ export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
   const groups = new Map<string, CategoryGroup>();
   for (const row of rows) {
     const id = row.categoryId;
-    const spending = row.type === 'expense' || row.type === 'income';
+    const spending = row.type === 'expense' || row.type === 'income' || row.spentMinor + row.earnedMinor > 0;
     // A transfer is not uncategorised spending: money moved without being spent, so it keeps its own heading.
     const key = id ?? (spending ? 'uncategorised' : 'other');
     const name = row.categoryName ?? (spending ? 'Uncategorised' : 'Transfers and other');
@@ -239,7 +251,7 @@ export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
     group.rows.push(row);
     // A transfer moves money without spending it, and a deleted row was never real.
     // …and a row marked "not my spending" keeps its place in the group while adding nothing to its figure.
-    if (!row.deleted && !row.excluded && (row.type === 'expense' || row.type === 'income')) group.totalMinor += row.baseMinor;
+    if (!row.deleted && !row.excluded) group.totalMinor += row.spentMinor + row.earnedMinor;
     groups.set(key, group);
   }
   return [...groups.values()].sort((a, b) => b.totalMinor - a.totalMinor || a.name.localeCompare(b.name));
@@ -247,14 +259,20 @@ export function groupByCategory(rows: readonly ListRow[]): CategoryGroup[] {
 
 /** A day's net in the workspace currency: income less spending, never counting drafts, deleted rows or transfers. */
 export function dayTotal(rows: readonly ListRow[]): number {
-  return dayNet(rows.map((row) => ({ kind: row.type === 'expense' || row.type === 'income' ? row.type : 'transfer', amountMinor: row.baseMinor, counted: row.kind === 'tx' && !row.deleted && !row.excluded })));
+  const counted = (row: ListRow) => row.kind === 'tx' && !row.deleted && !row.excluded;
+  return dayNet(
+    rows.flatMap((row) => [
+      { kind: 'income' as const, amountMinor: row.earnedMinor, counted: counted(row) },
+      { kind: 'expense' as const, amountMinor: row.spentMinor, counted: counted(row) },
+    ]),
+  );
 }
 
 export function totals(rows: readonly ListRow[]): { count: number; spentMinor: number; incomeMinor: number } {
   const counted = rows.filter((row) => row.kind === 'tx' && !row.deleted && !row.excluded);
   return {
     count: counted.length,
-    spentMinor: counted.filter((row) => row.type === 'expense').reduce((sum, row) => sum + row.baseMinor, 0),
-    incomeMinor: counted.filter((row) => row.type === 'income').reduce((sum, row) => sum + row.baseMinor, 0),
+    spentMinor: counted.reduce((sum, row) => sum + row.spentMinor, 0),
+    incomeMinor: counted.reduce((sum, row) => sum + row.earnedMinor, 0),
   };
 }

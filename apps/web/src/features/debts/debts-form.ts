@@ -31,6 +31,10 @@ export interface DebtDraft {
   reason: string;
   dueOn: string;
   personIdNumber: string;
+  /** A fee on the money moved — a card's cash-advance charge, a bank's transfer fee. Your cost; '' for none. */
+  fee: string;
+  /** Where the fee is filed as spending; Fees & charges until chosen otherwise. */
+  feeCategoryId: string;
 }
 
 export const emptyDebtDraft = (today: string): DebtDraft => ({
@@ -47,6 +51,37 @@ export const emptyDebtDraft = (today: string): DebtDraft => ({
   reason: '',
   dueOn: '',
   personIdNumber: '',
+  fee: '',
+  feeCategoryId: '',
+});
+
+/**
+ * The accounts money lent can come from, or money borrowed can arrive in.
+ *
+ * Money you hold, and — for a loan you make — a credit card, which is how paying for a friend on your card is
+ * recorded: the card owes more, the friend owes you, the purchase still earns points. A card never takes borrowed
+ * money in. **Other cash equivalents** — a cheque, a wesel, commercial paper — are left out both ways: a cheque you
+ * are handed is recorded where it is deposited, and one you hold is not something you pay a person with.
+ */
+export function loanMoneyAccounts<T extends { kind: string; subtype: string }>(money: readonly T[], direction: DebtDirection): T[] {
+  return money.filter(
+    (account) =>
+      account.subtype !== 'other_cash' &&
+      ((account.kind === 'asset' && account.subtype !== 'credit_card') || (direction === 'lent' && account.subtype === 'credit_card')),
+  );
+}
+
+/**
+ * A draft for one side, which the screen it is opened on decides: New receivable is money you lent, New payable money
+ * you borrowed. The sub-category belongs to the side, so a piutang code never stands over money you owe. A person
+ * named on the way in (Lend & borrow filtered to one person) arrives already typed.
+ */
+export const debtDraftFor = (direction: DebtDirection, today: string, personName = ''): DebtDraft => ({
+  ...emptyDebtDraft(today),
+  direction,
+  // Chosen, never assumed: what a loan files as in a tax report is the reader's call, so the row starts blank.
+  subCategory: '',
+  personName,
 });
 
 /**
@@ -72,6 +107,8 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.occurredOn)) throw new Error('Choose a date');
   if (draft.occurredOn > today) throw new Error('A loan cannot be dated after today');
   if (!draft.moneyId) throw new Error('Choose which account the money came from');
+  // A new loan files as something; money added to an existing loan keeps what that loan already files as.
+  if (!draft.existingAccountId && !draft.subCategory) throw new Error('Choose a type');
 
   if (draft.amount.trim() === '') throw new Error('Enter how much');
   let amountMinor: number;
@@ -81,6 +118,18 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
     throw new Error('The amount must be a number');
   }
   if (!(amountMinor > 0)) throw new Error('Enter how much');
+
+  let feeMinor = 0;
+  if (draft.fee.trim() !== '') {
+    try {
+      feeMinor = parseMajor(draft.fee, currency);
+    } catch {
+      throw new Error('The fee must be a number');
+    }
+    if (feeMinor < 0) throw new Error('A fee cannot be negative');
+    if (feeMinor > 0 && !draft.feeCategoryId) throw new Error('Choose a category for the fee');
+    if (draft.direction === 'borrowed' && feeMinor >= amountMinor) throw new Error('The fee cannot be all of what you borrowed');
+  }
 
   return {
     debtAccountId: draft.existingAccountId || undefined,
@@ -100,7 +149,90 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
     moneyAccountId: draft.moneyId,
     spendCategoryId: draft.moneyIsCard && draft.spendCategoryId ? draft.spendCategoryId : null,
     mcc: draft.moneyIsCard && draft.mcc.trim() !== '' ? draft.mcc.trim() : null,
+    ...(feeMinor > 0 ? { feeMinor, feeCategoryId: draft.feeCategoryId } : {}),
   };
+}
+
+/** One of a person's open loans, offered as a chip under Loan. */
+export interface LoanChoice {
+  accountId: string;
+  /** What the loan is for, as written; empty when none was noted. */
+  reason: string;
+  /** "Motorcycle repair · Rp 1.500.000 left" — the reason, or that none was noted, and what is still owed. */
+  label: string;
+}
+
+/**
+ * The loans already open with this person on this side, which a new amount could be added to.
+ *
+ * A person can hold several loans — the motorcycle repair and the laptop are two, each with its own reason and due
+ * date, listed apart on their card — so a name the workspace already knows is not one loan to add to but a choice
+ * between them and a new one. Only open loans are offered: one that was settled or forgiven is finished, and money
+ * lent again is a new loan. Matched on the name without regard to capitals, as the Person field is.
+ */
+export function openLoansWith(people: PeopleDebts | undefined, direction: DebtDirection, personName: string): LoanChoice[] {
+  const name = personName.trim().toLowerCase();
+  if (!people || !name) return [];
+  const side = direction === 'lent' ? people.owedToYou : people.youOwe;
+  return side
+    .filter((person) => person.personName.trim().toLowerCase() === name)
+    .flatMap((person) => person.loans)
+    .filter((loan) => loan.status === 'open')
+    .map((loan) => ({
+      accountId: loan.accountId,
+      reason: loan.reason?.trim() ?? '',
+      label: `${loan.reason?.trim() || 'No reason noted'} · ${formatMinor(loan.balanceMinor, loan.currency)} left`,
+    }));
+}
+
+/**
+ * The open loan a typed purpose names, as a typed name names a person: the same words (ignoring capitals and spaces
+ * at the ends) as one of theirs means more money on that loan. Anything else, or nothing, is a new loan.
+ */
+export function loanNamed(loans: LoanChoice[], typed: string): string {
+  const words = typed.trim().toLowerCase();
+  if (!words) return '';
+  return loans.find((loan) => loan.reason.toLowerCase() === words)?.accountId ?? '';
+}
+
+/**
+ * Whether anything behind "Add more details" is already filled in: a due date, a fee or a tax ID. The details open by
+ * themselves when it is, so nothing typed is ever out of sight.
+ */
+export function debtDetailsFilled(draft: DebtDraft): boolean {
+  return (
+    draft.dueOn !== '' ||
+    draft.fee.trim() !== '' ||
+    draft.personIdNumber.trim() !== ''
+  );
+}
+
+/**
+ * Whether the ✓ can save: everything `debtDraftToInput` requires is there — a person, a date that is not in the
+ * future, an account, an amount above zero, and a category for any fee. Asked of the very function Save calls, so the
+ * ✓ can never light up for a draft Save would refuse, nor stay dim for one it would take.
+ */
+export function debtDraftReady(draft: DebtDraft, currency: string, today: string): boolean {
+  try {
+    debtDraftToInput(draft, currency, today);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What leaves the account when money is lent: the loan and its fee. The set-aside question weighs this, not the loan
+ * alone — a Rp 100.000 fee is Rp 100.000 more taken from what is free.
+ */
+export function lentOutflowMinor(draft: DebtDraft, currency: string, today: string): number {
+  if (draft.direction !== 'lent') return 0;
+  try {
+    const input = debtDraftToInput(draft, currency, today);
+    return input.amountMinor + (input.feeMinor ?? 0);
+  } catch {
+    return 0;
+  }
 }
 
 export interface RepaymentDraft {

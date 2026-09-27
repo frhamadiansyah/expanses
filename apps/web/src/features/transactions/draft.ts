@@ -13,5 +13,17 @@ import { classify } from './classify';
  * `tx-form.ts` is the pipeline now, and it is the only one.
  */
 export function isEditable(tx: TransactionView): boolean {
-  return tx.status === 'posted' && classify(tx).type !== 'opening';
+  return tx.status === 'posted' && classify(tx).type !== 'opening' && !isPersonWithCategory(tx);
+}
+
+/**
+ * Money moved with a person that also carries a category: a loan put on a card with its fee, a repayment with its
+ * interest. The transaction forms read it by its one category — as a Rp 100.000 expense, or as income — and have no
+ * row for the person, so a save from them would rewrite it as a plain purchase and drop what the person owes. It
+ * belongs to Lend & borrow, and the forms leave it alone.
+ */
+export function isPersonWithCategory(tx: TransactionView): boolean {
+  const person = tx.entries.some((entry) => entry.accountSubtype === 'receivable' || entry.accountSubtype === 'payable');
+  const category = tx.entries.some((entry) => entry.accountKind === 'income' || entry.accountKind === 'expense');
+  return person && category;
 }

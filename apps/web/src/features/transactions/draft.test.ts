@@ -8,6 +8,10 @@ const accounts = [
   { id: 'visa', kind: 'liability' },
   { id: 'groceries', kind: 'expense' },
   { id: 'opening', kind: 'equity' },
+  { id: 'andi', kind: 'asset', subtype: 'receivable' },
+  { id: 'dewi', kind: 'liability', subtype: 'payable' },
+  { id: 'fees', kind: 'expense' },
+  { id: 'interest', kind: 'income' },
 ] as AccountRow[];
 
 /** Simulates what the ledger returns after posting these lines. */
@@ -17,7 +21,7 @@ function view(lines: PostingLine[], status: TransactionView['status'] = 'posted'
     id: 'tx1', occurredOn: '2026-09-11', description: 'Test', source: 'manual', status, externalRef: null, mcc: null, cardId: null, goalId: null,
     originalCurrency: null, originalAmountMinor: null, createdAt: '2026-09-11T00:00:00Z',
     entries: lines.map((l, i) => ({
-      id: `e${i}`, accountId: l.accountId, accountName: l.accountId, accountKind: byId.get(l.accountId)!.kind,
+      id: `e${i}`, accountId: l.accountId, accountName: l.accountId, accountKind: byId.get(l.accountId)!.kind, accountSubtype: byId.get(l.accountId)!.subtype,
       amountMinor: l.amountMinor, currency: l.currency, fxRateToBase: 1, amountBaseMinor: l.amountMinor, memo: null, spendCategoryId: null,
     })),
   } as TransactionView;
@@ -44,5 +48,29 @@ describe('which transactions have a form at all', () => {
     expect(isEditable(transfer)).toBe(true);
     // A draft is not posted, so there is nothing to correct yet either.
     expect(isEditable(view([{ accountId: 'groceries', amountMinor: 1000, currency: 'IDR' }], 'void'))).toBe(false);
+  });
+});
+
+describe('money moved with a person, with a category beside it', () => {
+  it('is left to Lend & borrow: the forms would read it as a plain purchase and drop what the person owes', () => {
+    // Rp 4.000.000 lent to Andi on the card, with a Rp 100.000 card fee.
+    const loanWithFee = view([
+      { accountId: 'andi', amountMinor: 4_000_000, currency: 'IDR' },
+      { accountId: 'visa', amountMinor: -4_100_000, currency: 'IDR' },
+      { accountId: 'fees', amountMinor: 100_000, currency: 'IDR' },
+    ]);
+    expect(isEditable(loanWithFee)).toBe(false);
+    // Andi paying back with interest: one income category, and a person on the other side.
+    const repaidWithInterest = view([
+      { accountId: 'checking', amountMinor: 1_050_000, currency: 'IDR' },
+      { accountId: 'andi', amountMinor: -1_000_000, currency: 'IDR' },
+      { accountId: 'interest', amountMinor: -50_000, currency: 'IDR' },
+    ]);
+    expect(isEditable(repaidWithInterest)).toBe(false);
+  });
+
+  it('leaves a plain loan and an ordinary purchase as editable as they were', () => {
+    expect(isEditable(view([{ accountId: 'andi', amountMinor: 4_000_000, currency: 'IDR' }, { accountId: 'checking', amountMinor: -4_000_000, currency: 'IDR' }]))).toBe(true);
+    expect(isEditable(view([{ accountId: 'groceries', amountMinor: 50_000, currency: 'IDR' }, { accountId: 'checking', amountMinor: -50_000, currency: 'IDR' }]))).toBe(true);
   });
 });

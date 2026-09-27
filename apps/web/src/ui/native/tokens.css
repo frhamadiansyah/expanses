@@ -224,3 +224,9 @@
 .ph-fade-in {
   animation: ph-fade-in 320ms ease-out both;
 }
+
+/* The value inside a WebKit date or time input carries a margin of its own; without it the row is a text row's height. */
+.ph-date-input::-webkit-date-and-time-value {
+  margin: 0;
+  text-align: right;
+}

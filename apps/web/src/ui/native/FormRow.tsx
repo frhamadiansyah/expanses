@@ -1,5 +1,5 @@
-import { Search } from 'lucide-react';
-import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId } from 'react';
+import { Info, Search } from 'lucide-react';
+import { Children, isValidElement, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useState } from 'react';
 import { cx } from '../index';
 import { type FormKind, planFormRow, planSwitchRow } from './form-row';
 import { type GroupChild, toneClass } from './InsetList';
@@ -16,6 +16,9 @@ import { ROW_PAD_X, ROW_PAD_Y, rowHeight, TAP } from './metrics';
  */
 
 const LABEL = 'shrink-0 text-[15px] leading-[20px] text-[var(--ph-ink)]';
+
+/** The inputs WebKit draws with a height of their own. */
+const DATE_TYPES = new Set(['date', 'time', 'datetime-local', 'month']);
 
 /** The switch's capsule, iOS's own size: 51 × 31, with a 27 px round knob inset 2 px — the shape a thumb knows. */
 const SWITCH_W = 51;
@@ -82,30 +85,63 @@ export function PickerRow({
 export function TextRow({
   label,
   hint,
+  info,
   position,
   className,
   ...props
-}: GroupChild & { label: string; hint?: ReactNode } & InputHTMLAttributes<HTMLInputElement>) {
+}: GroupChild & {
+  label: string;
+  /** A line always shown under the row: something the reader needs every time, such as what the row just decided. */
+  hint?: ReactNode;
+  /**
+   * An explanation behind an ⓘ beside the label, shown under the row only when asked for. For what a reader needs
+   * once and then not again — "you are warned three weeks before" — so a form does not read as a page of fine print.
+   * The same ⓘ the transaction form's Exclude row carries.
+   */
+  info?: ReactNode;
+} & InputHTMLAttributes<HTMLInputElement>) {
   const generated = useId();
   const id = props.id ?? generated;
+  const [explained, setExplained] = useState(false);
   return (
     <div className="relative">
       <Separator show={Boolean(position?.separator)} />
       <div className="flex items-center gap-3" style={shell(false)}>
-        <label htmlFor={id} className={LABEL}>
-          {label}
-        </label>
+        {info ? (
+          <span className="flex shrink-0 items-center gap-[6px]">
+            <label htmlFor={id} className={LABEL}>
+              {label}
+            </label>
+            <button
+              type="button"
+              aria-label={`About ${label}`}
+              aria-expanded={explained}
+              onClick={() => setExplained((was) => !was)}
+              className="ph-focus ph-tap flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--ph-ink-3)]"
+            >
+              <Info size={16} aria-hidden />
+            </button>
+          </span>
+        ) : (
+          <label htmlFor={id} className={LABEL}>
+            {label}
+          </label>
+        )}
         <input
           {...props}
           id={id}
           className={cx(
             'ph-focus min-w-0 flex-1 rounded bg-transparent text-right text-[16px] leading-[20px] text-[var(--ph-ink)] md:text-[15px]',
             'placeholder:text-[var(--ph-ink-3)]',
+            // WebKit draws a date or time input at a height of its own, with a margin inside it, so on iOS every
+            // date row stood taller than the rows around it. Held to a text field's 20px, it lines up with them.
+            DATE_TYPES.has(props.type ?? '') && 'ph-date-input h-[20px] appearance-none',
             className,
           )}
         />
       </div>
       {hint && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{hint}</p>}
+      {info && explained && <p className="px-[13px] pb-[8px] text-[12.5px] leading-[16px] text-[var(--ph-ink-3)]">{info}</p>}
     </div>
   );
 }
