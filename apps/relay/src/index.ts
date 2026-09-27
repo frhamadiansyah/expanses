@@ -1,6 +1,5 @@
 import { uuidv7 } from '@expanses/core';
-import { deviceIdOf } from '../../../packages/db/src/sync/memory-transport';
-import { MAX_CLOCK_SKEW_MS, requestSigningBytes, verifySignature } from '../../../packages/db/src/sync/relay-signing';
+import { deviceIdOf, MAX_CLOCK_SKEW_MS, requestSigningBytes, verifySignature } from '../../../packages/db/src/sync/relay-signing';
 import type { DevicePublic } from '../../../packages/db/src/sync/types';
 import type { MemberOp, Result } from './book-object';
 import { verifyEntitlement } from './entitlement';
@@ -181,7 +180,8 @@ async function readSigned(request: Request, url: URL): Promise<{ signed: Signed;
 
 /** A device on no list: its id must be its own key's (403), and that key must have signed the request (401). */
 async function verifyOwnKey(device: DevicePublic, signed: Signed): Promise<void> {
-  if ((await deviceIdOf(device)) !== signed.deviceId) throw new HttpError(403, 'a device can only register itself');
+  // A key that is not a P-256 point has no id at all: it cannot be the caller's.
+  if ((await deviceIdOf(device).catch(() => null)) !== signed.deviceId) throw new HttpError(403, 'a device can only register itself');
   if (!(await verifySignature(device.signJwk, signed.signingBytes, signed.signature))) throw new HttpError(401, 'bad signature');
 }
 

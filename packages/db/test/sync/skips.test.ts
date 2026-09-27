@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { encodeHlc } from '../../src/sync/hlc';
-import { IdentitySealer } from '../../src/sync/seal';
 import type { Op } from '../../src/sync/types';
 import { categoryOf, Household, type Device } from './household';
 
@@ -23,7 +22,7 @@ async function household() {
 let tick = 0;
 async function appendOps(home: Household, from: Device, ops: Op[]): Promise<number> {
   const hlc = encodeHlc(Date.now(), (tick += 1), from.deviceId);
-  const entry = await new IdentitySealer(from.deviceId).seal(home.bookId, 1, { v: 1, hlc, member: from.memberId, ops });
+  const entry = await from.engine.sealer.seal(home.bookId, 1, { v: 1, hlc, member: from.memberId, ops });
   return (await from.transport.append(home.relayBookId, entry)).seq;
 }
 

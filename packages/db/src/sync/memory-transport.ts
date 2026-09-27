@@ -1,5 +1,5 @@
 import { uuidv7 } from '@expanses/core';
-import { stubSign } from './seal';
+import { deviceIdOf, inviteSignedByAnOwner, MAX_CLOCK_SKEW_MS, requestSigningBytes, verifySignature, bytesToBase64Url, type RequestSigner } from './relay-signing';
 import type { ClaimResult, DevicePublic, InviteRecord, LogEntry, Sealed, SequencedEntry, SyncTransport } from './types';
 import { SyncTransportError } from './types';
 
@@ -42,23 +42,6 @@ interface BookState {
   deleted: boolean;
 }
 
-/**
- * A device id derived from its public signing key, standing in for spec §5.1's `hex(SHA-256(raw public signing
- * key))[0:32]` until a real `KeyStore` (task 5) generates the key and derives the id from its raw bytes. Exported
- * so tests can compute the same id a fixture `DevicePublic` will be given.
- */
-export async function deviceIdOf(device: DevicePublic): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(device.signJwk));
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-  return hex.slice(0, 32);
-}
-
-function verifyOwnerSig(sig: string, owners: ReadonlySet<string>): boolean {
-  const marker = 'stub-sig:';
-  return sig.startsWith(marker) && owners.has(sig.slice(marker.length));
-}
-
 function byteSize(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).length;
 }
@@ -66,9 +49,31 @@ function byteSize(value: unknown): number {
 export class MemoryTransport {
   private readonly books = new Map<string, BookState>();
 
-  /** A `SyncTransport` acting as `deviceId` — every call it makes is authorised against that identity. */
-  as(deviceId: string): SyncTransport {
-    return new BoundTransport(this, deviceId);
+  /**
+   * A `SyncTransport` acting as one device — every call it makes is authorised against that identity. Given the
+   * device's `RequestSigner`, each call is also signed and verified exactly as the relay does it (spec §9.1, with
+   * relay-signing.ts): the §9.1 bytes, the 5-minute window, the pinned key of a member, the body's own key on
+   * `createBook` and a claim; a refusal is the relay's `401`. Given only an id, the signature step is left out — for
+   * tests of the relay's rules alone.
+   */
+  as(who: string | RequestSigner): SyncTransport {
+    return typeof who === 'string' ? new BoundTransport(this, who) : new BoundTransport(this, who.deviceId, who);
+  }
+
+  /** §9.1 on a signed request: the window, then the key — the body's own on registration and claims, else the pinned one. */
+  async verifyRequest(signed: SignedRequest, bookId: string | null, bodyKey: JsonWebKey | null): Promise<void> {
+    if (Math.abs(Date.now() - signed.timestamp) > MAX_CLOCK_SKEW_MS) throw new SyncTransportError(401, 'timestamp outside the window');
+    if (bodyKey && (await deviceIdOf({ signJwk: bodyKey }).catch(() => null)) !== signed.deviceId) {
+      throw new SyncTransportError(403, 'a device can only register or claim as itself');
+    }
+    let key = bodyKey;
+    if (!key && bookId !== null) {
+      const state = this.requireBook(bookId);
+      const device = state.devices.get(signed.deviceId);
+      if (!device || device.removedAt) throw new SyncTransportError(401, 'unknown or removed device');
+      key = device.signJwk;
+    }
+    if (!key || !(await verifySignature(key, signed.bytes, signed.signature))) throw new SyncTransportError(401, 'bad signature');
   }
 
   /** Test-only lookup so a fixture book can be inspected without a repository layer around it. */
@@ -76,7 +81,7 @@ export class MemoryTransport {
     return this.books.get(bookId);
   }
 
-  private requireBook(bookId: string): BookState {
+  requireBook(bookId: string): BookState {
     const state = this.books.get(bookId);
     if (!state) throw new SyncTransportError(404, `no such book ${bookId}`);
     if (state.deleted) throw new SyncTransportError(410, 'this book is no longer shared');
@@ -95,7 +100,7 @@ export class MemoryTransport {
 
   /** `callerDeviceId` must be the id its own `device` derives to — the relay verifies a new device against the JWK in its own body (spec §9.1), never a claim it takes on faith. */
   async createBook(device: DevicePublic, callerDeviceId: string): Promise<{ bookId: string }> {
-    const deviceId = await deviceIdOf(device);
+    const deviceId = await deviceIdOf(device).catch(() => null);
     if (deviceId !== callerDeviceId) throw new SyncTransportError(403, 'a device can only register itself');
     const bookId = uuidv7();
     const now = new Date().toISOString();
@@ -169,7 +174,7 @@ export class MemoryTransport {
 
   /** `callerDeviceId` must be the id its own `device` derives to, exactly as `createBook` requires. */
   async claimInvite(inviteId: string, device: DevicePublic, callerDeviceId: string): Promise<ClaimResult> {
-    const deviceId = await deviceIdOf(device);
+    const deviceId = await deviceIdOf(device).catch(() => null);
     if (deviceId !== callerDeviceId) throw new SyncTransportError(403, 'a device can only claim as itself');
 
     const found = this.findInvite(inviteId);
@@ -178,7 +183,7 @@ export class MemoryTransport {
     if (state.deleted) throw new SyncTransportError(410, 'this book is no longer shared');
     if (invite.claimedAt !== undefined) throw new SyncTransportError(409, 'invite already claimed');
     if (Date.parse(invite.expiresAt) <= Date.now()) throw new SyncTransportError(410, 'invite expired');
-    if (!verifyOwnerSig(invite.sig, state.owners)) throw new SyncTransportError(403, 'bad owner signature');
+    if (!(await inviteSignedByAnOwner(invite, state.owners, (owner) => state.devices.get(owner)))) throw new SyncTransportError(403, 'bad owner signature');
 
     const activeDevices = [...state.devices.values()].filter((d) => d.removedAt === undefined).length;
     if (activeDevices >= MAX_ACTIVE_DEVICES) throw new SyncTransportError(429, 'this book already has five devices');
@@ -223,48 +228,72 @@ export class MemoryTransport {
   }
 }
 
+interface SignedRequest {
+  deviceId: string;
+  timestamp: number;
+  bytes: Uint8Array;
+  signature: string;
+}
+
 /** A `SyncTransport` bound to one device identity, so every call it makes is authorised as that device — never skippable. */
 class BoundTransport implements SyncTransport {
   constructor(
     private readonly relay: MemoryTransport,
     private readonly deviceId: string,
+    private readonly signer?: RequestSigner,
   ) {}
 
-  createBook(device: DevicePublic): Promise<{ bookId: string }> {
+  /** Signs the request the way `RelayTransport` does, and has the relay check it the way the Worker does. */
+  private async signed(method: string, path: string, body: unknown, bookId: string | null, bodyKey: JsonWebKey | null = null): Promise<void> {
+    if (!this.signer) return;
+    const bytes = body === undefined ? new Uint8Array() : new TextEncoder().encode(JSON.stringify(body));
+    const timestamp = Date.now();
+    const signingBytes = await requestSigningBytes(method, path, String(timestamp), bytes);
+    const signature = bytesToBase64Url(await this.signer.sign(signingBytes));
+    await this.relay.verifyRequest({ deviceId: this.deviceId, timestamp, bytes: signingBytes, signature }, bookId, bodyKey);
+  }
+
+  async createBook(device: DevicePublic): Promise<{ bookId: string }> {
+    await this.signed('POST', '/books', device, null, device.signJwk);
     return this.relay.createBook(device, this.deviceId);
   }
 
-  append(bookId: string, entry: LogEntry): Promise<{ seq: number }> {
+  async append(bookId: string, entry: LogEntry): Promise<{ seq: number }> {
+    await this.signed('POST', `/books/${bookId}/entries`, entry, bookId);
     return this.relay.append(bookId, entry, this.deviceId);
   }
 
-  pull(bookId: string, since: number): Promise<{ entries: SequencedEntry[]; latest: number }> {
+  async pull(bookId: string, since: number): Promise<{ entries: SequencedEntry[]; latest: number }> {
+    await this.signed('GET', `/books/${bookId}/entries?since=${since}`, undefined, bookId);
     return this.relay.pull(bookId, since, this.deviceId);
   }
 
-  putInvite(bookId: string, invite: InviteRecord): Promise<void> {
+  async putInvite(bookId: string, invite: InviteRecord): Promise<void> {
+    await this.signed('POST', `/books/${bookId}/invites`, invite, bookId);
     return this.relay.putInvite(bookId, invite, this.deviceId);
   }
 
   previewInvite(inviteId: string): Promise<{ preview: Sealed; expiresAt: string; claimed: boolean }> {
-    return this.relay.previewInvite(inviteId);
+    return this.relay.previewInvite(inviteId); // unauthenticated (§9.1)
   }
 
-  claimInvite(inviteId: string, device: DevicePublic): Promise<ClaimResult> {
+  async claimInvite(inviteId: string, device: DevicePublic): Promise<ClaimResult> {
+    await this.signed('POST', `/invites/${inviteId}/claim`, device, null, device.signJwk);
     return this.relay.claimInvite(inviteId, device, this.deviceId);
   }
 
-  removeDevice(bookId: string, deviceId: string): Promise<void> {
+  async removeDevice(bookId: string, deviceId: string): Promise<void> {
+    await this.signed('DELETE', `/books/${bookId}/devices/${deviceId}`, undefined, bookId);
     return this.relay.removeDevice(bookId, deviceId, this.deviceId);
   }
 
-  setOwners(bookId: string, deviceIds: string[]): Promise<void> {
+  async setOwners(bookId: string, deviceIds: string[]): Promise<void> {
+    await this.signed('PUT', `/books/${bookId}/owners`, { deviceIds }, bookId);
     return this.relay.setOwners(bookId, deviceIds, this.deviceId);
   }
 
-  deleteBook(bookId: string): Promise<void> {
+  async deleteBook(bookId: string): Promise<void> {
+    await this.signed('DELETE', `/books/${bookId}`, undefined, bookId);
     return this.relay.deleteBook(bookId, this.deviceId);
   }
 }
-
-export { stubSign };

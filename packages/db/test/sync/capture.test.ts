@@ -69,7 +69,6 @@ describe('capture: rows edited in place', () => {
     const sets = await outboxChangeSets(database);
     expect(sets).toHaveLength(1);
     expect(sets[0]!.member).toBe('member-me');
-    expect(sets[0]!.epoch).toBe(1);
     expect(sets[0]!.ops).toEqual([{ entity: 'category', id: groceries.id, op: 'upsert', fields: { name: 'Groceries & market' } }]);
     expect(await fieldClock(database, 'category', groceries.id, 'name')).toBe(sets[0]!.hlc);
     expect(sets[0]!.deviceId).toBe(await database.transaction((tx) => localDeviceId(tx)));

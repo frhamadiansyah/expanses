@@ -3,7 +3,6 @@ import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import type { Database, Db } from '../../src/database';
 import type { ChangeLogEntry } from '../../src/sync/seal';
 import { configureCapture, projectPurchase } from '../../src/sync/capture';
-import { IdentitySealer } from '../../src/sync/seal';
 import { parseOpId, SHARED_ENTITIES, type PurchaseEntity, type RowEntity } from '../../src/sync/shared-entities';
 import type { ChangeSet, Op } from '../../src/sync/types';
 
@@ -142,10 +141,11 @@ interface SealedOp {
  */
 async function outboxOps(database: Database): Promise<Map<string, SealedOp[]>> {
   const rows = await database.db.values<[number, string, string | null, string | null]>(sql`SELECT seq, book_id, entry_json, change_json FROM temp.__sealed ORDER BY seq`);
-  const opener = new IdentitySealer('harness');
   const out = new Map<string, SealedOp[]>();
   for (const [rowid, bookId, entryJson, changeJson] of rows) {
-    const changeSet = changeJson ? (JSON.parse(changeJson) as ChangeSet) : await opener.open(bookId, JSON.parse(entryJson!) as ChangeLogEntry);
+    void bookId;
+    // The outbox keeps plaintext change-sets (sealed only at drain), and apply records the one it takes in.
+    const changeSet = JSON.parse((changeJson ?? entryJson)!) as ChangeSet;
     for (const op of changeSet.ops) {
       const key = `${op.entity}\u0000${op.id}`;
       out.set(key, [...(out.get(key) ?? []), { rowid: Number(rowid), hlc: changeSet.hlc, op }]);

@@ -10,7 +10,7 @@ import type { DevicePublic, Op } from './types';
  * change-sets with fresh hlcs and their field clocks written. Step 4 (draining, and the invite after it) is the caller's.
  */
 
-export type SharingErrorCode = 'CURRENCY' | 'ALREADY_SHARED' | 'NOT_FOUND';
+export type SharingErrorCode = 'CURRENCY' | 'ALREADY_SHARED' | 'NOT_FOUND' | 'BAD_CODE' | 'INVITE_CLAIMED' | 'INVITE_EXPIRED';
 
 export class SharingError extends Error {
   constructor(
@@ -68,7 +68,7 @@ function parentsFirst(ops: Op[]): Op[] {
  * in scope, sealed into the outbox. The relay book (step 1) is made by the caller first. Returns how many change-sets
  * wait to be drained.
  */
-export async function seedBookTx(tx: Tx, config: Pick<CaptureConfig, 'sealerFor' | 'now'>, input: SeedInput): Promise<number> {
+export async function seedBookTx(tx: Tx, config: Pick<CaptureConfig, 'now'>, input: SeedInput): Promise<number> {
   await assertShareableTx(tx, input.bookId);
   const now = new Date().toISOString();
   await tx.run(
@@ -80,27 +80,50 @@ export async function seedBookTx(tx: Tx, config: Pick<CaptureConfig, 'sealerFor'
     VALUES (${input.bookId}, ${input.deviceId}, ${input.memberId}, ${input.deviceName}, ${JSON.stringify(input.device.signJwk)}, ${JSON.stringify(input.device.agreeJwk)}, ${now}, NULL)`);
 
   const book: SharedBook = { bookId: input.bookId, memberId: input.memberId, epoch: 1 };
+  return writeChangeSetsTx(tx, config, book, await rowsInScopeTx(tx, book, () => true));
+}
+
+/**
+ * Every row of the book in scope as a full upsert, in the order a receiver applies straight through (§6.5 step 2),
+ * keeping only those `keep` accepts. A non-void purchase is emitted as paid by this member; one with no `sync_lineage`
+ * row yet gets one.
+ */
+async function rowsInScopeTx(tx: Tx, book: SharedBook, keep: (entity: string, id: string) => boolean): Promise<Op[]> {
   const ops: Op[] = [];
-  const rows = (entity: string) => rowUpsertsTx(tx, book, entity);
+  const rows = async (entity: string) => (await rowUpsertsTx(tx, book, entity)).filter((op) => keep(op.entity, op.id));
   ops.push(...(await rows('book')), ...(await rows('member')), ...(await rows('device')));
   ops.push(...parentsFirst(await rows('category')), ...(await rows('category_need')));
   ops.push(...(await rows('budget')), ...(await rows('budget_frequency')), ...(await rows('budget_override')));
   ops.push(...(await rows('book_income')), ...(await rows('book_income_override')));
   ops.push(...(await rows('bill')), ...(await rows('bill_window')), ...(await rows('bill_skip')));
 
-  // Every non-void purchase, oldest first, paid by this member. A void one never existed for the other member.
+  // Every non-void purchase, oldest first. A void one never existed for the other member.
   const heads = await tx.values<[string]>(sql`
     SELECT t.id FROM transactions t JOIN book_transactions bt ON bt.transaction_id = t.id
-    WHERE bt.book_id = ${input.bookId} AND t.status = 'posted'
+    WHERE bt.book_id = ${book.bookId} AND t.status = 'posted'
     ORDER BY t.occurred_on, t.created_at, t.rowid`);
   for (const [head] of heads) {
     const lineageId = await lineageOfTransaction(tx, head);
-    const purchase = (await projectPurchase(tx, head, input.memberId, null))!;
-    purchase.money.paidBy = input.memberId;
-    await tx.run(
-      sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label) VALUES (${lineageId}, ${input.bookId}, ${head}, ${input.memberId}, ${purchase.money.paidLabel})`,
-    );
+    if (!keep('purchase', lineageId)) continue;
+    const [known] = await tx.values<[string, string]>(sql`SELECT paid_by, paid_label FROM sync_lineage WHERE lineage_id = ${lineageId}`);
+    const purchase = (await projectPurchase(tx, head, book.memberId, known ? { paidBy: known[0], paidLabel: known[1] } : null))!;
+    if (!known) {
+      purchase.money.paidBy = book.memberId;
+      await tx.run(
+        sql`INSERT INTO sync_lineage (lineage_id, book_id, head_transaction_id, paid_by, paid_label) VALUES (${lineageId}, ${book.bookId}, ${head}, ${book.memberId}, ${purchase.money.paidLabel})`,
+      );
+    }
     ops.push({ entity: 'purchase', id: lineageId, op: 'upsert', fields: { ...purchase } });
   }
+  return ops;
+}
+
+/**
+ * §8.7's rejoin: after pulling the whole log, every local row in scope whose `Op.id` appears in no op pulled is
+ * emitted as new — made before the backup, or while the book waited for an invite, and never drained. Returns how
+ * many change-sets it wrote.
+ */
+export async function emitUnknownRowsTx(tx: Tx, config: Pick<CaptureConfig, 'now'>, book: SharedBook, seen: ReadonlySet<string>): Promise<number> {
+  const ops = await rowsInScopeTx(tx, book, (entity, id) => !seen.has(`${entity}\u0000${id}`));
   return writeChangeSetsTx(tx, config, book, ops);
 }

@@ -31,6 +31,17 @@ carried field merges by its own clock (state-based per field), which closes the 
 §7.1 — only SQLite CHECK and NOT NULL are skippable (UNIQUE and FOREIGN KEY stop), and a child of an ended parent is
 dropped, not recorded; §8.4 — applying a removal receives its hlc.
 
+**Task 5 (keys)** corrected these once real keys ran: §6.3/§6.6 — the outbox keeps **plaintext** change-sets and the
+engine seals and signs each one **when it drains**, under the book's epoch at that moment (controller ruling: the local
+database is plaintext already, a locked keychain never blocks a save, a rotation between capture and drain seals under
+the newer key); §5.1 — the raw key hashed for the device id is the uncompressed point `0x04 ‖ x ‖ y`, and one function
+(`deviceIdOf`, relay-signing.ts) serves the client, `MemoryTransport` and the relay; §5.4 — an introduction is an entry
+that *carries* the author's own `device` upsert (the seed's first change-set leads with the book and member, so "first
+op" was never true), checked against the relay's key by device id; §6.6 — `deflate` is zlib (RFC 1950) through
+`CompressionStream('deflate')`, needing no fallback on any target; §8.1 — the preview also carries the `bookId`, which
+the joiner needs because every device keeps the book under one id and the entry AAD binds it; §15 — the keychain plugin
+is `@aparajita/capacitor-secure-storage`. Each changed passage says "(task 5)".
+
 ## 0. What v3 changed
 
 v2 was written from the table definitions without reading the ledger's write path. The review read it. v3 is v2
@@ -311,7 +322,9 @@ All WebCrypto; no library added.
 
 ### 5.1 Device identity
 
-Two key pairs generated at first launch. `deviceId = hex(SHA-256(raw public signing key))[0:32]`.
+Two key pairs generated at first launch. `deviceId = hex(SHA-256(raw public signing key))[0:32]`, the raw key being
+WebCrypto's `raw` export of the P-256 point, `0x04 ‖ x ‖ y` (65 bytes). One function computes it everywhere —
+`deviceIdOf` in `relay-signing.ts`, for the client, `MemoryTransport` and the relay alike (task 5).
 
 **Device-only.** Never synchronised, never in the database, never in a backup. A phone that is replaced, or
 restored from a backup file, is a new device and rejoins every shared workspace by invite (§8.7). The Share screen
@@ -334,6 +347,18 @@ interface KeyStore {
 Chosen by `isNative()`. The native implementation needs the Capacitor shell, which is on `feat/ios-testflight` and
 not on `main`: **merging that branch is a precondition of step 2.**
 
+**As built (task 5).** The interface, `generateDevice`, the keychain JWK round trip (`exportDeviceJwks` /
+`importDeviceJwks`, private keys imported back non-extractable) and `MemoryKeyStore` (Node and tests; a fresh instance
+is a fresh device) are in `packages/db/src/sync/keys.ts`. `WebKeyStore`, `NativeKeyStore` and `createKeyStore()` are in
+`apps/web/src/sync/key-store.ts`. `WebKeyStore` writes the pairs in one IndexedDB transaction that keeps whatever is
+already there, so two tabs at first launch end with one device. `NativeKeyStore` uses
+`@aparajita/capacitor-secure-storage` 8.x (Capacitor 8): key prefix `cicis-keys.`, `setSynchronize(false)` (no iCloud
+keychain), `KeychainAccess.afterFirstUnlockThisDeviceOnly` (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), and
+the keychain holds strings, so the pairs are generated extractable once, written as JWK and imported back without it.
+The device id reaches capture through one seam: the engine puts the KeyStore's `deviceId` in the capture config, and
+`localDeviceId(tx)` returns it (a random stand-in in `settings` is used only by a database no engine was made for — a
+capture-only test — and nothing with it can reach a relay).
+
 ### 5.3 Sealing an epoch key for a device (rotation)
 
 ```
@@ -347,16 +372,26 @@ record  = { deviceId, epoch, ephJwk, iv, ct }
 ### 5.4 Whose key is it — pinning
 
 A device trusts a signing key only if it is in its own `book_devices`. The relay's copy is used for one thing:
-checking the signature on the entry that introduces a device. That entry is an ordinary encrypted change-set whose
-first op is the `device` upsert carrying the device's own `sign_jwk` and `agree_jwk`. Writing it requires the epoch
+checking the signature on the entry that introduces a device. That entry is an ordinary encrypted change-set that
+carries the `device` upsert of its own author, with the device's own `sign_jwk` and `agree_jwk` (task 5: "whose first
+op is" was never true of the seed, whose first change-set leads with the book and the owner's member). Writing it requires the epoch
 key, which requires `S`, which the relay never has — so the relay cannot introduce a device. Apply checks that the
 entry's signature verifies under the key **inside** it and that the relay-supplied key matches; from then on, only
 the pinned key. Rotations seal for the devices in `book_devices`, never for a list the relay supplies.
+
+**As built (task 5).** "Matches" is by device id: the key inside and the relay's key must both derive to the entry's
+`deviceId`. An unpinned device's `removal` or `rotation` is refused outright, as is a `change` without its author's
+`device` op; a refusal stops the loop at that entry with `bad signature` (§7.1). `pinning.test.ts` covers a device on the
+relay that holds the epoch key but never introduced itself, an introduction carrying another key, and a relay that
+swaps a pinned device's key to pass a forged entry.
 
 ### 5.5 At rest
 
 `book_epoch_keys.key_sealed` is the JSON of §5.3's record sealed for this device's own agreement key, with
 `info = 'cicis-at-rest-v1'`. Without the device key the epoch keys do not open.
+
+**As built (task 5).** `Sealer` (`seal.ts`) opens each on first use and keeps it in memory; one that does not open
+(another device's keys: a restored backup) reads as missing.
 
 ## 6. Change-sets
 
@@ -436,8 +471,9 @@ three exported functions separately would read every replacement as a new lineag
 **Where the flush runs (ruled O1).** `createDatabase().transaction` opens a capture session for each db
 transaction. The mutex already serialises transactions, so there is one current session per `Database`. The two
 capture points add the lineages they touch, and `withCapture` adds its row ops. After `fn` resolves and **before
-`COMMIT`**, the session is flushed. It resolves the lineages, writes `sync_field_clocks`, and cuts, seals and inserts
-the change-sets into `sync_outbox`, all inside the same transaction. If `fn` throws, the session is dropped along
+`COMMIT`**, the session is flushed. It resolves the lineages, writes `sync_field_clocks`, and cuts the change-sets and
+inserts them into `sync_outbox` as plaintext JSON, all inside the same transaction (task 5: sealing moved to drain,
+§6.6). If `fn` throws, the session is dropped along
 with the `ROLLBACK`. Writes through `database.db` outside a transaction are never ledger writes, so they open no
 session.
 
@@ -447,7 +483,7 @@ that never travel. Every other writer reaches the ledger through `postTransactio
 lists them.
 
 After capture, for each emitted field: `sync_field_clocks[book, entity, id, field] = hlc`. At commit the ops are
-cut into change-sets (§6.2), each sealed and signed (§6.6) and inserted into `sync_outbox`.
+cut into change-sets (§6.2) and inserted into `sync_outbox`; each is sealed and signed (§6.6) when the engine drains it.
 
 A write outside a shared book emits nothing and costs one lookup.
 
@@ -511,8 +547,9 @@ on its own.
 Voided rows are not seeded: a purchase that was void before sharing never existed for the other member.
 
 **As built (task 4).** `SyncEngine.shareBook` (`packages/db/src/sync/engine.ts`) runs step 0 before the relay book
-exists, then `seedBookTx` (`seed.ts`) writes steps 1–3 in one transaction; `syncOnce` drains. Minting the epoch key is
-task 5's. The app's default-tree upkeep at open (`ensureCategoryKeys`, `ensureDefaultCategorySets`) skips a book this
+exists, then `seedBookTx` (`seed.ts`) writes steps 1–3 in one transaction; `syncOnce` drains. Task 5: epoch 1's key is
+minted and stored at rest in the seed's transaction, and a seed that fails deletes the relay book again, so a failed
+Share leaves nothing on the relay and can simply be tried again. The app's default-tree upkeep at open (`ensureCategoryKeys`, `ensureDefaultCategorySets`) skips a book this
 device **joined** — a `shared_books` row on a book it holds as `kind = 'shared'` — because its keyed and default
 categories arrive by sync under the owner's ids and category-set membership never syncs. The owner's own shared book is
 not skipped: what the owner's device adds to it is captured and reaches everyone once, and skipping it would stop the
@@ -531,6 +568,15 @@ type SequencedEntry = LogEntry & { seq: number; signJwk: JsonWebKey };
 `ct = AES-GCM(epochKey[epoch], iv = random(12), data = deflate(utf8(JSON(changeSet))), aad = utf8(bookId + ':' +
 epoch + ':' + deviceId))`. `sig = ECDSA(sign.private, SHA-256(utf8(JSON(entry without sig, keys sorted))))`.
 Everything binary is base64url. A `rotation`'s `epoch` is the **new** epoch.
+
+**As built (task 5).** A change-set is sealed **when the outbox drains**, not at capture (controller ruling): the outbox
+keeps it as plaintext — the local database holds the same rows in the clear — so a locked keychain never blocks a save,
+and a rotation between capture and drain seals it under the newer key. `deflate` is zlib (RFC 1950) through
+`CompressionStream('deflate')`, which browsers, WKWebView (iOS 16.4+), Node ≥ 18 and Workers all have: no fallback. The
+signed bytes leave out what the relay adds on the way back (`seq`, `signJwk`). `removal` and `rotation` entries are signed
+the same way. `SyncEngine.drain` reads `shared_books.epoch` and seals each outbox row under it; a retry after a lost
+answer seals again and the relay answers with the first seq (§9.1). `crypto.kat.test.ts` checks HKDF (RFC 5869),
+AES-GCM (the GCM specification's test cases 13, 14, 16), ECDSA P-256 (RFC 6979 A.2.5) and ECDH P-256 (NIST CAVS).
 
 No entry carries a name. Device and member names travel only inside `change` entries.
 
@@ -555,6 +601,11 @@ for e in entries, in seq order:
 
 **The cursor never passes an entry that was not applied.** Every `stop` leaves `applied_seq` where it was; the next
 tick tries the same entry again.
+
+**As built (task 5).** `pullAndApply` takes the device's `Sealer`. A missing epoch key sets `state = 'needs_invite'` and
+stops with `needs invite`. A rotation not sealed for this device (added after the rotator last pulled) stores nothing;
+the next entry under the new epoch then stops the same way. `PullResult` reports the removals applied (with their epoch)
+and the devices first pinned, for §8.3 and §8.4.
 
 **As built (task 4).** `pullAndApply` (`packages/db/src/sync/apply.ts`). An entry this device wrote is already true
 here and only moves the cursor (a restored backup is a new device, §5.1, so this never skips anything it lacks). A
@@ -705,7 +756,8 @@ field that is not a winner `undefined`, never `null`: above all `setAside`, `tem
 1. `inviteId = uuidv7()`; `S = random(16)`; `expiresAt = now + 7 days`.
 2. `inviteKey = HKDF(ikm = S, salt = utf8(inviteId), info = utf8('cicis-invite-v1'))` → AES-GCM 256.
 3. `keys = AES-GCM(inviteKey, iv, data = utf8(JSON([{ epoch, key }, … every epoch the book has had])))`.
-4. `preview = AES-GCM(inviteKey, iv, data = utf8(JSON({ bookName, inviterName, baseCurrency })))`.
+4. `preview = AES-GCM(inviteKey, iv, data = utf8(JSON({ bookId, bookName, inviterName, baseCurrency })))` (task 5:
+   `bookId` added — every device keeps the book under the owner's id, and the entry AAD binds it).
 5. `putInvite(bookId, { inviteId, keys, preview, expiresAt, sameMember, memberId?, sig })`.
 6. Show the **code** — `base32crockford(inviteId bytes (16) ‖ S (16))`, 52 characters in groups of four — and the
    **link** `cicis://join/<code>`, with a **Share** button. `S` is in neither the relay nor any log.
@@ -726,10 +778,20 @@ field that is not a winner `undefined`, never `null`: above all `setAside`, `tem
    `sameMember`, this `member` with the name the person typed.
 8. `pull(bookId, 0)` and apply everything.
 
+**As built (task 5).** `SyncEngine.previewInvite(code)` and `joinBook(code, { ws, memberName, deviceName })` in
+`engine.ts`; the code helpers in `invite.ts`. A mistyped code (the preview does not open) is `BAD_CODE`; a claimed or
+expired invite says so before claiming. `shared_books.epoch` is the claim's epoch when the invite carried its key, else
+the newest it carried. The introduction is its own transaction so capture sees the book shared; then `syncOnce` drains
+it and pulls from 0.
+
 ### 8.3 Link your own device
 
 **Link a device**, on your own member row: §8.1 with `sameMember: true` and your `memberId`. If the inviter is an
 owner, the inviter follows the claim with `setOwners` including the new device.
+
+**As built (task 5).** `linkDevice`. The inviter learns of the claim when the new device's introduction arrives: a sync
+that pins a device of an owner member, on an owner's device, calls `setOwners` with every current device of every owner
+member.
 
 ### 8.4 Remove a device, and rotate
 
@@ -755,6 +817,11 @@ another device) and `shared_books.epoch` is still the removal's epoch:
 A device never rotates on its own removal. Between a removal and its rotation, writes continue under the old
 epoch; the removed device cannot pull them, which is the relay's doing until the rotation makes it cryptography's.
 
+**As built (task 5).** `removeDevice(bookId, target)` appends the signed removal, calls the relay, and for another
+device syncs at once, which applies the removal and rotates. `syncOnce` runs `maybeRotate` after its pull loop, once per
+removal applied, and pulls again after a `201` or a `409`; running it after the loop rather than mid-loop means a
+rotation already in the same page wins without a `409`. A device whose own row is removed never seals.
+
 ### 8.5 Ownership
 
 `book_members.role`, synced. The relay keeps the set of owner **device ids** for authorising `putInvite`,
@@ -773,6 +840,11 @@ A backup is the whole database, so it carries `shared_books` and `sync_*` and no
 `shared_books` row: if `KeyStore` has no device key whose `deviceId` is in that book's `book_devices`, or
 `book_epoch_keys` does not open, set `state = 'needs_invite'` and clear that book's `sync_outbox`. The workspace
 shows **"Ask Dewi for a new invite to keep sharing"**; its rows are all there and recording works, locally.
+
+**As built (task 5).** `SyncEngine.checkRestore()` at open (and a guard at the top of `syncOnce`). Rejoining is
+`joinBook` on a book in `needs_invite`: the old epoch keys are dropped, the cursor goes to 0, and after the pull every
+row in scope whose `Op.id` the pull never saw is emitted as new (`emitUnknownRowsTx`, sharing the seed's row walk).
+Recording while waiting works and is captured by nothing (capture watches `active` books only); the rejoin emits it.
 
 Rejoining with a fresh invite from that state: steps §8.2 1–7, keeping the existing `books` row and `member_id`;
 then pull from 0 and apply (the restored `sync_field_clocks` make the merge correct); then emit, as new, every
@@ -806,7 +878,10 @@ signing string, the canonical JSON and the verifier for both ends: `packages/db/
 
 An invite's `sig` (§5.4) is ECDSA P-256/SHA-256 over `utf8(JSON(invite without sig, keys sorted))` — the same form
 as an entry's (§6.6) — checked at claim time against the pinned key of each current owner device; none verifies:
-`403`. The stub `stub-sig:<deviceId>` convention `MemoryTransport` accepts is not accepted by the relay.
+`403`. Task 5: the stub `stub-sig:` convention is gone; `MemoryTransport` checks invites with the relay's own function
+(`inviteSignedByAnOwner`), and a client bound with `relay.as(signer)` has every request signed and verified the §9.1 way
+(the 5-minute window, the pinned key, the body's own key on `POST /books` and a claim, `403` before `401` for a body key
+that is not the caller's).
 
 **Replay.** `POST /books/:id/entries` with a `(deviceId, hlc)` already in the log answers `200` with the seq the
 entry was already given, and stores nothing new — success, not an error, so the client never has to special-case
@@ -946,7 +1021,9 @@ Mutate-twice review on every step.
 
 ## 15. Left open
 
-- The keychain plugin for `NativeKeyStore` (step 2).
+- ~~The keychain plugin for `NativeKeyStore` (step 2).~~ Settled in task 5: `@aparajita/capacitor-secure-storage` 8.x —
+  Capacitor 8, iOS keychain class `afterFirstUnlockThisDeviceOnly`, iCloud sync switchable off (§5.2). Not yet run on a
+  device: `cap sync` and an Xcode build are task 7's.
 - The relay's domain and the Cloudflare account (before step 3).
 - The App Privacy wording (at submission).
 - **Encrypted backups.** Separate work, and independently urgent: today's backup file is a plaintext copy of a

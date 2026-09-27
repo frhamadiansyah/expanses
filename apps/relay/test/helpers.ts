@@ -1,13 +1,12 @@
 import { fileURLToPath } from 'node:url';
 import { createTestHarness } from 'wrangler';
-import { deviceIdOf } from '../../../packages/db/src/sync/memory-transport';
 import {
   bytesToBase64Url,
-  ecdsaRequestSigner,
   inviteSigningBytes,
   requestSigningBytes,
   type RequestSigner,
 } from '../../../packages/db/src/sync/relay-signing';
+import { generateDevice, requestSignerOf, type DeviceKeys } from '../../../packages/db/src/sync/keys';
 import { RelayTransport } from '../../../packages/db/src/sync/relay-transport';
 import type { DevicePublic, InviteRecord, LogEntry } from '../../../packages/db/src/sync/types';
 
@@ -29,20 +28,15 @@ export interface TestDevice {
   devicePublic: DevicePublic;
   signKey: CryptoKey;
   signer: RequestSigner;
+  keys: DeviceKeys;
   transport: RelayTransport;
 }
 
-/** A device with real ECDSA and ECDH P-256 keys, and a `RelayTransport` signing as it. */
+/** A device with real ECDSA and ECDH P-256 keys (the app's own `generateDevice`), and a `RelayTransport` signing as it. */
 export async function makeDevice(baseUrl: string): Promise<TestDevice> {
-  const sign = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
-  const agree = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-  const devicePublic: DevicePublic = {
-    signJwk: await crypto.subtle.exportKey('jwk', sign.publicKey),
-    agreeJwk: await crypto.subtle.exportKey('jwk', agree.publicKey),
-  };
-  const deviceId = await deviceIdOf(devicePublic);
-  const signer = ecdsaRequestSigner(deviceId, devicePublic.signJwk, sign.privateKey);
-  return { deviceId, devicePublic, signKey: sign.privateKey, signer, transport: new RelayTransport({ baseUrl, signer }) };
+  const keys = await generateDevice();
+  const signer = requestSignerOf(keys);
+  return { deviceId: keys.deviceId, devicePublic: keys.public, signKey: keys.sign.privateKey, signer, keys, transport: new RelayTransport({ baseUrl, signer }) };
 }
 
 /** An invite signed by `owner` the way spec §5.4 says: ECDSA over the record without `sig`, keys sorted. */

@@ -1,18 +1,18 @@
-import { uuidv7 } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { vi } from 'vitest';
 import { createAccount, createDatabase, createWorkspace, migrate, personalBook, type Database, type WorkspaceContext } from '../../src/index';
 import { createNodeExecutor } from '../../src/node';
-import { projectPurchase, withCapture } from '../../src/sync/capture';
+import { projectPurchase } from '../../src/sync/capture';
 import { SyncEngine } from '../../src/sync/engine';
-import { deviceIdOf, MemoryTransport, stubSign } from '../../src/sync/memory-transport';
+import { generateDevice, requestSignerOf, type DeviceKeys } from '../../src/sync/keys';
+import { MemoryTransport } from '../../src/sync/memory-transport';
 import { SHARED_ENTITIES, buildOpId, type RowEntity } from '../../src/sync/shared-entities';
 import type { DevicePublic, SyncTransport } from '../../src/sync/types';
 
 /*
- * A household of devices on one in-memory relay, for the apply and merge tests (spec §13). Joining is the minimal
- * stand-in the task allows — the book, `shared_books`, and the device's own member and device rows written directly —
- * because the real invite and join are task 5's.
+ * A household of devices on one in-memory relay, for the apply and merge tests (spec §13). Every device has real keys
+ * (spec §5): the relay checks each request's signature, entries are sealed and signed at drain, and joining is the real
+ * invite and claim (§8.1–8.2).
  */
 
 // A household test builds two or three databases and syncs them several times: under a loaded machine that passes the
@@ -43,6 +43,7 @@ export interface Device {
   ws: WorkspaceContext;
   deviceId: string;
   public: DevicePublic;
+  keys: DeviceKeys;
   transport: SyncTransport;
   engine: SyncEngine;
   /** This device's own bank account, in the workspace currency. */
@@ -62,14 +63,13 @@ export class Household {
 
   async device(name: string, memberId: string = `member-${name}`, baseCurrency = 'IDR'): Promise<Device> {
     const { database, ws } = await freshDatabase(baseCurrency);
-    const pub: DevicePublic = { signJwk: { kty: 'EC', crv: 'P-256', x: `${name}-${uuidv7()}`, y: 'y' }, agreeJwk: { kty: 'EC', crv: 'P-256', x: name, y: 'y' } };
-    const deviceId = await deviceIdOf(pub);
-    await database.db.run(sql`INSERT INTO settings (key, value) VALUES ('sync.device', ${deviceId})`);
+    const keys = await generateDevice();
+    const { deviceId, public: pub } = keys;
     const bank = await createAccount(database, ws, { name: `${name} Bank`, kind: 'asset', subtype: 'bank', currency: baseCurrency });
     const usd = await createAccount(database, ws, { name: `${name} Dollars`, kind: 'asset', subtype: 'bank', currency: 'USD' });
     const cash = await createAccount(database, ws, { name: `${name} Wallet`, kind: 'asset', subtype: 'cash', currency: baseCurrency });
-    const transport = this.relay.as(deviceId);
-    const device: Device = { name, database, ws, deviceId, public: pub, transport, engine: new SyncEngine(database, transport), bank: bank.id, cash: cash.id, usd: usd.id, memberId };
+    const transport = this.relay.as(requestSignerOf(keys));
+    const device: Device = { name, database, ws, deviceId, public: pub, keys, transport, engine: new SyncEngine(database, transport, keys), bank: bank.id, cash: cash.id, usd: usd.id, memberId };
     this.devices.push(device);
     return device;
   }
@@ -77,25 +77,30 @@ export class Household {
   /** The owner shares their Personal book (§6.5): the relay book, the seed. Drains nothing. */
   async share(owner: Device): Promise<string> {
     const book = await personalBook(owner.database, owner.ws);
-    const { relayBookId } = await owner.engine.shareBook(book.id, { memberId: owner.memberId, memberName: owner.name, deviceName: `${owner.name}'s phone`, device: owner.public });
+    const { relayBookId } = await owner.engine.shareBook(book.id, { memberId: owner.memberId, memberName: owner.name, deviceName: `${owner.name}'s phone` });
     this.bookId = book.id;
     this.relayBookId = relayBookId;
     return book.id;
   }
 
-  /** The minimal join: invite and claim on the relay, then the book, `shared_books`, and the introduction. No pull. */
-  async join(joiner: Device, owner: Device, baseCurrency = 'IDR'): Promise<void> {
-    const inviteId = uuidv7();
-    await owner.transport.putInvite(this.relayBookId, {
-      inviteId,
-      keys: { iv: '', ct: '' },
-      preview: { iv: '', ct: '' },
-      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-      sameMember: false,
-      sig: stubSign(owner.deviceId),
-    });
-    await joiner.transport.claimInvite(inviteId, joiner.public);
-    await joinBookForTest(joiner, this.bookId, this.relayBookId, baseCurrency);
+  /** The real join (§8.1–8.2): the owner invites, the joiner previews, claims, introduces itself and syncs once. */
+  async join(joiner: Device, owner: Device): Promise<void> {
+    const { code } = await owner.engine.createInvite(this.bookId, { inviterName: owner.name });
+    await joiner.engine.joinBook(code, { ws: joiner.ws, memberName: joiner.name, deviceName: `${joiner.name}'s phone`, memberId: joiner.memberId });
+  }
+
+  /**
+   * A phone restored from a backup of `lost` (§8.7): the same database bytes, new device keys — a new device, as a
+   * replaced or restored phone always is (§5.1). The lost phone leaves the household's list.
+   */
+  async restore(lost: Device, backup: Uint8Array): Promise<Device> {
+    const database = createDatabase(createNodeExecutor());
+    await database.importBytes(backup);
+    const keys = await generateDevice();
+    const transport = this.relay.as(requestSignerOf(keys));
+    const device: Device = { ...lost, database, keys, deviceId: keys.deviceId, public: keys.public, transport, engine: new SyncEngine(database, transport, keys) };
+    this.devices.splice(this.devices.indexOf(lost), 1, device);
+    return device;
   }
 
   /** Every device drains, then every device pulls: nothing is left in flight. */
@@ -103,28 +108,6 @@ export class Household {
     for (const d of devices) await d.engine.syncOnce(this.bookId);
     for (const d of devices) await d.engine.syncOnce(this.bookId);
   }
-}
-
-/** Inserts the joined book on this device and emits the introduction (spec §8.2 steps 6–7), the way task 5's join will. */
-export async function joinBookForTest(joiner: Device, bookId: string, relayBookId: string, baseCurrency: string): Promise<void> {
-  const { database, ws } = joiner;
-  const now = new Date().toISOString();
-  await database.transaction(async (tx) => {
-    await tx.run(
-      sql`INSERT INTO books (id, workspace_id, name, kind, base_currency, count_events_in_budget, sort_order, archived_at, created_at) VALUES (${bookId}, ${ws.workspaceId}, '', 'shared', ${baseCurrency}, 0, 9, NULL, ${now})`,
-    );
-    await tx.run(
-      sql`INSERT INTO shared_books (book_id, relay_book_id, epoch, member_id, state, shared_at) VALUES (${bookId}, ${relayBookId}, 1, ${joiner.memberId}, 'active', ${now})`,
-    );
-  });
-  await database.transaction((tx) =>
-    withCapture(tx, [{ entity: 'member', id: joiner.memberId, bookId }, { entity: 'device', id: joiner.deviceId, bookId }], async () => {
-      await tx.run(sql`INSERT INTO book_members (book_id, member_id, name, role, joined_at) VALUES (${bookId}, ${joiner.memberId}, ${joiner.name}, 'member', ${now})`);
-      await tx.run(
-        sql`INSERT INTO book_devices (book_id, device_id, member_id, name, sign_jwk, agree_jwk, added_at, removed_at) VALUES (${bookId}, ${joiner.deviceId}, ${joiner.memberId}, ${`${joiner.name}'s phone`}, ${JSON.stringify(joiner.public.signJwk)}, ${JSON.stringify(joiner.public.agreeJwk)}, ${now}, NULL)`,
-      );
-    }),
-  );
 }
 
 /** Ops this device's apply skipped (§7.1): a property run must end with none. */

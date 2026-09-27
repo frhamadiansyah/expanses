@@ -98,6 +98,21 @@ export * as sharingSchema from './schema-sharing';
 export { DEFAULT_RELAY_URL, RelayTransport, type RelayTransportOptions } from './sync/relay-transport';
 export { ecdsaRequestSigner, type RequestSigner } from './sync/relay-signing';
 export { isBookShared, notPlaceholder, sharingTablesExist } from './sync/placeholder';
-export { SyncEngine, type ShareInput, type SyncOnceResult } from './sync/engine';
+export { SyncEngine, type CreatedInvite, type JoinInput, type PreviewedInvite, type ShareInput, type SyncOnceResult } from './sync/engine';
+export {
+  deviceKeysOf,
+  exportDeviceJwks,
+  generateDevice,
+  generateKeyPairs,
+  importDeviceJwks,
+  MemoryKeyStore,
+  publicJwk,
+  requestSignerOf,
+  type DeviceJwks,
+  type DeviceKeys,
+  type KeyStore,
+} from './sync/keys';
+export { inviteLink, parseInviteCode, JOIN_LINK_PREFIX, InviteCodeError } from './sync/invite';
+export { deviceIdOf } from './sync/relay-signing';
 export { SharingError, type SharingErrorCode } from './sync/seed';
 export { type PullResult } from './sync/apply';

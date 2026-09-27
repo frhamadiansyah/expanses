@@ -1,4 +1,4 @@
-import type { InviteRecord } from './types';
+import type { DevicePublic, InviteRecord } from './types';
 
 /*
  * The relay's request signing (spec §9.1) and the invite signature (spec §5.4), in one place for both ends: the
@@ -93,4 +93,34 @@ export function ecdsaRequestSigner(deviceId: string, publicJwk: JsonWebKey, priv
       return new Uint8Array(await crypto.subtle.sign(ECDSA_SHA256, privateKey, bytes as BufferSource));
     },
   };
+}
+
+/**
+ * A device's id (spec §5.1): `hex(SHA-256(raw public signing key))[0:32]`, the raw key being the uncompressed point
+ * `0x04 ‖ x ‖ y`. One function for the client, `MemoryTransport` and the relay. Throws on a key that is not a P-256
+ * point.
+ */
+export async function deviceIdOf(device: Pick<DevicePublic, 'signJwk'>): Promise<string> {
+  const { key_ops: _ops, ext: _ext, d: _d, ...jwk } = device.signJwk;
+  const key = await crypto.subtle.importKey('jwk', jwk, ECDSA_P256, true, ['verify']);
+  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key));
+  return (await sha256Hex(raw)).slice(0, 32);
+}
+
+/**
+ * Whether an invite's `sig` verifies under the signing key of one of the book's current owner devices (spec §5.4,
+ * §9.1). The relay and `MemoryTransport` both decide a claim with this.
+ */
+export async function inviteSignedByAnOwner(
+  invite: InviteRecord & { claimedAt?: string },
+  owners: Iterable<string>,
+  deviceOf: (deviceId: string) => { signJwk: JsonWebKey; removedAt?: string } | undefined | Promise<{ signJwk: JsonWebKey; removedAt?: string } | undefined>,
+): Promise<boolean> {
+  const { claimedAt: _claimedAt, ...record } = invite;
+  const bytes = inviteSigningBytes(record);
+  for (const owner of owners) {
+    const device = await deviceOf(owner);
+    if (device && !device.removedAt && (await verifySignature(device.signJwk, bytes, invite.sig))) return true;
+  }
+  return false;
 }

@@ -1,7 +1,6 @@
 import { uuidv7 } from '@expanses/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Database, Db, Tx } from '../database';
-import { IdentitySealer, type Sealer } from './seal';
 import { buildOpId, entityOf, parseOpId, SHARED_ENTITIES, type RowEntity } from './shared-entities';
 import { reserveAndSplit } from './split';
 import type { ChangeSet, Op } from './types';
@@ -10,6 +9,9 @@ import type { ChangeSet, Op } from './types';
  * Capture (household-sharing spec §6.3): turning local writes to a shared book into ops, and ops into sealed
  * change-sets in `sync_outbox`, inside the very database transaction that made the writes — so a change-set is
  * durable exactly when its rows are (ruled O1).
+ *
+ * The outbox keeps each change-set as plaintext JSON; it is sealed and signed only when the engine drains it to the
+ * relay (controller ruling, task 5; spec §6.3), under the book's epoch at that moment.
  *
  * `createDatabase().transaction` opens one `CaptureSession` per db transaction (the mutex serialises them, so there is
  * one current session per `Database`) and flushes it after the callback resolves and before `COMMIT`. Two kinds of
@@ -25,14 +27,17 @@ import type { ChangeSet, Op } from './types';
  * nothing. Apply runs with capture switched off: `pauseCapture(tx)`.
  */
 
-/** The settings key holding this device's sync id until the KeyStore owns it (task 5 swaps `localDeviceId`'s body). */
+/** The settings key of the stand-in device id used only while no `KeyStore` identity is configured (see `localDeviceId`). */
 export const DEVICE_SETTINGS_KEY = 'sync.device';
 
 export interface CaptureConfig {
   /** Off: no transaction on this database captures anything. */
   enabled: boolean;
-  /** How a change-set is sealed for this device. The identity stub until task 5's real keys. */
-  sealerFor: (deviceId: string) => Sealer;
+  /**
+   * This device's id from its `KeyStore` (spec §5.1). The sync engine sets it when it is made; every hlc and every
+   * entry this database emits carries it.
+   */
+  deviceId?: string;
   /** The clock's wall time, for tests. */
   now?: () => number;
   /**
@@ -43,7 +48,7 @@ export interface CaptureConfig {
 }
 
 export function defaultCaptureConfig(): CaptureConfig {
-  return { enabled: true, sealerFor: (deviceId) => new IdentitySealer(deviceId) };
+  return { enabled: true };
 }
 
 const configs = new WeakMap<object, CaptureConfig>();
@@ -51,9 +56,11 @@ const configs = new WeakMap<object, CaptureConfig>();
 /** Called by `createDatabase` so `configureCapture(database, …)` reaches the config its transactions read. */
 export function registerCaptureConfig(database: object, config: CaptureConfig): void {
   configs.set(database, config);
+  const db = (database as { db?: object }).db;
+  if (db) configs.set(db, config);
 }
 
-/** Switches capture on or off for a database, or changes how it seals (task 5 passes the real sealer here). */
+/** Switches capture on or off for a database, or sets the device id it stamps (the sync engine does, from the KeyStore). */
 export function configureCapture(database: Database, patch: Partial<CaptureConfig>): void {
   const config = configs.get(database);
   if (!config) throw new Error('configureCapture: this database was not made by createDatabase');
@@ -61,10 +68,14 @@ export function configureCapture(database: Database, patch: Partial<CaptureConfi
 }
 
 /**
- * This device's id for sync. For now a random id kept in `settings` under `sync.device`, made on first need; task 5
- * replaces the body with the KeyStore's `deviceId` (spec §5.1) and nothing else changes.
+ * This device's id for sync — the one seam. It is the `KeyStore`'s `deviceId` (spec §5.1), which the sync engine puts in
+ * the capture config when it is made. Only a database no engine was ever made for (a test of capture alone, the §6.4
+ * harness) falls back to a random stand-in kept in `settings`; nothing with such an id can reach a relay, because only
+ * the engine seals and appends.
  */
 export async function localDeviceId(tx: Db): Promise<string> {
+  const configured = (sessions.get(tx)?.config ?? configs.get(tx))?.deviceId;
+  if (configured) return configured;
   const rows = await tx.values<[string]>(sql`SELECT value FROM settings WHERE key = ${DEVICE_SETTINGS_KEY}`);
   if (rows[0]) return rows[0][0];
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
@@ -176,7 +187,7 @@ export class CaptureSession {
     if (!touch.touched.includes(transactionId)) touch.touched.push(transactionId);
   }
 
-  /** Resolves the lineages, cuts the ops into change-sets, seals them into the outbox, and writes the clocks. */
+  /** Resolves the lineages, cuts the ops into change-sets, puts them in the outbox, and writes the clocks. */
   async flush(): Promise<void> {
     if (!this.enabled || this.slots.length === 0) return;
     const books = await this.sharedBooks();
@@ -236,20 +247,19 @@ export class CaptureSession {
 }
 
 /**
- * Cuts `ops` for one shared book into change-sets (spec §6.2), seals each, puts it in `sync_outbox`, and records the
+ * Cuts `ops` for one shared book into change-sets (spec §6.2), puts each in `sync_outbox` (plaintext, sealed at drain), and records the
  * field clocks — what a flush does, and what seeding (§6.5 step 3) does with every row in scope. Inside the caller's
  * transaction. Returns how many change-sets it wrote.
  */
-export async function writeChangeSetsTx(tx: Tx, config: Pick<CaptureConfig, 'sealerFor' | 'now'>, book: SharedBook, ops: readonly Op[]): Promise<number> {
+export async function writeChangeSetsTx(tx: Tx, config: Pick<CaptureConfig, 'now'>, book: SharedBook, ops: readonly Op[]): Promise<number> {
   if (ops.length === 0) return 0;
   const deviceId = await localDeviceId(tx);
-  const sealer = config.sealerFor(deviceId);
   const createdAt = new Date().toISOString();
   const changeSets = await reserveAndSplit(tx, deviceId, book.memberId, ops, config.now?.());
   for (const changeSet of changeSets) {
-    const entry = await sealer.seal(book.bookId, book.epoch, changeSet);
+    // Plaintext: the engine seals it when it drains (§6.3, §6.6).
     await tx.run(
-      sql`INSERT INTO sync_outbox (id, book_id, hlc, entry_json, created_at) VALUES (${uuidv7()}, ${book.bookId}, ${changeSet.hlc}, ${JSON.stringify(entry)}, ${createdAt})`,
+      sql`INSERT INTO sync_outbox (id, book_id, hlc, entry_json, created_at) VALUES (${uuidv7()}, ${book.bookId}, ${changeSet.hlc}, ${JSON.stringify(changeSet)}, ${createdAt})`,
     );
     for (const op of changeSet.ops) await recordClocks(tx, book.bookId, op, changeSet.hlc);
   }

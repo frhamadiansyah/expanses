@@ -2,7 +2,6 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { withCapture } from '../../src/sync/capture';
 import { encodeHlc } from '../../src/sync/hlc';
-import { stubSign } from '../../src/sync/memory-transport';
 import { Household, projectBook, type Device } from './household';
 
 /*
@@ -41,7 +40,7 @@ describe('per-field merge on rows that travel whole', () => {
     const bookId = await home.share(fandri);
     await home.join(dewi, fandri);
     await home.settle();
-    await fandri.transport.append(home.relayBookId, { kind: 'removal', deviceId: fandri.deviceId, epoch: 1, hlc: encodeHlc(Date.now(), 0, fandri.deviceId), target: dewi.deviceId, sig: stubSign(fandri.deviceId) });
+    await fandri.transport.append(home.relayBookId, await fandri.engine.sealer.sign({ kind: 'removal' as const, deviceId: fandri.deviceId, epoch: 1, hlc: encodeHlc(Date.now(), 0, fandri.deviceId), target: dewi.deviceId }));
     await new Promise((r) => setTimeout(r, 5));
     await editRow(dewi, bookId, 'device', dewi.deviceId, "name = 'Dewi iPad'");
     await home.settle();
@@ -62,7 +61,7 @@ describe('per-field merge on rows that travel whole', () => {
     await home.join(dewi, fandri);
     await home.settle();
     const ahead = Date.now() + 60 * 60 * 1000;
-    await fandri.transport.append(home.relayBookId, { kind: 'removal', deviceId: fandri.deviceId, epoch: 1, hlc: encodeHlc(ahead, 5, fandri.deviceId), target: dewi.deviceId, sig: stubSign(fandri.deviceId) });
+    await fandri.transport.append(home.relayBookId, await fandri.engine.sealer.sign({ kind: 'removal' as const, deviceId: fandri.deviceId, epoch: 1, hlc: encodeHlc(ahead, 5, fandri.deviceId), target: dewi.deviceId }));
     await dewi.engine.syncOnce(bookId);
     const [[clock]] = (await dewi.database.db.values<[string]>(sql`SELECT value FROM settings WHERE key = 'sync.hlc'`)) as [[string]];
     expect(JSON.parse(clock)).toEqual({ ms: ahead, counter: 5 });

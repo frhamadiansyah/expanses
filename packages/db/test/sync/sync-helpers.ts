@@ -1,7 +1,7 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../../src/database';
 import { sharedBooks, syncOutbox } from '../../src/schema-sharing';
-import { IdentitySealer, type ChangeLogEntry } from '../../src/sync/seal';
+import { decodeHlc } from '../../src/sync/hlc';
 import type { ChangeSet, Op } from '../../src/sync/types';
 
 /** Marks a book shared on this device (the minimal stand-in for Share, which is task 4/5's). */
@@ -11,21 +11,16 @@ export async function shareBookForTest(database: Database, bookId: string, membe
 
 export interface OutboxChangeSet extends ChangeSet {
   bookId: string;
-  epoch: number;
   deviceId: string;
 }
 
-/** Every change-set in the outbox, opened with the identity sealer, oldest first. */
+/** Every change-set in the outbox (plaintext until the engine seals it at drain), oldest first. */
 export async function outboxChangeSets(database: Database): Promise<OutboxChangeSet[]> {
   const rows = await database.db.select().from(syncOutbox).orderBy(asc(syncOutbox.hlc));
-  const opener = new IdentitySealer('reader');
-  const out: OutboxChangeSet[] = [];
-  for (const row of rows) {
-    const entry = JSON.parse(row.entryJson) as ChangeLogEntry;
-    const changeSet = await opener.open(row.bookId, entry);
-    out.push({ ...changeSet, bookId: row.bookId, epoch: entry.epoch, deviceId: entry.deviceId });
-  }
-  return out;
+  return rows.map((row) => {
+    const changeSet = JSON.parse(row.entryJson) as ChangeSet;
+    return { ...changeSet, bookId: row.bookId, deviceId: decodeHlc(changeSet.hlc).deviceId };
+  });
 }
 
 /** Every op in the outbox, in hlc order. */

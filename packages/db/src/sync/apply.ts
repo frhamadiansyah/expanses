@@ -3,11 +3,13 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { WorkspaceContext } from '../context';
 import type { Database, Db, Tx } from '../database';
 import { postTransactionTx, replaceTransactionTx, voidTransactionTx, type PostTransactionInput } from '../repos/ledger';
-import { captureConfigOf, isRevivable, localDeviceId, projectPurchase, ROW_CLOCK, withCapturePaused, type PurchaseFields, type PurchaseMoney } from './capture';
+import { isRevivable, projectPurchase, ROW_CLOCK, withCapturePaused, type PurchaseFields, type PurchaseMoney } from './capture';
 import { decodeHlc, driftBlocks, receiveHlc } from './hlc';
-import type { ChangeLogEntry, Sealer } from './seal';
+import { openSealedKey } from './crypto';
+import { deviceIdOf } from './relay-signing';
+import { MissingEpochKeyError, verifyEntry, type ChangeLogEntry, type Sealer } from './seal';
 import { entityOf, NEVER_SYNCED_COLUMNS, parseOpId, type RowEntity } from './shared-entities';
-import type { ChangeSet, Op, SyncTransport } from './types';
+import type { ChangeSet, Op, SequencedEntry, SyncTransport } from './types';
 import { uuidv5 } from './uuidv5';
 
 /*
@@ -604,7 +606,11 @@ export interface PullResult {
   /** Ops skipped as refusals every receiver makes alike, each also kept in `sync_skipped`. */
   skipped: SkippedOp[];
   /** Why the loop stopped before the end of the log, and at which entry; the cursor stays before it (§7.1). */
-  stopped?: { seq: number; reason: 'bad signature' | 'drift' | 'not active' };
+  stopped?: { seq: number; reason: 'bad signature' | 'drift' | 'not active' | 'needs invite' };
+  /** Removals applied by this call, with the epoch each was made under — what `maybeRotate` looks at (§8.4). */
+  removals: { epoch: number; target: string }[];
+  /** Devices this call pinned for the first time (§5.4), by id. */
+  introduced: string[];
 }
 
 async function cursorOf(database: Database, bookId: string): Promise<number> {
@@ -616,10 +622,44 @@ async function setCursorTx(tx: Db, bookId: string, seq: number): Promise<void> {
   await tx.run(sql`INSERT INTO sync_cursor (book_id, applied_seq) VALUES (${bookId}, ${seq}) ON CONFLICT (book_id) DO UPDATE SET applied_seq = excluded.applied_seq`);
 }
 
+/** The signing key this device has pinned for a device of the book (§5.4), or none yet. */
+async function pinnedKeyOf(database: Database, bookId: string, deviceId: string): Promise<JsonWebKey | null> {
+  const [row] = await database.db.values<[string]>(sql`SELECT sign_jwk FROM book_devices WHERE book_id = ${bookId} AND device_id = ${deviceId}`);
+  return row ? (JSON.parse(row[0]) as JsonWebKey) : null;
+}
+
+const jwkOf = (value: unknown): JsonWebKey | null => {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as JsonWebKey;
+    } catch {
+      return null;
+    }
+  }
+  return value && typeof value === 'object' ? (value as JsonWebKey) : null;
+};
+
+/**
+ * §5.4: an entry from a device this device has not pinned is trusted only as that device's introduction — a `change`
+ * whose change-set upserts the author's own `device` row, whose `signJwk` is the key the relay supplied, derives to the
+ * author's id, and verifies the entry's signature. Anything else from an unpinned device is refused.
+ */
+async function verifiesAsIntroduction(entry: SequencedEntry, changeSet: ChangeSet): Promise<boolean> {
+  const intro = changeSet.ops.find((op) => op.entity === 'device' && op.id === entry.deviceId && op.op === 'upsert');
+  if (!intro || intro.op !== 'upsert') return false;
+  const inner = jwkOf(intro.fields.signJwk);
+  if (!inner) return false;
+  const [innerId, relayId] = await Promise.all([deviceIdOf({ signJwk: inner }).catch(() => null), deviceIdOf({ signJwk: entry.signJwk }).catch(() => null)]);
+  if (innerId !== entry.deviceId || relayId !== entry.deviceId) return false;
+  return verifyEntry(inner, entry);
+}
+
 /**
  * §7.1: pull from the cursor and apply, entry by entry, each in one transaction with the cursor's advance. The
- * cursor never passes an entry that was not applied: a bad signature or a change-set from too far in the future
- * stops the loop where it is. An entry this device wrote is already true here and only moves the cursor.
+ * cursor never passes an entry that was not applied: a bad signature, a missing epoch key or a change-set from too
+ * far in the future stops the loop where it is. An entry this device wrote is already true here and only moves the
+ * cursor. A signature is checked against the key pinned in `book_devices`; a device's first entry must introduce it
+ * (§5.4). A rotation stores the new epoch key sealed for this device, if any (§5.3).
  */
 export async function pullAndApply(
   database: Database,
@@ -627,11 +667,14 @@ export async function pullAndApply(
   sealer: Sealer,
   bookId: string,
   now: () => number = Date.now,
+  seen?: Set<string>,
 ): Promise<PullResult> {
   const [shared] = await database.db.values<[string, string]>(sql`SELECT relay_book_id, state FROM shared_books WHERE book_id = ${bookId}`);
-  if (!shared || shared[1] !== 'active') return { applied: 0, skipped: [], stopped: { seq: await cursorOf(database, bookId), reason: 'not active' } };
+  const removals: PullResult['removals'] = [];
+  const introduced: string[] = [];
+  if (!shared || shared[1] !== 'active') return { applied: 0, skipped: [], stopped: { seq: await cursorOf(database, bookId), reason: 'not active' }, removals, introduced };
   const relayBookId = shared[0];
-  const self = await database.transaction((tx) => localDeviceId(tx));
+  const self = sealer.deviceId;
   let since = await cursorOf(database, bookId);
   let applied = 0;
   const held: HeldOps = new Map();
@@ -640,31 +683,75 @@ export async function pullAndApply(
     const { entries } = await transport.pull(relayBookId, since);
     if (entries.length === 0) break;
     for (const entry of entries) {
-      if (!(await sealer.verify(entry))) return finish({ seq: entry.seq, reason: 'bad signature' });
       let changeSet: ChangeSet | null = null;
+      const openChange = async (): Promise<ChangeSet | 'missing'> => {
+        try {
+          return await sealer.open(bookId, entry as ChangeLogEntry);
+        } catch (error) {
+          if (error instanceof MissingEpochKeyError) return 'missing';
+          throw error;
+        }
+      };
+      const pinned = await pinnedKeyOf(database, bookId, entry.deviceId);
+      if (pinned) {
+        if (!(await verifyEntry(pinned, entry))) return finish({ seq: entry.seq, reason: 'bad signature' });
+      } else {
+        if (entry.kind !== 'change') return finish({ seq: entry.seq, reason: 'bad signature' });
+        const opened = await openChange().catch(() => null);
+        if (opened === 'missing') return needsInvite(entry.seq);
+        if (!opened || !(await verifiesAsIntroduction(entry, opened))) return finish({ seq: entry.seq, reason: 'bad signature' });
+        changeSet = opened;
+        introduced.push(entry.deviceId);
+      }
       if (entry.kind === 'change' && entry.deviceId !== self) {
-        changeSet = await sealer.open(bookId, entry as ChangeLogEntry);
+        if (!changeSet) {
+          const opened = await openChange();
+          if (opened === 'missing') return needsInvite(entry.seq);
+          changeSet = opened;
+        }
         if (driftBlocks(decodeHlc(changeSet.hlc).ms, now())) return finish({ seq: entry.seq, reason: 'drift' });
+        if (seen) for (const op of changeSet.ops) seen.add(`${op.entity}\u0000${op.id}`);
+      } else if (entry.kind === 'change') {
+        changeSet = null; // our own: already true here
+      }
+      let rotationKey: Uint8Array | null = null;
+      if (entry.kind === 'rotation') {
+        const mine = entry.sealed.find((sealed) => sealed.deviceId === self && sealed.epoch === entry.epoch);
+        rotationKey = mine ? await openSealedKey(sealer.device.agree.privateKey, bookId, mine).catch(() => null) : null;
       }
       await database.transaction((tx) =>
         withCapturePaused(tx, async () => {
           const run: ApplyRun = { seq: entry.seq, skipped: [] };
           if (changeSet) await applyChangeSetTx(tx, await bookContextTx(tx, bookId), changeSet, held, run);
           if (entry.kind === 'removal') await applyRemovalTx(tx, await bookContextTx(tx, bookId), entry.target, entry.hlc);
+          if (entry.kind === 'rotation') {
+            await receiveHlc(tx, entry.hlc);
+            // Not sealed for this device: it was added after the rotator last pulled. Its next entry under the new
+            // epoch stops the loop as `needs invite`.
+            if (rotationKey) {
+              await sealer.storeEpochKeyTx(tx, bookId, entry.epoch, rotationKey);
+              await tx.run(sql`UPDATE shared_books SET epoch = max(epoch, ${entry.epoch}) WHERE book_id = ${bookId}`);
+            }
+          }
           skipped.push(...run.skipped);
-          // A rotation's key is task 5's (§5.3); with the identity sealer there is nothing to open.
           await setCursorTx(tx, bookId, entry.seq);
         }, changeSet ?? undefined),
       );
+      if (entry.kind === 'removal') removals.push({ epoch: entry.epoch, target: entry.target });
       since = entry.seq;
       applied += 1;
     }
   }
   return finish();
 
+  async function needsInvite(seq: number): Promise<PullResult> {
+    await database.db.run(sql`UPDATE shared_books SET state = 'needs_invite' WHERE book_id = ${bookId}`);
+    return finish({ seq, reason: 'needs invite' });
+  }
+
   function finish(stopped?: PullResult['stopped']): PullResult {
     for (const lineageId of held.keys()) console.warn(`sync: purchase ${lineageId} changed but its money never arrived; dropped`);
-    return stopped ? { applied, skipped, stopped } : { applied, skipped };
+    return stopped ? { applied, skipped, stopped, removals, introduced } : { applied, skipped, removals, introduced };
   }
 }
 
@@ -680,10 +767,4 @@ async function applyRemovalTx(tx: Tx, ctx: BookContext, deviceId: string, hlc: s
   const at = new Date(decodeHlc(hlc).ms).toISOString();
   await tx.run(sql`UPDATE book_devices SET removed_at = ${at} WHERE book_id = ${ctx.bookId} AND device_id = ${deviceId}`);
   await setClock(tx, ctx, 'device', deviceId, 'removedAt', hlc);
-}
-
-/** The sealer this database's capture uses, for opening what the relay hands back (one seam; task 5 swaps it). */
-export async function sealerOf(database: Database): Promise<Sealer> {
-  const deviceId = await database.transaction((tx) => localDeviceId(tx));
-  return captureConfigOf(database).sealerFor(deviceId);
 }

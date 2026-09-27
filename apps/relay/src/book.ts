@@ -1,4 +1,4 @@
-import { inviteSigningBytes, verifySignature } from '../../../packages/db/src/sync/relay-signing';
+import { inviteSignedByAnOwner } from '../../../packages/db/src/sync/relay-signing';
 import type { ClaimResult, DevicePublic, InviteRecord, LogEntry, Sealed, SequencedEntry } from '../../../packages/db/src/sync/types';
 import { verifyEntitlement } from './entitlement';
 
@@ -202,13 +202,7 @@ export class Book {
   }
 
   /** The invite's `sig` verifies under the pinned signing key of one of the book's current owners (spec §5.4). */
-  private async signedByAnOwner(invite: StoredInvite, owners: string[]): Promise<boolean> {
-    const { claimedAt: _claimedAt, ...record } = invite;
-    const bytes = inviteSigningBytes(record);
-    for (const owner of owners) {
-      const device = await this.store.get<DeviceRecord>(deviceKey(owner));
-      if (device && !device.removedAt && (await verifySignature(device.signJwk, bytes, invite.sig))) return true;
-    }
-    return false;
+  private signedByAnOwner(invite: StoredInvite, owners: string[]): Promise<boolean> {
+    return inviteSignedByAnOwner(invite, owners, (owner) => this.store.get<DeviceRecord>(deviceKey(owner)));
   }
 }

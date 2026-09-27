@@ -2,8 +2,8 @@
  * Portable base64url, built on `TextEncoder`/`TextDecoder` and `btoa`/`atob` rather than Node's `Buffer` — the app
  * runs in the browser and in a native WebView (Capacitor) as well as in Node's test runner, and `Buffer` exists in
  * none of the first two. `btoa`/`atob` work on a "binary string" (one code unit per byte), so UTF-8 bytes are
- * expanded to that form first and collapsed back afterwards. Shared here so task 5's real AES-GCM/ECDSA sealer and
- * `KeyStore` reuse the exact same encoding `IdentitySealer` already uses.
+ * expanded to that form first and collapsed back afterwards. For text; bytes (keys, ciphertext, signatures) use
+ * `bytesToBase64Url` / `base64UrlToBytes` in relay-signing.ts, the same alphabet without the UTF-8 step.
  */
 
 export function toBase64Url(text: string): string {

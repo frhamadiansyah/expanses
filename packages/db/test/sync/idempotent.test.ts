@@ -3,7 +3,6 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { postTransaction, renameAccount, saveBudget, skipBill, saveExpenseTemplate, unskipBill, voidTransaction } from '../../src/index';
 import { applyChangeSet } from '../../src/sync/apply';
-import { IdentitySealer } from '../../src/sync/seal';
 import type { ChangeLogEntry } from '../../src/sync/seal';
 import { categoryOf, Household, projectBook } from './household';
 
@@ -33,7 +32,7 @@ describe('applying is idempotent', () => {
 
     // Every change-set again, straight into apply.
     const { entries } = await dewi.transport.pull(home.relayBookId, 0);
-    const opener = new IdentitySealer(dewi.deviceId);
+    const opener = dewi.engine.sealer;
     for (const entry of entries) {
       if (entry.kind !== 'change' || entry.deviceId === dewi.deviceId) continue;
       await applyChangeSet(dewi.database, bookId, await opener.open(bookId, entry as ChangeLogEntry));
