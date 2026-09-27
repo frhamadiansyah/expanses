@@ -1,15 +1,15 @@
 import type { PersonDebtRow } from '@expanses/db';
 import { Plus } from 'lucide-react';
-import { useSearch } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useApp } from '../../app/context';
 import { usePhone } from '../../app/use-phone';
 import { Empty, ErrorBox, Money } from '../../ui';
 import { useHeldRates } from '../accounts/queries';
 import { type CornerAction, Figure, InsetGroup, InsetRow, PanelHeader, PushedTitle, SCREEN, type Segment, SegmentedControl } from '../../ui/native';
-import { DebtForm } from './DebtForm';
 import { PersonCard } from './PersonCard';
 import { usePeopleDebts } from './queries';
+import { newDebtPath, openingSide, type Side } from './sides';
 import { sideTotal } from './totals';
 
 /**
@@ -43,16 +43,15 @@ const SIDES: readonly Segment[] = [
   { key: 'owed', label: 'Receivables' },
   { key: 'owe', label: 'Payables' },
 ];
-type Side = 'owed' | 'owe';
 
 export function LendBorrowPage() {
   const { ws } = useApp();
   const phone = usePhone();
   const people = usePeopleDebts();
   // Opened from a person's row on Debts: that person alone, with the way back to everyone one tap away.
-  const { person: only } = useSearch({ from: '/net-worth/lend-borrow' });
+  const { person: only, side: asked } = useSearch({ from: '/net-worth/lend-borrow' });
+  const navigate = useNavigate();
   const theirs = (list: PersonDebtRow[]) => (only ? list.filter((row) => row.personName === only) : list);
-  const [adding, setAdding] = useState(false);
   const [showSettled, setShowSettled] = useState(false);
   // Which side the phone is showing. Null until the reader picks one, so the first paint shows something.
   const [side, setSide] = useState<Side | null>(null);
@@ -63,16 +62,24 @@ export function LendBorrowPage() {
   const held = useHeldRates([...owedToYou, ...youOwe].map((person) => person.currency));
   const rates = held.data?.rates;
   const nothingYet = people.isSuccess && owedToYou.length === 0 && youOwe.length === 0 && settled.length === 0;
-  /*
-   * Which side the phone opens on. The first segment — Receivables — unless a person was named (the
-   * way in from their row on Debts), where it is the side that person is on: opening Dewi's row must show Dewi,
-   * not an empty list. Never derived from how many rows each side has, so a reader who forgives their last
-   * borrower does not have the list switch sides under them.
-   */
-  const shown: Side = side ?? (only && owedToYou.length === 0 ? 'owe' : 'owed');
+  // The reader's own pick wins over where the page was opened; `openingSide` says why each default is what it is.
+  const shown: Side = side ?? openingSide({ asked, person: only, owedToYouCount: owedToYou.length });
 
-  // While the inline form is open there is no action to show, and an empty corner would still take its gap.
-  const actions: CornerAction[] = adding ? [] : [{ key: 'add', label: 'Add a loan', glyph: <Plus size={22} aria-hidden />, run: () => setAdding(true) }];
+  /*
+   * + adds on a screen of its own. The phone shows one side, so + goes straight to that side's screen; the desktop
+   * shows both, so + asks which. A person being shown travels along, so their name is already typed.
+   */
+  const carry = only ? { person: only } : {};
+  const add = (to: Side): CornerAction => ({
+    key: to,
+    label: to === 'owed' ? 'New receivable' : 'New payable',
+    to: newDebtPath(to),
+    search: carry,
+  });
+  const plus = <Plus size={22} aria-hidden />;
+  const actions: CornerAction[] = phone
+    ? [{ ...add(shown), key: 'add', glyph: plus }]
+    : [{ key: 'add', label: 'Add to Lend & borrow', glyph: plus, menu: [add('owed'), add('owe')] }];
 
   return (
     <div className={SCREEN}>
@@ -85,15 +92,13 @@ export function LendBorrowPage() {
       <PushedTitle title="Lend & borrow" back="Cashflow" backTo="/transactions" actions={actions} />
       <ErrorBox error={people.error} />
 
-      {adding && <DebtForm onDone={() => setAdding(false)} />}
-
       {only && (
         <InsetGroup header={`Only ${only}`}>
           <InsetRow title="Show everyone" to="/net-worth/lend-borrow" search={{}} />
         </InsetGroup>
       )}
 
-      {nothingYet && !adding && (
+      {nothingYet && (
         <Empty>
           Nothing lent or borrowed yet. Money you lend leaves your cash and waits under Receivables; money you borrow shows as a debt until you pay it back.
         </Empty>

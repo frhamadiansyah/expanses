@@ -261,7 +261,8 @@ test('an extra payment asks about the extra and the bank\'s penalty together', a
 test('lending Andi 6.800.000 from Jenius asks', async ({ page }) => {
   await jeniusWithTwoGoals(page);
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).click();
+  await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
+  await page.getByRole('menuitem', { name: 'New receivable' }).click();
   await page.getByLabel('Person').pressSequentially('Andi');
   await page.getByLabel(/^Amount/).pressSequentially('6800000');
   await page.getByLabel('Paid from').selectOption({ label: 'Jenius (IDR)' });
@@ -283,8 +284,8 @@ test('paying Budi back from Jenius asks; the loan came into another account', as
   await jeniusWithTwoGoals(page);
   await addMoneyAccount(page, 'BCA', 'bank', '0');
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).click();
-  await page.getByRole('radio', { name: 'I borrowed money' }).click();
+  await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
+  await page.getByRole('menuitem', { name: 'New payable' }).click();
   await page.getByLabel('Person').pressSequentially('Budi');
   await page.getByLabel(/^Amount/).pressSequentially('10000000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA (IDR)' });

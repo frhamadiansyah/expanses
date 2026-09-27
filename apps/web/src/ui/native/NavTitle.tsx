@@ -81,12 +81,20 @@ export function CornerButton({
  * listener is added to argue about it.
  */
 export function OverflowMenu({ actions }: { actions: CornerAction[] }) {
+  return <CornerMenu label="More" glyph={<MoreHorizontal size={20} aria-hidden />} actions={actions} />;
+}
+
+/**
+ * A corner button that opens a list of actions. The `…` is one; a + that offers two things to add is another.
+ * One drawing for both, so a menu in the corner never looks two ways.
+ */
+export function CornerMenu({ label, glyph, actions }: { label: string; glyph: ReactNode; actions: CornerAction[] }) {
   const [open, setOpen] = useState(false);
   useEscape(() => setOpen(false), open);
   return (
     <span className="relative">
-      <CornerButton label="More" onClick={() => setOpen((was) => !was)}>
-        <MoreHorizontal size={20} aria-hidden />
+      <CornerButton label={label} onClick={() => setOpen((was) => !was)} expanded={open}>
+        {glyph}
       </CornerButton>
       {open && (
         <>
@@ -94,7 +102,7 @@ export function OverflowMenu({ actions }: { actions: CornerAction[] }) {
           <span className="fixed inset-0 z-10" onClick={() => setOpen(false)} role="presentation" />
           <span
             role="menu"
-            aria-label="More"
+            aria-label={label}
             className="absolute right-0 z-20 mt-[6px] block min-w-[180px] overflow-hidden bg-[var(--ph-surface)] shadow-[0_10px_30px_-8px_rgb(0_0_0/0.35)]"
             style={{ borderRadius: 11 }}
           >
@@ -235,7 +243,10 @@ export function LargeTitle({
         </div>
         {!field && (plan.inline.length > 0 || plan.overflow.length > 0) && (
           <div className="flex shrink-0 items-center gap-[8px]">
-            {plan.inline.map((action) => (
+            {plan.inline.map((action) =>
+              action.menu ? (
+                <CornerMenu key={action.key} label={action.label} glyph={action.glyph} actions={action.menu} />
+              ) : (
               <CornerButton
                 key={action.key}
                 label={action.label}
@@ -250,7 +261,8 @@ export function LargeTitle({
               >
                 {action.glyph}
               </CornerButton>
-            ))}
+              ),
+            )}
             {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
           </div>
         )}
@@ -325,7 +337,10 @@ export function PushedTitle({
             {/* A name that does not fit steps down to an ellipsis rather than wrapping: the bar is one line tall. */}
             <h1 className="min-w-0 truncate text-center text-[22px] font-semibold leading-[28px] tracking-tight text-[var(--ph-ink)]">{title}</h1>
             <div className="flex flex-1 items-center justify-end gap-[8px]">
-              {plan.inline.map((action) => (
+              {plan.inline.map((action) =>
+                action.menu ? (
+                  <CornerMenu key={action.key} label={action.label} glyph={action.glyph} actions={action.menu} />
+                ) : (
                 <CornerButton
                   key={action.key}
                   label={action.label}
@@ -340,7 +355,8 @@ export function PushedTitle({
                 >
                   {action.glyph}
                 </CornerButton>
-              ))}
+                ),
+              )}
               {plan.overflow.length > 0 && <OverflowMenu actions={plan.overflow} />}
             </div>
           </>

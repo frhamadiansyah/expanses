@@ -5,6 +5,7 @@ import {
   debtDescription,
   forgivePostings,
   lendPostings,
+  withLoanFee,
   type PostingLine,
   repayBorrowedPostings,
   repaymentPostings,
@@ -283,6 +284,12 @@ export interface RecordLoanInput {
   /** Card purchases only: the category the loan would have had, so the points still count. */
   spendCategoryId?: string | null;
   mcc?: string | null;
+  /**
+   * A fee on the money moved, in the money account's currency — your cost, not the person's. It is spending under
+   * `feeCategoryId`, and what the person owes stays the loan (`withLoanFee`).
+   */
+  feeMinor?: number;
+  feeCategoryId?: string | null;
   ratesToBase?: Record<string, number>;
   /** Which goal the money came out of, when it took more than was free (spec §4.4). */
   setAside?: SetAsideChoice | null;
@@ -359,7 +366,10 @@ export async function recordLoan(database: Database, ws: WorkspaceContext, input
     const accountsForPostings = { debtAccountId, moneyAccountId: input.moneyAccountId, ...categories };
     const amount = { amountMinor: input.amountMinor, currency };
 
-    const lines = (direction === 'lent' ? lendPostings(amount, accountsForPostings) : borrowPostings(amount, accountsForPostings)).map((line) =>
+    const feeMinor = input.feeMinor ?? 0;
+    if (feeMinor > 0 && !input.feeCategoryId) throw new DebtDbError('Choose a category for the fee');
+    const loanLines = direction === 'lent' ? lendPostings(amount, accountsForPostings) : borrowPostings(amount, accountsForPostings);
+    const lines = withLoanFee(loanLines, direction, { feeMinor, feeCategoryId: input.feeCategoryId ?? '', moneyAccountId: input.moneyAccountId, currency }).map((line) =>
       // The card line names the category it would have had, so points are counted without it being spending.
       input.spendCategoryId && line.accountId === input.moneyAccountId ? { ...line, spendCategoryId: input.spendCategoryId } : line,
     );

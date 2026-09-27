@@ -37,6 +37,7 @@ import { FinancialHealthPage } from '../features/networth/FinancialHealthPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
 import { GoalRoute } from '../features/goals/GoalPage';
 import { LendBorrowPage } from '../features/debts/LendBorrowPage';
+import { NewDebtPage } from '../features/debts/NewDebtPage';
 import { LoanDetailPage } from '../features/loans/LoanDetailPage';
 import { DebtsPage } from '../features/loans/DebtsPage';
 import { CoretaxPage } from '../features/coretax/CoretaxPage';
@@ -72,10 +73,14 @@ export interface TransactionsSearch {
 export interface LendBorrowSearch {
   /** One person, when Lend & borrow is opened from their row on Debts. */
   person?: string;
+  /** The side the phone opens on: set by the way back from New receivable and New payable. */
+  side?: 'owed' | 'owe';
 }
 
-const lendBorrowSearch = (search: Record<string, unknown>): LendBorrowSearch =>
-  typeof search.person === 'string' && search.person !== '' ? { person: search.person } : {};
+const lendBorrowSearch = (search: Record<string, unknown>): LendBorrowSearch => ({
+  ...(typeof search.person === 'string' && search.person !== '' ? { person: search.person } : {}),
+  ...(search.side === 'owed' || search.side === 'owe' ? { side: search.side } : {}),
+});
 
 export interface EventPlanSearch {
   /** The workspace tab the plan was opened from, so it keeps reading in it. */
@@ -216,6 +221,19 @@ const routeTree = rootRoute.addChildren([
   // Lend & borrow: money between you and people, both ways. It was drawn at /net-worth/debts under that name
   // while "Debts" meant only people; Debts is now everything owed, so the old address hands over, search and all.
   createRoute({ getParentRoute: () => rootRoute, path: '/net-worth/lend-borrow', component: LendBorrowPage, validateSearch: lendBorrowSearch }),
+  // Adding to one side of it, on a screen of its own: the title says which side, so the form needs no toggle.
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/lend-borrow/new-receivable',
+    component: () => <NewDebtPage direction="lent" />,
+    validateSearch: lendBorrowSearch,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/net-worth/lend-borrow/new-payable',
+    component: () => <NewDebtPage direction="borrowed" />,
+    validateSearch: lendBorrowSearch,
+  }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/net-worth/debts',

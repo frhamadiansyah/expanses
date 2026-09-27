@@ -151,6 +151,17 @@ describe('sorting and days', () => {
     expect(dayTotal(days[2]!.rows)).toBe(0);
   });
 
+  it('counts the fee on a loan as spending, and the loan itself as nothing', () => {
+    // Rp 4.000.000 lent to Toko Fandri on the card, with a Rp 100.000 card fee filed under Groceries' neighbour.
+    const loan = buildRows([tx('2026-09-12', 'Lent to Toko Fandri', [['friend', 4_000_000], ['groceries', 100_000], ['bca', -4_100_000]])], [], accounts, cards);
+    expect(loan[0]).toMatchObject({ type: 'debt', spentMinor: 100_000, earnedMinor: 0 });
+    expect(totals(loan)).toEqual({ count: 1, spentMinor: 100_000, incomeMinor: 0 });
+    expect(dayTotal(loan)).toBe(-100_000);
+    // A loan with no fee still adds nothing at all.
+    const plain = buildRows([tx('2026-09-12', 'Lent to Dina', [['friend', 4_000_000], ['bca', -4_000_000]])], [], accounts, cards);
+    expect(totals(plain)).toEqual({ count: 1, spentMinor: 0, incomeMinor: 0 });
+  });
+
   it('adds a foreign purchase in the workspace currency', () => {
     const baht = buildRows([tx('2026-09-12', 'Bangkok taxi', [['groceries', 50000, 2250000], ['octo', -50000, -2250000]])], [], accounts, cards);
     expect(totals(baht)).toEqual({ count: 1, spentMinor: 2250000, incomeMinor: 0 });
@@ -178,6 +189,9 @@ describe('groupByCategory', () => {
     deleted: false,
     excluded: false,
     needs: [],
+    // As `buildRows` derives them: an expense or an income is spent or earned whole.
+    spentMinor: (over.type ?? 'expense') === 'expense' ? (over.baseMinor ?? 0) : 0,
+    earnedMinor: over.type === 'income' ? (over.baseMinor ?? 0) : 0,
     ...over,
   });
 

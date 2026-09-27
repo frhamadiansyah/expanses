@@ -31,6 +31,10 @@ export interface DebtDraft {
   reason: string;
   dueOn: string;
   personIdNumber: string;
+  /** A fee on the money moved — a card's cash-advance charge, a bank's transfer fee. Your cost; '' for none. */
+  fee: string;
+  /** Where the fee is filed as spending; Fees & charges until chosen otherwise. */
+  feeCategoryId: string;
 }
 
 export const emptyDebtDraft = (today: string): DebtDraft => ({
@@ -47,6 +51,36 @@ export const emptyDebtDraft = (today: string): DebtDraft => ({
   reason: '',
   dueOn: '',
   personIdNumber: '',
+  fee: '',
+  feeCategoryId: '',
+});
+
+/**
+ * The accounts money lent can come from, or money borrowed can arrive in.
+ *
+ * Money you hold, and — for a loan you make — a credit card, which is how paying for a friend on your card is
+ * recorded: the card owes more, the friend owes you, the purchase still earns points. A card never takes borrowed
+ * money in. **Other cash equivalents** — a cheque, a wesel, commercial paper — are left out both ways: a cheque you
+ * are handed is recorded where it is deposited, and one you hold is not something you pay a person with.
+ */
+export function loanMoneyAccounts<T extends { kind: string; subtype: string }>(money: readonly T[], direction: DebtDirection): T[] {
+  return money.filter(
+    (account) =>
+      account.subtype !== 'other_cash' &&
+      ((account.kind === 'asset' && account.subtype !== 'credit_card') || (direction === 'lent' && account.subtype === 'credit_card')),
+  );
+}
+
+/**
+ * A draft for one side, which the screen it is opened on decides: New receivable is money you lent, New payable money
+ * you borrowed. The sub-category belongs to the side, so a piutang code never stands over money you owe. A person
+ * named on the way in (Lend & borrow filtered to one person) arrives already typed.
+ */
+export const debtDraftFor = (direction: DebtDirection, today: string, personName = ''): DebtDraft => ({
+  ...emptyDebtDraft(today),
+  direction,
+  subCategory: DEFAULT_SUB_CATEGORY[direction],
+  personName,
 });
 
 /**
@@ -82,6 +116,18 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
   }
   if (!(amountMinor > 0)) throw new Error('Enter how much');
 
+  let feeMinor = 0;
+  if (draft.fee.trim() !== '') {
+    try {
+      feeMinor = parseMajor(draft.fee, currency);
+    } catch {
+      throw new Error('The fee must be a number');
+    }
+    if (feeMinor < 0) throw new Error('A fee cannot be negative');
+    if (feeMinor > 0 && !draft.feeCategoryId) throw new Error('Choose a category for the fee');
+    if (draft.direction === 'borrowed' && feeMinor >= amountMinor) throw new Error('The fee cannot be all of what you borrowed');
+  }
+
   return {
     debtAccountId: draft.existingAccountId || undefined,
     coretaxCode: draft.subCategory || undefined,
@@ -100,7 +146,36 @@ export function debtDraftToInput(draft: DebtDraft, currency: string, today: stri
     moneyAccountId: draft.moneyId,
     spendCategoryId: draft.moneyIsCard && draft.spendCategoryId ? draft.spendCategoryId : null,
     mcc: draft.moneyIsCard && draft.mcc.trim() !== '' ? draft.mcc.trim() : null,
+    ...(feeMinor > 0 ? { feeMinor, feeCategoryId: draft.feeCategoryId } : {}),
   };
+}
+
+/**
+ * Whether the ✓ can save: everything `debtDraftToInput` requires is there — a person, a date that is not in the
+ * future, an account, an amount above zero, and a category for any fee. Asked of the very function Save calls, so the
+ * ✓ can never light up for a draft Save would refuse, nor stay dim for one it would take.
+ */
+export function debtDraftReady(draft: DebtDraft, currency: string, today: string): boolean {
+  try {
+    debtDraftToInput(draft, currency, today);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What leaves the account when money is lent: the loan and its fee. The set-aside question weighs this, not the loan
+ * alone — a Rp 100.000 fee is Rp 100.000 more taken from what is free.
+ */
+export function lentOutflowMinor(draft: DebtDraft, currency: string, today: string): number {
+  if (draft.direction !== 'lent') return 0;
+  try {
+    const input = debtDraftToInput(draft, currency, today);
+    return input.amountMinor + (input.feeMinor ?? 0);
+  } catch {
+    return 0;
+  }
 }
 
 export interface RepaymentDraft {

@@ -300,6 +300,7 @@ export {
   type SplitBill,
   type SplitShare,
   splitBillPostings,
+  withLoanFee,
 } from './debts/postings';
 export { type DebtStatus, DUE_SOON_DAYS, type DueState, dueLabel, dueStateFor, statusFor } from './debts/status';
 export { equalShares, yourShare } from './debts/shares';

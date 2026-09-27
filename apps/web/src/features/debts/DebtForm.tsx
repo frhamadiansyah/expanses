@@ -1,27 +1,37 @@
 import { type DebtDirection, isoDate } from '@expanses/core';
 import { recordLoan } from '@expanses/db';
-import { type FormEvent, useRef, useState } from 'react';
+import { Check } from 'lucide-react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../app/context';
 import { WALLET_SUBTYPES } from '../../lib/account-types';
 import { moneyHolders, useAccounts, useInvalidateAll, useResolveRates } from '../../lib/queries';
 import { ratePreview, ratesForSave } from '../../lib/rates';
 import { useHeldRates } from '../accounts/queries';
 import { ErrorBox } from '../../ui';
-import { InsetGroup, InsetRow, type Segment, SegmentedControl, SelectRow, TextRow } from '../../ui/native';
+import { InsetGroup, PushedTitle, SelectRow, TextRow } from '../../ui/native';
 import { CategoryOptions } from '../cards/options';
 import { spendingDoor } from '../goals/set-aside-question';
 import { useSetAside } from '../goals/SetAsideQuestion';
-import { type DebtDraft, DEFAULT_SUB_CATEGORY, debtDraftToInput, emptyDebtDraft, personSuggestions, subCategories, subCategoryGloss } from './debts-form';
+import { type DebtDraft, debtDraftFor, debtDraftReady, debtDraftToInput, lentOutflowMinor, loanMoneyAccounts, personSuggestions, subCategories } from './debts-form';
 import { useDebtProfiles, usePeopleDebts } from './queries';
 
-/** The two ways money moves between people. A pair of pressed buttons was the shape the kit replaces. */
-const DIRECTIONS: readonly Segment[] = [
-  { key: 'lent', label: 'I lent money' },
-  { key: 'borrowed', label: 'I borrowed money' },
-];
-
-/** Records money handed to a person, or taken from one. */
-export function DebtForm({ onDone }: { onDone: () => void }) {
+/**
+ * Records money handed to a person, or taken from one — which of the two is the screen's to say, not the form's:
+ * New receivable and New payable each open it on their own side. A toggle here as well would let the title and the
+ * form disagree about what is being recorded.
+ */
+export function DebtForm({
+  direction,
+  initialPerson = '',
+  backSearch,
+  onDone,
+}: {
+  direction: DebtDirection;
+  initialPerson?: string;
+  /** Where back lands on Lend & borrow: the side being added to, and the person being shown. */
+  backSearch: { side: 'owed' | 'owe'; person?: string };
+  onDone: () => void;
+}) {
   const { database, ws } = useApp();
   const invalidate = useInvalidateAll();
   const resolveRates = useResolveRates();
@@ -29,7 +39,7 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
   const people = usePeopleDebts();
   const profiles = useDebtProfiles();
   const today = isoDate();
-  const [draft, setDraft] = useState<DebtDraft>(() => emptyDebtDraft(today));
+  const [draft, setDraft] = useState<DebtDraft>(() => debtDraftFor(direction, today, initialPerson));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [manualRate, setManualRate] = useState('');
@@ -39,7 +49,7 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
 
   const set = (patch: Partial<DebtDraft>) => setDraft((current) => ({ ...current, ...patch }));
   // A loan comes from money you hold, or a card. Another person's account is not a source.
-  const money = moneyHolders(accounts).filter((account) => WALLET_SUBTYPES.includes(account.subtype));
+  const money = loanMoneyAccounts(moneyHolders(accounts).filter((account) => WALLET_SUBTYPES.includes(account.subtype)), draft.direction);
   const currency = money.find((account) => account.id === draft.moneyId)?.currency ?? ws.baseCurrency;
   const foreign = currency !== ws.baseCurrency;
   // Read from what this device holds, never fetched just because the form opened (see `useStoredRates`).
@@ -47,15 +57,13 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
   // Asked for when no rate is stored for the day, or when a Save found none; left out when one is known.
   const asksRate = foreign && (needsRate === currency || (held.data?.missing ?? []).includes(currency));
   const suggestions = people.data ? personSuggestions(people.data, draft.personName) : [];
-  // Lending pays money out; borrowing brings it in and asks nothing. The figure is the one `submit` sends.
-  const lentMinor = (() => {
-    if (draft.direction !== 'lent') return 0;
-    try {
-      return debtDraftToInput(draft, currency, today).amountMinor;
-    } catch {
-      return 0;
-    }
-  })();
+  // Lending pays money out — the loan and its fee; borrowing brings it in and asks nothing.
+  const lentMinor = lentOutflowMinor(draft, currency, today);
+  // The fee is filed under Fees & charges until the reader picks another category.
+  const feesCategoryId = accounts.find((account) => account.kind === 'expense' && account.systemKey === 'miscellaneous.fees_charges')?.id ?? '';
+  const feeCategoryId = draft.feeCategoryId || feesCategoryId;
+  // The ✓ is dim until the draft is one Save would take, as New transaction's is.
+  const complete = debtDraftReady({ ...draft, feeCategoryId }, currency, today);
   const setAside = useSetAside(draft.direction === 'lent' ? spendingDoor(draft.moneyId, lentMinor) : null);
 
   /** Typing a name the workspace already knows uses that account instead of opening a second one. */
@@ -66,12 +74,12 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
     set({ personName, existingAccountId: match?.accountId ?? '' });
   }
 
-  function directionChosen(direction: DebtDirection) {
-    // The same name can exist on both sides, so the match is looked up again — and the sub-category belongs to the
-    // side, so a piutang code is never left standing over money you borrowed.
-    set({ direction, existingAccountId: '', subCategory: DEFAULT_SUB_CATEGORY[direction] });
-    nameTyped(draft.personName);
-  }
+  // A person named on the way in is matched against the people already on this side once they have loaded, so their
+  // debt is added to rather than a second account opened for the same name. Typing afterwards matches as it goes.
+  useEffect(() => {
+    if (draft.personName && profiles.data) nameTyped(draft.personName);
+    // Once, when the profiles arrive: every later change of name goes through `nameTyped` itself.
+  }, [profiles.data]);
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -80,7 +88,7 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
     setError(null);
     setBusy(true);
     try {
-      const input = debtDraftToInput(draft, currency, today);
+      const input = debtDraftToInput({ ...draft, feeCategoryId }, currency, today);
       const ratesToBase = await ratesForSave({
         database,
         ws,
@@ -103,14 +111,19 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form ref={form} onSubmit={submit}>
-      <SegmentedControl
-        className="mb-[18px] md:max-w-2xl"
-        label="Which way the money went"
-        segments={DIRECTIONS}
-        value={draft.direction}
-        onChange={(key) => directionChosen(key as 'lent' | 'borrowed')}
+      {/*
+       * The title bar is the form's own, as New transaction's is: its ✓ is the save, top right, and it has to submit
+       * this form and dim while the set-aside question is unanswered, which only the form knows.
+       */}
+      <PushedTitle
+        title={direction === 'lent' ? 'New receivable' : 'New payable'}
+        back="Lend & borrow"
+        backTo="/net-worth/lend-borrow"
+        backSearch={backSearch}
+        actions={[
+          { key: 'save', label: 'Save', glyph: <Check size={20} aria-hidden />, disabled: busy || !complete || !setAside.ready, run: () => form.current?.requestSubmit() },
+        ]}
       />
-
       <InsetGroup header={draft.direction === 'lent' ? 'Money you lent' : 'Money you borrowed'}>
         <TextRow
           label="Person"
@@ -122,17 +135,8 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
           required
         />
         <TextRow label="Date" type="date" value={draft.occurredOn} max={today} onChange={(e) => set({ occurredOn: e.target.value })} />
-        <TextRow
-          label={`Amount (${currency})`}
-          value={draft.amount}
-          inputMode="decimal"
-          onChange={(e) => set({ amount: e.target.value })}
-          placeholder="10.000.000"
-          required
-        />
         <SelectRow
           label={draft.direction === 'lent' ? 'Paid from' : 'Received into'}
-          hint={draft.direction === 'lent' ? 'A credit card works: the card owes more, and the purchase still earns points.' : undefined}
           value={draft.moneyId}
           onChange={(e) => set({ moneyId: e.target.value, moneyIsCard: money.find((account) => account.id === e.target.value)?.subtype === 'credit_card' })}
         >
@@ -150,6 +154,33 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
             </optgroup>
           )}
         </SelectRow>
+        {/* After the account, which decides the currency the figure is read in. */}
+        <TextRow
+          label={`Amount (${currency})`}
+          value={draft.amount}
+          inputMode="decimal"
+          onChange={(e) => set({ amount: e.target.value })}
+          placeholder="10.000.000"
+          required
+        />
+        {/* A fee on the money moved is the owner's cost, filed as spending; what the person owes stays the loan. */}
+        <TextRow
+          label={`Fee (${currency})`}
+          info={
+            draft.direction === 'lent'
+              ? 'Optional. A card or bank charge for sending it. It is your cost, counted as spending; what they owe stays the loan.'
+              : 'Optional. A charge taken from what arrived. It is your cost, counted as spending; you still owe the whole loan.'
+          }
+          value={draft.fee}
+          inputMode="decimal"
+          onChange={(e) => set({ fee: e.target.value })}
+          placeholder="0"
+        />
+        {draft.fee.trim() !== '' && draft.fee.trim() !== '0' ? (
+          <SelectRow label="Fee category" value={feeCategoryId} onChange={(e) => set({ feeCategoryId: e.target.value })}>
+            <CategoryOptions accounts={accounts} kind="expense" parentSuffix="(general)" />
+          </SelectRow>
+        ) : null}
         {asksRate ? (
           <TextRow
             label={`Rate: ${ws.baseCurrency} per 1 ${currency}`}
@@ -181,7 +212,6 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
       <InsetGroup header="The rest of it">
         <SelectRow
           label="Sub category"
-          hint={subCategoryGloss(draft.direction, draft.subCategory) || 'What it files as in your tax report.'}
           value={draft.subCategory}
           onChange={(e) => set({ subCategory: e.target.value })}
         >
@@ -193,16 +223,16 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
         </SelectRow>
         <TextRow
           label="What it is for"
-          hint="Shown on their card, so you remember."
+          info="Shown on their card, so you remember."
           value={draft.reason}
           onChange={(e) => set({ reason: e.target.value })}
           placeholder="Motorcycle repair"
         />
-        <TextRow label="Due by" hint="Optional. You are warned three weeks before." type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+        <TextRow label="Due by" info="Optional. You are warned three weeks before." type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
         {!draft.existingAccountId ? (
           <TextRow
-            label="NIK or NPWP"
-            hint="Optional, and only needed when this reaches your SPT."
+            label="Tax ID"
+            info="Their national or tax ID number. Optional, and only needed when this reaches your tax report."
             value={draft.personIdNumber}
             inputMode="numeric"
             onChange={(e) => set({ personIdNumber: e.target.value })}
@@ -212,16 +242,6 @@ export function DebtForm({ onDone }: { onDone: () => void }) {
 
       {setAside.node}
       <ErrorBox error={error} />
-      <InsetGroup>
-        <InsetRow
-          title="Save"
-          chevron={false}
-          disabled={!setAside.ready}
-          onClick={() => !busy && setAside.ready && form.current?.requestSubmit()}
-          className={busy ? 'opacity-40' : undefined}
-        />
-        <InsetRow title="Cancel" chevron={false} onClick={onDone} />
-      </InsetGroup>
     </form>
   );
 }

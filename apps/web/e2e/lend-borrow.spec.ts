@@ -11,9 +11,19 @@ async function addAccount(page: Page, name: string, type: string, balanceLabel: 
   await openAccount(page, { subtype: type, name, balance: amount });
 }
 
+/**
+ * + on the desktop asks which side, because both columns are in front of you; each side then adds on a screen
+ * of its own, New receivable or New payable, and Save comes back to Lend & borrow.
+ */
+async function openNew(page: Page, side: 'New receivable' | 'New payable') {
+  await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
+  await page.getByRole('menuitem', { name: side }).click();
+  await expect(page.getByRole('heading', { name: side })).toBeVisible();
+}
+
 async function lend(page: Page, person: string, amount: string, from: string) {
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).click();
+  await openNew(page, 'New receivable');
   await page.getByLabel('Person').fill(person);
   await page.getByLabel(/^Amount/).fill(amount);
   await page.getByLabel('Paid from').selectOption({ label: from });
@@ -26,7 +36,7 @@ test('lending on a credit card raises the card, earns points, and is never spend
   await addAccount(page, 'BCA KrisFlyer', 'credit_card', 'Amount owed now', '0');
 
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).click();
+  await openNew(page, 'New receivable');
   await page.getByLabel('Person').fill('Andi');
   await page.getByLabel(/^Amount/).fill('4000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA KrisFlyer (IDR)' });
@@ -121,8 +131,7 @@ test('splits a bill: your share is spending, your friend owes theirs', async ({ 
 /** The other direction: money taken from a person, which lands under "Payables". */
 async function borrow(page: Page, person: string, amount: string, into: string) {
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).click();
-  await page.getByRole('radio', { name: 'I borrowed money' }).click();
+  await openNew(page, 'New payable');
   await page.getByLabel('Person').fill(person);
   await page.getByLabel(/^Amount/).fill(amount);
   await page.getByLabel('Received into').selectOption({ label: into });
@@ -159,7 +168,7 @@ test('lends US$100 with no dollar rate stored: the form asks for it and the loan
   await emptyDollarAccount(page);
 
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).click();
+  await openNew(page, 'New receivable');
   await page.getByLabel('Person').fill('Andi');
   await page.getByLabel('Paid from').selectOption({ label: 'Wise USD (USD)' });
   await page.getByLabel('Amount (USD)').fill('100');
@@ -177,8 +186,7 @@ test('borrows US$50 with no dollar rate stored: the form asks for it and the deb
   await emptyDollarAccount(page);
 
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).click();
-  await page.getByRole('radio', { name: 'I borrowed money' }).click();
+  await openNew(page, 'New payable');
   await page.getByLabel('Person').fill('Budi');
   await page.getByLabel('Received into').selectOption({ label: 'Wise USD (USD)' });
   await page.getByLabel('Amount (USD)').fill('50');
@@ -192,4 +200,37 @@ test('borrows US$50 with no dollar rate stored: the form asks for it and the deb
   await expect(page.getByRole('heading', { name: 'Budi' })).toBeVisible();
   await expect(page.getByText(/US\$\s?50/).first()).toBeVisible();
   await expect(page.getByTestId('debts-total-Payables')).toContainText('800.000');
+});
+
+test('+ asks which side, each opens on a screen of its own, and back and Save both return to Lend & borrow', async ({ page }) => {
+  await addAccount(page, 'BCA Tahapan', 'bank', 'Current balance', '50000000');
+  await page.goto('/net-worth/lend-borrow');
+
+  // Both choices are under the one +, because the desktop shows both sides at once.
+  await page.getByRole('button', { name: 'Add to Lend & borrow' }).click();
+  await expect(page.getByRole('menuitem', { name: 'New receivable' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'New payable' })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'New payable' }).click();
+
+  // A screen of its own, not a form above the lists, and it asks no direction: the title already said it.
+  await expect(page).toHaveURL(/\/net-worth\/lend-borrow\/new-payable/);
+  await expect(page.getByRole('heading', { name: 'New payable' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: /I (lent|borrowed) money/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+  await expect(page.getByLabel('Received into')).toBeVisible();
+
+  // Back goes to Lend & borrow and records nothing.
+  await page.getByRole('link', { name: /Lend & borrow/ }).first().click();
+  await expect(page).toHaveURL(/\/net-worth\/lend-borrow(\?|$)/);
+  await expect(page.getByText('Nothing lent or borrowed yet.', { exact: false })).toBeVisible();
+
+  // Save does too, with the new person on the side they were added to.
+  await openNew(page, 'New payable');
+  await page.getByLabel('Person').fill('Dewi');
+  await page.getByLabel(/^Amount/).fill('750000');
+  await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page).toHaveURL(/\/net-worth\/lend-borrow\?.*side=owe/);
+  await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
+  await expect(page.getByTestId('debts-total-Payables')).toContainText('750.000');
 });

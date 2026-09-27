@@ -26,31 +26,29 @@ async function twoPeople(page: Page) {
   await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
 
   await page.goto('/net-worth/lend-borrow');
-  await page.getByRole('button', { name: 'Add a loan' }).tap();
+  // The phone shows one side, so + goes straight to that side's screen: Receivables opens on New receivable.
+  await page.getByRole('link', { name: 'New receivable' }).tap();
   await page.getByLabel('Person').fill('Andi');
   await page.getByLabel(/^Amount/).fill('1000000');
   await page.getByLabel('Paid from').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Add a loan' }).tap();
-  await page.getByRole('radio', { name: 'I borrowed money' }).tap();
+  // On Payables the same + is New payable.
+  await turnOver(page);
+  await page.getByRole('link', { name: 'New payable' }).tap();
   await page.getByLabel('Person').fill('Dewi');
   await page.getByLabel(/^Amount/).fill('750000');
   await page.getByLabel('Received into').selectOption({ label: 'BCA Tahapan (IDR)' });
   await page.getByRole('button', { name: 'Save', exact: true }).tap();
-  // The sheet must be gone before the control is tapped, or the tap lands on the sheet and the side never turns.
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
-  // The borrow lands on the other side of the switch, which is where the phone finds it.
-  await turnOver(page);
+  // Save comes back to the side just added to, so Dewi is on screen without turning anything over.
   /* A save is instant, but the list's repaint is a second ledger read and it can begin before the write lands: on a
-     loaded machine Dewi is then missing from the side that was just opened, and no further read is coming. One
-     reload and a fresh tap settle it. */
+     loaded machine Dewi is then missing, and no further read is coming. One reload settles it; the side is in the
+     address, so it survives the reload. */
   try {
     await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible({ timeout: 5_000 });
   } catch {
     await page.reload();
-    await turnOver(page);
     await expect(page.getByRole('heading', { name: 'Dewi' })).toBeVisible();
   }
   // Back to a freshly opened page, so each spec starts where a reader starts: on the segment the page chooses.
@@ -105,4 +103,43 @@ test('by thumb: settled items stay where they were, under the switch', async ({ 
   await page.getByRole('button', { name: /Show settled/ }).tap();
   await expect(page.getByRole('heading', { name: 'Andi' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Hide settled/ })).toBeVisible();
+});
+test('+ adds on a screen of its own for the side the phone is showing, and a person shown comes along', async ({ page }) => {
+  await twoPeople(page);
+
+  // Receivables first, so + is New receivable: a whole screen, with its way back and no direction to choose.
+  await page.getByRole('link', { name: 'New receivable' }).tap();
+  await expect(page.getByRole('heading', { name: 'New receivable' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: /I (lent|borrowed) money/ })).toHaveCount(0);
+  await expect(page.getByLabel('Paid from')).toBeVisible();
+  await page.getByRole('link', { name: /Lend & borrow/ }).first().tap();
+  await expect(page).toHaveURL(/\/net-worth\/lend-borrow(\?|$)/);
+
+  // Lend & borrow showing only Dewi: + there starts with her name, and adds to what she is already owed.
+  await page.goto('/net-worth/lend-borrow?person=Dewi');
+  await page.getByRole('link', { name: 'New payable' }).tap();
+  await expect(page.getByLabel('Person')).toHaveValue('Dewi');
+  await expect(page.getByText('Adding to what they already owe.')).toBeVisible();
+});
+
+test('the notes on a new receivable are behind an ⓘ, and the ID it asks for is not one country\'s', async ({ page }) => {
+  await openAccount(page, { subtype: 'bank', name: 'BCA Tahapan', balance: '50000000' });
+  await page.goto('/net-worth/lend-borrow/new-receivable');
+
+  // Fine print waits behind the ⓘ beside its label, and comes out only when asked for.
+  const note = page.getByText('Optional. You are warned three weeks before.');
+  await expect(note).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Due by' }).tap();
+  await expect(note).toBeVisible();
+  await expect(page.getByRole('button', { name: 'About Due by' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: 'About What it is for' })).toBeVisible();
+
+  // A tax ID, for whichever country's report it reaches.
+  await expect(page.getByRole('textbox', { name: 'Tax ID', exact: true })).toBeVisible();
+  await expect(page.getByText(/NIK|NPWP|SPT/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'About Tax ID' }).tap();
+  await expect(page.getByText(/only needed when this reaches your tax report/)).toBeVisible();
+
+  // The sub-category's line under it was the same choice again in Indonesian; it is gone.
+  await expect(page.getByText(/Piutang|Utang/)).toHaveCount(0);
 });
