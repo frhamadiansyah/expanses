@@ -225,7 +225,19 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
   const charged = page.getByRole('button', { name: 'Charged in IDR' });
   await expect(charged).toBeVisible();
   await expect(charged).toHaveText('272.400');
-  await expect(page.getByText(`≈ 2.270 per 1 CNY · suggested from ${TODAY}`)).toBeVisible();
+  // Each figure is named by the code in front of it rather than by a caption hanging off the right edge, and
+  // the ≈ is the whole of what the line under the row used to say: this figure is the day's estimate rather
+  // than what the bank took. The rate itself is no longer printed here — a rate the device does not hold is
+  // still asked for, by the Rate row `extraRows` puts under Add more details.
+  await expect(page.getByText('CNY', { exact: true })).toBeVisible();
+  await expect(page.getByText('≈ IDR', { exact: true })).toBeVisible();
+
+  // Both figures are on ONE row, which is what the two codes in front of them buy: the typed figure and the
+  // figure that posts sit side by side, parted by a rule, rather than one above the other.
+  const amountBox = (await amount.boundingBox())!;
+  const chargedBox = (await charged.boundingBox())!;
+  expect(Math.abs(amountBox.y - chargedBox.y), 'the two figures share a row').toBeLessThan(2);
+  expect(chargedBox.x, 'the charged figure is to the right of the typed one').toBeGreaterThan(amountBox.x);
 
   // And the thumb's targets on the two money rows are targets a thumb can hit: 44px, Apple's minimum, measured
   // rather than assumed. The figure is the most-pressed control on the card and its button used to be the
@@ -240,6 +252,9 @@ test('the flag brings the charged row, pre-filled at the day’s rate, and takes
   for (const key of 'C275000') await keypad.getByRole('button', { name: key, exact: true }).click();
   await keypad.getByRole('button', { name: 'DONE' }).click();
   await expect(charged).toHaveText('275.000');
+  // Typed by hand, so it is no longer a guess and stops being marked as one — the code stays, the ≈ goes.
+  await expect(page.getByText('≈ IDR', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('IDR', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Category' }).click();
   await page.getByRole('dialog', { name: 'Select category' }).getByRole('button', { name: 'Groceries', exact: true }).click();

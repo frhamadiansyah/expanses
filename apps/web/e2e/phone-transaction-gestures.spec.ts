@@ -252,6 +252,10 @@ test('a foreign purchase falls back to the in-place editor, because the sheet ca
   // row shows a settled figure grouped the way the app writes money, so the exponent is read off the face.
   await expect(page.getByRole('button', { name: 'Amount', exact: true })).toHaveText('100,00');
   await expect(page.getByRole('button', { name: 'Charged in IDR' })).toHaveText('1.600.000');
+  // A purchase reopened for correction holds what the bank actually took, so the charged figure is nobody's
+  // guess and carries no ≈ — only the code that names it.
+  await expect(page.getByText('≈ IDR', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('IDR', { exact: true })).toBeVisible();
 });
 
 /**

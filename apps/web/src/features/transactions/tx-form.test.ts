@@ -9,7 +9,7 @@ import {
   amountFields,
   billMinor,
   canEditInSheet,
-  chargedHint,
+  chargedIsEstimate,
   chargedInNeeded,
   currencyChoosable,
   detailsToggleLabel,
@@ -759,34 +759,26 @@ describe('the rate the charged row suggests', () => {
   });
 });
 
-describe('the quiet line under the charged row', () => {
-  it('names the rate, the day it came from and the account that charged it', () => {
-    expect(chargedHint({ rate: 2270, currency: 'CNY', accountCurrency: 'IDR', onDate: '2026-09-17', accountName: 'BCA Tahapan' })).toBe(
-      '≈ 2.270 per 1 CNY · suggested from 2026-09-17, change it to what BCA Tahapan charged',
-    );
+describe('the \u2248 in front of the charged figure', () => {
+  it('marks a figure this form worked out, and not one the user wrote', () => {
+    expect(chargedIsEstimate({ value: '272400', touched: false })).toBe(true);
+    expect(chargedIsEstimate({ value: '275000', touched: true })).toBe(false);
   });
 
-  it('does not claim a stale rate came from the day it is shown against', () => {
-    expect(chargedHint({ rate: 2270, currency: 'CNY', accountCurrency: 'IDR', onDate: '2026-09-17', accountName: 'BCA Tahapan', stale: true })).toBe(
-      '≈ 2.270 per 1 CNY · the last CNY→IDR rate known, change it to what BCA Tahapan charged',
-    );
+  it('marks nothing at all while the row is empty', () => {
+    // There is no guess to qualify, and an \u2248 in front of a blank row reads as "about nothing".
+    expect(chargedIsEstimate({ value: '', touched: false })).toBe(false);
+    expect(chargedIsEstimate({ value: '   ', touched: false })).toBe(false);
   });
 
-  it('says so when no rate is known', () => {
-    expect(chargedHint({ rate: null, currency: 'CNY', accountCurrency: 'IDR', onDate: '2026-09-17', accountName: 'BCA Tahapan' })).toBe(
-      'No CNY→IDR rate is known for 2026-09-17. Enter what BCA Tahapan charged.',
-    );
-  });
-
-  it('can be told which locale to write the number in', () => {
-    // Country-neutral: only the tax report is Indonesia's. The function took six named parameters and could
-    // not be told a locale, so `1,234.5` was unreachable however the app was read. `formatMinor` has always
-    // taken its locale this way, with the same default, so this is that convention rather than a new one.
-    const named = { rate: 1234.5, currency: 'USD', accountCurrency: 'IDR', onDate: '2026-09-17', accountName: 'Wise USD' };
-    expect(chargedHint({ ...named, locale: 'en-US' })).toContain('≈ 1,234.5 per 1 USD');
-    expect(chargedHint({ ...named, locale: 'de-DE' })).toContain('≈ 1.234,5 per 1 USD');
-    // Unasked, it still writes the way the rest of this app writes numbers.
-    expect(chargedHint(named)).toContain('≈ 1.234,5 per 1 USD');
+  it('is the mark for exactly the rows `prefilledCharge` still writes into', () => {
+    // The two read one record between them. A row the pre-fill will overwrite is by definition still a guess,
+    // and a row it has let go of is by definition the user's: the mark can never contradict the figure.
+    const estimate = '272400';
+    expect(prefilledCharge({ estimate, charged: '', touched: false })).toBe(estimate);
+    expect(chargedIsEstimate({ value: estimate, touched: false })).toBe(true);
+    expect(prefilledCharge({ estimate, charged: '275000', touched: true })).toBeNull();
+    expect(chargedIsEstimate({ value: '275000', touched: true })).toBe(false);
   });
 });
 

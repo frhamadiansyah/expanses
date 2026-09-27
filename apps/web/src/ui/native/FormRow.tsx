@@ -170,8 +170,13 @@ export function SelectRow({
   );
 }
 
-/** The label the select is showing: the option whose value is the chosen one, inside an `optgroup` or not. */
-function optionLabel(children: ReactNode, value: string): string | null {
+/**
+ * The label the select is showing: the option whose value is the chosen one, inside an `optgroup` or not.
+ *
+ * Exported because the transaction form's glyph rows draw a select exactly as this row does — bare, under a
+ * value the row prints itself — and a second copy of this walk is a second answer to what the select says.
+ */
+export function optionLabel(children: ReactNode, value: string): string | null {
   for (const child of Children.toArray(children)) {
     if (!isValidElement(child)) continue;
     const props = child.props as { value?: unknown; children?: ReactNode };
