@@ -75,7 +75,19 @@ export interface SealedFor {
  */
 export type LogEntry =
   | { kind: 'change'; deviceId: string; epoch: number; hlc: string; iv: string; ct: string; sig: string }
-  | { kind: 'removal'; deviceId: string; epoch: number; hlc: string; target: string; sig: string }
+  | {
+      kind: 'removal';
+      deviceId: string;
+      epoch: number;
+      hlc: string;
+      target: string;
+      /**
+       * Leave (§8.4, task 9a): a device removing itself because its member leaves. Every other device of the same
+       * member, applying it, removes itself too. Counts only when `target` is the author. Signed like every field.
+       */
+      leave?: true;
+      sig: string;
+    }
   | { kind: 'rotation'; deviceId: string; epoch: number; hlc: string; sealed: SealedFor[]; sig: string };
 
 /** A `LogEntry` as the relay hands it back: its position in the log, and the author's pinned signing key. */
@@ -112,11 +124,14 @@ export interface ClaimResult {
  */
 export class SyncTransportError extends Error {
   readonly status: number;
+  /** On a `410` for a book its owner deleted (§8.6, task 9a): the device that deleted it, as the relay recorded it. */
+  readonly deletedBy?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, detail: { deletedBy?: string } = {}) {
     super(message);
     this.name = 'SyncTransportError';
     this.status = status;
+    if (detail.deletedBy !== undefined) this.deletedBy = detail.deletedBy;
   }
 }
 

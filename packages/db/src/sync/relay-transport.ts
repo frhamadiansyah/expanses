@@ -101,13 +101,23 @@ export class RelayTransport implements SyncTransport {
     }
 
     const text = await response.text();
-    if (!response.ok) throw new SyncTransportError(response.status, errorMessage(text, response.status));
+    if (!response.ok) throw new SyncTransportError(response.status, errorMessage(text, response.status), errorDetail(text));
     return text ? JSON.parse(text) : undefined;
   }
 }
 
 function seg(value: string): string {
   return encodeURIComponent(value);
+}
+
+/** What else a refusal says: a deleted book's `410` names the device that deleted it (§8.6, §9.2). */
+function errorDetail(text: string): { deletedBy?: string } {
+  try {
+    const parsed = JSON.parse(text) as { deletedBy?: unknown };
+    return typeof parsed.deletedBy === 'string' ? { deletedBy: parsed.deletedBy } : {};
+  } catch {
+    return {};
+  }
 }
 
 function errorMessage(text: string, status: number): string {

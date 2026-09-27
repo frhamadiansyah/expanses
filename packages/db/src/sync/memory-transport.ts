@@ -40,6 +40,13 @@ interface BookState {
   seen: Map<string, number>;
   invites: Map<string, StoredInvite>;
   deleted: boolean;
+  /** The owner device that deleted the book (§8.6): every later `410` names it. */
+  deletedBy?: string;
+}
+
+/** A deleted book's `410`: bare, naming the device that deleted it only to an authenticated device of the book (§8.6, §9.2). */
+function gone(state: BookState, authenticated: boolean): SyncTransportError {
+  return new SyncTransportError(410, 'this book is no longer shared', authenticated && state.deletedBy !== undefined ? { deletedBy: state.deletedBy } : {});
 }
 
 function byteSize(value: unknown): number {
@@ -68,6 +75,14 @@ export class MemoryTransport {
     }
     let key = bodyKey;
     if (!key && bookId !== null) {
+      const deleted = this.books.get(bookId);
+      if (deleted?.deleted) {
+        // A deleted book (fix round 1): a bare 410, naming who deleted it only once this signature verifies against the
+        // caller's pinned key — as the relay does.
+        const device = deleted.devices.get(signed.deviceId);
+        const verified = !!device && !device.removedAt && (await verifySignature(device.signJwk, signed.bytes, signed.signature));
+        throw gone(deleted, verified);
+      }
       const state = this.requireBook(bookId);
       const device = state.devices.get(signed.deviceId);
       if (!device || device.removedAt) throw new SyncTransportError(401, 'unknown or removed device');
@@ -84,8 +99,21 @@ export class MemoryTransport {
   requireBook(bookId: string): BookState {
     const state = this.books.get(bookId);
     if (!state) throw new SyncTransportError(404, `no such book ${bookId}`);
-    if (state.deleted) throw new SyncTransportError(410, 'this book is no longer shared');
+    if (state.deleted) throw gone(state, false);
     return state;
+  }
+
+  /**
+   * `requireBook` for a member's call: a deleted book's 410 names who deleted it to a caller that is one of its
+   * devices (the bound identity; a signed call was already checked in `verifyRequest`), and to nobody else.
+   */
+  private memberBook(bookId: string, actor: string): BookState {
+    const state = this.books.get(bookId);
+    if (state?.deleted) {
+      const device = state.devices.get(actor);
+      throw gone(state, !!device && !device.removedAt);
+    }
+    return this.requireBook(bookId);
   }
 
   private requireMember(state: BookState, actor: string): void {
@@ -118,7 +146,7 @@ export class MemoryTransport {
   }
 
   async append(bookId: string, entry: LogEntry, actorDeviceId: string): Promise<{ seq: number }> {
-    const state = this.requireBook(bookId);
+    const state = this.memberBook(bookId, actorDeviceId);
     this.requireMember(state, actorDeviceId);
     // A device only ever authors its own entries — never on another device's behalf (finding: bound identity).
     if (entry.deviceId !== actorDeviceId) throw new SyncTransportError(403, 'a device can only append its own entries');
@@ -147,7 +175,7 @@ export class MemoryTransport {
   }
 
   async pull(bookId: string, since: number, actorDeviceId: string): Promise<{ entries: SequencedEntry[]; latest: number }> {
-    const state = this.requireBook(bookId);
+    const state = this.memberBook(bookId, actorDeviceId);
     this.requireMember(state, actorDeviceId);
 
     const entries = [...state.log.entries()]
@@ -163,7 +191,7 @@ export class MemoryTransport {
   }
 
   async putInvite(bookId: string, invite: InviteRecord, actorDeviceId: string): Promise<void> {
-    const state = this.requireBook(bookId);
+    const state = this.memberBook(bookId, actorDeviceId);
     this.requireOwner(state, actorDeviceId);
     state.invites.set(invite.inviteId, { ...invite });
   }
@@ -172,7 +200,7 @@ export class MemoryTransport {
     const found = this.findInvite(inviteId);
     if (!found) throw new SyncTransportError(404, 'no such invite');
     const { state, invite } = found;
-    if (state.deleted) throw new SyncTransportError(410, 'this book is no longer shared');
+    if (state.deleted) throw gone(state, false);
     return { preview: invite.preview, expiresAt: invite.expiresAt, claimed: invite.claimedAt !== undefined };
   }
 
@@ -184,7 +212,7 @@ export class MemoryTransport {
     const found = this.findInvite(inviteId);
     if (!found) throw new SyncTransportError(404, 'no such invite');
     const { bookId, state, invite } = found;
-    if (state.deleted) throw new SyncTransportError(410, 'this book is no longer shared');
+    if (state.deleted) throw gone(state, false);
     if (invite.claimedAt !== undefined) throw new SyncTransportError(409, 'invite already claimed');
     if (Date.parse(invite.expiresAt) <= Date.now()) throw new SyncTransportError(410, 'invite expired');
     if (!(await inviteSignedByAnOwner(invite, state.owners, (owner) => state.devices.get(owner)))) throw new SyncTransportError(403, 'bad owner signature');
@@ -200,7 +228,7 @@ export class MemoryTransport {
   }
 
   async removeDevice(bookId: string, targetDeviceId: string, actorDeviceId: string): Promise<void> {
-    const state = this.requireBook(bookId);
+    const state = this.memberBook(bookId, actorDeviceId);
     // By an owner, for any device; by any device, for itself (spec §8.4).
     if (actorDeviceId === targetDeviceId) this.requireMember(state, actorDeviceId);
     else this.requireOwner(state, actorDeviceId);
@@ -212,15 +240,16 @@ export class MemoryTransport {
   }
 
   async setOwners(bookId: string, deviceIds: string[], actorDeviceId: string): Promise<void> {
-    const state = this.requireBook(bookId);
+    const state = this.memberBook(bookId, actorDeviceId);
     this.requireOwner(state, actorDeviceId);
     state.owners = new Set(deviceIds);
   }
 
   async deleteBook(bookId: string, actorDeviceId: string): Promise<void> {
-    const state = this.requireBook(bookId);
+    const state = this.memberBook(bookId, actorDeviceId);
     this.requireOwner(state, actorDeviceId);
     state.deleted = true;
+    state.deletedBy = actorDeviceId;
   }
 
   private findInvite(inviteId: string): { bookId: string; state: BookState; invite: StoredInvite } | undefined {

@@ -55,6 +55,7 @@ import depositAutomation from '../migrations/0054_deposit_automation.sql?raw';
 import loanItemsSql from '../migrations/0055_loan_items.sql?raw';
 import householdSharing from '../migrations/0056_household_sharing.sql?raw';
 import syncInvitesUsed from '../migrations/0057_sync_invites_used.sql?raw';
+import sharedBooksStatus from '../migrations/0058_shared_books_status.sql?raw';
 import type { Database } from './database';
 
 export interface Migration {
@@ -120,6 +121,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 55, name: 'loan_items', sql: loanItemsSql },
   { version: 56, name: 'household_sharing', sql: householdSharing },
   { version: 57, name: 'sync_invites_used', sql: syncInvitesUsed },
+  { version: 58, name: 'shared_books_status', sql: sharedBooksStatus },
 ];
 
 /** The highest version this build of the app knows how to produce. */

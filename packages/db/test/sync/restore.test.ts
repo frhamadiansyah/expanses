@@ -2,6 +2,7 @@ import { expenseLines } from '@expanses/core';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { postTransaction } from '../../src/index';
+import { withCapture } from '../../src/sync/capture';
 import { categoryOf, Household, projectBook, type Device } from './household';
 
 /*
@@ -49,6 +50,8 @@ describe('a restored backup (§8.7)', () => {
     expect(await restored.engine.checkRestore()).toEqual([bookId]);
     expect(await state(restored, bookId)).toBe('needs_invite');
     expect(await outbox(restored, bookId)).toBe(0);
+    // The status line asks an owner by name (§11, task 9a).
+    expect(await restored.engine.bookSyncStatus(bookId)).toEqual({ state: 'needs_invite', askName: 'Dewi' });
 
     // Recording works, locally; nothing is captured while the book waits.
     await spend(restored, bookId, 'recorded while waiting');
@@ -83,5 +86,34 @@ describe('a restored backup (§8.7)', () => {
     await home.settle();
     expect(await fandri.engine.checkRestore()).toEqual([]);
     expect(await state(fandri, bookId)).toBe('active');
+  });
+
+  it('a refused member edit drained before the backup is put back to the log’s after the rejoin (S4, task 9a)', async () => {
+    const home = new Household();
+    const dewi = await home.device('Dewi');
+    const fandri = await home.device('Fandri');
+    const bookId = await home.share(dewi);
+    await home.join(fandri, dewi);
+    await home.settle();
+    // Fandri, a plain member, makes himself an owner: the log refuses it (§8.5). It is drained, but the backup is taken
+    // before this phone pulls its own entry back, which is when a device puts a refused edit of its own back.
+    await fandri.database.transaction((tx) =>
+      withCapture(tx, { entity: 'member', id: fandri.memberId, bookId }, async () => {
+        await tx.run(sql`UPDATE book_members SET role = 'owner' WHERE book_id = ${bookId} AND member_id = ${fandri.memberId}`);
+      }),
+    );
+    expect(await fandri.engine.drain(bookId)).toBe(1);
+    const backup = await fandri.database.exportBytes();
+
+    const restored = await home.restore(fandri, backup);
+    await restored.engine.checkRestore();
+    const { code } = await dewi.engine.createInvite(bookId, { inviterName: 'Dewi', sameMember: true, memberId: fandri.memberId });
+    await restored.engine.joinBook(code, { ws: restored.ws, memberName: 'Fandri', deviceName: 'new phone' });
+    await home.settle();
+
+    const role = async (d: Device) => (await d.database.db.values<[string]>(sql`SELECT role FROM book_members WHERE book_id = ${bookId} AND member_id = ${fandri.memberId}`))[0]![0];
+    expect(await role(dewi)).toBe('member');
+    expect(await role(restored)).toBe('member');
+    expect(await projectBook(restored.database, bookId)).toEqual(await projectBook(dewi.database, bookId));
   });
 });

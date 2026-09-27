@@ -9,7 +9,7 @@ import { verifyEntitlement } from './entitlement';
  * Object authenticates the caller (§9.1) and hands this class a verified device id.
  *
  * Storage keys — the §9.3 state, one key per row so an append writes three small values, never the whole log:
- *   meta                       { bookId, epoch, seq, owners, deleted }
+ *   meta                       { bookId, epoch, seq, owners, deleted, deletedBy? }
  *   device:<deviceId>          { signJwk, agreeJwk, addedAt, removedAt? }
  *   log:<seq, zero-padded>     LogEntry
  *   seen:<deviceId>:<hlc>      seq
@@ -31,6 +31,8 @@ export class RelayError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** More the answer's body carries beside `error`: a deleted book's `410` names who deleted it (§8.6). */
+    readonly detail: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -49,6 +51,8 @@ interface Meta {
   seq: number;
   owners: string[];
   deleted: boolean;
+  /** The owner device that deleted the book (§8.6, task 9a): every later `410` names it. */
+  deletedBy?: string;
 }
 
 type StoredInvite = InviteRecord & { claimedAt?: string };
@@ -84,6 +88,19 @@ export class Book {
     if (!meta) throw new RelayError(404, 'no such book');
     if (meta.deleted) throw new RelayError(410, 'this book is no longer shared');
     return meta;
+  }
+
+  /**
+   * A member's call on a deleted book (§8.6, fix round 1): null while the book stands. Otherwise the `410`, bare — and
+   * naming the device that deleted it only when the caller is a device of the book, not removed, whose request
+   * `verifies` against its stored key. Nothing about the book is told before the caller is authenticated.
+   */
+  async deletedAnswer(actor: string, verifies: (key: JsonWebKey) => Promise<boolean>): Promise<RelayError | null> {
+    const meta = await this.store.get<Meta>('meta');
+    if (!meta?.deleted) return null;
+    const device = await this.store.get<DeviceRecord>(deviceKey(actor));
+    const known = device !== undefined && !device.removedAt && meta.deletedBy !== undefined && (await verifies(device.signJwk));
+    return new RelayError(410, 'this book is no longer shared', known ? { deletedBy: meta.deletedBy } : {});
   }
 
   /**
@@ -200,7 +217,7 @@ export class Book {
 
   async deleteBook(actor: string): Promise<void> {
     const meta = await this.requireOwner(actor);
-    await this.store.put({ meta: { ...meta, deleted: true } });
+    await this.store.put({ meta: { ...meta, deleted: true, deletedBy: actor } });
   }
 
   /** The invite's `sig` verifies under the pinned signing key of one of the book's current owners (spec §5.4). */

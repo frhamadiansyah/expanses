@@ -156,6 +156,13 @@ describe('RelayTransport: a refusal becomes the same SyncTransportError MemoryTr
     });
   }
 
+  it("carries a deleted book's deletedBy on a 410 (§8.6, task 9a)", async () => {
+    const { signer } = await device();
+    const fetcher = fakeFetch([json(410, { error: 'this book is no longer shared', deletedBy: 'device-owner' })]);
+    const transport = new RelayTransport({ baseUrl: 'http://relay.test', signer, fetch: fetcher.impl });
+    await expect(transport.pull('book-1', 0)).rejects.toMatchObject({ status: 410, deletedBy: 'device-owner' });
+  });
+
   it('a relay that cannot be reached is status 0', async () => {
     const { signer } = await device();
     const transport = new RelayTransport({
